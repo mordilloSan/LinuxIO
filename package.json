@@ -30,7 +30,7 @@
     "classnames": "2.5.1",
     "dockerode": "^4.0.2",
     "express": "^5.0.0",
-    "express-session": "^1.0.0",
+    "express-session": "^1.18.0",
     "framer-motion": "^11.5.4",
     "lodash": "^4.17.21",
     "memorystore": "^1.6.7",
