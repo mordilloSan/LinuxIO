@@ -21,10 +21,6 @@ function LoginPage() {
     setShowPassword(!showPassword);
   };
 
-  const handleMouseDownPassword = (event) => {
-    event.preventDefault();
-  };
-
   const handleFormSubmit = async (event) => {
     event.preventDefault();
     await login(username, password);
@@ -38,7 +34,7 @@ function LoginPage() {
       setPassword={setPassword}
       showPassword={showPassword}
       handleClickShowPassword={handleClickShowPassword}
-      handleMouseDownPassword={handleMouseDownPassword}
+      handleMouseDownPassword={handleFormSubmit}
       handleFormSubmit={handleFormSubmit}
       error={error}
     />
