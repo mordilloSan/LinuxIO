@@ -15,12 +15,12 @@ const disabledText = "var(--mui-palette-text-disabled)";
 
 const chartOptions = {
   chart: {
-    id: "network_realtime",
+    id: "realtime2",
     animations: {
       enabled: true,
       easing: "linear",
       dynamicAnimation: {
-        speed: 1000,
+        speed: 1500,
       },
     },
     toolbar: {
@@ -41,6 +41,7 @@ const chartOptions = {
   markers: {
     size: 0,
   },
+  colors: ["#3CB371"],
   xaxis: {
     axisBorder: { show: false },
     axisTicks: { color: divider },
@@ -100,17 +101,13 @@ const chartOptions = {
   },
   series: [
     {
-      name: "Down",
-      data: [],
-    },
-    {
-      name: "Up",
+      name: "Upload",
       data: [],
     },
   ],
 };
 
-const NetworkActivityChart = () => {
+const NetworkUploadChart = () => {
   const customFetch = useAuthenticatedFetch();
   const { data, error, isLoading } = useQuery({
     queryKey: ["networkInfo"],
@@ -120,15 +117,11 @@ const NetworkActivityChart = () => {
 
   useEffect(() => {
     if (data && !isLoading && !error) {
-      const currentTime = new Date().getTime(); // Ensure correct timestamp format
-      ApexCharts.exec("network_realtime", "appendData", [
-        {
-          name: "Download",
-          data: [{ x: currentTime, y: data.totalRxSec }],
-        },
+      const serverTimestamp = new Date(data.timestamp).getTime(); // Use timestamp from the API response
+      ApexCharts.exec("realtime2", "appendData", [
         {
           name: "Upload",
-          data: [{ x: currentTime, y: -data.totalTxSec }],
+          data: [{ x: serverTimestamp, y: data.totalTxSec }],
         },
       ]);
     }
@@ -160,4 +153,4 @@ const NetworkActivityChart = () => {
   );
 };
 
-export default NetworkActivityChart;
+export default NetworkUploadChart;

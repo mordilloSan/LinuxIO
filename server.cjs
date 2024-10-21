@@ -8,7 +8,7 @@ const pem = require('pem');
 const { router: loginRoutes, isAuthenticated } = require("./server/auth.cjs");
 const { server: updateRoutes, cacheUpdateHistory } = require('./server/update.cjs');
 const storageRoutes = require('./server/storage.cjs');
-const {router: networkRoutes, initNetworkStats} = require('./server/network.cjs');
+const { router: networkRoutes, initNetworkStats } = require('./server/network.cjs');
 const { router: systemRoutes, cacheServiceDescriptions } = require('./server/systemstatus.cjs');
 const systemInfoRoutes = require('./server/systeminfo.cjs');
 const powerRoutes = require('./server/power.cjs');
@@ -39,6 +39,21 @@ app.prepare().then(async () => {
       path: '/',
     },
   }));
+
+  // Middleware to inject a timestamp into all JSON responses
+  server.use((req, res, next) => {
+    const originalJson = res.json;
+
+    // Override res.json to include a timestamp
+    res.json = function (body) {
+      // If the body is an object, add the timestamp
+      if (typeof body === 'object' && body !== null) {
+        body.timestamp = new Date().toISOString();
+      }
+      return originalJson.call(this, body);
+    };
+    next();
+  });
 
   server.use(express.json());
 
@@ -74,7 +89,7 @@ app.prepare().then(async () => {
       process.exit(1);
     }
     const https = require('https');
-    https.createServer({ key: keys.serviceKey, cert: keys.certificate }, server).listen(port , (err) => {
+    https.createServer({ key: keys.serviceKey, cert: keys.certificate }, server).listen(port, (err) => {
       if (err) throw err;
       console.log(`> Ready on https://localhost:${port}`);
     });

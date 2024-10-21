@@ -15,50 +15,45 @@ import {
 import LoadingIndicator from "@/components/LoadingIndicator";
 import { useAuthenticatedFetch } from "@/utils/customFetch";
 import EditIcon from "@mui/icons-material/Edit";
-import IPv4SettingsDialog from "./IPv4SettingsDialog"; // Adjust the path according to your structure
+import IPv4SettingsDialog from "./IPv4SettingsDialog";
 
 const NetworkDetails = ({ params }) => {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [nicEnabled, setNicEnabled] = useState(true);
+  const name = params.Id;
 
-  const handleOpenDialog = () => {
-    setDialogOpen(true);
-  };
+  const customFetch = useAuthenticatedFetch();
+  const { data: networkInfo, isLoading, error } = useQuery({
+    queryKey: ["networkInfo"],
+    queryFn: () => customFetch(`/api/network/networkinfo`),
+    refetchInterval: 6000,
+  });
 
-  const handleCloseDialog = () => {
-    setDialogOpen(false);
-  };
+  const handleOpenDialog = () => setDialogOpen(true);
+  const handleCloseDialog = () => setDialogOpen(false);
 
   const handleSaveSettings = (settings) => {
     console.log("Saved settings:", settings);
-    // Here you can implement the logic to save the settings
   };
-  const customFetch = useAuthenticatedFetch();
-  const name = params.Id;
-  const [nicEnabled, setNicEnabled] = useState(true);
-
-  const { data: networkDetails, isLoading } = useQuery({
-    queryKey: ["networkDetails"],
-    queryFn: () => customFetch(`/api/network/networkstats`), // Fetch all network interfaces
-    enabled: !!name, // Only run the query if `name` is defined
-  });
 
   const handleToggle = async () => {
     try {
-      // Toggle the NIC status (this would require an API call to actually enable/disable the NIC)
       await fetch(`/api/network/${name}/toggle`, {
         method: "POST",
         body: JSON.stringify({ enabled: !nicEnabled }),
       });
-      setNicEnabled(!nicEnabled); // Update the state after successful API call
+      setNicEnabled(!nicEnabled);
     } catch (error) {
       console.error("Failed to toggle NIC status", error);
     }
   };
 
-  if (isLoading) {return (<LoadingIndicator />);}
+  if (isLoading) return <LoadingIndicator />;
 
-  // Filter out the specific network interface details
-  const nicDetails = networkDetails?.interfaces?.[name];
+  if (error) return <Typography>Error loading network info</Typography>;
+
+  // Find the specific network interface by its 'iface' property
+  const nicDetails = networkInfo?.interfaces?.find((iface) => iface.iface === name);
 
   if (!nicDetails) {
     return (
@@ -101,7 +96,7 @@ const NetworkDetails = ({ params }) => {
             </Grid>
             <Grid item xs={12} md={6} style={{ textAlign: "right" }}>
               <Typography variant="body1" color="textSecondary">
-                {`${nicDetails.hardware?.vendor || "Unknown Vendor"} ${nicDetails.hardware?.product || ""}`}
+                {`${nicDetails.vendor || "Unknown Vendor"} ${nicDetails.product || ""}`}
               </Typography>
             </Grid>
             <Grid item xs={12}>
@@ -131,8 +126,8 @@ const NetworkDetails = ({ params }) => {
                 IPv4:
               </Typography>
               <Typography variant="body1" color="textSecondary">
-                Address {nicDetails.ip4[0]?.address}/
-                {nicDetails.ip4[0]?.prefixLength}{" "}
+                Address {nicDetails.ip4[0]?.address || "N/A"}/
+                {nicDetails.ip4[0]?.prefixLength || "N/A"}{" "}
                 <IconButton size="small" onClick={handleOpenDialog}>
                   <EditIcon fontSize="small" />
                 </IconButton>
@@ -142,9 +137,6 @@ const NetworkDetails = ({ params }) => {
                 handleClose={handleCloseDialog}
                 handleSave={handleSaveSettings}
               />
-              <Typography variant="body1" color="textSecondary" gutterBottom>
-                DNS: {nicDetails.dns.join(", ")}
-              </Typography>
             </Grid>
 
             <Grid item xs={12} md={6}>
@@ -157,19 +149,13 @@ const NetworkDetails = ({ params }) => {
                   <EditIcon fontSize="small" />
                 </IconButton>
               </Typography>
-              <Typography variant="body1" color="textSecondary" gutterBottom>
-                DNS: {nicDetails.dns.join(", ")}
-              </Typography>
             </Grid>
+
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" gutterBottom>
                 General:
               </Typography>
-              <Box
-                display="flex"
-                alignItems="center"
-                justifyContent="flex-start"
-              >
+              <Box display="flex" alignItems="center" justifyContent="flex-start">
                 <Switch checked={nicDetails.autoConnect || false} />
                 <Typography
                   variant="body1"
@@ -180,6 +166,7 @@ const NetworkDetails = ({ params }) => {
                 </Typography>
               </Box>
             </Grid>
+
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" gutterBottom>
                 MTU:
