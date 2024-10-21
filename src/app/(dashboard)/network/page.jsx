@@ -10,9 +10,9 @@ import LoadingIndicator from "@/components/LoadingIndicator";
 import CardWithBorder from "@/components/cards/CardWithBorder";
 import dynamic from "next/dynamic";
 
-const NetworkDownloadChart = dynamic(() => import("./NetworkDownloadChart"), {  ssr: false,});
+const NetworkDownloadChart = dynamic(() => import("./NetworkDownloadChart"), { ssr: false, });
 
-const NetworkUploadChart = dynamic(() => import("./NetworkUploadChart"), {  ssr: false,});
+const NetworkUploadChart = dynamic(() => import("./NetworkUploadChart"), { ssr: false, });
 
 // Utility function to format the IP addresses
 const formatIpAddress = (ip4, ip6) => {
@@ -84,7 +84,7 @@ const NetworkStatsCards = () => {
 
   return (
     <Grid container spacing={2}>
-<Grid item xs={12} md={6}>
+      <Grid item xs={12} md={6}>
         <CardWithBorder
           title="Network Activity - Download"
           avatarIcon="ph:network"

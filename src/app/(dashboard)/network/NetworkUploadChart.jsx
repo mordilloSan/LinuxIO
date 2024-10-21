@@ -3,13 +3,14 @@
 import React, { useEffect } from "react";
 import { Box } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
-import ChartComponent from "@/components/charts/ReactApexChart";
-import { graphRange } from "@/configs/cardConfig";
-import { formatDataRate } from "@/utils/formatter";
 import ApexCharts from "apexcharts";
+import ChartComponent from "@/components/charts/ReactApexChart";
+import { formatDataRate } from "@/utils/formatter";
 import { useAuthenticatedFetch } from "@/utils/customFetch";
+import { graphRange } from "@/configs/cardConfig";
 
 // Vars
+const MAX_DATA_POINTS = 30; // Maximum number of points to keep in the chart
 const divider = "var(--mui-palette-divider)";
 const disabledText = "var(--mui-palette-text-disabled)";
 
@@ -109,43 +110,45 @@ const chartOptions = {
 
 const NetworkUploadChart = () => {
   const customFetch = useAuthenticatedFetch();
+
   const { data, error, isLoading } = useQuery({
     queryKey: ["networkInfo"],
     queryFn: () => customFetch("/api/network/networkinfo"),
-    refetchInterval: 1000,
+    refetchInterval: 1000, // Fetch every second for real-time data
   });
 
   useEffect(() => {
     if (data && !isLoading && !error) {
       const serverTimestamp = new Date(data.timestamp).getTime(); // Use timestamp from the API response
+
+      // Append the new data point to the chart
       ApexCharts.exec("realtime2", "appendData", [
         {
           name: "Upload",
           data: [{ x: serverTimestamp, y: data.totalTxSec }],
         },
       ]);
+
+      // Limit the number of data points to MAX_DATA_POINTS
+      ApexCharts.exec("realtime2", "updateOptions", {
+        xaxis: {
+          min: serverTimestamp - graphRange,
+          max: serverTimestamp,
+        },
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
+  if (isLoading) return <p>Loading...</p>;
+  if (error) return <p>Error loading data</p>;
+
   return (
     <Box
       sx={{
-        mt: {
-          xs: 0,
-          sm: 0,
-          xl: -5,
-        },
-        width: {
-          xs: "100%", // 100% width on extra-small screens
-          sm: "100%", // 400px width on small screens
-          xl: "100%",
-        },
-        minWidth: {
-          xl: 190,
-          sm: 250,
-          xs: 400,
-        },
+        mt: { xs: 0, sm: 0, xl: -5 },
+        width: { xs: "100%", sm: "100%", xl: "100%" },
+        minWidth: { xl: 190, sm: 250, xs: 400 },
       }}
     >
       <ChartComponent options={chartOptions} series={chartOptions.series} />
