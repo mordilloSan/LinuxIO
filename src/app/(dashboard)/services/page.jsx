@@ -6,6 +6,7 @@ import { Box } from "@mui/material";
 import DataTable from "@/components/tables/GenericTable";
 import isEqualWith from "lodash/isEqualWith";
 import { useAuthenticatedFetch } from "@/utils/customFetch";
+import RouterLink from "@/components/RouterLink";
 
 function Services() {
   const customFetch = useAuthenticatedFetch();
@@ -20,7 +21,15 @@ function Services() {
 
   const columns = useMemo(
     () => [
-      { id: "name", label: "Name", accessor: "name", width: "20%" },
+      {
+        id: "name",
+        label: "Name",
+        accessor: "name",
+        width: "20%",
+        Cell: ({ value }) => (
+          <RouterLink href={`/services/${value}`}>{value}</RouterLink>
+        ), // Now using value from the cell as per GenericTable
+      },
       {
         id: "loadState",
         label: "Load State",
@@ -40,7 +49,7 @@ function Services() {
         width: "60%",
       },
     ],
-    [],
+    []
   );
 
   useEffect(() => {
@@ -64,7 +73,7 @@ function Services() {
 
   return (
     <Box>
-      <DataTable columns={columns} rows={rows} />
+      <DataTable columns={columns} rows={rows} title="Services List" />
     </Box>
   );
 }
