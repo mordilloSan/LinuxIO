@@ -19,6 +19,7 @@ this is a next.js app router app with a custom node.js backend
 we need to have installed:
 
 FOR SENSORS API: lm-sensors
+
 FOR PAM:
 
 - Centos and RHEL: yum install pam-devel
@@ -44,6 +45,9 @@ packagekit
 3 GENERAL
 
 sudo apt update (and similar for other distro) to refresh the package index. => update API. make this a scheduled event? once in 24h?
+
 detect a system restart needed
+
 Implement dbus-next!!!!! This is big....
+
 Implement websocket!!!!!
