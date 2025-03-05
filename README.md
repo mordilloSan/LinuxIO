@@ -26,6 +26,7 @@ FOR PAM:
 - Debian/Ubuntu: apt-get install libpam0g-dev
 - debian6/maverick/natty: apt-get install libreadline5-dev
 
+FOR NETWORK: lshw
 
 TO DO
 
