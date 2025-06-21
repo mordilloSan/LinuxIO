@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go-backend/cmd/bridge/handlers"
 	"go-backend/internal/logger"
 	"go-backend/internal/session"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -31,10 +33,18 @@ type BridgeProcess struct {
 	StartedAt time.Time
 }
 
+// Request represents the standard JSON request format sent to both built-in handlers and external helpers.
+type BridgeRequest struct {
+	Type    string   `json:"type"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+}
+
+// Response represents the standard JSON response returned by both built-in handlers and helpers.
 type BridgeResponse struct {
 	Status string          `json:"status"`
-	Output json.RawMessage `json:"output"`
-	Error  string          `json:"error"`
+	Output json.RawMessage `json:"output,omitempty"`
+	Error  string          `json:"error,omitempty"`
 }
 
 type BridgeHealthRequest struct {
@@ -57,26 +67,31 @@ var (
 )
 
 // MainSocketPath returns the per-session main (healthcheck) socket path for the user.
-func MainSocketPath(sess *session.Session) string {
+func MainSocketPath(sess *session.Session) (string, error) {
 	u, err := user.Lookup(sess.User.ID)
 	if err != nil {
-		panic(fmt.Sprintf("could not find user %s: %v", sess.User.ID, err))
+		logger.Errorf("could not find user %s: %v", sess.User.ID, err)
+		return "", err
 	}
-	return fmt.Sprintf("/run/user/%s/linuxio-main-%s.sock", u.Uid, sess.SessionID)
+	return fmt.Sprintf("/run/user/%s/linuxio-main-%s.sock", u.Uid, sess.SessionID), nil
 }
 
 // BridgeSocketPath returns the per-session bridge command socket path for the user.
-func BridgeSocketPath(sess *session.Session) string {
+func BridgeSocketPath(sess *session.Session) (string, error) {
 	u, err := user.Lookup(sess.User.ID)
 	if err != nil {
-		panic(fmt.Sprintf("could not find user %s: %v", sess.User.ID, err))
+		logger.Errorf("could not find user %s: %v", sess.User.ID, err)
+		return "", err
 	}
-	return fmt.Sprintf("/run/user/%s/linuxio-bridge-%s.sock", u.Uid, sess.SessionID)
+	return fmt.Sprintf("/run/user/%s/linuxio-bridge-%s.sock", u.Uid, sess.SessionID), nil
 }
 
 // Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
-	socketPath := BridgeSocketPath(sess)
+	socketPath, err := BridgeSocketPath(sess)
+	if err != nil {
+		return nil, fmt.Errorf("could not determine bridge socket path: %w", err)
+	}
 	return CallViaSocket(socketPath, reqType, command, args)
 }
 
@@ -218,7 +233,12 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 
 // StartBridgeSocket starts a Unix socket server for the main process.
 func StartBridgeSocket(sess *session.Session) error {
-	socketPath := MainSocketPath(sess)
+	socketPath, err := MainSocketPath(sess)
+	if err != nil {
+		logger.Errorf("Failed to get main socket path for session %s: %v", sess.SessionID, err)
+		return err
+	}
+
 	_ = os.Remove(socketPath)
 	ln, err := net.Listen("unix", socketPath)
 	if err != nil {
@@ -290,51 +310,122 @@ func handleBridgeRequest(conn net.Conn) {
 	_ = encoder.Encode(BridgeHealthResponse{Status: "error", Message: "unknown request type"})
 }
 
+// HandleMainRequest processes incoming bridge requests.
+func HandleMainRequest(conn net.Conn, id string) {
+	logger.Debugf("HANDLECONNECTION: [%s] called!", id)
+	defer conn.Close()
+
+	decoder := json.NewDecoder(conn)
+	encoder := json.NewEncoder(conn)
+
+	var req BridgeRequest
+	if err := decoder.Decode(&req); err != nil {
+		if err == io.EOF {
+			logger.Debugf("🔁 [%s] connection closed without data (likely healthcheck probe)", id)
+		} else {
+			logger.Warnf("❌ [%s] invalid JSON from client: %v", id, err)
+		}
+		_ = encoder.Encode(BridgeResponse{Status: "error", Error: "invalid JSON"})
+		return
+	}
+
+	// (1) DEFENSE-IN-DEPTH: Validate handler name for fallback
+	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
+		logger.Warnf("❌ [%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
+		_ = encoder.Encode(BridgeResponse{Status: "error", Error: "invalid characters in command/type"})
+		return
+	}
+
+	logger.Infof("➡️ Received request: type=%s, command=%s, args=%v", req.Type, req.Command, req.Args)
+
+	group, found := handlers.HandlersByType[req.Type]
+	if !found || group == nil {
+		logger.Warnf("❌ Unknown type: %s", req.Type)
+		_ = encoder.Encode(BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+		return
+	}
+	handler, ok := group[req.Command]
+	if !ok {
+		logger.Warnf("❌ Unknown command for type %s: %s", req.Type, req.Command)
+		_ = encoder.Encode(BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+		return
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorf("🔥 Panic in %s command handler: %v", req.Type, r)
+			_ = encoder.Encode(BridgeResponse{Status: "error", Error: fmt.Sprintf("panic: %v", r)})
+		}
+	}()
+	out, err := handler(req.Args)
+	if err == nil {
+		var raw json.RawMessage
+		if out != nil {
+			rawBytes, marshalErr := json.Marshal(out)
+			if marshalErr != nil {
+				_ = encoder.Encode(BridgeResponse{Status: "error", Error: "failed to marshal handler output"})
+				return
+			}
+			raw = json.RawMessage(rawBytes)
+		}
+		_ = encoder.Encode(BridgeResponse{Status: "ok", Output: raw})
+		return
+	}
+
+	logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, err)
+	_ = encoder.Encode(BridgeResponse{Status: "error", Error: err.Error()})
+}
+
 func CleanupBridgeSocket(sess *session.Session) error {
 	var firstErr error
-
-	logShutdownf("Starting CleanupBridgeSocket for session: %s", sess.SessionID)
 
 	mainSocketListenersMu.Lock()
 	ln, ok := mainSocketListeners[sess.SessionID]
 	if ok {
 		if err := ln.Close(); err != nil {
-			logShutdownf("Error closing main socket listener for session %s: %v", sess.SessionID, err)
 			logger.Warnf("Error closing main socket listener for session %s: %v", sess.SessionID, err)
 			firstErr = err
 		} else {
-			logShutdownf("Closed main socket listener for session %s", sess.SessionID)
 			logger.Infof("Closed main socket listener for session %s", sess.SessionID)
 		}
 		delete(mainSocketListeners, sess.SessionID)
 	}
 	mainSocketListenersMu.Unlock()
 
-	mainSock := MainSocketPath(sess)
-	if err := os.Remove(mainSock); err == nil {
-		logShutdownf("Removed main socket file %s for session %s", mainSock, sess.SessionID)
-		logger.Infof("Removed main socket file %s for session %s", mainSock, sess.SessionID)
-	} else if !os.IsNotExist(err) {
-		logShutdownf("Failed to remove main socket file %s: %v", mainSock, err)
-		logger.Warnf("Failed to remove main socket file %s: %v", mainSock, err)
+	mainSock, err := MainSocketPath(sess)
+	if err != nil {
+		logger.Warnf("Could not determine main socket path: %v", err)
 		if firstErr == nil {
 			firstErr = err
 		}
-	}
-
-	bridgeSock := BridgeSocketPath(sess)
-	if err := os.Remove(bridgeSock); err == nil {
-		logShutdownf("Removed bridge socket file %s for session %s", bridgeSock, sess.SessionID)
-		logger.Infof("Removed bridge socket file %s for session %s", bridgeSock, sess.SessionID)
-	} else if !os.IsNotExist(err) {
-		logShutdownf("Failed to remove bridge socket file %s: %v", bridgeSock, err)
-		logger.Warnf("Failed to remove bridge socket file %s: %v", bridgeSock, err)
-		if firstErr == nil {
-			firstErr = err
+	} else {
+		if err := os.Remove(mainSock); err == nil {
+			logger.Infof("Removed main socket file %s for session %s", mainSock, sess.SessionID)
+		} else if !os.IsNotExist(err) {
+			logger.Warnf("Failed to remove main socket file %s: %v", mainSock, err)
+			if firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
 
-	logShutdownf("CleanupBridgeSocket for session %s finished (success or error above).", sess.SessionID)
+	bridgeSock, err := BridgeSocketPath(sess)
+	if err != nil {
+		logger.Warnf("Could not determine bridge socket path: %v", err)
+		if firstErr == nil {
+			firstErr = err
+		}
+	} else {
+		if err := os.Remove(bridgeSock); err == nil {
+			logger.Infof("Removed bridge socket file %s for session %s", bridgeSock, sess.SessionID)
+		} else if !os.IsNotExist(err) {
+			logger.Warnf("Failed to remove bridge socket file %s: %v", bridgeSock, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+
 	return firstErr
 }
 
@@ -342,60 +433,70 @@ func CleanupFilebrowserContainer() error {
 	containerName := "/filebrowser"
 	timeout := 0 // seconds
 
-	logShutdownf("Attempting to stop FileBrowser container: %s", containerName)
-	logger.Infof("Stopping FileBrowser container: %s", containerName)
+	var errors []error
 
+	logger.Infof("Stopping FileBrowser container: %s", containerName)
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
-		logShutdownf("Failed to create Docker client: %v", err)
 		logger.Warnf("Failed to create Docker client: %v", err)
 		return err
 	}
 	defer cli.Close()
 
-	err = cli.ContainerStop(context.Background(), containerName, container.StopOptions{Timeout: &timeout})
-	if err != nil {
-		if !errdefs.IsNotFound(err) {
-			logShutdownf("Failed to stop container %s: %v", containerName, err)
-			logger.Warnf("Failed to stop container %s: %v", containerName, err)
-		} else {
-			logShutdownf("Container %s was not running (already stopped).", containerName)
+	if err := cli.ContainerStop(context.Background(), containerName, container.StopOptions{Timeout: &timeout}); err != nil {
+		if errdefs.IsNotFound(err) {
 			logger.Infof("Container %s was not running.", containerName)
+		} else {
+			logger.Warnf("Failed to stop container %s: %v", containerName, err)
+			errors = append(errors, fmt.Errorf("stop: %w", err))
 		}
 	} else {
-		logShutdownf("Successfully stopped FileBrowser container: %s", containerName)
 		logger.Infof("Stopped FileBrowser container: %s", containerName)
 	}
 
-	logShutdownf("Attempting to remove FileBrowser container: %s", containerName)
 	logger.Infof("Removing FileBrowser container: %s", containerName)
-	err = cli.ContainerRemove(context.Background(), containerName, container.RemoveOptions{Force: true})
-	if err != nil {
-		if !errdefs.IsNotFound(err) {
-			logShutdownf("Failed to remove container %s: %v", containerName, err)
-			logger.Warnf("Failed to remove container %s: %v", containerName, err)
-			return err
-		} else {
-			logShutdownf("Container %s already removed (not found).", containerName)
+	if err := cli.ContainerRemove(context.Background(), containerName, container.RemoveOptions{Force: true}); err != nil {
+		if errdefs.IsNotFound(err) {
 			logger.Infof("Container %s already removed.", containerName)
+		} else {
+			logger.Warnf("Failed to remove container %s: %v", containerName, err)
+			errors = append(errors, fmt.Errorf("remove: %w", err))
 		}
 	} else {
-		logShutdownf("Successfully removed FileBrowser container: %s", containerName)
 		logger.Infof("Removed FileBrowser container: %s", containerName)
 	}
-	logShutdownf("FileBrowser cleanup for %s finished (success or error above).", containerName)
+
+	if len(errors) > 0 {
+		return fmt.Errorf("CleanupFilebrowserContainer encountered errors: %v", errors)
+	}
 	return nil
 }
 
-// for testing
-
-func logShutdownf(format string, args ...any) {
-	f, err := os.OpenFile("/tmp/linuxio-bridge-shutdown.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// createAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.
+func CreateAndOwnSocket(socketPath, username string) (net.Listener, int, int, error) {
+	u, err := user.Lookup(username)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "shutdown log write error: %v\n", err)
-		return
+		return nil, 0, 0, fmt.Errorf("failed to lookup user %s: %w", username, err)
 	}
-	defer f.Close()
-	fmt.Fprintf(f, "[%s] ", time.Now().Format(time.RFC3339))
-	fmt.Fprintf(f, format+"\n", args...)
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+
+	_ = os.Remove(socketPath)
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to listen on socket: %w", err)
+	}
+
+	if err := os.Chmod(socketPath, 0600); err != nil {
+		listener.Close()
+		os.Remove(socketPath)
+		return nil, 0, 0, fmt.Errorf("failed to chmod socket: %w", err)
+	}
+	if err := os.Chown(socketPath, uid, gid); err != nil {
+		listener.Close()
+		os.Remove(socketPath)
+		return nil, 0, 0, fmt.Errorf("failed to chown socket: %w", err)
+	}
+
+	return listener, uid, gid, nil
 }

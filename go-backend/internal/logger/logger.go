@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-systemd/v22/journal"
 )
@@ -139,4 +140,16 @@ func Warnln(v ...interface{}) {
 func Errorln(v ...interface{}) {
 	msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprint(v...))
 	Error.Println(msg)
+}
+
+func LogToFile(msg string) {
+	f, err := os.OpenFile("/tmp/bridge-healthcheck.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		// Don't panic in a signal/exit context; just print to stderr as fallback.
+		fmt.Fprintf(os.Stderr, "LOG ERROR: %v\n", err)
+		return
+	}
+	_, _ = f.WriteString(fmt.Sprintf("%s %s\n", time.Now().Format(time.RFC3339), msg))
+	_ = f.Sync() // Flush to disk immediately!
+	_ = f.Close()
 }

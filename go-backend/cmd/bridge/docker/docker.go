@@ -1,184 +1,137 @@
 package docker
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
+	embed "go-backend"
+	"go-backend/internal/config"
+	"go-backend/internal/logger"
+	"go-backend/internal/utils"
+	"io"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 )
 
-type Metrics struct {
-	CPUPercent float64 `json:"cpu_percent"`
-	MemUsage   uint64  `json:"mem_usage"`
-	NetInput   uint64  `json:"net_input"`
-	NetOutput  uint64  `json:"net_output"`
-	BlockRead  uint64  `json:"block_read"`
-	BlockWrite uint64  `json:"block_write"`
-}
+var (
+	dockerCli *client.Client
+	dockerCtx context.Context
+)
 
-type ContainerWithMetrics struct {
-	types.Container
-	Metrics *Metrics `json:"metrics,omitempty"`
-}
+func StartServices() {
 
-// Helper to get a docker client
-func getClient() (*client.Client, error) {
-	return client.NewClientWithOpts(client.FromEnv)
-}
-
-// List all containers with metrics
-func ListContainers() (any, error) {
-	cli, err := getClient()
-	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
-	}
-	defer cli.Close()
-
-	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list containers: %w", err)
+	logger.Infof("📦 Checking docker installation...")
+	if err := config.EnsureDockerAvailable(); err != nil {
+		logger.Errorf("❌ Docker not available: %v", err)
 	}
 
-	var enriched []ContainerWithMetrics
+	var err error
+	dockerCli, err = client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		logger.Errorf("❌ Failed to init Docker client: %v", err)
+		return
+	}
+	dockerCtx = context.Background() // Or use context.WithTimeout()
 
-	for _, ctr := range containers {
-		metrics := &Metrics{}
-		statsResp, err := cli.ContainerStatsOneShot(context.Background(), ctr.ID)
-		if err == nil {
-			var stats struct {
-				CPUStats struct {
-					CPUUsage struct {
-						TotalUsage  uint64   `json:"total_usage"`
-						PercpuUsage []uint64 `json:"percpu_usage"`
-					} `json:"cpu_usage"`
-					SystemCPUUsage uint64 `json:"system_cpu_usage"`
-				} `json:"cpu_stats"`
-				MemoryStats struct {
-					Usage uint64 `json:"usage"`
-				} `json:"memory_stats"`
-				Networks map[string]struct {
-					RxBytes uint64 `json:"rx_bytes"`
-					TxBytes uint64 `json:"tx_bytes"`
-				} `json:"networks"`
-				BlkioStats struct {
-					IoServiceBytesRecursive []struct {
-						Op    string `json:"op"`
-						Value uint64 `json:"value"`
-					} `json:"io_service_bytes_recursive"`
-				} `json:"blkio_stats"`
-			}
-
-			if err := json.NewDecoder(statsResp.Body).Decode(&stats); err == nil {
-				cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage)
-				systemDelta := float64(stats.CPUStats.SystemCPUUsage)
-				if systemDelta > 0 && len(stats.CPUStats.CPUUsage.PercpuUsage) > 0 {
-					metrics.CPUPercent = (cpuDelta / systemDelta) * float64(len(stats.CPUStats.CPUUsage.PercpuUsage)) * 100.0
-				}
-
-				metrics.MemUsage = stats.MemoryStats.Usage
-
-				for _, net := range stats.Networks {
-					metrics.NetInput += net.RxBytes
-					metrics.NetOutput += net.TxBytes
-				}
-
-				for _, entry := range stats.BlkioStats.IoServiceBytesRecursive {
-					switch entry.Op {
-					case "Read":
-						metrics.BlockRead += entry.Value
-					case "Write":
-						metrics.BlockWrite += entry.Value
-					}
-				}
-			}
-			statsResp.Body.Close()
+	// Ensure custom Docker network exists (ignore error if already exists)
+	resp, err := dockerCli.NetworkCreate(dockerCtx, "linuxio-net", network.CreateOptions{})
+	if err != nil {
+		if isNetworkExistsError(err) {
+			logger.Infof("Docker network 'linuxio-net' already exists")
+		} else {
+			logger.Errorf("Failed to create Docker network: %v", err)
 		}
-
-		enriched = append(enriched, ContainerWithMetrics{
-			Container: ctr,
-			Metrics:   metrics,
-		})
+	} else {
+		logger.Infof("✅ Created Docker network 'linuxio-net' (ID: %s, Warning: %s)", resp.ID, resp.Warning)
 	}
 
-	return enriched, nil
+	// Start FileBrowser container (microservice)
+
+	if err := utils.EnsureDefaultFile("/etc/linuxio/filebrowserConfig.yaml", embed.DefaultFilebrowserConfig); err != nil {
+		logger.Errorf("FileBrowser setup failed: %v", err)
+	}
+	if err := startFileBrowserContainer(); err != nil {
+		logger.Errorf("FileBrowser setup failed: %v", err)
+	}
 }
 
-// Start a container by ID
-func StartContainer(id string) (any, error) {
-	cli, err := getClient()
-	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
-	}
-	defer cli.Close()
-
-	if err := cli.ContainerStart(context.Background(), id, container.StartOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to start container: %w", err)
-	}
-
-	return "started", nil
+func isNetworkExistsError(err error) bool {
+	return err != nil && (bytes.Contains([]byte(err.Error()), []byte("already exists")) || bytes.Contains([]byte(err.Error()), []byte("409")))
 }
 
-// Stop a container by ID
-func StopContainer(id string) (any, error) {
-	cli, err := getClient()
+func startFileBrowserContainer() error {
+	containerName := "filebrowser"
+	configPath := "/etc/linuxio/filebrowserConfig.yaml"
+	serverPath := "/"
+
+	// 1. Check if the container exists (stopped or running)
+	containers, err := dockerCli.ContainerList(dockerCtx, container.ListOptions{All: true})
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+		return fmt.Errorf("failed to list Docker containers: %w", err)
 	}
-	defer cli.Close()
-
-	if err := cli.ContainerStop(context.Background(), id, container.StopOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to stop container: %w", err)
+	for _, c := range containers {
+		for _, name := range c.Names {
+			if name == "/"+containerName {
+				if c.State == "running" {
+					logger.Infof("Docker container '%s' is already running", containerName)
+					return nil // Already running, do nothing
+				}
+				// Exists but stopped: try to start
+				if err := dockerCli.ContainerStart(dockerCtx, c.ID, container.StartOptions{}); err != nil {
+					return fmt.Errorf("failed to start existing FileBrowser container: %w", err)
+				}
+				logger.Infof("Started existing Docker container '%s'", containerName)
+				return nil
+			}
+		}
 	}
 
-	return "stopped", nil
-}
-
-// Remove a container by ID
-func RemoveContainer(id string) (any, error) {
-	cli, err := getClient()
+	// 2. Pull image if not already present (docker will skip if present)
+	out, err := dockerCli.ImagePull(dockerCtx, "docker.io/gtstef/filebrowser:latest", image.PullOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+		return fmt.Errorf("failed to pull FileBrowser image: %w", err)
 	}
-	defer cli.Close()
+	defer out.Close()
+	io.Copy(io.Discard, out) // Always drain!
 
-	if err := cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: true}); err != nil {
-		return nil, fmt.Errorf("failed to remove container: %w", err)
-	}
-
-	return "removed", nil
-}
-
-// Restart a container by ID
-func RestartContainer(id string) (any, error) {
-	cli, err := getClient()
+	// 3. Create the container
+	resp, err := dockerCli.ContainerCreate(
+		dockerCtx,
+		&container.Config{
+			Image: "gtstef/filebrowser",
+		},
+		&container.HostConfig{
+			NetworkMode: container.NetworkMode("linuxio-net"),
+			Mounts: []mount.Mount{
+				{
+					Type:   mount.TypeBind,
+					Source: configPath,
+					Target: "/home/filebrowser/config.yaml",
+				},
+				{
+					Type:   mount.TypeBind,
+					Source: serverPath,
+					Target: "/server",
+				},
+			},
+		},
+		&network.NetworkingConfig{},
+		nil,
+		containerName,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
-	}
-	defer cli.Close()
-
-	if err := cli.ContainerRestart(context.Background(), id, container.StopOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to restart container: %w", err)
+		return fmt.Errorf("failed to create FileBrowser container: %w", err)
 	}
 
-	return "restarted", nil
-}
-
-// List all images
-func ListImages() (any, error) {
-	cli, err := getClient()
-	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
-	}
-	defer cli.Close()
-
-	images, err := cli.ImageList(context.Background(), image.ListOptions{All: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list images: %w", err)
+	// 4. Start the container
+	if err := dockerCli.ContainerStart(dockerCtx, resp.ID, container.StartOptions{}); err != nil {
+		return fmt.Errorf("failed to start FileBrowser container: %w", err)
 	}
 
-	return images, nil
+	logger.Infof("Created and started new FileBrowser Docker container '%s'", containerName)
+	return nil
 }

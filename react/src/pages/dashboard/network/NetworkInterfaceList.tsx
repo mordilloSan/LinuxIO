@@ -125,7 +125,8 @@ const NetworkInterfaceList = () => {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ duration: 0.2 }}>
+                transition={{ duration: 0.2 }}
+              >
                 <FrostedCard
                   sx={{
                     p: 2,
@@ -138,13 +139,15 @@ const NetworkInterfaceList = () => {
                         boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
                       },
                     }),
-                  }}>
+                  }}
+                >
                   <Tooltip
                     title={getStatusTooltip(iface.state)}
                     placement="top"
                     arrow
                     slots={{ transition: Fade }}
-                    slotProps={{ transition: { timeout: 300 } }}>
+                    slotProps={{ transition: { timeout: 300 } }}
+                  >
                     <Box
                       sx={{
                         position: "absolute",
@@ -161,7 +164,8 @@ const NetworkInterfaceList = () => {
                   <Box
                     display="flex"
                     alignItems="flex-start"
-                    onClick={() => handleToggle(iface)}>
+                    onClick={() => handleToggle(iface)}
+                  >
                     <Box
                       sx={{
                         width: 44,
@@ -170,7 +174,8 @@ const NetworkInterfaceList = () => {
                         alignItems: "center",
                         justifyContent: "center",
                         mr: 1.5,
-                      }}>
+                      }}
+                    >
                       <Icon
                         icon={getInterfaceIcon(iface.type)}
                         width={36}
@@ -215,7 +220,7 @@ const NetworkInterfaceList = () => {
                   />
                 </FrostedCard>
               </Grid>
-            )
+            ),
           )}
         </AnimatePresence>
       </Grid>

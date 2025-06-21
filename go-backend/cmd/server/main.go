@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/tls"
 	embed "go-backend"
-	"go-backend/cmd/server/docker"
 	"go-backend/internal/auth"
 	"go-backend/internal/benchmark"
 	"go-backend/internal/dockers"
@@ -39,8 +38,6 @@ func main() {
 	logger.Init("env", verbose)
 
 	logger.Infof("🌱 Starting server in %s mode...", env)
-
-	go docker.StartServices()
 
 	if !verbose {
 		gin.SetMode(gin.ReleaseMode)

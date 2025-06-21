@@ -94,7 +94,11 @@ func killParentTree(pid int) {
 }
 
 func CheckMainProcessHealth(sess *session.Session) bool {
-	sock := bridge.MainSocketPath(sess)
+	sock, err := bridge.MainSocketPath(sess)
+	if err != nil {
+		logger.Warnf("⚠️ Could not determine main socket path: %v", err)
+		return false
+	}
 	conn, err := net.DialTimeout("unix", sock, 2*time.Second)
 	if err != nil {
 		logger.Warnf("⚠️ Could not connect to main socket: %v", err)
@@ -127,4 +131,64 @@ func IsNumeric(s string) bool {
 		}
 	}
 	return true
+}
+
+func killFilebrowserContainer() error {
+	err := bridge.CleanupFilebrowserContainer()
+	if err != nil {
+		logger.LogToFile(fmt.Sprintf("CleanupFilebrowserContainer failed: %v", err))
+		return err
+	}
+	logger.LogToFile("CleanupFilebrowserContainer finished OK")
+	return nil
+}
+
+func killBridgeSocket(Sess *session.Session) error {
+	logger.LogToFile("Removing bridge socket")
+	if err := bridge.CleanupBridgeSocket(Sess); err != nil {
+		logger.LogToFile(fmt.Sprintf("Failed to remove bridge socket: %v", err))
+		logger.Warnf("Failed to remove bridge socket: %v", err)
+		return err
+	}
+	logger.LogToFile("Bridge socket file removed")
+	logger.Infof("Bridge socket file removed")
+	return nil
+}
+
+func killMainSocket(socketPath string) error {
+	logger.LogToFile("Removing server socket")
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+		logger.LogToFile(fmt.Sprintf("Failed to remove server socket file: %v", err))
+		logger.Warnf("Failed to remove server socket file: %v", err)
+		return err
+	}
+	logger.LogToFile("Server socket file removed")
+	logger.Infof("Server socket file removed")
+	return nil
+}
+
+func FullCleanup(shutdownReason string, Sess *session.Session, socketPath string) error {
+	logger.Infof("🔻 Shutdown initiated: %s", shutdownReason)
+	logger.LogToFile(fmt.Sprintf("Shutdown initiated: %s", shutdownReason))
+
+	var errs []error
+
+	if err := killFilebrowserContainer(); err != nil {
+		logger.Warnf("killFilebrowserContainer failed: %v", err)
+		errs = append(errs, fmt.Errorf("killFilebrowserContainer: %w", err))
+	}
+	if err := killMainSocket(socketPath); err != nil {
+		logger.Warnf("killMainSocket failed: %v", err)
+		errs = append(errs, fmt.Errorf("killMainSocket: %w", err))
+	}
+	if err := killBridgeSocket(Sess); err != nil {
+		logger.Warnf("killBridgeSocket failed: %v", err)
+		errs = append(errs, fmt.Errorf("killBridgeSocket: %w", err))
+	}
+
+	if len(errs) > 0 {
+		// Aggregate errors for return
+		return fmt.Errorf("cleanup encountered errors: %v", errs)
+	}
+	return nil
 }

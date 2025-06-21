@@ -2,7 +2,7 @@ package networks
 
 import (
 	"encoding/json"
-	"go-backend/cmd/bridge/dbus"
+	"go-backend/cmd/bridge/handlers/dbus"
 	"go-backend/internal/auth"
 	"go-backend/internal/bridge"
 	"go-backend/internal/logger"

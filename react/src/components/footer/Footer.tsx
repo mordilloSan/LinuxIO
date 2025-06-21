@@ -9,7 +9,8 @@ function Footer() {
       sx={{
         background: theme.footer?.background || theme.palette.background.paper,
         position: "relative",
-      }}>
+      }}
+    >
       <Grid container spacing={0}>
         {/* Left side links */}
         <Grid
@@ -17,7 +18,8 @@ function Footer() {
             xs: 12,
             md: 6,
           }}
-          sx={{ display: { xs: "none", md: "block" } }}></Grid>
+          sx={{ display: { xs: "none", md: "block" } }}
+        ></Grid>
 
         {/* Right side copyright */}
         <Grid
@@ -26,7 +28,8 @@ function Footer() {
             md: 6,
           }}
           container
-          justifyContent="flex-end"></Grid>
+          justifyContent="flex-end"
+        ></Grid>
       </Grid>
     </Box>
   );

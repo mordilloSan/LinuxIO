@@ -92,5 +92,5 @@ require (
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/vishvananda/netlink v1.3.1
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/sys v0.33.0
+	golang.org/x/sys v0.33.0 // indirect
 )
