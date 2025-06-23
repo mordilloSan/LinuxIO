@@ -197,36 +197,16 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 		StartedAt: time.Now(),
 	}
 
-	// Panic guard for process cleanup goroutine
-	go func(sessID string, cmd *exec.Cmd, stdoutBuf, stderrBuf *bytes.Buffer) {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Errorf("Panic in process cleanup goroutine for session %s: %v", sessID, r)
-			}
-		}()
-		logger.Infof("Captured output buffers for session %s: STDOUT=%d bytes, STDERR=%d bytes", sessID, stdoutBuf.Len(), stderrBuf.Len())
-
+	// Process cleanup goroutine
+	go func(sessID string, cmd *exec.Cmd) {
 		err := cmd.Wait()
 		processesMu.Lock()
-		defer processesMu.Unlock()
 		delete(processes, sessID)
-
-		stdout := strings.TrimSpace(stdoutBuf.String())
-		stderr := strings.TrimSpace(stderrBuf.String())
-
-		if stdout != "" {
-			logger.Infof("STDOUT for session %s:\n%s", sessID, stdout)
-		}
-		if stderr != "" {
-			logger.Warnf("STDERR for session %s:\n%s", sessID, stderr)
-		}
-
+		processesMu.Unlock()
 		if err != nil {
 			logger.Warnf("Bridge for session %s exited with error: %v", sessID, err)
-		} else {
-			logger.Infof("Bridge for session %s exited", sessID)
 		}
-	}(sess.SessionID, cmd, &stdoutBuf, &stderrBuf)
+	}(sess.SessionID, cmd)
 
 	return nil
 }

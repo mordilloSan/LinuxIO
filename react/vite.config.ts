@@ -30,6 +30,16 @@ export default defineConfig(({ mode }) => ({
     tsconfigPaths(),
     ...(mode === "production" ? [removeIndexHtmlPlugin()] : []),
   ],
+  server: {
+    proxy: {
+      // Proxy /navigator requests to Go backend
+      "/navigator": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        // secure: false, // If your Go backend is https with self-signed, enable this
+      },
+    },
+  },
   build: {
     target: "es2017",
     chunkSizeWarningLimit: 2000,

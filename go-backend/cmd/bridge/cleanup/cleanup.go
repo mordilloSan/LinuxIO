@@ -136,41 +136,33 @@ func IsNumeric(s string) bool {
 func killFilebrowserContainer() error {
 	err := bridge.CleanupFilebrowserContainer()
 	if err != nil {
-		logger.LogToFile(fmt.Sprintf("CleanupFilebrowserContainer failed: %v", err))
+		logger.Infof("CleanupFilebrowserContainer failed: %v", err)
 		return err
 	}
-	logger.LogToFile("CleanupFilebrowserContainer finished OK")
+	logger.Infof("CleanupFilebrowserContainer finished OK")
 	return nil
 }
 
 func killBridgeSocket(Sess *session.Session) error {
-	logger.LogToFile("Removing bridge socket")
 	if err := bridge.CleanupBridgeSocket(Sess); err != nil {
-		logger.LogToFile(fmt.Sprintf("Failed to remove bridge socket: %v", err))
 		logger.Warnf("Failed to remove bridge socket: %v", err)
 		return err
 	}
-	logger.LogToFile("Bridge socket file removed")
 	logger.Infof("Bridge socket file removed")
 	return nil
 }
 
 func killMainSocket(socketPath string) error {
-	logger.LogToFile("Removing server socket")
 	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
-		logger.LogToFile(fmt.Sprintf("Failed to remove server socket file: %v", err))
 		logger.Warnf("Failed to remove server socket file: %v", err)
 		return err
 	}
-	logger.LogToFile("Server socket file removed")
 	logger.Infof("Server socket file removed")
 	return nil
 }
 
 func FullCleanup(shutdownReason string, Sess *session.Session, socketPath string) error {
 	logger.Infof("🔻 Shutdown initiated: %s", shutdownReason)
-	logger.LogToFile(fmt.Sprintf("Shutdown initiated: %s", shutdownReason))
-
 	var errs []error
 
 	if err := killFilebrowserContainer(); err != nil {

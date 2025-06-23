@@ -3,12 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"go-backend/cmd/bridge/cleanup"
-	"go-backend/cmd/bridge/docker"
 	"go-backend/cmd/bridge/handlers"
 	"go-backend/internal/bridge"
 	"go-backend/internal/logger"
@@ -27,15 +24,6 @@ var Sess = &session.Session{
 
 func main() {
 
-	defer func() {
-		if r := recover(); r != nil {
-			// Log panic to file and syslog
-			logger.LogToFile(fmt.Sprintf("Fatal panic in bridge main: %v", r))
-			// Do last-ditch cleanup if possible (best effort)
-			// Optionally: cleanup.FullCleanup("panic", Sess, socketPath)
-			os.Exit(2) // Distinct exit code for panic
-		}
-	}()
 	env := os.Getenv("GO_ENV")
 	if env == "" {
 		env = "production"
@@ -63,23 +51,14 @@ func main() {
 		logger.Error.Fatalf("❌ %v", err)
 		os.Exit(1)
 	}
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-	go func() {
-		for sig := range signalChan {
-			logger.LogToFile(fmt.Sprintf("Received signal: %v, running cleanup", sig))
-			cleanup.FullCleanup(fmt.Sprintf("Received signal: %v", sig), Sess, socketPath)
-			logger.LogToFile("Signal cleanup complete, exiting")
-			os.Exit(0)
-		}
-	}()
-	ShutdownChan := make(chan string, 1)
-	handlers.ShutdownChan = ShutdownChan
-	handlers.RegisterAllHandlers(ShutdownChan)
-	go docker.StartServices()
+
 	if env == "production" {
 		cleanup.KillLingeringBridgeStartupProcesses()
 	}
+
+	ShutdownChan := make(chan string, 1)
+	handlers.ShutdownChan = ShutdownChan
+	handlers.RegisterAllHandlers(ShutdownChan)
 
 	acceptDone := make(chan struct{})
 

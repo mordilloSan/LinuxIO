@@ -3,9 +3,11 @@ package main
 import (
 	"crypto/tls"
 	embed "go-backend"
+	"go-backend/cmd/server/docker"
 	"go-backend/internal/auth"
 	"go-backend/internal/benchmark"
 	"go-backend/internal/dockers"
+	"go-backend/internal/filebrowser"
 	"go-backend/internal/logger"
 	"go-backend/internal/networks"
 	"go-backend/internal/power"
@@ -25,15 +27,13 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var env = "production"
-
 func main() {
 	_ = godotenv.Load("../.env")
 
-	if goEnv := os.Getenv("GO_ENV"); goEnv != "" {
-		env = goEnv
+	var env = os.Getenv("GO_ENV")
+	if env == "" {
+		env = "production"
 	}
-
 	verbose := os.Getenv("VERBOSE") == "true"
 	logger.Init("env", verbose)
 
@@ -48,8 +48,18 @@ func main() {
 	// Initialize cache functions
 	system.InitGPUInfo()
 
+	// start docker micro services
+	go docker.StartServices()
+
 	router := gin.New()
-	router.Use(gin.Recovery())
+	router.Use(gin.CustomRecoveryWithWriter(os.Stderr, func(c *gin.Context, rec any) {
+		if err, ok := rec.(error); ok && err == http.ErrAbortHandler {
+			// expected: client disconnected mid-request
+			return
+		}
+		logger.Errorf("🔥 Panic: %v", rec)
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}))
 
 	if env == "development" {
 		router.SetTrustedProxies(nil)
@@ -67,6 +77,8 @@ func main() {
 	dockers.RegisterDockerComposeRoutes(router)
 	theme.RegisterThemeRoutes(router)
 	power.RegisterPowerRoutes(router)
+	router.Any("/navigator/*proxyPath", auth.AuthMiddleware(), filebrowser.FilebrowserReverseProxy())
+
 	// API Benchmark route
 	if env != "production" {
 		benchmark.RegisterDebugRoutes(router, env)

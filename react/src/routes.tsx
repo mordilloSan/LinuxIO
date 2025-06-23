@@ -17,6 +17,9 @@ const Docker = lazy(() => import("@/pages/dashboard/docker"));
 const Services = lazy(() => import("@/pages/dashboard/services"));
 const Network = lazy(() => import("@/pages/dashboard/network"));
 const Hardware = lazy(() => import("@/pages/dashboard/hardware"));
+const Filebrowser = lazy(
+  () => import("@/pages/dashboard/filebrowser/FilebrowserIframe"),
+);
 
 // Route config
 const routes = [
@@ -36,6 +39,7 @@ const routes = [
       { path: "services", element: <Services /> },
       { path: "network", element: <Network /> },
       { path: "hardware", element: <Hardware /> },
+      { path: "filebrowser", element: <Filebrowser /> },
     ],
   },
   {

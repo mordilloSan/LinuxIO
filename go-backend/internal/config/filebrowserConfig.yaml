@@ -1,6 +1,6 @@
 server:
   port: 80
-  baseURL: "/"
+  baseURL: /navigator/
   logging:
     - levels: "info|warning|error|debug"
       output: stdout
@@ -34,7 +34,7 @@ auth:
   methods:
     proxy:
       enabled: true
-      header: "X-Proxy-User"
+      header: "proxy-user"
       createUser: true
     password:
       enabled: false

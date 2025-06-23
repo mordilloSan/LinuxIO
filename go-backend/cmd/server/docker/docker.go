@@ -7,14 +7,16 @@ import (
 	embed "go-backend"
 	"go-backend/internal/config"
 	"go-backend/internal/logger"
-	"go-backend/internal/utils"
 	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 )
 
 var (
@@ -50,10 +52,6 @@ func StartServices() {
 	}
 
 	// Start FileBrowser container (microservice)
-
-	if err := utils.EnsureDefaultFile("/etc/linuxio/filebrowserConfig.yaml", embed.DefaultFilebrowserConfig); err != nil {
-		logger.Errorf("FileBrowser setup failed: %v", err)
-	}
 	if err := startFileBrowserContainer(); err != nil {
 		logger.Errorf("FileBrowser setup failed: %v", err)
 	}
@@ -63,10 +61,29 @@ func isNetworkExistsError(err error) bool {
 	return err != nil && (bytes.Contains([]byte(err.Error()), []byte("already exists")) || bytes.Contains([]byte(err.Error()), []byte("409")))
 }
 
+// Write embedded config file before container starts
+func writeFilebrowserConfig(path string, content []byte) error {
+	return os.WriteFile(path, content, 0644)
+}
+
 func startFileBrowserContainer() error {
 	containerName := "filebrowser"
-	configPath := "/etc/linuxio/filebrowserConfig.yaml"
+	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
+	if runtimeDir == "" {
+		return fmt.Errorf("XDG_RUNTIME_DIR not set")
+	}
+	dir := filepath.Join(runtimeDir, "linuxio")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create runtime config dir: %w", err)
+	}
+	configPath := filepath.Join(dir, "filebrowser-config.yaml")
+
 	serverPath := "/"
+
+	// 1. Always write embedded config before container starts!
+	if err := writeFilebrowserConfig(configPath, embed.DefaultFilebrowserConfig); err != nil {
+		return fmt.Errorf("failed to write embedded config: %w", err)
+	}
 
 	// 1. Check if the container exists (stopped or running)
 	containers, err := dockerCli.ContainerList(dockerCtx, container.ListOptions{All: true})
@@ -76,16 +93,14 @@ func startFileBrowserContainer() error {
 	for _, c := range containers {
 		for _, name := range c.Names {
 			if name == "/"+containerName {
-				if c.State == "running" {
-					logger.Infof("Docker container '%s' is already running", containerName)
-					return nil // Already running, do nothing
+				logger.Infof("⚠️ Found existing container '%s' (status: %s), removing...", containerName, c.State)
+				// Always remove the container
+				if err := dockerCli.ContainerRemove(dockerCtx, c.ID, container.RemoveOptions{
+					Force: true,
+				}); err != nil {
+					return fmt.Errorf("failed to remove existing container '%s': %w", containerName, err)
 				}
-				// Exists but stopped: try to start
-				if err := dockerCli.ContainerStart(dockerCtx, c.ID, container.StartOptions{}); err != nil {
-					return fmt.Errorf("failed to start existing FileBrowser container: %w", err)
-				}
-				logger.Infof("Started existing Docker container '%s'", containerName)
-				return nil
+				logger.Infof("🗑️  Removed container '%s'", containerName)
 			}
 		}
 	}
@@ -118,7 +133,13 @@ func startFileBrowserContainer() error {
 					Target: "/server",
 				},
 			},
+			PortBindings: nat.PortMap{
+				"80/tcp": []nat.PortBinding{
+					{HostIP: "127.0.0.1", HostPort: "8090"},
+				},
+			},
 		},
+
 		&network.NetworkingConfig{},
 		nil,
 		containerName,
@@ -132,6 +153,6 @@ func startFileBrowserContainer() error {
 		return fmt.Errorf("failed to start FileBrowser container: %w", err)
 	}
 
-	logger.Infof("Created and started new FileBrowser Docker container '%s'", containerName)
+	logger.Infof("Created and started new FileBrowser Docker container")
 	return nil
 }
