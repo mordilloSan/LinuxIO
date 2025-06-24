@@ -410,7 +410,7 @@ func CleanupBridgeSocket(sess *session.Session) error {
 }
 
 func CleanupFilebrowserContainer() error {
-	containerName := "/filebrowser"
+	containerName := "/filebrowser-linuxio"
 	timeout := 0 // seconds
 
 	var errors []error

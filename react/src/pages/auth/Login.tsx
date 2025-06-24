@@ -1,10 +1,10 @@
 import { Box, Typography, Paper } from "@mui/material";
 import React from "react";
 
-import SignInComponent from "@/components/auth/SignIn";
+import LoginComponent from "@/components/auth/Login";
 import LogoDisplay from "@/components/logo/LogoDisplay";
 
-const SignIn: React.FC = () => {
+const Login: React.FC = () => {
   return (
     <>
       {/* Logo */}
@@ -15,7 +15,7 @@ const SignIn: React.FC = () => {
       {/* Title and subtitle */}
       <Box textAlign="center" mb={4}>
         <Typography component="h1" variant="h5">
-          Sign in to your account to continue
+          Log in to your account to continue
         </Typography>
       </Box>
 
@@ -31,10 +31,10 @@ const SignIn: React.FC = () => {
           },
         })}
       >
-        <SignInComponent />
+        <LoginComponent />
       </Paper>
     </>
   );
 };
 
-export default SignIn;
+export default Login;

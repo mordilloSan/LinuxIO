@@ -9,6 +9,7 @@ import {
   Cpu,
   Folder,
   Network,
+  Terminal,
 } from "lucide-react";
 
 import { SidebarItemsType } from "@/types/sidebar";
@@ -68,6 +69,11 @@ const navItems: SidebarItemsType[] = [
     href: "/filebrowser",
     icon: Folder,
     title: "Navigator",
+  },
+  {
+    href: "/terminal",
+    icon: Terminal,
+    title: "Terminal",
   },
 ];
 

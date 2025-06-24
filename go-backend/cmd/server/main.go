@@ -52,14 +52,7 @@ func main() {
 	go docker.StartServices()
 
 	router := gin.New()
-	router.Use(gin.CustomRecoveryWithWriter(os.Stderr, func(c *gin.Context, rec any) {
-		if err, ok := rec.(error); ok && err == http.ErrAbortHandler {
-			// expected: client disconnected mid-request
-			return
-		}
-		logger.Errorf("🔥 Panic: %v", rec)
-		c.AbortWithStatus(http.StatusInternalServerError)
-	}))
+	router.Use(gin.Recovery())
 
 	if env == "development" {
 		router.SetTrustedProxies(nil)

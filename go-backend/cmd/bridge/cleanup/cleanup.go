@@ -164,10 +164,11 @@ func killMainSocket(socketPath string) error {
 func FullCleanup(shutdownReason string, Sess *session.Session, socketPath string) error {
 	logger.Infof("🔻 Shutdown initiated: %s", shutdownReason)
 	var errs []error
-
-	if err := killFilebrowserContainer(); err != nil {
-		logger.Warnf("killFilebrowserContainer failed: %v", err)
-		errs = append(errs, fmt.Errorf("killFilebrowserContainer: %w", err))
+	if shutdownReason != "logout" {
+		if err := killFilebrowserContainer(); err != nil {
+			logger.Warnf("killFilebrowserContainer failed: %v", err)
+			errs = append(errs, fmt.Errorf("killFilebrowserContainer: %w", err))
+		}
 	}
 	if err := killMainSocket(socketPath); err != nil {
 		logger.Warnf("killMainSocket failed: %v", err)
@@ -179,7 +180,6 @@ func FullCleanup(shutdownReason string, Sess *session.Session, socketPath string
 	}
 
 	if len(errs) > 0 {
-		// Aggregate errors for return
 		return fmt.Errorf("cleanup encountered errors: %v", errs)
 	}
 	return nil

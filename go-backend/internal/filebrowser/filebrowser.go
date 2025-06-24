@@ -44,6 +44,22 @@ func FilebrowserReverseProxy() gin.HandlerFunc {
 		c.Request = c.Request.WithContext(
 			context.WithValue(c.Request.Context(), proxyPathKey, proxyPath),
 		)
+
+		defer func() {
+			if rec := recover(); rec != nil {
+				if err, ok := rec.(error); ok && err == http.ErrAbortHandler {
+					// client closed connection — safe to ignore
+					return
+				}
+				if str, ok := rec.(string); ok && str == "net/http: abort Handler" {
+					return
+				}
+				// unexpected panic, rethrow
+				panic(rec)
+			}
+		}()
+
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
+
 }

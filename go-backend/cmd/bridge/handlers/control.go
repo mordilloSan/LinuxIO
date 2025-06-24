@@ -10,9 +10,13 @@ var ShutdownChan chan string
 func ControlHandlers() map[string]types.HandlerFunc {
 	return map[string]types.HandlerFunc{
 		"shutdown": func(args []string) (any, error) {
-			logger.Infof("Received shutdown command, exiting bridge")
+			reason := "unknown"
+			if len(args) > 0 {
+				reason = args[0] // "logout" or "forced"
+			}
+			logger.Infof("Received shutdown command: %s", reason)
 			select {
-			case ShutdownChan <- "Bridge received shutdown command":
+			case ShutdownChan <- reason:
 			default:
 			}
 			return "Bridge shutting down", nil

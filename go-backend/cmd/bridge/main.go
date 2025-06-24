@@ -105,7 +105,7 @@ func main() {
 		// Step 1: Signal accept loop to stop and close listener
 		close(acceptDone)
 		listener.Close()
-		// Step 2: Do full cleanup
+		// Step 2: Do cleanup
 		cleanup.FullCleanup(reason, Sess, socketPath)
 		cleanupDone <- struct{}{}
 	}()

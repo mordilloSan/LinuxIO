@@ -2,19 +2,21 @@ package websocket
 
 import (
 	"encoding/json"
+	"fmt"
 	"go-backend/internal/auth"
 	"go-backend/internal/bridge"
 	"go-backend/internal/logger"
 	"net/http"
+	"os"
+	"os/exec"
 	"sync"
 
+	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
+// WebSocket message/request/response structs
 
 type WSMessage struct {
 	Type      string          `json:"type"`
@@ -30,7 +32,6 @@ type WSResponse struct {
 }
 
 // --- CHANNEL SUBSCRIPTION INFRASTRUCTURE ---
-
 var (
 	channelsMu         sync.Mutex
 	channelSubscribers = make(map[string]map[*websocket.Conn]struct{})
@@ -69,19 +70,18 @@ func removeConnFromAllChannels(conn *websocket.Conn) {
 	}
 }
 
-func broadcastToChannel(channel string, msg WSResponse) {
-	channelsMu.Lock()
-	conns := make([]*websocket.Conn, 0, len(channelSubscribers[channel]))
-	for conn := range channelSubscribers[channel] {
-		conns = append(conns, conn)
-	}
-	channelsMu.Unlock()
-	for _, conn := range conns {
-		_ = conn.WriteJSON(msg) // Optionally handle errors
-	}
+type TerminalSession struct {
+	Cols      int
+	Rows      int
+	PtyFile   *os.File
+	ShellCmd  *exec.Cmd
+	ShellDone chan struct{}
+	Active    bool
 }
 
-// --- MAIN HANDLER ---
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
 
 func WebSocketHandler(c *gin.Context) {
 	sess := auth.GetSessionOrAbort(c)
@@ -95,11 +95,25 @@ func WebSocketHandler(c *gin.Context) {
 		return
 	}
 	defer func() {
-		removeConnFromAllChannels(conn)
 		conn.Close()
 	}()
 
 	logger.Infof("WebSocket connected for user: %s (session: %s, privileged: %v)", sess.User.Name, sess.SessionID, sess.Privileged)
+
+	var (
+		termSession = &TerminalSession{}
+	)
+
+	// Cleanup on disconnect
+	defer func() {
+		if termSession.Active && termSession.ShellCmd != nil {
+			close(termSession.ShellDone)
+			termSession.ShellCmd.Process.Kill()
+			termSession.ShellCmd.Wait()
+			termSession.PtyFile.Close()
+			termSession.Active = false
+		}
+	}()
 
 	for {
 		_, msg, err := conn.ReadMessage()
@@ -107,7 +121,6 @@ func WebSocketHandler(c *gin.Context) {
 			logger.Warnf("WS disconnect: %v", err)
 			break
 		}
-		logger.Infof("WS got message: %s", msg)
 		var wsMsg WSMessage
 		if err := json.Unmarshal(msg, &wsMsg); err != nil {
 			_ = conn.WriteJSON(WSResponse{Type: "error", Error: "Invalid JSON"})
@@ -170,6 +183,89 @@ func WebSocketHandler(c *gin.Context) {
 				RequestID: wsMsg.RequestID,
 				Data:      output,
 			})
+		case "terminal_resize":
+			var payload struct {
+				Cols int `json:"cols"`
+				Rows int `json:"rows"`
+			}
+			if err := json.Unmarshal(wsMsg.Payload, &payload); err == nil {
+				logger.Infof("Terminal resize cols=%d rows=%d", payload.Cols, payload.Rows)
+				termSession.Cols = payload.Cols
+				termSession.Rows = payload.Rows
+				if termSession.PtyFile != nil {
+					pty.Setsize(termSession.PtyFile, &pty.Winsize{
+						Cols: uint16(payload.Cols),
+						Rows: uint16(payload.Rows),
+					})
+				}
+			}
+
+		case "terminal_start":
+			if termSession.Active {
+				_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Session already started.\r\n"})
+				continue
+			}
+			cmd := exec.Command("bash", "-i", "-l")
+			cmd.Env = append(os.Environ(),
+				"TERM=xterm-256color",
+				fmt.Sprintf("HOME=%s", os.Getenv("HOME")),
+			)
+			var ptmx *os.File
+			var err error
+			// Use known cols/rows if available
+			if termSession.Cols > 0 && termSession.Rows > 0 {
+				ptmx, err = pty.StartWithSize(cmd, &pty.Winsize{
+					Cols: uint16(termSession.Cols),
+					Rows: uint16(termSession.Rows),
+				})
+			} else {
+				ptmx, err = pty.Start(cmd)
+			}
+			if err != nil {
+				_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell failed: " + err.Error() + "\r\n"})
+				continue
+			}
+			termSession.ShellCmd = cmd
+			termSession.PtyFile = ptmx
+			termSession.Active = true
+			termSession.ShellDone = make(chan struct{})
+
+			go func() {
+				buf := make([]byte, 4096)
+				for {
+					n, err := ptmx.Read(buf)
+					if n > 0 {
+						if werr := conn.WriteJSON(WSResponse{Type: "terminal_output", Data: string(buf[:n])}); werr != nil {
+							return
+						}
+					}
+					if err != nil {
+						return
+					}
+				}
+			}()
+			_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell started!\r\n"})
+
+		case "terminal_input":
+			if !termSession.Active || termSession.PtyFile == nil {
+				_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Session not started.\r\n"})
+				continue
+			}
+			var input struct {
+				Data string `json:"data"`
+			}
+			ok := false
+			if wsMsg.Payload != nil {
+				if err := json.Unmarshal(wsMsg.Payload, &input); err == nil && input.Data != "" {
+					ok = true
+				}
+			}
+			if !ok {
+				_ = json.Unmarshal([]byte(msg), &input)
+			}
+			if input.Data != "" {
+				_, _ = termSession.PtyFile.Write([]byte(input.Data))
+			}
 
 		default:
 			_ = conn.WriteJSON(WSResponse{Type: "error", Error: "Unknown message type"})

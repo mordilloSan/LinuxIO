@@ -2,7 +2,6 @@ package auth
 
 import (
 	"bytes"
-	"context"
 	"go-backend/internal/bridge"
 	"go-backend/internal/config"
 	"go-backend/internal/logger"
@@ -14,7 +13,6 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/msteinert/pam"
@@ -26,16 +24,6 @@ type LoginRequest struct {
 }
 
 const sessionDuration = 6 * time.Hour
-
-var (
-	dockerCli *client.Client
-	dockerCtx context.Context
-)
-
-func SetDockerClient(cli *client.Client, ctx context.Context) {
-	dockerCli = cli
-	dockerCtx = ctx
-}
 
 func RegisterAuthRoutes(router *gin.Engine) {
 	auth := router.Group("/auth")
@@ -168,9 +156,7 @@ func logoutHandler(c *gin.Context) {
 
 	session.DeleteSession(sessionID)
 	if s.User.ID != "" {
-		bridge.CallWithSession(s, "control", "shutdown", nil)
-		bridge.CleanupFilebrowserContainer()
-		bridge.CleanupBridgeSocket(s)
+		bridge.CallWithSession(s, "control", "shutdown", []string{"logout"})
 	}
 	c.SetCookie("session_id", "", -1, "/", "", false, true)
 	logger.Infof("👋 Logged out session: %s", sessionID)

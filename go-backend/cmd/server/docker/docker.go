@@ -40,15 +40,15 @@ func StartServices() {
 	dockerCtx = context.Background() // Or use context.WithTimeout()
 
 	// Ensure custom Docker network exists (ignore error if already exists)
-	resp, err := dockerCli.NetworkCreate(dockerCtx, "linuxio-net", network.CreateOptions{})
+	resp, err := dockerCli.NetworkCreate(dockerCtx, "bridge-linuxio", network.CreateOptions{})
 	if err != nil {
 		if isNetworkExistsError(err) {
-			logger.Infof("Docker network 'linuxio-net' already exists")
+			logger.Infof("Docker network 'bridge-linuxio' already exists")
 		} else {
 			logger.Errorf("Failed to create Docker network: %v", err)
 		}
 	} else {
-		logger.Infof("✅ Created Docker network 'linuxio-net' (ID: %s, Warning: %s)", resp.ID, resp.Warning)
+		logger.Infof("✅ Created Docker network 'bridge-linuxio' (ID: %s, Warning: %s)", resp.ID, resp.Warning)
 	}
 
 	// Start FileBrowser container (microservice)
@@ -67,7 +67,7 @@ func writeFilebrowserConfig(path string, content []byte) error {
 }
 
 func startFileBrowserContainer() error {
-	containerName := "filebrowser"
+	containerName := "filebrowser-linuxio"
 	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
 	if runtimeDir == "" {
 		return fmt.Errorf("XDG_RUNTIME_DIR not set")
@@ -120,7 +120,7 @@ func startFileBrowserContainer() error {
 			Image: "gtstef/filebrowser",
 		},
 		&container.HostConfig{
-			NetworkMode: container.NetworkMode("linuxio-net"),
+			NetworkMode: container.NetworkMode("bridge-linuxio"),
 			Mounts: []mount.Mount{
 				{
 					Type:   mount.TypeBind,

@@ -7,19 +7,18 @@ import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
 import AuthLayout from "@/layouts/Auth";
 import MainLayout from "@/layouts/Main";
-import Default from "@/pages/dashboard/home";
+import Default from "@/pages/main/dashboard";
+import Filebrowser from "@/pages/main/filebrowser";
 
 // Lazy-loaded pages
-const SignIn = lazy(() => import("@/pages/auth/SignIn"));
+const SignIn = lazy(() => import("@/pages/auth/Login"));
 const Page404 = lazy(() => import("@/pages/auth/Page404"));
-const Updates = lazy(() => import("@/pages/dashboard/updates"));
-const Docker = lazy(() => import("@/pages/dashboard/docker"));
-const Services = lazy(() => import("@/pages/dashboard/services"));
-const Network = lazy(() => import("@/pages/dashboard/network"));
-const Hardware = lazy(() => import("@/pages/dashboard/hardware"));
-const Filebrowser = lazy(
-  () => import("@/pages/dashboard/filebrowser/FilebrowserIframe"),
-);
+const Updates = lazy(() => import("@/pages/main/updates"));
+const Docker = lazy(() => import("@/pages/main/docker"));
+const Services = lazy(() => import("@/pages/main/services"));
+const Network = lazy(() => import("@/pages/main/network"));
+const Hardware = lazy(() => import("@/pages/main/hardware"));
+const Terminal = lazy(() => import("@/pages/main/terminal"));
 
 // Route config
 const routes = [
@@ -40,6 +39,7 @@ const routes = [
       { path: "network", element: <Network /> },
       { path: "hardware", element: <Hardware /> },
       { path: "filebrowser", element: <Filebrowser /> },
+      { path: "terminal", element: <Terminal /> },
     ],
   },
   {

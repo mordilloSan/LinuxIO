@@ -97,6 +97,114 @@ func ListImages(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", data)
 }
 
+func ListDockerNetworks(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+	data, err := bridge.CallWithSession(sess, "docker", "list_networks", nil)
+	if err != nil {
+		logger.Errorf("Bridge ListNetworks: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", data)
+}
+
+// CreateDockerNetwork handles the creation of a new Docker network.
+func CreateDockerNetwork(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	data, err := bridge.CallWithSession(sess, "docker", "create_network", []string{req.Name})
+	if err != nil {
+		logger.Errorf("Bridge CreateDockerNetwork: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", data)
+}
+
+// DeleteDockerVolume handles the deletion of a Docker volume.
+func DeleteDockerNetwork(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+	name := c.Param("name")
+	data, err := bridge.CallWithSession(sess, "docker", "delete_network", []string{name})
+	if err != nil {
+		logger.Errorf("Bridge DeleteDockerNetwork: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", data)
+}
+
+func ListDockerVolumes(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+	data, err := bridge.CallWithSession(sess, "docker", "list_volumes", nil)
+	if err != nil {
+		logger.Errorf("Bridge ListVolumes: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", data)
+}
+
+// DeleteDockerVolume handles the deletion of a Docker volume.
+func DeleteDockerVolume(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+	name := c.Param("name")
+	data, err := bridge.CallWithSession(sess, "docker", "delete_volume", []string{name})
+	if err != nil {
+		logger.Errorf("Bridge DeleteDockerVolume: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", data)
+}
+
+// CreateDockerVolume handles the creation of a new Docker volume.
+func CreateDockerVolume(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	data, err := bridge.CallWithSession(sess, "docker", "create_volume", []string{req.Name})
+	if err != nil {
+		logger.Errorf("Bridge CreateDockerVolume: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", data)
+}
+
 func RegisterDockerRoutes(router *gin.Engine) {
 	docker := router.Group("/docker", auth.AuthMiddleware())
 	{
@@ -104,7 +212,13 @@ func RegisterDockerRoutes(router *gin.Engine) {
 		docker.POST("/containers/:id/start", StartContainer)
 		docker.POST("/containers/:id/stop", StopContainer)
 		docker.POST("/containers/:id/restart", RestartContainer)
-		docker.DELETE("/containers/:id", RemoveContainer)
+		docker.POST("/containers/:id/remove", RemoveContainer)
 		docker.GET("/images", ListImages)
+		docker.GET("/networks", ListDockerNetworks)
+		docker.POST("/networks", CreateDockerNetwork)
+		docker.DELETE("/networks/:name", DeleteDockerNetwork)
+		docker.GET("/volumes", ListDockerVolumes)
+		docker.POST("/volumes", CreateDockerVolume)
+		docker.DELETE("/volumes/:name", DeleteDockerVolume)
 	}
 }

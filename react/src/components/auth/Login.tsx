@@ -11,7 +11,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import useAuth from "@/hooks/useAuth";
 
-function SignIn() {
+function LogIn() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -102,4 +102,4 @@ function SignIn() {
   );
 }
 
-export default SignIn;
+export default LogIn;
