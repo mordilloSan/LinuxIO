@@ -12,11 +12,9 @@ import dashboardItems from "@/components/sidebar/dashboardItems";
 import Sidebar from "@/components/sidebar/Sidebar";
 import useAppTheme from "@/hooks/useAppTheme";
 import useSidebar from "@/hooks/useSidebar";
-import { useRouteChannelSubscription } from "@/hooks/useWebSocketChannel";
 
 const Dashboard: React.FC = () => {
   const location = useLocation();
-  useRouteChannelSubscription();
   const theme = useTheme();
   const { isLoaded } = useAppTheme();
   const { toggleMobileOpen, setMobileOpen, sidebarWidth } = useSidebar();
@@ -43,8 +41,7 @@ const Dashboard: React.FC = () => {
             duration: theme.transitions.duration.leavingScreen,
           }),
           ml: { md: `${sidebarWidth}px` },
-        }}
-      >
+        }}>
         <Navbar onDrawerToggle={toggleMobileOpen} />
         <Box
           className="custom-scrollbar"
@@ -53,8 +50,7 @@ const Dashboard: React.FC = () => {
             overflow: "auto",
             background: theme.palette.background.default,
             p: { xs: 5, lg: 7 },
-          }}
-        >
+          }}>
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
               <Outlet />

@@ -1,109 +1,109 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useTheme } from "@mui/material/styles";
+import React, { useEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
-
-import { useWebSocket } from "@/contexts/WebSocketContext";
 import "xterm/css/xterm.css";
+import { Box } from "@mui/material";
 
 const TerminalXTerm: React.FC = () => {
   const termRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
+  const theme = useTheme();
 
-  const { send, lastMessage } = useWebSocket();
-
-  // Track if we've resized and started the shell
-  const [didResize, setDidResize] = useState(false);
-
-  // --- Setup xterm.js only once ---
   useEffect(() => {
     if (!termRef.current) return;
 
-    if (!xterm.current) {
-      xterm.current = new Terminal({
-        fontFamily: "monospace",
-        fontSize: 16,
-        theme: {
-          background: "#263143",
-          foreground: "#e9f0fa",
-        },
-        cursorBlink: true,
-        scrollback: 1000,
-        disableStdin: false,
-      });
-      fitAddon.current = new FitAddon();
-      xterm.current.loadAddon(fitAddon.current);
-      xterm.current.open(termRef.current);
-      fitAddon.current.fit();
+    xterm.current = new Terminal({
+      fontFamily: "monospace",
+      fontSize: 16,
+      cursorBlink: true,
+      scrollback: 1000,
+      disableStdin: false,
+    });
+    fitAddon.current = new FitAddon();
+    xterm.current.loadAddon(fitAddon.current);
+    xterm.current.open(termRef.current);
+    fitAddon.current.fit();
 
-      // On user input, send to backend
-      xterm.current.onData((data) => {
-        send({ type: "terminal_input", data });
-      });
-    }
-
-    // Always resize after mount
+    // set the classname inside xterm child. This is used for styling the scrollbar
     setTimeout(() => {
-      if (xterm.current) {
-        send({
-          type: "terminal_resize",
-          payload: {
-            cols: xterm.current.cols,
-            rows: xterm.current.rows,
-          },
-        });
-        setDidResize(true);
+      const viewport = termRef.current?.querySelector(".xterm-viewport");
+      if (viewport) {
+        viewport.classList.add("custom-scrollbar");
       }
-    }, 100); // Wait just a bit for xterm to layout
+    }, 0);
 
-    // Resize on window resize
-    const handleResize = () => {
-      fitAddon.current?.fit();
-      if (xterm.current) {
-        send({
-          type: "terminal_resize",
-          payload: {
-            cols: xterm.current.cols,
-            rows: xterm.current.rows,
-          },
-        });
+    // ---- Raw WebSocket for terminal channel ----
+    const wsUrl = import.meta.env.DEV
+      ? "ws://localhost:8080/ws"
+      : window.location.protocol === "https:"
+        ? `wss://${window.location.host}/ws`
+        : `ws://${window.location.host}/ws`;
+
+    const ws = new window.WebSocket(wsUrl);
+    ws.binaryType = "arraybuffer";
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "terminal_start" }));
+    };
+
+    ws.onmessage = (event) => {
+      if (!xterm.current) return;
+      let msg;
+      try {
+        msg = JSON.parse(event.data);
+      } catch {
+        msg = { type: "terminal_output", data: event.data };
+      }
+      if (msg.type === "terminal_output") {
+        xterm.current.write(msg.data);
       }
     };
-    window.addEventListener("resize", handleResize);
+
+    xterm.current.onData((data) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "terminal_input",
+            data: data,
+          })
+        );
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      fitAddon.current?.fit();
+    });
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      ws.close();
       xterm.current?.dispose();
-      xterm.current = null;
     };
-  }, [send]);
+  }, []);
 
-  // --- Start shell ONLY after we've sent a resize ---
+  // Update terminal colors when the theme changes
   useEffect(() => {
-    if (didResize) {
-      send({ type: "terminal_start" });
+    if (xterm.current) {
+      xterm.current.options.theme = {
+        background: theme.palette.background.default,
+        foreground: theme.palette.text.primary,
+      };
+      xterm.current.refresh(0, xterm.current.rows - 1);
     }
-  }, [didResize, send]);
-
-  // --- Display backend output ---
-  useEffect(() => {
-    if (
-      lastMessage &&
-      lastMessage.type === "terminal_output" &&
-      xterm.current
-    ) {
-      xterm.current.write(lastMessage.data);
+    if (termRef.current) {
+      termRef.current.style.background = theme.palette.background.default;
     }
-  }, [lastMessage]);
+  }, [theme.palette.background.default, theme.palette.text.primary]);
 
   return (
-    <div
+    <Box
       ref={termRef}
-      style={{
-        height: 800,
+      sx={{
+        height: "100%",
         width: "100%",
-        background: "#263143",
-        borderRadius: 8,
       }}
     />
   );

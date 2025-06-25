@@ -6,6 +6,7 @@ import (
 	"go-backend/internal/config"
 	"go-backend/internal/logger"
 	"go-backend/internal/session"
+	"go-backend/internal/terminal"
 	"go-backend/internal/utils"
 	"io"
 	"net/http"
@@ -92,7 +93,6 @@ func loginHandler(c *gin.Context) {
 	}
 
 	// 4. Creating user specific config files
-
 	logger.Infof("📦 Loading docker configuration...")
 	if err := config.LoadDockerConfig(); err != nil {
 		logger.Errorf("❌ Failed to load config: %v", err)
@@ -128,14 +128,18 @@ func loginHandler(c *gin.Context) {
 		}
 	}
 
-	// 8. Set session cookie
+	// 6. Start the terminal PTY
+	if err := terminal.StartTerminal(sess); err != nil {
+		logger.Errorf("[WebSocket] Shell failed: %v", err)
+	}
+
+	// 6. Set session cookie
 	env := os.Getenv("GO_ENV")
 	isHTTPS := c.Request.TLS != nil
 	secureCookie := env == "production" && isHTTPS
-
 	c.SetCookie("session_id", sessionID, int(sessionDuration.Seconds()), "/", "", secureCookie, true)
 
-	// 9. Send response
+	// 7. Send response
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": privileged})
 }
 
@@ -153,7 +157,7 @@ func logoutHandler(c *gin.Context) {
 		c.Status(http.StatusOK)
 		return
 	}
-
+	terminal.Close(sessionID)
 	session.DeleteSession(sessionID)
 	if s.User.ID != "" {
 		bridge.CallWithSession(s, "control", "shutdown", []string{"logout"})

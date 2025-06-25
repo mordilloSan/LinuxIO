@@ -23,8 +23,7 @@ const FrostedCard: React.FC<FrostedCardProps> = ({
         boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
         ...sx, // allow overriding styles if needed
       }}
-      {...props}
-    >
+      {...props}>
       {children}
     </Card>
   );

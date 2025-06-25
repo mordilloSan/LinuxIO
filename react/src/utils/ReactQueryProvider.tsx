@@ -1,4 +1,3 @@
-// src/providers/ReactQueryProvider.tsx
 import {
   QueryClient,
   QueryClientProvider,

@@ -2,26 +2,25 @@ package websocket
 
 import (
 	"encoding/json"
-	"fmt"
 	"go-backend/internal/auth"
-	"go-backend/internal/bridge"
 	"go-backend/internal/logger"
+	"go-backend/internal/terminal"
 	"net/http"
-	"os"
-	"os/exec"
-	"sync"
 
 	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
-// WebSocket message/request/response structs
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
 
 type WSMessage struct {
 	Type      string          `json:"type"`
 	RequestID string          `json:"requestId,omitempty"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
+	Data      string          `json:"data,omitempty"` // for input
 }
 
 type WSResponse struct {
@@ -31,244 +30,109 @@ type WSResponse struct {
 	Error     string      `json:"error,omitempty"`
 }
 
-// --- CHANNEL SUBSCRIPTION INFRASTRUCTURE ---
-var (
-	channelsMu         sync.Mutex
-	channelSubscribers = make(map[string]map[*websocket.Conn]struct{})
-)
-
-func subscribe(conn *websocket.Conn, channel string) {
-	channelsMu.Lock()
-	defer channelsMu.Unlock()
-	if channelSubscribers[channel] == nil {
-		channelSubscribers[channel] = make(map[*websocket.Conn]struct{})
-	}
-	channelSubscribers[channel][conn] = struct{}{}
-	logger.Infof("WebSocket subscribed to channel: %s", channel)
-}
-
-func unsubscribe(conn *websocket.Conn, channel string) {
-	channelsMu.Lock()
-	defer channelsMu.Unlock()
-	if subs, exists := channelSubscribers[channel]; exists && subs != nil {
-		delete(subs, conn)
-		if len(subs) == 0 {
-			delete(channelSubscribers, channel)
-		}
-	}
-	logger.Infof("WebSocket unsubscribed from channel: %s", channel)
-}
-
-func removeConnFromAllChannels(conn *websocket.Conn) {
-	channelsMu.Lock()
-	defer channelsMu.Unlock()
-	for channel, subs := range channelSubscribers {
-		delete(subs, conn)
-		if len(subs) == 0 {
-			delete(channelSubscribers, channel)
-		}
-	}
-}
-
-type TerminalSession struct {
-	Cols      int
-	Rows      int
-	PtyFile   *os.File
-	ShellCmd  *exec.Cmd
-	ShellDone chan struct{}
-	Active    bool
-}
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
-
 func WebSocketHandler(c *gin.Context) {
 	sess := auth.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
-
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		logger.Errorf("WS upgrade failed: %v", err)
+		logger.Errorf("[WebSocket] WS upgrade failed: %v", err)
 		return
 	}
+	defer conn.Close()
+	logger.Infof("[WebSocket] Connected: user=%s session=%s", sess.User.Name, sess.SessionID)
+
+	done := make(chan struct{})
 	defer func() {
-		conn.Close()
+		close(done)
+		logger.Infof("[WebSocket] Disconnected: user=%s session=%s", sess.User.Name, sess.SessionID)
 	}()
 
-	logger.Infof("WebSocket connected for user: %s (session: %s, privileged: %v)", sess.User.Name, sess.SessionID, sess.Privileged)
-
-	var (
-		termSession = &TerminalSession{}
-	)
-
-	// Cleanup on disconnect
-	defer func() {
-		if termSession.Active && termSession.ShellCmd != nil {
-			close(termSession.ShellDone)
-			termSession.ShellCmd.Process.Kill()
-			termSession.ShellCmd.Wait()
-			termSession.PtyFile.Close()
-			termSession.Active = false
-		}
-	}()
+	var ptyStarted bool
 
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			logger.Warnf("WS disconnect: %v", err)
+			logger.Warnf("[WebSocket] WS disconnect: %v", err)
 			break
 		}
 		var wsMsg WSMessage
 		if err := json.Unmarshal(msg, &wsMsg); err != nil {
+			logger.Warnf("[WebSocket] Invalid JSON: %v", err)
 			_ = conn.WriteJSON(WSResponse{Type: "error", Error: "Invalid JSON"})
 			continue
 		}
-
+		logger.Debugf("[WebSocket] Message: %+v", wsMsg)
 		switch wsMsg.Type {
-
-		case "subscribe":
-			var payload struct {
-				Channel string `json:"channel"`
-			}
-			if err := json.Unmarshal(wsMsg.Payload, &payload); err != nil || payload.Channel == "" {
-				_ = conn.WriteJSON(WSResponse{Type: "error", Error: "Missing channel"})
-				continue
-			}
-			subscribe(conn, payload.Channel)
-			_ = conn.WriteJSON(WSResponse{Type: "subscribed", Data: payload.Channel})
-
-		case "unsubscribe":
-			var payload struct {
-				Channel string `json:"channel"`
-			}
-			if err := json.Unmarshal(wsMsg.Payload, &payload); err != nil || payload.Channel == "" {
-				_ = conn.WriteJSON(WSResponse{Type: "error", Error: "Missing channel"})
-				continue
-			}
-			unsubscribe(conn, payload.Channel)
-			_ = conn.WriteJSON(WSResponse{Type: "unsubscribed", Data: payload.Channel})
-
-		case "getUserInfo":
-			_ = conn.WriteJSON(WSResponse{
-				Type:      "getUserInfo_response",
-				RequestID: wsMsg.RequestID,
-				Data:      sess.User,
-			})
-
-		case "bridgeCall":
-			var payload struct {
-				ReqType string   `json:"reqType"`
-				Command string   `json:"command"`
-				Args    []string `json:"args"`
-			}
-			if err := json.Unmarshal(wsMsg.Payload, &payload); err != nil {
-				_ = conn.WriteJSON(WSResponse{Type: "error", Error: "Invalid bridgeCall payload"})
-				continue
-			}
-			output, err := bridge.CallWithSession(sess, payload.ReqType, payload.Command, payload.Args)
-			if err != nil {
-				_ = conn.WriteJSON(WSResponse{
-					Type:      wsMsg.Type + "_response",
-					RequestID: wsMsg.RequestID,
-					Error:     err.Error(),
-					Data:      output,
-				})
-				continue
-			}
-			_ = conn.WriteJSON(WSResponse{
-				Type:      wsMsg.Type + "_response",
-				RequestID: wsMsg.RequestID,
-				Data:      output,
-			})
-		case "terminal_resize":
-			var payload struct {
-				Cols int `json:"cols"`
-				Rows int `json:"rows"`
-			}
-			if err := json.Unmarshal(wsMsg.Payload, &payload); err == nil {
-				logger.Infof("Terminal resize cols=%d rows=%d", payload.Cols, payload.Rows)
-				termSession.Cols = payload.Cols
-				termSession.Rows = payload.Rows
-				if termSession.PtyFile != nil {
-					pty.Setsize(termSession.PtyFile, &pty.Winsize{
-						Cols: uint16(payload.Cols),
-						Rows: uint16(payload.Rows),
-					})
-				}
-			}
-
 		case "terminal_start":
-			if termSession.Active {
-				_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Session already started.\r\n"})
-				continue
-			}
-			cmd := exec.Command("bash", "-i", "-l")
-			cmd.Env = append(os.Environ(),
-				"TERM=xterm-256color",
-				fmt.Sprintf("HOME=%s", os.Getenv("HOME")),
-			)
-			var ptmx *os.File
-			var err error
-			// Use known cols/rows if available
-			if termSession.Cols > 0 && termSession.Rows > 0 {
-				ptmx, err = pty.StartWithSize(cmd, &pty.Winsize{
-					Cols: uint16(termSession.Cols),
-					Rows: uint16(termSession.Rows),
-				})
+			ts := terminal.Get(sess.SessionID)
+			if ts == nil || ts.PTY == nil {
+				if err := terminal.StartTerminal(sess); err != nil {
+					logger.Warnf("Could not start terminal for %s: %v", sess.User.Name, err)
+					_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start shell.\r\n"})
+					continue
+				}
+				ts = terminal.Get(sess.SessionID)
+				_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell started.\r\n"})
 			} else {
-				ptmx, err = pty.Start(cmd)
+				ts.Mu.Lock()
+				if len(ts.Buffer) > 0 {
+					_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: string(ts.Buffer)})
+				}
+				ts.Mu.Unlock()
 			}
-			if err != nil {
-				_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell failed: " + err.Error() + "\r\n"})
-				continue
-			}
-			termSession.ShellCmd = cmd
-			termSession.PtyFile = ptmx
-			termSession.Active = true
-			termSession.ShellDone = make(chan struct{})
 
-			go func() {
-				buf := make([]byte, 4096)
-				for {
-					n, err := ptmx.Read(buf)
-					if n > 0 {
-						if werr := conn.WriteJSON(WSResponse{Type: "terminal_output", Data: string(buf[:n])}); werr != nil {
+			if !ptyStarted && ts != nil && ts.PTY != nil {
+				go func() {
+					buf := make([]byte, 4096)
+					for {
+						select {
+						case <-done:
 							return
+						default:
+							n, err := ts.PTY.Read(buf)
+							if n > 0 {
+								// Append to Buffer, rotating if needed (e.g. max 16KB)
+								ts.Mu.Lock()
+								if len(ts.Buffer)+n > 8192*2 {
+									// Drop oldest data to keep max length (keep newest 8192-n bytes, then append n new bytes)
+									ts.Buffer = ts.Buffer[(len(ts.Buffer)+n)-8192*2:]
+								}
+								ts.Buffer = append(ts.Buffer, buf[:n]...)
+								ts.Mu.Unlock()
+								_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: string(buf[:n])})
+							}
+							if err != nil {
+								logger.Warnf("[WebSocket] pty read error: %v", err)
+								return
+							}
 						}
 					}
-					if err != nil {
-						return
-					}
-				}
-			}()
-			_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell started!\r\n"})
-
+				}()
+				ptyStarted = true
+			}
 		case "terminal_input":
-			if !termSession.Active || termSession.PtyFile == nil {
-				_ = conn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Session not started.\r\n"})
-				continue
-			}
-			var input struct {
-				Data string `json:"data"`
-			}
-			ok := false
-			if wsMsg.Payload != nil {
-				if err := json.Unmarshal(wsMsg.Payload, &input); err == nil && input.Data != "" {
-					ok = true
+			ts := terminal.Get(sess.SessionID)
+			if ts != nil && ts.PTY != nil {
+				if wsMsg.Data != "" {
+					_, _ = ts.PTY.Write([]byte(wsMsg.Data))
 				}
 			}
-			if !ok {
-				_ = json.Unmarshal([]byte(msg), &input)
+		case "terminal_resize":
+			ts := terminal.Get(sess.SessionID)
+			if ts != nil && ts.PTY != nil {
+				var size struct {
+					Cols int `json:"cols"`
+					Rows int `json:"rows"`
+				}
+				_ = json.Unmarshal(wsMsg.Payload, &size)
+				if size.Cols > 0 && size.Rows > 0 {
+					pty.Setsize(ts.PTY, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)})
+				}
 			}
-			if input.Data != "" {
-				_, _ = termSession.PtyFile.Write([]byte(input.Data))
-			}
-
 		default:
-			_ = conn.WriteJSON(WSResponse{Type: "error", Error: "Unknown message type"})
+			logger.Warnf("[WebSocket] Unknown message type: %s", wsMsg.Type)
 		}
 	}
 }

@@ -1,7 +1,7 @@
 import { Grid } from "@mui/material";
 import React from "react";
 
-import Drive from "./Drive";
+import DriveInfo from "./Drive";
 import FileSystem from "./FileSystem";
 import GpuInfo from "./Gpu";
 import Memory from "./Memory";
@@ -19,7 +19,7 @@ const MemoFileSystem = React.memo(FileSystem);
 const MemoNetworkInterfacesCard = React.memo(NetworkInterfacesCard);
 const MemoMotherBoardInfo = React.memo(MotherBoardInfo);
 const MemoGpuInfo = React.memo(GpuInfo);
-const DriveInfo = React.memo(Drive);
+const MemoDriveInfo = React.memo(DriveInfo);
 
 const cards = [
   { id: "system", component: MemoSystemHealth },
@@ -29,7 +29,7 @@ const cards = [
   { id: "fs", component: MemoFileSystem },
   { id: "mb", component: MemoMotherBoardInfo },
   { id: "gpu", component: MemoGpuInfo },
-  { id: "drive", component: DriveInfo },
+  { id: "drive", component: MemoDriveInfo },
 ];
 
 const Dashboard: React.FC = () => {

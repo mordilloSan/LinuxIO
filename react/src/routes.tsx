@@ -1,14 +1,13 @@
 import React, { lazy } from "react";
 
 // Guards & Layouts
-import { WebSocketProvider } from "./contexts/WebSocketContext";
-
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
 import AuthLayout from "@/layouts/Auth";
 import MainLayout from "@/layouts/Main";
 import Default from "@/pages/main/dashboard";
 import Filebrowser from "@/pages/main/filebrowser";
+import Terminal from "@/pages/main/terminal";
 
 // Lazy-loaded pages
 const SignIn = lazy(() => import("@/pages/auth/Login"));
@@ -18,7 +17,6 @@ const Docker = lazy(() => import("@/pages/main/docker"));
 const Services = lazy(() => import("@/pages/main/services"));
 const Network = lazy(() => import("@/pages/main/network"));
 const Hardware = lazy(() => import("@/pages/main/hardware"));
-const Terminal = lazy(() => import("@/pages/main/terminal"));
 
 // Route config
 const routes = [
@@ -26,9 +24,7 @@ const routes = [
     path: "/",
     element: (
       <AuthGuard>
-        <WebSocketProvider>
-          <MainLayout />
-        </WebSocketProvider>
+        <MainLayout />
       </AuthGuard>
     ),
     children: [
@@ -60,19 +56,3 @@ const routes = [
 ];
 
 export default routes;
-
-function extractChannels(routeList: any[]): string[] {
-  let channels: string[] = [];
-  for (const route of routeList) {
-    if (route.path !== "*") {
-      let channel = route.path === "" ? "dashboard" : route.path;
-      channels.push(channel);
-    }
-    if (route.children) {
-      channels = channels.concat(extractChannels(route.children));
-    }
-  }
-  return channels;
-}
-
-export const ROUTE_CHANNELS = extractChannels(routes);

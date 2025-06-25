@@ -4,6 +4,7 @@ go 1.24.1
 
 require (
 	github.com/containerd/containerd v1.7.27
+	github.com/creack/pty v1.1.18
 	github.com/docker/go-connections v0.5.0
 	github.com/joho/godotenv v1.5.1
 	github.com/shirou/gopsutil/v4 v4.25.5
@@ -77,7 +78,6 @@ require (
 
 require (
 	github.com/coreos/go-systemd/v22 v22.5.0
-	github.com/creack/pty v1.1.24
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/gin-gonic/gin v1.10.1
