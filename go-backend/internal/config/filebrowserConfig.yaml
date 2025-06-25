@@ -30,6 +30,7 @@ userDefaults:
     share: false
     realtime: true
   loginMethod: proxy
+  disableUpdateNotifications: true
 auth:
   methods:
     proxy:
