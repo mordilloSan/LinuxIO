@@ -6,4 +6,8 @@ docker compose
 
 bridge socket and bridge binary should not have the sessionid written 
 
-use quantom filebrowser as our main navigator
+use quantom filebrowser as our main navigator - DONE
+when we login we must also add the user to filebrowser
+when the bridge does cleanup we also must kill the PTY session
+websocket should be permanent.
+If no websocket present check for session. if session restore websocket connection if not logout?
