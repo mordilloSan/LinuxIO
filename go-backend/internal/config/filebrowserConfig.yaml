@@ -1,5 +1,6 @@
 server:
   port: 80
+  socket: filebrowser
   baseURL: /navigator/
   logging:
     - levels: "info|warning|error|debug"
@@ -35,7 +36,7 @@ auth:
   methods:
     proxy:
       enabled: true
-      header: "proxy-user"
+      header: "{{SECRET_KEY}}"
       createUser: true
     password:
       enabled: false

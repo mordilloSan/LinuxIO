@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -24,7 +25,7 @@ var (
 	dockerCtx context.Context
 )
 
-func StartServices() {
+func StartServices(secret string) {
 
 	logger.Infof("📦 Checking docker installation...")
 	if err := config.EnsureDockerAvailable(); err != nil {
@@ -52,7 +53,7 @@ func StartServices() {
 	}
 
 	// Start FileBrowser container (microservice)
-	if err := startFileBrowserContainer(); err != nil {
+	if err := startFileBrowserContainer(secret); err != nil {
 		logger.Errorf("FileBrowser setup failed: %v", err)
 	}
 }
@@ -61,12 +62,20 @@ func isNetworkExistsError(err error) bool {
 	return err != nil && (bytes.Contains([]byte(err.Error()), []byte("already exists")) || bytes.Contains([]byte(err.Error()), []byte("409")))
 }
 
-// Write embedded config file before container starts
-func writeFilebrowserConfig(path string, content []byte) error {
-	return os.WriteFile(path, content, 0644)
+// writeFilebrowserConfig replaces placeholder and writes the config file
+func writeFilebrowserConfig(path string, rawContent []byte, secretKey string) error {
+	configStr := string(rawContent)
+	configStr = strings.ReplaceAll(configStr, "{{SECRET_KEY}}", secretKey)
+	err := os.WriteFile(path, []byte(configStr), 0644)
+	if err != nil {
+		logger.Errorf("❌ Failed to write FileBrowser config to %s: %v", path, err)
+		return err
+	}
+	logger.Infof("✅ Wrote FileBrowser config with secret to %s", path)
+	return nil
 }
 
-func startFileBrowserContainer() error {
+func startFileBrowserContainer(secret string) error {
 	containerName := "filebrowser-linuxio"
 	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
 	if runtimeDir == "" {
@@ -77,15 +86,14 @@ func startFileBrowserContainer() error {
 		return fmt.Errorf("failed to create runtime config dir: %w", err)
 	}
 	configPath := filepath.Join(dir, "filebrowser-config.yaml")
-
 	serverPath := "/"
 
-	// 1. Always write embedded config before container starts!
-	if err := writeFilebrowserConfig(configPath, embed.DefaultFilebrowserConfig); err != nil {
+	// 1. Write the embedded config before container starts
+	if err := writeFilebrowserConfig(configPath, embed.DefaultFilebrowserConfig, secret); err != nil {
 		return fmt.Errorf("failed to write embedded config: %w", err)
 	}
 
-	// 1. Check if the container exists (stopped or running)
+	// 2. Remove any existing container (stopped or running)
 	containers, err := dockerCli.ContainerList(dockerCtx, container.ListOptions{All: true})
 	if err != nil {
 		return fmt.Errorf("failed to list Docker containers: %w", err)
@@ -94,7 +102,6 @@ func startFileBrowserContainer() error {
 		for _, name := range c.Names {
 			if name == "/"+containerName {
 				logger.Infof("⚠️ Found existing container '%s' (status: %s), removing...", containerName, c.State)
-				// Always remove the container
 				if err := dockerCli.ContainerRemove(dockerCtx, c.ID, container.RemoveOptions{
 					Force: true,
 				}); err != nil {
@@ -105,7 +112,7 @@ func startFileBrowserContainer() error {
 		}
 	}
 
-	// 2. Pull image if not already present (docker will skip if present)
+	// 3. Pull image if not already present (docker will skip if present)
 	out, err := dockerCli.ImagePull(dockerCtx, "docker.io/gtstef/filebrowser:latest", image.PullOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to pull FileBrowser image: %w", err)
@@ -113,7 +120,7 @@ func startFileBrowserContainer() error {
 	defer out.Close()
 	io.Copy(io.Discard, out) // Always drain!
 
-	// 3. Create the container
+	// 4. Create the container with the config mounted
 	resp, err := dockerCli.ContainerCreate(
 		dockerCtx,
 		&container.Config{
@@ -139,7 +146,6 @@ func startFileBrowserContainer() error {
 				},
 			},
 		},
-
 		&network.NetworkingConfig{},
 		nil,
 		containerName,
@@ -148,9 +154,14 @@ func startFileBrowserContainer() error {
 		return fmt.Errorf("failed to create FileBrowser container: %w", err)
 	}
 
-	// 4. Start the container
+	// 5. Start the container
 	if err := dockerCli.ContainerStart(dockerCtx, resp.ID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("failed to start FileBrowser container: %w", err)
+	}
+
+	// 6. Remove the config file from disk for security after container creation
+	if err := os.Remove(configPath); err != nil {
+		logger.Warnf("Could not remove temporary config file: %v", err)
 	}
 
 	logger.Infof("Created and started new FileBrowser Docker container")

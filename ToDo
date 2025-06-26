@@ -7,15 +7,13 @@ docker compose
 bridge socket and bridge binary should not have the sessionid written
 
 use quantom filebrowser as our main navigator - DONE
-when we login we must also add the user to filebrowser
-filebrowser config should not allow to create a user
-filebrowser config should set adminUsername to the session.user.name
-filebrowser header should contain sessionid
-destroy the filebrowser config file after we create the container
+when we login we must also add the user to filebrowser - DONE
+filebrowser header should contain sessionid - DONE
+destroy the filebrowser config file after we create the container - DONE
 
 update user config files locations for theme (after login)
 
-when the bridge does cleanup we also must kill the PTY session
+when the bridge does cleanup we also must kill the PTY session - DONE
 
 websocket should be persistent
 

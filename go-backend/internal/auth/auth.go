@@ -10,6 +10,7 @@ import (
 	"go-backend/internal/utils"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"os/exec"
 	"time"
@@ -133,14 +134,18 @@ func loginHandler(c *gin.Context) {
 		logger.Errorf("[WebSocket] Shell failed: %v", err)
 	}
 
-	// 6. Set session cookie
+	// 7. Set session cookie
 	env := os.Getenv("GO_ENV")
 	isHTTPS := c.Request.TLS != nil
 	secureCookie := env == "production" && isHTTPS
 	c.SetCookie("session_id", sessionID, int(sessionDuration.Seconds()), "/", "", secureCookie, true)
 
-	// 7. Send response
+	// 8. Pre-create FileBrowser user (background)
+	go createFilebrowserUser(sessionID)
+
+	// 9. Send response
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": privileged})
+
 }
 
 func logoutHandler(c *gin.Context) {
@@ -170,4 +175,26 @@ func logoutHandler(c *gin.Context) {
 func meHandler(c *gin.Context) {
 	sess := c.MustGet("session").(*session.Session)
 	c.JSON(http.StatusOK, gin.H{"user": sess.User})
+}
+
+func createFilebrowserUser(sessionID string) {
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar:     jar,
+		Timeout: 5 * time.Second,
+	}
+	req, _ := http.NewRequest("GET", "http://127.0.0.1:8080/navigator/", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  "session_id",
+		Value: sessionID,
+		Path:  "/",
+	})
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Warnf("[login] Could not pre-create FileBrowser user: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+	logger.Infof("[login] Pre-created FileBrowser user for session %s (status %d)", sessionID, resp.StatusCode)
 }

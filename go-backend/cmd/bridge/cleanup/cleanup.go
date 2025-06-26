@@ -6,6 +6,8 @@ import (
 	"go-backend/internal/bridge"
 	"go-backend/internal/logger"
 	"go-backend/internal/session"
+	"go-backend/internal/terminal"
+	"go-backend/internal/utils"
 	"net"
 	"os"
 	"strconv"
@@ -31,7 +33,7 @@ func KillLingeringBridgeStartupProcesses() {
 	}
 
 	for _, entry := range procEntries {
-		if !entry.IsDir() || !IsNumeric(entry.Name()) {
+		if !entry.IsDir() || !utils.IsNumeric(entry.Name()) {
 			continue
 		}
 
@@ -124,15 +126,6 @@ func CheckMainProcessHealth(sess *session.Session) bool {
 	return resp.Status == "ok"
 }
 
-func IsNumeric(s string) bool {
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
-
 func killFilebrowserContainer() error {
 	err := bridge.CleanupFilebrowserContainer()
 	if err != nil {
@@ -169,6 +162,7 @@ func FullCleanup(shutdownReason string, Sess *session.Session, socketPath string
 			logger.Warnf("killFilebrowserContainer failed: %v", err)
 			errs = append(errs, fmt.Errorf("killFilebrowserContainer: %w", err))
 		}
+		terminal.Close(Sess.SessionID)
 	}
 	if err := killMainSocket(socketPath); err != nil {
 		logger.Warnf("killMainSocket failed: %v", err)

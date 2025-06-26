@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"go-backend/internal/logger"
 	"os"
@@ -38,4 +40,19 @@ func GetDevPort() string {
 		logger.Debugf("🔧 VITE_DEV_PORT detected: %s", port)
 	}
 	return port
+}
+
+func GenerateSecretKey(n int) string {
+	bytes := make([]byte, n)
+	_, _ = rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
+
+func IsNumeric(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

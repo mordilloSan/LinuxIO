@@ -29,27 +29,24 @@ import (
 
 func main() {
 	_ = godotenv.Load("../.env")
-
 	var env = os.Getenv("GO_ENV")
 	if env == "" {
 		env = "production"
 	}
 	verbose := os.Getenv("VERBOSE") == "true"
 	logger.Init("env", verbose)
-
-	logger.Infof("🌱 Starting server in %s mode...", env)
-
 	if !verbose {
 		gin.SetMode(gin.ReleaseMode)
 	}
+
+	logger.Infof("🌱 Starting server in %s mode...", env)
 
 	// Start the session garbage collector
 	session.StartSessionGC()
 	// Initialize cache functions
 	system.InitGPUInfo()
-
-	// start docker micro services
-	go docker.StartServices()
+	// Generate Secret Key
+	filebrowserSecret := utils.GenerateSecretKey(32)
 
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -70,7 +67,12 @@ func main() {
 	dockers.RegisterDockerComposeRoutes(router)
 	theme.RegisterThemeRoutes(router)
 	power.RegisterPowerRoutes(router)
-	router.Any("/navigator/*proxyPath", auth.AuthMiddleware(), filebrowser.FilebrowserReverseProxy())
+
+	// Reverse Proxy for filebrowser
+	router.Any("/navigator/*proxyPath", auth.AuthMiddleware(), filebrowser.FilebrowserReverseProxy(filebrowserSecret))
+
+	// start docker micro services
+	go docker.StartServices(filebrowserSecret)
 
 	// API Benchmark route
 	if env != "production" {

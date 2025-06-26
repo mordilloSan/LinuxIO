@@ -15,7 +15,7 @@ type ctxKey string
 
 const proxyPathKey ctxKey = "proxyPath"
 
-func FilebrowserReverseProxy() gin.HandlerFunc {
+func FilebrowserReverseProxy(secret string) gin.HandlerFunc {
 	target, _ := url.Parse("http://127.0.0.1:8090")
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
@@ -29,7 +29,8 @@ func FilebrowserReverseProxy() gin.HandlerFunc {
 		if err == nil && cookie.Value != "" {
 			sess := session.Get(cookie.Value)
 			if sess != nil {
-				req.Header.Set("proxy-user", sess.User.Name)
+				// **Set the header using the secret as header name**
+				req.Header.Set(secret, sess.User.Name)
 			}
 		}
 	}
