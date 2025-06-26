@@ -84,8 +84,20 @@ func loginHandler(c *gin.Context) {
 	// 3. Create session (with privilege info)
 	sessionID := uuid.New().String()
 	user := utils.User{ID: req.Username, Name: req.Username}
-	session.CreateSession(sessionID, user, sessionDuration, privileged)
-	sess := session.Get(sessionID)
+	// Create the session and check for errors
+	if err := session.CreateSession(sessionID, user, sessionDuration, privileged); err != nil {
+		logger.Errorf("Failed to create session: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "session creation failed"})
+		return
+	}
+
+	// Get the session and check for errors
+	sess, err := session.Get(sessionID)
+	if err != nil {
+		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "session fetch failed"})
+		return
+	}
 
 	if sess == nil {
 		logger.Errorf("Failed to get session after creation (id=%s)", sessionID)
@@ -155,7 +167,13 @@ func logoutHandler(c *gin.Context) {
 		return
 	}
 
-	s := session.Get(sessionID)
+	// Get the session and check for errors
+	s, err := session.Get(sessionID)
+	if err != nil {
+		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "session fetch failed"})
+		return
+	}
 	if s == nil {
 		logger.Debugf("[auth] No session found for ID: %s (already expired?)", sessionID)
 		c.SetCookie("session_id", "", -1, "/", "", false, true)

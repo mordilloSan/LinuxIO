@@ -279,13 +279,20 @@ func handleBridgeRequest(conn net.Conn) {
 
 	if req.Type == "validate" {
 		logger.Infof("Healthcheck received for session %s", req.Session)
-		if session.IsValid(req.Session) {
+		valid, err := session.IsValid(req.Session)
+		if err != nil {
+			logger.Warnf("Session validation error for %s: %v", req.Session, err)
+			_ = encoder.Encode(BridgeHealthResponse{Status: "invalid", Message: err.Error()})
+			return
+		}
+		if valid {
 			_ = encoder.Encode(BridgeHealthResponse{Status: "ok"})
 		} else {
 			_ = encoder.Encode(BridgeHealthResponse{Status: "invalid", Message: "session expired"})
 		}
 		return
 	}
+
 	logger.Warnf("Unknown healthcheck request type: %s (session %s)", req.Type, req.Session)
 	_ = encoder.Encode(BridgeHealthResponse{Status: "error", Message: "unknown request type"})
 }

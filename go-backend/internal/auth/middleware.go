@@ -38,9 +38,9 @@ func CorsMiddleware() gin.HandlerFunc {
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		sess, valid := session.ValidateFromRequest(c.Request)
-		if !valid || sess == nil {
-			logger.Warnf("⚠️  Unauthorized request or expired session")
+		sess, err := session.ValidateFromRequest(c.Request)
+		if err != nil || sess == nil {
+			logger.Warnf("⚠️  Unauthorized request or expired session: %v", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
@@ -51,9 +51,9 @@ func AuthMiddleware() gin.HandlerFunc {
 
 // Helper to validate session and handle unauthorized
 func GetSessionOrAbort(c *gin.Context) *session.Session {
-	sess, valid := session.ValidateFromRequest(c.Request)
-	if !valid || sess == nil {
-		logger.Warnf("Unauthorized docker access")
+	sess, err := session.ValidateFromRequest(c.Request)
+	if err != nil || sess == nil {
+		logger.Warnf("Unauthorized docker access: %v", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
 		c.Abort()
 		return nil

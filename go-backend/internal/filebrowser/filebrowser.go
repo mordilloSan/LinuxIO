@@ -27,12 +27,13 @@ func FilebrowserReverseProxy(secret string) gin.HandlerFunc {
 		// Extract session_id cookie manually
 		cookie, err := req.Cookie("session_id")
 		if err == nil && cookie.Value != "" {
-			sess := session.Get(cookie.Value)
-			if sess != nil {
-				// **Set the header using the secret as header name**
+			sess, err := session.Get(cookie.Value)
+			if err == nil && sess != nil {
+				// Set the header using the secret as header name
 				req.Header.Set(secret, sess.User.Name)
 			}
 		}
+
 	}
 
 	proxy.ModifyResponse = func(resp *http.Response) error {
