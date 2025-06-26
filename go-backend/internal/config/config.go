@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"go-backend/internal/logger"
+	"go-backend/internal/utils"
 
 	"gopkg.in/yaml.v3"
 )
@@ -18,11 +19,28 @@ type AppConfig struct {
 
 var appConfig AppConfig
 
+func getDockerConfigPath() (string, error) {
+	home, err := utils.GetUserHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".linuxio-docker.yaml"), nil
+}
+
 // LoadDockerConfig reads config.yaml or applies default values
 func LoadDockerConfig() error {
-	file, err := os.Open("/etc/linuxio/dockerConfig.yaml")
+	path, err := getDockerConfigPath()
 	if err != nil {
-		logger.Warnf("No config.yaml found, using defaults")
+		logger.Warnf("Could not determine home dir, using defaults: %v", err)
+		appConfig = AppConfig{
+			DockerAppsSubdir: "docker",
+		}
+		return nil
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		logger.Warnf("No %s found, using defaults", path)
 		appConfig = AppConfig{
 			DockerAppsSubdir: "docker",
 		}

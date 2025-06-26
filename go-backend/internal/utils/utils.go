@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go-backend/internal/logger"
 	"os"
+	"os/user"
 	"strings"
 )
 
@@ -55,4 +56,13 @@ func IsNumeric(s string) bool {
 		}
 	}
 	return true
+}
+
+// getUserHome returns the current user's home directory.
+func GetUserHome() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return u.HomeDir, nil
 }

@@ -22,7 +22,7 @@ var PWAManifest embed.FS
 //go:embed internal/config/filebrowserConfig.yaml
 var DefaultFilebrowserConfig []byte
 
-//go:embed internal/config/themeConfig.json
+//go:embed internal/config/themeConfig.yaml
 var DefaultThemeConfig []byte
 
 //go:embed internal/config/dockerConfig.yaml

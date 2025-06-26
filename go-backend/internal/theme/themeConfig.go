@@ -1,15 +1,16 @@
 package theme
 
 import (
-	"encoding/json"
 	"errors"
-	embed "go-backend"
 	"go-backend/internal/auth"
 	"go-backend/internal/logger"
 	"net/http"
 	"os"
+	"os/user"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
+	"gopkg.in/yaml.v3"
 )
 
 type ThemeSettings struct {
@@ -18,59 +19,60 @@ type ThemeSettings struct {
 	SidebarColapsed bool   `json:"sidebarColapsed"`
 }
 
-const themeFilePath = "/etc/linuxio/themeConfig.json"
-
 func InitTheme() error {
-	if _, err := os.Stat(themeFilePath); os.IsNotExist(err) {
+	path, err := getThemeFilePath()
+	if err != nil {
+		logger.Errorf("Failed to determine theme config path: %v", err)
+		return err
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		logger.Infof("No theme file found, creating from embedded default...")
-		if err := os.WriteFile(themeFilePath, embed.DefaultThemeConfig, 0660); err != nil {
-			logger.Errorf("Failed to write embedded theme config: %v", err)
-			return err
+		// Optional: if you want to embed a YAML default, otherwise create minimal struct
+		defaultTheme := ThemeSettings{
+			Theme:           "LIGHT",
+			PrimaryColor:    "#2196f3",
+			SidebarColapsed: false,
 		}
-		return nil
+		return SaveThemeToFile(defaultTheme)
 	}
 	return nil
 }
 
 func LoadTheme() (ThemeSettings, error) {
 	var settings ThemeSettings
-
-	data, err := os.ReadFile(themeFilePath)
+	path, err := getThemeFilePath()
+	if err != nil {
+		logger.Errorf("Failed to determine theme config path: %v", err)
+		return settings, err
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		logger.Errorf("Failed to read theme file: %v", err)
 		return settings, err
 	}
-
-	if err := json.Unmarshal(data, &settings); err != nil {
-		logger.Errorf("Failed to parse theme file: %v", err)
+	if err := yaml.Unmarshal(data, &settings); err != nil {
+		logger.Errorf("Failed to parse theme YAML: %v", err)
 		return settings, err
 	}
-
 	return settings, nil
 }
 
 func SaveThemeToFile(settings ThemeSettings) error {
-	data, err := json.MarshalIndent(settings, "", "  ")
+	path, err := getThemeFilePath()
 	if err != nil {
-		logger.Errorf("Failed to encode theme settings: %v", err)
+		logger.Errorf("Failed to determine theme config path: %v", err)
 		return err
 	}
-
-	// Open file with group and user write/read permissions
-	file, err := os.OpenFile(themeFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0660)
+	data, err := yaml.Marshal(&settings)
 	if err != nil {
-		logger.Errorf("Failed to open theme file: %v", err)
+		logger.Errorf("Failed to encode theme YAML: %v", err)
 		return err
 	}
-	defer file.Close()
-
-	_, err = file.Write(data)
-	if err != nil {
-		logger.Errorf("Failed to write theme file: %v", err)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		logger.Errorf("Failed to write theme YAML: %v", err)
 		return err
 	}
-
-	logger.Infof("Theme settings saved to %s", themeFilePath)
+	logger.Infof("Theme settings saved to %s", path)
 	return nil
 }
 
@@ -119,4 +121,12 @@ func RegisterThemeRoutes(router *gin.Engine) {
 
 		c.JSON(http.StatusOK, gin.H{"message": "Theme settings saved"})
 	})
+}
+
+func getThemeFilePath() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(u.HomeDir, ".linuxio-theme.yaml"), nil
 }

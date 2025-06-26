@@ -6,7 +6,6 @@ react/package-lock.json
 go-backend/frontend/
 go-backend/tmp/
 go-backend/cmd/server/server
-go-backend/theme.json
 
 # Logs and misc
 *.log
@@ -26,6 +25,5 @@ go-backend/theme.json
 # This file is used to store the sudo password for the go-backend server.
 secret.env
 go-backend/cmd/server/tmp/main
-go-backend/cmd/server/theme.json
 go-backend/cmd/bridge/linuxio-bridge
 go-backend/cmd/server/linuxio-webserver

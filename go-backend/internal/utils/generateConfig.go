@@ -24,13 +24,21 @@ func EnsureDefaultFile(path string, defaultContent []byte) error {
 }
 
 func EnsureStartupDefaults() error {
+	home, err := GetUserHome()
+	if err != nil {
+		return err
+	}
 
-	if err := EnsureDefaultFile("/etc/linuxio/themeConfig.json", embed.DefaultThemeConfig); err != nil {
+	themePath := filepath.Join(home, ".linuxio-theme.yaml")
+	if err := EnsureDefaultFile(themePath, embed.DefaultThemeConfig); err != nil {
 		return err
 	}
-	if err := EnsureDefaultFile("/etc/linuxio/dockerConfig.yaml", embed.DefaultDockerConfig); err != nil {
+
+	dockerPath := filepath.Join(home, ".linuxio-docker.yaml")
+	if err := EnsureDefaultFile(dockerPath, embed.DefaultDockerConfig); err != nil {
 		return err
 	}
-	// ...add more files as needed...
+
+	// ...add more files as needed, always under home...
 	return nil
 }

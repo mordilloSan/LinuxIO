@@ -177,8 +177,6 @@ run: build-vite-prod build-backend build-bridge
 clean: stop-bridge
 	@rm -f go-backend/cmd/server/linuxio-webserver || true
 	@rm -f go-backend/cmd/bridge/linuxio-bridge || true
-	@rm -f go-backend/cmd/server/theme.json || true
-	@rm -f go-backend/theme.json || true
 	@rm -rf react/node_modules || true
 	@rm -f react/package-lock.json || true
 	@find go-backend/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
