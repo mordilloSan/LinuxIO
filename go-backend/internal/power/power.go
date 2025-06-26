@@ -10,8 +10,7 @@ import (
 )
 
 func RegisterPowerRoutes(r *gin.Engine) {
-	group := r.Group("/power")
-	group.Use(auth.AuthMiddleware())
+	group := r.Group("/power", auth.AuthMiddleware())
 
 	group.POST("/reboot", func(c *gin.Context) {
 		sess := auth.GetSessionOrAbort(c)

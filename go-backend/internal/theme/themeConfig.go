@@ -79,7 +79,9 @@ func SaveThemeToFile(settings ThemeSettings) error {
 // --- Gin Routes ---
 
 func RegisterThemeRoutes(router *gin.Engine) {
-	router.GET("/theme/get", func(c *gin.Context) {
+
+	theme := router.Group("/theme", auth.AuthMiddleware())
+	theme.GET("/theme/get", func(c *gin.Context) {
 		settings, err := LoadTheme()
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -99,8 +101,6 @@ func RegisterThemeRoutes(router *gin.Engine) {
 		}
 		c.JSON(http.StatusOK, settings)
 	})
-
-	theme := router.Group("/theme", auth.AuthMiddleware())
 	theme.POST("/set", func(c *gin.Context) {
 		var body ThemeSettings
 

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"go-backend/internal/auth"
 	"go-backend/internal/config"
 	"go-backend/internal/logger"
 
@@ -192,7 +193,7 @@ func ListComposeProjects(c *gin.Context) {
 }
 
 func RegisterDockerComposeRoutes(router *gin.Engine) {
-	docker := router.Group("/docker/compose")
+	docker := router.Group("/docker/compose", auth.AuthMiddleware())
 	{
 		docker.GET("/projects", ListComposeProjects)
 		docker.POST("/:project/up", ComposeUp)

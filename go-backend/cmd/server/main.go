@@ -17,6 +17,7 @@ import (
 	"go-backend/internal/templates"
 	"go-backend/internal/theme"
 	"go-backend/internal/updates"
+	"go-backend/internal/wireguard"
 
 	"go-backend/internal/utils"
 	"go-backend/internal/websocket"
@@ -67,6 +68,7 @@ func main() {
 	dockers.RegisterDockerComposeRoutes(router)
 	theme.RegisterThemeRoutes(router)
 	power.RegisterPowerRoutes(router)
+	wireguard.RegisterWireGuardRoutes(router)
 
 	// Reverse Proxy for filebrowser
 	router.Any("/navigator/*proxyPath", auth.AuthMiddleware(), filebrowser.FilebrowserReverseProxy(filebrowserSecret))

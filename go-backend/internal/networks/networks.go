@@ -12,7 +12,7 @@ import (
 )
 
 func RegisterNetworkRoutes(router *gin.Engine) {
-	network := router.Group("/network")
+	network := router.Group("/network", auth.AuthMiddleware())
 	{
 		network.GET("/info", getNetworkInfo)
 		network.POST("/set-dns", postSetDNS)

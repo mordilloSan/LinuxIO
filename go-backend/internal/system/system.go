@@ -1,6 +1,7 @@
 package system
 
 import (
+	"go-backend/internal/auth"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -8,7 +9,7 @@ import (
 )
 
 func RegisterSystemRoutes(router *gin.Engine) {
-	system := router.Group("/system")
+	system := router.Group("/system", auth.AuthMiddleware())
 	{
 		system.GET("/info", getHostInfo)
 		system.GET("/cpu", getCPUInfo)
