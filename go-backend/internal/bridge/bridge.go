@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"go-backend/cmd/bridge/handlers"
+	"go-backend/cmd/bridge/handlers/types"
 	"go-backend/internal/logger"
 	"go-backend/internal/session"
 	"io"
@@ -27,37 +28,8 @@ import (
 
 var bridgeBinary = os.ExpandEnv("/usr/lib/linuxio/linuxio-bridge")
 
-type BridgeProcess struct {
-	Cmd       *exec.Cmd
-	SessionID string
-	StartedAt time.Time
-}
-
-// Request represents the standard JSON request format sent to both built-in handlers and external helpers.
-type BridgeRequest struct {
-	Type    string   `json:"type"`
-	Command string   `json:"command"`
-	Args    []string `json:"args,omitempty"`
-}
-
-// Response represents the standard JSON response returned by both built-in handlers and helpers.
-type BridgeResponse struct {
-	Status string          `json:"status"`
-	Output json.RawMessage `json:"output,omitempty"`
-	Error  string          `json:"error,omitempty"`
-}
-
-type BridgeHealthRequest struct {
-	Type    string `json:"type"`    // e.g., "healthcheck" or "validate"
-	Session string `json:"session"` // sessionID
-}
-type BridgeHealthResponse struct {
-	Status  string `json:"status"` // "ok" or "invalid"
-	Message string `json:"message,omitempty"`
-}
-
 var (
-	processes   = make(map[string]*BridgeProcess)
+	processes   = make(map[string]*types.BridgeProcess)
 	processesMu sync.Mutex
 )
 
@@ -113,7 +85,7 @@ func CallViaSocket(socketPath, reqType, command string, args []string) ([]byte, 
 	if err := enc.Encode(req); err != nil {
 		return nil, fmt.Errorf("failed to send request to bridge: %w", err)
 	}
-	var resp BridgeResponse
+	var resp types.BridgeResponse
 	if err := dec.Decode(&resp); err != nil {
 		return nil, fmt.Errorf("failed to decode response from bridge: %w", err)
 	}
@@ -191,7 +163,7 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 			return ""
 		}(), sess.SessionID, cmd.Process.Pid)
 
-	processes[sess.SessionID] = &BridgeProcess{
+	processes[sess.SessionID] = &types.BridgeProcess{
 		Cmd:       cmd,
 		SessionID: sess.SessionID,
 		StartedAt: time.Now(),
@@ -270,10 +242,10 @@ func handleBridgeRequest(conn net.Conn) {
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
 
-	var req BridgeHealthRequest
+	var req types.BridgeHealthRequest
 	if err := decoder.Decode(&req); err != nil {
 		logger.Warnf("Invalid JSON on main socket: %v", err)
-		_ = encoder.Encode(BridgeHealthResponse{Status: "error", Message: "invalid json"})
+		_ = encoder.Encode(types.BridgeHealthResponse{Status: "error", Message: "invalid json"})
 		return
 	}
 
@@ -282,19 +254,19 @@ func handleBridgeRequest(conn net.Conn) {
 		valid, err := session.IsValid(req.Session)
 		if err != nil {
 			logger.Warnf("Session validation error for %s: %v", req.Session, err)
-			_ = encoder.Encode(BridgeHealthResponse{Status: "invalid", Message: err.Error()})
+			_ = encoder.Encode(types.BridgeHealthResponse{Status: "invalid", Message: err.Error()})
 			return
 		}
 		if valid {
-			_ = encoder.Encode(BridgeHealthResponse{Status: "ok"})
+			_ = encoder.Encode(types.BridgeHealthResponse{Status: "ok"})
 		} else {
-			_ = encoder.Encode(BridgeHealthResponse{Status: "invalid", Message: "session expired"})
+			_ = encoder.Encode(types.BridgeHealthResponse{Status: "invalid", Message: "session expired"})
 		}
 		return
 	}
 
 	logger.Warnf("Unknown healthcheck request type: %s (session %s)", req.Type, req.Session)
-	_ = encoder.Encode(BridgeHealthResponse{Status: "error", Message: "unknown request type"})
+	_ = encoder.Encode(types.BridgeHealthResponse{Status: "error", Message: "unknown request type"})
 }
 
 // HandleMainRequest processes incoming bridge requests.
@@ -305,21 +277,21 @@ func HandleMainRequest(conn net.Conn, id string) {
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
 
-	var req BridgeRequest
+	var req types.BridgeRequest
 	if err := decoder.Decode(&req); err != nil {
 		if err == io.EOF {
 			logger.Debugf("🔁 [%s] connection closed without data (likely healthcheck probe)", id)
 		} else {
 			logger.Warnf("❌ [%s] invalid JSON from client: %v", id, err)
 		}
-		_ = encoder.Encode(BridgeResponse{Status: "error", Error: "invalid JSON"})
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid JSON"})
 		return
 	}
 
 	// (1) DEFENSE-IN-DEPTH: Validate handler name for fallback
 	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
 		logger.Warnf("❌ [%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
-		_ = encoder.Encode(BridgeResponse{Status: "error", Error: "invalid characters in command/type"})
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid characters in command/type"})
 		return
 	}
 
@@ -328,20 +300,20 @@ func HandleMainRequest(conn net.Conn, id string) {
 	group, found := handlers.HandlersByType[req.Type]
 	if !found || group == nil {
 		logger.Warnf("❌ Unknown type: %s", req.Type)
-		_ = encoder.Encode(BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
 		return
 	}
 	handler, ok := group[req.Command]
 	if !ok {
 		logger.Warnf("❌ Unknown command for type %s: %s", req.Type, req.Command)
-		_ = encoder.Encode(BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
 		return
 	}
 
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Errorf("🔥 Panic in %s command handler: %v", req.Type, r)
-			_ = encoder.Encode(BridgeResponse{Status: "error", Error: fmt.Sprintf("panic: %v", r)})
+			_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("panic: %v", r)})
 		}
 	}()
 	out, err := handler(req.Args)
@@ -350,17 +322,17 @@ func HandleMainRequest(conn net.Conn, id string) {
 		if out != nil {
 			rawBytes, marshalErr := json.Marshal(out)
 			if marshalErr != nil {
-				_ = encoder.Encode(BridgeResponse{Status: "error", Error: "failed to marshal handler output"})
+				_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "failed to marshal handler output"})
 				return
 			}
 			raw = json.RawMessage(rawBytes)
 		}
-		_ = encoder.Encode(BridgeResponse{Status: "ok", Output: raw})
+		_ = encoder.Encode(types.BridgeResponse{Status: "ok", Output: raw})
 		return
 	}
 
 	logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, err)
-	_ = encoder.Encode(BridgeResponse{Status: "error", Error: err.Error()})
+	_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: err.Error()})
 }
 
 func CleanupBridgeSocket(sess *session.Session) error {

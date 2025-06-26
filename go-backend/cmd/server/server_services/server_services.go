@@ -1,4 +1,4 @@
-package docker
+package server_services
 
 import (
 	"bytes"

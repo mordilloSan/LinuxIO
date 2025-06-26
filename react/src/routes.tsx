@@ -17,6 +17,7 @@ const Docker = lazy(() => import("@/pages/main/docker"));
 const Services = lazy(() => import("@/pages/main/services"));
 const Network = lazy(() => import("@/pages/main/network"));
 const Hardware = lazy(() => import("@/pages/main/hardware"));
+const Wireguard = lazy(() => import("@/pages/main/wireguard"));
 
 // Route config
 const routes = [
@@ -36,6 +37,7 @@ const routes = [
       { path: "hardware", element: <Hardware /> },
       { path: "filebrowser", element: <Filebrowser /> },
       { path: "terminal", element: <Terminal /> },
+      { path: "wireguard", element: <Wireguard /> },
     ],
   },
   {

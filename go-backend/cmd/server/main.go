@@ -3,7 +3,7 @@ package main
 import (
 	"crypto/tls"
 	embed "go-backend"
-	"go-backend/cmd/server/docker"
+	"go-backend/cmd/server/server_services"
 	"go-backend/internal/auth"
 	"go-backend/internal/benchmark"
 	"go-backend/internal/dockers"
@@ -17,10 +17,9 @@ import (
 	"go-backend/internal/templates"
 	"go-backend/internal/theme"
 	"go-backend/internal/updates"
-	"go-backend/internal/wireguard"
-
 	"go-backend/internal/utils"
 	"go-backend/internal/websocket"
+	"go-backend/internal/wireguard"
 	"net/http"
 	"os"
 
@@ -68,13 +67,13 @@ func main() {
 	dockers.RegisterDockerComposeRoutes(router)
 	theme.RegisterThemeRoutes(router)
 	power.RegisterPowerRoutes(router)
-	wireguard.RegisterWireGuardRoutes(router)
+	wireguard.RegisterWireguardRoutes(router)
 
 	// Reverse Proxy for filebrowser
 	router.Any("/navigator/*proxyPath", auth.AuthMiddleware(), filebrowser.FilebrowserReverseProxy(filebrowserSecret))
 
 	// start docker micro services
-	go docker.StartServices(filebrowserSecret)
+	go server_services.StartServices(filebrowserSecret)
 
 	// API Benchmark route
 	if env != "production" {

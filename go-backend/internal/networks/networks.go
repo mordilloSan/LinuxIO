@@ -3,6 +3,7 @@ package networks
 import (
 	"encoding/json"
 	"go-backend/cmd/bridge/handlers/dbus"
+	"go-backend/cmd/bridge/handlers/types"
 	"go-backend/internal/auth"
 	"go-backend/internal/bridge"
 	"go-backend/internal/logger"
@@ -39,7 +40,7 @@ func getNetworkInfo(c *gin.Context) {
 		return
 	}
 
-	var resp bridge.BridgeResponse
+	var resp types.BridgeResponse
 	if err := json.Unmarshal([]byte(rawResp), &resp); err != nil {
 		logger.Errorf("Invalid bridge response: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response", "detail": err.Error(), "output": rawResp})
