@@ -18,7 +18,7 @@ const transitionStyles = (theme: Theme) => ({
     ["background-color", "color", "transform"],
     {
       duration: theme.transitions.duration.shortest,
-    }
+    },
   ),
 });
 

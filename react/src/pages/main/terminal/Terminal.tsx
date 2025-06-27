@@ -1,9 +1,9 @@
+import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
-import { Box } from "@mui/material";
 
 const TerminalXTerm: React.FC = () => {
   const termRef = useRef<HTMLDivElement>(null);
@@ -69,7 +69,7 @@ const TerminalXTerm: React.FC = () => {
           JSON.stringify({
             type: "terminal_input",
             data: data,
-          })
+          }),
         );
       }
     });

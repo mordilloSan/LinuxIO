@@ -41,7 +41,8 @@ const Dashboard: React.FC = () => {
             duration: theme.transitions.duration.leavingScreen,
           }),
           ml: { md: `${sidebarWidth}px` },
-        }}>
+        }}
+      >
         <Navbar onDrawerToggle={toggleMobileOpen} />
         <Box
           className="custom-scrollbar"
@@ -50,7 +51,8 @@ const Dashboard: React.FC = () => {
             overflow: "auto",
             background: theme.palette.background.default,
             p: { xs: 5, lg: 7 },
-          }}>
+          }}
+        >
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
               <Outlet />

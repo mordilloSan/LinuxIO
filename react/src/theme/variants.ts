@@ -127,7 +127,7 @@ const darkVariant: VariantType = merge<VariantType, Partial<VariantType>>(
         background: customBlue[500],
       },
     },
-  }
+  },
 );
 
 const variants: Array<VariantType> = [defaultVariant, darkVariant];

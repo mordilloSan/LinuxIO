@@ -235,15 +235,21 @@ func WireguardHandlers() map[string]types.HandlerFunc {
 		},
 
 		"add_interface": func(args []string) (any, error) {
-			if len(args) < 4 {
+			if len(args) < 3 {
 				logger.Warnf("[wireguard] add_interface: missing args")
-				return nil, fmt.Errorf("usage: add_interface <name> <privateKey> <addresses> <listenPort>")
+				return nil, fmt.Errorf("usage: add_interface <name> <addresses> <listenPort>")
 			}
 			name := args[0]
-			logger.Infof("[wireguard] Adding interface: %s", name)
-			privateKey := args[1]
-			address := filterEmpty(strings.Split(args[2], ","))
-			listenPort, _ := strconv.Atoi(args[3])
+			address := filterEmpty(strings.Split(args[1], ","))
+			listenPort, _ := strconv.Atoi(args[2])
+
+			// --- Generate keypair here ---
+			privKey, err := wgtypes.GeneratePrivateKey()
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate private key: %w", err)
+			}
+			privateKey := privKey.String()
+
 			cfg := InterfaceConfig{
 				PrivateKey: privateKey,
 				Address:    address,

@@ -1,12 +1,14 @@
-import React, { useState } from "react";
 import { Button } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
+import React, { useState } from "react";
+
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
+
 import axios from "@/utils/axios";
 
 const CreateInterfaceButton = () => {
   const [serverName, setServerName] = useState("wg0");
-  const [port, setPort] = useState("51820");
+  const [port, setPort] = useState(51820);
   const [CIDR, setCIDR] = useState("10.10.20.0/24");
   const [peers, setPeers] = useState("1");
   const [nic, setNic] = useState("");
@@ -14,20 +16,12 @@ const CreateInterfaceButton = () => {
   const [loading, setLoading] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
 
-  // Fetch the WireGuard interfaces
-  const { data: WGinterfaces = [], refetch } = useQuery({
-    queryKey: ["WGinterfaces"],
-    queryFn: async () => {
-      const res = await axios.get("/wireguard/interfaces");
-      return res.data;
-    },
-  });
-
   // Fetch network info
   const {
     data: networkData,
     isLoading: networkLoading,
     error: networkError,
+    refetch: refetch,
   } = useQuery({
     queryKey: ["networkInfo"],
     queryFn: async () => {
@@ -47,7 +41,7 @@ const CreateInterfaceButton = () => {
           nic.mac &&
           !nic.name.startsWith("veth") &&
           !nic.name.startsWith("docker") &&
-          !nic.name.startsWith("br-")
+          !nic.name.startsWith("br-"),
       )
       .map((nic) => nic.name);
   }
@@ -57,13 +51,13 @@ const CreateInterfaceButton = () => {
     setError(null);
 
     try {
-      await axios.post("/wireguard/create", {
-        serverName,
-        port,
-        CIDR,
-        peers,
-        nic,
-      });
+      const body = {
+        name: serverName,
+        address: [CIDR],
+        listen_port: port,
+        // don't include peers or nic here, unless your backend uses them
+      };
+      await axios.post("/wireguard/interface", body);
       setShowDialog(false);
       refetch();
     } catch (error) {
@@ -81,7 +75,8 @@ const CreateInterfaceButton = () => {
       <Button
         variant="contained"
         color="primary"
-        onClick={() => setShowDialog(true)}>
+        onClick={() => setShowDialog(true)}
+      >
         Create New Interface
       </Button>
       <CreateInterfaceDialog

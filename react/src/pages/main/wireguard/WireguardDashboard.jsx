@@ -1,8 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
 import { Grid, Typography, CircularProgress, Box } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useRef, useEffect } from "react";
+
 import InterfaceDetails from "./InterfaceDetails";
+
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import axios from "@/utils/axios";
 
@@ -125,7 +127,8 @@ const WireGuardDashboard = () => {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.5 }}
-                  layout>
+                  layout
+                >
                   <Box mt={4} mb={2}>
                     <Typography variant="h5" gutterBottom>
                       Clients for {selectedInterface}

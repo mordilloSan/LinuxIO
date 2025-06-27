@@ -76,7 +76,6 @@ func WireguardAddInterface(c *gin.Context) {
 	}
 	var req struct {
 		Name       string   `json:"name"`
-		PrivateKey string   `json:"private_key"`
 		Address    []string `json:"address"`
 		ListenPort int      `json:"listen_port"`
 	}
@@ -86,7 +85,6 @@ func WireguardAddInterface(c *gin.Context) {
 	}
 	args := []string{
 		req.Name,
-		req.PrivateKey,
 		strings.Join(req.Address, ","),
 		strconv.Itoa(req.ListenPort),
 	}

@@ -20,7 +20,7 @@ function App({ emotionCache = clientSideEmotionCache }) {
   const { theme: themeName, primaryColor } = useTheme();
   const theme = useMemo(
     () => createTheme(themeName, primaryColor),
-    [themeName, primaryColor]
+    [themeName, primaryColor],
   );
 
   return (
