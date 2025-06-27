@@ -57,7 +57,6 @@ func main() {
 	}
 
 	ShutdownChan := make(chan string, 1)
-	handlers.ShutdownChan = ShutdownChan
 	handlers.RegisterAllHandlers(ShutdownChan)
 
 	acceptDone := make(chan struct{})

@@ -175,7 +175,7 @@ func logoutHandler(c *gin.Context) {
 		return
 	}
 	if s == nil {
-		logger.Debugf("[auth] No session found for ID: %s (already expired?)", sessionID)
+		logger.Debugf("No session found for ID: %s (already expired?)", sessionID)
 		c.SetCookie("session_id", "", -1, "/", "", false, true)
 		c.Status(http.StatusOK)
 		return

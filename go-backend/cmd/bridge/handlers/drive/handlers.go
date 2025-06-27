@@ -1,11 +1,11 @@
-package system
+package drive
 
 import (
 	"fmt"
 	"go-backend/cmd/bridge/handlers/types"
 )
 
-func SystemHandlers() map[string]types.HandlerFunc {
+func DriveHandlers() map[string]types.HandlerFunc {
 	return map[string]types.HandlerFunc{
 		"get_drive_info": func(args []string) (any, error) {
 			return FetchDriveInfo()

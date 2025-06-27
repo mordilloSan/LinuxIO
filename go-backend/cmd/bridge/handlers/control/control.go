@@ -1,13 +1,11 @@
-package handlers
+package control
 
 import (
 	"go-backend/cmd/bridge/handlers/types"
 	"go-backend/internal/logger"
 )
 
-var ShutdownChan chan string
-
-func ControlHandlers() map[string]types.HandlerFunc {
+func ControlHandlers(shutdownChan chan string) map[string]types.HandlerFunc {
 	return map[string]types.HandlerFunc{
 		"shutdown": func(args []string) (any, error) {
 			reason := "unknown"
@@ -16,7 +14,7 @@ func ControlHandlers() map[string]types.HandlerFunc {
 			}
 			logger.Infof("Received shutdown command: %s", reason)
 			select {
-			case ShutdownChan <- reason:
+			case shutdownChan <- reason:
 			default:
 			}
 			return "Bridge shutting down", nil

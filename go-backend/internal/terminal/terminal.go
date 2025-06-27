@@ -3,6 +3,7 @@ package terminal
 import (
 	"errors"
 	"fmt"
+	"go-backend/internal/logger"
 	"go-backend/internal/session"
 	"os"
 	"os/exec"
@@ -33,10 +34,12 @@ func StartTerminal(sess *session.Session) error {
 	defer sessionsMu.Unlock()
 
 	if _, exists := sessions[sess.SessionID]; exists {
+		logger.Warnf("Terminal already exists for session: %s", sess.SessionID)
 		return errors.New("terminal already exists for session")
 	}
 	u, err := user.Lookup(sess.User.Name)
 	if err != nil {
+		logger.Errorf("Could not lookup user %s: %v", sess.User.Name, err)
 		return fmt.Errorf("could not lookup user %s: %w", sess.User.Name, err)
 	}
 	userHome := u.HomeDir
@@ -53,6 +56,7 @@ func StartTerminal(sess *session.Session) error {
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
+		logger.Errorf("Failed to start PTY for session %s: %v", sess.SessionID, err)
 		return err
 	}
 
@@ -62,6 +66,7 @@ func StartTerminal(sess *session.Session) error {
 		Open: true,
 	}
 
+	logger.Infof("Started terminal for session %s (user: %s)", sess.SessionID, sess.User.Name)
 	return nil
 }
 
@@ -69,7 +74,11 @@ func StartTerminal(sess *session.Session) error {
 func Get(sessionID string) *TerminalSession {
 	sessionsMu.Lock()
 	defer sessionsMu.Unlock()
-	return sessions[sessionID]
+	ts := sessions[sessionID]
+	if ts == nil {
+		logger.Debugf("Get: No terminal found for session %s", sessionID)
+	}
+	return ts
 }
 
 // Close cleans up and removes the session.
@@ -79,10 +88,12 @@ func Close(sessionID string) {
 
 	ts := sessions[sessionID]
 	if ts == nil {
+		logger.Debugf("Close: No terminal found for session %s", sessionID)
 		return
 	}
 	ts.Mu.Lock()
 	defer ts.Mu.Unlock()
+
 	if ts.PTY != nil {
 		ts.PTY.Close()
 	}
@@ -91,4 +102,5 @@ func Close(sessionID string) {
 		ts.Cmd.Wait()
 	}
 	delete(sessions, sessionID)
+	logger.Infof("Closed terminal for session %s", sessionID)
 }
