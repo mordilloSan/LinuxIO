@@ -71,7 +71,7 @@ func writeFilebrowserConfig(path string, rawContent []byte, secretKey string) er
 		logger.Errorf("❌ Failed to write FileBrowser config to %s: %v", path, err)
 		return err
 	}
-	logger.Infof("✅ Wrote FileBrowser config with secret to %s", path)
+	logger.Infof("Wrote FileBrowser config with secret to %s", path)
 	return nil
 }
 
@@ -101,13 +101,13 @@ func startFileBrowserContainer(secret string) error {
 	for _, c := range containers {
 		for _, name := range c.Names {
 			if name == "/"+containerName {
-				logger.Infof("⚠️ Found existing container '%s' (status: %s), removing...", containerName, c.State)
+				logger.Infof("Found existing container '%s' (status: %s), removing...", containerName, c.State)
 				if err := dockerCli.ContainerRemove(dockerCtx, c.ID, container.RemoveOptions{
 					Force: true,
 				}); err != nil {
 					return fmt.Errorf("failed to remove existing container '%s': %w", containerName, err)
 				}
-				logger.Infof("🗑️  Removed container '%s'", containerName)
+				logger.Infof("Removed container '%s'", containerName)
 			}
 		}
 	}
@@ -157,13 +157,16 @@ func startFileBrowserContainer(secret string) error {
 	// 5. Start the container
 	if err := dockerCli.ContainerStart(dockerCtx, resp.ID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("failed to start FileBrowser container: %w", err)
+	} else {
+		logger.Infof("Started FileBrowser container: %s", containerName)
 	}
 
 	// 6. Remove the config file from disk for security after container creation
 	if err := os.Remove(configPath); err != nil {
 		logger.Warnf("Could not remove temporary config file: %v", err)
+	} else {
+		logger.Debugf("Removed temporary config file: %s", configPath)
 	}
 
-	logger.Infof("Created and started new FileBrowser Docker container")
 	return nil
 }
