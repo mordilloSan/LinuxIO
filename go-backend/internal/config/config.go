@@ -24,7 +24,7 @@ func getDockerConfigPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".linuxio-docker.yaml"), nil
+	return filepath.Join(home, ".linuxio/linuxio-docker.yaml"), nil
 }
 
 // LoadDockerConfig reads config.yaml or applies default values

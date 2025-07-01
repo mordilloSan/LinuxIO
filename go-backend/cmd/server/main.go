@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/tls"
 	embed "go-backend"
-	"go-backend/cmd/server/server_services"
 	"go-backend/internal/auth"
 	"go-backend/internal/benchmark"
 	"go-backend/internal/dockers"
@@ -46,7 +45,7 @@ func main() {
 	// Initialize cache functions
 	system.InitGPUInfo()
 	// Generate Secret Key
-	filebrowserSecret := utils.GenerateSecretKey(32)
+	filebrowser.FilebrowserSecret = utils.GenerateSecretKey(32)
 
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -70,10 +69,7 @@ func main() {
 	wireguard.RegisterWireguardRoutes(router)
 
 	// Reverse Proxy for filebrowser
-	router.Any("/navigator/*proxyPath", auth.AuthMiddleware(), filebrowser.FilebrowserReverseProxy(filebrowserSecret))
-
-	// start docker micro services
-	go server_services.StartServices(filebrowserSecret)
+	router.Any("/navigator/*proxyPath", auth.AuthMiddleware(), auth.FilebrowserReverseProxy(filebrowser.FilebrowserSecret))
 
 	// API Benchmark route
 	if env != "production" {

@@ -1,6 +1,5 @@
 server:
   port: 80
-  socket: filebrowser
   baseURL: /navigator/
   logging:
     - levels: "info|warning|error|debug"
@@ -8,13 +7,14 @@ server:
       utc: true
   sources:
     - path: /server
+  database: /home/filebrowser/data/database.db
 frontend:
   disableDefaultLinks: true
   disableUsedPercentage: false
 userDefaults:
   preview:
-    image: true
-    popup: true
+    image: false
+    popup: false
     video: false
     office: false
     highQuality: false
@@ -37,6 +37,7 @@ auth:
     proxy:
       enabled: true
       header: "{{SECRET_KEY}}"
-      createUser: true
+      createUser: false
     password:
       enabled: false
+  adminUsername: "{{USER_ID}}"
