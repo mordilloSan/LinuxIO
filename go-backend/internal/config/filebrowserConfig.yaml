@@ -7,6 +7,15 @@ server:
       utc: true
   sources:
     - path: /server
+      config:
+        exclude:
+          hidden: false
+          ignoreZeroSizeFolders: false
+          folderPaths:
+            - /proc
+            - /sys
+            - /dev
+            - /var/lib/docker
   database: /home/filebrowser/data/database.db
 frontend:
   disableDefaultLinks: true

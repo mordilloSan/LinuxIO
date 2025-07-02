@@ -84,28 +84,21 @@ func loginHandler(c *gin.Context) {
 	// 3. Create session (with privilege info)
 	sessionID := uuid.New().String()
 	user := utils.User{ID: req.Username, Name: req.Username}
-	// Create the session and check for errors
 	if err := session.CreateSession(sessionID, user, sessionDuration, privileged); err != nil {
 		logger.Errorf("Failed to create session: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session creation failed"})
 		return
 	}
 
-	// Get the session and check for errors
+	// 4. Get the session and check for errors
 	sess, err := session.Get(sessionID)
-	if err != nil {
+	if err != nil || sess == nil {
 		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "session fetch failed"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "session failure"})
 		return
 	}
 
-	if sess == nil {
-		logger.Errorf("Failed to get session after creation (id=%s)", sessionID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "session creation failed"})
-		return
-	}
-
-	// 4. Creating user specific config files
+	// 5. Creating user specific config files
 	logger.Infof("📦 Loading docker configuration...")
 	if err := config.LoadDockerConfig(); err != nil {
 		logger.Errorf("❌ Failed to load config: %v", err)
@@ -114,7 +107,7 @@ func loginHandler(c *gin.Context) {
 		logger.Errorf("❌ Failed to create docker apps directory: %v", err)
 	}
 
-	// 4. Start main socket for this session
+	// 6. Start main socket for this session
 	if err := bridge.StartBridgeSocket(sess); err != nil {
 		logger.Errorf("Failed to start main socket: %v", err)
 		session.DeleteSession(sessionID)
@@ -122,7 +115,7 @@ func loginHandler(c *gin.Context) {
 		return
 	}
 
-	// 5. Start the bridge process for this session
+	// 7. Start the bridge process for this session
 	if err := bridge.StartBridge(sess, req.Password); err != nil {
 		if privileged {
 			logger.Warnf("Privileged bridge failed, falling back to unprivileged: %v", err)
@@ -141,21 +134,21 @@ func loginHandler(c *gin.Context) {
 		}
 	}
 
-	// 6. Start the terminal PTY
+	// 8. Start the terminal PTY
 	if err := terminal.StartTerminal(sess); err != nil {
 		logger.Errorf("[WebSocket] Shell failed: %v", err)
 	}
 
-	// 7 . Start FileBrowser
+	// 9 . Start FileBrowser
 	go filebrowser.StartServices(filebrowser.FilebrowserSecret, sess)
 
-	// 7. Set session cookie
+	// 10. Set session cookie
 	env := os.Getenv("GO_ENV")
 	isHTTPS := c.Request.TLS != nil
 	secureCookie := env == "production" && isHTTPS
 	c.SetCookie("session_id", sessionID, int(sessionDuration.Seconds()), "/", "", secureCookie, true)
 
-	// 9. Send response
+	// 11. Send response
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": privileged})
 
 }
