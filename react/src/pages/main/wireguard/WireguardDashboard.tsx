@@ -4,25 +4,28 @@ import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect } from "react";
 
 import InterfaceDetails from "./InterfaceDetails";
-
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import axios from "@/utils/axios";
+import { WireGuardInterface } from "@/types/wireguard";
 
-const WireGuardDashboard = () => {
-  const [selectedInterface, setSelectedInterface] = useState(null);
-  const selectedCardRef = useRef(null);
-  const interfaceDetailsRef = useRef(null);
+const WireGuardDashboard: React.FC = () => {
+  const [selectedInterface, setSelectedInterface] = useState<string | null>(
+    null
+  );
+  const selectedCardRef = useRef<HTMLDivElement>(null!);
+  const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
 
-  // Fetch the WireGuard interfaces -- fix here!
   const {
     data: interfaceData,
     isLoading,
     isError,
     refetch,
-  } = useQuery({
+  } = useQuery<{ interfaces: WireGuardInterface[] }>({
     queryKey: ["wireguardInterfaces"],
     queryFn: async () => {
-      const res = await axios.get("/wireguard/interfaces");
+      const res = await axios.get<{ interfaces: WireGuardInterface[] }>(
+        "/wireguard/interfaces"
+      );
       return res.data;
     },
     refetchInterval: 50000,
@@ -31,22 +34,25 @@ const WireGuardDashboard = () => {
   const WGinterfaces = interfaceData?.interfaces || [];
 
   useEffect(() => {
-    function handleClickOutside(event) {
+    function handleClickOutside(event: MouseEvent | KeyboardEvent) {
       if (event.type === "mousedown") {
+        const mouseEvent = event as MouseEvent;
         if (
           selectedCardRef.current &&
-          !selectedCardRef.current.contains(event.target) &&
+          !selectedCardRef.current.contains(mouseEvent.target as Node) &&
           interfaceDetailsRef.current &&
-          !interfaceDetailsRef.current.contains(event.target)
+          !interfaceDetailsRef.current.contains(mouseEvent.target as Node)
         ) {
           setSelectedInterface(null);
         }
       } else if (event.type === "keydown") {
-        if (event.key === "Escape" || event.key === "Esc") {
+        const keyboardEvent = event as KeyboardEvent;
+        if (keyboardEvent.key === "Escape" || keyboardEvent.key === "Esc") {
           setSelectedInterface(null);
         }
       }
     }
+
     if (selectedInterface) {
       document.addEventListener("mousedown", handleClickOutside);
       document.addEventListener("keydown", handleClickOutside);
@@ -57,7 +63,7 @@ const WireGuardDashboard = () => {
     };
   }, [selectedInterface]);
 
-  const handleDelete = async (interfaceName) => {
+  const handleDelete = async (interfaceName: string) => {
     try {
       await axios.delete(`/wireguard/interface/${interfaceName}`);
       refetch();
@@ -67,7 +73,7 @@ const WireGuardDashboard = () => {
     }
   };
 
-  const handleAddPeer = async (interfaceName, peerData) => {
+  const handleAddPeer = async (interfaceName: string, peerData: any) => {
     try {
       await axios.post(`/wireguard/interface/${interfaceName}/peer`, peerData);
       refetch();
@@ -76,7 +82,10 @@ const WireGuardDashboard = () => {
     }
   };
 
-  const handleToggleInterface = async (interfaceName, status) => {
+  const handleToggleInterface = async (
+    interfaceName: string,
+    status: "up" | "down"
+  ) => {
     try {
       if (status !== "up" && status !== "down") {
         throw new Error('Action must be either "up" or "down".');
@@ -88,7 +97,7 @@ const WireGuardDashboard = () => {
     }
   };
 
-  const handleSelectInterface = (iface) => {
+  const handleSelectInterface = (iface: WireGuardInterface) => {
     setSelectedInterface(iface.name === selectedInterface ? null : iface.name);
   };
 
@@ -103,7 +112,9 @@ const WireGuardDashboard = () => {
           <AnimatePresence>
             <Grid container spacing={3}>
               {WGinterfaces.map((iface) => (
-                <Grid item xs={12} md={6} lg={4} key={iface.name}>
+                <Grid
+                  size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 4 }}
+                  key={iface.name}>
                   <WireguardInterfaceCard
                     iface={iface}
                     selectedInterface={selectedInterface}
@@ -121,14 +132,13 @@ const WireGuardDashboard = () => {
           </AnimatePresence>
           {selectedInterface && (
             <Grid container spacing={3}>
-              <Grid item xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.5 }}
-                  layout
-                >
+                  layout>
                   <Box mt={4} mb={2}>
                     <Typography variant="h5" gutterBottom>
                       Clients for {selectedInterface}

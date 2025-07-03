@@ -1,11 +1,24 @@
+import { WireGuardInterface } from "@/types/wireguard";
 import { Delete, Edit } from "@mui/icons-material";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
 import { Card, CardContent, Typography, Box, IconButton } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
-import React from "react";
+import React, { RefObject } from "react";
 
-const InterfaceCard = ({
+// Props type
+interface InterfaceCardProps {
+  iface: WireGuardInterface;
+  selectedInterface: string | null;
+  selectedCardRef: RefObject<HTMLDivElement> | null;
+  primaryColor?: string;
+  handleSelectInterface: (iface: WireGuardInterface) => void;
+  handleToggleInterface: (name: string, status: "up" | "down") => void;
+  handleDelete: (name: string) => void;
+  handleAddPeer: (name: string, peerData: any) => void;
+}
+
+const InterfaceCard: React.FC<InterfaceCardProps> = ({
   iface,
   selectedInterface,
   selectedCardRef,
@@ -16,7 +29,7 @@ const InterfaceCard = ({
   handleAddPeer,
 }) => {
   const theme = useTheme();
-  const color = "primary"; // Default color
+  const color = "primary";
 
   const hoverStyles = {
     borderBottomWidth: "3px",
@@ -31,8 +44,7 @@ const InterfaceCard = ({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
       transition={{ duration: 0.3 }}
-      layout
-    >
+      layout>
       <Card
         ref={iface.name === selectedInterface ? selectedCardRef : null}
         sx={{
@@ -40,21 +52,18 @@ const InterfaceCard = ({
           borderBottomWidth: "2px",
           borderBottomStyle: "solid",
           borderBottomColor:
-            theme.palette[color]?.darkerOpacity ||
-            theme.palette.primary.darkerOpacity,
+            theme.palette[color]?.dark || theme.palette.primary.dark,
           transition:
             "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out",
           "&:hover": hoverStyles,
           ...(iface.name === selectedInterface && hoverStyles),
         }}
-        onClick={() => handleSelectInterface(iface)}
-      >
+        onClick={() => handleSelectInterface(iface)}>
         <CardContent>
           <Box
             display="flex"
             justifyContent="space-between"
-            alignItems="center"
-          >
+            alignItems="center">
             <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
               {iface.name}
             </Typography>
@@ -68,26 +77,23 @@ const InterfaceCard = ({
                   e.stopPropagation();
                   handleToggleInterface(
                     iface.name,
-                    iface.isConnected === "Active" ? "down" : "up",
+                    iface.isConnected === "Active" ? "down" : "up"
                   );
-                }}
-              >
+                }}>
                 <PowerSettingsNewIcon />
               </IconButton>
               <IconButton
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDelete(iface.name);
-                }}
-              >
+                }}>
                 <Delete />
               </IconButton>
               <IconButton
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleAddPeer(iface.name, "peerName"); // Replace "peerName" with actual value
-                }}
-              >
+                  handleAddPeer(iface.name, {}); // Provide actual peerData here
+                }}>
                 <Edit />
               </IconButton>
             </Box>

@@ -12,52 +12,49 @@ import {
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React, { useState } from "react";
-
 import axios from "@/utils/axios";
 
-const InterfaceDetails = ({ params }) => {
-  const [qrCode, setQrCode] = useState(null);
+type Peer = {
+  public_key: string;
+  allowed_ips?: string[];
+  endpoint?: string;
+  preshared_key?: string;
+  persistent_keepalive?: number;
+};
+
+interface InterfaceDetailsProps {
+  params: {
+    id: string;
+  };
+}
+
+const InterfaceDetails: React.FC<InterfaceDetailsProps> = ({ params }) => {
+  const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [loadingQr, setLoadingQr] = useState(false);
+
   const interfaceName = params.id;
 
-  // Fetch peer list for this interface
   const {
     data: peers = [],
     isLoading,
     isError,
     refetch,
-  } = useQuery({
+  } = useQuery<Peer[]>({
     queryKey: ["wg-peers", interfaceName],
     queryFn: async () => {
       const res = await axios.get(
-        `/wireguard/interface/${interfaceName}/peers`,
+        `/wireguard/interface/${interfaceName}/peers`
       );
-      // If the backend returns an object, not an array, fix here!
       return Array.isArray(res.data) ? res.data : res.data.peers || [];
     },
     enabled: !!interfaceName,
   });
 
-  // Optionally, fetch interface info
-  // const { data: interfaceData } = useQuery({
-  //   queryKey: ["wg-interface", interfaceName],
-  //   queryFn: async () => {
-  //     const res = await axios.get(`/wireguard/interface/${interfaceName}`);
-  //     return res.data;
-  //   },
-  //   enabled: !!interfaceName,
-  // });
-
-  if (isLoading) return <CircularProgress />;
-  if (isError)
-    return <Typography color="error">Failed to load peer details</Typography>;
-
-  // NOTE: Adjust peer fields as needed to match your backend
-  const handleDeletePeer = async (publicKey) => {
+  const handleDeletePeer = async (publicKey: string) => {
     try {
       await axios.delete(
-        `/wireguard/interface/${interfaceName}/peer/${publicKey}`,
+        `/wireguard/interface/${interfaceName}/peer/${publicKey}`
       );
       refetch();
     } catch (error) {
@@ -65,19 +62,17 @@ const InterfaceDetails = ({ params }) => {
     }
   };
 
-  const handleDownloadConfig = (publicKey) => {
-    // Adjust this route as per your backend
+  const handleDownloadConfig = (publicKey: string) => {
     window.location.href = `/wireguard/interface/${interfaceName}/peer/${publicKey}/config`;
   };
 
-  const handleViewQrCode = async (publicKey) => {
+  const handleViewQrCode = async (publicKey: string) => {
     setLoadingQr(true);
     try {
-      // Adjust this route as per your backend
       const res = await axios.get(
-        `/wireguard/interface/${interfaceName}/peer/${publicKey}/qrcode`,
+        `/wireguard/interface/${interfaceName}/peer/${publicKey}/qrcode`
       );
-      setQrCode(res.data.qrcode); // assuming backend returns { qrcode: "data:image/png;base64,..." }
+      setQrCode(res.data.qrcode);
       setOpenDialog(true);
     } catch (error) {
       console.error("Failed to fetch QR code:", error);
@@ -86,23 +81,22 @@ const InterfaceDetails = ({ params }) => {
     }
   };
 
+  if (isLoading) return <CircularProgress />;
+  if (isError)
+    return <Typography color="error">Failed to load peer details</Typography>;
+
   return (
     <>
       <Grid container spacing={3}>
         {peers.length === 0 ? (
-          <Grid item xs={12}>
+          <Grid size={{ xs: 6, sm: 4, md: 4, lg: 3, xl: 2 }}>
             <Typography>No peers found for this interface.</Typography>
           </Grid>
         ) : (
           peers.map((peer, idx) => (
             <Grid
-              item
-              xs={12}
-              sm={6}
-              md={6}
-              lg={4}
-              key={peer.public_key || idx}
-            >
+              size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
+              key={peer.public_key || idx}>
               <Card>
                 <CardContent>
                   <Box display="flex" justifyContent="space-between">
@@ -113,20 +107,17 @@ const InterfaceDetails = ({ params }) => {
                       <IconButton
                         aria-label="Delete"
                         onClick={() => handleDeletePeer(peer.public_key)}
-                        sx={{ color: "red" }}
-                      >
+                        sx={{ color: "red" }}>
                         <Delete />
                       </IconButton>
                       <IconButton
                         aria-label="Download Config"
-                        onClick={() => handleDownloadConfig(peer.public_key)}
-                      >
+                        onClick={() => handleDownloadConfig(peer.public_key)}>
                         <GetApp />
                       </IconButton>
                       <IconButton
                         aria-label="View QR Code"
-                        onClick={() => handleViewQrCode(peer.public_key)}
-                      >
+                        onClick={() => handleViewQrCode(peer.public_key)}>
                         <QrCode />
                       </IconButton>
                     </Box>
@@ -142,9 +133,8 @@ const InterfaceDetails = ({ params }) => {
                     Preshared Key: {peer.preshared_key || "-"}
                   </Typography>
                   <Typography variant="body2">
-                    Keep Alive: {peer.persistent_keepalive || "-"}
+                    Keep Alive: {peer.persistent_keepalive ?? "-"}
                   </Typography>
-                  {/* Add more fields if needed */}
                 </CardContent>
               </Card>
             </Grid>
@@ -157,13 +147,11 @@ const InterfaceDetails = ({ params }) => {
         onClose={() => {
           setOpenDialog(false);
           setQrCode(null);
-        }}
-      >
+        }}>
         <DialogContent>
           {loadingQr ? (
             <Typography>Loading QR code...</Typography>
           ) : qrCode ? (
-            // <Image src={qrCode} alt="QR Code" width={300} height={300} style={{ width: "100%", height: "auto" }} />
             <img
               src={qrCode}
               alt="QR Code"

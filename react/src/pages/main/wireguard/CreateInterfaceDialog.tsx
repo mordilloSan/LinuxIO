@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Dialog,
   DialogTitle,
@@ -12,9 +13,27 @@ import {
   Select,
   MenuItem,
 } from "@mui/material";
-import React from "react";
 
-const CreateInterfaceDialog = ({
+interface CreateInterfaceDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onCreate: () => void;
+  loading: boolean;
+  error?: string;
+  serverName: string;
+  setServerName: (name: string) => void;
+  port: string | number;
+  setPort: (port: number) => void;
+  CIDR: string;
+  setCIDR: (cidr: string) => void;
+  peers: number;
+  setPeers: (peers: number) => void;
+  nic: string;
+  setNic: (nic: string) => void;
+  availableNICs: string[];
+}
+
+const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
   open,
   onClose,
   onCreate,
@@ -48,7 +67,7 @@ const CreateInterfaceDialog = ({
             label="Port"
             type="number"
             value={port}
-            onChange={(e) => setPort(e.target.value)}
+            onChange={(e) => setPort(Number(e.target.value))}
             fullWidth
             margin="normal"
           />
@@ -67,28 +86,24 @@ const CreateInterfaceDialog = ({
             fullWidth
             margin="normal"
           />
-          {/* NIC Selector Dropdown */}
           <FormControl fullWidth margin="normal">
             <InputLabel id="nic-select-label">NIC</InputLabel>
             <Select
               labelId="nic-select-label"
               value={nic}
-              onChange={(e) => setNic(e.target.value)}
-              label="NIC"
-            >
+              onChange={(e) => setNic(e.target.value as string)}
+              label="NIC">
               {availableNICs.length === 0 ? (
                 <MenuItem disabled>No NICs Available</MenuItem>
               ) : (
                 availableNICs.map((nicOption) => (
                   <MenuItem key={nicOption} value={nicOption}>
-                    {" "}
                     {nicOption}
                   </MenuItem>
                 ))
               )}
             </Select>
           </FormControl>
-
           {error && (
             <Alert severity="error" sx={{ mt: 2 }}>
               {error}
@@ -103,8 +118,7 @@ const CreateInterfaceDialog = ({
         <Button
           onClick={onCreate}
           color="primary"
-          disabled={!serverName || !port || loading}
-        >
+          disabled={!serverName || !port || loading}>
           {loading ? "Creating..." : "Create Interface"}
         </Button>
       </DialogActions>

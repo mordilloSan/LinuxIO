@@ -30,8 +30,13 @@ const CreateInterfaceButton = () => {
     },
   });
 
-  // Function to extract physical NICs
-  function getPhysicalNICs(data) {
+  interface NetworkInterface {
+    name: string;
+    type: string;
+    mac?: string;
+  }
+
+  function getPhysicalNICs(data: NetworkInterface[] | undefined): string[] {
     if (!Array.isArray(data)) return [];
     return data
       .filter(
@@ -41,7 +46,7 @@ const CreateInterfaceButton = () => {
           nic.mac &&
           !nic.name.startsWith("veth") &&
           !nic.name.startsWith("docker") &&
-          !nic.name.startsWith("br-"),
+          !nic.name.startsWith("br-")
       )
       .map((nic) => nic.name);
   }
@@ -64,7 +69,7 @@ const CreateInterfaceButton = () => {
       await axios.post("/wireguard/interface", body);
       setShowDialog(false);
       refetch();
-    } catch (error) {
+    } catch (error: any) {
       setError(error.response?.data?.error || error.message);
     } finally {
       setLoading(false);
@@ -79,8 +84,7 @@ const CreateInterfaceButton = () => {
       <Button
         variant="contained"
         color="primary"
-        onClick={() => setShowDialog(true)}
-      >
+        onClick={() => setShowDialog(true)}>
         Create New Interface
       </Button>
       <CreateInterfaceDialog
@@ -88,7 +92,7 @@ const CreateInterfaceButton = () => {
         onClose={() => setShowDialog(false)}
         onCreate={handleCreateInterface}
         loading={loading}
-        error={error}
+        error={error || undefined}
         serverName={serverName}
         setServerName={setServerName}
         port={port}
