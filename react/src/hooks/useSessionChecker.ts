@@ -24,7 +24,7 @@ export default function useSessionChecker(
     onSignOut?: () => void;
     onSignIn?: (user: AuthUser) => void;
     log?: boolean;
-  }
+  },
 ) {
   const checkSession = useCallback(async () => {
     try {

@@ -4,8 +4,11 @@ import React, {
   useReducer,
   useCallback,
   useMemo,
+  useState,
 } from "react";
+import { toast } from "sonner";
 
+import useSessionChecker from "@/hooks/useSessionChecker";
 import {
   AuthContextType,
   AuthState,
@@ -15,8 +18,6 @@ import {
   AuthUser,
 } from "@/types/auth";
 import axios from "@/utils/axios";
-import useSessionChecker from "@/hooks/useSessionChecker";
-import { toast } from "sonner";
 
 const initialState: AuthState = {
   isAuthenticated: false,
@@ -59,6 +60,7 @@ AuthContext.displayName = "AuthContext";
 
 function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // Memoize fetchUser so signIn and initialize can depend on it
   const fetchUser = useCallback(async (): Promise<AuthUser> => {
@@ -79,7 +81,7 @@ function AuthProvider({ children }: AuthProviderProps) {
   const checkSession = useSessionChecker(fetchUser, state, dispatch, {
     onSignOut: () => {
       toast.error("Session expired. Please sign in again.");
-      window.location.href = "/sign-in";
+      setSessionExpired(true);
     },
     onSignIn: (user) => {
       toast.success(`Welcome back, ${user.name}!`);
@@ -90,6 +92,12 @@ function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    if (sessionExpired) {
+      window.location.href = "/sign-in";
+    }
+  }, [sessionExpired]);
 
   useEffect(() => {
     if (!state.isInitialized) return;
@@ -126,7 +134,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       const user = await fetchUser();
       dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
     },
-    [fetchUser]
+    [fetchUser],
   );
 
   const signOut = useCallback(async () => {
@@ -142,7 +150,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       signIn,
       signOut,
     }),
-    [state, signIn, signOut]
+    [state, signIn, signOut],
   );
 
   return (

@@ -20,7 +20,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
 
   if (!isAuthenticated) {
     const redirectPath = `/sign-in?redirect=${encodeURIComponent(
-      location.pathname + location.search
+      location.pathname + location.search,
     )}`;
     return <Navigate to={redirectPath} replace />;
   }
