@@ -1,8 +1,7 @@
 import React, { PropsWithChildren } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
-import PageLoader from "../loaders/PageLoader";
-
+import PageLoader from "@/components/loaders/PageLoader";
 import useAuth from "@/hooks/useAuth";
 
 /**
@@ -10,18 +9,6 @@ import useAuth from "@/hooks/useAuth";
  *
  * Renders a loading component until auth is initialized,
  * and redirects to `/sign-in?redirect=...` if not authenticated.
- *
- * @example
- * ```tsx
- * <Route
- *   path="/admin"
- *   element={
- *     <AuthGuard>
- *       <AdminPage />
- *     </AuthGuard>
- *   }
- * />
- * ```
  */
 export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
   const { isAuthenticated, isInitialized } = useAuth();
@@ -33,7 +20,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
 
   if (!isAuthenticated) {
     const redirectPath = `/sign-in?redirect=${encodeURIComponent(
-      location.pathname + location.search,
+      location.pathname + location.search
     )}`;
     return <Navigate to={redirectPath} replace />;
   }

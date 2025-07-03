@@ -15,6 +15,8 @@ import {
   AuthUser,
 } from "@/types/auth";
 import axios from "@/utils/axios";
+import useSessionChecker from "@/hooks/useSessionChecker";
+import { toast } from "sonner";
 
 const initialState: AuthState = {
   isAuthenticated: false,
@@ -74,17 +76,27 @@ function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [fetchUser]);
 
+  const checkSession = useSessionChecker(fetchUser, state, dispatch, {
+    onSignOut: () => {
+      toast.error("Session expired. Please sign in again.");
+      window.location.href = "/sign-in";
+    },
+    onSignIn: (user) => {
+      toast.success(`Welcome back, ${user.name}!`);
+    },
+    log: true,
+  });
+
   useEffect(() => {
     initialize();
   }, [initialize]);
 
   useEffect(() => {
-    // Only run after initial auth check is complete
     if (!state.isInitialized) return;
 
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
-        initialize();
+        checkSession();
       }
     };
 
@@ -95,7 +107,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       window.removeEventListener("visibilitychange", handleVisibilityOrFocus);
       window.removeEventListener("focus", handleVisibilityOrFocus);
     };
-  }, [initialize, state.isInitialized]);
+  }, [checkSession, state.isInitialized]);
 
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
@@ -108,23 +120,21 @@ function AuthProvider({ children }: AuthProviderProps) {
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
-  // Memoized signIn and signOut
   const signIn = useCallback(
     async (username: string, password: string) => {
       await axios.post("/auth/login", { username, password });
       const user = await fetchUser();
       dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
     },
-    [fetchUser],
+    [fetchUser]
   );
 
   const signOut = useCallback(async () => {
     await axios.get("/auth/logout");
-    localStorage.setItem("logout", Date.now().toString()); // Broadcast logout
+    localStorage.setItem("logout", Date.now().toString());
     dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
   }, []);
 
-  // Memoize context value for optimal render performance
   const contextValue = useMemo(
     () => ({
       ...state,
@@ -132,7 +142,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       signIn,
       signOut,
     }),
-    [state, signIn, signOut],
+    [state, signIn, signOut]
   );
 
   return (
