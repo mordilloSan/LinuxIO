@@ -63,7 +63,7 @@ const CreateInterfaceDialog = ({
             label="Peers"
             type="number"
             value={peers}
-            onChange={(e) => setPeers(e.target.value)}
+            onChange={(e) => setPeers(Number(e.target.value))}
             fullWidth
             margin="normal"
           />
@@ -74,8 +74,7 @@ const CreateInterfaceDialog = ({
               labelId="nic-select-label"
               value={nic}
               onChange={(e) => setNic(e.target.value)}
-              label="NIC"
-            >
+              label="NIC">
               {availableNICs.length === 0 ? (
                 <MenuItem disabled>No NICs Available</MenuItem>
               ) : (
@@ -103,8 +102,7 @@ const CreateInterfaceDialog = ({
         <Button
           onClick={onCreate}
           color="primary"
-          disabled={!serverName || !port || loading}
-        >
+          disabled={!serverName || !port || loading}>
           {loading ? "Creating..." : "Create Interface"}
         </Button>
       </DialogActions>

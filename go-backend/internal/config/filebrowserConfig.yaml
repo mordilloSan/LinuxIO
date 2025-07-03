@@ -15,7 +15,6 @@ server:
             - /proc
             - /sys
             - /dev
-            - /var/lib/docker
   database: /home/filebrowser/data/database.db
 frontend:
   disableDefaultLinks: true

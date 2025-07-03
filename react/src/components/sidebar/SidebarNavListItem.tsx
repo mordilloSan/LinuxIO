@@ -66,7 +66,7 @@ const SidebarNavListItem: React.FC<SidebarNavListItemProps> = ({
         "&.Mui-selected": {
           background: `linear-gradient(90deg, ${lighten(
             0.25,
-            activeColor,
+            activeColor
           )} 0%, ${activeColor} 50%)`,
           color: "#fff",
           "& svg": {
@@ -77,8 +77,7 @@ const SidebarNavListItem: React.FC<SidebarNavListItemProps> = ({
             fontWeight: theme.typography.fontWeightMedium,
           },
         },
-      }}
-    >
+      }}>
       {icon && (
         <ListItemIcon
           sx={{
@@ -86,8 +85,7 @@ const SidebarNavListItem: React.FC<SidebarNavListItemProps> = ({
             justifyContent: "center",
             color: "inherit",
             transition: "margin 0.3s ease",
-          }}
-        >
+          }}>
           {renderIcon()}
         </ListItemIcon>
       )}

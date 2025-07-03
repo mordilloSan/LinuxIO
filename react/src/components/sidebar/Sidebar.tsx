@@ -63,8 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
         },
       }}
       onMouseEnter={isDesktop ? handleMouseEnter : undefined}
-      onMouseLeave={isDesktop ? handleMouseLeave : undefined}
-    >
+      onMouseLeave={isDesktop ? handleMouseLeave : undefined}>
       <Box
         sx={{
           display: "flex",
@@ -73,8 +72,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
           backgroundColor: theme.sidebar.header.background,
           minHeight: { xs: 56, sm: 64 },
           position: "relative",
-        }}
-      >
+        }}>
         <LogoDisplay showText={showText} />
 
         {isDesktop && (!collapsed || (hovered && collapsed)) && (
@@ -87,8 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
               transform: "translateY(-50%)",
               cursor: "pointer",
               display: "inline-flex",
-            }}
-          >
+            }}>
             {!collapsed && <ChevronLeft sx={{ width: 22, height: 22 }} />}
             {hovered && collapsed && (
               <ChevronRight sx={{ width: 22, height: 22 }} />

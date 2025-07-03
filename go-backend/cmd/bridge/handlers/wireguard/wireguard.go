@@ -1,13 +1,17 @@
 package wireguard
 
 import (
+	"encoding/json"
 	"fmt"
 	"go-backend/internal/logger"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -22,6 +26,7 @@ type PeerConfig struct {
 	AllowedIPs          []string `json:"allowed_ips"`
 	Endpoint            string   `json:"endpoint"`
 	PersistentKeepalive int      `json:"persistent_keepalive"`
+	PrivateKey          string   `json:"private_key"`
 }
 
 type InterfaceConfig struct {
@@ -70,13 +75,14 @@ func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 func WriteWireGuardConfig(path string, cfg InterfaceConfig) error {
 	iniFile := ini.Empty()
 	ifSec, _ := iniFile.NewSection("Interface")
-	ifSec.NewKey("PrivateKey", cfg.PrivateKey)
 	if len(cfg.Address) > 0 {
 		ifSec.NewKey("Address", strings.Join(cfg.Address, ","))
 	}
 	if cfg.ListenPort > 0 {
 		ifSec.NewKey("ListenPort", fmt.Sprint(cfg.ListenPort))
 	}
+	ifSec.NewKey("PrivateKey", cfg.PrivateKey)
+
 	if len(cfg.DNS) > 0 {
 		ifSec.NewKey("DNS", strings.Join(cfg.DNS, ","))
 	}
@@ -142,30 +148,48 @@ func ExportPeerConfigToDisk(interfaceName string, peer PeerConfig, ifaceCfg Inte
 	if err := os.MkdirAll(peerDir, 0700); err != nil {
 		return "", fmt.Errorf("failed to create peer dir: %w", err)
 	}
-	peerName := peer.PublicKey[:8] // or any identifier you want
+	peerName := peer.PublicKey[:8]
 	peerPath := filepath.Join(peerDir, peerName+".conf")
 
 	iniFile := ini.Empty()
+
+	// [Interface]
 	ifSec, _ := iniFile.NewSection("Interface")
+
 	if len(peer.AllowedIPs) > 0 {
-		ifSec.NewKey("Address", strings.Join(peer.AllowedIPs, ","))
+		ifSec.NewKey("Address", peer.AllowedIPs[0])
 	}
+	if ifaceCfg.ListenPort > 0 {
+		ifSec.NewKey("ListenPort", fmt.Sprintf("%d", ifaceCfg.ListenPort))
+	}
+	if peer.PrivateKey == "" {
+		return "", fmt.Errorf("peer private key is empty")
+	}
+	ifSec.NewKey("PrivateKey", peer.PrivateKey)
+
 	if len(ifaceCfg.DNS) > 0 {
 		ifSec.NewKey("DNS", strings.Join(ifaceCfg.DNS, ","))
 	}
+
+	// [Peer]
 	peerSec, _ := iniFile.NewSection("Peer")
 	serverKey, _ := wgtypes.ParseKey(ifaceCfg.PrivateKey)
 	peerSec.NewKey("PublicKey", serverKey.PublicKey().String())
-	if ifaceCfg.ListenPort > 0 {
-		peerSec.NewKey("Endpoint", fmt.Sprintf("<server-ip>:%d", ifaceCfg.ListenPort))
+
+	peerSec.NewKey("AllowedIPs", "0.0.0.0/0, ::/0")
+	// Get public IP
+	publicIP, err := GetPublicIP()
+	if err != nil {
+		return "", fmt.Errorf("failed to get public IP: %w", err)
 	}
+	peerSec.NewKey("Endpoint", publicIP)
+
 	if peer.PresharedKey != "" {
 		peerSec.NewKey("PresharedKey", peer.PresharedKey)
 	}
 	if peer.PersistentKeepalive > 0 {
 		peerSec.NewKey("PersistentKeepalive", fmt.Sprintf("%d", peer.PersistentKeepalive))
 	}
-	peerSec.NewKey("AllowedIPs", "0.0.0.0/0,::/0")
 
 	if err := iniFile.SaveTo(peerPath); err != nil {
 		return "", fmt.Errorf("failed to save peer config: %w", err)
@@ -230,37 +254,100 @@ func GetInterface(args []string) (any, error) {
 }
 
 func AddInterface(args []string) (any, error) {
-	if len(args) < 3 {
+	if len(args) < 4 {
 		logger.Warnf("[wireguard] add_interface: missing args")
-		return nil, fmt.Errorf("usage: add_interface <name> <addresses> <listenPort>")
+		return nil, fmt.Errorf("usage: add_interface <name> <addresses> <listenPort> <egressNic> [dns] [mtu] [peers_json]")
 	}
+
 	name := args[0]
 	address := filterEmpty(strings.Split(args[1], ","))
 	listenPort, _ := strconv.Atoi(args[2])
+	egressNic := args[3]
 
-	// --- Generate keypair here ---
+	dns := []string{}
+	if len(args) > 4 && args[4] != "" {
+		dns = filterEmpty(strings.Split(args[4], ","))
+	}
+
+	mtu := 0
+	if len(args) > 5 && args[5] != "" {
+		mtu, _ = strconv.Atoi(args[5])
+	}
+
+	var peers []PeerConfig
+
+	if len(args) > 6 && args[6] != "" && args[6] != "null" && args[6] != "[]" {
+		if err := json.Unmarshal([]byte(args[6]), &peers); err != nil {
+			return nil, fmt.Errorf("failed to parse peers JSON: %w", err)
+		}
+	}
+
+	// Auto-generate peers if NumPeers > 0 and no peers were passed
+	if len(peers) == 0 && len(args) > 7 {
+		numPeers, _ := strconv.Atoi(args[7])
+		if numPeers > 0 {
+			for i := range numPeers {
+				peerPriv, err := wgtypes.GeneratePrivateKey()
+				if err != nil {
+					return nil, fmt.Errorf("failed to generate peer key: %w", err)
+				}
+				peer := PeerConfig{
+					PublicKey:  peerPriv.PublicKey().String(),
+					PrivateKey: peerPriv.String(),
+					AllowedIPs: []string{
+						fmt.Sprintf("%s%d/32", strings.TrimSuffix(address[0][:strings.LastIndex(address[0], ".")+1], "/24"), i+2),
+					},
+					PersistentKeepalive: 25,
+				}
+				peers = append(peers, peer)
+			}
+		}
+	}
+
 	privKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate private key: %w", err)
 	}
 	privateKey := privKey.String()
+	publicKey := privKey.PublicKey().String()
 
 	cfg := InterfaceConfig{
 		PrivateKey: privateKey,
 		Address:    address,
 		ListenPort: listenPort,
+		DNS:        dns,
+		MTU:        mtu,
+		Peers:      peers,
 	}
-	if err := WriteWireGuardConfig(configPath(name), cfg); err != nil {
+
+	for _, peer := range peers {
+		if _, err := ExportPeerConfigToDisk(name, peer, cfg); err != nil {
+			logger.Warnf("[wireguard] Failed to export client config for peer %s: %v", peer.PublicKey, err)
+		} else {
+			logger.Infof("[wireguard] Exported client config for peer %s", peer.PublicKey)
+		}
+	}
+
+	if err := WriteWireGuardConfigWithPostUpDown(configPath(name), cfg, egressNic); err != nil {
 		logger.Errorf("[wireguard] Failed to write config for %s: %v", name, err)
 		return nil, err
 	}
+
 	cmd := exec.Command("wg-quick", "up", name)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		logger.Errorf("[wireguard] Failed to bring up %s: %v (%s)", name, err, string(out))
 		return nil, fmt.Errorf("failed to bring up interface: %v (%s)", err, string(out))
 	}
+
 	logger.Infof("[wireguard] Interface %s created and brought up", name)
-	return "created", nil
+
+	return map[string]any{
+		"status":      "created",
+		"private_key": privateKey,
+		"public_key":  publicKey,
+		"peers":       peers,
+	}, nil
+
 }
 
 func RemoveInterface(args []string) (any, error) {
@@ -433,4 +520,71 @@ func GetKeys(args []string) (any, error) {
 		"private_key": priv,
 		"public_key":  key.PublicKey().String(),
 	}, nil
+}
+
+func WriteWireGuardConfigWithPostUpDown(path string, cfg InterfaceConfig, egressNic string) error {
+	iniFile := ini.Empty()
+	ifSec, _ := iniFile.NewSection("Interface")
+	ifSec.NewKey("PrivateKey", cfg.PrivateKey)
+	if len(cfg.Address) > 0 {
+		ifSec.NewKey("Address", strings.Join(cfg.Address, ","))
+	}
+	if cfg.ListenPort > 0 {
+		ifSec.NewKey("ListenPort", fmt.Sprint(cfg.ListenPort))
+	}
+	if len(cfg.DNS) > 0 {
+		ifSec.NewKey("DNS", strings.Join(cfg.DNS, ","))
+	}
+	if cfg.MTU > 0 {
+		ifSec.NewKey("MTU", fmt.Sprint(cfg.MTU))
+	}
+
+	postUp := fmt.Sprintf(
+		"iptables -A FORWARD -i %%i -j ACCEPT; iptables -t nat -A POSTROUTING -o %s -j MASQUERADE",
+		egressNic,
+	)
+	postDown := fmt.Sprintf(
+		"iptables -D FORWARD -i %%i -j ACCEPT; iptables -t nat -D POSTROUTING -o %s -j MASQUERADE",
+		egressNic,
+	)
+
+	ifSec.ReflectFrom([]string{
+		fmt.Sprintf("PostUp = %s", postUp),
+		fmt.Sprintf("PostDown = %s", postDown),
+	})
+
+	for _, peer := range cfg.Peers {
+		psec, _ := iniFile.NewSection("Peer")
+		psec.NewKey("PublicKey", peer.PublicKey)
+		if peer.PresharedKey != "" {
+			psec.NewKey("PresharedKey", peer.PresharedKey)
+		}
+		if len(peer.AllowedIPs) > 0 {
+			psec.NewKey("AllowedIPs", strings.Join(peer.AllowedIPs, ","))
+		}
+		if peer.Endpoint != "" {
+			psec.NewKey("Endpoint", peer.Endpoint)
+		}
+		if peer.PersistentKeepalive > 0 {
+			psec.NewKey("PersistentKeepalive", fmt.Sprint(peer.PersistentKeepalive))
+		}
+	}
+	return iniFile.SaveTo(path)
+}
+
+func GetPublicIP() (string, error) {
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	resp, err := client.Get("https://api.ipify.org")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	ip := strings.TrimSpace(string(body))
+	return ip, nil
 }

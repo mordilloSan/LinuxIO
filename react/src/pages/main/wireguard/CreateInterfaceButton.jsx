@@ -10,7 +10,7 @@ const CreateInterfaceButton = () => {
   const [serverName, setServerName] = useState("wg0");
   const [port, setPort] = useState(51820);
   const [CIDR, setCIDR] = useState("10.10.20.0/24");
-  const [peers, setPeers] = useState("1");
+  const [peers, setPeers] = useState(1);
   const [nic, setNic] = useState("");
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -41,7 +41,7 @@ const CreateInterfaceButton = () => {
           nic.mac &&
           !nic.name.startsWith("veth") &&
           !nic.name.startsWith("docker") &&
-          !nic.name.startsWith("br-"),
+          !nic.name.startsWith("br-")
       )
       .map((nic) => nic.name);
   }
@@ -55,7 +55,11 @@ const CreateInterfaceButton = () => {
         name: serverName,
         address: [CIDR],
         listen_port: port,
-        // don't include peers or nic here, unless your backend uses them
+        egress_nic: nic,
+        dns: [],
+        mtu: 0,
+        peers: [],
+        num_peers: peers,
       };
       await axios.post("/wireguard/interface", body);
       setShowDialog(false);
@@ -75,8 +79,7 @@ const CreateInterfaceButton = () => {
       <Button
         variant="contained"
         color="primary"
-        onClick={() => setShowDialog(true)}
-      >
+        onClick={() => setShowDialog(true)}>
         Create New Interface
       </Button>
       <CreateInterfaceDialog

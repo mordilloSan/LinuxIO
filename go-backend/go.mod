@@ -7,7 +7,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/docker/go-connections v0.5.0
 	github.com/joho/godotenv v1.5.1
-	github.com/shirou/gopsutil/v4 v4.25.5
+	github.com/shirou/gopsutil/v4 v4.25.6
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -29,7 +29,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.26.0 // indirect
+	github.com/go-playground/validator/v10 v10.27.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -77,7 +77,7 @@ require (
 
 require (
 	github.com/coreos/go-systemd/v22 v22.5.0
-	github.com/docker/docker v28.3.0+incompatible
+	github.com/docker/docker v28.3.1+incompatible
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-ole/go-ole v1.3.0 // indirect

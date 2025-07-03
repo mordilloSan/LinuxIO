@@ -14,6 +14,15 @@ import (
 
 // Always: Unmarshal into types.BridgeResponse, then unmarshal Output.
 
+type PeerConfig struct {
+	PublicKey           string   `json:"public_key"`
+	PresharedKey        string   `json:"preshared_key"`
+	AllowedIPs          []string `json:"allowed_ips"`
+	Endpoint            string   `json:"endpoint"`
+	PersistentKeepalive int      `json:"persistent_keepalive"`
+	PrivateKey          string   `json:"private_key"`
+}
+
 func WireguardListInterfaces(c *gin.Context) {
 	sess := auth.GetSessionOrAbort(c)
 	if sess == nil {
@@ -75,19 +84,37 @@ func WireguardAddInterface(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name       string   `json:"name"`
-		Address    []string `json:"address"`
-		ListenPort int      `json:"listen_port"`
+		Name       string       `json:"name"`
+		Address    []string     `json:"address"`
+		ListenPort int          `json:"listen_port"`
+		EgressNic  string       `json:"egress_nic"`
+		DNS        []string     `json:"dns"`
+		MTU        int          `json:"mtu"`
+		Peers      []PeerConfig `json:"peers"`
+		NumPeers   int          `json:"num_peers"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
+
+	peersJSON, err := json.Marshal(req.Peers)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid peers"})
+		return
+	}
+
 	args := []string{
 		req.Name,
 		strings.Join(req.Address, ","),
 		strconv.Itoa(req.ListenPort),
+		req.EgressNic,
+		strings.Join(req.DNS, ","),
+		strconv.Itoa(req.MTU),
+		string(peersJSON),
+		strconv.Itoa(req.NumPeers),
 	}
+
 	data, err := bridge.CallWithSession(sess, "wireguard", "add_interface", args)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -102,7 +129,13 @@ func WireguardAddInterface(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+
+	var out map[string]interface{}
+	if err := json.Unmarshal(resp.Output, &out); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
+		return
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 func WireguardRemoveInterface(c *gin.Context) {
