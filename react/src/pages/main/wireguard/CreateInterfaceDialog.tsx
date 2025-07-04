@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Dialog,
   DialogTitle,
@@ -13,6 +12,7 @@ import {
   Select,
   MenuItem,
 } from "@mui/material";
+import React from "react";
 
 interface CreateInterfaceDialogProps {
   open: boolean;
@@ -92,7 +92,8 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
               labelId="nic-select-label"
               value={nic}
               onChange={(e) => setNic(e.target.value as string)}
-              label="NIC">
+              label="NIC"
+            >
               {availableNICs.length === 0 ? (
                 <MenuItem disabled>No NICs Available</MenuItem>
               ) : (
@@ -118,7 +119,8 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
         <Button
           onClick={onCreate}
           color="primary"
-          disabled={!serverName || !port || loading}>
+          disabled={!serverName || !port || loading}
+        >
           {loading ? "Creating..." : "Create Interface"}
         </Button>
       </DialogActions>

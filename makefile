@@ -71,6 +71,12 @@ ensure-go: check-env
 	@bash -c 'export PATH=$(GO_INSTALL_DIR)/bin:$$PATH && go version'
 	@echo "✅ Go is ready!"
 
+ensure-golint:
+	@if ! command -v golangci-lint >/dev/null 2>&1; then \
+		echo "⬇ Installing golangci-lint..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GO_INSTALL_DIR)/bin v1.58.2; \
+	fi
+
 setup: ensure-node ensure-go
 	@echo ""
 	@echo "📦 Installing frontend dependencies..."
@@ -84,22 +90,26 @@ lint:
 	@echo "🔍 Running ESLint..."
 	@bash -c '$(NVM_SETUP); \
 		cd react && \
-		npx eslint src --ext .js,.jsx,.ts,.tsx --fix \
+		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ React Linting Ok!"\
 	'
 
 tsc:
 	@echo "🔍 Running TypeScript type checks..."
 	@bash -c '$(NVM_SETUP); \
 		cd react && \
-		npx tsc \
+		npx tsc && echo "✅ TypeScript Linting Ok!"\
 	'
+
+golint: ensure-golint
+	@echo -n "🔍 Running golangci-lint... "; \
+	cd go-backend && golangci-lint run --timeout 3m && echo "✅ Go Linting Ok!"
 
 test: setup
 	@echo ""
 	@echo "📦 Running checks..."
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory tsc
-	@echo "✅ All tests done!"
+	@$(MAKE) --no-print-directory golint
 
 build-vite-dev: test
 	@echo ""

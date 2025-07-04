@@ -85,9 +85,9 @@ func main() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			logger.LogToFile("Healthcheck: pinging main process")
+			logger.Debugf("Healthcheck: pinging main process")
 			ok := cleanup.CheckMainProcessHealth(Sess)
-			logger.LogToFile(fmt.Sprintf("Healthcheck result: %v", ok))
+			logger.Infof(fmt.Sprintf("Healthcheck result: %v", ok))
 			if !ok {
 				select {
 				case ShutdownChan <- "Healthcheck failed (main process unreachable or session invalid)":
@@ -111,7 +111,7 @@ func main() {
 
 	go func() {
 		<-cleanupDone
-		logger.LogToFile("✅ Bridge cleanup complete, exiting.")
+		logger.Infof("✅ Bridge cleanup complete, exiting.")
 		os.Exit(0)
 	}()
 

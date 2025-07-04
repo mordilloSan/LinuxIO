@@ -4,13 +4,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect } from "react";
 
 import InterfaceDetails from "./InterfaceDetails";
+
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
-import axios from "@/utils/axios";
 import { WireGuardInterface } from "@/types/wireguard";
+import axios from "@/utils/axios";
 
 const WireGuardDashboard: React.FC = () => {
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
-    null
+    null,
   );
   const selectedCardRef = useRef<HTMLDivElement>(null!);
   const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
@@ -24,7 +25,7 @@ const WireGuardDashboard: React.FC = () => {
     queryKey: ["wireguardInterfaces"],
     queryFn: async () => {
       const res = await axios.get<{ interfaces: WireGuardInterface[] }>(
-        "/wireguard/interfaces"
+        "/wireguard/interfaces",
       );
       return res.data;
     },
@@ -84,7 +85,7 @@ const WireGuardDashboard: React.FC = () => {
 
   const handleToggleInterface = async (
     interfaceName: string,
-    status: "up" | "down"
+    status: "up" | "down",
   ) => {
     try {
       if (status !== "up" && status !== "down") {
@@ -114,7 +115,8 @@ const WireGuardDashboard: React.FC = () => {
               {WGinterfaces.map((iface) => (
                 <Grid
                   size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 4 }}
-                  key={iface.name}>
+                  key={iface.name}
+                >
                   <WireguardInterfaceCard
                     iface={iface}
                     selectedInterface={selectedInterface}
@@ -138,7 +140,8 @@ const WireGuardDashboard: React.FC = () => {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.5 }}
-                  layout>
+                  layout
+                >
                   <Box mt={4} mb={2}>
                     <Typography variant="h5" gutterBottom>
                       Clients for {selectedInterface}

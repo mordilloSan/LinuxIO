@@ -1,5 +1,5 @@
-import { FC } from "react";
 import { Typography, Box } from "@mui/material";
+import { FC } from "react";
 
 import CreateInterfaceButton from "./CreateInterfaceButton";
 import WireGuardDashboard from "./WireguardDashboard";
@@ -11,7 +11,8 @@ const Page: FC = () => {
         display="flex"
         alignItems="center"
         justifyContent="space-between"
-        mb={2}>
+        mb={2}
+      >
         <Typography variant="h4" component="h1">
           Interface Dashboard
         </Typography>

@@ -3,7 +3,6 @@ package updates
 import (
 	"encoding/json"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"go-backend/internal/auth"
@@ -18,8 +17,6 @@ type BridgeResponse struct {
 	Output json.RawMessage `json:"output"`
 	Error  string          `json:"error"`
 }
-
-var validPackageName = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 func RegisterUpdateRoutes(router *gin.Engine) {
 	system := router.Group("/system", auth.AuthMiddleware())

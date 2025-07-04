@@ -46,7 +46,7 @@ const CreateInterfaceButton = () => {
           nic.mac &&
           !nic.name.startsWith("veth") &&
           !nic.name.startsWith("docker") &&
-          !nic.name.startsWith("br-")
+          !nic.name.startsWith("br-"),
       )
       .map((nic) => nic.name);
   }
@@ -84,7 +84,8 @@ const CreateInterfaceButton = () => {
       <Button
         variant="contained"
         color="primary"
-        onClick={() => setShowDialog(true)}>
+        onClick={() => setShowDialog(true)}
+      >
         Create New Interface
       </Button>
       <CreateInterfaceDialog

@@ -1,10 +1,11 @@
-import { WireGuardInterface } from "@/types/wireguard";
 import { Delete, Edit } from "@mui/icons-material";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
 import { Card, CardContent, Typography, Box, IconButton } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { RefObject } from "react";
+
+import { WireGuardInterface } from "@/types/wireguard";
 
 // Props type
 interface InterfaceCardProps {
@@ -44,7 +45,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
       transition={{ duration: 0.3 }}
-      layout>
+      layout
+    >
       <Card
         ref={iface.name === selectedInterface ? selectedCardRef : null}
         sx={{
@@ -58,12 +60,14 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
           "&:hover": hoverStyles,
           ...(iface.name === selectedInterface && hoverStyles),
         }}
-        onClick={() => handleSelectInterface(iface)}>
+        onClick={() => handleSelectInterface(iface)}
+      >
         <CardContent>
           <Box
             display="flex"
             justifyContent="space-between"
-            alignItems="center">
+            alignItems="center"
+          >
             <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
               {iface.name}
             </Typography>
@@ -77,23 +81,26 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   e.stopPropagation();
                   handleToggleInterface(
                     iface.name,
-                    iface.isConnected === "Active" ? "down" : "up"
+                    iface.isConnected === "Active" ? "down" : "up",
                   );
-                }}>
+                }}
+              >
                 <PowerSettingsNewIcon />
               </IconButton>
               <IconButton
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDelete(iface.name);
-                }}>
+                }}
+              >
                 <Delete />
               </IconButton>
               <IconButton
                 onClick={(e) => {
                   e.stopPropagation();
                   handleAddPeer(iface.name, {}); // Provide actual peerData here
-                }}>
+                }}
+              >
                 <Edit />
               </IconButton>
             </Box>
