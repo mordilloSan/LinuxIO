@@ -1,6 +1,7 @@
 import { Button } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
+import { toast } from "sonner";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
@@ -21,7 +22,6 @@ const CreateInterfaceButton = () => {
     data: networkData,
     isLoading: networkLoading,
     error: networkError,
-    refetch: refetch,
   } = useQuery({
     queryKey: ["networkInfo"],
     queryFn: async () => {
@@ -50,7 +50,7 @@ const CreateInterfaceButton = () => {
       )
       .map((nic) => nic.name);
   }
-
+  const queryClient = useQueryClient();
   const handleCreateInterface = async () => {
     setLoading(true);
     setError(null);
@@ -67,10 +67,15 @@ const CreateInterfaceButton = () => {
         num_peers: peers,
       };
       await axios.post("/wireguard/interface", body);
+
+      toast.success(`WireGuard interface '${serverName}' created`);
       setShowDialog(false);
-      refetch();
+      // This tells React Query to invalidate the query in the dashboard so that it refetchs
+      queryClient.invalidateQueries({ queryKey: ["wireguardInterfaces"] });
     } catch (error: any) {
-      setError(error.response?.data?.error || error.message);
+      const msg = error.response?.data?.error || error.message;
+      toast.error(`Failed to create interface: ${msg}`);
+      setError(msg);
     } finally {
       setLoading(false);
     }

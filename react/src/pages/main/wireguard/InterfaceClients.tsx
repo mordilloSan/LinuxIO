@@ -16,6 +16,7 @@ import React, { useState } from "react";
 import axios from "@/utils/axios";
 
 type Peer = {
+  name: string;
   public_key: string;
   allowed_ips?: string[];
   endpoint?: string;
@@ -29,7 +30,7 @@ interface InterfaceDetailsProps {
   };
 }
 
-const InterfaceDetails: React.FC<InterfaceDetailsProps> = ({ params }) => {
+const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [loadingQr, setLoadingQr] = useState(false);
@@ -97,13 +98,13 @@ const InterfaceDetails: React.FC<InterfaceDetailsProps> = ({ params }) => {
           peers.map((peer, idx) => (
             <Grid
               size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
-              key={peer.public_key || idx}
+              key={peer.name || idx}
             >
               <Card>
                 <CardContent>
                   <Box display="flex" justifyContent="space-between">
                     <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
-                      {peer.public_key?.slice(0, 12) || "Peer"}
+                      {peer.name || "Peer"}
                     </Typography>
                     <Box>
                       <IconButton
@@ -177,4 +178,4 @@ const InterfaceDetails: React.FC<InterfaceDetailsProps> = ({ params }) => {
   );
 };
 
-export default InterfaceDetails;
+export default InterfaceClients;

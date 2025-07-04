@@ -5,6 +5,7 @@ import (
 	"go-backend/cmd/bridge/handlers/types"
 	"go-backend/internal/auth"
 	"go-backend/internal/bridge"
+	"go-backend/internal/utils"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,15 +14,6 @@ import (
 )
 
 // Always: Unmarshal into types.BridgeResponse, then unmarshal Output.
-
-type PeerConfig struct {
-	PublicKey           string   `json:"public_key"`
-	PresharedKey        string   `json:"preshared_key"`
-	AllowedIPs          []string `json:"allowed_ips"`
-	Endpoint            string   `json:"endpoint"`
-	PersistentKeepalive int      `json:"persistent_keepalive"`
-	PrivateKey          string   `json:"private_key"`
-}
 
 func WireguardListInterfaces(c *gin.Context) {
 	sess := auth.GetSessionOrAbort(c)
@@ -50,48 +42,20 @@ func WireguardListInterfaces(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"interfaces": out})
 }
 
-func WireguardGetInterface(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
-	name := c.Param("name")
-	data, err := bridge.CallWithSession(sess, "wireguard", "get_interface", []string{name})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	var resp types.BridgeResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-	var out map[string]interface{}
-	if err := json.Unmarshal(resp.Output, &out); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"interface": out})
-}
-
 func WireguardAddInterface(c *gin.Context) {
 	sess := auth.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
 	var req struct {
-		Name       string       `json:"name"`
-		Address    []string     `json:"address"`
-		ListenPort int          `json:"listen_port"`
-		EgressNic  string       `json:"egress_nic"`
-		DNS        []string     `json:"dns"`
-		MTU        int          `json:"mtu"`
-		Peers      []PeerConfig `json:"peers"`
-		NumPeers   int          `json:"num_peers"`
+		Name       string             `json:"name"`
+		Address    []string           `json:"address"`
+		ListenPort int                `json:"listen_port"`
+		EgressNic  string             `json:"egress_nic"`
+		DNS        []string           `json:"dns"`
+		MTU        int                `json:"mtu"`
+		Peers      []utils.PeerConfig `json:"peers"`
+		NumPeers   int                `json:"num_peers"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
@@ -200,6 +164,7 @@ func WireguardAddPeer(c *gin.Context) {
 		Endpoint            string   `json:"endpoint"`
 		PresharedKey        string   `json:"preshared_key"`
 		PersistentKeepalive int      `json:"persistent_keepalive"`
+		Name                string   `json:"name"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
@@ -213,6 +178,7 @@ func WireguardAddPeer(c *gin.Context) {
 		req.Endpoint,
 		req.PresharedKey,
 		strconv.Itoa(req.PersistentKeepalive),
+		req.Name, // Pass the peer's display name/label (may be "")
 	}
 	data, err := bridge.CallWithSession(sess, "wireguard", "add_peer", args)
 	if err != nil {
@@ -284,15 +250,74 @@ func WireguardGetKeys(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+// PUT /wireguard/interface/:name/up
+func WireguardUpInterface(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+	name := c.Param("name")
+	data, err := bridge.CallWithSession(sess, "wireguard", "up_interface", []string{name})
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	var resp types.BridgeResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(500, gin.H{"error": "invalid bridge response"})
+		return
+	}
+	if resp.Status != "ok" {
+		c.JSON(500, gin.H{"error": resp.Error})
+		return
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(resp.Output, &out); err != nil {
+		c.JSON(500, gin.H{"error": "invalid bridge output"})
+		return
+	}
+	c.JSON(200, out)
+}
+
+// PUT /wireguard/interface/:name/down
+func WireguardDownInterface(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+	name := c.Param("name")
+	data, err := bridge.CallWithSession(sess, "wireguard", "down_interface", []string{name})
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	var resp types.BridgeResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(500, gin.H{"error": "invalid bridge response"})
+		return
+	}
+	if resp.Status != "ok" {
+		c.JSON(500, gin.H{"error": resp.Error})
+		return
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(resp.Output, &out); err != nil {
+		c.JSON(500, gin.H{"error": "invalid bridge output"})
+		return
+	}
+	c.JSON(200, out)
+}
+
 func RegisterWireguardRoutes(r *gin.Engine) {
 	wg := r.Group("/wireguard")
 	wg.Use(auth.AuthMiddleware())
 	wg.GET("/interfaces", WireguardListInterfaces)
-	wg.GET("/interface/:name", WireguardGetInterface)
 	wg.POST("/interface", WireguardAddInterface)
 	wg.DELETE("/interface/:name", WireguardRemoveInterface)
 	wg.GET("/interface/:name/peers", WireguardListPeers)
 	wg.POST("/interface/:name/peer", WireguardAddPeer)
 	wg.DELETE("/interface/:name/peer/:pubkey", WireguardRemovePeer)
 	wg.GET("/interface/:name/keys", WireguardGetKeys)
+	wg.POST("/interface/:name/up", WireguardUpInterface)
+	wg.POST("/interface/:name/down", WireguardDownInterface)
 }
