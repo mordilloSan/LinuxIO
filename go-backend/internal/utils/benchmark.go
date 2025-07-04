@@ -42,8 +42,14 @@ func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine, conc
 				resultChan <- BenchmarkResult{Endpoint: endpoint, Latency: latency, Error: err}
 				return
 			}
-			defer resp.Body.Close()
-			io.Copy(io.Discard, resp.Body)
+			defer func() {
+				if cerr := resp.Body.Close(); cerr != nil {
+					logger.Warnf("failed to close response body: %v", cerr)
+				}
+			}()
+			if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+				logger.Warnf("failed to discard response body: %v", err)
+			}
 
 			logger.Debugf("✅ %s -> %d in %.2fms", endpoint, resp.StatusCode, float64(latency.Microseconds())/1000)
 

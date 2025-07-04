@@ -87,7 +87,7 @@ func main() {
 		for range ticker.C {
 			logger.Debugf("Healthcheck: pinging main process")
 			ok := cleanup.CheckMainProcessHealth(Sess)
-			logger.Infof(fmt.Sprintf("Healthcheck result: %v", ok))
+			logger.Infof("%s", fmt.Sprintf("Healthcheck result: %v", ok))
 			if !ok {
 				select {
 				case ShutdownChan <- "Healthcheck failed (main process unreachable or session invalid)":
@@ -103,9 +103,15 @@ func main() {
 		reason := <-ShutdownChan
 		// Step 1: Signal accept loop to stop and close listener
 		close(acceptDone)
-		listener.Close()
+		if err := listener.Close(); err != nil {
+			logger.Warnf("failed to close listener: %v", err)
+		}
+
 		// Step 2: Do cleanup
-		cleanup.FullCleanup(reason, Sess, socketPath)
+		if err := cleanup.FullCleanup(reason, Sess, socketPath); err != nil {
+			logger.Warnf("FullCleanup failed (reason=%q): %v", reason, err)
+		}
+
 		cleanupDone <- struct{}{}
 	}()
 

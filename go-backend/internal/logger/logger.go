@@ -71,10 +71,13 @@ type journalWriter struct {
 
 func (j journalWriter) Write(p []byte) (int, error) {
 	msg := strings.TrimSuffix(string(p), "\n")
-	journal.Send(msg, j.priority, map[string]string{
+	if err := journal.Send(msg, j.priority, map[string]string{
 		"SYSLOG_IDENTIFIER": programName,
-	})
+	}); err != nil {
+		return 0, err
+	}
 	return len(p), nil
+
 }
 
 // getCallerFuncName returns a "package.function" string for the caller at stack depth.

@@ -76,35 +76,60 @@ func WriteWireGuardConfig(path string, cfg InterfaceConfig) error {
 	iniFile := ini.Empty()
 	ifSec, _ := iniFile.NewSection("Interface")
 	if len(cfg.Address) > 0 {
-		ifSec.NewKey("Address", strings.Join(cfg.Address, ","))
+		if _, err := ifSec.NewKey("Address", strings.Join(cfg.Address, ",")); err != nil {
+			logger.Warnf("[wireguard] failed to set Address: %v", err)
+		}
 	}
 	if cfg.ListenPort > 0 {
-		ifSec.NewKey("ListenPort", fmt.Sprint(cfg.ListenPort))
+		if _, err := ifSec.NewKey("ListenPort", fmt.Sprint(cfg.ListenPort)); err != nil {
+			logger.Warnf("[wireguard] failed to set ListenPort: %v", err)
+		}
 	}
-	ifSec.NewKey("PrivateKey", cfg.PrivateKey)
-
+	if _, err := ifSec.NewKey("PrivateKey", cfg.PrivateKey); err != nil {
+		logger.Warnf("[wireguard] failed to set PrivateKey: %v", err)
+	}
 	if len(cfg.DNS) > 0 {
-		ifSec.NewKey("DNS", strings.Join(cfg.DNS, ","))
+		if _, err := ifSec.NewKey("DNS", strings.Join(cfg.DNS, ",")); err != nil {
+			logger.Warnf("[wireguard] failed to set DNS: %v", err)
+		}
 	}
 	if cfg.MTU > 0 {
-		ifSec.NewKey("MTU", fmt.Sprint(cfg.MTU))
+		if _, err := ifSec.NewKey("MTU", fmt.Sprint(cfg.MTU)); err != nil {
+			logger.Warnf("[wireguard] failed to set MTU: %v", err)
+		}
 	}
+
 	for _, peer := range cfg.Peers {
-		psec, _ := iniFile.NewSection("Peer")
-		psec.NewKey("PublicKey", peer.PublicKey)
+		psec, err := iniFile.NewSection("Peer")
+		if err != nil {
+			logger.Warnf("[wireguard] failed to create [Peer] section: %v", err)
+			continue
+		}
+		if _, err := psec.NewKey("PublicKey", peer.PublicKey); err != nil {
+			logger.Warnf("[wireguard] failed to set PublicKey: %v", err)
+		}
 		if peer.PresharedKey != "" {
-			psec.NewKey("PresharedKey", peer.PresharedKey)
+			if _, err := psec.NewKey("PresharedKey", peer.PresharedKey); err != nil {
+				logger.Warnf("[wireguard] failed to set PresharedKey: %v", err)
+			}
 		}
 		if len(peer.AllowedIPs) > 0 {
-			psec.NewKey("AllowedIPs", strings.Join(peer.AllowedIPs, ","))
+			if _, err := psec.NewKey("AllowedIPs", strings.Join(peer.AllowedIPs, ",")); err != nil {
+				logger.Warnf("[wireguard] failed to set AllowedIPs: %v", err)
+			}
 		}
 		if peer.Endpoint != "" {
-			psec.NewKey("Endpoint", peer.Endpoint)
+			if _, err := psec.NewKey("Endpoint", peer.Endpoint); err != nil {
+				logger.Warnf("[wireguard] failed to set Endpoint: %v", err)
+			}
 		}
 		if peer.PersistentKeepalive > 0 {
-			psec.NewKey("PersistentKeepalive", fmt.Sprint(peer.PersistentKeepalive))
+			if _, err := psec.NewKey("PersistentKeepalive", fmt.Sprint(peer.PersistentKeepalive)); err != nil {
+				logger.Warnf("[wireguard] failed to set PersistentKeepalive: %v", err)
+			}
 		}
 	}
+
 	return iniFile.SaveTo(path)
 }
 
@@ -154,41 +179,67 @@ func ExportPeerConfigToDisk(interfaceName string, peer PeerConfig, ifaceCfg Inte
 	iniFile := ini.Empty()
 
 	// [Interface]
-	ifSec, _ := iniFile.NewSection("Interface")
+	ifSec, err := iniFile.NewSection("Interface")
+	if err != nil {
+		return "", fmt.Errorf("failed to create [Interface] section: %w", err)
+	}
 
 	if len(peer.AllowedIPs) > 0 {
-		ifSec.NewKey("Address", peer.AllowedIPs[0])
+		if _, err := ifSec.NewKey("Address", peer.AllowedIPs[0]); err != nil {
+			logger.Warnf("[wireguard] failed to set Address: %v", err)
+		}
 	}
 	if ifaceCfg.ListenPort > 0 {
-		ifSec.NewKey("ListenPort", fmt.Sprintf("%d", ifaceCfg.ListenPort))
+		if _, err := ifSec.NewKey("ListenPort", fmt.Sprintf("%d", ifaceCfg.ListenPort)); err != nil {
+			logger.Warnf("[wireguard] failed to set ListenPort: %v", err)
+		}
 	}
 	if peer.PrivateKey == "" {
 		return "", fmt.Errorf("peer private key is empty")
 	}
-	ifSec.NewKey("PrivateKey", peer.PrivateKey)
-
+	if _, err := ifSec.NewKey("PrivateKey", peer.PrivateKey); err != nil {
+		logger.Warnf("[wireguard] failed to set PrivateKey: %v", err)
+	}
 	if len(ifaceCfg.DNS) > 0 {
-		ifSec.NewKey("DNS", strings.Join(ifaceCfg.DNS, ","))
+		if _, err := ifSec.NewKey("DNS", strings.Join(ifaceCfg.DNS, ",")); err != nil {
+			logger.Warnf("[wireguard] failed to set DNS: %v", err)
+		}
 	}
 
 	// [Peer]
-	peerSec, _ := iniFile.NewSection("Peer")
-	serverKey, _ := wgtypes.ParseKey(ifaceCfg.PrivateKey)
-	peerSec.NewKey("PublicKey", serverKey.PublicKey().String())
+	peerSec, err := iniFile.NewSection("Peer")
+	if err != nil {
+		return "", fmt.Errorf("failed to create [Peer] section: %w", err)
+	}
+	serverKey, err := wgtypes.ParseKey(ifaceCfg.PrivateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse server private key: %w", err)
+	}
+	if _, err := peerSec.NewKey("PublicKey", serverKey.PublicKey().String()); err != nil {
+		logger.Warnf("[wireguard] failed to set PublicKey in peer section: %v", err)
+	}
+	if _, err := peerSec.NewKey("AllowedIPs", "0.0.0.0/0, ::/0"); err != nil {
+		logger.Warnf("[wireguard] failed to set AllowedIPs in peer section: %v", err)
+	}
 
-	peerSec.NewKey("AllowedIPs", "0.0.0.0/0, ::/0")
 	// Get public IP
 	publicIP, err := GetPublicIP()
 	if err != nil {
 		return "", fmt.Errorf("failed to get public IP: %w", err)
 	}
-	peerSec.NewKey("Endpoint", publicIP)
+	if _, err := peerSec.NewKey("Endpoint", publicIP); err != nil {
+		logger.Warnf("[wireguard] failed to set Endpoint in peer section: %v", err)
+	}
 
 	if peer.PresharedKey != "" {
-		peerSec.NewKey("PresharedKey", peer.PresharedKey)
+		if _, err := peerSec.NewKey("PresharedKey", peer.PresharedKey); err != nil {
+			logger.Warnf("[wireguard] failed to set PresharedKey: %v", err)
+		}
 	}
 	if peer.PersistentKeepalive > 0 {
-		peerSec.NewKey("PersistentKeepalive", fmt.Sprintf("%d", peer.PersistentKeepalive))
+		if _, err := peerSec.NewKey("PersistentKeepalive", fmt.Sprintf("%d", peer.PersistentKeepalive)); err != nil {
+			logger.Warnf("[wireguard] failed to set PersistentKeepalive: %v", err)
+		}
 	}
 
 	if err := iniFile.SaveTo(peerPath); err != nil {
@@ -358,7 +409,10 @@ func RemoveInterface(args []string) (any, error) {
 	name := args[0]
 	logger.Infof("[wireguard] Removing interface: %s", name)
 	cmd := exec.Command("wg-quick", "down", name)
-	cmd.CombinedOutput()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		logger.Warnf("[wireguard] Failed to bring down %s: %v (%s)", name, err, string(out))
+	}
+
 	if err := os.Remove(configPath(name)); err != nil {
 		logger.Errorf("[wireguard] Failed to remove config for %s: %v", name, err)
 		return nil, err
@@ -435,7 +489,12 @@ func AddPeer(args []string) (any, error) {
 	pubKey, err := wgtypes.ParseKey(pub)
 	if err == nil {
 		client, _ := wgctrl.New()
-		defer client.Close()
+		defer func() {
+			if cerr := client.Close(); cerr != nil {
+				logger.Warnf("failed to close wgctrl client: %v", cerr)
+			}
+		}()
+
 		_ = client.ConfigureDevice(name, wgtypes.Config{
 			Peers: []wgtypes.PeerConfig{
 				{
@@ -476,15 +535,26 @@ func RemovePeer(args []string) (any, error) {
 	}
 	pubKey, err := wgtypes.ParseKey(pub)
 	if err == nil {
-		client, _ := wgctrl.New()
-		defer client.Close()
-		_ = client.ConfigureDevice(name, wgtypes.Config{
-			Peers: []wgtypes.PeerConfig{{
-				PublicKey: pubKey,
-				Remove:    true,
-			}},
-		})
+		client, err := wgctrl.New()
+		if err != nil {
+			logger.Warnf("[wireguard] failed to create wgctrl client: %v", err)
+		} else {
+			defer func() {
+				if cerr := client.Close(); cerr != nil {
+					logger.Warnf("[wireguard] failed to close wgctrl client: %v", cerr)
+				}
+			}()
+			if err := client.ConfigureDevice(name, wgtypes.Config{
+				Peers: []wgtypes.PeerConfig{{
+					PublicKey: pubKey,
+					Remove:    true,
+				}},
+			}); err != nil {
+				logger.Warnf("[wireguard] failed to configure device (remove peer): %v", err)
+			}
+		}
 	}
+
 	// Remove exported client config
 	peerDir := filepath.Join("/etc/wireguard/peers", name)
 	peerName := pub
@@ -524,19 +594,32 @@ func GetKeys(args []string) (any, error) {
 
 func WriteWireGuardConfigWithPostUpDown(path string, cfg InterfaceConfig, egressNic string) error {
 	iniFile := ini.Empty()
-	ifSec, _ := iniFile.NewSection("Interface")
-	ifSec.NewKey("PrivateKey", cfg.PrivateKey)
+	ifSec, err := iniFile.NewSection("Interface")
+	if err != nil {
+		logger.Warnf("[wireguard] failed to create [Interface] section: %v", err)
+	}
+	if _, err := ifSec.NewKey("PrivateKey", cfg.PrivateKey); err != nil {
+		logger.Warnf("[wireguard] failed to set PrivateKey: %v", err)
+	}
 	if len(cfg.Address) > 0 {
-		ifSec.NewKey("Address", strings.Join(cfg.Address, ","))
+		if _, err := ifSec.NewKey("Address", strings.Join(cfg.Address, ",")); err != nil {
+			logger.Warnf("[wireguard] failed to set Address: %v", err)
+		}
 	}
 	if cfg.ListenPort > 0 {
-		ifSec.NewKey("ListenPort", fmt.Sprint(cfg.ListenPort))
+		if _, err := ifSec.NewKey("ListenPort", fmt.Sprint(cfg.ListenPort)); err != nil {
+			logger.Warnf("[wireguard] failed to set ListenPort: %v", err)
+		}
 	}
 	if len(cfg.DNS) > 0 {
-		ifSec.NewKey("DNS", strings.Join(cfg.DNS, ","))
+		if _, err := ifSec.NewKey("DNS", strings.Join(cfg.DNS, ",")); err != nil {
+			logger.Warnf("[wireguard] failed to set DNS: %v", err)
+		}
 	}
 	if cfg.MTU > 0 {
-		ifSec.NewKey("MTU", fmt.Sprint(cfg.MTU))
+		if _, err := ifSec.NewKey("MTU", fmt.Sprint(cfg.MTU)); err != nil {
+			logger.Warnf("[wireguard] failed to set MTU: %v", err)
+		}
 	}
 
 	postUp := fmt.Sprintf(
@@ -548,27 +631,44 @@ func WriteWireGuardConfigWithPostUpDown(path string, cfg InterfaceConfig, egress
 		egressNic,
 	)
 
-	ifSec.ReflectFrom([]string{
+	if err := ifSec.ReflectFrom([]string{
 		fmt.Sprintf("PostUp = %s", postUp),
 		fmt.Sprintf("PostDown = %s", postDown),
-	})
+	}); err != nil {
+		logger.Warnf("[wireguard] failed to set PostUp/PostDown in INI section: %v", err)
+	}
 
 	for _, peer := range cfg.Peers {
-		psec, _ := iniFile.NewSection("Peer")
-		psec.NewKey("PublicKey", peer.PublicKey)
+		psec, err := iniFile.NewSection("Peer")
+		if err != nil {
+			logger.Warnf("[wireguard] failed to create [Peer] section: %v", err)
+			continue
+		}
+		if _, err := psec.NewKey("PublicKey", peer.PublicKey); err != nil {
+			logger.Warnf("[wireguard] failed to set PublicKey: %v", err)
+		}
 		if peer.PresharedKey != "" {
-			psec.NewKey("PresharedKey", peer.PresharedKey)
+			if _, err := psec.NewKey("PresharedKey", peer.PresharedKey); err != nil {
+				logger.Warnf("[wireguard] failed to set PresharedKey: %v", err)
+			}
 		}
 		if len(peer.AllowedIPs) > 0 {
-			psec.NewKey("AllowedIPs", strings.Join(peer.AllowedIPs, ","))
+			if _, err := psec.NewKey("AllowedIPs", strings.Join(peer.AllowedIPs, ",")); err != nil {
+				logger.Warnf("[wireguard] failed to set AllowedIPs: %v", err)
+			}
 		}
 		if peer.Endpoint != "" {
-			psec.NewKey("Endpoint", peer.Endpoint)
+			if _, err := psec.NewKey("Endpoint", peer.Endpoint); err != nil {
+				logger.Warnf("[wireguard] failed to set Endpoint: %v", err)
+			}
 		}
 		if peer.PersistentKeepalive > 0 {
-			psec.NewKey("PersistentKeepalive", fmt.Sprint(peer.PersistentKeepalive))
+			if _, err := psec.NewKey("PersistentKeepalive", fmt.Sprint(peer.PersistentKeepalive)); err != nil {
+				logger.Warnf("[wireguard] failed to set PersistentKeepalive: %v", err)
+			}
 		}
 	}
+
 	return iniFile.SaveTo(path)
 }
 
@@ -580,7 +680,11 @@ func GetPublicIP() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			logger.Warnf("failed to close response body: %v", cerr)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err

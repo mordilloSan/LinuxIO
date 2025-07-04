@@ -24,7 +24,11 @@ func ListServices() ([]ServiceStatus, error) {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
 
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		var units [][]interface{}
@@ -66,7 +70,11 @@ func GetServiceInfo(serviceName string) (map[string]interface{}, error) {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
 
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		var unitPath dbus.ObjectPath
@@ -104,7 +112,12 @@ func StartService(name string) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
+
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		// "replace" is the mode systemctl uses by default
 		call := systemd.Call("org.freedesktop.systemd1.Manager.StartUnit", 0, name, "replace")
@@ -119,7 +132,12 @@ func StopService(name string) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
+
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		call := systemd.Call("org.freedesktop.systemd1.Manager.StopUnit", 0, name, "replace")
 		return call.Err
@@ -133,7 +151,12 @@ func RestartService(name string) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
+
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		call := systemd.Call("org.freedesktop.systemd1.Manager.RestartUnit", 0, name, "replace")
 		return call.Err
@@ -147,7 +170,12 @@ func ReloadService(name string) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
+
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		call := systemd.Call("org.freedesktop.systemd1.Manager.ReloadUnit", 0, name, "replace")
 		return call.Err
@@ -161,7 +189,12 @@ func EnableService(name string) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
+
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		// changes := ...  // <-- REMOVE THIS
 		call := systemd.Call("org.freedesktop.systemd1.Manager.EnableUnitFiles", 0, []string{name}, false, true)
@@ -176,7 +209,12 @@ func DisableService(name string) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
+
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		// changes := ...  // <-- REMOVE THIS
 		call := systemd.Call("org.freedesktop.systemd1.Manager.DisableUnitFiles", 0, []string{name}, false)
@@ -191,7 +229,12 @@ func MaskService(name string) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
+
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		// changes := ...  // <-- REMOVE THIS
 		call := systemd.Call("org.freedesktop.systemd1.Manager.MaskUnitFiles", 0, []string{name}, false, true)
@@ -206,7 +249,12 @@ func UnmaskService(name string) error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
+
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 		// changes := ...  // <-- REMOVE THIS
 		call := systemd.Call("org.freedesktop.systemd1.Manager.UnmaskUnitFiles", 0, []string{name}, false)

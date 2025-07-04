@@ -132,8 +132,14 @@ func startFileBrowserContainer(secret string, session *session.Session) error {
 	if err != nil {
 		return fmt.Errorf("failed to pull FileBrowser image: %w", err)
 	}
-	defer out.Close()
-	io.Copy(io.Discard, out) // Always drain!
+	defer func() {
+		if cerr := out.Close(); cerr != nil {
+			logger.Warnf("failed to close image pull stream: %v", cerr)
+		}
+	}()
+	if _, err := io.Copy(io.Discard, out); err != nil {
+		logger.Warnf("failed to drain docker image pull output: %v", err)
+	}
 
 	// 4. Create the container with the config mounted
 	resp, err := dockerCli.ContainerCreate(

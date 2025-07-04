@@ -6,14 +6,18 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-func GetHostname() (string, error) {
-	var result string
-	err := RetryOnceIfClosed(nil, func() error {
+func GetHostname() (result string, err error) {
+	err = RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		// Handle close error if main operation succeeded
+		defer func() {
+			if cerr := conn.Close(); cerr != nil && err == nil {
+				err = cerr
+			}
+		}()
 
 		obj := conn.Object("org.freedesktop.hostname1", "/org/freedesktop/hostname1")
 		var variant dbus.Variant
@@ -29,5 +33,5 @@ func GetHostname() (string, error) {
 		result = hostname
 		return nil
 	})
-	return result, err
+	return
 }

@@ -95,11 +95,15 @@ func Close(sessionID string) {
 	defer ts.Mu.Unlock()
 
 	if ts.PTY != nil {
-		ts.PTY.Close()
+		if err := ts.PTY.Close(); err != nil {
+			logger.Warnf("failed to close PTY for session %s: %v", sessionID, err)
+		}
 	}
 	if ts.Cmd != nil && ts.Open {
 		_ = ts.Cmd.Process.Kill()
-		ts.Cmd.Wait()
+		if err := ts.Cmd.Wait(); err != nil {
+			logger.Warnf("failed to wait for Cmd in session %s: %v", sessionID, err)
+		}
 	}
 	delete(sessions, sessionID)
 	logger.Infof("Closed terminal for session %s", sessionID)

@@ -42,7 +42,11 @@ func parseDpkgLog(logPath string) []UpdateHistoryEntry {
 		logger.Errorf("Failed to open dpkg log: %v", err)
 		return nil
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			logger.Warnf("failed to close dpkg log file: %v", cerr)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 
@@ -89,7 +93,11 @@ func parseDnfHistory(logPath string) []UpdateHistoryEntry {
 		logger.Errorf("Failed to open DNF log: %v", err)
 		return nil
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			logger.Warnf("failed to close DNF log file: %v", cerr)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	upgradeRe := regexp.MustCompile(`Upgrade:\s+([^\s-]+)-([^-]+-[^\s]+)`)

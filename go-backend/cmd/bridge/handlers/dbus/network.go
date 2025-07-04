@@ -2,6 +2,7 @@ package dbus
 
 import (
 	"fmt"
+	"go-backend/internal/logger"
 	"os"
 	"os/exec"
 	"strconv"
@@ -73,12 +74,18 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 		snapshotMap[s.Name] = s
 	}
 
+	var opErr error // capture error from RetryOnceIfClosed func (for defer)
 	err := RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {
 			return fmt.Errorf("failed to connect to system bus: %w", err)
 		}
-		defer conn.Close()
+		// Handle close error if no error yet
+		defer func() {
+			if cerr := conn.Close(); cerr != nil && opErr == nil {
+				opErr = cerr
+			}
+		}()
 
 		nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
 
@@ -240,7 +247,11 @@ func SetDNS(iface string, dns []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to system bus: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close dbus connection: %v", cerr)
+		}
+	}()
 
 	nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
 	var devicePaths []dbus.ObjectPath
@@ -301,7 +312,11 @@ func SetGateway(iface, gateway string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to system bus: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+		}
+	}()
 
 	nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
 
@@ -400,7 +415,11 @@ func SetMTU(iface, mtu string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to system bus: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+		}
+	}()
 
 	nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
 

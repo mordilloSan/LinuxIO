@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"encoding/json"
+	"go-backend/internal/logger"
 	"os"
 	"strconv"
 	"strings"
@@ -60,7 +61,11 @@ func getDockerMemoryUsage() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
 	if err != nil {
@@ -73,7 +78,14 @@ func getDockerMemoryUsage() (uint64, error) {
 		if err != nil {
 			continue
 		}
-		defer statsResp.Body.Close()
+		func() {
+			defer func() {
+				if cerr := statsResp.Body.Close(); cerr != nil {
+					logger.Warnf("failed to close container stats body: %v", cerr)
+				}
+			}()
+			// ... process statsResp.Body here ...
+		}()
 
 		var stats struct {
 			MemoryStats struct {

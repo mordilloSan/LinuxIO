@@ -46,7 +46,11 @@ func LoadDockerConfig() error {
 		}
 		return nil
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			logger.Warnf("failed to close docker config file: %v", cerr)
+		}
+	}()
 
 	decoder := yaml.NewDecoder(file)
 	if err := decoder.Decode(&appConfig); err != nil {

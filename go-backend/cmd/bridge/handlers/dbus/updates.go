@@ -3,6 +3,7 @@ package dbus
 import (
 	"context"
 	"fmt"
+	"go-backend/internal/logger"
 	"regexp"
 	"strings"
 	"time"
@@ -98,7 +99,11 @@ func getUpdatesWithDetails() ([]UpdateDetail, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+		}
+	}()
 
 	const (
 		pkBusName      = "org.freedesktop.PackageKit"
@@ -116,9 +121,12 @@ func getUpdatesWithDetails() ([]UpdateDetail, error) {
 
 	updatesCh := make(chan *dbus.Signal, 20)
 	conn.Signal(updatesCh)
-	conn.AddMatchSignal(
+	if err := conn.AddMatchSignal(
 		dbus.WithMatchObjectPath(updatesTransPath),
-	)
+	); err != nil {
+		logger.Errorf("Failed to add D-Bus match signal: %v", err)
+		// Optionally: return, or handle as needed
+	}
 
 	getUpdatesCall := updatesTrans.Call(transactionIfc+".GetUpdates", 0, uint64(0))
 	if getUpdatesCall.Err != nil {
@@ -165,9 +173,11 @@ collectPackages:
 
 	detailsCh := make(chan *dbus.Signal, 20)
 	conn.Signal(detailsCh)
-	conn.AddMatchSignal(
+	if err := conn.AddMatchSignal(
 		dbus.WithMatchObjectPath(detailsTransPath),
-	)
+	); err != nil {
+		logger.Warnf("failed to add D-Bus match signal for details transaction: %v", err)
+	}
 
 	detailCall := detailsTrans.Call(transactionIfc+".GetUpdateDetail", 0, pkgIDs)
 	if detailCall.Err != nil {
@@ -252,7 +262,11 @@ func installPackage(packageID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to system bus: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+		}
+	}()
 
 	const (
 		pkBusName      = "org.freedesktop.PackageKit"
@@ -271,7 +285,9 @@ func installPackage(packageID string) error {
 	// Listen for signals
 	sigCh := make(chan *dbus.Signal, 20)
 	conn.Signal(sigCh)
-	conn.AddMatchSignal(dbus.WithMatchObjectPath(transPath))
+	if err := conn.AddMatchSignal(dbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Warnf("failed to add D-Bus match signal: %v", err)
+	}
 
 	// 2. Call InstallPackages
 	call := trans.Call(transactionIfc+".InstallPackages", 0, uint64(0), []string{packageID})

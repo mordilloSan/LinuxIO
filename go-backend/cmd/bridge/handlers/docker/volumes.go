@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"go-backend/internal/logger"
 
 	"github.com/docker/docker/api/types/volume"
 )
@@ -13,7 +14,11 @@ func ListVolumes() (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	volumes, err := cli.VolumeList(context.Background(), volume.ListOptions{})
 	if err != nil {
@@ -29,7 +34,11 @@ func DeleteVolume(name string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	err = cli.VolumeRemove(context.Background(), name, true)
 	if err != nil {
@@ -45,7 +54,11 @@ func CreateVolume(name string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	volume, err := cli.VolumeCreate(context.Background(), volume.CreateOptions{
 		Name: name,

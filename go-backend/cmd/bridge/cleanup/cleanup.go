@@ -106,7 +106,11 @@ func CheckMainProcessHealth(sess *session.Session) bool {
 		logger.Warnf("⚠️ Could not connect to main socket: %v", err)
 		return false
 	}
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close connection: %v", cerr)
+		}
+	}()
 
 	req := BridgeHealthRequest{
 		Type:    "validate",

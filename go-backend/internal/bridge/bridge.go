@@ -79,7 +79,12 @@ func CallViaSocket(socketPath, reqType, command string, args []string) ([]byte, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to bridge: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close connection: %v", cerr)
+		}
+	}()
+
 	enc := json.NewEncoder(conn)
 	dec := json.NewDecoder(conn)
 	if err := enc.Encode(req); err != nil {
@@ -140,8 +145,14 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 		// Convert password to a mutable byte slice
 		pwBytes := []byte(sudoPassword + "\n")
 		go func() {
-			defer stdin.Close()
-			_, _ = stdin.Write(pwBytes)
+			defer func() {
+				if cerr := stdin.Close(); cerr != nil {
+					logger.Warnf("failed to close stdin: %v", cerr)
+				}
+			}()
+			if _, err := stdin.Write(pwBytes); err != nil {
+				logger.Warnf("failed to write sudo password to stdin: %v", err)
+			}
 
 			// Wipe the password bytes after use
 			for i := range pwBytes {
@@ -237,7 +248,12 @@ func StartBridgeSocket(sess *session.Session) error {
 }
 
 func handleBridgeRequest(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close connection: %v", cerr)
+		}
+	}()
+
 	logger.Infof("Main socket accepted a connection")
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
@@ -272,7 +288,11 @@ func handleBridgeRequest(conn net.Conn) {
 // HandleMainRequest processes incoming bridge requests.
 func HandleMainRequest(conn net.Conn, id string) {
 	logger.Debugf("HANDLECONNECTION: [%s] called!", id)
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close connection [%s]: %v", id, cerr)
+		}
+	}()
 
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
@@ -400,7 +420,11 @@ func CleanupFilebrowserContainer() error {
 		logger.Warnf("Failed to create Docker client: %v", err)
 		return err
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	if err := cli.ContainerStop(context.Background(), containerName, container.StopOptions{Timeout: &timeout}); err != nil {
 		if errdefs.IsNotFound(err) {
@@ -431,7 +455,7 @@ func CleanupFilebrowserContainer() error {
 	return nil
 }
 
-// createAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.
+// CreateAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.
 func CreateAndOwnSocket(socketPath, username string) (net.Listener, int, int, error) {
 	u, err := user.Lookup(username)
 	if err != nil {
@@ -440,20 +464,29 @@ func CreateAndOwnSocket(socketPath, username string) (net.Listener, int, int, er
 	uid, _ := strconv.Atoi(u.Uid)
 	gid, _ := strconv.Atoi(u.Gid)
 
-	_ = os.Remove(socketPath)
+	_ = os.Remove(socketPath) // it's okay to ignore error here (socket might not exist)
+
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to listen on socket: %w", err)
 	}
 
 	if err := os.Chmod(socketPath, 0600); err != nil {
-		listener.Close()
-		os.Remove(socketPath)
+		if cerr := listener.Close(); cerr != nil {
+			logger.Warnf("failed to close listener after chmod failure: %v", cerr)
+		}
+		if rerr := os.Remove(socketPath); rerr != nil {
+			logger.Warnf("failed to remove socket after chmod failure: %v", rerr)
+		}
 		return nil, 0, 0, fmt.Errorf("failed to chmod socket: %w", err)
 	}
 	if err := os.Chown(socketPath, uid, gid); err != nil {
-		listener.Close()
-		os.Remove(socketPath)
+		if cerr := listener.Close(); cerr != nil {
+			logger.Warnf("failed to close listener after chown failure: %v", cerr)
+		}
+		if rerr := os.Remove(socketPath); rerr != nil {
+			logger.Warnf("failed to remove socket after chown failure: %v", rerr)
+		}
 		return nil, 0, 0, fmt.Errorf("failed to chown socket: %w", err)
 	}
 

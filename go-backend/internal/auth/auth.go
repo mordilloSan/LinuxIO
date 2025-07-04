@@ -57,9 +57,16 @@ func trySudo(password string) bool {
 		return false
 	}
 	go func() {
-		defer stdin.Close()
-		io.WriteString(stdin, password+"\n")
+		defer func() {
+			if cerr := stdin.Close(); cerr != nil {
+				logger.Warnf("failed to close stdin: %v", cerr)
+			}
+		}()
+		if _, err := io.WriteString(stdin, password+"\n"); err != nil {
+			logger.Warnf("failed to write password to stdin: %v", err)
+		}
 	}()
+
 	err = cmd.Run()
 	return err == nil && (bytes.Contains(out.Bytes(), []byte("may run")) || bytes.Contains(stderr.Bytes(), []byte("may run")))
 }
@@ -110,7 +117,9 @@ func loginHandler(c *gin.Context) {
 	// 6. Start main socket for this session
 	if err := bridge.StartBridgeSocket(sess); err != nil {
 		logger.Errorf("Failed to start main socket: %v", err)
-		session.DeleteSession(sessionID)
+		if err := session.DeleteSession(sessionID); err != nil {
+			logger.Errorf("failed to delete session %q: %v", sessionID, err)
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start session socket"})
 		return
 	}
@@ -122,13 +131,17 @@ func loginHandler(c *gin.Context) {
 			privileged = false
 			if err2 := bridge.StartBridge(sess, req.Password); err2 != nil {
 				logger.Errorf("Unprivileged bridge also failed: %v", err2)
-				session.DeleteSession(sessionID)
+				if err := session.DeleteSession(sessionID); err != nil {
+					logger.Errorf("failed to delete session %q: %v", sessionID, err)
+				}
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start bridge"})
 				return
 			}
 		} else {
 			logger.Errorf("Bridge failed to start: %v", err)
-			session.DeleteSession(sessionID)
+			if err := session.DeleteSession(sessionID); err != nil {
+				logger.Errorf("failed to delete session %q: %v", sessionID, err)
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start bridge"})
 			return
 		}
@@ -174,9 +187,14 @@ func logoutHandler(c *gin.Context) {
 		return
 	}
 	terminal.Close(sessionID)
-	session.DeleteSession(sessionID)
+	if err := session.DeleteSession(sessionID); err != nil {
+		logger.Warnf("failed to delete session %q: %v", sessionID, err)
+	}
 	if s.User.ID != "" {
-		bridge.CallWithSession(s, "control", "shutdown", []string{"logout"})
+		_, err := bridge.CallWithSession(s, "control", "shutdown", []string{"logout"})
+		if err != nil {
+			logger.Warnf("CallWithSession for shutdown failed: %v", err)
+		}
 	}
 	c.SetCookie("session_id", "", -1, "/", "", false, true)
 	logger.Infof("👋 Logged out session: %s", sessionID)

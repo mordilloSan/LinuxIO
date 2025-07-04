@@ -40,7 +40,11 @@ func WebSocketHandler(c *gin.Context) {
 		logger.Errorf("[WebSocket] WS upgrade failed: %v", err)
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("[WebSocket] failed to close WS connection: %v", cerr)
+		}
+	}()
 	logger.Infof("[WebSocket] Connected: user=%s session=%s", sess.User.Name, sess.SessionID)
 
 	done := make(chan struct{})
@@ -127,9 +131,10 @@ func WebSocketHandler(c *gin.Context) {
 					Rows int `json:"rows"`
 				}
 				_ = json.Unmarshal(wsMsg.Payload, &size)
-				if size.Cols > 0 && size.Rows > 0 {
-					pty.Setsize(ts.PTY, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)})
+				if err := pty.Setsize(ts.PTY, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)}); err != nil {
+					logger.Warnf("failed to set PTY size: %v", err)
 				}
+
 			}
 		default:
 			logger.Warnf("[WebSocket] Unknown message type: %s", wsMsg.Type)

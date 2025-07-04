@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go-backend/internal/logger"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -35,7 +36,11 @@ func ListContainers() (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
 	if err != nil {
@@ -94,7 +99,10 @@ func ListContainers() (any, error) {
 					}
 				}
 			}
-			statsResp.Body.Close()
+			if cerr := statsResp.Body.Close(); cerr != nil {
+				logger.Warnf("failed to close container stats body: %v", cerr)
+			}
+
 		}
 
 		enriched = append(enriched, ContainerWithMetrics{
@@ -112,7 +120,11 @@ func StartContainer(id string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	if err := cli.ContainerStart(context.Background(), id, container.StartOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to start container: %w", err)
@@ -127,7 +139,11 @@ func StopContainer(id string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	if err := cli.ContainerStop(context.Background(), id, container.StopOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to stop container: %w", err)
@@ -142,7 +158,11 @@ func RemoveContainer(id string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	if err := cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: true}); err != nil {
 		return nil, fmt.Errorf("failed to remove container: %w", err)
@@ -157,7 +177,11 @@ func RestartContainer(id string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
 
 	if err := cli.ContainerRestart(context.Background(), id, container.StopOptions{}); err != nil {
 		return nil, fmt.Errorf("failed to restart container: %w", err)

@@ -2,6 +2,7 @@ package templates
 
 import (
 	"fmt"
+	"go-backend/internal/logger"
 	"io/fs"
 	"net/http"
 
@@ -25,7 +26,9 @@ func RegisterStaticRoutes(router *gin.Engine, staticFS fs.FS, pwaManifest fs.FS)
 			return
 		}
 		c.Header("Content-Type", "application/manifest+json")
-		c.Writer.Write(data)
+		if _, err := c.Writer.Write(data); err != nil {
+			logger.Warnf("failed to write response: %v", err)
+		}
 	})
 
 	// Serve /favicon-*.png
@@ -40,7 +43,9 @@ func RegisterStaticRoutes(router *gin.Engine, staticFS fs.FS, pwaManifest fs.FS)
 					return
 				}
 				c.Header("Content-Type", "image/png")
-				c.Writer.Write(data)
+				if _, err := c.Writer.Write(data); err != nil {
+					logger.Warnf("failed to write response: %v", err)
+				}
 			}
 		}(filename))
 	}
@@ -53,6 +58,9 @@ func RegisterStaticRoutes(router *gin.Engine, staticFS fs.FS, pwaManifest fs.FS)
 			return
 		}
 		c.Header("Content-Type", "image/png")
-		c.Writer.Write(data)
+		if _, err := c.Writer.Write(data); err != nil {
+			logger.Warnf("failed to write response: %v", err)
+		}
+
 	})
 }

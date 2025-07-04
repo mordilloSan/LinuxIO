@@ -51,7 +51,9 @@ func main() {
 	router.Use(gin.Recovery())
 
 	if env == "development" {
-		router.SetTrustedProxies(nil)
+		if err := router.SetTrustedProxies(nil); err != nil {
+			logger.Warnf("failed to set trusted proxies: %v", err)
+		}
 		router.Use(auth.CorsMiddleware())
 		router.Use(gin.Logger())
 	}
@@ -98,7 +100,9 @@ func main() {
 		port = "8080"
 		logger.Warnf("⚠️  SERVER_PORT not set, defaulting to 8080")
 	}
-	os.Setenv("SERVER_PORT", port)
+	if err := os.Setenv("SERVER_PORT", port); err != nil {
+		logger.Warnf("failed to set SERVER_PORT: %v", err)
+	}
 
 	// Start the server
 	addr := ":" + port
