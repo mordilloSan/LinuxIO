@@ -84,6 +84,7 @@ require (
 	github.com/godbus/dbus/v5 v5.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/huin/goupnp v1.3.0
 	github.com/jaypipes/ghw v0.17.0
 	github.com/lufia/plan9stats v0.0.0-20250317134145-8bc96cf8fc35 // indirect
 	github.com/msteinert/pam v1.2.0

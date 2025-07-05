@@ -6,7 +6,9 @@ import (
 	"go-backend/internal/logger"
 	"go-backend/internal/utils"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/huin/goupnp/dcps/internetgateway1"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
@@ -359,6 +362,91 @@ func listExportedPeersByFilename(interfaceName string) ([]utils.PeerConfig, erro
 	return peers, nil
 }
 
+// openUpnpUdpPortManual tries to open UDP port mapping on a given IGD URL for a given internal IP.
+func openUpnpUdpPortManual(igdUrlStr, localIP string, port int, desc string) error {
+
+	parsed, err := url.Parse(igdUrlStr)
+	if err != nil {
+		return fmt.Errorf("invalid IGD URL: %w", err)
+	}
+
+	devs, err := internetgateway1.NewWANIPConnection1ClientsByURL(parsed)
+	if err != nil {
+		return fmt.Errorf("failed to connect to IGD at %s: %w", igdUrlStr, err)
+	}
+	if len(devs) == 0 {
+		return fmt.Errorf("no WANIPConnection1 clients found at %s", igdUrlStr)
+	}
+	client := devs[0]
+
+	externalPort := uint16(port)
+	internalPort := uint16(port)
+	protocol := "UDP"
+	leaseDuration := uint32(3600) // 0 = permanent
+
+	err = client.AddPortMapping(
+		"",            // NewRemoteHost
+		externalPort,  // NewExternalPort
+		protocol,      // NewProtocol
+		internalPort,  // NewInternalPort
+		localIP,       // NewInternalClient
+		true,          // NewEnabled
+		desc,          // NewPortMappingDescription
+		leaseDuration, // NewLeaseDuration
+	)
+	if err != nil {
+		return fmt.Errorf("AddPortMapping failed: %w", err)
+	}
+	return nil
+}
+
+// discoverIgdDescriptorUrl returns the IGD device descriptor URL (desc: ...gatedesc0b.xml).
+// Returns "" if not found.
+func discoverIgdDescriptorUrl() string {
+	clients, _, err := internetgateway1.NewWANIPConnection1Clients()
+	if err != nil || len(clients) == 0 {
+		logger.Warnf("[wireguard] UPnP: IGD descriptor discovery failed: %v", err)
+		return ""
+	}
+	for _, c := range clients {
+		if c == nil || c.Location == nil {
+			continue
+		}
+		descUrl := c.Location.String()
+		logger.Debugf("[wireguard] UPnP: Discovered IGD descriptor URL: %s", descUrl)
+		if descUrl != "" {
+			return descUrl
+		}
+	}
+	return ""
+}
+
+// GetLocalIPByInterface returns the first IPv4 address found on the named interface.
+// Returns "" if not found or on error.
+func getLocalIPByInterface(nicName string) (string, error) {
+	iface, err := net.InterfaceByName(nicName)
+	if err != nil {
+		return "", fmt.Errorf("interface %q not found: %w", nicName, err)
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", fmt.Errorf("could not get addresses for %q: %w", nicName, err)
+	}
+	for _, addr := range addrs {
+		var ip net.IP
+		switch v := addr.(type) {
+		case *net.IPNet:
+			ip = v.IP
+		case *net.IPAddr:
+			ip = v.IP
+		}
+		if ip != nil && ip.To4() != nil && !ip.IsLoopback() {
+			return ip.String(), nil
+		}
+	}
+	return "", fmt.Errorf("no IPv4 address found for interface %q", nicName)
+}
+
 // --- Handler Implementations ---
 
 func ListInterfaces(args []string) (any, error) {
@@ -482,6 +570,24 @@ func AddInterface(args []string) (any, error) {
 	}
 
 	logger.Infof("[wireguard] Interface %s created and brought up", name)
+
+	// ---- UPnP Port Mapping (Optional) ----
+	internalIP, err := getLocalIPByInterface(egressNic)
+	if err != nil {
+		logger.Warnf("[wireguard] Failed to get local IP for %s: %v", egressNic, err)
+	}
+	if internalIP != "" {
+		igdUrl := discoverIgdDescriptorUrl()
+		logger.Debugf("[wireguard] UPnP: Using IGD URL: %s", igdUrl)
+		err = openUpnpUdpPortManual(igdUrl, internalIP, listenPort, "WireGuard "+name)
+		if err != nil {
+			logger.Warnf("[wireguard] UPnP port mapping failed: %v", err)
+		} else {
+			logger.Infof("[wireguard] UPnP port mapping succeeded for UDP %d", listenPort)
+		}
+	} else {
+		logger.Warnf("[wireguard] UPnP port mapping skipped: could not determine local IP")
+	}
 
 	return map[string]any{
 		"status":      "created",
