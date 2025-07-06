@@ -158,28 +158,8 @@ func WireguardAddPeer(c *gin.Context) {
 	if sess == nil {
 		return
 	}
-	var req struct {
-		PublicKey           string   `json:"public_key"`
-		AllowedIPs          []string `json:"allowed_ips"`
-		Endpoint            string   `json:"endpoint"`
-		PresharedKey        string   `json:"preshared_key"`
-		PersistentKeepalive int      `json:"persistent_keepalive"`
-		Name                string   `json:"name"`
-	}
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
-		return
-	}
 	name := c.Param("name")
-	args := []string{
-		name,
-		req.PublicKey,
-		strings.Join(req.AllowedIPs, ","),
-		req.Endpoint,
-		req.PresharedKey,
-		strconv.Itoa(req.PersistentKeepalive),
-		req.Name, // Pass the peer's display name/label (may be "")
-	}
+	args := []string{name}
 	data, err := bridge.CallWithSession(sess, "wireguard", "add_peer", args)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -194,7 +174,7 @@ func WireguardAddPeer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "peer": resp.Output})
 }
 
 func WireguardRemovePeer(c *gin.Context) {
@@ -203,8 +183,8 @@ func WireguardRemovePeer(c *gin.Context) {
 		return
 	}
 	name := c.Param("name")
-	pubkey := c.Param("pubkey")
-	args := []string{name, pubkey}
+	peername := c.Param("peername")
+	args := []string{name, peername}
 	data, err := bridge.CallWithSession(sess, "wireguard", "remove_peer", args)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -316,7 +296,7 @@ func RegisterWireguardRoutes(r *gin.Engine) {
 	wg.DELETE("/interface/:name", WireguardRemoveInterface)
 	wg.GET("/interface/:name/peers", WireguardListPeers)
 	wg.POST("/interface/:name/peer", WireguardAddPeer)
-	wg.DELETE("/interface/:name/peer/:pubkey", WireguardRemovePeer)
+	wg.DELETE("/interface/:name/peer/:peername", WireguardRemovePeer)
 	wg.GET("/interface/:name/keys", WireguardGetKeys)
 	wg.POST("/interface/:name/up", WireguardUpInterface)
 	wg.POST("/interface/:name/down", WireguardDownInterface)

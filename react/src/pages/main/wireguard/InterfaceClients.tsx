@@ -46,17 +46,17 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     queryKey: ["wg-peers", interfaceName],
     queryFn: async () => {
       const res = await axios.get(
-        `/wireguard/interface/${interfaceName}/peers`,
+        `/wireguard/interface/${interfaceName}/peers`
       );
       return Array.isArray(res.data) ? res.data : res.data.peers || [];
     },
     enabled: !!interfaceName,
   });
 
-  const handleDeletePeer = async (publicKey: string) => {
+  const handleDeletePeer = async (peerName: string) => {
     try {
       await axios.delete(
-        `/wireguard/interface/${interfaceName}/peer/${publicKey}`,
+        `/wireguard/interface/${interfaceName}/peer/${peerName}`
       );
       refetch();
     } catch (error) {
@@ -72,7 +72,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     setLoadingQr(true);
     try {
       const res = await axios.get(
-        `/wireguard/interface/${interfaceName}/peer/${publicKey}/qrcode`,
+        `/wireguard/interface/${interfaceName}/peer/${publicKey}/qrcode`
       );
       setQrCode(res.data.qrcode);
       setOpenDialog(true);
@@ -98,8 +98,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
           peers.map((peer, idx) => (
             <Grid
               size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
-              key={peer.name || idx}
-            >
+              key={peer.name || idx}>
               <Card>
                 <CardContent>
                   <Box display="flex" justifyContent="space-between">
@@ -109,21 +108,18 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                     <Box>
                       <IconButton
                         aria-label="Delete"
-                        onClick={() => handleDeletePeer(peer.public_key)}
-                        sx={{ color: "red" }}
-                      >
+                        onClick={() => handleDeletePeer(peer.name)}
+                        sx={{ color: "red" }}>
                         <Delete />
                       </IconButton>
                       <IconButton
                         aria-label="Download Config"
-                        onClick={() => handleDownloadConfig(peer.public_key)}
-                      >
+                        onClick={() => handleDownloadConfig(peer.public_key)}>
                         <GetApp />
                       </IconButton>
                       <IconButton
                         aria-label="View QR Code"
-                        onClick={() => handleViewQrCode(peer.public_key)}
-                      >
+                        onClick={() => handleViewQrCode(peer.public_key)}>
                         <QrCode />
                       </IconButton>
                     </Box>
@@ -153,8 +149,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
         onClose={() => {
           setOpenDialog(false);
           setQrCode(null);
-        }}
-      >
+        }}>
         <DialogContent>
           {loadingQr ? (
             <Typography>Loading QR code...</Typography>

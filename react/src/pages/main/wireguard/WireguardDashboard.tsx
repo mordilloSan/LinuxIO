@@ -77,9 +77,9 @@ const WireGuardDashboard: React.FC = () => {
     }
   };
 
-  const handleAddPeer = async (interfaceName: string, peerData: any) => {
+  const handleAddPeer = async (interfaceName: string) => {
     try {
-      await axios.post(`/wireguard/interface/${interfaceName}/peer`, peerData);
+      await axios.post(`/wireguard/interface/${interfaceName}/peer`);
       toast.success(`Peer added to '${interfaceName}'`);
       refetch();
     } catch (error) {

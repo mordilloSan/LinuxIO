@@ -11,7 +11,7 @@ func WireguardHandlers() map[string]types.HandlerFunc {
 		"remove_interface": RemoveInterface,
 		"list_peers":       ListPeers,
 		"add_peer":         AddPeer,
-		"remove_peer":      RemovePeer,
+		"remove_peer":      RemovePeerByName,
 		"get_keys":         GetKeys,
 		"up_interface":     UpInterface,
 		"down_interface":   DownInterface,

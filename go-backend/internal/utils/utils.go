@@ -5,9 +5,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"go-backend/internal/logger"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/user"
 	"strings"
+	"time"
 )
 
 // GetDistroID reads /etc/os-release and extracts ID_LIKE
@@ -65,4 +69,51 @@ func GetUserHome() (string, error) {
 		return "", err
 	}
 	return u.HomeDir, nil
+}
+
+// GetLocalIPByInterface returns the first IPv4 address found on the named interface.
+// Returns "" if not found or on error.
+func GetLocalIPByInterface(nicName string) (string, error) {
+	iface, err := net.InterfaceByName(nicName)
+	if err != nil {
+		return "", fmt.Errorf("interface %q not found: %w", nicName, err)
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", fmt.Errorf("could not get addresses for %q: %w", nicName, err)
+	}
+	for _, addr := range addrs {
+		var ip net.IP
+		switch v := addr.(type) {
+		case *net.IPNet:
+			ip = v.IP
+		case *net.IPAddr:
+			ip = v.IP
+		}
+		if ip != nil && ip.To4() != nil && !ip.IsLoopback() {
+			return ip.String(), nil
+		}
+	}
+	return "", fmt.Errorf("no IPv4 address found for interface %q", nicName)
+}
+
+func GetPublicIP() (string, error) {
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	resp, err := client.Get("https://api.ipify.org")
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			logger.Warnf("failed to close response body: %v", cerr)
+		}
+	}()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	ip := strings.TrimSpace(string(body))
+	return ip, nil
 }
