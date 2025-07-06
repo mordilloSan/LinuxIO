@@ -35,7 +35,7 @@ const routes = [
       { path: "services", element: <Services /> },
       { path: "network", element: <Network /> },
       { path: "hardware", element: <Hardware /> },
-      { path: "filebrowser", element: <Filebrowser /> },
+      { path: "filebrowser/*", element: <Filebrowser /> },
       { path: "terminal", element: <Terminal /> },
       { path: "wireguard", element: <Wireguard /> },
     ],

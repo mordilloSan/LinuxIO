@@ -573,7 +573,10 @@ func AddPeer(args []string) (any, error) {
 
 	// 6. Export client config file
 	publicIP, _ := utils.GetPublicIP()
-	ExportPeerConfigToDisk(interfaceName, peer, cfg, publicIP)
+	_, err = ExportPeerConfigToDisk(interfaceName, peer, cfg, publicIP)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write peer config: %v", err)
+	}
 
 	// 7. Optionally add peer live (wgctrl...)
 
