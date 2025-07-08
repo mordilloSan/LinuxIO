@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"encoding/json"
+	"fmt"
 	"go-backend/cmd/bridge/handlers/types"
 	"go-backend/internal/auth"
 	"go-backend/internal/bridge"
@@ -202,6 +203,73 @@ func WireguardRemovePeer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func WireguardPeerQRCode(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+	name := c.Param("name")
+	peername := c.Param("peername")
+	args := []string{name, peername}
+	data, err := bridge.CallWithSession(sess, "wireguard", "peer_qrcode", args)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var resp types.BridgeResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+	if resp.Status != "ok" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
+		return
+	}
+	var out map[string]string
+	if err := json.Unmarshal(resp.Output, &out); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
+		return
+	}
+	// out["qrcode"] is a data URL or base64-encoded image string
+	c.JSON(http.StatusOK, out)
+}
+
+func WireguardPeerConfigDownload(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+	interfaceName := c.Param("name")
+	peerName := c.Param("peername")
+	args := []string{interfaceName, peerName}
+	data, err := bridge.CallWithSession(sess, "wireguard", "peer_config_download", args)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var resp types.BridgeResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+	if resp.Status != "ok" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
+		return
+	}
+
+	// Return as attachment
+	var out map[string]string
+	if err := json.Unmarshal(resp.Output, &out); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
+		return
+	}
+	configContent := out["config"] // base64 or plain text
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.conf\"", peerName))
+	c.Header("Content-Type", "text/plain")
+	c.String(http.StatusOK, configContent)
+}
+
 func WireguardGetKeys(c *gin.Context) {
 	sess := auth.GetSessionOrAbort(c)
 	if sess == nil {
@@ -297,6 +365,8 @@ func RegisterWireguardRoutes(r *gin.Engine) {
 	wg.GET("/interface/:name/peers", WireguardListPeers)
 	wg.POST("/interface/:name/peer", WireguardAddPeer)
 	wg.DELETE("/interface/:name/peer/:peername", WireguardRemovePeer)
+	wg.GET("/interface/:name/peer/:peername/qrcode", WireguardPeerQRCode)
+	wg.GET("/interface/:name/peer/:peername/config", WireguardPeerConfigDownload)
 	wg.GET("/interface/:name/keys", WireguardGetKeys)
 	wg.POST("/interface/:name/up", WireguardUpInterface)
 	wg.POST("/interface/:name/down", WireguardDownInterface)

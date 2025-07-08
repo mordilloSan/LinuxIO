@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"go-backend/internal/logger"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	qrcode "github.com/skip2/go-qrcode"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 )
@@ -802,5 +804,57 @@ func DownInterface(args []string) (any, error) {
 	return map[string]any{
 		"status": "off",
 		"output": string(out),
+	}, nil
+}
+
+// args: [interfaceName, peerName]
+func PeerQRCode(args []string) (any, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("usage: peer_qrcode <interface> <peername>")
+	}
+	interfaceName := args[0]
+	peerName := args[1]
+
+	peerDir := filepath.Join("/etc/wireguard", interfaceName)
+	peerPath := filepath.Join(peerDir, peerName+".conf")
+
+	rawConfig, err := os.ReadFile(peerPath)
+	if err != nil {
+		logger.Warnf("failed to read peer config for QR: %v", err)
+		return nil, fmt.Errorf("failed to read peer config: %v", err)
+	}
+
+	// Generate QR code PNG from config text (rawConfig is []byte)
+	png, err := qrcode.Encode(string(rawConfig), qrcode.Medium, 256)
+	if err != nil {
+		logger.Warnf("failed to generate QR code: %v", err)
+		return nil, fmt.Errorf("failed to generate QR code: %v", err)
+	}
+
+	// Encode as base64 data URL
+	dataUri := "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+
+	return map[string]string{
+		"qrcode": dataUri,
+	}, nil
+}
+
+func PeerConfigDownload(args []string) (any, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("usage: peer_config_download <interface> <peername>")
+	}
+	interfaceName := args[0]
+	peerName := args[1]
+
+	peerDir := filepath.Join("/etc/wireguard", interfaceName)
+	peerPath := filepath.Join(peerDir, peerName+".conf")
+
+	data, err := os.ReadFile(peerPath)
+	if err != nil {
+		return nil, fmt.Errorf("peer config not found: %v", err)
+	}
+
+	return map[string]string{
+		"config": string(data),
 	}, nil
 }

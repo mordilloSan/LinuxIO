@@ -1,6 +1,13 @@
-import { Delete, Edit } from "@mui/icons-material";
+import { Delete, Add } from "@mui/icons-material";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
-import { Card, CardContent, Typography, Box, IconButton } from "@mui/material";
+import {
+  Card,
+  CardContent,
+  Typography,
+  Box,
+  IconButton,
+  Tooltip,
+} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { RefObject } from "react";
@@ -45,8 +52,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
       transition={{ duration: 0.3 }}
-      layout
-    >
+      layout>
       <Card
         ref={iface.name === selectedInterface ? selectedCardRef : null}
         sx={{
@@ -60,49 +66,55 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
           "&:hover": hoverStyles,
           ...(iface.name === selectedInterface && hoverStyles),
         }}
-        onClick={() => handleSelectInterface(iface)}
-      >
+        onClick={() => handleSelectInterface(iface)}>
         <CardContent>
           <Box
             display="flex"
             justifyContent="space-between"
-            alignItems="center"
-          >
+            alignItems="center">
             <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
               {iface.name}
             </Typography>
             <Box>
-              <IconButton
-                sx={{
-                  color: iface.isConnected === "Active" ? primaryColor : "gray",
-                }}
-                aria-label="Power"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleToggleInterface(
-                    iface.name,
-                    iface.isConnected === "Active" ? "down" : "up",
-                  );
-                }}
-              >
-                <PowerSettingsNewIcon />
-              </IconButton>
-              <IconButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(iface.name);
-                }}
-              >
-                <Delete />
-              </IconButton>
-              <IconButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleAddPeer(iface.name, {}); // Provide actual peerData here
-                }}
-              >
-                <Edit />
-              </IconButton>
+              <Tooltip
+                title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}>
+                <IconButton
+                  sx={{
+                    color:
+                      iface.isConnected === "Active"
+                        ? theme.palette.primary.light
+                        : "gray",
+                  }}
+                  aria-label="Power"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleInterface(
+                      iface.name,
+                      iface.isConnected === "Active" ? "down" : "up"
+                    );
+                  }}>
+                  <PowerSettingsNewIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete Interface">
+                <IconButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(iface.name);
+                  }}
+                  sx={{ color: "red" }}>
+                  <Delete />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Add Peer">
+                <IconButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddPeer(iface.name, {});
+                  }}>
+                  <Add />
+                </IconButton>
+              </Tooltip>
             </Box>
           </Box>
           <Typography variant="body2" color="textSecondary">
