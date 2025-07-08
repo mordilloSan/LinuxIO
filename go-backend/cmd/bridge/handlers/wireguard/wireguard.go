@@ -49,7 +49,10 @@ func peerNameFromPath(path string) string {
 
 func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 	var cfg InterfaceConfig
-	iniFile, err := ini.Load(path)
+	iniFile, err := ini.LoadSources(ini.LoadOptions{
+		AllowNonUniqueSections: true,
+	}, path)
+
 	if err != nil {
 		return cfg, err
 	}
@@ -82,7 +85,9 @@ func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 }
 
 func WriteWireGuardConfig(path string, cfg InterfaceConfig) error {
-	iniFile := ini.Empty()
+	iniFile := ini.Empty(ini.LoadOptions{
+		AllowNonUniqueSections: true,
+	})
 	ifSec, _ := iniFile.NewSection("Interface")
 	if len(cfg.Address) > 0 {
 		if _, err := ifSec.NewKey("Address", strings.Join(cfg.Address, ",")); err != nil {
@@ -177,30 +182,13 @@ func AddOrUpdatePeerInConfig(cfg *InterfaceConfig, newPeer utils.PeerConfig) {
 	cfg.Peers = append(cfg.Peers, newPeer)
 }
 
-func ExportPeerConfigToDisk(interfaceName string, peer utils.PeerConfig, ifaceCfg InterfaceConfig, publicIP string) (string, error) {
+func ExportPeerConfigToDiskWithNumber(interfaceName string, peer utils.PeerConfig, ifaceCfg InterfaceConfig, publicIP string, peerNumber int) (string, error) {
 	peerDir := filepath.Join("/etc/wireguard", interfaceName)
 	if err := os.MkdirAll(peerDir, 0700); err != nil {
 		return "", fmt.Errorf("failed to create peer dir: %w", err)
 	}
-	// Find the next PeerN name
-	files, err := filepath.Glob(filepath.Join(peerDir, "Peer*.conf"))
-	if err != nil {
-		return "", fmt.Errorf("failed to list existing peer configs: %w", err)
-	}
 
-	peerNum := len(files) + 1
-	var peerPath string
-	for {
-		candidate := filepath.Join(peerDir, fmt.Sprintf("Peer%d.conf", peerNum))
-		_, statErr := os.Stat(candidate)
-		if os.IsNotExist(statErr) {
-			peerPath = candidate
-			break
-		} else if statErr != nil {
-			return "", fmt.Errorf("failed to stat peer config candidate: %w", statErr)
-		}
-		peerNum++
-	}
+	peerPath := filepath.Join(peerDir, fmt.Sprintf("Peer%d.conf", peerNumber))
 
 	iniFile := ini.Empty()
 
@@ -247,14 +235,11 @@ func ExportPeerConfigToDisk(interfaceName string, peer utils.PeerConfig, ifaceCf
 	if _, err := peerSec.NewKey("AllowedIPs", "0.0.0.0/0, ::/0"); err != nil {
 		logger.Warnf(" failed to set AllowedIPs in peer section: %v", err)
 	}
-
-	// Use publicIP passed in (do NOT call getPublicIP)
 	if publicIP != "" {
 		if _, err := peerSec.NewKey("Endpoint", publicIP); err != nil {
 			logger.Warnf(" failed to set Endpoint in peer section: %v", err)
 		}
 	}
-
 	if peer.PresharedKey != "" {
 		if _, err := peerSec.NewKey("PresharedKey", peer.PresharedKey); err != nil {
 			logger.Warnf(" failed to set PresharedKey: %v", err)
@@ -322,332 +307,18 @@ func listExportedPeersByFilename(interfaceName string) ([]utils.PeerConfig, erro
 	return peers, nil
 }
 
-// --- Handler Implementations ---
-
-func ListInterfaces(args []string) (any, error) {
-	logger.Debugf(" Listing interfaces")
-	files, err := filepath.Glob("/etc/wireguard/*.conf")
-	if err != nil {
-		logger.Errorf(" Failed to list interfaces: %v", err)
-		return nil, err
+func PeerNumberFromIP(ip string) int {
+	parts := strings.Split(ip, ".")
+	if len(parts) != 4 {
+		return 0 // or return error if you want
 	}
-
-	var uiIfaces []WireGuardInterfaceUI
-
-	for _, f := range files {
-		name := strings.TrimSuffix(filepath.Base(f), ".conf")
-		cfg, err := ParseWireGuardConfig(configPath(name))
-		if err != nil {
-			logger.Warnf(" Failed to parse config for %s: %v", name, err)
-			continue // skip broken configs
-		}
-		status := isInterfaceUp(name)
-		uiIfaces = append(uiIfaces, WireGuardInterfaceUI{
-			Name: name,
-			IsConnected: func() string {
-				if status {
-					return "Active"
-				} else {
-					return "Inactive"
-				}
-			}(),
-			Address:   strings.Join(cfg.Address, ", "),
-			Port:      cfg.ListenPort,
-			PeerCount: len(cfg.Peers),
-		})
+	host := parts[3]
+	numStr := host
+	if idx := strings.Index(host, "/"); idx != -1 {
+		numStr = host[:idx]
 	}
-	logger.Infof(" Found interfaces: %d", len(uiIfaces))
-	return uiIfaces, nil
-}
-
-func AddInterface(args []string) (any, error) {
-	if len(args) < 4 {
-		logger.Warnf(" add_interface: missing args")
-		return nil, fmt.Errorf("usage: add_interface <name> <addresses> <listenPort> <egressNic> [dns] [mtu] [peers_json]")
-	}
-
-	name := args[0]
-	address := filterEmpty(strings.Split(args[1], ","))
-	listenPort, _ := strconv.Atoi(args[2])
-	egressNic := args[3]
-
-	dns := []string{}
-	if len(args) > 4 && args[4] != "" {
-		dns = filterEmpty(strings.Split(args[4], ","))
-	}
-
-	mtu := 0
-	if len(args) > 5 && args[5] != "" {
-		mtu, _ = strconv.Atoi(args[5])
-	}
-
-	var peers []utils.PeerConfig
-
-	if len(args) > 6 && args[6] != "" && args[6] != "null" && args[6] != "[]" {
-		if err := json.Unmarshal([]byte(args[6]), &peers); err != nil {
-			return nil, fmt.Errorf("failed to parse peers JSON: %w", err)
-		}
-	}
-
-	// Auto-generate peers if NumPeers > 0 and no peers were passed
-	if len(peers) == 0 && len(args) > 7 {
-		numPeers, _ := strconv.Atoi(args[7])
-		if numPeers > 0 {
-			for i := range numPeers {
-				peerPriv, err := wgtypes.GeneratePrivateKey()
-				if err != nil {
-					return nil, fmt.Errorf("failed to generate peer key: %w", err)
-				}
-				peer := utils.PeerConfig{
-					PublicKey:  peerPriv.PublicKey().String(),
-					PrivateKey: peerPriv.String(),
-					AllowedIPs: []string{
-						fmt.Sprintf("%s%d/32", strings.TrimSuffix(address[0][:strings.LastIndex(address[0], ".")+1], "/24"), i+2),
-					},
-					PersistentKeepalive: 25,
-				}
-				peers = append(peers, peer)
-			}
-		}
-	}
-
-	privKey, err := wgtypes.GeneratePrivateKey()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate private key: %w", err)
-	}
-	privateKey := privKey.String()
-	publicKey := privKey.PublicKey().String()
-
-	cfg := InterfaceConfig{
-		PrivateKey: privateKey,
-		Address:    address,
-		ListenPort: listenPort,
-		DNS:        dns,
-		MTU:        mtu,
-		Peers:      peers,
-	}
-
-	// Fetch public IP ONCE
-	publicIP, err := utils.GetPublicIP()
-	if err != nil {
-		logger.Warnf(" Failed to fetch public IP: %v", err)
-		publicIP = ""
-	}
-
-	for _, peer := range peers {
-		if _, err := ExportPeerConfigToDisk(name, peer, cfg, publicIP); err != nil {
-			logger.Warnf(" Failed to export client config for peer %s: %v", peer.PublicKey, err)
-		} else {
-			logger.Infof(" Exported client config for peer %s", peer.PublicKey)
-		}
-	}
-
-	if err := WriteWireGuardConfigWithPostUpDown(configPath(name), cfg, egressNic); err != nil {
-		logger.Errorf(" Failed to write config for %s: %v", name, err)
-		return nil, err
-	}
-
-	if _, err := UpInterface([]string{name}); err != nil {
-		return nil, err // logging already done in UpInterface
-	}
-
-	logger.Infof(" Interface %s created and brought up", name)
-
-	// ---- UPnP Port Mapping (Optional) ----
-	//upnp.OpenRouterPort(egressNic, listenPort, name)
-
-	return map[string]any{
-		"status":      "created",
-		"private_key": privateKey,
-		"public_key":  publicKey,
-		"peers":       peers,
-	}, nil
-
-}
-
-func RemoveInterface(args []string) (any, error) {
-	if len(args) < 1 {
-		logger.Warnf(" remove_interface: missing name argument")
-		return nil, fmt.Errorf("usage: remove_interface <name>")
-	}
-	name := args[0]
-	logger.Infof(" Removing interface: %s", name)
-	if _, err := DownInterface([]string{name}); err != nil {
-		logger.Warnf(" Failed to bring down %s: %v", name, err)
-		// Not returning, since removal should proceed regardless
-	}
-
-	if err := os.Remove(configPath(name)); err != nil {
-		logger.Errorf(" Failed to remove config for %s: %v", name, err)
-		return nil, err
-	}
-	// Remove all peer configs for this interface
-	peerDir := filepath.Join("/etc/wireguard", name)
-	if err := os.RemoveAll(peerDir); err == nil {
-		logger.Infof(" Removed all peer configs in %s", peerDir)
-	} else if !os.IsNotExist(err) {
-		logger.Warnf(" Could not remove peer config dir %s: %v", peerDir, err)
-	}
-	logger.Infof(" Interface %s removed", name)
-	return "removed", nil
-}
-
-func ListPeers(args []string) (any, error) {
-	if len(args) < 1 {
-		return nil, fmt.Errorf("usage: list_exported_peers <interface>")
-	}
-	peers, err := listExportedPeersByFilename(args[0])
-	if err != nil {
-		return nil, err
-	}
-	return peers, nil
-}
-
-func AddPeer(args []string) (any, error) {
-	if len(args) < 1 {
-		return nil, fmt.Errorf("usage: add_peer <interface>")
-	}
-	interfaceName := args[0]
-
-	// 1. Parse config, get all existing peers and their AllowedIPs
-	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config for %s: %v", interfaceName, err)
-	}
-
-	// 2. Get list of existing Peer*.conf files to determine next peer number
-	peerDir := filepath.Join("/etc/wireguard", interfaceName)
-	files, _ := os.ReadDir(peerDir)
-	maxN := 0
-	re := regexp.MustCompile(`^Peer(\d+)\.conf$`)
-	for _, f := range files {
-		m := re.FindStringSubmatch(f.Name())
-		if len(m) == 2 {
-			if n, err := strconv.Atoi(m[1]); err == nil && n > maxN {
-				maxN = n
-			}
-		}
-	}
-	peerName := fmt.Sprintf("Peer%d", maxN+1)
-
-	// 3. Auto-generate next available AllowedIP (e.g., 10.10.20.2/32, 10.10.20.3/32, ...)
-	baseCIDR := cfg.Address[0] // e.g. "10.10.20.0/24"
-	ipPrefix := strings.Join(strings.Split(baseCIDR, ".")[:3], ".") + "."
-	usedIPs := map[string]bool{"0": true}
-	for _, p := range cfg.Peers {
-		for _, ip := range p.AllowedIPs {
-			parts := strings.Split(ip, ".")
-			if len(parts) == 4 {
-				usedIPs[parts[3][:strings.Index(parts[3], "/")]] = true
-			}
-		}
-	}
-	nextIP := ""
-	for i := 2; i < 255; i++ { // 10.10.20.2/32 .. 254
-		key := strconv.Itoa(i)
-		if !usedIPs[key] {
-			nextIP = fmt.Sprintf("%s%d/32", ipPrefix, i)
-			break
-		}
-	}
-	if nextIP == "" {
-		return nil, fmt.Errorf("no available IPs left")
-	}
-
-	// 4. Generate keypair
-	priv, _ := wgtypes.GeneratePrivateKey()
-	pub := priv.PublicKey().String()
-
-	peer := utils.PeerConfig{
-		PublicKey:           pub,
-		AllowedIPs:          []string{nextIP},
-		PersistentKeepalive: 25,
-		Name:                peerName,
-	}
-
-	// 5. Append to config and write
-	AddOrUpdatePeerInConfig(&cfg, peer)
-	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
-		return nil, fmt.Errorf("failed to write config: %v", err)
-	}
-
-	// 6. Export client config file
-	publicIP, _ := utils.GetPublicIP()
-	_, err = ExportPeerConfigToDisk(interfaceName, peer, cfg, publicIP)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write peer config: %v", err)
-	}
-
-	// 7. Optionally add peer live (wgctrl...)
-
-	return map[string]any{
-		"peer_name":  peerName,
-		"public_key": pub,
-		"allowed_ip": nextIP,
-		// more fields as you wish
-	}, nil
-}
-
-func RemovePeerByName(args []string) (any, error) {
-	if len(args) < 2 {
-		logger.Warnf("remove_peer: missing args")
-		return nil, fmt.Errorf("usage: remove_peer <interface> <peer>")
-	}
-	interfaceName := args[0]
-	peerName := args[1]
-	peerDir := filepath.Join("/etc/wireguard", interfaceName)
-	peerConfPath := filepath.Join(peerDir, peerName+".conf")
-	mainCfgPath := filepath.Join("/etc/wireguard", interfaceName+".conf")
-
-	// 1. Parse AllowedIPs from the peer conf
-	rawPeer, err := os.ReadFile(peerConfPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read peer conf: %v", err)
-	}
-	allowedIP := extractKeyValue(string(rawPeer), "Address")
-	if allowedIP == "" {
-		return nil, fmt.Errorf("could not find Address (AllowedIP) in peer config")
-	}
-
-	// 2. Read main config
-	rawMain, err := os.ReadFile(mainCfgPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read main config: %v", err)
-	}
-	sections := strings.Split(string(rawMain), "[Peer]")
-
-	// 3. Find and remove the matching [Peer] section
-	var builder strings.Builder
-	builder.WriteString(sections[0]) // Always include the [Interface] section
-	removed := false
-	pattern := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*AllowedIPs\s*=\s*%s\b`, regexp.QuoteMeta(allowedIP)))
-
-	for i := 1; i < len(sections); i++ {
-		section := "[Peer]" + sections[i]
-		if pattern.FindStringIndex(section) != nil {
-			removed = true
-			continue
-		}
-		builder.WriteString("[Peer]")
-		builder.WriteString(sections[i])
-
-	}
-
-	if !removed {
-		return nil, fmt.Errorf("no matching peer found for AllowedIPs=%s", allowedIP)
-	}
-
-	// 4. Write back the config
-	if err := os.WriteFile(mainCfgPath, []byte(builder.String()), 0600); err != nil {
-		return nil, fmt.Errorf("failed to write main config: %v", err)
-	}
-
-	// 5. Remove the exported peer conf file
-	if err := os.Remove(peerConfPath); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("could not remove exported config %s: %v", peerConfPath, err)
-	}
-
-	return "removed", nil
+	num, _ := strconv.Atoi(numStr)
+	return num
 }
 
 // Improved, robust key extractor with regex
@@ -763,6 +434,325 @@ func WriteWireGuardConfigWithPostUpDown(path string, cfg InterfaceConfig, egress
 	}
 
 	return nil
+}
+
+// --- Handler Implementations ---
+
+func ListInterfaces(args []string) (any, error) {
+	logger.Debugf(" Listing interfaces")
+	files, err := filepath.Glob("/etc/wireguard/*.conf")
+	if err != nil {
+		logger.Errorf(" Failed to list interfaces: %v", err)
+		return nil, err
+	}
+
+	var uiIfaces []WireGuardInterfaceUI
+
+	for _, f := range files {
+		name := strings.TrimSuffix(filepath.Base(f), ".conf")
+		cfg, err := ParseWireGuardConfig(configPath(name))
+		if err != nil {
+			logger.Warnf(" Failed to parse config for %s: %v", name, err)
+			continue // skip broken configs
+		}
+		status := isInterfaceUp(name)
+		uiIfaces = append(uiIfaces, WireGuardInterfaceUI{
+			Name: name,
+			IsConnected: func() string {
+				if status {
+					return "Active"
+				} else {
+					return "Inactive"
+				}
+			}(),
+			Address:   strings.Join(cfg.Address, ", "),
+			Port:      cfg.ListenPort,
+			PeerCount: len(cfg.Peers),
+		})
+	}
+	logger.Infof(" Found interfaces: %d", len(uiIfaces))
+	return uiIfaces, nil
+}
+
+func AddInterface(args []string) (any, error) {
+	if len(args) < 4 {
+		logger.Warnf(" add_interface: missing args")
+		return nil, fmt.Errorf("usage: add_interface <name> <addresses> <listenPort> <egressNic> [dns] [mtu] [peers_json]")
+	}
+
+	name := args[0]
+	address := filterEmpty(strings.Split(args[1], ","))
+	listenPort, _ := strconv.Atoi(args[2])
+	egressNic := args[3]
+
+	dns := []string{}
+	if len(args) > 4 && args[4] != "" {
+		dns = filterEmpty(strings.Split(args[4], ","))
+	}
+
+	mtu := 0
+	if len(args) > 5 && args[5] != "" {
+		mtu, _ = strconv.Atoi(args[5])
+	}
+
+	var peers []utils.PeerConfig
+
+	if len(args) > 6 && args[6] != "" && args[6] != "null" && args[6] != "[]" {
+		if err := json.Unmarshal([]byte(args[6]), &peers); err != nil {
+			return nil, fmt.Errorf("failed to parse peers JSON: %w", err)
+		}
+	}
+
+	// Auto-generate peers if NumPeers > 0 and no peers were passed
+	if len(peers) == 0 && len(args) > 7 {
+		numPeers, _ := strconv.Atoi(args[7])
+		if numPeers > 0 {
+			for i := range numPeers {
+				peerPriv, err := wgtypes.GeneratePrivateKey()
+				if err != nil {
+					return nil, fmt.Errorf("failed to generate peer key: %w", err)
+				}
+				peer := utils.PeerConfig{
+					PublicKey:  peerPriv.PublicKey().String(),
+					PrivateKey: peerPriv.String(),
+					AllowedIPs: []string{
+						fmt.Sprintf("%s%d/32", strings.TrimSuffix(address[0][:strings.LastIndex(address[0], ".")+1], "/24"), i+2),
+					},
+					PersistentKeepalive: 25,
+				}
+				peers = append(peers, peer)
+			}
+		}
+	}
+
+	privKey, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate private key: %w", err)
+	}
+	privateKey := privKey.String()
+	publicKey := privKey.PublicKey().String()
+
+	cfg := InterfaceConfig{
+		PrivateKey: privateKey,
+		Address:    address,
+		ListenPort: listenPort,
+		DNS:        dns,
+		MTU:        mtu,
+		Peers:      peers,
+	}
+
+	// Fetch public IP ONCE
+	publicIP, err := utils.GetPublicIP()
+	if err != nil {
+		logger.Warnf(" Failed to fetch public IP: %v", err)
+		publicIP = ""
+	}
+
+	for _, peer := range peers {
+		// Get peerNumber from peer.AllowedIPs[0]
+		peerNumber := PeerNumberFromIP(peer.AllowedIPs[0])
+		if _, err := ExportPeerConfigToDiskWithNumber(name, peer, cfg, publicIP, peerNumber); err != nil {
+			logger.Warnf(" Failed to export client config for peer %s: %v", peer.PublicKey, err)
+		} else {
+			logger.Infof(" Exported client config for peer %s", peer.PublicKey)
+		}
+	}
+
+	if err := WriteWireGuardConfigWithPostUpDown(configPath(name), cfg, egressNic); err != nil {
+		logger.Errorf(" Failed to write config for %s: %v", name, err)
+		return nil, err
+	}
+
+	if _, err := UpInterface([]string{name}); err != nil {
+		return nil, err // logging already done in UpInterface
+	}
+
+	logger.Infof(" Interface %s created and brought up", name)
+
+	// ---- UPnP Port Mapping (Optional) ----
+	//upnp.OpenRouterPort(egressNic, listenPort, name)
+
+	return map[string]any{
+		"status":      "created",
+		"private_key": privateKey,
+		"public_key":  publicKey,
+		"peers":       peers,
+	}, nil
+
+}
+
+func RemoveInterface(args []string) (any, error) {
+	if len(args) < 1 {
+		logger.Warnf(" remove_interface: missing name argument")
+		return nil, fmt.Errorf("usage: remove_interface <name>")
+	}
+	name := args[0]
+	logger.Infof(" Removing interface: %s", name)
+	if _, err := DownInterface([]string{name}); err != nil {
+		logger.Warnf(" Failed to bring down %s: %v", name, err)
+		// Not returning, since removal should proceed regardless
+	}
+
+	if err := os.Remove(configPath(name)); err != nil {
+		logger.Errorf(" Failed to remove config for %s: %v", name, err)
+		return nil, err
+	}
+	// Remove all peer configs for this interface
+	peerDir := filepath.Join("/etc/wireguard", name)
+	if err := os.RemoveAll(peerDir); err == nil {
+		logger.Infof(" Removed all peer configs in %s", peerDir)
+	} else if !os.IsNotExist(err) {
+		logger.Warnf(" Could not remove peer config dir %s: %v", peerDir, err)
+	}
+	logger.Infof(" Interface %s removed", name)
+	return "removed", nil
+}
+
+func ListPeers(args []string) (any, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("usage: list_exported_peers <interface>")
+	}
+	peers, err := listExportedPeersByFilename(args[0])
+	if err != nil {
+		return nil, err
+	}
+	return peers, nil
+}
+
+func AddPeer(args []string) (any, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("usage: add_peer <interface>")
+	}
+	interfaceName := args[0]
+
+	// 1. Parse config, get all existing peers and their AllowedIPs
+	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config for %s: %v", interfaceName, err)
+	}
+
+	// 2. Build used IP map (find next free IP)
+	baseCIDR := cfg.Address[0] // e.g. "10.10.20.0/24"
+	ipPrefix := strings.Join(strings.Split(baseCIDR, ".")[:3], ".") + "."
+	usedIPs := map[string]bool{"0": true}
+	for _, p := range cfg.Peers {
+		for _, ip := range p.AllowedIPs {
+			parts := strings.Split(ip, ".")
+			if len(parts) == 4 {
+				usedIPs[parts[3][:strings.Index(parts[3], "/")]] = true
+			}
+		}
+	}
+	nextIP := ""
+	peerNumber := 0
+	for i := 2; i < 255; i++ { // 10.10.20.2/32 .. 254
+		key := strconv.Itoa(i)
+		if !usedIPs[key] {
+			nextIP = fmt.Sprintf("%s%d/32", ipPrefix, i)
+			peerNumber = i
+			break
+		}
+	}
+	if nextIP == "" {
+		return nil, fmt.Errorf("no available IPs left")
+	}
+
+	// 3. Set peer name using peerNumber
+	peerName := fmt.Sprintf("Peer%d", peerNumber)
+
+	// 4. Generate keypair
+	priv, _ := wgtypes.GeneratePrivateKey()
+	pub := priv.PublicKey().String()
+
+	peer := utils.PeerConfig{
+		PublicKey:           pub,
+		PrivateKey:          priv.String(),
+		AllowedIPs:          []string{nextIP},
+		PersistentKeepalive: 25,
+		Name:                peerName,
+	}
+
+	// 5. Append to config and write
+	AddOrUpdatePeerInConfig(&cfg, peer)
+	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
+		return nil, fmt.Errorf("failed to write config: %v", err)
+	}
+
+	// 6. Export client config file, passing peerNumber
+	publicIP, _ := utils.GetPublicIP()
+	_, err = ExportPeerConfigToDiskWithNumber(interfaceName, peer, cfg, publicIP, peerNumber)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write peer config: %v", err)
+	}
+
+	return map[string]any{
+		"peer_name":  peerName,
+		"public_key": pub,
+		"allowed_ip": nextIP,
+		// more fields as you wish
+	}, nil
+}
+
+func RemovePeerByName(args []string) (any, error) {
+	if len(args) < 2 {
+		logger.Warnf("remove_peer: missing args")
+		return nil, fmt.Errorf("usage: remove_peer <interface> <peer>")
+	}
+	interfaceName := args[0]
+	peerName := args[1]
+	peerDir := filepath.Join("/etc/wireguard", interfaceName)
+	peerConfPath := filepath.Join(peerDir, peerName+".conf")
+	mainCfgPath := filepath.Join("/etc/wireguard", interfaceName+".conf")
+
+	// 1. Parse AllowedIPs from the peer conf
+	rawPeer, err := os.ReadFile(peerConfPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read peer conf: %v", err)
+	}
+	allowedIP := extractKeyValue(string(rawPeer), "Address")
+	if allowedIP == "" {
+		return nil, fmt.Errorf("could not find Address (AllowedIP) in peer config")
+	}
+
+	// 2. Read main config
+	rawMain, err := os.ReadFile(mainCfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read main config: %v", err)
+	}
+	sections := strings.Split(string(rawMain), "[Peer]")
+
+	// 3. Find and remove the matching [Peer] section
+	var builder strings.Builder
+	builder.WriteString(sections[0]) // Always include the [Interface] section
+	removed := false
+	pattern := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*AllowedIPs\s*=\s*%s\b`, regexp.QuoteMeta(allowedIP)))
+
+	for i := 1; i < len(sections); i++ {
+		section := "[Peer]" + sections[i]
+		if pattern.FindStringIndex(section) != nil {
+			removed = true
+			continue
+		}
+		builder.WriteString("[Peer]")
+		builder.WriteString(sections[i])
+
+	}
+
+	if !removed {
+		return nil, fmt.Errorf("no matching peer found for AllowedIPs=%s", allowedIP)
+	}
+
+	// 4. Write back the config
+	if err := os.WriteFile(mainCfgPath, []byte(builder.String()), 0600); err != nil {
+		return nil, fmt.Errorf("failed to write main config: %v", err)
+	}
+
+	// 5. Remove the exported peer conf file
+	if err := os.Remove(peerConfPath); err != nil && !os.IsNotExist(err) {
+		logger.Warnf("could not remove exported config %s: %v", peerConfPath, err)
+	}
+
+	return "removed", nil
 }
 
 func UpInterface(args []string) (any, error) {

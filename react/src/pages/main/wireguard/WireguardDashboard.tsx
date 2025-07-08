@@ -1,5 +1,5 @@
 import { Grid, Typography, CircularProgress, Box } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
@@ -12,10 +12,11 @@ import axios from "@/utils/axios";
 
 const WireGuardDashboard: React.FC = () => {
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
-    null,
+    null
   );
   const selectedCardRef = useRef<HTMLDivElement>(null!);
   const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
+  const queryClient = useQueryClient();
 
   const {
     data: interfaceData,
@@ -26,7 +27,7 @@ const WireGuardDashboard: React.FC = () => {
     queryKey: ["wireguardInterfaces"],
     queryFn: async () => {
       const res = await axios.get<{ interfaces: WireGuardInterface[] }>(
-        "/wireguard/interfaces",
+        "/wireguard/interfaces"
       );
       return res.data;
     },
@@ -82,6 +83,7 @@ const WireGuardDashboard: React.FC = () => {
       await axios.post(`/wireguard/interface/${interfaceName}/peer`);
       toast.success(`Peer added to '${interfaceName}'`);
       refetch();
+      queryClient.invalidateQueries({ queryKey: ["wg-peers", interfaceName] }); // <-- This!
     } catch (error) {
       toast.error(`Failed to add peer to '${interfaceName}'`);
       console.error("Failed to add peer:", error);
@@ -90,7 +92,7 @@ const WireGuardDashboard: React.FC = () => {
 
   const handleToggleInterface = async (
     interfaceName: string,
-    status: "up" | "down",
+    status: "up" | "down"
   ) => {
     try {
       if (status !== "up" && status !== "down") {
@@ -98,12 +100,12 @@ const WireGuardDashboard: React.FC = () => {
       }
       await axios.post(`/wireguard/interface/${interfaceName}/${status}`);
       toast.success(
-        `WireGuard interface "${interfaceName}" turned ${status === "up" ? "on" : "off"}.`,
+        `WireGuard interface "${interfaceName}" turned ${status === "up" ? "on" : "off"}.`
       );
       refetch();
     } catch (error: any) {
       toast.error(
-        `Failed to turn ${status} WireGuard interface "${interfaceName}": ${error?.response?.data?.error || error.message}`,
+        `Failed to turn ${status} WireGuard interface "${interfaceName}": ${error?.response?.data?.error || error.message}`
       );
       console.error(`Failed to ${status} WireGuard interface:`, error);
     }
@@ -126,8 +128,7 @@ const WireGuardDashboard: React.FC = () => {
               {WGinterfaces.map((iface) => (
                 <Grid
                   size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
-                  key={iface.name}
-                >
+                  key={iface.name}>
                   <WireguardInterfaceCard
                     iface={iface}
                     selectedInterface={selectedInterface}
@@ -151,8 +152,7 @@ const WireGuardDashboard: React.FC = () => {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.5 }}
-                  layout
-                >
+                  layout>
                   <Box mt={4} mb={2}>
                     <Typography variant="h5" gutterBottom>
                       Clients for {selectedInterface}

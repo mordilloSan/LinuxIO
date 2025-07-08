@@ -1,4 +1,4 @@
-import { Box, Typography, CircularProgress, Alert } from "@mui/material";
+import { Box, CircularProgress, Alert } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
@@ -35,9 +35,6 @@ const ServicesList: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" sx={{ mb: 3 }}>
-        Services
-      </Typography>
       {isLoading && (
         <Box textAlign="center" my={5}>
           <CircularProgress />
