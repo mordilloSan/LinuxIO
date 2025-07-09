@@ -30,7 +30,6 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
   iface,
   selectedInterface,
   selectedCardRef,
-  primaryColor,
   handleSelectInterface,
   handleToggleInterface,
   handleDelete,
@@ -52,7 +51,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
       transition={{ duration: 0.3 }}
-      layout>
+      layout
+    >
       <Card
         ref={iface.name === selectedInterface ? selectedCardRef : null}
         sx={{
@@ -66,18 +66,21 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
           "&:hover": hoverStyles,
           ...(iface.name === selectedInterface && hoverStyles),
         }}
-        onClick={() => handleSelectInterface(iface)}>
+        onClick={() => handleSelectInterface(iface)}
+      >
         <CardContent>
           <Box
             display="flex"
             justifyContent="space-between"
-            alignItems="center">
+            alignItems="center"
+          >
             <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
               {iface.name}
             </Typography>
             <Box>
               <Tooltip
-                title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}>
+                title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
+              >
                 <IconButton
                   sx={{
                     color:
@@ -90,9 +93,10 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     e.stopPropagation();
                     handleToggleInterface(
                       iface.name,
-                      iface.isConnected === "Active" ? "down" : "up"
+                      iface.isConnected === "Active" ? "down" : "up",
                     );
-                  }}>
+                  }}
+                >
                   <PowerSettingsNewIcon />
                 </IconButton>
               </Tooltip>
@@ -102,7 +106,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     e.stopPropagation();
                     handleDelete(iface.name);
                   }}
-                  sx={{ color: "red" }}>
+                  sx={{ color: "red" }}
+                >
                   <Delete />
                 </IconButton>
               </Tooltip>
@@ -111,7 +116,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     handleAddPeer(iface.name, {});
-                  }}>
+                  }}
+                >
                   <Add />
                 </IconButton>
               </Tooltip>

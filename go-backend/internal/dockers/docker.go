@@ -205,6 +205,23 @@ func CreateDockerVolume(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", data)
 }
 
+func LogContainer(c *gin.Context) {
+	sess := auth.GetSessionOrAbort(c)
+	if sess == nil {
+		return
+	}
+	id := c.Param("id")
+	args := []string{id}
+	data, err := bridge.CallWithSession(sess, "docker", "get_container_logs", args)
+	if err != nil {
+		logger.Errorf("Bridge LogContainer: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// If data is plain text, send as text/plain. If you wrap in JSON, set to application/json.
+	c.Data(http.StatusOK, "text/plain; charset=utf-8", data)
+}
+
 func RegisterDockerRoutes(router *gin.Engine) {
 	docker := router.Group("/docker", auth.AuthMiddleware())
 	{
@@ -213,6 +230,7 @@ func RegisterDockerRoutes(router *gin.Engine) {
 		docker.POST("/containers/:id/stop", StopContainer)
 		docker.POST("/containers/:id/restart", RestartContainer)
 		docker.POST("/containers/:id/remove", RemoveContainer)
+		docker.GET("/containers/:id/logs", LogContainer)
 		docker.GET("/images", ListImages)
 		docker.GET("/networks", ListDockerNetworks)
 		docker.POST("/networks", CreateDockerNetwork)

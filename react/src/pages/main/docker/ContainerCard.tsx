@@ -1,19 +1,24 @@
-import {
-  Box,
-  CircularProgress,
-  Grid,
-  Tooltip,
-  Typography,
-  Fade,
-} from "@mui/material";
+import { Box, Grid, Tooltip, Typography, Fade } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 
 import ActionButton from "./ActionButton";
+import LogsDialog from "./LogsDialog";
 
 import FrostedCard from "@/components/cards/RootCard";
+import CircularProgress from "@/components/gauge/CircularProgress";
+import MetricBar from "@/components/gauge/MetricBar";
 import { ContainerInfo } from "@/types/container";
 import axios from "@/utils/axios";
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1024 * 1024 * 1024)
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
+}
 
 const getContainerIconUrl = (name: string) => {
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase();
@@ -50,13 +55,18 @@ interface ContainerCardProps {
 const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const queryClient = useQueryClient();
   const [loading, setLoading] = React.useState(false);
+  const [logDialogOpen, setLogDialogOpen] = React.useState(false);
+  const [logs, setLogs] = React.useState<string | null>(null);
+  const [logsLoading, setLogsLoading] = React.useState(false);
+  const [logsError, setLogsError] = React.useState<string | null>(null);
 
+  const theme = useTheme();
   const name = container.Names?.[0]?.replace("/", "") || "Unnamed";
   const iconUrl = getContainerIconUrl(name);
 
   const handleAction = async (
     id: string,
-    action: "start" | "stop" | "restart" | "remove",
+    action: "start" | "stop" | "restart" | "remove" | "exec",
   ) => {
     setLoading(true);
     try {
@@ -67,13 +77,43 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     }
   };
 
+  const handleLogsClick = async (id: string) => {
+    setLogsLoading(true);
+    setLogs(null);
+    setLogsError(null);
+    setLogDialogOpen(true);
+    try {
+      const res = await axios.get(`/docker/containers/${id}/logs`);
+      // If you know your backend always returns {output: "..."}:
+      const output =
+        typeof res.data === "string"
+          ? res.data
+          : (res.data?.output ?? JSON.stringify(res.data, null, 2));
+      setLogs(output);
+    } catch (e: any) {
+      setLogsError(
+        e?.response?.data?.error ||
+          e?.message ||
+          "Failed to load logs. (Check backend logs for details.)",
+      );
+    }
+    setLogsLoading(false);
+  };
+
+  // Metrics
+  const cpuPercent = container.metrics?.cpu_percent ?? 0;
+  const memUsage = container.metrics?.mem_usage ?? 0;
+  const memLimit = container.metrics?.mem_limit ?? 0;
+  const memPercent =
+    memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
+
   return (
     <Grid size={{ xs: 6, sm: 4, md: 4, lg: 3, xl: 2 }}>
       <FrostedCard
         sx={{
           p: 2,
           display: "flex",
-          alignItems: "center",
+          flexDirection: "column",
           height: "100%",
           position: "relative",
           transition: "transform 0.2s, box-shadow 0.2s",
@@ -83,6 +123,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           },
         }}
       >
+        {/* Status dot */}
         <Tooltip
           title={getStatusTooltip(container)}
           placement="top"
@@ -104,82 +145,116 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           />
         </Tooltip>
 
-        <Box
-          component="img"
-          src={iconUrl}
-          alt={name}
-          sx={{
-            width: 48,
-            height: 48,
-            minWidth: 48,
-            minHeight: 48,
-            objectFit: "contain",
-            flexShrink: 0,
-            mr: 1.5,
-            alignSelf: "flex-start",
-          }}
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).src = fallbackDockerIcon;
-          }}
-        />
-
+        {/* Top row: Icon + Name + Buttons */}
         <Box
           sx={{
             display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            height: "100%",
-            flexGrow: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            width: "100%",
           }}
         >
-          <Typography
-            variant="subtitle1"
-            fontWeight="600"
-            noWrap
-            sx={{ mb: 1, ml: 1 }}
-          >
-            {name}
-          </Typography>
+          <Box
+            component="img"
+            src={iconUrl}
+            alt={name}
+            sx={{
+              width: 48,
+              height: 48,
+              minWidth: 48,
+              minHeight: 48,
+              objectFit: "contain",
+              flexShrink: 0,
+              mr: 1.5,
+              alignSelf: "flex-start",
+            }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = fallbackDockerIcon;
+            }}
+          />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              variant="subtitle1"
+              fontWeight="600"
+              noWrap
+              sx={{ mb: 0.5, fontSize: "1.05rem" }}
+            >
+              {name}
+            </Typography>
+            <Box sx={{ display: "flex", gap: 0.5 }}>
+              {container.State !== "running" && (
+                <ActionButton
+                  icon="mdi:play"
+                  onClick={() => handleAction(container.Id, "start")}
+                />
+              )}
+              {container.State === "running" && (
+                <ActionButton
+                  icon="mdi:stop"
+                  onClick={() => handleAction(container.Id, "stop")}
+                />
+              )}
+              <ActionButton
+                icon="mdi:restart"
+                onClick={() => handleAction(container.Id, "restart")}
+              />
+              <ActionButton
+                icon="mdi:delete"
+                onClick={() => handleAction(container.Id, "remove")}
+              />
+              {/* Logs (now GET) */}
+              <ActionButton
+                icon="mdi:file-document-outline"
+                onClick={() => handleLogsClick(container.Id)}
+              />
+              {/* Exec placeholder */}
+              <ActionButton
+                icon="mdi:console"
+                onClick={() => handleAction(container.Id, "exec")}
+              />
+            </Box>
+          </Box>
+        </Box>
 
+        {/* Metrics area: full width */}
+        <Box sx={{ mt: 2, width: "100%" }}>
           {loading ? (
-            <Box sx={{ display: "flex", justifyContent: "flex-start", ml: 1 }}>
-              <CircularProgress size={16} />
+            <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+              <CircularProgress value={20} />
             </Box>
           ) : (
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-start",
-                gap: 0,
-                ml: 1,
-              }}
-            >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0 }}>
-                {container.State !== "running" && (
-                  <ActionButton
-                    icon="mdi:play"
-                    onClick={() => handleAction(container.Id, "start")}
-                  />
-                )}
-                {container.State === "running" && (
-                  <ActionButton
-                    icon="mdi:stop"
-                    onClick={() => handleAction(container.Id, "stop")}
-                  />
-                )}
-                <ActionButton
-                  icon="mdi:restart"
-                  onClick={() => handleAction(container.Id, "restart")}
-                />
-                <ActionButton
-                  icon="mdi:delete"
-                  onClick={() => handleAction(container.Id, "remove")}
-                />
-              </Box>
-            </Box>
+            <>
+              <MetricBar
+                label="CPU"
+                percent={cpuPercent}
+                color={theme.palette.primary.main}
+                tooltip="CPU Usage"
+                rightLabel={`${cpuPercent.toFixed(1)}%`}
+              />
+              <MetricBar
+                label="MEM"
+                percent={memPercent}
+                color={theme.palette.primary.main}
+                tooltip={`Memory Usage: ${formatBytes(memUsage)} / ${formatBytes(memLimit)}`}
+                rightLabel={
+                  memLimit > 0
+                    ? `${formatBytes(memUsage)} / ${formatBytes(memLimit)}`
+                    : formatBytes(memUsage)
+                }
+              />
+            </>
           )}
         </Box>
+
+        {/* --- Logs Dialog --- */}
+        <LogsDialog
+          open={logDialogOpen}
+          onClose={() => setLogDialogOpen(false)}
+          logs={logs}
+          loading={logsLoading}
+          error={logsError}
+          containerName={name}
+        />
       </FrostedCard>
     </Grid>
   );

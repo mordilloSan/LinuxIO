@@ -3,6 +3,7 @@ server:
   baseURL: /navigator/
   logging:
     - levels: "info|warning|error|debug"
+      apiLevels: disabled
       output: stdout
       utc: true
   sources:

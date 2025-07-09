@@ -6,6 +6,7 @@ export interface ContainerInfo {
   metrics?: {
     cpu_percent: number;
     mem_usage: number;
+    mem_limit: number;
     net_input: number;
     net_output: number;
     block_read: number;
