@@ -1,6 +1,8 @@
 import React, { lazy } from "react";
 
 // Guards & Layouts
+import { WebSocketProvider } from "./contexts/WebSocketContext";
+
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
 import AuthLayout from "@/layouts/Auth";
@@ -8,7 +10,6 @@ import MainLayout from "@/layouts/Main";
 import Default from "@/pages/main/dashboard";
 import Filebrowser from "@/pages/main/filebrowser";
 import Terminal from "@/pages/main/terminal";
-import { WebSocketProvider } from "./contexts/WebSocketContext";
 
 // Lazy-loaded pages
 const SignIn = lazy(() => import("@/pages/auth/Login"));

@@ -1,9 +1,10 @@
-import { useAppWebSocket } from "@/contexts/WebSocketContext";
 import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
+
+import { useAppWebSocket } from "@/contexts/WebSocketContext";
 import "xterm/css/xterm.css";
 
 const TerminalXTerm: React.FC = () => {

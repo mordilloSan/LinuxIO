@@ -102,12 +102,14 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       onClose={onClose}
       maxWidth="md"
       fullWidth
-      TransitionProps={{
-        onEntered: () => {
-          // At this point, content is painted for sure!
-          if (logsBoxRef.current) {
-            logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
-          }
+      slotProps={{
+        transition: {
+          onEntered: () => {
+            // At this point, content is painted for sure!
+            if (logsBoxRef.current) {
+              logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
+            }
+          },
         },
       }}
     >

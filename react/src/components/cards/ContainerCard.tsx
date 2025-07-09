@@ -9,6 +9,7 @@ import ComponentLoader from "../loaders/ComponentLoader";
 
 import FrostedCard from "@/components/cards/RootCard";
 import MetricBar from "@/components/gauge/MetricBar";
+import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { ContainerInfo } from "@/types/container";
 import axios from "@/utils/axios";
 import { formatBytes } from "@/utils/formatBytes";
@@ -49,6 +50,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const queryClient = useQueryClient();
   const [loading, setLoading] = React.useState(false);
   const [logDialogOpen, setLogDialogOpen] = React.useState(false);
+  const [terminalOpen, setTerminalOpen] = React.useState(false);
   const [logs, setLogs] = React.useState<string | null>(null);
   const [logsLoading, setLogsLoading] = React.useState(false);
   const [logsError, setLogsError] = React.useState<string | null>(null);
@@ -78,7 +80,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       setLogsError(
         e?.response?.data?.error ||
           e?.message ||
-          "Failed to load logs. (Check backend logs for details.)"
+          "Failed to load logs. (Check backend logs for details.)",
       );
     }
     setLogsLoading(false);
@@ -86,7 +88,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
   const handleAction = async (
     id: string,
-    action: "start" | "stop" | "restart" | "remove" | "exec"
+    action: "start" | "stop" | "restart" | "remove" | "exec",
   ) => {
     setLoading(true);
     try {
@@ -123,14 +125,16 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             transform: "translateY(-4px)",
             boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
           },
-        }}>
+        }}
+      >
         {/* Status dot */}
         <Tooltip
           title={getStatusTooltip(container)}
           placement="top"
           arrow
           slots={{ transition: Fade }}
-          slotProps={{ transition: { timeout: 300 } }}>
+          slotProps={{ transition: { timeout: 300 } }}
+        >
           <Box
             sx={{
               position: "absolute",
@@ -152,7 +156,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             flexDirection: "row",
             alignItems: "center",
             width: "100%",
-          }}>
+          }}
+        >
           <Box
             component="img"
             src={iconUrl}
@@ -176,7 +181,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               variant="subtitle1"
               fontWeight="600"
               noWrap
-              sx={{ ml: 1, mb: 0.5, fontSize: "1.05rem" }}>
+              sx={{ ml: 1, mb: 0.5, fontSize: "1.05rem" }}
+            >
               {name}
             </Typography>
             <Box sx={{ display: "flex", gap: 0.5 }}>
@@ -200,15 +206,13 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 icon="mdi:delete"
                 onClick={() => handleAction(container.Id, "remove")}
               />
-              {/* Logs (now GET) */}
               <ActionButton
                 icon="mdi:file-document-outline"
                 onClick={() => handleLogsClick()}
               />
-              {/* Exec placeholder */}
               <ActionButton
                 icon="mdi:console"
-                onClick={() => handleAction(container.Id, "exec")}
+                onClick={() => setTerminalOpen(true)}
               />
             </Box>
           </Box>
@@ -250,6 +254,12 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           containerName={name}
           onRefresh={() => fetchLogs(container.Id)}
           autoRefreshDefault={true} // Optional, start with auto-refresh on/off
+        />
+        <TerminalDialog
+          open={terminalOpen}
+          onClose={() => setTerminalOpen(false)}
+          containerId={container.Id}
+          containerName={name}
         />
       </FrostedCard>
     </Grid>

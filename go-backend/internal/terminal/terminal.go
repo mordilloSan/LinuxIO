@@ -22,9 +22,16 @@ type TerminalSession struct {
 	Buffer []byte
 }
 
+type TerminalKey struct {
+	SessionID   string
+	Target      string // "main" or "container"
+	ContainerID string // If Target == "container"
+}
+
 var (
-	sessions   = make(map[string]*TerminalSession)
-	sessionsMu sync.Mutex
+	sessions     = make(map[string]*TerminalSession)      // main shell only
+	containerMap = make(map[TerminalKey]*TerminalSession) // multi-terminal support
+	sessionsMu   sync.Mutex
 )
 
 // StartTerminal creates a PTY and shell for the sessionID.
@@ -107,4 +114,80 @@ func Close(sessionID string) {
 	}
 	delete(sessions, sessionID)
 	logger.Infof("Closed terminal for session %s", sessionID)
+}
+
+// New: StartContainerTerminal
+func StartContainerTerminal(sess *session.Session, containerID, shell string) error {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+	key := TerminalKey{SessionID: sess.SessionID, Target: "container", ContainerID: containerID}
+	if _, exists := containerMap[key]; exists {
+		return errors.New("container terminal already exists")
+	}
+	if shell == "" {
+		return errors.New("no shell available in this container")
+	}
+	var shellArgs []string
+	switch shell {
+	case "bash":
+		shellArgs = []string{"exec", "-it", containerID, "bash", "-il"}
+	default:
+		shellArgs = []string{"exec", "-it", containerID, shell, "-i"}
+	}
+	cmd := exec.Command("docker", shellArgs...)
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return err
+	}
+	containerMap[key] = &TerminalSession{
+		PTY:  ptmx,
+		Cmd:  cmd,
+		Open: true,
+	}
+	return nil
+}
+
+// New: GetContainerTerminal
+func GetContainerTerminal(sessionID, containerID string) *TerminalSession {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+	key := TerminalKey{SessionID: sessionID, Target: "container", ContainerID: containerID}
+	return containerMap[key]
+}
+
+// New: CloseContainerTerminal
+func CloseContainerTerminal(sessionID, containerID string) {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+	key := TerminalKey{SessionID: sessionID, Target: "container", ContainerID: containerID}
+	ts := containerMap[key]
+	if ts != nil {
+		ts.Mu.Lock()
+		if ts.PTY != nil {
+			_ = ts.PTY.Close()
+		}
+		if ts.Cmd != nil && ts.Open {
+			_ = ts.Cmd.Process.Kill()
+			_ = ts.Cmd.Wait()
+		}
+		ts.Mu.Unlock()
+		delete(containerMap, key)
+	}
+}
+
+func ListContainerShells(containerID string) ([]string, error) {
+	// Common shells to check
+	shells := []string{"bash", "sh", "zsh", "ash", "dash"}
+	available := []string{}
+	for _, shell := range shells {
+		cmd := exec.Command("docker", "exec", containerID, "which", shell)
+		out, err := cmd.Output()
+		if err == nil && len(out) > 0 {
+			available = append(available, shell)
+		}
+	}
+	if len(available) == 0 {
+		return nil, fmt.Errorf("no known shell found")
+	}
+	return available, nil
 }
