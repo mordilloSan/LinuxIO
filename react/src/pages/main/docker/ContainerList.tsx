@@ -2,7 +2,7 @@ import { Box, Typography, Grid } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React, { Suspense } from "react";
 
-import ContainerCard from "./ContainerCard";
+import ContainerCard from "../../../components/cards/ContainerCard";
 
 import { ContainerInfo } from "@/types/container";
 import axios from "@/utils/axios";

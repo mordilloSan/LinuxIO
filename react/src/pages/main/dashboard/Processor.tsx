@@ -5,7 +5,7 @@ import React from "react";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
-import CircularProgressWithLabel from "@/components/gauge/CircularProgress";
+import CircularProgressWithLabel from "@/components/gauge/CircularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 

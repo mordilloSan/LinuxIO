@@ -3,12 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
-import CircularProgressWithLabel from "@/components/gauge/CircularProgress";
+import CircularProgressWithLabel from "@/components/gauge/CircularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
+import { formatBytes } from "@/utils/formatBytes";
 
 // Utility functions
-const formatBytesToGB = (bytes: number) => (bytes / 1000 ** 3).toFixed(2);
+
 const calculatePercentage = (used: number, total: number) =>
   ((used / total) * 100).toFixed(2);
 
@@ -28,7 +29,7 @@ const MemoryUsage = () => {
 
   const ramUsagePercentage = memoryData?.system.active
     ? parseFloat(
-        calculatePercentage(memoryData.system.active, memoryData.system.total),
+        calculatePercentage(memoryData.system.active, memoryData.system.total)
       )
     : 0;
 
@@ -49,18 +50,19 @@ const MemoryUsage = () => {
       <Box sx={{ display: "flex", gap: 1, flexDirection: "column" }}>
         <Typography variant="body1">
           <strong>Total Memory:</strong>{" "}
-          {formatBytesToGB(memoryData?.system.total || 0)} GB
+          {formatBytes(memoryData?.system.total || 0, 2)}
         </Typography>
         <Typography variant="body1">
           <strong>Used Memory:</strong>{" "}
-          {formatBytesToGB(memoryData?.system.active || 0)} GB
+          {formatBytes(memoryData?.system.active || 0, 2)}
         </Typography>
         <Typography variant="body1">
           <strong>Swap:</strong>{" "}
-          {formatBytesToGB(
+          {formatBytes(
             memoryData?.system.swapTotal - memoryData?.system.swapFree || 0,
+            2
           )}{" "}
-          of {formatBytesToGB(memoryData?.system.swapTotal || 0)} GB
+          of {formatBytes(memoryData?.system.swapTotal || 0, 2)}
         </Typography>
       </Box>
     ),

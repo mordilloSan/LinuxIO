@@ -3,22 +3,16 @@ import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 
-import ActionButton from "./ActionButton";
-import LogsDialog from "./LogsDialog";
+import ActionButton from "../../pages/main/docker/ActionButton";
+import LogsDialog from "../../pages/main/docker/LogsDialog";
 
 import FrostedCard from "@/components/cards/RootCard";
-import CircularProgress from "@/components/gauge/CircularProgress";
+
 import MetricBar from "@/components/gauge/MetricBar";
 import { ContainerInfo } from "@/types/container";
 import axios from "@/utils/axios";
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  if (bytes < 1024 * 1024 * 1024)
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
-}
+import { formatBytes } from "@/utils/formatBytes";
+import ComponentLoader from "../loaders/ComponentLoader";
 
 const getContainerIconUrl = (name: string) => {
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase();
@@ -64,9 +58,36 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const name = container.Names?.[0]?.replace("/", "") || "Unnamed";
   const iconUrl = getContainerIconUrl(name);
 
+  const logsRef = React.useRef<string | null>(logs);
+  React.useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
+  const fetchLogs = async (id: string) => {
+    // Only show spinner if logs are not loaded yet
+    if (logs == null) setLogsLoading(true);
+    try {
+      const res = await axios.get(`/docker/containers/${id}/logs`);
+      const output =
+        typeof res.data === "string"
+          ? res.data
+          : (res.data?.output ?? JSON.stringify(res.data, null, 2));
+      if (output !== logsRef.current) {
+        setLogs(output);
+      }
+      setLogsError(null);
+    } catch (e: any) {
+      setLogsError(
+        e?.response?.data?.error ||
+          e?.message ||
+          "Failed to load logs. (Check backend logs for details.)"
+      );
+    }
+    setLogsLoading(false);
+  };
+
   const handleAction = async (
     id: string,
-    action: "start" | "stop" | "restart" | "remove" | "exec",
+    action: "start" | "stop" | "restart" | "remove" | "exec"
   ) => {
     setLoading(true);
     try {
@@ -77,27 +98,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     }
   };
 
-  const handleLogsClick = async (id: string) => {
-    setLogsLoading(true);
-    setLogs(null);
-    setLogsError(null);
+  const handleLogsClick = () => {
     setLogDialogOpen(true);
-    try {
-      const res = await axios.get(`/docker/containers/${id}/logs`);
-      // If you know your backend always returns {output: "..."}:
-      const output =
-        typeof res.data === "string"
-          ? res.data
-          : (res.data?.output ?? JSON.stringify(res.data, null, 2));
-      setLogs(output);
-    } catch (e: any) {
-      setLogsError(
-        e?.response?.data?.error ||
-          e?.message ||
-          "Failed to load logs. (Check backend logs for details.)",
-      );
-    }
-    setLogsLoading(false);
+    fetchLogs(container.Id);
   };
 
   // Metrics
@@ -121,16 +124,14 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             transform: "translateY(-4px)",
             boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
           },
-        }}
-      >
+        }}>
         {/* Status dot */}
         <Tooltip
           title={getStatusTooltip(container)}
           placement="top"
           arrow
           slots={{ transition: Fade }}
-          slotProps={{ transition: { timeout: 300 } }}
-        >
+          slotProps={{ transition: { timeout: 300 } }}>
           <Box
             sx={{
               position: "absolute",
@@ -152,8 +153,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             flexDirection: "row",
             alignItems: "center",
             width: "100%",
-          }}
-        >
+          }}>
           <Box
             component="img"
             src={iconUrl}
@@ -177,8 +177,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               variant="subtitle1"
               fontWeight="600"
               noWrap
-              sx={{ mb: 0.5, fontSize: "1.05rem" }}
-            >
+              sx={{ mb: 0.5, fontSize: "1.05rem" }}>
               {name}
             </Typography>
             <Box sx={{ display: "flex", gap: 0.5 }}>
@@ -205,7 +204,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               {/* Logs (now GET) */}
               <ActionButton
                 icon="mdi:file-document-outline"
-                onClick={() => handleLogsClick(container.Id)}
+                onClick={() => handleLogsClick()}
               />
               {/* Exec placeholder */}
               <ActionButton
@@ -220,7 +219,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         <Box sx={{ mt: 2, width: "100%" }}>
           {loading ? (
             <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
-              <CircularProgress value={20} />
+              <ComponentLoader />
             </Box>
           ) : (
             <>
@@ -236,11 +235,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 percent={memPercent}
                 color={theme.palette.primary.main}
                 tooltip={`Memory Usage: ${formatBytes(memUsage)} / ${formatBytes(memLimit)}`}
-                rightLabel={
-                  memLimit > 0
-                    ? `${formatBytes(memUsage)} / ${formatBytes(memLimit)}`
-                    : formatBytes(memUsage)
-                }
+                rightLabel={formatBytes(memUsage)}
               />
             </>
           )}
@@ -254,6 +249,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           loading={logsLoading}
           error={logsError}
           containerName={name}
+          onRefresh={() => fetchLogs(container.Id)}
+          autoRefreshDefault={true} // Optional, start with auto-refresh on/off
         />
       </FrostedCard>
     </Grid>
