@@ -3,18 +3,16 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
   IconButton,
   TextField,
   Box,
-  Button,
   Tooltip,
   Typography,
   CircularProgress,
   Switch,
   FormControlLabel,
 } from "@mui/material";
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 
 interface LogsDialogProps {
   open: boolean;
@@ -39,6 +37,14 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
 }) => {
   const [search, setSearch] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(autoRefreshDefault);
+  const logsBoxRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom when logs change
+  useEffect(() => {
+    if (open && logsBoxRef.current) {
+      logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   // Filter logs (no highlighting for simplicity)
   const filtered = useMemo(() => {
@@ -71,7 +77,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     if (!autoRefresh || !onRefresh || !open) return;
     const interval = setInterval(() => {
       onRefresh();
-    }, 2000); // 2s refresh interval, tweak as needed
+    }, 2000);
     return () => clearInterval(interval);
   }, [autoRefresh, onRefresh, open]);
 
@@ -88,11 +94,23 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     if (autoRefresh && onRefresh && open) {
       onRefresh();
     }
-    // Only trigger when autoRefresh goes true, or dialog opens with autoRefresh
   }, [autoRefresh]);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      TransitionProps={{
+        onEntered: () => {
+          // At this point, content is painted for sure!
+          if (logsBoxRef.current) {
+            logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
+          }
+        },
+      }}
+    >
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <Search fontSize="small" />
         <TextField
@@ -129,7 +147,6 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
             />
           </Tooltip>
         )}
-
         <IconButton onClick={onClose} size="small">
           <Close fontSize="small" />
         </IconButton>
@@ -144,7 +161,8 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
           background: "#19191d",
           color: "#ececec",
           p: 2,
-        }}>
+        }}
+      >
         <Box
           sx={{
             position: "relative",
@@ -152,7 +170,9 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
             minHeight: 240,
             maxHeight: 540,
             overflowY: "auto",
-          }}>
+          }}
+          ref={logsBoxRef}
+        >
           {error ? (
             <Typography color="error" sx={{ p: 2 }}>
               {error}
@@ -160,7 +180,6 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
           ) : (
             filtered || "No logs available."
           )}
-          {/* Only overlay spinner if logs are null (first load or after error) */}
           {loading && logs == null && (
             <Box
               sx={{
@@ -175,18 +194,13 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
                 justifyContent: "center",
                 zIndex: 10,
                 borderRadius: 2,
-              }}>
+              }}
+            >
               <CircularProgress />
             </Box>
           )}
         </Box>
       </DialogContent>
-
-      <DialogActions>
-        <Button onClick={onClose} color="primary" size="small">
-          Close
-        </Button>
-      </DialogActions>
     </Dialog>
   );
 };

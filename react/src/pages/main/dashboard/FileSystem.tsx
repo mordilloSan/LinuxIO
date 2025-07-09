@@ -1,12 +1,13 @@
 import { Box } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQuery } from "@tanstack/react-query";
 import React from "react";
-import { useTheme } from "@mui/material/styles";
+
 import GeneralCard from "@/components/cards/GeneralCard";
+import MetricBar from "@/components/gauge/MetricBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { FilesystemInfo } from "@/types/fs";
 import axios from "@/utils/axios";
-import MetricBar from "@/components/gauge/MetricBar";
 import { formatBytes } from "@/utils/formatBytes";
 
 const FsInfoCard: React.FC = () => {

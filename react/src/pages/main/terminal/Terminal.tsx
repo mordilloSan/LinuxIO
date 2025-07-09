@@ -3,14 +3,16 @@ import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
+
+import { useAppWebSocket } from "@/contexts/WebSocketContext";
 import "xterm/css/xterm.css";
 
 const TerminalXTerm: React.FC = () => {
   const termRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const theme = useTheme();
+  const { send, subscribe, ready } = useAppWebSocket();
 
   useEffect(() => {
     if (!termRef.current) return;
@@ -27,64 +29,40 @@ const TerminalXTerm: React.FC = () => {
     xterm.current.open(termRef.current);
     fitAddon.current.fit();
 
-    // set the classname inside xterm child. This is used for styling the scrollbar
     setTimeout(() => {
       const viewport = termRef.current?.querySelector(".xterm-viewport");
-      if (viewport) {
-        viewport.classList.add("custom-scrollbar");
-      }
+      if (viewport) viewport.classList.add("custom-scrollbar");
     }, 0);
 
-    // ---- Raw WebSocket for terminal channel ----
-    const wsUrl = import.meta.env.DEV
-      ? "ws://localhost:8080/ws"
-      : window.location.protocol === "https:"
-        ? `wss://${window.location.host}/ws`
-        : `ws://${window.location.host}/ws`;
-
-    const ws = new window.WebSocket(wsUrl);
-    ws.binaryType = "arraybuffer";
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "terminal_start" }));
-    };
-
-    ws.onmessage = (event) => {
-      if (!xterm.current) return;
-      let msg;
-      try {
-        msg = JSON.parse(event.data);
-      } catch {
-        msg = { type: "terminal_output", data: event.data };
-      }
-      if (msg.type === "terminal_output") {
+    // Listen for websocket messages
+    const unsub = subscribe((msg) => {
+      if (msg.type === "terminal_output" && xterm.current) {
         xterm.current.write(msg.data);
       }
-    };
+    });
 
+    // Terminal input -> send to socket
     xterm.current.onData((data) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({
-            type: "terminal_input",
-            data: data,
-          }),
-        );
+      if (ready) {
+        send({ type: "terminal_input", data });
       }
     });
+
+    // On mount, send terminal_start
+    if (ready) {
+      send({ type: "terminal_start" });
+    }
 
     window.addEventListener("resize", () => {
       fitAddon.current?.fit();
     });
 
     return () => {
-      ws.close();
+      unsub();
       xterm.current?.dispose();
     };
-  }, []);
+  }, [ready, send, subscribe]);
 
-  // Update terminal colors when the theme changes
   useEffect(() => {
     if (xterm.current) {
       xterm.current.options.theme = {
