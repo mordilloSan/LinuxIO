@@ -5,7 +5,6 @@ import { useRoutes } from "react-router-dom";
 import { Toaster } from "sonner";
 
 import { AuthProvider } from "./contexts/AuthContext";
-import { WebSocketProvider } from "./contexts/WebSocketContext";
 import routes from "./routes";
 import createTheme from "./theme";
 import ReactQueryProvider from "./utils/ReactQueryProvider";
@@ -21,7 +20,7 @@ function App({ emotionCache = clientSideEmotionCache }) {
   const { theme: themeName, primaryColor } = useTheme();
   const theme = useMemo(
     () => createTheme(themeName, primaryColor),
-    [themeName, primaryColor],
+    [themeName, primaryColor]
   );
 
   return (
@@ -29,9 +28,7 @@ function App({ emotionCache = clientSideEmotionCache }) {
       <MuiThemeProvider theme={theme}>
         <ReactQueryProvider>
           <AuthProvider>
-            <WebSocketProvider>
-              <SidebarProvider>{content}</SidebarProvider>
-            </WebSocketProvider>
+            <SidebarProvider>{content}</SidebarProvider>
           </AuthProvider>
         </ReactQueryProvider>
         <Toaster richColors position="top-right" />

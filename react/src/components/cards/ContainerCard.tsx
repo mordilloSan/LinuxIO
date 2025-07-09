@@ -78,7 +78,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       setLogsError(
         e?.response?.data?.error ||
           e?.message ||
-          "Failed to load logs. (Check backend logs for details.)",
+          "Failed to load logs. (Check backend logs for details.)"
       );
     }
     setLogsLoading(false);
@@ -86,7 +86,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
   const handleAction = async (
     id: string,
-    action: "start" | "stop" | "restart" | "remove" | "exec",
+    action: "start" | "stop" | "restart" | "remove" | "exec"
   ) => {
     setLoading(true);
     try {
@@ -123,16 +123,14 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             transform: "translateY(-4px)",
             boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
           },
-        }}
-      >
+        }}>
         {/* Status dot */}
         <Tooltip
           title={getStatusTooltip(container)}
           placement="top"
           arrow
           slots={{ transition: Fade }}
-          slotProps={{ transition: { timeout: 300 } }}
-        >
+          slotProps={{ transition: { timeout: 300 } }}>
           <Box
             sx={{
               position: "absolute",
@@ -154,8 +152,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             flexDirection: "row",
             alignItems: "center",
             width: "100%",
-          }}
-        >
+          }}>
           <Box
             component="img"
             src={iconUrl}
@@ -179,8 +176,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               variant="subtitle1"
               fontWeight="600"
               noWrap
-              sx={{ mb: 0.5, fontSize: "1.05rem" }}
-            >
+              sx={{ ml: 1, mb: 0.5, fontSize: "1.05rem" }}>
               {name}
             </Typography>
             <Box sx={{ display: "flex", gap: 0.5 }}>

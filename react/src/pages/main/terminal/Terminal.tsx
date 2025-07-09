@@ -1,10 +1,9 @@
+import { useAppWebSocket } from "@/contexts/WebSocketContext";
 import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
-
-import { useAppWebSocket } from "@/contexts/WebSocketContext";
 import "xterm/css/xterm.css";
 
 const TerminalXTerm: React.FC = () => {
@@ -17,12 +16,19 @@ const TerminalXTerm: React.FC = () => {
   useEffect(() => {
     if (!termRef.current) return;
 
+    // Always clean up old terminal!
+    xterm.current?.dispose();
+
     xterm.current = new Terminal({
       fontFamily: "monospace",
       fontSize: 16,
       cursorBlink: true,
       scrollback: 1000,
       disableStdin: false,
+      theme: {
+        background: theme.palette.background.default,
+        foreground: theme.palette.text.primary,
+      },
     });
     fitAddon.current = new FitAddon();
     xterm.current.loadAddon(fitAddon.current);

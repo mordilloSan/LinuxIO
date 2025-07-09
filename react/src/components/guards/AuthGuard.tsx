@@ -18,9 +18,11 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
     return <PageLoader />;
   }
 
-  if (!isAuthenticated) {
+  const isOnSignIn = location.pathname.startsWith("/sign-in");
+
+  if (!isAuthenticated && !isOnSignIn) {
     const redirectPath = `/sign-in?redirect=${encodeURIComponent(
-      location.pathname + location.search,
+      location.pathname + location.search
     )}`;
     return <Navigate to={redirectPath} replace />;
   }

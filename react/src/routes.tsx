@@ -8,6 +8,7 @@ import MainLayout from "@/layouts/Main";
 import Default from "@/pages/main/dashboard";
 import Filebrowser from "@/pages/main/filebrowser";
 import Terminal from "@/pages/main/terminal";
+import { WebSocketProvider } from "./contexts/WebSocketContext";
 
 // Lazy-loaded pages
 const SignIn = lazy(() => import("@/pages/auth/Login"));
@@ -25,7 +26,9 @@ const routes = [
     path: "/",
     element: (
       <AuthGuard>
-        <MainLayout />
+        <WebSocketProvider>
+          <MainLayout />
+        </WebSocketProvider>
       </AuthGuard>
     ),
     children: [

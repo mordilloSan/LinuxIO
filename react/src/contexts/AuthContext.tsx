@@ -134,7 +134,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       const user = await fetchUser();
       dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
     },
-    [fetchUser],
+    [fetchUser]
   );
 
   const signOut = useCallback(async () => {
@@ -150,7 +150,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       signIn,
       signOut,
     }),
-    [state, signIn, signOut],
+    [state, signIn, signOut]
   );
 
   return (
