@@ -72,7 +72,7 @@ func writeFilebrowserConfig(path string, rawContent []byte, secretKey string) er
 		logger.Errorf("❌ Failed to write FileBrowser config to %s: %v", path, err)
 		return err
 	}
-	logger.Infof("Wrote FileBrowser config with secret to %s", path)
+	logger.Debugf("Wrote FileBrowser config with secret to %s", path)
 	return nil
 }
 

@@ -3,10 +3,10 @@ package main
 import (
 	"crypto/tls"
 	embed "go-backend"
+	"go-backend/cmd/server/filebrowser"
 	"go-backend/internal/auth"
 	"go-backend/internal/benchmark"
 	"go-backend/internal/dockers"
-	"go-backend/internal/filebrowser"
 	"go-backend/internal/logger"
 	"go-backend/internal/networks"
 	"go-backend/internal/power"
