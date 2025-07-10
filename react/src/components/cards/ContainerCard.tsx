@@ -138,7 +138,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           <Box
             sx={{
               position: "absolute",
-              top: 16,
+              top: 18,
               right: 8,
               width: 10,
               height: 10,
@@ -187,37 +187,77 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             </Typography>
             <Box sx={{ display: "flex", gap: 0.5 }}>
               {container.State !== "running" && (
-                <ActionButton
-                  icon="mdi:play"
-                  onClick={() => handleAction(container.Id, "start")}
-                />
+                <Tooltip title="Start Container" arrow>
+                  <span>
+                    <ActionButton
+                      icon="mdi:play"
+                      onClick={() => handleAction(container.Id, "start")}
+                    />
+                  </span>
+                </Tooltip>
               )}
               {container.State === "running" && (
-                <ActionButton
-                  icon="mdi:stop"
-                  onClick={() => handleAction(container.Id, "stop")}
-                />
+                <Tooltip title="Stop Container" arrow>
+                  <span>
+                    <ActionButton
+                      icon="mdi:stop"
+                      onClick={() => handleAction(container.Id, "stop")}
+                    />
+                  </span>
+                </Tooltip>
               )}
-              <ActionButton
-                icon="mdi:restart"
-                onClick={() => handleAction(container.Id, "restart")}
-              />
-              <ActionButton
-                icon="mdi:delete"
-                onClick={() => handleAction(container.Id, "remove")}
-              />
-              <ActionButton
-                icon="mdi:file-document-outline"
-                onClick={() => handleLogsClick()}
-              />
-              <ActionButton
-                icon="mdi:console"
-                onClick={() => setTerminalOpen(true)}
-              />
+              <Tooltip title="Restart Container" arrow>
+                <span>
+                  <ActionButton
+                    icon="mdi:restart"
+                    onClick={() => handleAction(container.Id, "restart")}
+                  />
+                </span>
+              </Tooltip>
+              <Tooltip title="Remove Container" arrow>
+                <span>
+                  <ActionButton
+                    icon="mdi:delete"
+                    onClick={() => handleAction(container.Id, "remove")}
+                  />
+                </span>
+              </Tooltip>
+              <Tooltip title="View Logs" arrow>
+                <span>
+                  <ActionButton
+                    icon="mdi:file-document-outline"
+                    onClick={() => handleLogsClick()}
+                  />
+                </span>
+              </Tooltip>
+              <Tooltip title="Open Terminal" arrow>
+                <span>
+                  <ActionButton
+                    icon="mdi:console"
+                    onClick={() => setTerminalOpen(true)}
+                  />
+                </span>
+              </Tooltip>
             </Box>
+
           </Box>
         </Box>
-
+        <LogsDialog
+          open={logDialogOpen}
+          onClose={() => setLogDialogOpen(false)}
+          logs={logs}
+          loading={logsLoading}
+          error={logsError}
+          containerName={name}
+          onRefresh={() => fetchLogs(container.Id)}
+          autoRefreshDefault={true}
+        />
+        <TerminalDialog
+          open={terminalOpen}
+          onClose={() => setTerminalOpen(false)}
+          containerId={container.Id}
+          containerName={name}
+        />
         {/* Metrics area: full width */}
         <Box sx={{ mt: 2, width: "100%" }}>
           {loading ? (
@@ -243,24 +283,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             </>
           )}
         </Box>
-
-        {/* --- Logs Dialog --- */}
-        <LogsDialog
-          open={logDialogOpen}
-          onClose={() => setLogDialogOpen(false)}
-          logs={logs}
-          loading={logsLoading}
-          error={logsError}
-          containerName={name}
-          onRefresh={() => fetchLogs(container.Id)}
-          autoRefreshDefault={true}
-        />
-        <TerminalDialog
-          open={terminalOpen}
-          onClose={() => setTerminalOpen(false)}
-          containerId={container.Id}
-          containerName={name}
-        />
       </FrostedCard>
     </Grid>
   );
