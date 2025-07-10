@@ -30,7 +30,6 @@ const DockerPage: React.FC = () => {
           <ContainerList />
         </Box>
       </Fade>
-      {/* ...other tab contents... */}
     </Box>
   );
 };

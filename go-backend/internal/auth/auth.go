@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"go-backend/internal/bridge"
 	"go-backend/internal/config"
-	"go-backend/internal/filebrowser"
 	"go-backend/internal/logger"
 	"go-backend/internal/session"
 	"go-backend/internal/terminal"
@@ -152,16 +151,13 @@ func loginHandler(c *gin.Context) {
 		logger.Errorf("[WebSocket] Shell failed: %v", err)
 	}
 
-	// 9 . Start FileBrowser
-	go filebrowser.StartServices(filebrowser.FilebrowserSecret, sess)
-
-	// 10. Set session cookie
+	// 9. Set session cookie
 	env := os.Getenv("GO_ENV")
 	isHTTPS := c.Request.TLS != nil
 	secureCookie := env == "production" && isHTTPS
 	c.SetCookie("session_id", sessionID, int(sessionDuration.Seconds()), "/", "", secureCookie, true)
 
-	// 11. Send response
+	// 10. Send response
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": privileged})
 
 }

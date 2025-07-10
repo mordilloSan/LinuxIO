@@ -2,7 +2,6 @@ package bridge
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,10 +19,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/containerd/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 )
 
 var bridgeBinary = os.ExpandEnv("/usr/lib/linuxio/linuxio-bridge")
@@ -406,53 +401,6 @@ func CleanupBridgeSocket(sess *session.Session) error {
 	}
 
 	return firstErr
-}
-
-func CleanupFilebrowserContainer() error {
-	containerName := "/filebrowser-linuxio"
-	timeout := 0 // seconds
-
-	var errors []error
-
-	logger.Infof("Stopping FileBrowser container: %s", containerName)
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		logger.Warnf("Failed to create Docker client: %v", err)
-		return err
-	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
-
-	if err := cli.ContainerStop(context.Background(), containerName, container.StopOptions{Timeout: &timeout}); err != nil {
-		if errdefs.IsNotFound(err) {
-			logger.Infof("Container %s was not running.", containerName)
-		} else {
-			logger.Warnf("Failed to stop container %s: %v", containerName, err)
-			errors = append(errors, fmt.Errorf("stop: %w", err))
-		}
-	} else {
-		logger.Infof("Stopped FileBrowser container: %s", containerName)
-	}
-
-	logger.Infof("Removing FileBrowser container: %s", containerName)
-	if err := cli.ContainerRemove(context.Background(), containerName, container.RemoveOptions{Force: true}); err != nil {
-		if errdefs.IsNotFound(err) {
-			logger.Infof("Container %s already removed.", containerName)
-		} else {
-			logger.Warnf("Failed to remove container %s: %v", containerName, err)
-			errors = append(errors, fmt.Errorf("remove: %w", err))
-		}
-	} else {
-		logger.Infof("Removed FileBrowser container: %s", containerName)
-	}
-
-	if len(errors) > 0 {
-		return fmt.Errorf("CleanupFilebrowserContainer encountered errors: %v", errors)
-	}
-	return nil
 }
 
 // CreateAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.

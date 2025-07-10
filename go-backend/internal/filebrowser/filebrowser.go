@@ -7,12 +7,11 @@ import (
 	embed "go-backend"
 	"go-backend/internal/config"
 	"go-backend/internal/logger"
-	"go-backend/internal/session"
 	"io"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -22,14 +21,12 @@ import (
 	"github.com/docker/go-connections/nat"
 )
 
-var FilebrowserSecret string
-
 var (
 	dockerCli *client.Client
 	dockerCtx context.Context
 )
 
-func StartServices(secret string, session *session.Session) {
+func StartServices(secret string) {
 
 	logger.Infof("📦 Checking docker installation...")
 	if err := config.EnsureDockerAvailable(); err != nil {
@@ -57,7 +54,7 @@ func StartServices(secret string, session *session.Session) {
 	}
 
 	// Start FileBrowser container (microservice)
-	if err := startFileBrowserContainer(secret, session); err != nil {
+	if err := startFileBrowserContainer(secret); err != nil {
 		logger.Errorf("FileBrowser setup failed: %v", err)
 	}
 }
@@ -67,10 +64,9 @@ func isNetworkExistsError(err error) bool {
 }
 
 // writeFilebrowserConfig replaces placeholder and writes the config file
-func writeFilebrowserConfig(path string, rawContent []byte, secretKey string, session *session.Session) error {
+func writeFilebrowserConfig(path string, rawContent []byte, secretKey string) error {
 	configStr := string(rawContent)
 	configStr = strings.ReplaceAll(configStr, "{{SECRET_KEY}}", secretKey)
-	configStr = strings.ReplaceAll(configStr, "{{USER_ID}}", session.User.ID)
 	err := os.WriteFile(path, []byte(configStr), 0644)
 	if err != nil {
 		logger.Errorf("❌ Failed to write FileBrowser config to %s: %v", path, err)
@@ -80,7 +76,7 @@ func writeFilebrowserConfig(path string, rawContent []byte, secretKey string, se
 	return nil
 }
 
-func startFileBrowserContainer(secret string, session *session.Session) error {
+func startFileBrowserContainer(secret string) error {
 	containerName := "filebrowser-linuxio"
 	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
 	if runtimeDir == "" {
@@ -92,23 +88,8 @@ func startFileBrowserContainer(secret string, session *session.Session) error {
 	}
 	configPath := filepath.Join(dir, "filebrowser-config.yaml")
 	serverPath := "/"
-	// Get user's home directory from session user
-	u, err := user.Lookup(session.User.Name)
-	if err != nil {
-		return fmt.Errorf("failed to lookup user %s: %w", session.User.Name, err)
-	}
-	// Set databasePath to user's home
-	databasePath := filepath.Join(u.HomeDir, ".linuxio/filebrowser/data")
-	if err := os.MkdirAll(databasePath, 0700); err != nil {
-		return fmt.Errorf("failed to create filebrowser database dir: %w", err)
-	}
 
-	// 1. Write the embedded config before container starts
-	if err := writeFilebrowserConfig(configPath, embed.DefaultFilebrowserConfig, secret, session); err != nil {
-		return fmt.Errorf("failed to write embedded config: %w", err)
-	}
-
-	// 2. Remove any existing container (stopped or running)
+	// 1. Remove any existing container (stopped or running)
 	containers, err := dockerCli.ContainerList(dockerCtx, container.ListOptions{All: true})
 	if err != nil {
 		return fmt.Errorf("failed to list Docker containers: %w", err)
@@ -125,6 +106,11 @@ func startFileBrowserContainer(secret string, session *session.Session) error {
 				logger.Infof("Removed container '%s'", containerName)
 			}
 		}
+	}
+
+	// 2. Write the embedded config before container starts
+	if err := writeFilebrowserConfig(configPath, embed.DefaultFilebrowserConfig, secret); err != nil {
+		return fmt.Errorf("failed to write embedded config: %w", err)
 	}
 
 	// 3. Pull image if not already present (docker will skip if present)
@@ -146,6 +132,12 @@ func startFileBrowserContainer(secret string, session *session.Session) error {
 		dockerCtx,
 		&container.Config{
 			Image: "gtstef/filebrowser",
+			Healthcheck: &container.HealthConfig{
+				Test:     []string{"CMD-SHELL", "wget --spider -q http://localhost:80/navigator/health || exit 1"},
+				Interval: 5 * time.Second,
+				Timeout:  10 * time.Second,
+				Retries:  3,
+			},
 		},
 		&container.HostConfig{
 			NetworkMode: container.NetworkMode("bridge-linuxio"),
@@ -154,11 +146,6 @@ func startFileBrowserContainer(secret string, session *session.Session) error {
 					Type:   mount.TypeBind,
 					Source: configPath,
 					Target: "/home/filebrowser/config.yaml",
-				},
-				{
-					Type:   mount.TypeBind,
-					Source: databasePath,
-					Target: "/home/filebrowser/data",
 				},
 				{
 					Type:   mount.TypeBind,

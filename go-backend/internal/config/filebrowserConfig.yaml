@@ -9,6 +9,7 @@ server:
   sources:
     - path: /server
       config:
+        defaultEnabled: true
         exclude:
           hidden: false
           ignoreZeroSizeFolders: false
@@ -16,6 +17,7 @@ server:
             - /proc
             - /sys
             - /dev
+            - /var/lib/docker/overlay2
   database: /home/filebrowser/data/database.db
 frontend:
   disableDefaultLinks: true
@@ -46,7 +48,6 @@ auth:
     proxy:
       enabled: true
       header: "{{SECRET_KEY}}"
-      createUser: false
+      createUser: true
     password:
       enabled: false
-  adminUsername: "{{USER_ID}}"

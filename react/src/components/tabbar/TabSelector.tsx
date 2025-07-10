@@ -46,6 +46,10 @@ const TabSelector: React.FC<TabSelectorProps> = ({
             border: "none",
             borderRadius: "999px",
             px: 2,
+            minHeight: 28,
+            py: 0,
+            fontWeight: 500,
+            transition: "background 0.1s",
           },
           "& .Mui-selected": {
             backgroundColor: `${primaryColor} !important`,
