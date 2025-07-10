@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +22,7 @@ import (
 	"time"
 )
 
-var bridgeBinary = os.ExpandEnv("/usr/lib/linuxio/linuxio-bridge")
+var bridgeBinary = getBridgeBinaryPath()
 
 var (
 	processes   = make(map[string]*types.BridgeProcess)
@@ -439,4 +440,14 @@ func CreateAndOwnSocket(socketPath, username string) (net.Listener, int, int, er
 	}
 
 	return listener, uid, gid, nil
+}
+
+func getBridgeBinaryPath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		// Fallback or log error
+		return "linuxio-bridge"
+	}
+	dir := filepath.Dir(exe)
+	return filepath.Join(dir, "linuxio-bridge")
 }

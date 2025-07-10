@@ -49,7 +49,6 @@ const MetricBar: React.FC<MetricBarProps> = ({
           },
         }}
       />
-
     </Box>
   </Tooltip>
 );

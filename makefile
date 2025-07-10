@@ -1,5 +1,4 @@
 -include .env
--include secret.env
 
 GO_VERSION      ?= 1.22.2
 GO_INSTALL_DIR := $(HOME)/.go
@@ -22,10 +21,6 @@ define check_var
 	@if [ -z "$($1)" ]; then echo "❌ $1 not set. Please edit the file ".env""; exit 1; fi
 endef
 
-define check_var_sudo
-	@if [ -z "$($1)" ]; then echo "❌ $1 not set. Please edit the file "secret.env""; exit 1; fi
-endef
-
 check-env:
 	@echo ""
 	@echo "🔍 Checking .env setup..."
@@ -33,7 +28,6 @@ check-env:
 	$(call check_var,VITE_DEV_PORT)
 	$(call check_var,GO_VERSION)
 	$(call check_var,NODE_VERSION)
-	$(call check_var_sudo,SUDO_PASSWORD)
 	@echo "✅ Environment looks good!"
 
 ensure-node: check-env
@@ -111,16 +105,6 @@ test: setup
 	@$(MAKE) --no-print-directory tsc
 	@$(MAKE) --no-print-directory golint
 
-build-vite-dev: test
-	@echo ""
-	@echo "📦 Building frontend..."
-	@bash -c '\
-	$(NVM_SETUP); \
-		cd react && \
-		VITE_API_URL=http://localhost:$(SERVER_PORT) npx vite build && \
-		echo "✅ Frontend built successfully!" \
-	'
-
 build-vite-prod: test
 	@echo ""
 	@echo "📦 Building frontend..."
@@ -140,20 +124,29 @@ build-backend: setup
 		-X 'main.version=$(VERSION)' \
 		-X 'main.env=production' \
 		-X 'main.buildTime=$$(date -u +%Y-%m-%dT%H:%M:%SZ)'" \
-	-o linuxio-webserver && \
+	-o ../../../linuxio-webserver && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
-	echo "📄 Path: go-backend/server" && \
+	echo "📄 Path: $(PWD)/linuxio-webserver" && \
 	echo "🔖 Version: $(VERSION)" && \
 	echo "⏱ Build Time: $$(date -u +%Y-%m-%dT%H:%M:%SZ)" && \
-	echo "📦 Size: $$(du -h linuxio-webserver | cut -f1)" && \
-	echo "🔐 SHA256: $$(shasum -a 256 linuxio-webserver | awk '{ print $$1 }')"
+	echo "📦 Size: $$(du -h ../../../linuxio-webserver | cut -f1)" && \
+	echo "🔐 SHA256: $$(shasum -a 256 ../../../linuxio-webserver | awk '{ print $$1 }')"
 
-build-bridge:
+build-bridge: setup
 	@echo ""
-	@echo "📦 Building backend bridge..."
-	@echo "$(SUDO_PASSWORD)" | sudo -SE bash scripts/build-bridge.sh
+	@echo "🔌 Building bridge..."
+	@cd go-backend/cmd/bridge && \
+	go build \
+	-o ../../../linuxio-bridge && \
+	echo "✅ Bridge built successfully!" && \
+	echo "" && \
+	echo "Summary:" && \
+	echo "📄 Path: $(PWD)/linuxio-bridge" && \
+	echo "📦 Size: $$(du -h ../../../linuxio-bridge | cut -f1)" && \
+	echo "🔐 SHA256: $$(shasum -a 256 ../../../linuxio-bridge | awk '{ print $$1 }')"
+
 
 dev-prep:
 	@mkdir -p go-backend/frontend/assets
@@ -176,17 +169,17 @@ dev: setup check-env dev-prep build-bridge
 	cd react && VITE_API_URL=http://localhost:$(SERVER_PORT) npx vite --port $(VITE_DEV_PORT) \
 	'
 
-prod: check-env build-vite-prod build-bridge
-	@cd go-backend/cmd/server && SERVER_PORT=$(SERVER_PORT) $(GO_BIN) run .
-
-run: build-vite-prod build-backend build-bridge
+prod: check-env build-vite-prod build-backend build-bridge
 	@sleep 1
-	@echo "🚦 Starting backend server..."
-	@cd go-backend/cmd/server && SERVER_PORT=$(SERVER_PORT) ./linuxio-webserver
+	@echo "🚦 Starting backend server (production)..."
+	@SERVER_PORT=$(SERVER_PORT) ./linuxio-webserver
+
+run: prod
+	@true
 
 clean: stop-bridge
-	@rm -f go-backend/cmd/server/linuxio-webserver || true
-	@rm -f go-backend/cmd/bridge/linuxio-bridge || true
+	@rm -f ./linuxio-webserver || true
+	@rm -f ./linuxio-bridge || true
 	@rm -rf react/node_modules || true
 	@rm -f react/package-lock.json || true
 	@find go-backend/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
@@ -207,8 +200,7 @@ help:
 	@echo "$(COLOR_YELLOW)  make run             $(COLOR_RESET) Full production build and start everything"
 	@echo ""
 	@echo "$(COLOR_CYAN)  make build-backend   $(COLOR_RESET) Build Go backend binary"
-	@echo "$(COLOR_CYAN)  make build-bridge    $(COLOR_RESET) Build privileged helper bridge binary"
-	@echo "$(COLOR_CYAN)  make build-vite-dev  $(COLOR_RESET) Build frontend static files (Vite) for development"
+	@echo "$(COLOR_CYAN)  make build-bridge    $(COLOR_RESET) Build Go bridge binary"
 	@echo "$(COLOR_CYAN)  make build-vite-prod $(COLOR_RESET) Build frontend static files (Vite) for production"
 	@echo ""
 	@echo "$(COLOR_RED)  make clean           $(COLOR_RESET) Remove build artifacts and node_modules"

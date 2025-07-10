@@ -15,9 +15,10 @@ import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef, useState } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
+
 import "xterm/css/xterm.css";
-import { useAppWebSocket } from "@/contexts/WebSocketContext";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useAppWebSocket } from "@/contexts/WebSocketContext";
 
 interface Props {
   open: boolean;
@@ -32,7 +33,6 @@ const TerminalDialog: React.FC<Props> = ({
   containerId,
   containerName,
 }) => {
-
   const termRef = useRef<HTMLDivElement>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
@@ -78,7 +78,9 @@ const TerminalDialog: React.FC<Props> = ({
         open
       ) {
         // Clean out empty/falsy entries!
-        const validShells = msg.data.filter((s: string) => s && typeof s === "string" && s.trim() !== "");
+        const validShells = msg.data.filter(
+          (s: string) => s && typeof s === "string" && s.trim() !== "",
+        );
         setAvailableShells(validShells);
         setShell(validShells.length > 0 ? validShells[0] : "");
         setLoadingShells(false);
@@ -88,10 +90,10 @@ const TerminalDialog: React.FC<Props> = ({
     return unsub;
   }, [containerId, subscribe, open]);
 
-
   // --- 3. Setup xterm and terminal session whenever open, shell, etc. changes ---
   useEffect(() => {
-    if (!open || !termRef.current || availableShells.length === 0 || !shell) return;
+    if (!open || !termRef.current || availableShells.length === 0 || !shell)
+      return;
 
     // Dispose previous instance
     xterm.current?.dispose();
