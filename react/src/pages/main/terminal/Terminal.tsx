@@ -1,11 +1,11 @@
 import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal } from "@xterm/xterm";
 import React, { useEffect, useRef } from "react";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
 
 import { useAppWebSocket } from "@/contexts/WebSocketContext";
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 
 const TerminalXTerm: React.FC = () => {
   const termRef = useRef<HTMLDivElement>(null);
@@ -13,38 +13,52 @@ const TerminalXTerm: React.FC = () => {
   const fitAddon = useRef<FitAddon | null>(null);
   const theme = useTheme();
   const { send, subscribe, ready } = useAppWebSocket();
+  const startedRef = useRef(false);
 
+  // Setup and teardown terminal
   useEffect(() => {
     if (!termRef.current) return;
 
-    // Always clean up old terminal!
+    // Always dispose old instance!
     xterm.current?.dispose();
 
     xterm.current = new Terminal({
       fontFamily: "monospace",
       fontSize: 16,
       cursorBlink: true,
-      scrollback: 1000,
+      scrollback: 2000,
       disableStdin: false,
       theme: {
         background: theme.palette.background.default,
         foreground: theme.palette.text.primary,
       },
     });
+
     fitAddon.current = new FitAddon();
     xterm.current.loadAddon(fitAddon.current);
     xterm.current.open(termRef.current);
-    fitAddon.current.fit();
 
+    // 1. Fit and send initial resize only once
     setTimeout(() => {
-      const viewport = termRef.current?.querySelector(".xterm-viewport");
-      if (viewport) viewport.classList.add("custom-scrollbar");
-    }, 0);
+      fitAddon.current?.fit();
+      if (xterm.current && ready && !startedRef.current) {
+        send({
+          type: "terminal_resize",
+          payload: { cols: xterm.current.cols, rows: xterm.current.rows },
+        });
+        setTimeout(() => {
+          send({ type: "terminal_start" });
+          startedRef.current = true;
+        }, 40); // Small delay to let backend resize pty before launching shell
+      }
+    }, 30);
 
     // Listen for websocket messages
     const unsub = subscribe((msg) => {
       if (msg.type === "terminal_output" && xterm.current) {
-        xterm.current.write(msg.data);
+        xterm.current.write(msg.data, () => {
+          xterm.current?.scrollToBottom();
+        });
       }
     });
 
@@ -55,21 +69,33 @@ const TerminalXTerm: React.FC = () => {
       }
     });
 
-    // On mount, send terminal_start
-    if (ready) {
-      send({ type: "terminal_start" });
-    }
-
-    window.addEventListener("resize", () => {
+    // Responsive fit on window resize
+    const doFit = () => {
       fitAddon.current?.fit();
-    });
+      if (xterm.current && ready) {
+        send({
+          type: "terminal_resize",
+          payload: { cols: xterm.current.cols, rows: xterm.current.rows },
+        });
+      }
+    };
+    window.addEventListener("resize", doFit);
 
     return () => {
       unsub();
       xterm.current?.dispose();
+      window.removeEventListener("resize", doFit);
+      startedRef.current = false;
     };
-  }, [ready, send, subscribe]);
+  }, [
+    ready,
+    send,
+    subscribe,
+    theme.palette.background.default,
+    theme.palette.text.primary,
+  ]);
 
+  // Live update theme
   useEffect(() => {
     if (xterm.current) {
       xterm.current.options.theme = {
@@ -85,12 +111,23 @@ const TerminalXTerm: React.FC = () => {
 
   return (
     <Box
-      ref={termRef}
       sx={{
-        height: "100%",
-        width: "100%",
+        height: "60vh",
+        width: "60vw",
+        overflow: "hidden",
+        position: "relative",
       }}
-    />
+    >
+      <Box
+        ref={termRef}
+        sx={{
+          height: "100%",
+          width: "100%",
+          overflow: "hidden",
+          background: theme.palette.background.default,
+        }}
+      />
+    </Box>
   );
 };
 

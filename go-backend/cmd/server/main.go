@@ -45,9 +45,9 @@ func main() {
 	// Initialize cache functions
 	system.InitGPUInfo()
 	// Generate Secret Key
-	filebrowserSecret := utils.GenerateSecretKeyBytes(32)
+	filebrowserSecret := utils.GenerateSecretKey(32)
 	// Start FileBrowser
-	go filebrowser.StartServices(string(filebrowserSecret))
+	go filebrowser.StartServices(filebrowserSecret)
 	router := gin.New()
 	router.Use(gin.Recovery())
 
@@ -72,8 +72,7 @@ func main() {
 	wireguard.RegisterWireguardRoutes(router)
 
 	// Reverse Proxy for filebrowser
-	router.Any("/navigator/*proxyPath", auth.AuthMiddleware(), auth.FilebrowserReverseProxy(string(filebrowserSecret)))
-	utils.Wipe(filebrowserSecret)
+	router.Any("/navigator/*proxyPath", auth.AuthMiddleware(), auth.FilebrowserReverseProxy(filebrowserSecret))
 	// API Benchmark route
 	if env != "production" {
 		benchmark.RegisterDebugRoutes(router, env)

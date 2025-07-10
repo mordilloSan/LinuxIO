@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"go-backend/internal/logger"
 	"io"
@@ -47,10 +48,10 @@ func GetDevPort() string {
 	return port
 }
 
-func GenerateSecretKeyBytes(n int) []byte {
+func GenerateSecretKey(n int) string {
 	bytes := make([]byte, n)
 	_, _ = rand.Read(bytes)
-	return bytes
+	return hex.EncodeToString(bytes)
 }
 
 func IsNumeric(s string) bool {
@@ -60,12 +61,6 @@ func IsNumeric(s string) bool {
 		}
 	}
 	return true
-}
-
-func Wipe(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
 }
 
 // getUserHome returns the current user's home directory.

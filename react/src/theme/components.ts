@@ -30,6 +30,17 @@ const components = {
       html: { height: "100%" },
       body: { height: "100%", margin: 0 },
       "#root": { height: "100%" },
+      /* Xterm.js bugfix: hide helper textarea */
+      ".xterm-helper-textarea, .xterm-textarea": {
+        opacity: 0,
+        position: "absolute",
+        left: "-9999px",
+        width: 0,
+        height: 0,
+        zIndex: -1,
+        pointerEvents: "none",
+        background: "transparent",
+      },
       /* Make scrollbars beautiful */
       ".custom-scrollbar::-webkit-scrollbar": {
         width: "8px",

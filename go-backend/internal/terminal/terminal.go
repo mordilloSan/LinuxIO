@@ -52,12 +52,14 @@ func StartTerminal(sess *session.Session) error {
 	userHome := u.HomeDir
 
 	env := append(os.Environ(),
+		"TERM=xterm-256color",
+		"PS1=$ ", // for debugging!
 		"PROMPT_COMMAND=history -a; history -n",
 		"HISTCONTROL=ignoredups:erasedups",
 		"HISTFILE="+userHome+"/.bash_history",
 	)
 
-	cmd := exec.Command("bash", "-i")
+	cmd := exec.Command("bash", "--noprofile", "--norc", "-i")
 	cmd.Dir = userHome
 	cmd.Env = env
 
@@ -65,6 +67,10 @@ func StartTerminal(sess *session.Session) error {
 	if err != nil {
 		logger.Errorf("Failed to start PTY for session %s: %v", sess.SessionID, err)
 		return err
+	}
+
+	if err := pty.Setsize(ptmx, &pty.Winsize{Cols: 120, Rows: 32}); err != nil {
+		logger.Warnf("Failed to set initial PTY size: %v", err)
 	}
 
 	sessions[sess.SessionID] = &TerminalSession{
@@ -138,6 +144,10 @@ func StartContainerTerminal(sess *session.Session, containerID, shell string) er
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		return err
+	}
+
+	if err := pty.Setsize(ptmx, &pty.Winsize{Cols: 120, Rows: 32}); err != nil {
+		logger.Warnf("Failed to set initial PTY size: %v", err)
 	}
 	containerMap[key] = &TerminalSession{
 		PTY:  ptmx,

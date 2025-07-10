@@ -1,11 +1,11 @@
 -include .env
 
 GO_VERSION      ?= 1.22.2
+NODE_VERSION    ?= 22
 GO_INSTALL_DIR := $(HOME)/.go
 NVM_SETUP = export NVM_DIR="$$HOME/.nvm"; . "$$NVM_DIR/nvm.sh"
 GO_BIN := $(shell which go)
 AIR_BIN := $(shell which air)
-BRIDGE_BIN := /usr/lib/linuxio/linuxio-bridge
 
 # Colors
 COLOR_RESET  := \033[0m
@@ -18,7 +18,7 @@ COLOR_RED    := \033[1;31m
 default: help
 
 define check_var
-	@if [ -z "$($1)" ]; then echo "❌ $1 not set. Please edit the file ".env""; exit 1; fi
+	@if [ -z "$($1)" ]; then echo "❌ $1 not set. Please edit the file '.env'"; exit 1; fi
 endef
 
 check-env:
@@ -96,16 +96,16 @@ tsc:
 
 golint: ensure-golint
 	@echo -n "🔍 Running golangci-lint... "; \
-	cd go-backend && golangci-lint run --timeout 3m && echo "✅ Go Linting Ok!"
+	cd go-backend && golangci-lint run ./... --timeout 3m && echo "✅ Go Linting Ok!"
 
-test: setup
+test: setup dev-prep
 	@echo ""
 	@echo "📦 Running checks..."
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory tsc
 	@$(MAKE) --no-print-directory golint
 
-build-vite-prod: test
+build-vite: test
 	@echo ""
 	@echo "📦 Building frontend..."
 	@bash -c '\
@@ -147,7 +147,6 @@ build-bridge: setup
 	echo "📦 Size: $$(du -h ../../../linuxio-bridge | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../../../linuxio-bridge | awk '{ print $$1 }')"
 
-
 dev-prep:
 	@mkdir -p go-backend/frontend/assets
 	@mkdir -p go-backend/frontend/.vite
@@ -169,15 +168,15 @@ dev: setup check-env dev-prep build-bridge
 	cd react && VITE_API_URL=http://localhost:$(SERVER_PORT) npx vite --port $(VITE_DEV_PORT) \
 	'
 
-prod: check-env build-vite-prod build-backend build-bridge
-	@sleep 1
+build: check-env build-vite build-backend build-bridge
+
+prod: build
+
+run: prod
 	@echo "🚦 Starting backend server (production)..."
 	@SERVER_PORT=$(SERVER_PORT) ./linuxio-webserver
 
-run: prod
-	@true
-
-clean: stop-bridge
+clean:
 	@rm -f ./linuxio-webserver || true
 	@rm -f ./linuxio-bridge || true
 	@rm -rf react/node_modules || true
@@ -196,15 +195,15 @@ help:
 	@echo "$(COLOR_GREEN)  make test            $(COLOR_RESET) Run ESLint + TypeScript type checks"
 	@echo ""
 	@echo "$(COLOR_YELLOW)  make dev             $(COLOR_RESET) Start frontend (Vite) and backend (Go) in dev mode (hot reload)"
-	@echo "$(COLOR_YELLOW)  make prod            $(COLOR_RESET) Build production frontend, start backend (Go) in production mode"
-	@echo "$(COLOR_YELLOW)  make run             $(COLOR_RESET) Full production build and start everything"
+	@echo "$(COLOR_YELLOW)  make build           $(COLOR_RESET) Build frontend, backend, and bridge for production"
+	@echo "$(COLOR_YELLOW)  make prod            $(COLOR_RESET) Alias for build (for CI/build pipelines)"
+	@echo "$(COLOR_YELLOW)  make run             $(COLOR_RESET) Run production backend server"
 	@echo ""
 	@echo "$(COLOR_CYAN)  make build-backend   $(COLOR_RESET) Build Go backend binary"
 	@echo "$(COLOR_CYAN)  make build-bridge    $(COLOR_RESET) Build Go bridge binary"
-	@echo "$(COLOR_CYAN)  make build-vite-prod $(COLOR_RESET) Build frontend static files (Vite) for production"
+	@echo "$(COLOR_CYAN)  make build-vite      $(COLOR_RESET) Build frontend static files (Vite) for production"
 	@echo ""
 	@echo "$(COLOR_RED)  make clean           $(COLOR_RESET) Remove build artifacts and node_modules"
 	@echo ""
 
-
-.PHONY: all ensure-node ensure-go setup test dev dev-prep prod run build-vite-dev build-vite-prod build-backend build-bridge clean help lint tsc check-env stop-bridge
+.PHONY: all ensure-node ensure-go setup test dev dev-prep build run build-vite build-backend build-bridge clean help lint tsc check-env golint

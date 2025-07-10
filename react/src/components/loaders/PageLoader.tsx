@@ -2,20 +2,8 @@ import { Box, useTheme, alpha } from "@mui/material";
 import { motion } from "framer-motion";
 import React from "react";
 
-const animation = {
-  animate: {
-    x: ["-150px", "300px"],
-    transition: {
-      duration: 1.0,
-      repeat: Infinity,
-      ease: "easeInOut",
-    },
-  },
-};
+const MotionBox = motion(Box);
 
-/**
- * Displays a full-page loading spinner
- */
 function PageLoader() {
   const theme = useTheme();
   const color = theme.palette.primary.main;
@@ -45,10 +33,15 @@ function PageLoader() {
           position: "relative",
         }}
       >
-        <Box
-          component={motion.div}
-          variants={animation}
-          animate="animate"
+        <MotionBox
+          animate={{
+            x: ["-150px", "300px"],
+          }}
+          transition={{
+            duration: 1.0,
+            repeat: Infinity,
+            ease: [0.42, 0, 0.58, 1],
+          }}
           sx={{
             height: "100%",
             width: 150,

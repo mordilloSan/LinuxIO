@@ -5,6 +5,9 @@ react/package-lock.json
 # Go Folders
 go-backend/frontend/
 go-backend/tmp/
+go-backend/cmd/server/tmp/main
+linuxio-bridge
+linuxio-webserver
 
 # Logs and misc
 *.log
@@ -20,7 +23,3 @@ go-backend/tmp/
 
 # Logs
 *.log
-
-go-backend/cmd/server/tmp/main
-./linuxio-bridge
-./linuxio-webserver
