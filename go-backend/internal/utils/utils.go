@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/user"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -116,4 +117,8 @@ func GetPublicIP() (string, error) {
 	}
 	ip := strings.TrimSpace(string(body))
 	return ip, nil
+}
+
+func StripANSI(input string) string {
+	return regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`).ReplaceAllString(input, "")
 }

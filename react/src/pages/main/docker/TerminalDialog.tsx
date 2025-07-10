@@ -16,8 +16,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
-
 import { useAppWebSocket } from "@/contexts/WebSocketContext";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface Props {
   open: boolean;
@@ -32,55 +32,66 @@ const TerminalDialog: React.FC<Props> = ({
   containerId,
   containerName,
 }) => {
+
   const termRef = useRef<HTMLDivElement>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
-  const [availableShells, setAvailableShells] = useState<string[]>(["sh"]);
+
+  const [terminalKey, setTerminalKey] = useState(0);
+  const [shell, setShell] = useState("");
+  const [availableShells, setAvailableShells] = useState<string[]>([]);
+  const [loadingShells, setLoadingShells] = useState(false);
+  const [hasLoadedShells, setHasLoadedShells] = useState(false);
+
   const { send, subscribe, ready } = useAppWebSocket();
   const theme = useTheme();
 
-  const [shell, setShell] = useState("bash");
-
-  // Reset shell on close
-  useEffect(() => {
-    if (!open) setShell("bash");
-  }, [open]);
-
-  // Fetch available shells on open
+  // --- 1. On open: fetch available shells, set initial shell, and cleanup on close ---
   useEffect(() => {
     if (open && ready && containerId) {
+      setLoadingShells(true);
+      setHasLoadedShells(false);
       send({
         type: "list_shells",
         target: "container",
         containerId,
       });
     }
+    if (!open) {
+      setShell("");
+      setAvailableShells([]);
+      setLoadingShells(false);
+      setHasLoadedShells(false);
+      xterm.current?.dispose();
+      xterm.current = null;
+      fitAddon.current = null;
+    }
   }, [open, ready, containerId, send]);
 
-  // Listen for shell_list message
+  // --- 2. Listen for shell_list and set availableShells and initial shell ---
   useEffect(() => {
     const unsub = subscribe((msg) => {
       if (
         msg.type === "shell_list" &&
         msg.containerId === containerId &&
         Array.isArray(msg.data) &&
-        open // Only set if open
+        open
       ) {
-        setAvailableShells(msg.data);
-        if (msg.data.length === 0) {
-          setShell(""); // No shell to launch
-        } else {
-          setShell(msg.data[0]);
-        }
+        // Clean out empty/falsy entries!
+        const validShells = msg.data.filter((s: string) => s && typeof s === "string" && s.trim() !== "");
+        setAvailableShells(validShells);
+        setShell(validShells.length > 0 ? validShells[0] : "");
+        setLoadingShells(false);
+        setHasLoadedShells(true);
       }
     });
     return unsub;
   }, [containerId, subscribe, open]);
 
-  // Only setup xterm if shells are available and a shell is selected
+
+  // --- 3. Setup xterm and terminal session whenever open, shell, etc. changes ---
   useEffect(() => {
-    if (!open || !termRef.current || availableShells.length === 0 || !shell)
-      return;
+    if (!open || !termRef.current || availableShells.length === 0 || !shell) return;
 
     // Dispose previous instance
     xterm.current?.dispose();
@@ -144,6 +155,11 @@ const TerminalDialog: React.FC<Props> = ({
     const handleResize = () => fitAddon.current?.fit();
     window.addEventListener("resize", handleResize);
 
+    // Focus on open
+    setTimeout(() => {
+      termRef.current?.focus();
+    }, 200);
+
     return () => {
       unsub();
       xterm.current?.dispose();
@@ -159,49 +175,37 @@ const TerminalDialog: React.FC<Props> = ({
     availableShells.length,
     theme.palette.background.default,
     theme.palette.text.primary,
+    terminalKey,
   ]);
 
-  // Re-apply theme if it changes (while dialog open)
-  useEffect(() => {
-    if (xterm.current) {
-      xterm.current.options.theme = {
-        background: theme.palette.background.default,
-        foreground: theme.palette.text.primary,
-      };
-      xterm.current.refresh(0, xterm.current.rows - 1);
-    }
-    if (termRef.current) {
-      termRef.current.style.background = theme.palette.background.default;
-    }
-  }, [theme.palette.background.default, theme.palette.text.primary]);
-
-  // Optional: Focus terminal on open
-  useEffect(() => {
-    if (open && availableShells.length > 0 && shell && termRef.current) {
-      setTimeout(() => {
-        termRef.current?.focus();
-      }, 200);
-    }
-  }, [open, availableShells.length, shell]);
-
-  //cleanup
-  useEffect(() => {
-    if (!open) {
-      setShell(""); // clear shell on close
-      setAvailableShells([]); // clear shell list
-      xterm.current?.dispose();
-      xterm.current = null;
-      fitAddon.current = null;
-    }
-  }, [open]);
-
-  // Shell picker handler
+  // --- Shell picker handler ---
   const handleShellChange = (e: SelectChangeEvent<string>) => {
-    setShell(e.target.value as string);
+    const newShell = e.target.value as string;
+    if (ready && containerId && shell) {
+      send({
+        type: "terminal_close",
+        target: "container",
+        containerId,
+      });
+    }
+    setShell(newShell);
+    setTerminalKey((k) => k + 1); // Force remount of xterm
+  };
+
+  // --- Dialog close handler ---
+  const handleDialogClose = () => {
+    if (ready && containerId) {
+      send({
+        type: "terminal_close",
+        target: "container",
+        containerId,
+      });
+    }
+    onClose();
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={handleDialogClose} maxWidth="md" fullWidth>
       <DialogTitle>
         {containerName ? `Shell for ${containerName}` : "Container Shell"}
         <Box sx={{ float: "right" }}>
@@ -233,31 +237,32 @@ const TerminalDialog: React.FC<Props> = ({
           background: theme.palette.background.default,
         }}
       >
-        {availableShells.length === 0 ? (
+        {loadingShells ? (
+          <Box sx={{ p: 3, textAlign: "center" }}>
+            <ComponentLoader />
+          </Box>
+        ) : hasLoadedShells && availableShells.length === 0 ? (
           <Box sx={{ p: 3, color: "error.main", textAlign: "center" }}>
             No shell available in this container.
             <br />
             (Try installing <b>bash</b> or <b>sh</b> in your container.)
           </Box>
-        ) : (
+        ) : availableShells.length > 0 ? (
           <Box
+            key={terminalKey}
             ref={termRef}
             sx={{
               width: "100%",
               minHeight: 350,
               height: 420,
               background: theme.palette.background.default,
-              "& .xterm-viewport": {
-                // Optional: custom scrollbar styling
-                scrollbarColor: "#777 #222",
-              },
             }}
             tabIndex={0}
           />
-        )}
+        ) : null}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={handleDialogClose}>Close</Button>
       </DialogActions>
     </Dialog>
   );

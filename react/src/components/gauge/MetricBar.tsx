@@ -40,11 +40,16 @@ const MetricBar: React.FC<MetricBarProps> = ({
         sx={{
           width: "100%",
           height: 7,
-          borderRadius: 2,
+          borderRadius: 4,
+          overflow: "hidden",
           backgroundColor: "rgba(255,255,255,0.09)",
-          "& .MuiLinearProgress-bar": { backgroundColor: color },
+          "& .MuiLinearProgress-bar": {
+            backgroundColor: color,
+            borderRadius: 4,
+          },
         }}
       />
+
     </Box>
   </Tooltip>
 );

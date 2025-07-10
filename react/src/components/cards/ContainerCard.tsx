@@ -79,8 +79,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     } catch (e: any) {
       setLogsError(
         e?.response?.data?.error ||
-          e?.message ||
-          "Failed to load logs. (Check backend logs for details.)",
+        e?.message ||
+        "Failed to load logs. (Check backend logs for details.)",
       );
     }
     setLogsLoading(false);
@@ -253,7 +253,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           error={logsError}
           containerName={name}
           onRefresh={() => fetchLogs(container.Id)}
-          autoRefreshDefault={true} // Optional, start with auto-refresh on/off
+          autoRefreshDefault={true}
         />
         <TerminalDialog
           open={terminalOpen}

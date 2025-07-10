@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-backend/internal/logger"
+	"go-backend/internal/utils"
 	"io"
 	"strings"
 
@@ -275,5 +276,6 @@ func LogContainer(id string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to decode logs: %w", err)
 	}
-	return plainLogs, nil
+	cleanLogs := utils.StripANSI(plainLogs)
+	return cleanLogs, nil
 }
