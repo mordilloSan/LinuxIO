@@ -113,16 +113,6 @@ func loginHandler(c *gin.Context) {
 		logger.Errorf("❌ Failed to create docker apps directory: %v", err)
 	}
 
-	// 6. Start main socket for this session
-	if err := bridge.StartBridgeSocket(sess); err != nil {
-		logger.Errorf("Failed to start main socket: %v", err)
-		if err := session.DeleteSession(sessionID); err != nil {
-			logger.Errorf("failed to delete session %q: %v", sessionID, err)
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start session socket"})
-		return
-	}
-
 	// 7. Start the bridge process for this session
 	if err := bridge.StartBridge(sess, req.Password); err != nil {
 		if privileged {
@@ -182,10 +172,7 @@ func logoutHandler(c *gin.Context) {
 		c.Status(http.StatusOK)
 		return
 	}
-	terminal.Close(sessionID)
-	if err := session.DeleteSession(sessionID); err != nil {
-		logger.Warnf("failed to delete session %q: %v", sessionID, err)
-	}
+
 	if s.User.ID != "" {
 		_, err := bridge.CallWithSession(s, "control", "shutdown", []string{"logout"})
 		if err != nil {

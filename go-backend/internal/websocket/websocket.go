@@ -239,16 +239,22 @@ func WebSocketHandler(c *gin.Context) {
 			}
 		case "terminal_close":
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				terminal.CloseContainerTerminal(sess.SessionID, wsMsg.ContainerID)
-				logger.Infof("Closed terminal for container %s", wsMsg.ContainerID)
+				if err := terminal.CloseContainerTerminal(sess.SessionID, wsMsg.ContainerID); err != nil {
+					logger.Warnf("Failed to close container terminal %s: %v", wsMsg.ContainerID, err)
+				} else {
+					logger.Infof("Closed terminal for container %s", wsMsg.ContainerID)
+				}
 				_ = safeConn.WriteJSON(WSResponse{
 					Type:        "terminal_closed",
 					ContainerID: wsMsg.ContainerID,
 					Data:        "Container terminal closed.",
 				})
 			} else {
-				terminal.Close(sess.SessionID)
-				logger.Infof("Closed main terminal for session %s", sess.SessionID)
+				if err := terminal.Close(sess.SessionID); err != nil {
+					logger.Warnf("Failed to close main terminal for session %s: %v", sess.SessionID, err)
+				} else {
+					logger.Infof("Closed main terminal for session %s", sess.SessionID)
+				}
 				_ = safeConn.WriteJSON(WSResponse{
 					Type: "terminal_closed",
 					Data: "Main terminal closed.",

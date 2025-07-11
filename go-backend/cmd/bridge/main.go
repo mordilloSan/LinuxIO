@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"os"
-	"time"
 
 	"go-backend/cmd/bridge/cleanup"
 	"go-backend/cmd/bridge/handlers"
@@ -77,24 +75,6 @@ func main() {
 			id := uuid.NewString()
 			logger.Debugf("MAIN: spawning handler %s", id)
 			go bridge.HandleMainRequest(conn, id)
-		}
-	}()
-
-	// Healthcheck goroutine
-	go func() {
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			logger.Debugf("Healthcheck: pinging main process")
-			ok := cleanup.CheckMainProcessHealth(Sess)
-			logger.Infof("%s", fmt.Sprintf("Healthcheck result: %v", ok))
-			if !ok {
-				select {
-				case ShutdownChan <- "Healthcheck failed (main process unreachable or session invalid)":
-				default: // already shutting down
-				}
-				return
-			}
 		}
 	}()
 

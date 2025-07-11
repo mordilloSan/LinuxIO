@@ -15,17 +15,10 @@ import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import React, { useEffect, useRef, useState } from "react";
-<<<<<<< HEAD
 
 import "@xterm/xterm/css/xterm.css";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-=======
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
-import "xterm/css/xterm.css";
->>>>>>> ba9dddb (docker update)
 import { useAppWebSocket } from "@/contexts/WebSocketContext";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface Props {
   open: boolean;
@@ -40,7 +33,6 @@ const TerminalDialog: React.FC<Props> = ({
   containerId,
   containerName,
 }) => {
-
   const termRef = useRef<HTMLDivElement>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
@@ -86,13 +78,9 @@ const TerminalDialog: React.FC<Props> = ({
         open
       ) {
         // Clean out empty/falsy entries!
-<<<<<<< HEAD
         const validShells = msg.data.filter(
           (s: string) => s && typeof s === "string" && s.trim() !== "",
         );
-=======
-        const validShells = msg.data.filter((s: string) => s && typeof s === "string" && s.trim() !== "");
->>>>>>> ba9dddb (docker update)
         setAvailableShells(validShells);
         setShell(validShells.length > 0 ? validShells[0] : "");
         setLoadingShells(false);
@@ -102,13 +90,10 @@ const TerminalDialog: React.FC<Props> = ({
     return unsub;
   }, [containerId, subscribe, open]);
 
-<<<<<<< HEAD
-=======
-
->>>>>>> ba9dddb (docker update)
   // --- 3. Setup xterm and terminal session whenever open, shell, etc. changes ---
   useEffect(() => {
-    if (!open || !termRef.current || availableShells.length === 0 || !shell) return;
+    if (!open || !termRef.current || availableShells.length === 0 || !shell)
+      return;
 
     // Dispose previous instance
     xterm.current?.dispose();

@@ -29,21 +29,6 @@ var (
 	processesMu sync.Mutex
 )
 
-var (
-	mainSocketListeners   = make(map[string]net.Listener) // sessionID → Listener
-	mainSocketListenersMu sync.Mutex
-)
-
-// MainSocketPath returns the per-session main (healthcheck) socket path for the user.
-func MainSocketPath(sess *session.Session) (string, error) {
-	u, err := user.Lookup(sess.User.ID)
-	if err != nil {
-		logger.Errorf("could not find user %s: %v", sess.User.ID, err)
-		return "", err
-	}
-	return fmt.Sprintf("/run/user/%s/linuxio-main-%s.sock", u.Uid, sess.SessionID), nil
-}
-
 // BridgeSocketPath returns the per-session bridge command socket path for the user.
 func BridgeSocketPath(sess *session.Session) (string, error) {
 	u, err := user.Lookup(sess.User.ID)
@@ -190,97 +175,6 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 	return nil
 }
 
-// StartBridgeSocket starts a Unix socket server for the main process.
-func StartBridgeSocket(sess *session.Session) error {
-	socketPath, err := MainSocketPath(sess)
-	if err != nil {
-		logger.Errorf("Failed to get main socket path for session %s: %v", sess.SessionID, err)
-		return err
-	}
-
-	_ = os.Remove(socketPath)
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		logger.Errorf("Failed to listen on main socket for session %s: %v", sess.SessionID, err)
-		return err
-	}
-
-	// Set permissions strictly to 0600 (owner read/write only)
-	if err := os.Chmod(socketPath, 0600); err != nil {
-		_ = ln.Close()
-		_ = os.Remove(socketPath)
-		logger.Errorf("Failed to chmod main socket %s: %v", socketPath, err)
-		return fmt.Errorf("failed to chmod socket: %w", err)
-	}
-
-	// Store the listener so we can close and remove it on logout
-	mainSocketListenersMu.Lock()
-	mainSocketListeners[sess.SessionID] = ln
-	mainSocketListenersMu.Unlock()
-
-	logger.Infof("Main socket for session %s is now listening on %s", sess.SessionID, socketPath)
-
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				logger.Warnf("Accept failed on main socket for session %s: %v", sess.SessionID, err)
-				// Exit the goroutine if the listener is closed
-				break
-			}
-			logger.Infof("Main socket for session %s accepted a connection", sess.SessionID)
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logger.Errorf("Panic in main socket handler: %v", r)
-					}
-				}()
-				handleBridgeRequest(conn)
-			}()
-		}
-	}()
-
-	return nil
-}
-
-func handleBridgeRequest(conn net.Conn) {
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close connection: %v", cerr)
-		}
-	}()
-
-	logger.Infof("Main socket accepted a connection")
-	decoder := json.NewDecoder(conn)
-	encoder := json.NewEncoder(conn)
-
-	var req types.BridgeHealthRequest
-	if err := decoder.Decode(&req); err != nil {
-		logger.Warnf("Invalid JSON on main socket: %v", err)
-		_ = encoder.Encode(types.BridgeHealthResponse{Status: "error", Message: "invalid json"})
-		return
-	}
-
-	if req.Type == "validate" {
-		logger.Infof("Healthcheck received for session %s", req.Session)
-		valid, err := session.IsValid(req.Session)
-		if err != nil {
-			logger.Warnf("Session validation error for %s: %v", req.Session, err)
-			_ = encoder.Encode(types.BridgeHealthResponse{Status: "invalid", Message: err.Error()})
-			return
-		}
-		if valid {
-			_ = encoder.Encode(types.BridgeHealthResponse{Status: "ok"})
-		} else {
-			_ = encoder.Encode(types.BridgeHealthResponse{Status: "invalid", Message: "session expired"})
-		}
-		return
-	}
-
-	logger.Warnf("Unknown healthcheck request type: %s (session %s)", req.Type, req.Session)
-	_ = encoder.Encode(types.BridgeHealthResponse{Status: "error", Message: "unknown request type"})
-}
-
 // HandleMainRequest processes incoming bridge requests.
 func HandleMainRequest(conn net.Conn, id string) {
 	logger.Debugf("HANDLECONNECTION: [%s] called!", id)
@@ -296,7 +190,7 @@ func HandleMainRequest(conn net.Conn, id string) {
 	var req types.BridgeRequest
 	if err := decoder.Decode(&req); err != nil {
 		if err == io.EOF {
-			logger.Debugf("🔁 [%s] connection closed without data (likely healthcheck probe)", id)
+			logger.Debugf("🔁 [%s] connection closed without data", id)
 		} else {
 			logger.Warnf("❌ [%s] invalid JSON from client: %v", id, err)
 		}
@@ -351,57 +245,20 @@ func HandleMainRequest(conn net.Conn, id string) {
 	_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: err.Error()})
 }
 
+// CleanupBridgeSocket removes the bridge socket for the session.
 func CleanupBridgeSocket(sess *session.Session) error {
-	var firstErr error
-
-	mainSocketListenersMu.Lock()
-	ln, ok := mainSocketListeners[sess.SessionID]
-	if ok {
-		if err := ln.Close(); err != nil {
-			logger.Warnf("Error closing main socket listener for session %s: %v", sess.SessionID, err)
-			firstErr = err
-		} else {
-			logger.Infof("Closed main socket listener for session %s", sess.SessionID)
-		}
-		delete(mainSocketListeners, sess.SessionID)
-	}
-	mainSocketListenersMu.Unlock()
-
-	mainSock, err := MainSocketPath(sess)
-	if err != nil {
-		logger.Warnf("Could not determine main socket path: %v", err)
-		if firstErr == nil {
-			firstErr = err
-		}
-	} else {
-		if err := os.Remove(mainSock); err == nil {
-			logger.Infof("Removed main socket file %s for session %s", mainSock, sess.SessionID)
-		} else if !os.IsNotExist(err) {
-			logger.Warnf("Failed to remove main socket file %s: %v", mainSock, err)
-			if firstErr == nil {
-				firstErr = err
-			}
-		}
-	}
-
 	bridgeSock, err := BridgeSocketPath(sess)
 	if err != nil {
 		logger.Warnf("Could not determine bridge socket path: %v", err)
-		if firstErr == nil {
-			firstErr = err
-		}
-	} else {
-		if err := os.Remove(bridgeSock); err == nil {
-			logger.Infof("Removed bridge socket file %s for session %s", bridgeSock, sess.SessionID)
-		} else if !os.IsNotExist(err) {
-			logger.Warnf("Failed to remove bridge socket file %s: %v", bridgeSock, err)
-			if firstErr == nil {
-				firstErr = err
-			}
-		}
+		return err
 	}
-
-	return firstErr
+	if err := os.Remove(bridgeSock); err == nil {
+		logger.Infof("Removed bridge socket file %s for session %s", bridgeSock, sess.SessionID)
+	} else if !os.IsNotExist(err) {
+		logger.Warnf("Failed to remove bridge socket file %s: %v", bridgeSock, err)
+		return err
+	}
+	return nil
 }
 
 // CreateAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.
@@ -443,11 +300,21 @@ func CreateAndOwnSocket(socketPath, username string) (net.Listener, int, int, er
 }
 
 func getBridgeBinaryPath() string {
+	if os.Getenv("GO_ENV") == "development" {
+		dir, err := os.Getwd()
+		if err != nil {
+			logger.Warnf("Failed to get working directory: %v", err)
+			return "linuxio-bridge"
+		}
+		rootDir := filepath.Dir(dir) // go-backend → LinuxIO
+		return filepath.Join(rootDir, "linuxio-bridge")
+	}
+
+	// Production mode: use executable path
 	exe, err := os.Executable()
 	if err != nil {
-		// Fallback or log error
+		logger.Warnf("Failed to get executable path: %v", err)
 		return "linuxio-bridge"
 	}
-	dir := filepath.Dir(exe)
-	return filepath.Join(dir, "linuxio-bridge")
+	return filepath.Join(filepath.Dir(exe), "linuxio-bridge")
 }

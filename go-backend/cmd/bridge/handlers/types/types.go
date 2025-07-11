@@ -30,12 +30,3 @@ type BridgeResponse struct {
 	Output json.RawMessage `json:"output,omitempty"` // actual command output, always marshaled JSON
 	Error  string          `json:"error,omitempty"`  // error string if any
 }
-
-type BridgeHealthRequest struct {
-	Type    string `json:"type"`    // e.g., "healthcheck" or "validate"
-	Session string `json:"session"` // sessionID
-}
-type BridgeHealthResponse struct {
-	Status  string `json:"status"` // "ok" or "invalid"
-	Message string `json:"message,omitempty"`
-}

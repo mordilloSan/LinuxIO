@@ -23,7 +23,6 @@ const TerminalXTerm: React.FC = () => {
     xterm.current?.dispose();
 
     xterm.current = new Terminal({
-      fontFamily: "monospace",
       fontSize: 16,
       cursorBlink: true,
       scrollback: 2000,
@@ -112,8 +111,8 @@ const TerminalXTerm: React.FC = () => {
   return (
     <Box
       sx={{
-        height: "60vh",
-        width: "60vw",
+        height: "80vh",
+        width: "80vw",
         overflow: "hidden",
         position: "relative",
       }}

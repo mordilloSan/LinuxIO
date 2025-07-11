@@ -79,8 +79,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     } catch (e: any) {
       setLogsError(
         e?.response?.data?.error ||
-        e?.message ||
-        "Failed to load logs. (Check backend logs for details.)",
+          e?.message ||
+          "Failed to load logs. (Check backend logs for details.)",
       );
     }
     setLogsLoading(false);
@@ -282,27 +282,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             </>
           )}
         </Box>
-<<<<<<< HEAD
-=======
-
-        {/* --- Logs Dialog --- */}
-        <LogsDialog
-          open={logDialogOpen}
-          onClose={() => setLogDialogOpen(false)}
-          logs={logs}
-          loading={logsLoading}
-          error={logsError}
-          containerName={name}
-          onRefresh={() => fetchLogs(container.Id)}
-          autoRefreshDefault={true}
-        />
-        <TerminalDialog
-          open={terminalOpen}
-          onClose={() => setTerminalOpen(false)}
-          containerId={container.Id}
-          containerName={name}
-        />
->>>>>>> ba9dddb (docker update)
       </FrostedCard>
     </Grid>
   );

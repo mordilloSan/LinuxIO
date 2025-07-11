@@ -196,7 +196,7 @@ func EnableService(name string) error {
 		}()
 
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		// changes := ...  // <-- REMOVE THIS
+
 		call := systemd.Call("org.freedesktop.systemd1.Manager.EnableUnitFiles", 0, []string{name}, false, true)
 		return call.Err
 	})
@@ -216,7 +216,6 @@ func DisableService(name string) error {
 		}()
 
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		// changes := ...  // <-- REMOVE THIS
 		call := systemd.Call("org.freedesktop.systemd1.Manager.DisableUnitFiles", 0, []string{name}, false)
 		return call.Err
 	})
@@ -236,7 +235,6 @@ func MaskService(name string) error {
 		}()
 
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		// changes := ...  // <-- REMOVE THIS
 		call := systemd.Call("org.freedesktop.systemd1.Manager.MaskUnitFiles", 0, []string{name}, false, true)
 		return call.Err
 	})
@@ -256,7 +254,6 @@ func UnmaskService(name string) error {
 		}()
 
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		// changes := ...  // <-- REMOVE THIS
 		call := systemd.Call("org.freedesktop.systemd1.Manager.UnmaskUnitFiles", 0, []string{name}, false)
 		return call.Err
 	})
