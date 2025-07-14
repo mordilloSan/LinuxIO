@@ -66,6 +66,9 @@ func mapDeviceType(devType uint32) string {
 }
 
 func GetNetworkInfo() ([]NMInterfaceInfo, error) {
+
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	var results []NMInterfaceInfo
 
 	snapshots, _ := net.IOCounters(true)
@@ -239,6 +242,8 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 }
 
 func SetDNS(iface string, dns []string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	if strings.TrimSpace(iface) == "" || len(dns) == 0 {
 		return fmt.Errorf("SetDNS requires interface and at least one DNS server")
 	}
@@ -304,6 +309,8 @@ func SetDNS(iface string, dns []string) error {
 }
 
 func SetGateway(iface, gateway string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	if strings.TrimSpace(iface) == "" || strings.TrimSpace(gateway) == "" {
 		return fmt.Errorf("SetGateway requires interface and gateway address")
 	}
@@ -371,6 +378,8 @@ func SetGateway(iface, gateway string) error {
 }
 
 func SetIPv4DHCP(iface string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	cmd := exec.Command("nmcli", "con", "mod", iface, "ipv4.method", "auto")
 	if err := cmd.Run(); err != nil {
 		return err
@@ -380,6 +389,8 @@ func SetIPv4DHCP(iface string) error {
 }
 
 func SetIPv4Static(iface, addressCIDR string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	cmd := exec.Command("nmcli", "con", "mod", iface, "ipv4.addresses", addressCIDR, "ipv4.method", "manual")
 	if err := cmd.Run(); err != nil {
 		return err
@@ -389,6 +400,8 @@ func SetIPv4Static(iface, addressCIDR string) error {
 }
 
 func SetIPv6DHCP(iface string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	cmd := exec.Command("nmcli", "con", "mod", iface, "ipv6.method", "auto")
 	if err := cmd.Run(); err != nil {
 		return err
@@ -398,6 +411,8 @@ func SetIPv6DHCP(iface string) error {
 }
 
 func SetIPv6Static(iface, addressCIDR string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	cmd := exec.Command("nmcli", "con", "mod", iface, "ipv6.addresses", addressCIDR, "ipv6.method", "manual")
 	if err := cmd.Run(); err != nil {
 		return err
@@ -407,6 +422,8 @@ func SetIPv6Static(iface, addressCIDR string) error {
 }
 
 func SetMTU(iface, mtu string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	if strings.TrimSpace(iface) == "" || strings.TrimSpace(mtu) == "" {
 		return fmt.Errorf("SetMTU requires interface and MTU value")
 	}

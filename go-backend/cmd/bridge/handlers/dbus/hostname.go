@@ -7,6 +7,9 @@ import (
 )
 
 func GetHostname() (result string, err error) {
+
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	err = RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {

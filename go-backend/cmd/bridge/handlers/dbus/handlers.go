@@ -4,8 +4,12 @@ import (
 	"fmt"
 	"go-backend/cmd/bridge/handlers/types"
 	"strings"
+	"sync"
 	"time"
 )
+
+// Needed to make sure one d-bus call at a time!
+var systemDBusMu sync.Mutex
 
 func DbusHandlers() map[string]types.HandlerFunc {
 	return map[string]types.HandlerFunc{

@@ -69,7 +69,6 @@ func getServiceStatus(c *gin.Context) {
 	if sess == nil {
 		return
 	}
-	logger.Infof("User %s requested service status (session: %s)", sess.User.Name, sess.SessionID)
 
 	output, err := bridge.CallWithSession(sess, "dbus", "ListServices", nil)
 	if err != nil {

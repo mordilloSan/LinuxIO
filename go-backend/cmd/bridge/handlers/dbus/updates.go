@@ -95,6 +95,8 @@ func InstallPackage(packageID string) error {
 // --- Private Implementation ---
 
 func getUpdatesWithDetails() ([]UpdateDetail, error) {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	conn, err := dbus.SystemBus()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
@@ -258,6 +260,8 @@ collectDetails:
 }
 
 func installPackage(packageID string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	conn, err := dbus.SystemBus()
 	if err != nil {
 		return fmt.Errorf("failed to connect to system bus: %w", err)

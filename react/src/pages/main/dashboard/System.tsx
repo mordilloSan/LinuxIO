@@ -11,31 +11,66 @@ import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 
+// --- Types ---
+type Update = {
+  package_id: string;
+  summary: string;
+  version: string;
+  issued: string;
+  changelog: string;
+  cve: string[];
+  restart: number;
+  state: number;
+};
+
+type SystemUpdatesResponse = {
+  updates: Update[];
+};
+
+type ServiceStatus = {
+  active_state: string;
+  // ...any other fields
+};
+
+type DistroInfo = {
+  platform: string;
+};
+
+// --- Component ---
 const SystemHealth = () => {
   const theme = useTheme();
 
-  const { data: systemHealth, isLoading: loadingHealth } = useQuery({
-    queryKey: ["UpdateInfo"],
-    queryFn: () => axios.get("/system/updates").then((res) => res.data),
-    enabled: true,
-    refetchInterval: 50000,
+  // Updates
+  const {
+    data: systemHealth,
+    isLoading: loadingHealth,
+    isFetching: fetchingHealth,
+  } = useQuery<SystemUpdatesResponse>({
+    queryKey: ["updateInfo"],
+    queryFn: async () => {
+      const res = await axios.get("/system/updates");
+      if (Array.isArray(res.data)) return { updates: res.data };
+      if (res.data && Array.isArray(res.data.updates)) return res.data;
+      return { updates: [] };
+    },
+    refetchInterval: 5000,
   });
 
-  const { data: servicesRaw, isLoading: loadingStatus } = useQuery({
+  // Services
+  const { data: servicesRaw } = useQuery<ServiceStatus[]>({
     queryKey: ["SystemStatus"],
     queryFn: () => axios.get("/system/services/status").then((res) => res.data),
     refetchInterval: 50000,
   });
 
-  const { data: distroInfo, isLoading: loadingDistro } = useQuery({
+  // Distro Info
+  const { data: distroInfo } = useQuery<DistroInfo>({
     queryKey: ["DistroInfo"],
     queryFn: () => axios.get("/system/info").then((res) => res.data),
     refetchInterval: 50000,
   });
 
-  const isLoading = loadingHealth || loadingStatus || loadingDistro;
-
-  // === NEW: service stats extraction ===
+  // --- Data extraction ---
   const services = Array.isArray(servicesRaw) ? servicesRaw : [];
   const units = services.length;
   const failed = services.filter((svc) => svc.active_state === "failed").length;
@@ -43,25 +78,24 @@ const SystemHealth = () => {
     (svc) => svc.active_state === "active",
   ).length;
 
-  const updates = systemHealth?.updates || [];
-  const totalPackages = Array.isArray(updates) ? updates.length : 0;
-
+  const updates = systemHealth?.updates ?? [];
+  const totalPackages = updates.length;
   const distro = distroInfo?.platform || "Unknown";
 
-  // Determine icon + color
+  // --- Icon and link selection ---
   let statusColor = theme.palette.success.dark;
   let IconComponent = GppGoodOutlinedIcon;
   let iconLink = "/updates";
-
   if (failed > 0) {
     statusColor = theme.palette.error.main;
     IconComponent = HighlightOffIcon;
     iconLink = "/services";
-  } else if (updates.length > 0) {
+  } else if (totalPackages > 0) {
     statusColor = theme.palette.warning.main;
     IconComponent = SecurityUpdateWarningIcon;
   }
 
+  // --- Stats UI ---
   const stats2 = (
     <Box
       sx={{
@@ -74,7 +108,7 @@ const SystemHealth = () => {
         borderRadius: "50%",
       }}
     >
-      {isLoading ? (
+      {!systemHealth && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
       ) : (
         <Link
@@ -102,10 +136,13 @@ const SystemHealth = () => {
           underline="hover"
           color="inherit"
         >
-          {totalPackages > 0 ? `${totalPackages} available` : "None available"}
+          {!systemHealth && (loadingHealth || fetchingHealth)
+            ? "Loading..."
+            : totalPackages > 0
+              ? `${totalPackages} available`
+              : "None available"}
         </Link>
       </Typography>
-
       <Typography variant="body1">
         <strong>Services:</strong>{" "}
         <Link

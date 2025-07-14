@@ -2,7 +2,7 @@ import { Box, useTheme, alpha } from "@mui/material";
 import { motion } from "framer-motion";
 import React from "react";
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 function PageLoader() {
   const theme = useTheme();

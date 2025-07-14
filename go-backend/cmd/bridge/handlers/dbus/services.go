@@ -18,6 +18,8 @@ type ServiceStatus struct {
 
 // --- List all services (robust) ---
 func ListServices() ([]ServiceStatus, error) {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	var services []ServiceStatus
 	err := RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
@@ -57,6 +59,8 @@ func ListServices() ([]ServiceStatus, error) {
 
 // --- Get detailed info about a single service (robust) ---
 func GetServiceInfo(serviceName string) (map[string]interface{}, error) {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	serviceName = strings.TrimSpace(serviceName)
 	if serviceName == "" {
 		err := fmt.Errorf("missing service name")
@@ -107,6 +111,8 @@ func GetServiceInfo(serviceName string) (map[string]interface{}, error) {
 
 // Start a service
 func StartService(name string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	return RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {
@@ -127,6 +133,8 @@ func StartService(name string) error {
 
 // Stop a service
 func StopService(name string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	return RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {
@@ -146,6 +154,8 @@ func StopService(name string) error {
 
 // Restart a service
 func RestartService(name string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	return RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {
@@ -165,6 +175,8 @@ func RestartService(name string) error {
 
 // Reload a service (if supported)
 func ReloadService(name string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	return RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {
@@ -184,6 +196,8 @@ func ReloadService(name string) error {
 
 // Enable a service (for boot)
 func EnableService(name string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	return RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {
@@ -204,6 +218,8 @@ func EnableService(name string) error {
 
 // Disable a service (prevent start at boot)
 func DisableService(name string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	return RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {
@@ -223,6 +239,8 @@ func DisableService(name string) error {
 
 // Mask a service (make it unstartable even manually)
 func MaskService(name string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	return RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {
@@ -242,6 +260,8 @@ func MaskService(name string) error {
 
 // Unmask a service
 func UnmaskService(name string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
 	return RetryOnceIfClosed(nil, func() error {
 		conn, err := dbus.SystemBus()
 		if err != nil {

@@ -15,6 +15,8 @@ type Login1Manager struct {
 
 // NewLogin1Manager connects to system D-Bus and prepares the login1 interface.
 func NewLogin1Manager(ctx context.Context) (*Login1Manager, error) {
+	systemDBusMu.Lock() // LOCK at start
+	defer systemDBusMu.Unlock()
 	conn, err := dbus.SystemBus()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
@@ -32,6 +34,8 @@ func (m *Login1Manager) Close() {
 
 // CallLogin1Action is a helper function to call a login1 action, retried if D-Bus is closed.
 func CallLogin1Action(action string) error {
+	systemDBusMu.Lock() // LOCK at top
+	defer systemDBusMu.Unlock()
 	return RetryOnceIfClosed(nil, func() error {
 		manager, err := NewLogin1Manager(context.Background())
 		if err != nil {

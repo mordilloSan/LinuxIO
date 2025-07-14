@@ -28,7 +28,7 @@ func init() {
 }
 
 func ServeIndex(c *gin.Context, env string, viteManifest []byte) {
-	logger.Infof("📄 ServeIndex called for: %s", c.Request.URL.Path)
+	logger.Debugf("📄 ServeIndex called for: %s", c.Request.URL.Path)
 
 	var js, css string
 
