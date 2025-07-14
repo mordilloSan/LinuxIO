@@ -1,4 +1,3 @@
-import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -15,7 +14,6 @@ const TerminalXTerm: React.FC = () => {
   const { send, subscribe, ready } = useAppWebSocket();
   const startedRef = useRef(false);
 
-  // Setup and teardown terminal
   useEffect(() => {
     if (!termRef.current) return;
 
@@ -37,8 +35,10 @@ const TerminalXTerm: React.FC = () => {
     xterm.current.loadAddon(fitAddon.current);
     xterm.current.open(termRef.current);
 
-    // 1. Fit and send initial resize only once
+    // Set custom scrollbar on xterm viewport
     setTimeout(() => {
+      const viewport = termRef.current?.querySelector(".xterm-viewport");
+      if (viewport) viewport.classList.add("custom-scrollbar");
       fitAddon.current?.fit();
       if (xterm.current && ready && !startedRef.current) {
         send({
@@ -109,24 +109,16 @@ const TerminalXTerm: React.FC = () => {
   }, [theme.palette.background.default, theme.palette.text.primary]);
 
   return (
-    <Box
-      sx={{
-        height: "80vh",
-        width: "80vw",
+    <div
+      ref={termRef}
+      className="my-terminal-root"
+      style={{
+        height: "100%",
+        width: "100%",
         overflow: "hidden",
-        position: "relative",
+        background: theme.palette.background.default,
       }}
-    >
-      <Box
-        ref={termRef}
-        sx={{
-          height: "100%",
-          width: "100%",
-          overflow: "hidden",
-          background: theme.palette.background.default,
-        }}
-      />
-    </Box>
+    />
   );
 };
 

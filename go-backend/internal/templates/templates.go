@@ -49,7 +49,6 @@ func ServeIndex(c *gin.Context, env string, viteManifest []byte) {
 			return
 		}
 	}
-
 	themeSettings, err := theme.LoadTheme()
 	if err != nil {
 		logger.Warnf("⚠️ Failed to load theme, using defaults: %v", err)

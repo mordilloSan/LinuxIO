@@ -53,13 +53,10 @@ func StartTerminal(sess *session.Session) error {
 	userHome := u.HomeDir
 
 	env := append(os.Environ(),
-		"TERM=xterm-256color",
-		"PROMPT_COMMAND=history -a; history -n",
-		"HISTCONTROL=ignoredups:erasedups",
 		"HISTFILE="+userHome+"/.bash_history",
 	)
 
-	cmd := exec.Command("bash", "--noprofile", "--norc", "-i")
+	cmd := exec.Command("bash", "-i", "-l")
 	cmd.Dir = userHome
 	cmd.Env = env
 	// Note: If you need privilege separation, use SysProcAttr as in earlier responses.

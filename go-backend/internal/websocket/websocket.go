@@ -166,7 +166,6 @@ func WebSocketHandler(c *gin.Context) {
 						default:
 							n, err := ts.PTY.Read(buf)
 							if n > 0 {
-								logger.Infof("PTY RAW: %q", buf[:n]) // <--- add this line
 								ts.Mu.Lock()
 								if len(ts.Buffer)+n > 8192*2 {
 									ts.Buffer = ts.Buffer[(len(ts.Buffer)+n)-8192*2:]

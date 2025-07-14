@@ -33,18 +33,22 @@ func ParseViteManifest(manifestPath string) (string, string, error) {
 }
 
 func ParseViteManifestBytes(data []byte) (js string, css string, err error) {
-	var manifest ViteManifest
+	var manifest map[string]struct {
+		File string   `json:"file"`
+		Css  []string `json:"css"`
+	}
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return "", "", fmt.Errorf("failed to parse manifest: %w", err)
 	}
 
-	// Example: Find entrypoint (usually "src/main.tsx" or similar)
-	for _, entry := range manifest {
-		js = entry.File
-		if len(entry.Css) > 0 {
-			css = entry.Css[0]
-		}
-		break // only first, adjust as needed!
+	entry, ok := manifest["index.html"]
+	if !ok {
+		return "", "", fmt.Errorf("entry 'index.html' not found in manifest")
+	}
+
+	js = "/" + entry.File
+	if len(entry.Css) > 0 {
+		css = "/" + entry.Css[0]
 	}
 	return js, css, nil
 }
