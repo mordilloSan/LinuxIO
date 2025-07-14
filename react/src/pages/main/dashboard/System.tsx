@@ -53,7 +53,7 @@ const SystemHealth = () => {
       if (res.data && Array.isArray(res.data.updates)) return res.data;
       return { updates: [] };
     },
-    refetchInterval: 5000,
+    refetchInterval: 50000,
   });
 
   // Services

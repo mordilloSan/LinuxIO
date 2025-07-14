@@ -18,7 +18,8 @@ import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useAppWebSocket } from "@/contexts/WebSocketContext";
+import useAppWebSocket from "@/hooks/useAppWebSocket";
+
 
 interface Props {
   open: boolean;

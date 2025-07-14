@@ -44,7 +44,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     if (open && logsBoxRef.current) {
       logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
     }
-  }, [logs]);
+  }, [logs, open]);
 
   // Filter logs (no highlighting for simplicity)
   const filtered = useMemo(() => {
@@ -74,11 +74,13 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
 
   // Auto-refresh effect
   useEffect(() => {
-    if (!autoRefresh || !onRefresh || !open) return;
-    const interval = setInterval(() => {
-      onRefresh();
-    }, 2000);
-    return () => clearInterval(interval);
+    if (!onRefresh || !open) return;
+
+    if (autoRefresh) {
+      onRefresh(); // Immediate
+      const interval = setInterval(onRefresh, 2000);
+      return () => clearInterval(interval);
+    }
   }, [autoRefresh, onRefresh, open]);
 
   // Reset search/autorefresh when closed
@@ -88,13 +90,6 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       setAutoRefresh(autoRefreshDefault);
     }
   }, [open, autoRefreshDefault]);
-
-  // Immediately refresh when enabling auto-refresh
-  useEffect(() => {
-    if (autoRefresh && onRefresh && open) {
-      onRefresh();
-    }
-  }, [autoRefresh]);
 
   return (
     <Dialog

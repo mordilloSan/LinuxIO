@@ -16,7 +16,7 @@ interface WebSocketContextValue {
   ready: boolean;
 }
 
-const WebSocketContext = createContext<WebSocketContextValue | null>(null);
+export const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -73,10 +73,3 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
     </WebSocketContext.Provider>
   );
 };
-
-export function useAppWebSocket() {
-  const ctx = useContext(WebSocketContext);
-  if (!ctx)
-    throw new Error("useAppWebSocket must be used inside <WebSocketProvider>");
-  return ctx;
-}

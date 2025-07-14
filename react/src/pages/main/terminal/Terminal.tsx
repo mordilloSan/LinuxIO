@@ -3,8 +3,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import React, { useEffect, useRef } from "react";
 
-import { useAppWebSocket } from "@/contexts/WebSocketContext";
 import "@xterm/xterm/css/xterm.css";
+import useAppWebSocket from "@/hooks/useAppWebSocket";
 
 const TerminalXTerm: React.FC = () => {
   const termRef = useRef<HTMLDivElement>(null);

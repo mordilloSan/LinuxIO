@@ -25,7 +25,38 @@ func ListDockerNetworks() (any, error) {
 		return nil, fmt.Errorf("failed to list networks: %w", err)
 	}
 
-	return networks, nil
+	var results []map[string]interface{}
+
+	for _, nw := range networks {
+		inspect, err := cli.NetworkInspect(context.Background(), nw.ID, network.InspectOptions{})
+		if err != nil {
+			// Log warning but continue
+			logger.Warnf("failed to inspect network %s: %v", nw.Name, err)
+			continue
+		}
+
+		// Prepare your structure: copy summary + attach containers map
+		result := map[string]interface{}{
+			"Name":       nw.Name,
+			"Id":         nw.ID,
+			"Scope":      nw.Scope,
+			"Driver":     nw.Driver,
+			"EnableIPv4": nw.EnableIPv4,
+			"EnableIPv6": nw.EnableIPv6,
+			"Internal":   nw.Internal,
+			"Attachable": nw.Attachable,
+			"Ingress":    nw.Ingress,
+			"IPAM":       nw.IPAM,
+			"ConfigOnly": nw.ConfigOnly,
+			"Labels":     nw.Labels,
+			"Options":    nw.Options,
+			"Created":    nw.Created,
+			"Containers": inspect.Containers, // <-- Now you have the attached containers!
+		}
+		results = append(results, result)
+	}
+
+	return results, nil
 }
 
 // Delete a network
