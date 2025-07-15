@@ -9,10 +9,11 @@ import (
 )
 
 type Session struct {
-	SessionID  string
-	User       utils.User
-	ExpiresAt  time.Time
-	Privileged bool
+	SessionID    string
+	User         utils.User
+	ExpiresAt    time.Time
+	Privileged   bool
+	BridgeSecret string
 }
 
 var (
@@ -60,11 +61,13 @@ func StartSessionGC() {
 // Creates a new session, returns error if already exists
 func CreateSession(id string, user utils.User, duration time.Duration, privileged bool) error {
 	done := make(chan error)
+	secret := utils.GenerateSecretKey(32) // Returns 64 hex chars (32 bytes)
 	sess := Session{
-		SessionID:  id,
-		User:       user,
-		ExpiresAt:  time.Now().Add(duration),
-		Privileged: privileged,
+		SessionID:    id,
+		User:         user,
+		ExpiresAt:    time.Now().Add(duration),
+		Privileged:   privileged,
+		BridgeSecret: secret,
 	}
 	SessionMux <- func() {
 		if _, exists := Sessions[id]; exists {

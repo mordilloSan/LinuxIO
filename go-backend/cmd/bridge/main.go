@@ -22,30 +22,11 @@ var Sess = &session.Session{
 }
 
 func main() {
-
 	secret := os.Getenv("LINUXIO_BRIDGE_SECRET")
-	if secret == "" || len(secret) < 64 { // 32 bytes hex = 64 chars
-		ppid := os.Getppid()
-		parentCmd := ""
-		if ppid > 1 {
-			if cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", ppid)); err == nil && len(cmdline) > 0 {
-				parentCmd = string(cmdline)
-			}
-		}
-		if _, err := fmt.Fprintln(os.Stdout, "\n🚫 This program cannot be started directly! - (must be started by main LinuxIO process)"); err != nil {
-			logger.Warnf("Failed to write to stdout: %v", err)
-		}
-		if _, err := fmt.Fprintf(os.Stdout, "  🧑‍💻  Parent PID: %d\n", ppid); err != nil {
-			logger.Warnf("Failed to write to stdout: %v", err)
-		}
-		if parentCmd != "" {
-			if _, err := fmt.Fprintf(os.Stdout, "  🖥️  Parent Cmd: %s\n", parentCmd); err != nil {
-				logger.Warnf("Failed to write to stdout: %v", err)
-			}
-		}
+	if len(secret) < 64 { // 32 bytes, hex encoded
+		fmt.Fprintln(os.Stderr, "Missing or invalid LINUXIO_BRIDGE_SECRET; bridge must be started by main LinuxIO process")
 		os.Exit(1)
 	}
-
 	env := os.Getenv("GO_ENV")
 	if env == "" {
 		env = "production"

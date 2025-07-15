@@ -96,6 +96,7 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 		cmd = exec.Command("sudo", "-S", "env",
 			"LINUXIO_SESSION_ID="+sess.SessionID,
 			"LINUXIO_SESSION_USER="+sess.User.ID,
+			"LINUXIO_BRIDGE_SECRET="+sess.BridgeSecret,
 			"GO_ENV="+os.Getenv("GO_ENV"),
 			"VERBOSE="+os.Getenv("VERBOSE"),
 			bridgeBinary,
@@ -105,6 +106,7 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 		cmd.Env = append(os.Environ(),
 			"LINUXIO_SESSION_ID="+sess.SessionID,
 			"LINUXIO_SESSION_USER="+sess.User.ID,
+			"LINUXIO_BRIDGE_SECRET="+sess.BridgeSecret,
 			"GO_ENV="+os.Getenv("GO_ENV"),
 			"VERBOSE="+os.Getenv("VERBOSE"),
 		)
