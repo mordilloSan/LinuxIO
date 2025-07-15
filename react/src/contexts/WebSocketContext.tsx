@@ -1,6 +1,5 @@
 import React, {
   createContext,
-  useContext,
   useRef,
   useCallback,
   useEffect,
@@ -16,7 +15,9 @@ interface WebSocketContextValue {
   ready: boolean;
 }
 
-export const WebSocketContext = createContext<WebSocketContextValue | null>(null);
+export const WebSocketContext = createContext<WebSocketContextValue | null>(
+  null,
+);
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
   children,

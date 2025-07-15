@@ -20,7 +20,6 @@ import "@xterm/xterm/css/xterm.css";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import useAppWebSocket from "@/hooks/useAppWebSocket";
 
-
 interface Props {
   open: boolean;
   onClose: () => void;
