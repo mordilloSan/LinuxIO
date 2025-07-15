@@ -1,6 +1,6 @@
 import { Button } from "@mui/material";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
@@ -10,6 +10,13 @@ import axios from "@/utils/axios";
 const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
 const BASE_CIDR_SUFFIX = "0/24";
+
+interface NetworkInterface {
+  name: string;
+  type: string;
+  mac?: string;
+  ipv4?: string | null;
+}
 
 const CreateInterfaceButton = () => {
   const [serverName, setServerName] = useState("");
@@ -43,45 +50,44 @@ const CreateInterfaceButton = () => {
     },
   });
 
-  interface NetworkInterface {
-    name: string;
-    type: string;
-    mac?: string;
-    ipv4?: string | null;
-  }
+  // Memoize WireGuard interfaces array
+  const wgArray = useMemo(
+    () =>
+      Array.isArray(wgInterfaces?.interfaces) ? wgInterfaces.interfaces : [],
+    [wgInterfaces],
+  );
 
-  function getPhysicalNICs(
-    data: NetworkInterface[] | undefined,
-  ): { name: string; label: string }[] {
-    if (!Array.isArray(data)) return [];
-    return data
-      .filter(
-        (nic) =>
-          nic.type === "ethernet" &&
-          nic.name.startsWith("enp") &&
-          nic.mac &&
-          !nic.name.startsWith("veth") &&
-          !nic.name.startsWith("docker") &&
-          !nic.name.startsWith("br-"),
-      )
-      .map((nic) => {
-        const ip =
-          Array.isArray(nic.ipv4) && nic.ipv4.length > 0
-            ? nic.ipv4[0]
-            : "disconnected";
-        return {
-          name: nic.name,
-          label: `${nic.name} (${ip})`,
-        };
-      });
-  }
+  // Memoize helper to get physical NICs
+  const getPhysicalNICs = useCallback(
+    (
+      data: NetworkInterface[] | undefined,
+    ): { name: string; label: string }[] => {
+      if (!Array.isArray(data)) return [];
+      return data
+        .filter(
+          (nic) =>
+            nic.type === "ethernet" &&
+            nic.name.startsWith("enp") &&
+            nic.mac &&
+            !nic.name.startsWith("veth") &&
+            !nic.name.startsWith("docker") &&
+            !nic.name.startsWith("br-"),
+        )
+        .map((nic) => {
+          const ip =
+            Array.isArray(nic.ipv4) && nic.ipv4.length > 0
+              ? nic.ipv4[0]
+              : "disconnected";
+          return {
+            name: nic.name,
+            label: `${nic.name} (${ip})`,
+          };
+        });
+    },
+    [],
+  );
 
-  // Get existing interfaces and ports from the API's interfaces array
-  const wgArray = Array.isArray(wgInterfaces?.interfaces)
-    ? wgInterfaces.interfaces
-    : [];
-
-  function nextAvailableWgName(existing: string[]): string {
+  const nextAvailableWgName = useCallback((existing: string[]): string => {
     let n = 0;
     let candidate = `wg${n}`;
     while (existing.includes(candidate)) {
@@ -89,35 +95,41 @@ const CreateInterfaceButton = () => {
       candidate = `wg${n}`;
     }
     return candidate;
-  }
+  }, []);
 
-  function nextAvailablePort(existingPorts: number[], base = 51820): number {
-    let port = base;
-    while (existingPorts.includes(port)) {
-      port += 1;
-    }
-    return port;
-  }
+  const nextAvailablePort = useCallback(
+    (existingPorts: number[], base = 51820): number => {
+      let port = base;
+      while (existingPorts.includes(port)) {
+        port += 1;
+      }
+      return port;
+    },
+    [],
+  );
 
-  function parseCidrThirdOctet(cidr: string): number | null {
+  const parseCidrThirdOctet = useCallback((cidr: string): number | null => {
     // Parses 10.10.X.0/24 and returns X
     const match = cidr.match(/^10\.10\.(\d+)\.0\/24$/);
     return match ? parseInt(match[1], 10) : null;
-  }
+  }, []);
 
-  function nextAvailableCIDR(existingCIDRs: string[]): string {
-    let octet = BASE_CIDR_START;
-    let candidate = `${BASE_CIDR_PREFIX}${octet}.${BASE_CIDR_SUFFIX}`;
-    const usedOctets = existingCIDRs
-      .map(parseCidrThirdOctet)
-      .filter((n): n is number => typeof n === "number");
+  const nextAvailableCIDR = useCallback(
+    (existingCIDRs: string[]): string => {
+      let octet = BASE_CIDR_START;
+      let candidate = `${BASE_CIDR_PREFIX}${octet}.${BASE_CIDR_SUFFIX}`;
+      const usedOctets = existingCIDRs
+        .map(parseCidrThirdOctet)
+        .filter((n): n is number => typeof n === "number");
 
-    while (usedOctets.includes(octet)) {
-      octet += 10; // Step by 10 (for 20, 30, 40, ...)
-      candidate = `${BASE_CIDR_PREFIX}${octet}.${BASE_CIDR_SUFFIX}`;
-    }
-    return candidate;
-  }
+      while (usedOctets.includes(octet)) {
+        octet += 10; // Step by 10 (for 20, 30, 40, ...)
+        candidate = `${BASE_CIDR_PREFIX}${octet}.${BASE_CIDR_SUFFIX}`;
+      }
+      return candidate;
+    },
+    [parseCidrThirdOctet],
+  );
 
   // Preselect NIC, name, port, and CIDR on dialog open
   useEffect(() => {
@@ -139,9 +151,18 @@ const CreateInterfaceButton = () => {
       setPort(nextAvailablePort(ports));
       setCIDR(nextAvailableCIDR(cidrs));
     }
-  }, [showDialog, networkData, wgInterfaces]);
+  }, [
+    showDialog,
+    networkData,
+    wgArray,
+    getPhysicalNICs,
+    nextAvailableWgName,
+    nextAvailablePort,
+    nextAvailableCIDR,
+  ]);
 
   const queryClient = useQueryClient();
+
   const handleCreateInterface = async () => {
     setLoading(true);
     setError(null);
