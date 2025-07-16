@@ -1,11 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"os"
+	"strings"
 
 	"go-backend/cmd/bridge/cleanup"
 	"go-backend/cmd/bridge/handlers"
+	"go-backend/cmd/bridge/handlers/types"
 	"go-backend/internal/bridge"
 	"go-backend/internal/logger"
 	"go-backend/internal/session"
@@ -17,8 +22,9 @@ import (
 
 // Build minimal session object
 var Sess = &session.Session{
-	SessionID: os.Getenv("LINUXIO_SESSION_ID"),
-	User:      utils.User{ID: os.Getenv("LINUXIO_SESSION_USER"), Name: os.Getenv("LINUXIO_SESSION_USER")},
+	SessionID:    os.Getenv("LINUXIO_SESSION_ID"),
+	User:         utils.User{ID: os.Getenv("LINUXIO_SESSION_USER"), Name: os.Getenv("LINUXIO_SESSION_USER")},
+	BridgeSecret: os.Getenv("LINUXIO_BRIDGE_SECRET"),
 }
 
 func main() {
@@ -79,7 +85,7 @@ func main() {
 			}
 			id := uuid.NewString()
 			logger.Debugf("MAIN: spawning handler %s", id)
-			go bridge.HandleMainRequest(conn, id)
+			go handleMainRequest(conn, id)
 		}
 	}()
 
@@ -107,4 +113,80 @@ func main() {
 	}()
 
 	select {} // Block forever (until os.Exit)
+}
+
+// handleMainRequest processes incoming bridge requests.
+func handleMainRequest(conn net.Conn, id string) {
+	logger.Debugf("HANDLECONNECTION: [%s] called!", id)
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close connection [%s]: %v", id, cerr)
+		}
+	}()
+
+	decoder := json.NewDecoder(conn)
+	encoder := json.NewEncoder(conn)
+
+	var req types.BridgeRequest
+	if err := decoder.Decode(&req); err != nil {
+		if err == io.EOF {
+			logger.Debugf("🔁 [%s] connection closed without data", id)
+		} else {
+			logger.Warnf("❌ [%s] invalid JSON from client: %v", id, err)
+		}
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid JSON"})
+		return
+	}
+	// Secret validation ---
+	if req.Secret != Sess.BridgeSecret {
+		logger.Warnf("❌ [%s] invalid secret (got %q)", id, req.Secret)
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid secret"})
+		return
+	}
+
+	// (1) DEFENSE-IN-DEPTH: Validate handler name for fallback
+	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
+		logger.Warnf("❌ [%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid characters in command/type"})
+		return
+	}
+
+	logger.Infof("➡️ Received request: type=%s, command=%s, args=%v", req.Type, req.Command, req.Args)
+
+	group, found := handlers.HandlersByType[req.Type]
+	if !found || group == nil {
+		logger.Warnf("❌ Unknown type: %s", req.Type)
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+		return
+	}
+	handler, ok := group[req.Command]
+	if !ok {
+		logger.Warnf("❌ Unknown command for type %s: %s", req.Type, req.Command)
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+		return
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorf("🔥 Panic in %s command handler: %v", req.Type, r)
+			_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("panic: %v", r)})
+		}
+	}()
+	out, err := handler(req.Args)
+	if err == nil {
+		var raw json.RawMessage
+		if out != nil {
+			rawBytes, marshalErr := json.Marshal(out)
+			if marshalErr != nil {
+				_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "failed to marshal handler output"})
+				return
+			}
+			raw = json.RawMessage(rawBytes)
+		}
+		_ = encoder.Encode(types.BridgeResponse{Status: "ok", Output: raw})
+		return
+	}
+
+	logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, err)
+	_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: err.Error()})
 }

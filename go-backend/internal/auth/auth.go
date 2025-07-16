@@ -179,6 +179,10 @@ func logoutHandler(c *gin.Context) {
 			logger.Warnf("CallWithSession for shutdown failed: %v", err)
 		}
 	}
+
+	if err := session.DeleteSession(sessionID); err != nil {
+		logger.Errorf("Failed to delete session %q: %v", sessionID, err)
+	}
 	c.SetCookie("session_id", "", -1, "/", "", false, true)
 	logger.Infof("👋 Logged out session: %s", sessionID)
 	c.Status(http.StatusOK)

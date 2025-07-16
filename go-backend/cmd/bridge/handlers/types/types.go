@@ -21,6 +21,7 @@ type BridgeRequest struct {
 	Type    string   `json:"type"`
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
+	Secret  string   `json:"secret"`
 }
 
 // BridgeResponse is the *universal* response format for bridge and helpers.
