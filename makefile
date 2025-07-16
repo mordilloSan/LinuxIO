@@ -173,7 +173,6 @@ build: check-env build-vite build-backend build-bridge
 prod: build
 
 run: 
-	@echo "🚦 Starting backend server (production)..."
 	@SERVER_PORT=$(SERVER_PORT) ./linuxio-webserver
 
 clean:

@@ -8,6 +8,7 @@ import (
 	"go-backend/internal/session"
 	"go-backend/internal/terminal"
 	"go-backend/internal/utils"
+
 	"os"
 	"strconv"
 	"strings"
@@ -90,7 +91,7 @@ func killParentTree(pid int) {
 }
 
 func killBridgeSocket(Sess *session.Session) error {
-	if err := bridge.CleanupBridgeSocket(Sess); err != nil {
+	if err := CleanupBridgeSocket(Sess); err != nil {
 		logger.Warnf("Failed to remove bridge socket: %v", err)
 		return err
 	}
@@ -184,6 +185,22 @@ func cleanupFilebrowserContainer() error {
 
 	if len(errors) > 0 {
 		return fmt.Errorf("CleanupFilebrowserContainer encountered errors: %v", errors)
+	}
+	return nil
+}
+
+// CleanupBridgeSocket removes the bridge socket for the session.
+func CleanupBridgeSocket(sess *session.Session) error {
+	bridgeSock, err := bridge.BridgeSocketPath(sess)
+	if err != nil {
+		logger.Warnf("Could not determine bridge socket path: %v", err)
+		return err
+	}
+	if err := os.Remove(bridgeSock); err == nil {
+		logger.Infof("Removed bridge socket file %s for session %s", bridgeSock, sess.SessionID)
+	} else if !os.IsNotExist(err) {
+		logger.Warnf("Failed to remove bridge socket file %s: %v", bridgeSock, err)
+		return err
 	}
 	return nil
 }

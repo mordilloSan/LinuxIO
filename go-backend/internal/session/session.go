@@ -101,7 +101,7 @@ func DeleteSession(id string) error {
 }
 
 // Checks if a session is privileged
-func IsPrivileged(sessionID string) (bool, error) {
+func IsSessionPrivileged(sessionID string) (bool, error) {
 	done := make(chan struct {
 		privileged bool
 		err        error
@@ -124,8 +124,8 @@ func IsPrivileged(sessionID string) (bool, error) {
 	return result.privileged, result.err
 }
 
-// ValidateFromRequest validates the session cookie and returns the session pointer and error
-func ValidateFromRequest(r *http.Request) (*Session, error) {
+// ValidateSessionFromRequest validates the session cookie and returns the session pointer and error
+func ValidateSessionFromRequest(r *http.Request) (*Session, error) {
 	cookie, err := r.Cookie("session_id")
 	if err != nil || cookie.Value == "" {
 		return nil, fmt.Errorf("missing or invalid session_id cookie")
@@ -160,7 +160,7 @@ func ValidateFromRequest(r *http.Request) (*Session, error) {
 }
 
 // Checks if a session is valid
-func IsValid(id string) (bool, error) {
+func IsSessionValid(id string) (bool, error) {
 	done := make(chan struct {
 		valid bool
 		err   error
@@ -189,7 +189,7 @@ func IsValid(id string) (bool, error) {
 }
 
 // Changes the privileged status of a session, returns error if not found
-func SetPrivileged(sessionID string, privileged bool) error {
+func SetSessionPrivileged(sessionID string, privileged bool) error {
 	done := make(chan error)
 	SessionMux <- func() {
 		sess, exists := Sessions[sessionID]
@@ -228,9 +228,9 @@ func GetActiveSessionIDs() ([]string, error) {
 	return result.ids, result.err
 }
 
-// Get returns a pointer to the Session struct for the given sessionID, or error if not found.
+// GetSession returns a pointer to the Session struct for the given sessionID, or error if not found.
 // WARNING: The returned pointer is to a *copy*; do not modify fields directly!
-func Get(id string) (*Session, error) {
+func GetSession(id string) (*Session, error) {
 	done := make(chan struct {
 		sess *Session
 		err  error

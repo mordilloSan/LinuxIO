@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/user"
+	"strconv"
 	"strings"
 
 	"go-backend/cmd/bridge/cleanup"
@@ -55,7 +57,7 @@ func main() {
 		logger.Errorf("❌ Failed to determine bridge socket path: %v", err)
 		os.Exit(1)
 	}
-	listener, _, _, err := bridge.CreateAndOwnSocket(socketPath, Sess.User.ID)
+	listener, _, _, err := CreateAndOwnSocket(socketPath, Sess.User.ID)
 	if err != nil {
 		logger.Error.Fatalf("❌ %v", err)
 		os.Exit(1)
@@ -151,7 +153,7 @@ func handleMainRequest(conn net.Conn, id string) {
 		return
 	}
 
-	logger.Infof("➡️ Received request: type=%s, command=%s, args=%v", req.Type, req.Command, req.Args)
+	logger.Debugf("➡️ Received request: type=%s, command=%s, args=%v", req.Type, req.Command, req.Args)
 
 	group, found := handlers.HandlersByType[req.Type]
 	if !found || group == nil {
@@ -183,10 +185,49 @@ func handleMainRequest(conn net.Conn, id string) {
 			}
 			raw = json.RawMessage(rawBytes)
 		}
+		logger.Debugf("⬅️  Responding to [%s]: status=ok output=%s", id, string(raw))
 		_ = encoder.Encode(types.BridgeResponse{Status: "ok", Output: raw})
 		return
 	}
 
 	logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, err)
 	_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: err.Error()})
+}
+
+// CreateAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.
+func CreateAndOwnSocket(socketPath, username string) (net.Listener, int, int, error) {
+	u, err := user.Lookup(username)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to lookup user %s: %w", username, err)
+	}
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+
+	_ = os.Remove(socketPath) // it's okay to ignore error here (socket might not exist)
+
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to listen on socket: %w", err)
+	}
+
+	if err := os.Chmod(socketPath, 0600); err != nil {
+		if cerr := listener.Close(); cerr != nil {
+			logger.Warnf("failed to close listener after chmod failure: %v", cerr)
+		}
+		if rerr := os.Remove(socketPath); rerr != nil {
+			logger.Warnf("failed to remove socket after chmod failure: %v", rerr)
+		}
+		return nil, 0, 0, fmt.Errorf("failed to chmod socket: %w", err)
+	}
+	if err := os.Chown(socketPath, uid, gid); err != nil {
+		if cerr := listener.Close(); cerr != nil {
+			logger.Warnf("failed to close listener after chown failure: %v", cerr)
+		}
+		if rerr := os.Remove(socketPath); rerr != nil {
+			logger.Warnf("failed to remove socket after chown failure: %v", rerr)
+		}
+		return nil, 0, 0, fmt.Errorf("failed to chown socket: %w", err)
+	}
+
+	return listener, uid, gid, nil
 }

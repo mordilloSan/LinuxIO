@@ -19,31 +19,50 @@ var (
 	Error   = log.New(io.Discard, "", 0)
 
 	programName string
-	isProd      bool
-	verbose     bool
 )
 
-// Init sets up the logger for the environment.
-func Init(mode string, v bool) {
-	programName = filepath.Base(os.Args[0])
-	isProd = (mode == "production")
-	verbose = v
+// journalWriter writes to systemd journal with the program name as identifier.
+type journalWriter struct {
+	priority journal.Priority
+}
 
-	if isProd && journal.Enabled() {
-		// Systemd journal, colored prefix is pointless.
-		if verbose {
-			Debug = log.New(journalWriter{journal.PriDebug}, "", 0)
-		}
-		Info = log.New(journalWriter{journal.PriInfo}, "", 0)
-		Warning = log.New(journalWriter{journal.PriWarning}, "", 0)
-		Error = log.New(journalWriter{journal.PriErr}, "", 0)
-	} else {
-		// Development, color + prefix.
-		Debug = newDevLogger(os.Stdout, "DEBUG", verbose)
-		Info = newDevLogger(os.Stdout, "INFO", true)
-		Warning = newDevLogger(os.Stdout, "WARN", true)
-		Error = newDevLogger(os.Stdout, "ERROR", true)
+func (j journalWriter) Write(p []byte) (int, error) {
+	msg := strings.TrimSuffix(string(p), "\n")
+	err := journal.Send(msg, j.priority, map[string]string{
+		"SYSLOG_IDENTIFIER": programName,
+	})
+	if err != nil {
+		return 0, err
 	}
+	return len(p), nil
+}
+
+// Init sets up the logger for the environment.
+func Init(mode string, verbose bool) {
+	programName = filepath.Base(os.Args[0])
+
+	if mode == "production" {
+		if journal.Enabled() {
+			// In prod with journald, always log everything (even Debug) to journald, never to stdout/stderr.
+			Debug = log.New(journalWriter{journal.PriDebug}, "", 0)
+			Info = log.New(journalWriter{journal.PriInfo}, "", 0)
+			Warning = log.New(journalWriter{journal.PriWarning}, "", 0)
+			Error = log.New(journalWriter{journal.PriErr}, "", 0)
+			return
+		} else {
+			// In prod but journald is not enabled (very rare): discard all logs to avoid leaking to stdout/stderr.
+			Debug = log.New(io.Discard, "", 0)
+			Info = log.New(io.Discard, "", 0)
+			Warning = log.New(io.Discard, "", 0)
+			Error = log.New(io.Discard, "", 0)
+			return
+		}
+	}
+	// Development: Only log Debug if verbose=true, others always to stdout with color
+	Debug = newDevLogger(os.Stdout, "DEBUG", verbose)
+	Info = newDevLogger(os.Stdout, "INFO", true)
+	Warning = newDevLogger(os.Stdout, "WARN", true)
+	Error = newDevLogger(os.Stdout, "ERROR", true)
 }
 
 // newDevLogger returns a colored logger for the level, or discards if disabled.
@@ -59,25 +78,8 @@ func newDevLogger(out io.Writer, level string, enabled bool) *log.Logger {
 	}
 	reset := "\033[0m"
 	levelLabel := fmt.Sprintf("%s[%s]%s", colors[level], level, reset)
-	// [LEVEL][program][func]
 	prefix := fmt.Sprintf("%s [%s] ", levelLabel, programName)
 	return log.New(out, prefix, log.LstdFlags)
-}
-
-// journalWriter writes to systemd journal with the program name as identifier.
-type journalWriter struct {
-	priority journal.Priority
-}
-
-func (j journalWriter) Write(p []byte) (int, error) {
-	msg := strings.TrimSuffix(string(p), "\n")
-	if err := journal.Send(msg, j.priority, map[string]string{
-		"SYSLOG_IDENTIFIER": programName,
-	}); err != nil {
-		return 0, err
-	}
-	return len(p), nil
-
 }
 
 // getCallerFuncName returns a "package.function" string for the caller at stack depth.
@@ -90,7 +92,6 @@ func getCallerFuncName(depth int) string {
 	if fn == nil {
 		return "unknown"
 	}
-	// Show only package.Func (not full path)
 	full := fn.Name()
 	lastSlash := strings.LastIndex(full, "/")
 	if lastSlash >= 0 && lastSlash+1 < len(full) {
@@ -102,10 +103,8 @@ func getCallerFuncName(depth int) string {
 // --- Wrapper logging functions, always prints function name automatically --- //
 
 func Debugf(format string, v ...interface{}) {
-	if verbose || !isProd {
-		msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprintf(format, v...))
-		Debug.Println(msg)
-	}
+	msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprintf(format, v...))
+	Debug.Println(msg)
 }
 
 func Infof(format string, v ...interface{}) {
@@ -126,10 +125,8 @@ func Errorf(format string, v ...interface{}) {
 // --- Plain "Println" helpers for literal messages (rare) --- //
 
 func Debugln(v ...interface{}) {
-	if verbose || !isProd {
-		msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprint(v...))
-		Debug.Println(msg)
-	}
+	msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprint(v...))
+	Debug.Println(msg)
 }
 func Infoln(v ...interface{}) {
 	msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprint(v...))

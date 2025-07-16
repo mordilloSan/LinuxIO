@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -176,60 +175,7 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 	return nil
 }
 
-// CleanupBridgeSocket removes the bridge socket for the session.
-func CleanupBridgeSocket(sess *session.Session) error {
-	bridgeSock, err := BridgeSocketPath(sess)
-	if err != nil {
-		logger.Warnf("Could not determine bridge socket path: %v", err)
-		return err
-	}
-	if err := os.Remove(bridgeSock); err == nil {
-		logger.Infof("Removed bridge socket file %s for session %s", bridgeSock, sess.SessionID)
-	} else if !os.IsNotExist(err) {
-		logger.Warnf("Failed to remove bridge socket file %s: %v", bridgeSock, err)
-		return err
-	}
-	return nil
-}
-
-// CreateAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.
-func CreateAndOwnSocket(socketPath, username string) (net.Listener, int, int, error) {
-	u, err := user.Lookup(username)
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to lookup user %s: %w", username, err)
-	}
-	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
-
-	_ = os.Remove(socketPath) // it's okay to ignore error here (socket might not exist)
-
-	listener, err := net.Listen("unix", socketPath)
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to listen on socket: %w", err)
-	}
-
-	if err := os.Chmod(socketPath, 0600); err != nil {
-		if cerr := listener.Close(); cerr != nil {
-			logger.Warnf("failed to close listener after chmod failure: %v", cerr)
-		}
-		if rerr := os.Remove(socketPath); rerr != nil {
-			logger.Warnf("failed to remove socket after chmod failure: %v", rerr)
-		}
-		return nil, 0, 0, fmt.Errorf("failed to chmod socket: %w", err)
-	}
-	if err := os.Chown(socketPath, uid, gid); err != nil {
-		if cerr := listener.Close(); cerr != nil {
-			logger.Warnf("failed to close listener after chown failure: %v", cerr)
-		}
-		if rerr := os.Remove(socketPath); rerr != nil {
-			logger.Warnf("failed to remove socket after chown failure: %v", rerr)
-		}
-		return nil, 0, 0, fmt.Errorf("failed to chown socket: %w", err)
-	}
-
-	return listener, uid, gid, nil
-}
-
+// Helper to get the bridge binnay in dev and prod mode.
 func getBridgeBinaryPath() string {
 	if os.Getenv("GO_ENV") == "development" {
 		dir, err := os.Getwd()

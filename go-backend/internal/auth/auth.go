@@ -46,7 +46,7 @@ func pamAuth(username, password string) error {
 }
 
 func trySudo(password string) bool {
-	cmd := exec.Command("sudo", "-S", "-l")
+	cmd := exec.Command("sudo", "-S", "-n", "-l")
 	cmd.Env = append(cmd.Env, "LANG=C")
 	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
@@ -97,7 +97,7 @@ func loginHandler(c *gin.Context) {
 	}
 
 	// 4. Get the session and check for errors
-	sess, err := session.Get(sessionID)
+	sess, err := session.GetSession(sessionID)
 	if err != nil || sess == nil {
 		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session failure"})
@@ -160,7 +160,7 @@ func logoutHandler(c *gin.Context) {
 	}
 
 	// Get the session and check for errors
-	s, err := session.Get(sessionID)
+	s, err := session.GetSession(sessionID)
 	if err != nil {
 		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session fetch failed"})

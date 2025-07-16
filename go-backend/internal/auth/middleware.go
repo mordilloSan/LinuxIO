@@ -41,7 +41,7 @@ func CorsMiddleware() gin.HandlerFunc {
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		sess, err := session.ValidateFromRequest(c.Request)
+		sess, err := session.ValidateSessionFromRequest(c.Request)
 		if err != nil || sess == nil {
 			logger.Warnf("⚠️  Unauthorized request or expired session: %v", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -54,7 +54,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 // Helper to validate session and handle unauthorized
 func GetSessionOrAbort(c *gin.Context) *session.Session {
-	sess, err := session.ValidateFromRequest(c.Request)
+	sess, err := session.ValidateSessionFromRequest(c.Request)
 	if err != nil || sess == nil {
 		logger.Warnf("Unauthorized docker access: %v", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
@@ -80,7 +80,7 @@ func FilebrowserReverseProxy(secret string) gin.HandlerFunc {
 		// Extract session_id cookie manually
 		cookie, err := req.Cookie("session_id")
 		if err == nil && cookie.Value != "" {
-			sess, err := session.Get(cookie.Value)
+			sess, err := session.GetSession(cookie.Value)
 			if err == nil && sess != nil {
 				// Set the header using the secret as header name
 				req.Header.Set(secret, sess.User.Name)

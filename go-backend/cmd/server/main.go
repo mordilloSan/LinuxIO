@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"fmt"
 	embed "go-backend"
 	"go-backend/cmd/server/filebrowser"
 	"go-backend/internal/auth"
@@ -19,6 +20,8 @@ import (
 	"go-backend/internal/utils"
 	"go-backend/internal/websocket"
 	"go-backend/internal/wireguard"
+	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -33,7 +36,7 @@ func main() {
 		env = "production"
 	}
 	verbose := os.Getenv("VERBOSE") == "true"
-	logger.Init("env", verbose)
+	logger.Init(env, verbose)
 	if !verbose {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -106,7 +109,7 @@ func main() {
 
 	// Start the server
 	addr := ":" + port
-
+	fmt.Printf("🚀 Server running at http://localhost:%s", port)
 	if env == "production" {
 		cert, err := utils.GenerateSelfSignedCert()
 		if err != nil {
@@ -117,12 +120,11 @@ func main() {
 			Addr:      addr,
 			Handler:   router,
 			TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}},
+			ErrorLog:  log.New(io.Discard, "", 0),
 		}
-		logger.Infof("🚀 Server running at https://localhost:%s", port)
 		logger.Error.Fatal(srv.ListenAndServeTLS("", "")) // Empty filenames = use TLSConfig.Certificates
+		fmt.Printf("🚀 Server running at http://localhost:%s", port)
 	} else {
-		logger.Infof("🚀 Server running at http://localhost:%s", port)
 		logger.Error.Fatal(router.Run(addr))
 	}
-
 }
