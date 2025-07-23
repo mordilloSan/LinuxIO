@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
-	"fmt"
 	embed "backend"
 	"backend/cmd/server/filebrowser"
 	"backend/internal/auth"
@@ -20,6 +18,8 @@ import (
 	"backend/internal/utils"
 	"backend/internal/websocket"
 	"backend/internal/wireguard"
+	"crypto/tls"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -109,22 +109,21 @@ func main() {
 
 	// Start the server
 	addr := ":" + port
-	fmt.Printf("🚀 Server running at http://localhost:%s", port)
 	if env == "production" {
 		cert, err := utils.GenerateSelfSignedCert()
 		if err != nil {
 			logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", err)
 		}
-
+		fmt.Printf("🚀 Server running at https://localhost:%s\n", port)
 		srv := &http.Server{
 			Addr:      addr,
 			Handler:   router,
 			TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}},
 			ErrorLog:  log.New(io.Discard, "", 0),
 		}
-		logger.Error.Fatal(srv.ListenAndServeTLS("", "")) // Empty filenames = use TLSConfig.Certificates
-		fmt.Printf("🚀 Server running at http://localhost:%s", port)
+		logger.Error.Fatal(srv.ListenAndServeTLS("", ""))
 	} else {
+		fmt.Printf("🚀 Server running at http://localhost:%s\n", port)
 		logger.Error.Fatal(router.Run(addr))
 	}
 }

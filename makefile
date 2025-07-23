@@ -76,21 +76,21 @@ setup: ensure-node ensure-go
 	@echo "📦 Installing frontend dependencies..."
 	@bash -c '\
 	$(NVM_SETUP); \
-		cd react && npm install --silent; \
+		cd frontend && npm install --silent; \
 	'
 	@echo "✅ Frontend dependencies installed!"
 
 lint:
 	@echo "🔍 Running ESLint..."
 	@bash -c '$(NVM_SETUP); \
-		cd react && \
-		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ React Linting Ok!"\
+		cd frontend && \
+		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"\
 	'
 
 tsc:
 	@echo "🔍 Running TypeScript type checks..."
 	@bash -c '$(NVM_SETUP); \
-		cd react && \
+		cd frontend && \
 		npx tsc && echo "✅ TypeScript Linting Ok!"\
 	'
 
@@ -110,7 +110,7 @@ build-vite: test
 	@echo "📦 Building frontend..."
 	@bash -c '\
 	$(NVM_SETUP); \
-		cd react && \
+		cd frontend && \
 		VITE_API_URL=/ npx vite build && \
 		echo "✅ Frontend built successfully!" \
 	'
@@ -165,7 +165,7 @@ dev: setup check-env dev-prep build-bridge
 	@sleep 1
 	@bash -c '\
 	$(NVM_SETUP); \
-	cd react && VITE_API_URL=http://localhost:$(SERVER_PORT) npx vite --port $(VITE_DEV_PORT) \
+	cd frontend && VITE_API_URL=http://localhost:$(SERVER_PORT) npx vite --port $(VITE_DEV_PORT) \
 	'
 
 build: check-env build-vite build-backend build-bridge
@@ -178,8 +178,8 @@ run:
 clean:
 	@rm -f ./linuxio-webserver || true
 	@rm -f ./linuxio-bridge || true
-	@rm -rf react/node_modules || true
-	@rm -f react/package-lock.json || true
+	@rm -rf frontend/node_modules || true
+	@rm -f frontend/package-lock.json || true
 	@find backend/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
