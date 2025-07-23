@@ -96,7 +96,7 @@ tsc:
 
 golint: ensure-golint
 	@echo -n "🔍 Running golangci-lint... "; \
-	cd go-backend && golangci-lint run ./... --timeout 3m && echo "✅ Go Linting Ok!"
+	cd backend && golangci-lint run ./... --timeout 3m && echo "✅ Go Linting Ok!"
 
 test: setup dev-prep
 	@echo ""
@@ -118,7 +118,7 @@ build-vite: test
 build-backend: setup
 	@echo ""
 	@echo "📦 Building backend..."
-	@cd go-backend/cmd/server && \
+	@cd backend/cmd/server && \
 	go build \
 	-ldflags "\
 		-X 'main.version=$(VERSION)' \
@@ -137,7 +137,7 @@ build-backend: setup
 build-bridge: setup
 	@echo ""
 	@echo "🔌 Building bridge..."
-	@cd go-backend/cmd/bridge && \
+	@cd backend/cmd/bridge && \
 	go build \
 	-o ../../../linuxio-bridge && \
 	echo "✅ Bridge built successfully!" && \
@@ -148,18 +148,18 @@ build-bridge: setup
 	echo "🔐 SHA256: $$(shasum -a 256 ../../../linuxio-bridge | awk '{ print $$1 }')"
 
 dev-prep:
-	@mkdir -p go-backend/frontend/assets
-	@mkdir -p go-backend/frontend/.vite
-	@touch go-backend/frontend/.vite/manifest.json
-	@touch go-backend/frontend/manifest.json
-	@touch go-backend/frontend/favicon-1.png
-	@touch go-backend/frontend/assets/index-mock.js
+	@mkdir -p backend/frontend/assets
+	@mkdir -p backend/frontend/.vite
+	@touch backend/frontend/.vite/manifest.json
+	@touch backend/frontend/manifest.json
+	@touch backend/frontend/favicon-1.png
+	@touch backend/frontend/assets/index-mock.js
 
 dev: setup check-env dev-prep build-bridge
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
 	@bash -c '\
-	cd go-backend && \
+	cd backend && \
 	GO_ENV=development PATH="/usr/sbin:$(PATH)" $(AIR_BIN) \
 	' &
 	@sleep 1
@@ -180,7 +180,7 @@ clean:
 	@rm -f ./linuxio-bridge || true
 	@rm -rf react/node_modules || true
 	@rm -f react/package-lock.json || true
-	@find go-backend/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@find backend/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
 help:

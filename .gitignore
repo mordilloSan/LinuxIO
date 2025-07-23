@@ -3,9 +3,9 @@ react/node_modules/
 react/package-lock.json
 
 # Go Folders
-go-backend/frontend/
-go-backend/tmp/
-go-backend/cmd/server/tmp/main
+backend/frontend/
+backend/tmp/
+backend/cmd/server/tmp/main
 linuxio-bridge
 linuxio-webserver
 

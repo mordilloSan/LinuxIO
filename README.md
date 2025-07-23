@@ -1,7 +1,7 @@
 # Linux i/O
 
 [![CodeQL Advanced](https://github.com/mordilloSan/LinuxIO/actions/workflows/codeql.yml/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions/workflows/codeql.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/go-backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/go-backend)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/backend)
 
 ![Logo](react/public/Logo.png)
 
@@ -139,7 +139,7 @@ make binary
 Under the hood:
 
 - **Air** watches Go files and rebuilds the backend on changes.
-- The **Air config** lives in `go-backend/.air.toml`.
+- The **Air config** lives in `backend/.air.toml`.
 - The **React frontend** runs in `react/` and talks to the backend via Vite's proxy (see `vite.config.ts`).
 
 💡 You can customize .env for ports, proxy settings, etc.
@@ -150,7 +150,7 @@ Under the hood:
 
 ```
 IO_Linux_Server/
-├── go-backend/       # Gin powered backend
+├── backend/       # Gin powered backend
 ├── react/            # Vite powered React frontend
 ├── .env              # Environment variables
 ├── .gitignore        # List of files to be ignored by git
