@@ -1,17 +1,18 @@
 package filebrowser
 
 import (
-	embed "backend"
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/config"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	embed "github.com/mordilloSan/LinuxIO"
+	"github.com/mordilloSan/LinuxIO/internal/config"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"

@@ -3,11 +3,6 @@ package cleanup
 import (
 	"context"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/session"
-	"github.com/mordilloSan/LinuxIO/backend/internal/terminal"
-	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 
 	"os"
 	"strconv"
@@ -18,6 +13,11 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/internal/terminal"
+	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
 
 func KillLingeringBridgeStartupProcesses() {

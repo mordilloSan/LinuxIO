@@ -2,10 +2,11 @@ package dbus
 
 import (
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
 )
 
 // Needed to make sure one d-bus call at a time!

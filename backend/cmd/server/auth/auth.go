@@ -3,12 +3,7 @@ package auth
 import (
 	"bytes"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/internal/config"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/session"
-	"github.com/mordilloSan/LinuxIO/backend/internal/terminal"
-	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
+
 	"io"
 	"net/http"
 	"os"
@@ -17,6 +12,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/config"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/internal/terminal"
+	"github.com/mordilloSan/LinuxIO/internal/utils"
 	"github.com/msteinert/pam"
 )
 

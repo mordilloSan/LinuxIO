@@ -1,13 +1,13 @@
 package utils
 
 import (
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"io"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
 // RunBenchmark performs parallel benchmarking of all GET /system/* endpoints

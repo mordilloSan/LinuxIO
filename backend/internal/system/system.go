@@ -1,10 +1,10 @@
 package system
 
 import (
-	"github.com/mordilloSan/LinuxIO/backend/cmd/server/auth"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/shirou/gopsutil/v4/host"
 )
 

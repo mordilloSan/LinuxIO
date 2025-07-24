@@ -2,11 +2,11 @@ package templates
 
 import (
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"io/fs"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
 // Expects the embed.FS and manifest FS to be passed in

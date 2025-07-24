@@ -3,9 +3,11 @@ package templates
 import (
 	"embed"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/theme"
-	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
+
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/theme"
+	"github.com/mordilloSan/LinuxIO/internal/utils"
+
 	"html/template"
 	"log"
 	"net/http"

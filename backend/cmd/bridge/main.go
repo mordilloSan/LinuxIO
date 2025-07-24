@@ -10,16 +10,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/cleanup"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
-	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/session"
-	"github.com/mordilloSan/LinuxIO/backend/internal/theme"
-	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
-
 	"github.com/google/uuid"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/cleanup"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/internal/theme"
+	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
 
 // Build minimal session object

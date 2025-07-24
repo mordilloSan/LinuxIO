@@ -2,15 +2,16 @@ package websocket
 
 import (
 	"encoding/json"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/session"
-	"github.com/mordilloSan/LinuxIO/backend/internal/terminal"
+
 	"net/http"
 	"sync"
 
 	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/internal/terminal"
 )
 
 var upgrader = websocket.Upgrader{

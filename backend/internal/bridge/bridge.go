@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/session"
+
 	"io"
 	"net"
 	"os"
@@ -17,6 +15,10 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
 )
 
 var bridgeBinary = getBridgeBinaryPath()

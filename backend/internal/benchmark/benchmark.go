@@ -2,9 +2,9 @@ package benchmark
 
 import (
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
 
 func RegisterDebugRoutes(router *gin.Engine, env string) {

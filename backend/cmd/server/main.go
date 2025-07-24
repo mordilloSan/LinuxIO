@@ -1,25 +1,11 @@
 package main
 
 import (
-	embed "backend"
 	"crypto/tls"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/server/auth"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/server/filebrowser"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/server/templates"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/server/websocket"
-	"github.com/mordilloSan/LinuxIO/backend/internal/benchmark"
-	"github.com/mordilloSan/LinuxIO/backend/internal/dockers"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/networks"
-	"github.com/mordilloSan/LinuxIO/backend/internal/power"
-	"github.com/mordilloSan/LinuxIO/backend/internal/services"
-	"github.com/mordilloSan/LinuxIO/backend/internal/session"
-	"github.com/mordilloSan/LinuxIO/backend/internal/system"
-	"github.com/mordilloSan/LinuxIO/backend/internal/theme"
-	"github.com/mordilloSan/LinuxIO/backend/internal/updates"
-	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
-	"github.com/mordilloSan/LinuxIO/backend/internal/wireguard"
+
+	embed "github.com/mordilloSan/LinuxIO"
+
 	"io"
 	"log"
 	"net/http"
@@ -27,6 +13,22 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/cmd/server/filebrowser"
+	"github.com/mordilloSan/LinuxIO/cmd/server/templates"
+	"github.com/mordilloSan/LinuxIO/cmd/server/websocket"
+	"github.com/mordilloSan/LinuxIO/internal/benchmark"
+	"github.com/mordilloSan/LinuxIO/internal/dockers"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/networks"
+	"github.com/mordilloSan/LinuxIO/internal/power"
+	"github.com/mordilloSan/LinuxIO/internal/services"
+	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/internal/system"
+	"github.com/mordilloSan/LinuxIO/internal/theme"
+	"github.com/mordilloSan/LinuxIO/internal/updates"
+	"github.com/mordilloSan/LinuxIO/internal/utils"
+	"github.com/mordilloSan/LinuxIO/internal/wireguard"
 )
 
 func main() {

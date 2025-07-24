@@ -5,12 +5,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/cmd/server/auth"
-	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/session"
-
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
 )
 
 type BridgeResponse struct {

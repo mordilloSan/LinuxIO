@@ -2,11 +2,12 @@ package upnp
 
 import (
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
+
 	"net/url"
 
 	"github.com/huin/goupnp/dcps/internetgateway1"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
 
 // discoverIgdDescriptorUrl returns the IGD device descriptor URL (desc: ...gatedesc0b.xml).

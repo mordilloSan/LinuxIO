@@ -1,8 +1,6 @@
 package docker
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
-)
+import "github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
 
 func DockerHandlers() map[string]types.HandlerFunc {
 	return map[string]types.HandlerFunc{

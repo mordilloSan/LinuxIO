@@ -3,7 +3,8 @@ package docker
 import (
 	"context"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+
+	"github.com/mordilloSan/LinuxIO/internal/logger"
 
 	"github.com/docker/docker/api/types/image"
 )

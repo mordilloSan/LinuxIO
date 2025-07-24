@@ -2,7 +2,6 @@ package dbus
 
 import (
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"os"
 	"os/exec"
 	"strconv"
@@ -10,6 +9,8 @@ import (
 	"time"
 
 	"github.com/godbus/dbus/v5"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+
 	"github.com/shirou/gopsutil/v4/net"
 )
 

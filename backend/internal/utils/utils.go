@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"io"
 	"net"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
 // GetDistroID reads /etc/os-release and extracts ID_LIKE

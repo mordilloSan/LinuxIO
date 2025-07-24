@@ -6,11 +6,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/session"
-	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
-
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
 
 func CorsMiddleware() gin.HandlerFunc {

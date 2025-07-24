@@ -1,10 +1,11 @@
 package utils
 
 import (
-	embed "backend"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"os"
 	"path/filepath"
+
+	embed "github.com/mordilloSan/LinuxIO"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
 // Ensures file at `path` exists; if not, writes `defaultContent` to it.

@@ -2,12 +2,13 @@ package session
 
 import (
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
+
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
 
 type Session struct {

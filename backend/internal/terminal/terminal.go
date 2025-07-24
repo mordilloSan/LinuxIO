@@ -3,13 +3,14 @@ package terminal
 import (
 	"errors"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
-	"github.com/mordilloSan/LinuxIO/backend/internal/session"
 	"os"
 	"os/exec"
 	"os/user"
 	"strings"
 	"sync"
+
+	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
 
 	"github.com/creack/pty"
 )

@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/control"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/dbus"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/docker"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/drive"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
-	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/wireguard"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/control"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/dbus"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/drive"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/wireguard"
 )
 
 // Map of type -> (command -> handler)

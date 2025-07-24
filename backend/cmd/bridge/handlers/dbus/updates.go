@@ -3,10 +3,11 @@ package dbus
 import (
 	"context"
 	"fmt"
-	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/internal/logger"
 
 	"github.com/godbus/dbus/v5"
 )
