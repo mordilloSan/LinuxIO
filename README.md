@@ -12,9 +12,8 @@ It aims to unify essential functionality in a single web-based interface without
 
 ## 🧠 Philosophy
 
-Most Linux distributions already come with powerful tools for monitoring and control — `docker`, `systemctl`, `nmcli`, etc.  
+Most Linux distributions already come with powerful tools for deploying apps, monitoring and control — `docker`, `systemctl`, `nmcli`, etc.  
 This project is about **leveraging those existing tools** by exposing their input/output via a friendly, minimal, and customizable web UI.  
-As such we aim to rely on D-Bus connectivity, docker SDK and parsing linux commands. Hence the i/O meaning input/output
 
 Instead of replacing the Linux experience, **Linux i/O visualizes it.**
 
@@ -22,7 +21,7 @@ Instead of replacing the Linux experience, **Linux i/O visualizes it.**
 
 ## ⚙️ Stack
 
-- **Frontend:** React (Vite + MUI - based on [Mira Pro theme](https://mira.bootlab.io/))
+- **Frontend:** React (Vite + MUI - based on (https://mira.bootlab.io/))
 - **Backend:** Go + Air (for development)
 - **Go Rest API:** Gin
 - **Go Websocket:** gorilla
@@ -31,13 +30,30 @@ Instead of replacing the Linux experience, **Linux i/O visualizes it.**
 
 ## 🚀 Features
 
-- 🖥️ System stats dashboard: CPU, memory, disk, network
-- 🧠 Process viewer: see running processes live
-- 💻 Terminal output: view real-time output of Linux commands
-- 🔐 Authentication via PAM (or other pluggable systems)
-- 🧱 Static frontend serving in production
-- 🛡️ WireGuard management UI
-- 🐳 Docker Compose manager
+🔐 Authentication via PAM (or other pluggable systems)
+
+📊 System stats dashboard: CPU, memory, disk, network, etc
+
+🌐 Network Manager
+
+🔄 Software Update Manager
+
+🧠 Service Viewer: see running processes live
+
+🐳 Docker Manager
+
+👤 User Accounts
+
+📤 Share Manager
+
+🛡️ WireGuard management UI
+
+💡 Hardware and Sensor Information
+
+📁 Navigator using a File Explorer via FileBrowser Quantum
+
+💻 Terminal output: view real-time output of Linux commands
+
 
 ---
 
