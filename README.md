@@ -86,16 +86,18 @@ This repo uses `make` to simplify standard operations.
 ✅ Run `make` inside the project directory to view available commands
 
 ```bash
-make check-env        # Verify .env and required environment variables
-make setup            # Install Node.js, Go and frontend dependencies
-make test             # Run Vite linter + TypeScript type checks
-make dev              # Start frontend (Vite) and backend (Go) in dev mode
-make prod             # Build Vite production files and smake tart backend (Go) in production mode
-make run              # Build Go binary and runs full production mode
-make build-vite-dev   # Build frontend static files (Vite) for Go in development mode
-make build-vite-prod  # Build frontend static files (Vite) for Go in production mode
-make build-backend    # Build Go binary and runs it
-make clean            # Remove build artifacts
+make check-env         # Verify .env and required environment variables
+make setup             # Install Node.js, Go, and frontend dependencies
+make lint              # Run ESLint linter on frontend
+make tsc               # Run TypeScript type checks on frontend
+make test              # Run ESLint + TypeScript type checks
+make dev               # Start frontend (Vite) and backend (Go) in dev mode (hot reload)
+make build             # Build frontend, backend, and bridge for production
+make run               # Run production backend server
+make build-backend     # Build Go backend binary
+make build-bridge      # Build Go bridge binary
+make build-vite        # Build frontend static files (Vite) for production
+make clean             # Remove build artifacts and node_modules
 
 ```
 

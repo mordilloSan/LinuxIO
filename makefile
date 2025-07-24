@@ -170,8 +170,6 @@ dev: setup check-env dev-prep build-bridge
 
 build: check-env build-vite build-backend build-bridge
 
-prod: build
-
 run: 
 	@SERVER_PORT=$(SERVER_PORT) ./linuxio-webserver
 
@@ -195,7 +193,6 @@ help:
 	@echo ""
 	@echo "$(COLOR_YELLOW)  make dev             $(COLOR_RESET) Start frontend (Vite) and backend (Go) in dev mode (hot reload)"
 	@echo "$(COLOR_YELLOW)  make build           $(COLOR_RESET) Build frontend, backend, and bridge for production"
-	@echo "$(COLOR_YELLOW)  make prod            $(COLOR_RESET) Alias for build (for CI/build pipelines)"
 	@echo "$(COLOR_YELLOW)  make run             $(COLOR_RESET) Run production backend server"
 	@echo ""
 	@echo "$(COLOR_CYAN)  make build-backend   $(COLOR_RESET) Build Go backend binary"
