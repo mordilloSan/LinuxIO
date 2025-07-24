@@ -1,9 +1,9 @@
 package theme
 
 import (
-	"errors"
 	"backend/internal/auth"
 	"backend/internal/logger"
+	"errors"
 	"net/http"
 	"os"
 	"os/user"

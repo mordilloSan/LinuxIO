@@ -1,12 +1,12 @@
 package networks
 
 import (
-	"encoding/json"
 	"backend/cmd/bridge/handlers/dbus"
 	"backend/cmd/bridge/handlers/types"
 	"backend/internal/auth"
 	"backend/internal/bridge"
 	"backend/internal/logger"
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

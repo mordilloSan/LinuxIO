@@ -1,12 +1,12 @@
 package wireguard
 
 import (
-	"encoding/json"
-	"fmt"
 	"backend/cmd/bridge/handlers/types"
 	"backend/internal/auth"
 	"backend/internal/bridge"
 	"backend/internal/utils"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"

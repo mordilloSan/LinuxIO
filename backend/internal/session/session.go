@@ -1,9 +1,9 @@
 package session
 
 import (
-	"fmt"
 	"backend/internal/logger"
 	"backend/internal/utils"
+	"fmt"
 	"net/http"
 	"time"
 )

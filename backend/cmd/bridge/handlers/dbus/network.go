@@ -1,8 +1,8 @@
 package dbus
 
 import (
-	"fmt"
 	"backend/internal/logger"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"

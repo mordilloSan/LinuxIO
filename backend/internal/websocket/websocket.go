@@ -1,10 +1,10 @@
 package websocket
 
 import (
-	"encoding/json"
 	"backend/internal/auth"
 	"backend/internal/logger"
 	"backend/internal/terminal"
+	"encoding/json"
 	"net/http"
 	"sync"
 

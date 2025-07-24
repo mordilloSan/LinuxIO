@@ -1,8 +1,8 @@
 package benchmark
 
 import (
-	"fmt"
 	"backend/internal/utils"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 )

@@ -1,8 +1,8 @@
 package dbus
 
 import (
-	"fmt"
 	"backend/cmd/bridge/handlers/types"
+	"fmt"
 	"strings"
 	"sync"
 	"time"

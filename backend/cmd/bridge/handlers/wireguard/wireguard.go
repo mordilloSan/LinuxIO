@@ -1,11 +1,11 @@
 package wireguard
 
 import (
+	"backend/internal/logger"
+	"backend/internal/utils"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"backend/internal/logger"
-	"backend/internal/utils"
 	"os"
 	"os/exec"
 	"path/filepath"

@@ -1,10 +1,10 @@
 package utils
 
 import (
+	"backend/internal/logger"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"backend/internal/logger"
 	"io"
 	"net"
 	"net/http"

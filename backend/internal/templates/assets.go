@@ -1,8 +1,8 @@
 package templates
 
 import (
-	"fmt"
 	"backend/internal/logger"
+	"fmt"
 	"io/fs"
 	"net/http"
 

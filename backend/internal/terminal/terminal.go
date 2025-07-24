@@ -1,10 +1,10 @@
 package terminal
 
 import (
-	"errors"
-	"fmt"
 	"backend/internal/logger"
 	"backend/internal/session"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/user"

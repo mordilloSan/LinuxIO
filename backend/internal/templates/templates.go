@@ -1,11 +1,11 @@
 package templates
 
 import (
-	"embed"
-	"fmt"
 	"backend/internal/logger"
 	"backend/internal/theme"
 	"backend/internal/utils"
+	"embed"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"

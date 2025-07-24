@@ -1,12 +1,12 @@
 package docker
 
 import (
+	"backend/internal/logger"
+	"backend/internal/utils"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"backend/internal/logger"
-	"backend/internal/utils"
 	"io"
 	"strings"
 

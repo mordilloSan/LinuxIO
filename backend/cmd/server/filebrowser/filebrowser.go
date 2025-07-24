@@ -1,12 +1,12 @@
 package filebrowser
 
 import (
-	"bytes"
-	"context"
-	"fmt"
 	embed "backend"
 	"backend/internal/config"
 	"backend/internal/logger"
+	"bytes"
+	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"

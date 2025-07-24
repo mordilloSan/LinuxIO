@@ -1,13 +1,13 @@
 package bridge
 
 import (
+	"backend/cmd/bridge/handlers/types"
+	"backend/internal/logger"
+	"backend/internal/session"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"backend/cmd/bridge/handlers/types"
-	"backend/internal/logger"
-	"backend/internal/session"
 	"io"
 	"net"
 	"os"

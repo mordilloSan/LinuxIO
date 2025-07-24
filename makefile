@@ -95,8 +95,10 @@ tsc:
 	'
 
 golint: ensure-golint
-	@echo -n "🔍 Running golangci-lint... "; \
-	cd backend && golangci-lint run ./... --timeout 3m && echo "✅ Go Linting Ok!"
+	@echo "🔍 Running gofmt -s -w ."
+	@gofmt -s -w .
+	@echo "🔍 Running golangci-lint..."
+	@cd backend && golangci-lint run ./... --timeout 3m && echo "✅ Go Linting Ok!"
 
 test: setup dev-prep
 	@echo ""
