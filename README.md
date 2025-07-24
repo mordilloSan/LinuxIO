@@ -21,10 +21,17 @@ Instead of replacing the Linux experience, **Linux i/O visualizes it.**
 
 ## ⚙️ Stack
 
-- **Frontend:** React (Vite + MUI - based on [Mira Theme](https://mira.bootlab.io)
-- **Backend:** Go + Air (for development)
-- **Go Rest API:** Gin
-- **Go Websocket:** gorilla
+- **Frontend:**  
+  - **Framework:** React + Vite + TypeScript  
+  - **Styling:** Material UI (based on the [Mira Theme](https://mira.bootlab.io))  
+  - **REST API:** Axios  
+
+- **Backend:**  
+  - **Language:** Go (with Air for live reloading during development)  
+  - **Authentication:** Auth done via existing PAM modules  
+  - **HTTP Server:** API routes, middleware, authentication  
+  - **REST API:** Gin  
+  - **WebSocket:** Gorilla  
 
 ---
 
