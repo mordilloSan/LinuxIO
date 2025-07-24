@@ -1,14 +1,14 @@
 package auth
 
 import (
-	"backend/internal/bridge"
-	"backend/internal/config"
-	"backend/internal/logger"
-	"backend/internal/session"
-	"backend/internal/terminal"
-	"backend/internal/utils"
 	"bytes"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/session"
+	"github.com/mordilloSan/LinuxIO/backend/internal/terminal"
+	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 	"io"
 	"net/http"
 	"os"

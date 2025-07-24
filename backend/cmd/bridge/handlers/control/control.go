@@ -1,8 +1,8 @@
 package control
 
 import (
-	"backend/cmd/bridge/handlers/types"
-	"backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 )
 
 func ControlHandlers(shutdownChan chan string) map[string]types.HandlerFunc {

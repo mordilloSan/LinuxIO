@@ -1,10 +1,10 @@
 package websocket
 
 import (
-	"backend/internal/logger"
-	"backend/internal/session"
-	"backend/internal/terminal"
 	"encoding/json"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/session"
+	"github.com/mordilloSan/LinuxIO/backend/internal/terminal"
 	"net/http"
 	"sync"
 

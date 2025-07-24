@@ -1,13 +1,13 @@
 package networks
 
 import (
-	"backend/cmd/bridge/handlers/dbus"
-	"backend/cmd/bridge/handlers/types"
-	"backend/cmd/server/auth"
-	"backend/internal/bridge"
-	"backend/internal/logger"
-	"backend/internal/session"
 	"encoding/json"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/dbus"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/session"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

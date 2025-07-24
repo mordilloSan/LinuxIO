@@ -1,8 +1,8 @@
 package drive
 
 import (
-	"backend/cmd/bridge/handlers/types"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
 )
 
 func DriveHandlers() map[string]types.HandlerFunc {

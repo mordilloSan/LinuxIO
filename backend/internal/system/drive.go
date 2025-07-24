@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"backend/internal/bridge"
-	"backend/internal/logger"
-	"backend/internal/session"
+	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/session"
 
 	"github.com/gin-gonic/gin"
 )

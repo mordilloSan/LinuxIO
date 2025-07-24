@@ -1,7 +1,7 @@
 package docker
 
 import (
-	"backend/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
 )
 
 func DockerHandlers() map[string]types.HandlerFunc {

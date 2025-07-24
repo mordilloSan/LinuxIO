@@ -1,9 +1,9 @@
 package docker
 
 import (
-	"backend/internal/logger"
 	"context"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 
 	"github.com/docker/docker/api/types/network"
 )

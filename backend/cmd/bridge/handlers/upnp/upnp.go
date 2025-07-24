@@ -1,9 +1,9 @@
 package upnp
 
 import (
-	"backend/internal/logger"
-	"backend/internal/utils"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 	"net/url"
 
 	"github.com/huin/goupnp/dcps/internetgateway1"

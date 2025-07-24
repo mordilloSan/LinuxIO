@@ -2,7 +2,7 @@ package utils
 
 import (
 	embed "backend"
-	"backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"os"
 	"path/filepath"
 )

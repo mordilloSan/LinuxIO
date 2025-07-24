@@ -1,8 +1,8 @@
 package templates
 
 import (
-	"backend/internal/logger"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"io/fs"
 	"net/http"
 

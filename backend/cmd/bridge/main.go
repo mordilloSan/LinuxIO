@@ -10,14 +10,14 @@ import (
 	"strconv"
 	"strings"
 
-	"backend/cmd/bridge/cleanup"
-	"backend/cmd/bridge/handlers"
-	"backend/cmd/bridge/handlers/types"
-	"backend/internal/bridge"
-	"backend/internal/logger"
-	"backend/internal/session"
-	"backend/internal/theme"
-	"backend/internal/utils"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/cleanup"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/session"
+	"github.com/mordilloSan/LinuxIO/backend/internal/theme"
+	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 
 	"github.com/google/uuid"
 )

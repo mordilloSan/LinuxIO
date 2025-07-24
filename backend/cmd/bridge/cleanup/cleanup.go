@@ -1,13 +1,13 @@
 package cleanup
 
 import (
-	"backend/internal/bridge"
-	"backend/internal/logger"
-	"backend/internal/session"
-	"backend/internal/terminal"
-	"backend/internal/utils"
 	"context"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/session"
+	"github.com/mordilloSan/LinuxIO/backend/internal/terminal"
+	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 
 	"os"
 	"strconv"

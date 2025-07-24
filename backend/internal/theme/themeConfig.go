@@ -1,9 +1,9 @@
 package theme
 
 import (
-	"backend/cmd/server/auth"
-	"backend/internal/logger"
 	"errors"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"net/http"
 	"os"
 	"os/user"

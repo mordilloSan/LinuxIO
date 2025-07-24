@@ -1,9 +1,9 @@
 package system
 
 import (
-	"backend/internal/logger"
 	"context"
 	"encoding/json"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"os"
 	"strconv"
 	"strings"

@@ -1,7 +1,7 @@
 package wireguard
 
 import (
-	"backend/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
 )
 
 func WireguardHandlers() map[string]types.HandlerFunc {

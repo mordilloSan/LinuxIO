@@ -1,10 +1,10 @@
 package dockers
 
 import (
-	"backend/cmd/server/auth"
-	"backend/internal/bridge"
-	"backend/internal/logger"
-	"backend/internal/session"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/session"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

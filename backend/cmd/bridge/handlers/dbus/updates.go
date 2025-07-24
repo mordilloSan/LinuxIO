@@ -1,9 +1,9 @@
 package dbus
 
 import (
-	"backend/internal/logger"
 	"context"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"regexp"
 	"strings"
 	"time"

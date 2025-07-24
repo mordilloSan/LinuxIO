@@ -1,9 +1,9 @@
 package session
 
 import (
-	"backend/internal/logger"
-	"backend/internal/utils"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 	"net/http"
 	"time"
 

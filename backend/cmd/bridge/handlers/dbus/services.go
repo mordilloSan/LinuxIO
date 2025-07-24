@@ -1,8 +1,8 @@
 package dbus
 
 import (
-	"backend/internal/logger"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"strings"
 
 	"github.com/godbus/dbus/v5"

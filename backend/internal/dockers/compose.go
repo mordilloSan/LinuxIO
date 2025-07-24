@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	"backend/cmd/server/auth"
-	"backend/internal/config"
-	"backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/backend/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 
 	"github.com/gin-gonic/gin"
 )

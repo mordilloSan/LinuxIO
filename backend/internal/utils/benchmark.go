@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"io"
 	"net/http"
 	"sync"

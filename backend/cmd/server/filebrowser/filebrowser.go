@@ -2,11 +2,11 @@ package filebrowser
 
 import (
 	embed "backend"
-	"backend/internal/config"
-	"backend/internal/logger"
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"io"
 	"os"
 	"path/filepath"

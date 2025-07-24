@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"backend/internal/logger"
-	"backend/internal/utils"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 
 	"gopkg.in/yaml.v3"
 )

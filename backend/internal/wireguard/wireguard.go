@@ -1,13 +1,13 @@
 package wireguard
 
 import (
-	"backend/cmd/bridge/handlers/types"
-	"backend/cmd/server/auth"
-	"backend/internal/bridge"
-	"backend/internal/session"
-	"backend/internal/utils"
 	"encoding/json"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/backend/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/internal/session"
+	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 	"net/http"
 	"strconv"
 	"strings"

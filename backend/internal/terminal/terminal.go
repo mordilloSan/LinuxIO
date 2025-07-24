@@ -1,10 +1,10 @@
 package terminal
 
 import (
-	"backend/internal/logger"
-	"backend/internal/session"
 	"errors"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/session"
 	"os"
 	"os/exec"
 	"os/user"

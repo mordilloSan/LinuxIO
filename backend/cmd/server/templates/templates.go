@@ -1,11 +1,11 @@
 package templates
 
 import (
-	"backend/internal/logger"
-	"backend/internal/theme"
-	"backend/internal/utils"
 	"embed"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
+	"github.com/mordilloSan/LinuxIO/backend/internal/theme"
+	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 	"html/template"
 	"log"
 	"net/http"

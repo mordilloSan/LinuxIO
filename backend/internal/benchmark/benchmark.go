@@ -1,8 +1,8 @@
 package benchmark
 
 import (
-	"backend/internal/utils"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )

@@ -1,7 +1,7 @@
 package system
 
 import (
-	"backend/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/server/auth"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

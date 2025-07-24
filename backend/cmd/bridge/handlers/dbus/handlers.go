@@ -1,8 +1,8 @@
 package dbus
 
 import (
-	"backend/cmd/bridge/handlers/types"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/bridge/handlers/types"
 	"strings"
 	"sync"
 	"time"

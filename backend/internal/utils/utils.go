@@ -1,10 +1,10 @@
 package utils
 
 import (
-	"backend/internal/logger"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/mordilloSan/LinuxIO/backend/internal/logger"
 	"io"
 	"net"
 	"net/http"
