@@ -129,23 +129,13 @@ Outputs all API paths and logs (from Gin)
 make prod
 ```
 
-- Compiles frontend via Vite
+- Compiles frontend via Vite serving static assets
 
-- Serves static assets using go run .
+- Compiles bridge Go binary
 
-- No logging enabled by default
+- Compiles main server Go binary
 
-### 📦 Binary Mode
-
-```bash
-make binary
-```
-
-- Produces a compiled, self-contained Go binary
-
-- Frontend is bundled inside
-
-- Suitable for systemd and production deployment
+- All logging done to journald.
 
 ### 🔪 How It Works
 
@@ -163,25 +153,18 @@ Under the hood:
 
 ```
 IO_Linux_Server/
-├── backend/       # Gin powered backend
-├── react/            # Vite powered React frontend
+├── backend/          # Gin powered backend
+├── frontend/         # Vite powered React frontend
 ├── .env              # Environment variables
 ├── .gitignore        # List of files to be ignored by git
 ├── makefile          # Automation of builds & setup
+├── LICENSE           # License information
 ├── README.md         # You're reading it!
-├── secret.env        # File to write your sudo password
 └── SECURITY.md       # Security  write up
 ```
 
 ---
 
-## 📃 License
 
-MIT License — feel free to use, fork, or contribute!
-
----
-
-## 🙋‍♂️ Author
-
-Created by [@mordilloSan](https://github.com/mordilloSan)  
-📧 miguelgalizamariz@gmail.com
+## 📚 Learn More
+📖 For additional details, usage tips, or development notes, please visit the Wiki.
