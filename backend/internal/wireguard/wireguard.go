@@ -2,8 +2,9 @@ package wireguard
 
 import (
 	"backend/cmd/bridge/handlers/types"
-	"backend/internal/auth"
+	"backend/cmd/server/auth"
 	"backend/internal/bridge"
+	"backend/internal/session"
 	"backend/internal/utils"
 	"encoding/json"
 	"fmt"
@@ -17,7 +18,7 @@ import (
 // Always: Unmarshal into types.BridgeResponse, then unmarshal Output.
 
 func WireguardListInterfaces(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -44,7 +45,7 @@ func WireguardListInterfaces(c *gin.Context) {
 }
 
 func WireguardAddInterface(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -104,7 +105,7 @@ func WireguardAddInterface(c *gin.Context) {
 }
 
 func WireguardRemoveInterface(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -127,7 +128,7 @@ func WireguardRemoveInterface(c *gin.Context) {
 }
 
 func WireguardListPeers(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -155,7 +156,7 @@ func WireguardListPeers(c *gin.Context) {
 }
 
 func WireguardAddPeer(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -179,7 +180,7 @@ func WireguardAddPeer(c *gin.Context) {
 }
 
 func WireguardRemovePeer(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -204,7 +205,7 @@ func WireguardRemovePeer(c *gin.Context) {
 }
 
 func WireguardPeerQRCode(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -235,7 +236,7 @@ func WireguardPeerQRCode(c *gin.Context) {
 }
 
 func WireguardPeerConfigDownload(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -271,7 +272,7 @@ func WireguardPeerConfigDownload(c *gin.Context) {
 }
 
 func WireguardGetKeys(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -300,7 +301,7 @@ func WireguardGetKeys(c *gin.Context) {
 
 // PUT /wireguard/interface/:name/up
 func WireguardUpInterface(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -329,7 +330,7 @@ func WireguardUpInterface(c *gin.Context) {
 
 // PUT /wireguard/interface/:name/down
 func WireguardDownInterface(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}

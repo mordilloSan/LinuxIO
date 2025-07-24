@@ -9,8 +9,8 @@ export type ThemeContextType = {
   setTheme: (theme: string) => void;
   primaryColor: string;
   setPrimaryColor: (color: string) => void;
-  sidebarColapsed: boolean;
-  setSidebarColapsed: (value: boolean | ((prev: boolean) => boolean)) => void;
+  SidebarCollapsed: boolean;
+  setSidebarCollapsed: (value: boolean | ((prev: boolean) => boolean)) => void;
   toggleTheme: () => void;
   isLoaded?: boolean;
 };

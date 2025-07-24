@@ -1,9 +1,10 @@
 package power
 
 import (
-	"backend/internal/auth"
+	"backend/cmd/server/auth"
 	"backend/internal/bridge"
 	"backend/internal/logger"
+	"backend/internal/session"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -13,7 +14,7 @@ func RegisterPowerRoutes(r *gin.Engine) {
 	group := r.Group("/power", auth.AuthMiddleware())
 
 	group.POST("/reboot", func(c *gin.Context) {
-		sess := auth.GetSessionOrAbort(c)
+		sess := session.GetSessionOrAbort(c)
 		if sess == nil {
 			return
 		}
@@ -32,7 +33,7 @@ func RegisterPowerRoutes(r *gin.Engine) {
 	})
 
 	group.POST("/shutdown", func(c *gin.Context) {
-		sess := auth.GetSessionOrAbort(c)
+		sess := session.GetSessionOrAbort(c)
 		if sess == nil {
 			return
 		}

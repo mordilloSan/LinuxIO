@@ -4,15 +4,15 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"backend/internal/auth"
 	"backend/internal/bridge"
 	"backend/internal/logger"
+	"backend/internal/session"
 
 	"github.com/gin-gonic/gin"
 )
 
 func getDiskInfo(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}

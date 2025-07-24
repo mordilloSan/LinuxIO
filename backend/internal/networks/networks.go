@@ -3,9 +3,10 @@ package networks
 import (
 	"backend/cmd/bridge/handlers/dbus"
 	"backend/cmd/bridge/handlers/types"
-	"backend/internal/auth"
+	"backend/cmd/server/auth"
 	"backend/internal/bridge"
 	"backend/internal/logger"
+	"backend/internal/session"
 	"encoding/json"
 	"net/http"
 
@@ -27,7 +28,7 @@ func RegisterNetworkRoutes(router *gin.Engine) {
 }
 
 func getNetworkInfo(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -67,7 +68,7 @@ func postSetDNS(c *gin.Context) {
 		Interface string   `json:"interface"`
 		DNS       []string `json:"dns"`
 	}
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -92,7 +93,7 @@ func postSetGateway(c *gin.Context) {
 		Interface string `json:"interface"`
 		Gateway   string `json:"gateway"`
 	}
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -117,7 +118,7 @@ func postSetMTU(c *gin.Context) {
 		Interface string `json:"interface"`
 		MTU       string `json:"mtu"`
 	}
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -141,7 +142,7 @@ func postSetIPv4DHCP(c *gin.Context) {
 	var req struct {
 		Interface string `json:"interface"`
 	}
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -166,7 +167,7 @@ func postSetIPv4Static(c *gin.Context) {
 		Interface   string `json:"interface"`
 		AddressCIDR string `json:"address_cidr"`
 	}
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -190,7 +191,7 @@ func postSetIPv6DHCP(c *gin.Context) {
 	var req struct {
 		Interface string `json:"interface"`
 	}
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -215,7 +216,7 @@ func postSetIPv6Static(c *gin.Context) {
 		Interface   string `json:"interface"`
 		AddressCIDR string `json:"address_cidr"`
 	}
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}

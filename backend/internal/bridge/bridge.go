@@ -183,7 +183,7 @@ func getBridgeBinaryPath() string {
 			logger.Warnf("Failed to get working directory: %v", err)
 			return "linuxio-bridge"
 		}
-		rootDir := filepath.Dir(dir) // backend → LinuxIO
+		rootDir := filepath.Dir(dir)
 		return filepath.Join(rootDir, "linuxio-bridge")
 	}
 

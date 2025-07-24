@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type Session struct {
@@ -36,7 +38,7 @@ func init() {
 	}()
 }
 
-// Starts a goroutine that periodically checks for expired sessions
+// Start a goroutine that periodically removes expired sessions
 func StartSessionGC() {
 	ticker := time.NewTicker(10 * time.Minute)
 	go func() {
@@ -58,10 +60,10 @@ func StartSessionGC() {
 	}()
 }
 
-// Creates a new session, returns error if already exists
+// CreateSession creates a new session, returns error if already exists
 func CreateSession(id string, user utils.User, duration time.Duration, privileged bool) error {
 	done := make(chan error)
-	secret := utils.GenerateSecretKey(32) // Returns 64 hex chars (32 bytes)
+	secret := utils.GenerateSecretKey(32)
 	sess := Session{
 		SessionID:    id,
 		User:         user,
@@ -84,133 +86,92 @@ func CreateSession(id string, user utils.User, duration time.Duration, privilege
 	return err
 }
 
-// Deletes a session, returns error if not found
+// DeleteSession removes a session by ID
 func DeleteSession(id string) error {
 	done := make(chan error)
 	SessionMux <- func() {
 		sess, exists := Sessions[id]
-		if exists {
-			delete(Sessions, id)
-			logger.Infof("Deleted session for user '%s'", sess.User.ID)
-			done <- nil
-		} else {
+		if !exists {
 			done <- fmt.Errorf("session ID '%s' not found", id)
+			return
 		}
+		delete(Sessions, id)
+		logger.Infof("Deleted session for user '%s'", sess.User.ID)
+		done <- nil
 	}
 	return <-done
 }
 
-// Checks if a session is privileged
-func IsSessionPrivileged(sessionID string) (bool, error) {
-	done := make(chan struct {
-		privileged bool
-		err        error
-	})
-	SessionMux <- func() {
-		sess, exists := Sessions[sessionID]
-		if exists {
-			done <- struct {
-				privileged bool
-				err        error
-			}{sess.Privileged, nil}
-		} else {
-			done <- struct {
-				privileged bool
-				err        error
-			}{false, fmt.Errorf("session ID '%s' not found", sessionID)}
-		}
-	}
-	result := <-done
-	return result.privileged, result.err
-}
+// ---- Generic Access Helpers ----
 
-// ValidateSessionFromRequest validates the session cookie and returns the session pointer and error
-func ValidateSessionFromRequest(r *http.Request) (*Session, error) {
-	cookie, err := r.Cookie("session_id")
-	if err != nil || cookie.Value == "" {
-		return nil, fmt.Errorf("missing or invalid session_id cookie")
-	}
-
-	var sess *Session
-	var exists bool
-	done := make(chan bool)
-
-	SessionMux <- func() {
-		s, ok := Sessions[cookie.Value]
-		exists = ok
-		if ok {
-			copy := s // avoid race
-			sess = &copy
-		}
-		done <- true
-	}
-	<-done
-
-	if !exists {
-		logger.Warnf("Access attempt with unknown session_id: %s", cookie.Value)
-		return nil, fmt.Errorf("unknown session ID")
-	}
-
-	if sess.ExpiresAt.Before(time.Now()) {
-		logger.Warnf("Expired session access attempt by user '%s'", sess.User.ID)
-		return nil, fmt.Errorf("session expired")
-	}
-
-	return sess, nil
-}
-
-// Checks if a session is valid
-func IsSessionValid(id string) (bool, error) {
-	done := make(chan struct {
-		valid bool
-		err   error
-	})
-	SessionMux <- func() {
-		session, exists := Sessions[id]
-		if exists && session.ExpiresAt.After(time.Now()) {
-			done <- struct {
-				valid bool
-				err   error
-			}{true, nil}
-		} else if exists {
-			done <- struct {
-				valid bool
-				err   error
-			}{false, fmt.Errorf("session expired")}
-		} else {
-			done <- struct {
-				valid bool
-				err   error
-			}{false, fmt.Errorf("session not found")}
-		}
-	}
-	result := <-done
-	return result.valid, result.err
-}
-
-// Changes the privileged status of a session, returns error if not found
-func SetSessionPrivileged(sessionID string, privileged bool) error {
+func withSession(id string, fn func(Session) error) error {
 	done := make(chan error)
 	SessionMux <- func() {
-		sess, exists := Sessions[sessionID]
-		if exists {
-			sess.Privileged = privileged
-			Sessions[sessionID] = sess
-			done <- nil
-		} else {
-			done <- fmt.Errorf("session ID '%s' not found", sessionID)
+		sess, exists := Sessions[id]
+		if !exists {
+			done <- fmt.Errorf("session ID '%s' not found", id)
+			return
 		}
+		done <- fn(sess)
 	}
 	return <-done
 }
 
-// Returns a list of all currently valid (non-expired) session IDs
+func updateSession(id string, fn func(*Session) error) error {
+	done := make(chan error)
+	SessionMux <- func() {
+		sess, exists := Sessions[id]
+		if !exists {
+			done <- fmt.Errorf("session ID '%s' not found", id)
+			return
+		}
+		if err := fn(&sess); err != nil {
+			done <- err
+			return
+		}
+		Sessions[id] = sess
+		done <- nil
+	}
+	return <-done
+}
+
+func getSessionCopy(id string) (*Session, error) {
+	done := make(chan struct {
+		sess *Session
+		err  error
+	})
+	SessionMux <- func() {
+		sess, exists := Sessions[id]
+		if !exists {
+			done <- struct {
+				sess *Session
+				err  error
+			}{nil, fmt.Errorf("session not found")}
+			return
+		}
+		copy := sess
+		done <- struct {
+			sess *Session
+			err  error
+		}{&copy, nil}
+	}
+	result := <-done
+	return result.sess, result.err
+}
+
+// ---- Refactored Public Functions ----
+
+// GetSession returns a copy of the session if it exists
+func GetSession(id string) (*Session, error) {
+	return getSessionCopy(id)
+}
+
+// GetActiveSessionIDs returns all non-expired session IDs
 func GetActiveSessionIDs() ([]string, error) {
 	done := make(chan struct {
 		ids []string
 		err error
 	})
-
 	SessionMux <- func() {
 		now := time.Now()
 		var active []string
@@ -228,28 +189,66 @@ func GetActiveSessionIDs() ([]string, error) {
 	return result.ids, result.err
 }
 
-// GetSession returns a pointer to the Session struct for the given sessionID, or error if not found.
-// WARNING: The returned pointer is to a *copy*; do not modify fields directly!
-func GetSession(id string) (*Session, error) {
-	done := make(chan struct {
-		sess *Session
-		err  error
+// SetSessionPrivileged sets or unsets privilege on a session
+func SetSessionPrivileged(id string, privileged bool) error {
+	return updateSession(id, func(s *Session) error {
+		s.Privileged = privileged
+		return nil
 	})
-	SessionMux <- func() {
-		sess, exists := Sessions[id]
-		if exists {
-			s := sess // copy to new var to avoid data race
-			done <- struct {
-				sess *Session
-				err  error
-			}{&s, nil}
-		} else {
-			done <- struct {
-				sess *Session
-				err  error
-			}{nil, fmt.Errorf("session not found")}
+}
+
+// IsSessionPrivileged returns whether the session is privileged
+func IsSessionPrivileged(id string) (bool, error) {
+	var result bool
+	err := withSession(id, func(s Session) error {
+		result = s.Privileged
+		return nil
+	})
+	return result, err
+}
+
+// IsSessionValid returns true if session exists and hasn't expired
+func IsSessionValid(id string) (bool, error) {
+	var valid bool
+	err := withSession(id, func(s Session) error {
+		if s.ExpiresAt.Before(time.Now()) {
+			return fmt.Errorf("session expired")
 		}
+		valid = true
+		return nil
+	})
+	return valid, err
+}
+
+// ValidateSessionFromRequest validates a session cookie and returns the session
+func ValidateSessionFromRequest(r *http.Request) (*Session, error) {
+	cookie, err := r.Cookie("session_id")
+	if err != nil || cookie.Value == "" {
+		return nil, fmt.Errorf("missing or invalid session_id cookie")
 	}
-	result := <-done
-	return result.sess, result.err
+
+	sess, err := getSessionCopy(cookie.Value)
+	if err != nil {
+		logger.Warnf("Access attempt with unknown session_id: %s", cookie.Value)
+		return nil, fmt.Errorf("unknown session ID")
+	}
+
+	if sess.ExpiresAt.Before(time.Now()) {
+		logger.Warnf("Expired session access attempt by user '%s'", sess.User.ID)
+		return nil, fmt.Errorf("session expired")
+	}
+
+	return sess, nil
+}
+
+// GetSessionOrAbort aborts the request if the session is not valid
+func GetSessionOrAbort(c *gin.Context) *Session {
+	sess, err := ValidateSessionFromRequest(c.Request)
+	if err != nil || sess == nil {
+		logger.Warnf("Unauthorized access: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
+		c.Abort()
+		return nil
+	}
+	return sess
 }

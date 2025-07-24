@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -53,9 +54,9 @@ func ServeIndex(c *gin.Context, env string, viteManifest []byte) {
 	if err != nil {
 		logger.Warnf("⚠️ Failed to load theme, using defaults: %v", err)
 		themeSettings = theme.ThemeSettings{
-			Theme:           "DARK",
-			PrimaryColor:    "#1976d2",
-			SidebarColapsed: false,
+			Theme:            "DARK",
+			PrimaryColor:     "#1976d2",
+			SidebarCollapsed: false,
 		}
 	}
 
@@ -73,6 +74,7 @@ func ServeIndex(c *gin.Context, env string, viteManifest []byte) {
 		"ThemeColor":        themeSettings.PrimaryColor,
 		"Background":        background,
 		"ShimmerBackground": shimmer,
+		"SidebarCollapsed":  strconv.FormatBool(themeSettings.SidebarCollapsed),
 	}
 
 	c.Status(http.StatusOK)

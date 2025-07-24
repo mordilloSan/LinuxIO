@@ -2,8 +2,10 @@ package main
 
 import (
 	embed "backend"
+	"backend/cmd/server/auth"
 	"backend/cmd/server/filebrowser"
-	"backend/internal/auth"
+	"backend/cmd/server/templates"
+	"backend/cmd/server/websocket"
 	"backend/internal/benchmark"
 	"backend/internal/dockers"
 	"backend/internal/logger"
@@ -12,11 +14,9 @@ import (
 	"backend/internal/services"
 	"backend/internal/session"
 	"backend/internal/system"
-	"backend/internal/templates"
 	"backend/internal/theme"
 	"backend/internal/updates"
 	"backend/internal/utils"
-	"backend/internal/websocket"
 	"backend/internal/wireguard"
 	"crypto/tls"
 	"fmt"

@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"backend/internal/auth"
+	"backend/cmd/server/auth"
 	"backend/internal/config"
 	"backend/internal/logger"
 

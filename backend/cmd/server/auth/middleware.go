@@ -52,18 +52,6 @@ func AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// Helper to validate session and handle unauthorized
-func GetSessionOrAbort(c *gin.Context) *session.Session {
-	sess, err := session.ValidateSessionFromRequest(c.Request)
-	if err != nil || sess == nil {
-		logger.Warnf("Unauthorized docker access: %v", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
-		c.Abort()
-		return nil
-	}
-	return sess
-}
-
 type ctxKey string
 
 const proxyPathKey ctxKey = "proxyPath"

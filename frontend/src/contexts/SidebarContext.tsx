@@ -33,7 +33,7 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const muiTheme = useMuiTheme();
   const isDesktop = useMediaQuery(muiTheme.breakpoints.up("md"));
-  const { sidebarColapsed: collapsed, setSidebarColapsed } = useAppTheme();
+  const { SidebarCollapsed: collapsed, setSidebarCollapsed } = useAppTheme();
 
   const [hovered, setHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -41,7 +41,7 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Toggle collapsed state, temporarily disables hover to avoid "double triggers"
   const toggleCollapse = useCallback(() => {
-    setSidebarColapsed((prev) => {
+    setSidebarCollapsed((prev) => {
       const newState = !prev;
       if (isDesktop && newState) {
         hoverEnabled.current = false;
@@ -52,7 +52,7 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       return newState;
     });
-  }, [isDesktop, setSidebarColapsed]);
+  }, [isDesktop, setSidebarCollapsed]);
 
   // Toggle mobile drawer
   const toggleMobileOpen = useCallback(() => {

@@ -1,7 +1,7 @@
 package theme
 
 import (
-	"backend/internal/auth"
+	"backend/cmd/server/auth"
 	"backend/internal/logger"
 	"errors"
 	"net/http"
@@ -14,9 +14,9 @@ import (
 )
 
 type ThemeSettings struct {
-	Theme           string `json:"theme"`
-	PrimaryColor    string `json:"primaryColor"`
-	SidebarColapsed bool   `json:"sidebarColapsed"`
+	Theme            string `json:"theme"`
+	PrimaryColor     string `json:"primaryColor"`
+	SidebarCollapsed bool   `json:"SidebarCollapsed"`
 }
 
 func InitTheme() error {
@@ -29,9 +29,9 @@ func InitTheme() error {
 		logger.Infof("No theme file found, creating from embedded default...")
 		// Optional: if you want to embed a YAML default, otherwise create minimal struct
 		defaultTheme := ThemeSettings{
-			Theme:           "LIGHT",
-			PrimaryColor:    "#2196f3",
-			SidebarColapsed: false,
+			Theme:            "LIGHT",
+			PrimaryColor:     "#2196f3",
+			SidebarCollapsed: false,
 		}
 		return SaveThemeToFile(defaultTheme)
 	}

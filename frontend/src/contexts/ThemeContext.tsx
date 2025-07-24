@@ -20,8 +20,8 @@ const initialState: ThemeContextType = {
   setTheme: () => {},
   primaryColor: DEFAULT_PRIMARY_COLOR,
   setPrimaryColor: () => {},
-  sidebarColapsed: SIDEBAR_COLAPSED_STATE,
-  setSidebarColapsed: () => {},
+  SidebarCollapsed: SIDEBAR_COLAPSED_STATE,
+  setSidebarCollapsed: () => {},
   toggleTheme: () => {},
 };
 
@@ -30,7 +30,7 @@ const ThemeContext = createContext<ThemeContextType>(initialState);
 const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [theme, _setTheme] = useState(initialState.theme);
   const [primaryColor, _setPrimaryColor] = useState(DEFAULT_PRIMARY_COLOR);
-  const [sidebarColapsed, _setSidebarColapsed] = useState(
+  const [SidebarCollapsed, _setSidebarCollapsed] = useState(
     SIDEBAR_COLAPSED_STATE,
   );
   const [isLoaded, setIsLoaded] = useState(false);
@@ -42,10 +42,10 @@ const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         const fetchedTheme =
           response.data.theme === "LIGHT" ? THEMES.LIGHT : THEMES.DARK;
         const fetchedColor = response.data.primaryColor;
-        const fetchedColapsed = response.data.sidebarColapsed;
+        const fetchedColapsed = response.data.SidebarCollapsed;
         _setTheme(fetchedTheme);
         _setPrimaryColor(fetchedColor || DEFAULT_PRIMARY_COLOR);
-        _setSidebarColapsed(fetchedColapsed ?? SIDEBAR_COLAPSED_STATE);
+        _setSidebarCollapsed(fetchedColapsed ?? SIDEBAR_COLAPSED_STATE);
         setIsLoaded(true);
       } catch (error) {
         console.error("Error fetching theme from backend:", error);
@@ -62,7 +62,7 @@ const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
           .post("/theme/set", {
             theme: themeToSave,
             primaryColor: colorToSave,
-            sidebarColapsed: colapsed,
+            SidebarCollapsed: colapsed,
           })
           .catch((error) => {
             console.error("Error saving theme settings:", error);
@@ -75,22 +75,22 @@ const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const setTheme = useCallback(
     (newTheme: string) => {
       _setTheme(newTheme);
-      debouncedSaveThemeSettings(newTheme, primaryColor, sidebarColapsed);
+      debouncedSaveThemeSettings(newTheme, primaryColor, SidebarCollapsed);
     },
-    [primaryColor, sidebarColapsed, debouncedSaveThemeSettings],
+    [primaryColor, SidebarCollapsed, debouncedSaveThemeSettings],
   );
 
   const setPrimaryColor = useCallback(
     (color: string) => {
       _setPrimaryColor(color);
-      debouncedSaveThemeSettings(theme, color, sidebarColapsed);
+      debouncedSaveThemeSettings(theme, color, SidebarCollapsed);
     },
-    [theme, sidebarColapsed, debouncedSaveThemeSettings],
+    [theme, SidebarCollapsed, debouncedSaveThemeSettings],
   );
 
-  const setSidebarColapsed = useCallback(
+  const setSidebarCollapsed = useCallback(
     (valueOrUpdater: boolean | ((prev: boolean) => boolean)) => {
-      _setSidebarColapsed((prev) => {
+      _setSidebarCollapsed((prev) => {
         const newValue =
           typeof valueOrUpdater === "function"
             ? valueOrUpdater(prev)
@@ -114,18 +114,18 @@ const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
       setTheme,
       primaryColor,
       setPrimaryColor,
-      sidebarColapsed,
-      setSidebarColapsed,
+      SidebarCollapsed,
+      setSidebarCollapsed,
       toggleTheme,
       isLoaded,
     }),
     [
       theme,
       primaryColor,
-      sidebarColapsed,
+      SidebarCollapsed,
       setTheme,
       setPrimaryColor,
-      setSidebarColapsed,
+      setSidebarCollapsed,
       toggleTheme,
       isLoaded,
     ],

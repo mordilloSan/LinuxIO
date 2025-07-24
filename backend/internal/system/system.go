@@ -1,7 +1,7 @@
 package system
 
 import (
-	"backend/internal/auth"
+	"backend/cmd/server/auth"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

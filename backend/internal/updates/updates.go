@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"backend/internal/auth"
+	"backend/cmd/server/auth"
 	"backend/internal/bridge"
 	"backend/internal/logger"
+	"backend/internal/session"
 
 	"github.com/gin-gonic/gin"
 )
@@ -32,7 +33,7 @@ func RegisterUpdateRoutes(router *gin.Engine) {
 func getUpdatesHandler(c *gin.Context) {
 	logger.Infof("🔍 Checking for system updates (D-Bus)...")
 
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -100,7 +101,7 @@ func updatePackageHandler(c *gin.Context) {
 
 	logger.Infof("📦 Triggering update for package: %s", req.PackageID)
 
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}

@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"regexp"
 
-	"backend/internal/auth"
+	"backend/cmd/server/auth"
 	"backend/internal/bridge"
 	"backend/internal/logger"
+	"backend/internal/session"
 
 	"github.com/gin-gonic/gin"
 )
@@ -41,7 +42,7 @@ var validServiceName = regexp.MustCompile(`^[\w.-]+\.service$`)
 
 // Generic handler for service actions
 func serviceAction(c *gin.Context, action string) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -65,7 +66,7 @@ func serviceAction(c *gin.Context, action string) {
 }
 
 func getServiceStatus(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -99,7 +100,7 @@ func getServiceStatus(c *gin.Context) {
 }
 
 func getServiceDetail(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}

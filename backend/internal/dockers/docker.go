@@ -1,16 +1,17 @@
 package dockers
 
 import (
-	"backend/internal/auth"
+	"backend/cmd/server/auth"
 	"backend/internal/bridge"
 	"backend/internal/logger"
+	"backend/internal/session"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
 func ListContainers(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -24,7 +25,7 @@ func ListContainers(c *gin.Context) {
 }
 
 func StartContainer(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -39,7 +40,7 @@ func StartContainer(c *gin.Context) {
 }
 
 func StopContainer(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -54,7 +55,7 @@ func StopContainer(c *gin.Context) {
 }
 
 func RemoveContainer(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -69,7 +70,7 @@ func RemoveContainer(c *gin.Context) {
 }
 
 func RestartContainer(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -84,7 +85,7 @@ func RestartContainer(c *gin.Context) {
 }
 
 func ListImages(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -98,7 +99,7 @@ func ListImages(c *gin.Context) {
 }
 
 func ListDockerNetworks(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -113,7 +114,7 @@ func ListDockerNetworks(c *gin.Context) {
 
 // CreateDockerNetwork handles the creation of a new Docker network.
 func CreateDockerNetwork(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -137,7 +138,7 @@ func CreateDockerNetwork(c *gin.Context) {
 
 // DeleteDockerVolume handles the deletion of a Docker volume.
 func DeleteDockerNetwork(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -152,7 +153,7 @@ func DeleteDockerNetwork(c *gin.Context) {
 }
 
 func ListDockerVolumes(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -167,7 +168,7 @@ func ListDockerVolumes(c *gin.Context) {
 
 // DeleteDockerVolume handles the deletion of a Docker volume.
 func DeleteDockerVolume(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -183,7 +184,7 @@ func DeleteDockerVolume(c *gin.Context) {
 
 // CreateDockerVolume handles the creation of a new Docker volume.
 func CreateDockerVolume(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
@@ -206,7 +207,7 @@ func CreateDockerVolume(c *gin.Context) {
 }
 
 func LogContainer(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}

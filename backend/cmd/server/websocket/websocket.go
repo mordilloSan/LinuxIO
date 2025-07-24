@@ -1,8 +1,8 @@
 package websocket
 
 import (
-	"backend/internal/auth"
 	"backend/internal/logger"
+	"backend/internal/session"
 	"backend/internal/terminal"
 	"encoding/json"
 	"net/http"
@@ -47,7 +47,7 @@ func (sc *wsSafeConn) WriteJSON(v interface{}) error {
 }
 
 func WebSocketHandler(c *gin.Context) {
-	sess := auth.GetSessionOrAbort(c)
+	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
 	}
