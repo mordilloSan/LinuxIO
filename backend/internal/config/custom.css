@@ -1,0 +1,27 @@
+body {
+  background: #F7F9FC !important;
+}
+
+.dark-mode {
+    --background: #1B2635 !important;
+}
+
+/* To remove the sidebar */
+#sidebar {
+  display: none !important;
+}
+
+/* To remove the theme transition */
+* {
+  transition: none !important;
+}
+
+/* To hide the sidebar button */
+button[aria-label="Close"][title="Close"].action.no-select {
+  display: none !important;
+}
+
+/* To keep the switch view button on the right */
+.menu-button {
+  margin-left: auto !important;
+}

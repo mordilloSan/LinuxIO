@@ -30,3 +30,5 @@ when the bridge does cleanup we also must kill the PTY session - check when is n
 websocket should be persistent
 
 If no websocket present check for session. if session restore websocket connection if not logout?
+
+7 - Make sure we check the hash or some sort of validation when running the bridge binnary

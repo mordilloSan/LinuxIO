@@ -27,3 +27,6 @@ var DefaultThemeConfig []byte
 
 //go:embed internal/config/dockerConfig.yaml
 var DefaultDockerConfig []byte
+
+//go:embed internal/config/custom.css
+var EmbeddedCSS []byte

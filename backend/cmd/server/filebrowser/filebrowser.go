@@ -77,6 +77,10 @@ func writeFilebrowserConfig(path string, rawContent []byte, secretKey string) er
 	return nil
 }
 
+func writeFilebrowserCSS(path string) error {
+	return os.WriteFile(path, embed.EmbeddedCSS, 0644)
+}
+
 func startFileBrowserContainer(secret string) error {
 	containerName := "filebrowser-linuxio"
 	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
@@ -88,6 +92,7 @@ func startFileBrowserContainer(secret string) error {
 		return fmt.Errorf("failed to create runtime config dir: %w", err)
 	}
 	configPath := filepath.Join(dir, "filebrowser-config.yaml")
+	cssPath := filepath.Join(dir, "custom.css")
 	serverPath := "/"
 
 	// 1. Remove any existing container (stopped or running)
@@ -112,6 +117,11 @@ func startFileBrowserContainer(secret string) error {
 	// 2. Write the embedded config before container starts
 	if err := writeFilebrowserConfig(configPath, embed.DefaultFilebrowserConfig, secret); err != nil {
 		return fmt.Errorf("failed to write embedded config: %w", err)
+	}
+
+	// 2b. Write the embedded CSS
+	if err := writeFilebrowserCSS(cssPath); err != nil {
+		return fmt.Errorf("failed to write embedded custom.css: %w", err)
 	}
 
 	// 3. Pull image if not already present (docker will skip if present)
@@ -153,6 +163,11 @@ func startFileBrowserContainer(secret string) error {
 					Source: serverPath,
 					Target: "/server",
 				},
+				{
+					Type:   mount.TypeBind,
+					Source: cssPath,
+					Target: "/home/filebrowser/custom.css",
+				},
 			},
 			PortBindings: nat.PortMap{
 				"80/tcp": []nat.PortBinding{
@@ -180,6 +195,13 @@ func startFileBrowserContainer(secret string) error {
 		logger.Warnf("Could not remove temporary config file: %v", err)
 	} else {
 		logger.Debugf("Removed temporary config file: %s", configPath)
+	}
+
+	// 7. Remove the CSS file from disk after starting the container (optional)
+	if err := os.Remove(cssPath); err != nil {
+		logger.Warnf("Could not remove temporary CSS file: %v", err)
+	} else {
+		logger.Debugf("Removed temporary CSS file: %s", cssPath)
 	}
 
 	return nil
