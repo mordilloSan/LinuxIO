@@ -16,6 +16,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/cmd/server/templates"
+	"github.com/mordilloSan/LinuxIO/cmd/server/theme"
 	"github.com/mordilloSan/LinuxIO/cmd/server/websocket"
 	"github.com/mordilloSan/LinuxIO/internal/benchmark"
 	"github.com/mordilloSan/LinuxIO/internal/dockers"
@@ -25,7 +26,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/internal/services"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/system"
-	"github.com/mordilloSan/LinuxIO/internal/theme"
+
 	"github.com/mordilloSan/LinuxIO/internal/updates"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
 	"github.com/mordilloSan/LinuxIO/internal/wireguard"

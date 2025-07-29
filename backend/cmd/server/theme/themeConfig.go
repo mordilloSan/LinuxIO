@@ -27,10 +27,9 @@ func InitTheme() error {
 		return err
 	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		logger.Infof("No theme file found, creating from embedded default...")
-		// Optional: if you want to embed a YAML default, otherwise create minimal struct
+		logger.Infof("No theme file found, creating from default...")
 		defaultTheme := ThemeSettings{
-			Theme:            "LIGHT",
+			Theme:            "DARK",
 			PrimaryColor:     "#2196f3",
 			SidebarCollapsed: false,
 		}

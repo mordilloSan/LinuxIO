@@ -10,16 +10,15 @@ import (
 	"strings"
 	"time"
 
-	embed "github.com/mordilloSan/LinuxIO"
-	"github.com/mordilloSan/LinuxIO/cmd/server/config"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	embed "github.com/mordilloSan/LinuxIO"
+	"github.com/mordilloSan/LinuxIO/cmd/server/docker"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
 var (
@@ -30,7 +29,7 @@ var (
 func StartServices(secret string) {
 
 	logger.Infof("📦 Checking docker installation...")
-	if err := config.EnsureDockerAvailable(); err != nil {
+	if err := docker.EnsureDockerAvailable(); err != nil {
 		logger.Errorf("❌ Docker not available: %v", err)
 	}
 
