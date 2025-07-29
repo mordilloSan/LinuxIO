@@ -159,10 +159,7 @@ dev-prep:
 dev: setup check-env dev-prep build-bridge
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
-	@bash -c '\
-	cd backend && \
-	GO_ENV=development go run ./cmd/server \
-	' &
+	@cd backend && GO_ENV=development go run ./cmd/server &
 	@sleep 1
 	@bash -c '\
 	$(NVM_SETUP); \

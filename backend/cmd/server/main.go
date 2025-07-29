@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/cmd/server/cleanup"
 	docker "github.com/mordilloSan/LinuxIO/cmd/server/docker"
 	"github.com/mordilloSan/LinuxIO/cmd/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/cmd/server/networks"
@@ -112,7 +113,6 @@ func main() {
 
 	// Start the server
 	addr := ":" + port
-	// --- Graceful shutdown logic ---
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: router,
@@ -125,7 +125,11 @@ func main() {
 		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	}
 
-	// Start server in goroutine
+	// --- Graceful shutdown with robust server done channel ---
+	quit := make(chan os.Signal, 1)
+	done := make(chan struct{})
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	go func() {
 		var err error
 		if env == "production" {
@@ -138,19 +142,27 @@ func main() {
 		if err != nil && err != http.ErrServerClosed {
 			logger.Error.Fatalf("server error: %v", err)
 		}
-		// No Fatal on http.ErrServerClosed
+		close(done) // Always close the done channel, even for clean shutdown
 	}()
 
-	// Wait for interrupt signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	logger.Infof("🛑 Shutdown signal received, shutting down server...")
+	// Wait for either signal or server stop
+	select {
+	case <-quit:
+		logger.Infof("🛑 Shutdown signal received, shutting down server...")
+	case <-done:
+		logger.Infof("🚨 Server stopped unexpectedly, beginning shutdown...")
+	}
 
+	// Graceful shutdown context
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil && err != http.ErrServerClosed {
 		logger.Error.Fatalf("❌ Server forced to shutdown: %v", err)
+	}
+
+	// --- Cleanup FileBrowser Docker container on shutdown
+	if err := cleanup.CleanupFilebrowserContainer(); err != nil {
+		logger.Warnf("FileBrowser cleanup error: %v", err)
 	}
 	logger.Infof("✅ Server gracefully stopped")
 }

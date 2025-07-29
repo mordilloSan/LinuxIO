@@ -1,7 +1,6 @@
 package cleanup
 
 import (
-	"context"
 	"fmt"
 
 	"os"
@@ -10,9 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
@@ -103,13 +99,6 @@ func FullCleanup(shutdownReason string, Sess *session.Session, socketPath string
 	logger.Infof("🔻 Shutdown initiated: %s", shutdownReason)
 	var errs []error
 
-	if shutdownReason != "logout" {
-		if err := killFilebrowserContainer(); err != nil {
-			logger.Warnf("killFilebrowserContainer failed: %v", err)
-			errs = append(errs, fmt.Errorf("killFilebrowserContainer: %w", err))
-		}
-	}
-
 	if err := terminal.Close(Sess.SessionID); err != nil {
 		if strings.Contains(err.Error(), "no terminal found") {
 			logger.Infof("No terminal found for session %s during cleanup", Sess.SessionID)
@@ -128,63 +117,6 @@ func FullCleanup(shutdownReason string, Sess *session.Session, socketPath string
 
 	if len(errs) > 0 {
 		return fmt.Errorf("cleanup encountered errors: %v", errs)
-	}
-	return nil
-}
-
-func killFilebrowserContainer() error {
-	err := cleanupFilebrowserContainer()
-	if err != nil {
-		logger.Infof("CleanupFilebrowserContainer failed: %v", err)
-		return err
-	}
-	logger.Infof("CleanupFilebrowserContainer finished OK")
-	return nil
-}
-
-func cleanupFilebrowserContainer() error {
-	containerName := "/filebrowser-linuxio"
-	timeout := 0 // seconds
-
-	var errors []error
-
-	logger.Infof("Stopping FileBrowser container: %s", containerName)
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		logger.Warnf("Failed to create Docker client: %v", err)
-		return err
-	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
-
-	if err := cli.ContainerStop(context.Background(), containerName, container.StopOptions{Timeout: &timeout}); err != nil {
-		if errdefs.IsNotFound(err) {
-			logger.Infof("Container %s was not running.", containerName)
-		} else {
-			logger.Warnf("Failed to stop container %s: %v", containerName, err)
-			errors = append(errors, fmt.Errorf("stop: %w", err))
-		}
-	} else {
-		logger.Infof("Stopped FileBrowser container: %s", containerName)
-	}
-
-	logger.Infof("Removing FileBrowser container: %s", containerName)
-	if err := cli.ContainerRemove(context.Background(), containerName, container.RemoveOptions{Force: true}); err != nil {
-		if errdefs.IsNotFound(err) {
-			logger.Infof("Container %s already removed.", containerName)
-		} else {
-			logger.Warnf("Failed to remove container %s: %v", containerName, err)
-			errors = append(errors, fmt.Errorf("remove: %w", err))
-		}
-	} else {
-		logger.Infof("Removed FileBrowser container: %s", containerName)
-	}
-
-	if len(errors) > 0 {
-		return fmt.Errorf("CleanupFilebrowserContainer encountered errors: %v", errors)
 	}
 	return nil
 }
