@@ -20,16 +20,15 @@ import (
 	"github.com/mordilloSan/LinuxIO/cmd/server/services"
 	"github.com/mordilloSan/LinuxIO/cmd/server/templates"
 	"github.com/mordilloSan/LinuxIO/cmd/server/theme"
+	"github.com/mordilloSan/LinuxIO/cmd/server/updates"
 	"github.com/mordilloSan/LinuxIO/cmd/server/websocket"
+	"github.com/mordilloSan/LinuxIO/cmd/server/wireguard"
 	"github.com/mordilloSan/LinuxIO/internal/benchmark"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/power"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/system"
-
-	"github.com/mordilloSan/LinuxIO/internal/updates"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
-	"github.com/mordilloSan/LinuxIO/internal/wireguard"
 )
 
 func main() {
