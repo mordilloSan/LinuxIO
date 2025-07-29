@@ -14,16 +14,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
+	docker "github.com/mordilloSan/LinuxIO/cmd/server/docker"
 	"github.com/mordilloSan/LinuxIO/cmd/server/filebrowser"
+	"github.com/mordilloSan/LinuxIO/cmd/server/networks"
+	"github.com/mordilloSan/LinuxIO/cmd/server/services"
 	"github.com/mordilloSan/LinuxIO/cmd/server/templates"
 	"github.com/mordilloSan/LinuxIO/cmd/server/theme"
 	"github.com/mordilloSan/LinuxIO/cmd/server/websocket"
 	"github.com/mordilloSan/LinuxIO/internal/benchmark"
-	"github.com/mordilloSan/LinuxIO/internal/dockers"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/networks"
 	"github.com/mordilloSan/LinuxIO/internal/power"
-	"github.com/mordilloSan/LinuxIO/internal/services"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/system"
 
@@ -71,7 +71,7 @@ func main() {
 	updates.RegisterUpdateRoutes(router)
 	services.RegisterServiceRoutes(router)
 	networks.RegisterNetworkRoutes(router)
-	dockers.RegisterDockerRoutes(router)
+	docker.RegisterDockerRoutes(router)
 	theme.RegisterThemeRoutes(router)
 	power.RegisterPowerRoutes(router)
 	wireguard.RegisterWireguardRoutes(router)

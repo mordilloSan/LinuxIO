@@ -1,4 +1,4 @@
-package dockers
+package docker
 
 import (
 	"net/http"
