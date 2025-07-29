@@ -119,21 +119,21 @@ build-vite: test
 build-backend: setup
 	@echo ""
 	@echo "📦 Building backend..."
-	@cd backend/cmd/server && \
+	@cd backend && \
 	go build \
 	-ldflags "\
 		-X 'main.version=$(VERSION)' \
 		-X 'main.env=production' \
 		-X 'main.buildTime=$$(date -u +%Y-%m-%dT%H:%M:%SZ)'" \
-	-o ../../../linuxio-webserver && \
+	-o ../linuxio-webserver && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-webserver" && \
 	echo "🔖 Version: $(VERSION)" && \
 	echo "⏱ Build Time: $$(date -u +%Y-%m-%dT%H:%M:%SZ)" && \
-	echo "📦 Size: $$(du -h ../../../linuxio-webserver | cut -f1)" && \
-	echo "🔐 SHA256: $$(shasum -a 256 ../../../linuxio-webserver | awk '{ print $$1 }')"
+	echo "📦 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
+	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
 
 build-bridge: setup
 	@echo ""
@@ -149,17 +149,17 @@ build-bridge: setup
 	echo "🔐 SHA256: $$(shasum -a 256 ../../../linuxio-bridge | awk '{ print $$1 }')"
 
 dev-prep:
-	@mkdir -p backend/frontend/assets
-	@mkdir -p backend/frontend/.vite
-	@touch backend/frontend/.vite/manifest.json
-	@touch backend/frontend/manifest.json
-	@touch backend/frontend/favicon-1.png
-	@touch backend/frontend/assets/index-mock.js
+	@mkdir -p backend/cmd/server/frontend/assets
+	@mkdir -p backend/cmd/server/frontend/.vite
+	@touch backend/cmd/server/frontend/.vite/manifest.json
+	@touch backend/cmd/server/frontend/manifest.json
+	@touch backend/cmd/server/frontend/favicon-1.png
+	@touch backend/cmd/server/frontend/assets/index-mock.js
 
 dev: setup check-env dev-prep build-bridge
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
-	@cd backend && GO_ENV=development go run ./cmd/server &
+	@cd backend && GO_ENV=development go run . &
 	@sleep 1
 	@bash -c '\
 	$(NVM_SETUP); \
@@ -176,7 +176,7 @@ clean:
 	@rm -f ./linuxio-bridge || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
-	@find backend/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@find backend/cmd/server/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
 help:

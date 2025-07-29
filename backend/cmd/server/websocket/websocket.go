@@ -59,6 +59,16 @@ func WebSocketHandler(c *gin.Context) {
 	}
 	safeConn := &wsSafeConn{Conn: conn}
 
+	// Listen for shutdown
+	ctx := c.Request.Context()
+	go func() {
+		<-ctx.Done()
+		logger.Infof("[WebSocket] HTTP context cancelled, closing WS connection (server shutdown)...")
+		if err := conn.Close(); err != nil {
+			logger.Warnf("[WebSocket] Error closing WS connection: %v", err)
+		}
+	}()
+
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
 			logger.Warnf("[WebSocket] failed to close WS connection: %v", cerr)

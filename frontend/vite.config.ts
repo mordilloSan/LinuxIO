@@ -11,7 +11,7 @@ function removeIndexHtmlPlugin() {
     closeBundle() {
       const indexPath = path.resolve(
         __dirname,
-        "../backend/frontend/index.html"
+        "../backend/cmd/server/frontend/index.html"
       );
       if (fs.existsSync(indexPath)) {
         fs.unlinkSync(indexPath);
@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => ({
     target: "es2017",
     chunkSizeWarningLimit: 2000,
     manifest: true,
-    outDir: "../backend/frontend",
+    outDir: "../backend/cmd/server/frontend",
     emptyOutDir: true,
     minify: "esbuild",
   },

@@ -3,6 +3,7 @@ package filebrowser
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"os"
@@ -16,7 +17,6 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	embed "github.com/mordilloSan/LinuxIO"
 	"github.com/mordilloSan/LinuxIO/cmd/server/docker"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
@@ -25,6 +25,12 @@ var (
 	dockerCli *client.Client
 	dockerCtx context.Context
 )
+
+//go:embed filebrowserConfig.yaml
+var DefaultFilebrowserConfig []byte
+
+//go:embed custom.css
+var EmbeddedCSS []byte
 
 func StartServices(secret string) {
 
@@ -77,7 +83,7 @@ func writeFilebrowserConfig(path string, rawContent []byte, secretKey string) er
 }
 
 func writeFilebrowserCSS(path string) error {
-	return os.WriteFile(path, embed.EmbeddedCSS, 0644)
+	return os.WriteFile(path, EmbeddedCSS, 0644)
 }
 
 func startFileBrowserContainer(secret string) error {
@@ -114,7 +120,7 @@ func startFileBrowserContainer(secret string) error {
 	}
 
 	// 2. Write the embedded config before container starts
-	if err := writeFilebrowserConfig(configPath, embed.DefaultFilebrowserConfig, secret); err != nil {
+	if err := writeFilebrowserConfig(configPath, DefaultFilebrowserConfig, secret); err != nil {
 		return fmt.Errorf("failed to write embedded config: %w", err)
 	}
 
