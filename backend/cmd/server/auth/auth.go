@@ -12,8 +12,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/mordilloSan/LinuxIO/cmd/server/config"
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
-	"github.com/mordilloSan/LinuxIO/internal/config"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/terminal"

@@ -19,14 +19,14 @@ var PWAManifest embed.FS
 
 // Backend Default Config Embeding //
 
-//go:embed internal/config/filebrowserConfig.yaml
+//go:embed cmd/server/config/filebrowserConfig.yaml
 var DefaultFilebrowserConfig []byte
 
-//go:embed internal/config/themeConfig.yaml
+//go:embed cmd/server/config/themeConfig.yaml
 var DefaultThemeConfig []byte
 
-//go:embed internal/config/dockerConfig.yaml
+//go:embed cmd/server/config/dockerConfig.yaml
 var DefaultDockerConfig []byte
 
-//go:embed internal/config/custom.css
+//go:embed cmd/server/config/custom.css
 var EmbeddedCSS []byte

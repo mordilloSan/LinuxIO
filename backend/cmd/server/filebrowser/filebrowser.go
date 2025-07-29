@@ -11,7 +11,7 @@ import (
 	"time"
 
 	embed "github.com/mordilloSan/LinuxIO"
-	"github.com/mordilloSan/LinuxIO/internal/config"
+	"github.com/mordilloSan/LinuxIO/cmd/server/config"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 
 	"github.com/docker/docker/api/types/container"

@@ -1,9 +1,17 @@
+:root {
+  background:#F7F9FC !important;
+}
+
 body {
   background: #F7F9FC !important;
 }
 
 .dark-mode {
-    --background: #1B2635 !important;
+  --background: #1B2635 !important;
+}
+
+#loading {
+  background: #F7F9FC !important;
 }
 
 /* To remove the sidebar */
