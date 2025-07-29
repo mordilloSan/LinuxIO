@@ -1,7 +1,3 @@
-:root {
-  background:#F7F9FC !important;
-}
-
 body {
   background: #F7F9FC !important;
 }
@@ -12,6 +8,10 @@ body {
 
 #loading {
   background: #F7F9FC !important;
+}
+
+.dark-mode #loading {
+  background: #1B2635 !important;
 }
 
 /* To remove the sidebar */
