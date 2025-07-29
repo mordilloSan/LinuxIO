@@ -1,13 +1,15 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
+	"os/signal"
+	"syscall"
+	"time"
 
 	embed "github.com/mordilloSan/LinuxIO"
 
-	"io"
-	"log"
 	"net/http"
 	"os"
 
@@ -110,21 +112,45 @@ func main() {
 
 	// Start the server
 	addr := ":" + port
+	// --- Graceful shutdown logic ---
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: router,
+	}
 	if env == "production" {
 		cert, err := utils.GenerateSelfSignedCert()
 		if err != nil {
 			logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", err)
 		}
-		fmt.Printf("🚀 Server running at https://localhost:%s\n", port)
-		srv := &http.Server{
-			Addr:      addr,
-			Handler:   router,
-			TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}},
-			ErrorLog:  log.New(io.Discard, "", 0),
-		}
-		logger.Error.Fatal(srv.ListenAndServeTLS("", ""))
-	} else {
-		fmt.Printf("🚀 Server running at http://localhost:%s\n", port)
-		logger.Error.Fatal(router.Run(addr))
+		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	}
+
+	// Start server in goroutine
+	go func() {
+		var err error
+		if env == "production" {
+			fmt.Printf("🚀 Server running at https://localhost:%s\n", port)
+			err = srv.ListenAndServeTLS("", "")
+		} else {
+			fmt.Printf("🚀 Server running at http://localhost:%s\n", port)
+			err = srv.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
+			logger.Error.Fatalf("server error: %v", err)
+		}
+		// No Fatal on http.ErrServerClosed
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	logger.Infof("🛑 Shutdown signal received, shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil && err != http.ErrServerClosed {
+		logger.Error.Fatalf("❌ Server forced to shutdown: %v", err)
+	}
+	logger.Infof("✅ Server gracefully stopped")
 }
