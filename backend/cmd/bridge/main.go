@@ -17,7 +17,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/mordilloSan/LinuxIO/internal/theme"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
 
@@ -40,16 +39,6 @@ func main() {
 	}
 	verbose := os.Getenv("VERBOSE") == "true"
 	logger.Init(env, verbose)
-
-	logger.Infof("📦 Checking for default configuration...")
-	if err := utils.EnsureStartupDefaults(); err != nil {
-		logger.Errorf("❌ Error setting config files: %v", err)
-	}
-
-	logger.Infof("📦 Loading theme config...")
-	if err := theme.InitTheme(); err != nil {
-		logger.Errorf("❌ Failed to initialize theme file: %v", err)
-	}
 
 	socketPath, err := bridge.BridgeSocketPath(Sess)
 	if err != nil {

@@ -71,7 +71,6 @@ func main() {
 	services.RegisterServiceRoutes(router)
 	networks.RegisterNetworkRoutes(router)
 	dockers.RegisterDockerRoutes(router)
-	dockers.RegisterDockerComposeRoutes(router)
 	theme.RegisterThemeRoutes(router)
 	power.RegisterPowerRoutes(router)
 	wireguard.RegisterWireguardRoutes(router)

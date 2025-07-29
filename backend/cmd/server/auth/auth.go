@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/mordilloSan/LinuxIO/cmd/server/config"
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
@@ -57,8 +56,6 @@ func loginHandler(c *gin.Context) {
 		return
 	}
 
-	prepareUserEnvironment()
-
 	if err := startBridgeSession(sess, req.Password); err != nil {
 		_ = session.DeleteSession(sess.SessionID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start bridge"})
@@ -70,6 +67,7 @@ func loginHandler(c *gin.Context) {
 	setSessionCookie(c, sess.SessionID)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": privileged})
+
 }
 
 func logoutHandler(c *gin.Context) {
@@ -141,16 +139,6 @@ func createUserSession(req LoginRequest, privileged bool) (*session.Session, err
 	}
 
 	return sess, nil
-}
-
-func prepareUserEnvironment() {
-	logger.Infof("📦 Loading docker configuration...")
-	if err := config.LoadDockerConfig(); err != nil {
-		logger.Errorf("❌ Failed to load config: %v", err)
-	}
-	if err := config.EnsureDockerAppsDirExists(); err != nil {
-		logger.Errorf("❌ Failed to create docker apps directory: %v", err)
-	}
 }
 
 func startBridgeSession(sess *session.Session, password string) error {
