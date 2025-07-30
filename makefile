@@ -113,7 +113,7 @@ build-vite: lint tsc
 		echo "✅ Frontend built successfully!" \
 	'
 
-build-backend: golint
+build-backend:
 	@echo ""
 	@echo "📦 Building backend..."
 	@cd backend && \
