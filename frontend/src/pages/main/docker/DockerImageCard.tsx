@@ -1,6 +1,14 @@
-import { Box, Card, CardContent, IconButton, Collapse, Typography } from "@mui/material";
 import { ExpandMore, ExpandLess } from "@mui/icons-material";
+import {
+  Box,
+  Card,
+  CardContent,
+  IconButton,
+  Collapse,
+  Typography,
+} from "@mui/material";
 import { useState } from "react";
+
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { CollapsibleTableProps } from "@/types/collapsible";
 
@@ -12,7 +20,9 @@ export function CollapsibleCardList<T extends Record<string, any>>({
 }: CollapsibleTableProps<T>) {
   if (!rows.length)
     return (
-      <Box sx={{ width: "100%", mt: 4, display: "flex", justifyContent: "center" }}>
+      <Box
+        sx={{ width: "100%", mt: 4, display: "flex", justifyContent: "center" }}
+      >
         <ComponentLoader />
       </Box>
     );
@@ -62,7 +72,8 @@ function CollapsibleCard<T extends Record<string, any>>({
         borderRadius: 2,
         boxShadow: open ? 4 : 1,
         cursor: "pointer",
-        transition: "box-shadow 0.2s, transform 0.17s cubic-bezier(.42,1.42,.62,1.03)",
+        transition:
+          "box-shadow 0.2s, transform 0.17s cubic-bezier(.42,1.42,.62,1.03)",
         borderLeft: 4,
         borderLeftColor: open ? "primary.main" : "transparent",
         "&:hover": {
@@ -70,7 +81,7 @@ function CollapsibleCard<T extends Record<string, any>>({
           borderLeft: 4,
           borderLeftColor: "primary.main",
           zIndex: 2,
-          background: theme =>
+          background: (theme) =>
             theme.palette.mode === "dark"
               ? "rgba(60,130,246,0.07)"
               : "rgba(33,150,243,0.09)",
@@ -86,7 +97,7 @@ function CollapsibleCard<T extends Record<string, any>>({
           minHeight: 64,
         }}
       >
-        {columns.map((col, idx) => (
+        {columns.map((col) => (
           <Box
             key={col.field}
             sx={{
@@ -104,9 +115,9 @@ function CollapsibleCard<T extends Record<string, any>>({
         ))}
         <IconButton
           size="small"
-          onClick={e => {
+          onClick={(e) => {
             e.stopPropagation();
-            setOpen(o => !o);
+            setOpen((o) => !o);
           }}
         >
           {open ? <ExpandLess /> : <ExpandMore />}

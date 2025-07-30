@@ -2,8 +2,8 @@ import { Box, IconButton, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import React, { useEffect, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import useAppWebSocket from "@/hooks/useAppWebSocket";
@@ -40,8 +40,9 @@ const TerminalXTerm: React.FC = () => {
 
     xterm.current = new Terminal({
       fontSize,
-      fontFamily: 'DejaVu Sans Mono, Liberation Mono, Menlo, Consolas, monospace',
-      fontWeight: 'bold',
+      fontFamily:
+        "DejaVu Sans Mono, Liberation Mono, Menlo, Consolas, monospace",
+      fontWeight: "bold",
       cursorBlink: true,
       scrollback: 2000,
       disableStdin: false,
@@ -106,7 +107,6 @@ const TerminalXTerm: React.FC = () => {
       window.removeEventListener("resize", doFit);
       startedRef.current = false;
     };
-    // eslint-disable-next-line
   }, [
     ready,
     send,
@@ -164,7 +164,10 @@ const TerminalXTerm: React.FC = () => {
         }}
       >
         {/* Font Size Controls */}
-        <Typography variant="body2" sx={{ color: "#82909e", fontWeight: 500, mr: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{ color: "#82909e", fontWeight: 500, mr: 2 }}
+        >
           Font
         </Typography>
         <IconButton
@@ -174,7 +177,10 @@ const TerminalXTerm: React.FC = () => {
         >
           <Minus size={18} />
         </IconButton>
-        <Typography variant="body2" sx={{ minWidth: 28, textAlign: "center", color: "#82909e" }}>
+        <Typography
+          variant="body2"
+          sx={{ minWidth: 28, textAlign: "center", color: "#82909e" }}
+        >
           {fontSize}
         </Typography>
         <IconButton

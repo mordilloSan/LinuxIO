@@ -1,9 +1,10 @@
 import { Box, Typography, Chip } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 
+import { CollapsibleCardList } from "./DockerImageCard";
+
 import { CollapsibleColumn } from "@/types/collapsible";
 import axios from "@/utils/axios";
-import { CollapsibleCardList } from "./DockerImageCard";
 
 const formatImageRows = (images: any[]) =>
   images.flatMap((img) =>
@@ -24,7 +25,6 @@ const formatImageRows = (images: any[]) =>
     }),
   );
 
-
 const imageColumns: CollapsibleColumn[] = [
   { field: "repo", headerName: "Repository", align: "left" },
   { field: "tag", headerName: "Tag", align: "left" },
@@ -38,7 +38,9 @@ function renderCollapseContent(row: any) {
   const img = row.raw;
   return (
     <Box>
-      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Labels:</Typography>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+        Labels:
+      </Typography>
       <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
         {img.Labels && Object.entries(img.Labels).length > 0 ? (
           Object.entries(img.Labels).map(([key, val]) => (
@@ -60,7 +62,9 @@ function renderCollapseContent(row: any) {
           </Typography>
         )}
       </Box>
-      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Image Digests:</Typography>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+        Image Digests:
+      </Typography>
       <Box sx={{ display: "flex", flexWrap: "wrap" }}>
         {img.RepoDigests && img.RepoDigests.length > 0 ? (
           img.RepoDigests.map((digest: string) => (
@@ -86,7 +90,6 @@ function renderCollapseContent(row: any) {
     </Box>
   );
 }
-
 
 export default function ImageList() {
   const { data } = useQuery({

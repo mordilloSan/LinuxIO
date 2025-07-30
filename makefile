@@ -14,6 +14,11 @@ COLOR_YELLOW := \033[1;33m
 COLOR_CYAN   := \033[1;36m
 COLOR_RED    := \033[1;31m
 
+# Version auto-detection (from git tags)
+GIT_VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
+GIT_COMMIT  := $(shell git rev-parse --short HEAD)
+BUILD_TIME  := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
 default: help
 
 define check_var
@@ -122,16 +127,18 @@ build-backend: setup
 	@cd backend && \
 	go build \
 	-ldflags "\
-		-X 'main.version=$(VERSION)' \
-		-X 'main.env=production' \
-		-X 'main.buildTime=$$(date -u +%Y-%m-%dT%H:%M:%SZ)'" \
+		-X 'backend/version.Version=$(GIT_VERSION)' \
+		-X 'backend/version.CommitSHA=$(GIT_COMMIT)' \
+		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
+		-X 'backend/version.Env=production'" \
 	-o ../linuxio-webserver && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-webserver" && \
-	echo "🔖 Version: $(VERSION)" && \
-	echo "⏱ Build Time: $$(date -u +%Y-%m-%dT%H:%M:%SZ)" && \
+	echo "🔖 Version: $(GIT_VERSION)" && \
+	echo "🔐 Commit: $(GIT_COMMIT)" && \
+	echo "⏱ Build Time: $(BUILD_TIME)" && \
 	echo "📦 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
 
@@ -140,11 +147,19 @@ build-bridge: setup
 	@echo "🔌 Building bridge..."
 	@cd backend/cmd/bridge && \
 	go build \
+	-ldflags "\
+		-X 'backend/version.Version=$(GIT_VERSION)' \
+		-X 'backend/version.CommitSHA=$(GIT_COMMIT)' \
+		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
+		-X 'backend/version.Env=production'" \
 	-o ../../../linuxio-bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-bridge" && \
+	echo "🔖 Version: $(GIT_VERSION)" && \
+	echo "🔐 Commit: $(GIT_COMMIT)" && \
+	echo "⏱ Build Time: $(BUILD_TIME)" && \
 	echo "📦 Size: $$(du -h ../../../linuxio-bridge | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../../../linuxio-bridge | awk '{ print $$1 }')"
 
