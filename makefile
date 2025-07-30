@@ -210,7 +210,7 @@ help:
 	@echo "$(COLOR_GREEN)  make golint          $(COLOR_RESET) Run golint linter on backend"
 	@echo "$(COLOR_GREEN)  make test            $(COLOR_RESET) Run ESLint + TypeScript + golint checks"
 	@echo ""
-	@echo "$(COLOR_YELLOW)  make dev             $(COLOR_RESET) Start frontend (Vite) and backend (Go) in dev mode (no hot reload)"
+	@echo "$(COLOR_YELLOW)  make dev             $(COLOR_RESET) Start frontend (Vite) and backend (Go) in dev mode"
 	@echo "$(COLOR_YELLOW)  make build           $(COLOR_RESET) Build frontend, backend, and bridge for production"
 	@echo "$(COLOR_YELLOW)  make run             $(COLOR_RESET) Run production backend server"
 	@echo ""

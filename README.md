@@ -27,7 +27,7 @@ Instead of replacing the Linux experience, **Linux i/O visualizes it.**
   - **REST API:** Axios  
 
 - **Backend:**  
-  - **Language:** Go (with Air for live reloading during development)  
+  - **Language:** Go
   - **Authentication:** Auth done via existing PAM modules  
   - **HTTP Server:** API routes, middleware, authentication  
   - **REST API:** Gin  
@@ -117,8 +117,6 @@ This project uses **PAM authentication** to log in directly to your Linux system
 make dev
 ```
 
-Runs Air for Go backend auto-reloads
-
 Runs Vite dev server with proxying to Go API
 
 Outputs all API paths and logs (from Gin)
@@ -141,8 +139,6 @@ make prod
 
 Under the hood:
 
-- **Air** watches Go files and rebuilds the backend on changes.
-- The **Air config** lives in `backend/.air.toml`.
 - The **React frontend** runs in `react/` and talks to the backend via Vite's proxy (see `vite.config.ts`).
 
 💡 You can customize .env for ports, proxy settings, etc.
