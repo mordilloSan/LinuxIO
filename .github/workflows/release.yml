@@ -12,14 +12,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build frontend (Vite)
+        run: make build-vite
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
 
-      - name: Build binaries
-        run: |
-          make build
+      - name: Build Go backend binary
+        run: make build-backend
+
+      - name: Build Go bridge binary
+        run: make build-bridge
 
       - name: Create tarball
         run: |

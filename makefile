@@ -1,5 +1,5 @@
--include .env
-
+VITE_DEV_PORT = 3001
+SERVER_PORT = 8080
 GO_VERSION      = 1.22.2
 NODE_VERSION    = 22
 GO_INSTALL_DIR := $(HOME)/.go
@@ -25,16 +25,7 @@ define check_var
 	@if [ -z "$($1)" ]; then echo "❌ $1 not set. Please edit the file '.env'"; exit 1; fi
 endef
 
-check-env:
-	@echo ""
-	@echo "🔍 Checking .env setup..."
-	$(call check_var,SERVER_PORT)
-	$(call check_var,VITE_DEV_PORT)
-	$(call check_var,GO_VERSION)
-	$(call check_var,NODE_VERSION)
-	@echo "✅ Environment looks good!"
-
-ensure-node: check-env
+ensure-node:
 	@echo ""
 	@echo "📦 Ensuring Node.js $(NODE_VERSION) is available..."
 	@if [ ! -d "$$HOME/.nvm" ]; then \
@@ -50,7 +41,7 @@ ensure-node: check-env
 	'
 	@echo "✅ Node.js environment ready!"
 
-ensure-go: check-env
+ensure-go: 
 	@echo ""
 	@echo "📦 Ensuring Go is available..."
 	@if ! command -v go >/dev/null 2>&1; then \
@@ -171,7 +162,7 @@ dev-prep:
 	@touch backend/cmd/server/frontend/favicon-1.png
 	@touch backend/cmd/server/frontend/assets/index-mock.js
 
-dev: setup check-env dev-prep build-bridge
+dev: setup  dev-prep build-bridge
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
 	@cd backend && GO_ENV=development go run . &
@@ -181,7 +172,7 @@ dev: setup check-env dev-prep build-bridge
 	cd frontend && VITE_API_URL=http://localhost:$(SERVER_PORT) npx vite --port $(VITE_DEV_PORT) \
 	'
 
-build: check-env build-vite build-backend build-bridge
+build:  build-vite build-backend build-bridge
 
 run:
 	@SERVER_PORT=$(SERVER_PORT) ./linuxio-webserver
@@ -211,7 +202,7 @@ help:
 	@echo ""
 	@echo "$(COLOR_BLUE)🛠️  Available commands:$(COLOR_RESET)"
 	@echo ""
-	@echo "$(COLOR_GREEN)  make check-env       $(COLOR_RESET) Verify .env and required environment variables"
+	@echo "$(COLOR_GREEN)  make        $(COLOR_RESET) Verify .env and required environment variables"
 	@echo "$(COLOR_GREEN)  make setup           $(COLOR_RESET) Install Node.js, Go and frontend dependencies"
 	@echo "$(COLOR_GREEN)  make lint            $(COLOR_RESET) Run ESLint linter on frontend"
 	@echo "$(COLOR_GREEN)  make tsc             $(COLOR_RESET) Run TypeScript type checks on frontend"
@@ -229,4 +220,4 @@ help:
 	@echo "$(COLOR_RED)  make clean           $(COLOR_RESET) Remove build artifacts and node_modules"
 	@echo ""
 
-.PHONY: all ensure-node ensure-go setup test dev dev-prep build run build-vite build-backend build-bridge clean help lint tsc check-env golint promote-release
+.PHONY: all ensure-node ensure-go setup test dev dev-prep build run build-vite build-backend build-bridge clean help lint tsc  golint promote-release
