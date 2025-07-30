@@ -5,6 +5,7 @@ NODE_VERSION    = 22
 GO_INSTALL_DIR := $(HOME)/.go
 NVM_SETUP = export NVM_DIR="$$HOME/.nvm"; . "$$NVM_DIR/nvm.sh"
 GO_BIN := $(shell which go)
+GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
 # Colors
 COLOR_RESET  := \033[0m
@@ -93,7 +94,7 @@ golint: ensure-golint
 	@echo "🔍 Running gofmt -s -w ."
 	@gofmt -s -w .
 	@echo "🔍 Running golangci-lint..."
-	@cd backend && golangci-lint run ./... --timeout 3m && echo "✅ Go Linting Ok!"
+	@cd backend && $(GOLANGCI_LINT) run ./... --timeout 3m && echo "✅ Go Linting Ok!"
 
 test: setup dev-prep
 	@echo ""
