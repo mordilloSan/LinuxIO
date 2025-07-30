@@ -7,6 +7,9 @@ NVM_SETUP = export NVM_DIR="$$HOME/.nvm"; . "$$NVM_DIR/nvm.sh"
 GO_BIN := $(shell which go)
 GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
+export VITE_DEV_PORT
+export SERVER_PORT
+
 # Colors
 COLOR_RESET  := \033[0m
 COLOR_BLUE   := \033[1;34m

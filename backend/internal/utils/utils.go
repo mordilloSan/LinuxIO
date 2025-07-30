@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/user"
 	"regexp"
 	"strings"
 	"time"
@@ -62,15 +61,6 @@ func IsNumeric(s string) bool {
 		}
 	}
 	return true
-}
-
-// getUserHome returns the current user's home directory.
-func GetUserHome() (string, error) {
-	u, err := user.Current()
-	if err != nil {
-		return "", err
-	}
-	return u.HomeDir, nil
 }
 
 // GetLocalIPByInterface returns the first IPv4 address found on the named interface.

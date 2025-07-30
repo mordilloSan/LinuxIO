@@ -91,6 +91,17 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 		return errors.New("bridge already running for this session")
 	}
 
+	// === 1. Check if bridge binary exists and is executable ===
+	info, err := os.Stat(bridgeBinary)
+	if err != nil {
+		logger.Errorf("Bridge binary not found at path: %s", bridgeBinary)
+		return fmt.Errorf("bridge binary not found at path: %s", bridgeBinary)
+	}
+	if info.Mode()&0111 == 0 {
+		logger.Errorf("Bridge binary at %s is not executable", bridgeBinary)
+		return fmt.Errorf("bridge binary at %s is not executable", bridgeBinary)
+	}
+
 	var cmd *exec.Cmd
 	if sess.Privileged {
 		cmd = exec.Command("sudo", "-S", "env",
@@ -144,18 +155,19 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 		}()
 	}
 
+	// === 2. Log the attempted bridgeBinary path on failure ===
 	if err := cmd.Start(); err != nil {
-		logger.Errorf("Failed to start bridge for session %s: %v", sess.SessionID, err)
+		logger.Errorf("Failed to start bridge for session %s using %s: %v", sess.SessionID, bridgeBinary, err)
 		return err
 	}
 
-	logger.Infof("Started %sbridge for session %s (pid=%d)",
-		func() string {
-			if sess.Privileged {
-				return "privileged "
-			}
-			return ""
-		}(), sess.SessionID, cmd.Process.Pid)
+	// Cleaned-up logger (optional, can remove if not needed)
+	priv := ""
+	if sess.Privileged {
+		priv = "privileged "
+	}
+	logger.Infof("Started %sbridge for session %s (pid=%d) using %s",
+		priv, sess.SessionID, cmd.Process.Pid, bridgeBinary)
 
 	processes[sess.SessionID] = &types.BridgeProcess{
 		Cmd:       cmd,
@@ -177,23 +189,49 @@ func StartBridge(sess *session.Session, sudoPassword string) error {
 	return nil
 }
 
-// Helper to get the bridge binnay in dev and prod mode.
+// getBridgeBinaryPath returns the path to the bridge binary in dev/prod, POSIX-friendly.
 func getBridgeBinaryPath() string {
+	const binaryName = "linuxio-bridge"
+
+	// 1. Honor explicit env override
+	if val := os.Getenv("BRIDGE_BINARY_PATH"); val != "" {
+		return val
+	}
+
+	// 2. In development, look upward from current directory
 	if os.Getenv("GO_ENV") == "development" {
 		dir, err := os.Getwd()
 		if err != nil {
 			logger.Warnf("Failed to get working directory: %v", err)
-			return "linuxio-bridge"
+			return binaryName
 		}
-		rootDir := filepath.Dir(dir)
-		return filepath.Join(rootDir, "linuxio-bridge")
+		// Search upward up to 5 levels for the binary (project-root based dev flow)
+		for i := 0; i < 5; i++ {
+			candidate := filepath.Join(dir, binaryName)
+			if stat, err := os.Stat(candidate); err == nil && stat.Mode()&0111 != 0 {
+				return candidate
+			}
+			dir = filepath.Dir(dir)
+		}
+		logger.Warnf("%s not found upwards from working directory", binaryName)
+		return binaryName // fallback; will likely fail later if not in $PATH
 	}
 
-	// Production mode: use executable path
+	// 3. Production: look next to server binary, then in $PATH (POSIX way)
 	exe, err := os.Executable()
-	if err != nil {
-		logger.Warnf("Failed to get executable path: %v", err)
-		return "linuxio-bridge"
+	if err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), binaryName)
+		if stat, err := os.Stat(candidate); err == nil && stat.Mode()&0111 != 0 {
+			return candidate
+		}
 	}
-	return filepath.Join(filepath.Dir(exe), "linuxio-bridge")
+
+	// 4. Fallback: search in $PATH (POSIX-compliant exec search)
+	if path, err := exec.LookPath(binaryName); err == nil {
+		return path
+	}
+
+	// 5. If all fails, return just the name (will fail to exec, but is explicit)
+	logger.Warnf("%s not found near executable or in $PATH", binaryName)
+	return binaryName
 }
