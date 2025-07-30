@@ -55,9 +55,14 @@ jobs:
       - name: Build Go bridge binary
         run: make build-bridge
 
+      - name: Clean up old tarballs
+        run: rm -f linuxio-*-linux-amd64.tar.gz
+
       - name: Create tarball
-        run: |
-          tar czvf linuxio-${GITHUB_REF_NAME}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
+        run: tar czvf linuxio-${GITHUB_REF_NAME}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
+
+      - name: Show tarball contents
+        run: tar tzvf linuxio-${GITHUB_REF_NAME}-linux-amd64.tar.gz
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
