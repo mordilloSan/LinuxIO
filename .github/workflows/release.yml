@@ -39,6 +39,14 @@ jobs:
         run: go mod tidy
         working-directory: backend
 
+      - name: Show Go environment
+        run: |
+          go version
+          which go
+          env | grep -i go
+          ls -l backend/go.*
+          cd backend && go env && go list -m all && go mod graph
+
       - name: Build Go backend binary
         run: make build-backend
 
