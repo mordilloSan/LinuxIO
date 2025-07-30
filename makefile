@@ -229,4 +229,4 @@ help:
 	@echo "$(COLOR_RED)  make clean           $(COLOR_RESET) Remove build artifacts and node_modules"
 	@echo ""
 
-.PHONY: all ensure-node ensure-go setup test dev dev-prep build run build-vite build-backend build-bridge clean help lint tsc check-env golint release
+.PHONY: all ensure-node ensure-go setup test dev dev-prep build run build-vite build-backend build-bridge clean help lint tsc check-env golint promote-release
