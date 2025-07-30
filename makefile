@@ -1,7 +1,7 @@
 -include .env
 
-GO_VERSION      ?= 1.22.2
-NODE_VERSION    ?= 22
+GO_VERSION      = 1.22.2
+NODE_VERSION    = 22
 GO_INSTALL_DIR := $(HOME)/.go
 NVM_SETUP = export NVM_DIR="$$HOME/.nvm"; . "$$NVM_DIR/nvm.sh"
 GO_BIN := $(shell which go)

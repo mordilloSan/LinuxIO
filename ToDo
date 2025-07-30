@@ -13,6 +13,9 @@ Public or Private access (based on auth)
 Responsible for displaying data (doesnt perform actions) except for auth and theme
 
 4 - implement wireguard
+TEST
+last handshake
+Tx and Rx
 
 5 - docker compose
 
@@ -31,4 +34,6 @@ websocket should be persistent
 
 If no websocket present check for session. if session restore websocket connection if not logout?
 
-7 - Make sure we check the hash or some sort of validation when running the bridge binnary
+7 - Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable.
+
+8 - Updates - Make it more responsive. Use d-bus streaming with websocket?

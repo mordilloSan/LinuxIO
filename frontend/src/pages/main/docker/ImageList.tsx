@@ -1,9 +1,9 @@
 import { Box, Typography, Chip } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 
-import CollapsibleTable from "@/components/tables/CollapsibleTable";
 import { CollapsibleColumn } from "@/types/collapsible";
 import axios from "@/utils/axios";
+import { CollapsibleCardList } from "./DockerImageCard";
 
 const formatImageRows = (images: any[]) =>
   images.flatMap((img) =>
@@ -24,7 +24,7 @@ const formatImageRows = (images: any[]) =>
     }),
   );
 
-// *** The fix is the type here: ***
+
 const imageColumns: CollapsibleColumn[] = [
   { field: "repo", headerName: "Repository", align: "left" },
   { field: "tag", headerName: "Tag", align: "left" },
@@ -38,15 +38,20 @@ function renderCollapseContent(row: any) {
   const img = row.raw;
   return (
     <Box>
-      <Typography variant="subtitle2">Labels:</Typography>
-      <Box sx={{ mb: 2 }}>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Labels:</Typography>
+      <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
         {img.Labels && Object.entries(img.Labels).length > 0 ? (
           Object.entries(img.Labels).map(([key, val]) => (
             <Chip
               key={key}
               label={`${key}: ${String(val)}`}
               size="small"
-              sx={{ mr: 1, mb: 1 }}
+              sx={{
+                mr: 1,
+                mb: 1,
+                fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                height: { xs: 22, sm: 26 },
+              }}
             />
           ))
         ) : (
@@ -55,11 +60,20 @@ function renderCollapseContent(row: any) {
           </Typography>
         )}
       </Box>
-      <Typography variant="subtitle2">Image Digests:</Typography>
-      <Box>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Image Digests:</Typography>
+      <Box sx={{ display: "flex", flexWrap: "wrap" }}>
         {img.RepoDigests && img.RepoDigests.length > 0 ? (
           img.RepoDigests.map((digest: string) => (
-            <Typography variant="body2" key={digest}>
+            <Typography
+              variant="body2"
+              key={digest}
+              sx={{
+                mr: 2,
+                mb: 0.5,
+                wordBreak: "break-all",
+                fontSize: { xs: "0.8rem", sm: "1rem" },
+              }}
+            >
               {digest}
             </Typography>
           ))
@@ -73,6 +87,7 @@ function renderCollapseContent(row: any) {
   );
 }
 
+
 export default function ImageList() {
   const { data } = useQuery({
     queryKey: ["dockerImages"],
@@ -85,7 +100,7 @@ export default function ImageList() {
   const rows = data ? formatImageRows(data) : [];
 
   return (
-    <CollapsibleTable
+    <CollapsibleCardList
       rows={rows}
       columns={imageColumns}
       renderCollapseContent={renderCollapseContent}
