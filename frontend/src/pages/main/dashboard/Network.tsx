@@ -88,7 +88,8 @@ const NetworkInterfacesCard: React.FC = () => {
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
         <Typography variant="body2">
           <strong>IPv4:</strong>{" "}
-          {Array.isArray(selectedInterface?.ipv4) && selectedInterface.ipv4.length > 0
+          {Array.isArray(selectedInterface?.ipv4) &&
+          selectedInterface.ipv4.length > 0
             ? selectedInterface.ipv4.join(", ")
             : "None"}
         </Typography>

@@ -199,7 +199,7 @@ const NetworkInterfaceList = () => {
 
                       <Typography variant="body2" color="text.secondary" noWrap>
                         {iface.speed === "unknown" ||
-                          iface.speed.startsWith("-1")
+                        iface.speed.startsWith("-1")
                           ? "No Carrier"
                           : `Link Speed: ${iface.speed}${iface.duplex !== "unknown" ? ` (${iface.duplex})` : ""}`}
                       </Typography>
