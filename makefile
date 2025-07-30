@@ -103,7 +103,7 @@ test: setup dev-prep
 	@$(MAKE) --no-print-directory tsc
 	@$(MAKE) --no-print-directory golint
 
-build-vite: test
+build-vite: lint tsc
 	@echo ""
 	@echo "📦 Building frontend..."
 	@bash -c '\
@@ -113,7 +113,7 @@ build-vite: test
 		echo "✅ Frontend built successfully!" \
 	'
 
-build-backend: setup
+build-backend: golint
 	@echo ""
 	@echo "📦 Building backend..."
 	@cd backend && \
