@@ -56,10 +56,18 @@ jobs:
         run: make build-bridge
 
       - name: Clean up old tarballs
-        run: rm -f linuxio-*-linux-amd64.tar.gz
+        run: |
+          rm -f linuxio-*-linux-amd64.tar.gz
+          rm -f linuxio-*-linux-amd64.tar
+
+      - name: List workspace files
+        run: ls -l
 
       - name: Create tarball
         run: tar czvf linuxio-${GITHUB_REF_NAME}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
+
+      - name: List workspace files
+        run: ls -l
 
       - name: Show tarball contents
         run: tar tzvf linuxio-${GITHUB_REF_NAME}-linux-amd64.tar.gz
