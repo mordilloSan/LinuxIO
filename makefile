@@ -116,14 +116,14 @@ build-vite: lint tsc
 build-backend: golint
 	@echo ""
 	@echo "📦 Building backend..."
-	@cd backend && \
+	@cd backend/cmd/server && \
 	go build \
 	-ldflags "\
 		-X 'backend/version.Version=$(GIT_VERSION)' \
 		-X 'backend/version.CommitSHA=$(GIT_COMMIT)' \
 		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
 		-X 'backend/version.Env=production'" \
-	-o ../linuxio-webserver && \
+	-o ../../../linuxio-webserver && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \

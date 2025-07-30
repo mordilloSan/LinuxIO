@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"context"
@@ -42,7 +42,7 @@ var ViteManifest []byte
 //go:embed all:frontend/manifest.json all:frontend/favicon-*.png
 var PWAManifest embed.FS
 
-func StartLinuxIO() {
+func main() {
 	_ = godotenv.Load("../.env")
 	var env = os.Getenv("GO_ENV")
 	if env == "" {
