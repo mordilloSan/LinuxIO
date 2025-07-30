@@ -116,14 +116,14 @@ build-vite: lint tsc
 build-backend: golint
 	@echo ""
 	@echo "📦 Building backend..."
-	@cd backend/cmd/server && \
+	@cd backend && \
 	go build \
 	-ldflags "\
 		-X 'backend/version.Version=$(GIT_VERSION)' \
 		-X 'backend/version.CommitSHA=$(GIT_COMMIT)' \
 		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
 		-X 'backend/version.Env=production'" \
-	-o ../../../linuxio-webserver && \
+	-o ../linuxio-webserver ./cmd/server && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
@@ -137,14 +137,14 @@ build-backend: golint
 build-bridge: setup
 	@echo ""
 	@echo "🔌 Building bridge..."
-	@cd backend/cmd/bridge && \
+	@cd backend && \
 	go build \
 	-ldflags "\
 		-X 'backend/version.Version=$(GIT_VERSION)' \
 		-X 'backend/version.CommitSHA=$(GIT_COMMIT)' \
 		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
 		-X 'backend/version.Env=production'" \
-	-o ../../../linuxio-bridge && \
+	-o ../linuxio-bridge ./cmd/bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
