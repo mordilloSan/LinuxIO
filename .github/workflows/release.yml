@@ -28,6 +28,9 @@ jobs:
       - name: Install Go Linter
         run: make ensure-golint
 
+      - name: Install Frontend Dependencies
+        run: make setup
+
       - name: Build frontend (Vite)
         run: make build-vite
 
