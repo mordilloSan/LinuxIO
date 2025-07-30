@@ -194,6 +194,19 @@ clean:
 	@find backend/cmd/server/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
+promote-release:
+	@if [ -z "$(VERSION)" ]; then \
+		read -p "Enter version (e.g. v1.2.3): " VERSION; \
+		if [ -z "$$VERSION" ]; then echo "No version given. Exiting."; exit 1; fi; \
+	fi; \
+	git checkout main && \
+	git pull && \
+	git merge dev && \
+	git push && \
+	git tag -a $${VERSION:-$(VERSION)} -m "Release $${VERSION:-$(VERSION)}" && \
+	git push origin $${VERSION:-$(VERSION)} && \
+	echo "✅ Merged dev into main and released $${VERSION:-$(VERSION)}!"
+
 help:
 	@echo ""
 	@echo "$(COLOR_BLUE)🛠️  Available commands:$(COLOR_RESET)"
@@ -216,4 +229,4 @@ help:
 	@echo "$(COLOR_RED)  make clean           $(COLOR_RESET) Remove build artifacts and node_modules"
 	@echo ""
 
-.PHONY: all ensure-node ensure-go setup test dev dev-prep build run build-vite build-backend build-bridge clean help lint tsc check-env golint
+.PHONY: all ensure-node ensure-go setup test dev dev-prep build run build-vite build-backend build-bridge clean help lint tsc check-env golint release
