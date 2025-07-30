@@ -11,13 +11,10 @@ import axios from "@/utils/axios";
 interface InterfaceStats {
   name: string;
   mac: string;
-  mtu: number;
-  ipv4: string[];
-  ipv6: string[];
+  ipv4: string[] | null;
   rx_speed: number;
   tx_speed: number;
   speed: string;
-  state: number;
 }
 
 const NetworkInterfacesCard: React.FC = () => {
@@ -27,8 +24,7 @@ const NetworkInterfacesCard: React.FC = () => {
       const res = await axios.get("/network/info");
       return res.data.map((iface: any) => ({
         ...iface,
-        ipv4: iface.ipv4 ?? [],
-        ipv6: iface.ipv6 ?? [],
+        ipv4: Array.isArray(iface.ipv4) ? iface.ipv4 : [],
         type: iface.name.startsWith("wl")
           ? "wifi"
           : iface.name.startsWith("lo")
@@ -48,6 +44,7 @@ const NetworkInterfacesCard: React.FC = () => {
     (iface) =>
       !iface.name.startsWith("veth") &&
       !iface.name.startsWith("docker") &&
+      !iface.name.startsWith("br") &&
       iface.name !== "lo",
   );
 
@@ -72,8 +69,8 @@ const NetworkInterfacesCard: React.FC = () => {
         ...prev.slice(-29),
         {
           time: Date.now(),
-          rx: selectedInterface.rx_speed / 1024,
-          tx: selectedInterface.tx_speed / 1024,
+          rx: selectedInterface.rx_speed,
+          tx: selectedInterface.tx_speed,
         },
       ]);
     }
@@ -91,7 +88,7 @@ const NetworkInterfacesCard: React.FC = () => {
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
         <Typography variant="body2">
           <strong>IPv4:</strong>{" "}
-          {selectedInterface.ipv4.length > 0
+          {Array.isArray(selectedInterface?.ipv4) && selectedInterface.ipv4.length > 0
             ? selectedInterface.ipv4.join(", ")
             : "None"}
         </Typography>
@@ -133,7 +130,7 @@ const NetworkInterfacesCard: React.FC = () => {
         setHistory([]);
       }}
       connectionStatus={
-        selectedInterface && selectedInterface.state === 100
+        selectedInterface?.ipv4 && selectedInterface.ipv4.length > 0
           ? "online"
           : "offline"
       }

@@ -33,3 +33,16 @@ button[aria-label="Close"][title="Close"].action.no-select {
 .menu-button {
   margin-left: auto !important;
 }
+
+#breadcrumbs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  width: 100%;
+}
+
+.gallery-size.card {
+  margin-left: auto !important;
+}

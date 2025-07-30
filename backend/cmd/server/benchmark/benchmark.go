@@ -1,6 +1,7 @@
-package utils
+package benchmark
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"sync"
@@ -9,6 +10,43 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
+
+type BenchmarkResult struct {
+	Endpoint string
+	Status   int
+	Latency  time.Duration
+	Error    error
+}
+
+func RegisterDebugRoutes(router *gin.Engine, env string) {
+	if env != "production" {
+		router.GET("/debug/benchmark", benchmarkHandler(router))
+	}
+}
+
+func benchmarkHandler(router *gin.Engine) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		cookie, err := c.Cookie("session_id")
+		if err != nil {
+			c.JSON(401, gin.H{"error": "unauthorized"})
+			return
+		}
+		results := RunBenchmark("http://localhost:8080", "session_id="+cookie, router, 8)
+		var output []gin.H
+		for _, r := range results {
+			if r.Error != nil {
+				output = append(output, gin.H{"endpoint": r.Endpoint, "error": r.Error.Error()})
+			} else {
+				output = append(output, gin.H{
+					"endpoint": r.Endpoint,
+					"status":   r.Status,
+					"latency":  fmt.Sprintf("%.2fms", float64(r.Latency.Microseconds())/1000),
+				})
+			}
+		}
+		c.JSON(200, output)
+	}
+}
 
 // RunBenchmark performs parallel benchmarking of all GET /system/* endpoints
 func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine, concurrency int) []BenchmarkResult {

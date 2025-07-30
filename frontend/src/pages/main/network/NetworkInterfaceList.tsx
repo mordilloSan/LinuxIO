@@ -58,7 +58,7 @@ const NetworkInterfaceList = () => {
   const { data: interfaces = [], isLoading } = useQuery<NetworkInterface[]>({
     queryKey: ["networkInterfaceList"],
     queryFn: async () => {
-      const res = await axios.get("/network/info");
+      const res = await axios.get("/network/info2");
       return res.data;
     },
     select: (data: NetworkInterface[]) =>
@@ -199,7 +199,7 @@ const NetworkInterfaceList = () => {
 
                       <Typography variant="body2" color="text.secondary" noWrap>
                         {iface.speed === "unknown" ||
-                        iface.speed.startsWith("-1")
+                          iface.speed.startsWith("-1")
                           ? "No Carrier"
                           : `Link Speed: ${iface.speed}${iface.duplex !== "unknown" ? ` (${iface.duplex})` : ""}`}
                       </Typography>

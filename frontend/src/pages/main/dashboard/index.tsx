@@ -6,7 +6,7 @@ import FileSystem from "./FileSystem";
 import GpuInfo from "./Gpu";
 import Memory from "./Memory";
 import MotherBoardInfo from "./MotherBoard";
-import NetworkInterfacesCard from "./NetworkI";
+import NetworkInterfacesCard from "./Network";
 import Processor from "./Processor";
 import SystemHealth from "./System";
 

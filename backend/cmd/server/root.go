@@ -15,10 +15,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/cmd/server/benchmark"
 	"github.com/mordilloSan/LinuxIO/cmd/server/cleanup"
 	docker "github.com/mordilloSan/LinuxIO/cmd/server/docker"
 	"github.com/mordilloSan/LinuxIO/cmd/server/filebrowser"
-	"github.com/mordilloSan/LinuxIO/cmd/server/networks"
+	"github.com/mordilloSan/LinuxIO/cmd/server/network"
 	"github.com/mordilloSan/LinuxIO/cmd/server/power"
 	"github.com/mordilloSan/LinuxIO/cmd/server/services"
 	"github.com/mordilloSan/LinuxIO/cmd/server/system"
@@ -27,7 +28,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/cmd/server/updates"
 	"github.com/mordilloSan/LinuxIO/cmd/server/websocket"
 	"github.com/mordilloSan/LinuxIO/cmd/server/wireguard"
-	"github.com/mordilloSan/LinuxIO/internal/benchmark"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
@@ -58,6 +58,8 @@ func StartLinuxIO() {
 
 	// Start the session garbage collector
 	session.StartSessionGC()
+	// Start the network interface sampler
+	network.StartSimpleNetInfoSampler()
 	// Initialize cache functions
 	system.InitGPUInfo()
 	// Generate Secret Key
@@ -80,7 +82,7 @@ func StartLinuxIO() {
 	system.RegisterSystemRoutes(router)
 	updates.RegisterUpdateRoutes(router)
 	services.RegisterServiceRoutes(router)
-	networks.RegisterNetworkRoutes(router)
+	network.RegisterNetworkRoutes(router)
 	docker.RegisterDockerRoutes(router)
 	theme.RegisterThemeRoutes(router)
 	power.RegisterPowerRoutes(router)

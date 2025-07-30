@@ -1,4 +1,4 @@
-package networks
+package network
 
 import (
 	"encoding/json"
@@ -8,27 +8,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
 
-func RegisterNetworkRoutes(router *gin.Engine) {
-	network := router.Group("/network", auth.AuthMiddleware())
-	{
-		network.GET("/info", getNetworkInfo)
-		network.POST("/set-dns", postSetDNS)
-		network.POST("/set-gateway", postSetGateway)
-		network.POST("/set-mtu", postSetMTU)
-		network.POST("/set-ipv4-dhcp", postSetIPv4DHCP)
-		network.POST("/set-ipv4-static", postSetIPv4Static)
-		network.POST("/set-ipv6-dhcp", postSetIPv6DHCP)
-		network.POST("/set-ipv6-static", postSetIPv6Static)
-	}
-}
-
-func getNetworkInfo(c *gin.Context) {
+func getNetworkInfo2(c *gin.Context) {
 	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
