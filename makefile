@@ -152,8 +152,8 @@ build-bridge: setup
 	echo "🔖 Version: $(GIT_VERSION)" && \
 	echo "🔐 Commit: $(GIT_COMMIT)" && \
 	echo "⏱ Build Time: $(BUILD_TIME)" && \
-	echo "📦 Size: $$(du -h ../../../linuxio-bridge | cut -f1)" && \
-	echo "🔐 SHA256: $$(shasum -a 256 ../../../linuxio-bridge | awk '{ print $$1 }')"
+	echo "📦 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
+	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 dev-prep:
 	@mkdir -p backend/cmd/server/frontend/assets
