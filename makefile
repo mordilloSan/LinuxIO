@@ -1,6 +1,6 @@
 VITE_DEV_PORT = 3001
 SERVER_PORT = 8080
-GO_VERSION      = 1.22.2
+GO_VERSION      = 1.24
 NODE_VERSION    = 22
 GO_INSTALL_DIR := $(HOME)/.go
 NVM_SETUP = export NVM_DIR="$$HOME/.nvm"; . "$$NVM_DIR/nvm.sh"
