@@ -1,4 +1,4 @@
-VITE_DEV_PORT = 3001
+VITE_DEV_PORT = 3000
 SERVER_PORT = 8080
 GO_VERSION      = 1.24
 NODE_VERSION    = 22
@@ -67,7 +67,7 @@ ensure-golint:
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GO_INSTALL_DIR)/bin v1.58.2; \
 	fi
 
-setup: ensure-node ensure-go
+setup:
 	@echo ""
 	@echo "📦 Installing frontend dependencies..."
 	@bash -c '\
@@ -134,7 +134,7 @@ build-backend:
 	echo "📦 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
 
-build-bridge: setup
+build-bridge:
 	@echo ""
 	@echo "🔌 Building bridge..."
 	@cd backend && \
@@ -166,7 +166,7 @@ dev-prep:
 dev: setup  dev-prep build-bridge
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
-	@cd backend && GO_ENV=development go run . &
+	@cd backend/cmd/server && GO_ENV=development go run . &
 	@sleep 1
 	@bash -c '\
 	$(NVM_SETUP); \
