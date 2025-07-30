@@ -69,7 +69,7 @@ require (
 
 require (
 	github.com/coreos/go-systemd/v22 v22.5.0
-	github.com/docker/docker v28.3.1+incompatible
+	github.com/docker/docker v28.3.3+incompatible
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-ole/go-ole v1.3.0 // indirect
