@@ -31,6 +31,10 @@ jobs:
       - name: Install Frontend Dependencies
         run: make setup
 
+      - name: Download Go modules
+        run: go mod tidy
+        working-directory: backend
+
       - name: Build frontend (Vite)
         run: make build-vite
 
