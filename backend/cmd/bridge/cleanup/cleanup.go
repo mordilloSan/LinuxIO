@@ -12,7 +12,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/mordilloSan/LinuxIO/internal/terminal"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
 
@@ -98,17 +97,6 @@ func killBridgeSocket(Sess *session.Session) error {
 func FullCleanup(shutdownReason string, Sess *session.Session, socketPath string) error {
 	logger.Infof("🔻 Shutdown initiated: %s", shutdownReason)
 	var errs []error
-
-	if err := terminal.Close(Sess.SessionID); err != nil {
-		if strings.Contains(err.Error(), "no terminal found") {
-			logger.Infof("No terminal found for session %s during cleanup", Sess.SessionID)
-		} else {
-			logger.Warnf("Terminal cleanup failed for session %s: %v", Sess.SessionID, err)
-		}
-		errs = append(errs, fmt.Errorf("terminal.Close: %w", err))
-	} else {
-		logger.Infof("Terminal cleanup complete for session %s", Sess.SessionID)
-	}
 
 	if err := killBridgeSocket(Sess); err != nil {
 		logger.Warnf("killBridgeSocket failed: %v", err)
