@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
-import react from "@vitejs/plugin-react-swc";
+import reactBabel from "@vitejs/plugin-react"; // Babel (prod)
+import reactSwc from "@vitejs/plugin-react-swc"; // SWC (dev)
 import svgr from "@svgr/rollup";
 import fs from "fs";
 import path from "path";
@@ -21,34 +22,48 @@ function removeIndexHtmlPlugin() {
   };
 }
 
-export default defineConfig(({ mode }) => ({
-  base: "/",
-  clearScreen: false,
-  plugins: [
-    react(),
-    svgr(),
-    tsconfigPaths(),
-    ...(mode === "production" ? [removeIndexHtmlPlugin()] : []),
-  ],
-  server: {
-    proxy: {
-      // Proxy /navigator requests to Go backend
-      "/navigator": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-        // secure: false, // If your Go backend is https with self-signed, enable this
+export default defineConfig(({ command }) => {
+  const isBuild = command === "build";
+
+  const reactPlugin = isBuild
+    ? reactBabel({
+        // ✅ React Compiler only in production builds
+        babel: { plugins: ["babel-plugin-react-compiler"] },
+      })
+    : reactSwc(); // ⚡ super-fast HMR in dev
+
+  return {
+    base: "/",
+    clearScreen: false,
+    plugins: [
+      reactPlugin,
+      svgr(),
+      tsconfigPaths(),
+      ...(isBuild ? [removeIndexHtmlPlugin()] : []),
+    ],
+    server: {
+      proxy: {
+        "/navigator": {
+          target: "http://localhost:8080",
+          changeOrigin: true,
+        },
       },
     },
-  },
-  build: {
-    target: "es2017",
-    chunkSizeWarningLimit: 2000,
-    manifest: true,
-    outDir: "../backend/cmd/server/frontend",
-    emptyOutDir: true,
-    minify: "esbuild",
-  },
-  resolve: {
-    conditions: ["mui-modern", "module", "browser", "development|production"],
-  },
-}));
+    build: {
+      target: "es2017",
+      chunkSizeWarningLimit: 2000,
+      manifest: true,
+      outDir: "../backend/cmd/server/frontend",
+      emptyOutDir: true,
+      minify: "esbuild",
+    },
+    resolve: {
+      conditions: [
+        "mui-modern",
+        "module",
+        "browser",
+        isBuild ? "production" : "development",
+      ],
+    },
+  };
+});
