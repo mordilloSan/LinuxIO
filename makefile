@@ -57,31 +57,29 @@ define _require_gh
 	fi
 endef
 
-define _read_version
-	@if [ -z "$(VERSION)" ]; then \
-	  read -p "Enter version (e.g. v1.2.3): " VERSION; \
-	  if [ -z "$$VERSION" ]; then echo "No version provided."; exit 1; fi; \
-	  echo $$VERSION > .make_version_tmp; \
+# Replace _read_version + _load_version + _branch_name with these:
+
+define _read_and_validate_version
+	# Read VERSION (from env or prompt), normalize V->v, validate, and set REL_BRANCH
+	if [ -z "$(VERSION)" ]; then \
+	  read -p "Enter version (e.g. v1.2.3): " VERSION_INPUT; \
 	else \
-	  echo "$(VERSION)" > .make_version_tmp; \
-	fi
-endef
-
-define _load_version
-	$(eval VERSION := $(shell cat .make_version_tmp))
-	@if ! echo "$(VERSION)" | grep -Eq "^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$"; then \
-		echo "❌ VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$(VERSION)')"; \
-		rm -f .make_version_tmp; exit 1; \
-	fi
-endef
-
-define _branch_name
-	$(eval REL_BRANCH := dev/$(VERSION))
+	  VERSION_INPUT="$(VERSION)"; \
+	fi; \
+	VERSION="$${VERSION_INPUT:-}"; \
+	# normalize leading 'V' to 'v'
+	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
+	if ! echo "$$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$'; then \
+	  echo "❌ VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
+	  exit 1; \
+	fi; \
+	REL_BRANCH="dev/$$VERSION"
 endef
 
 define _repo_flag
 	$(if $(REPO),--repo "$(REPO)",)
 endef
+
 # ------------------------------------------------
 
 .ONESHELL:
