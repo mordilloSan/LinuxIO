@@ -315,37 +315,35 @@ clean:
 start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
 	@$(call _require_clean)
 	@$(call _require_gh)
-	@$(call _read_version)
-	@$(call _load_version)
-	@$(call _branch_name)
-	@git fetch origin
-	@git checkout $(DEFAULT_BASE_BRANCH)
-	@git pull --ff-only
-	@if git show-ref --verify --quiet refs/heads/$(REL_BRANCH); then \
-		echo "ℹ️  Branch $(REL_BRANCH) already exists, checking it out…"; \
-		git checkout $(REL_BRANCH); \
-	else \
-		echo "🌱 Creating branch $(REL_BRANCH) from $(DEFAULT_BASE_BRANCH)…"; \
-		git checkout -b $(REL_BRANCH) $(DEFAULT_BASE_BRANCH); \
-		git push -u origin $(REL_BRANCH); \
-	fi
-	@echo "✅ Ready on branch $(REL_BRANCH)"
-	@rm -f .make_version_tmp
+	@{ \
+	  $(call _read_and_validate_version); \
+	  git fetch origin; \
+	  git checkout $(DEFAULT_BASE_BRANCH); \
+	  git pull --ff-only; \
+	  if git show-ref --verify --quiet "refs/heads/$$REL_BRANCH"; then \
+	    echo "ℹ️  Branch $$REL_BRANCH already exists, checking it out…"; \
+	    git checkout "$$REL_BRANCH"; \
+	  else \
+	    echo "🌱 Creating branch $$REL_BRANCH from $(DEFAULT_BASE_BRANCH)…"; \
+	    git checkout -b "$$REL_BRANCH" "$(DEFAULT_BASE_BRANCH)"; \
+	    git push -u origin "$$REL_BRANCH"; \
+	  fi; \
+	  echo "✅ Ready on branch $$REL_BRANCH"; \
+	}
 
 open-pr: ## Open PR dev/<version> -> main (requires gh)
 	@$(call _require_clean)
 	@$(call _require_gh)
-	@$(call _read_version)
-	@$(call _load_version)
-	@$(call _branch_name)
-	@echo "🔁 Opening PR: $(REL_BRANCH) -> $(DEFAULT_BASE_BRANCH)…"
-	@gh pr create $(call _repo_flag) \
-		--base $(DEFAULT_BASE_BRANCH) \
-		--head $(REL_BRANCH) \
-		--title "Release $(VERSION)" \
-		--body "Automated release PR for $(VERSION)."
-	@gh pr view $(call _repo_flag) --web
-	@rm -f .make_version_tmp
+	@{ \
+	  $(call _read_and_validate_version); \
+	  echo "🔁 Opening PR: $$REL_BRANCH -> $(DEFAULT_BASE_BRANCH)…"; \
+	  gh pr create $(call _repo_flag) \
+	    --base $(DEFAULT_BASE_BRANCH) \
+	    --head "$$REL_BRANCH" \
+	    --title "Release $$VERSION" \
+	    --body "Automated release PR for $$VERSION."; \
+	  gh pr view $(call _repo_flag) --web; \
+	}
 
 promote-release:
 	@if [ -z "$(VERSION)" ]; then \
