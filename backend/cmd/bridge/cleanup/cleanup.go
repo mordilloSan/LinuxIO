@@ -59,7 +59,7 @@ func readPPID(pid int) (int, error) {
 // FullCleanup does all bridge-side cleanup for a session.
 // Right now that’s just removing the socket; extend here if you add more artifacts.
 func FullCleanup(shutdownReason string, sess *session.Session) error {
-	logger.Infof("Shutdown initiated: %s", shutdownReason)
+	logger.Debugf("Shutdown initiated: %s", shutdownReason)
 
 	if err := cleanupBridgeSocket(sess); err != nil {
 		return fmt.Errorf("cleanup bridge socket: %w", err)

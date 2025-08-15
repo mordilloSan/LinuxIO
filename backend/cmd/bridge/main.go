@@ -6,9 +6,11 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/signal"
 	"os/user"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,7 +51,7 @@ func main() {
 		logger.Errorf("❌ Failed to determine bridge socket path: %v", err)
 		os.Exit(1)
 	}
-	listener, _, _, err := CreateAndOwnSocket(socketPath, Sess.User.ID)
+	listener, _, _, err := createAndOwnSocket(socketPath, Sess.User.ID)
 	if err != nil {
 		logger.Error.Fatalf("❌ %v", err)
 		os.Exit(1)
@@ -65,6 +67,17 @@ func main() {
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)
 
+	// Handle Ctrl-C / kill properly → request shutdown once
+	sigc := make(chan os.Signal, 2)
+	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		s := <-sigc
+		select {
+		case ShutdownChan <- "signal: " + s.String():
+		default: // already shutting down
+		}
+	}()
+
 	acceptDone := make(chan struct{})
 	go func() {
 		for {
@@ -75,6 +88,7 @@ func main() {
 					return
 				default:
 					logger.Warnf("⚠️ Accept failed: %v", err)
+					time.Sleep(50 * time.Millisecond) // optional: avoid tight loop during teardown
 				}
 				continue
 			}
@@ -97,13 +111,9 @@ func main() {
 		cleanupDone <- struct{}{}
 	}()
 
-	go func() {
-		<-cleanupDone
-		logger.Infof("Bridge stopped.")
-		os.Exit(0)
-	}()
-
-	select {}
+	// Wait for cleanup to complete; then exit naturally (lets logs flush)
+	<-cleanupDone
+	logger.Infof("Bridge stopped.")
 }
 
 // handleMainRequest processes incoming bridge requests.
@@ -184,7 +194,7 @@ func handleMainRequest(conn net.Conn, id string) {
 }
 
 // CreateAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.
-func CreateAndOwnSocket(socketPath, username string) (net.Listener, int, int, error) {
+func createAndOwnSocket(socketPath, username string) (net.Listener, int, int, error) {
 	u, err := user.Lookup(username)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to lookup user %s: %w", username, err)

@@ -12,7 +12,7 @@ func ControlHandlers(shutdownChan chan string) map[string]types.HandlerFunc {
 			if len(args) > 0 {
 				reason = args[0] // "logout" or "forced"
 			}
-			logger.Infof("Received shutdown command: %s", reason)
+			logger.Debugf("Received shutdown command: %s", reason)
 			select {
 			case shutdownChan <- reason:
 			default:

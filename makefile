@@ -41,6 +41,49 @@ ifeq ($(filter 1 true yes on,$(SKIP_LINT)),)
 PREBUILD_LINT := golint
 endif
 
+# -------- Release flow helpers (gh CLI) --------
+DEFAULT_BASE_BRANCH := main
+REPO ?=              # optional owner/name; gh will infer from git remote if empty
+
+define _require_clean
+	@if ! git diff --quiet || ! git diff --cached --quiet; then \
+		echo "❌ Working tree not clean. Commit/stash changes first."; exit 1; \
+	fi
+endef
+
+define _require_gh
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "❌ GitHub CLI (gh) not found. Install: https://cli.github.com/"; exit 1; \
+	fi
+endef
+
+define _read_version
+	@if [ -z "$(VERSION)" ]; then \
+	  read -p "Enter version (e.g. v1.2.3): " VERSION; \
+	  if [ -z "$$VERSION" ]; then echo "No version provided."; exit 1; fi; \
+	  echo $$VERSION > .make_version_tmp; \
+	else \
+	  echo "$(VERSION)" > .make_version_tmp; \
+	fi
+endef
+
+define _load_version
+	$(eval VERSION := $(shell cat .make_version_tmp))
+	@if ! echo "$(VERSION)" | grep -Eq "^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$"; then \
+		echo "❌ VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$(VERSION)')"; \
+		rm -f .make_version_tmp; exit 1; \
+	fi
+endef
+
+define _branch_name
+	$(eval REL_BRANCH := dev/$(VERSION))
+endef
+
+define _repo_flag
+	$(if $(REPO),--repo "$(REPO)",)
+endef
+# ------------------------------------------------
+
 .ONESHELL:
 SHELL := /bin/bash
 
@@ -270,6 +313,42 @@ clean:
 	@find backend/cmd/server/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
+# ----- Release flow targets -----
+start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
+	@$(call _require_clean)
+	@$(call _require_gh)
+	@$(call _read_version)
+	@$(call _load_version)
+	@$(call _branch_name)
+	@git fetch origin
+	@git checkout $(DEFAULT_BASE_BRANCH)
+	@git pull --ff-only
+	@if git show-ref --verify --quiet refs/heads/$(REL_BRANCH); then \
+		echo "ℹ️  Branch $(REL_BRANCH) already exists, checking it out…"; \
+		git checkout $(REL_BRANCH); \
+	else \
+		echo "🌱 Creating branch $(REL_BRANCH) from $(DEFAULT_BASE_BRANCH)…"; \
+		git checkout -b $(REL_BRANCH) $(DEFAULT_BASE_BRANCH); \
+		git push -u origin $(REL_BRANCH); \
+	fi
+	@echo "✅ Ready on branch $(REL_BRANCH)"
+	@rm -f .make_version_tmp
+
+open-pr: ## Open PR dev/<version> -> main (requires gh)
+	@$(call _require_clean)
+	@$(call _require_gh)
+	@$(call _read_version)
+	@$(call _load_version)
+	@$(call _branch_name)
+	@echo "🔁 Opening PR: $(REL_BRANCH) -> $(DEFAULT_BASE_BRANCH)…"
+	@gh pr create $(call _repo_flag) \
+		--base $(DEFAULT_BASE_BRANCH) \
+		--head $(REL_BRANCH) \
+		--title "Release $(VERSION)" \
+		--body "Automated release PR for $(VERSION)."
+	@gh pr view $(call _repo_flag) --web
+	@rm -f .make_version_tmp
+
 promote-release:
 	@if [ -z "$(VERSION)" ]; then \
 		read -p "Enter version (e.g. v1.2.3): " VERSION; \
@@ -314,16 +393,19 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Build frontend + backend + bridge"
 	@$(PRINTC) ""
 
-	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean / Release$(COLOR_RESET)"
+	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make run              $(COLOR_RESET) Run production backend server"
 	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
-	@$(PRINTC) "$(COLOR_GREEN)    make promote-release  $(COLOR_RESET) Merge dev→main, tag, and push release"
 	@$(PRINTC) ""
 
-	@$(PRINTC) "$(COLOR_CYAN)  Misc$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make help             $(COLOR_RESET) Show this help"
+	@$(PRINTC) "$(COLOR_CYAN)  Release flow$(COLOR_RESET)"
+	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> off main (pushes upstream)"
+	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR from dev/<version> into main (uses gh)"
+	@$(PRINTC) "$(COLOR_GREEN)    make promote-release  $(COLOR_RESET) (Legacy) Merge dev→main, tag, and push release"
+	@$(PRINTC) ""
+	@$(PRINTC) "  💡 Tip: Use a workflow to tag on merge of dev/v* → main so your 'Release' workflow (on tags v*) triggers automatically."
 	@$(PRINTC) ""
 
 .PHONY: default help clean run build build-vite build-backend build-bridge \
         dev dev-prep setup test lint tsc golint ensure-node ensure-go ensure-golint \
-        promote-release
+        promote-release start-dev open-pr

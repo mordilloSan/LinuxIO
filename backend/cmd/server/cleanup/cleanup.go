@@ -31,7 +31,7 @@ func CleanupFilebrowserContainer() error {
 			logger.Warnf("Failed to stop container %s: %v", containerName, err)
 		}
 	} else {
-		logger.Infof("Stopped FileBrowser container: %s", containerName)
+		logger.Debugf("Stopped FileBrowser container: %s", containerName)
 	}
 
 	if err := cli.ContainerRemove(context.Background(), containerName, container.RemoveOptions{Force: true}); err != nil {

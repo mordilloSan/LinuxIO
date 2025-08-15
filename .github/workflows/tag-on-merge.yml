@@ -1,0 +1,39 @@
+name: Tag on merge to main
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag-if-release:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'dev/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main at merge commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version from branch name
+        id: v
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref }}"  # e.g. dev/v1.2.3
+          VERSION="${BRANCH#dev/}"                            # -> v1.2.3
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag if missing
+        run: |
+          VERSION="${{ steps.v.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "Tag $VERSION already exists. Skipping."
+            exit 0
+          fi
+          # Tag the current HEAD (merge commit on main)
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"

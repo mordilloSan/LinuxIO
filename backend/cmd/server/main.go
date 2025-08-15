@@ -167,6 +167,8 @@ func main() {
 	go func() {
 		var err error
 		if env == "production" {
+			// Print one banner line to STDOUT even in production (journald keeps the rest)
+			fmt.Printf("🚀 Server running at https://localhost:%d\n", port)
 			logger.Infof("🚀 Server running at https://localhost:%d", port)
 			err = srv.ListenAndServeTLS("", "")
 		} else {
@@ -182,8 +184,14 @@ func main() {
 	// Wait for signal or unexpected stop
 	select {
 	case <-quit:
+		if env == "production" {
+			fmt.Println("🛑 Shutdown signal received, shutting down server...")
+		}
 		logger.Infof("🛑 Shutdown signal received, shutting down server...")
 	case <-done:
+		if env == "production" {
+			fmt.Println("🚨 Server stopped unexpectedly, beginning shutdown...")
+		}
 		logger.Infof("🚨 Server stopped unexpectedly, beginning shutdown...")
 	}
 
@@ -199,6 +207,9 @@ func main() {
 		logger.Warnf("FileBrowser cleanup error: %v", err)
 	}
 	cleanup.ShutdownAllBridges("server_quit")
+	if env == "production" {
+		fmt.Println("Server stopped.")
+	}
 	logger.Infof("Server stopped.")
 }
 
