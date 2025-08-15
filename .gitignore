@@ -1,0 +1,21 @@
+# frontend Files
+frontend/node_modules/
+
+# Go Folders
+backend/cmd/server/frontend/
+backend/tmp/
+backend/cmd/server/tmp/main
+linuxio-bridge
+linuxio-webserver
+
+# Logs and misc
+*.log
+.DS_Store
+.vscode/
+
+# macOS / Linux
+.DS_Store
+*.swp
+
+# Logs
+*.log

@@ -1,0 +1,56 @@
+server:
+  port: 80
+  baseURL: /navigator/
+  logging:
+    - levels: "info|warning|error|debug"
+      apiLevels: disabled
+      output: stdout
+      utc: true
+  sources:
+    - path: /server
+      config:
+        defaultEnabled: true
+        exclude:
+          hidden: false
+          ignoreZeroSizeFolders: false
+          folderPaths:
+            - /proc
+            - /sys
+            - /dev
+            - /var/lib/docker/overlay2
+  database: /home/filebrowser/data/database.db
+frontend:
+  disableDefaultLinks: true
+  disableUsedPercentage: false
+  styling:
+    customCSS: "custom.css"
+userDefaults:
+  viewMode: "normal"
+  preview:
+    image: false
+    popup: false
+    video: false
+    office: false
+    highQuality: false
+  stickySidebar: false
+  darkMode: true
+  disableSettings: true
+  lockPassword: true
+  singleClick: false
+  showHidden: true
+  permissions:
+    api: true
+    admin: true
+    modify: true
+    share: false
+    realtime: true
+  loginMethod: proxy
+  disableUpdateNotifications: true
+auth:
+  methods:
+    proxy:
+      enabled: true
+      header: "{{SECRET_KEY}}"
+      createUser: true
+    password:
+      enabled: false

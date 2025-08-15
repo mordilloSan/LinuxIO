@@ -1,0 +1,37 @@
+1 - separate the bridge and server code
+
+2 - Main Server should be responsible for:
+
+Session
+Auth
+Webserver
+Global API
+
+3 - The Global API must be able to do:
+
+Public or Private access (based on auth)
+Responsible for displaying data (doesnt perform actions) except for auth and theme
+
+4 - implement wireguard
+TEST
+last handshake
+Tx and Rx
+
+5 - docker compose
+
+6 - Sinc theme between filebrowser and global app
+
+7 - update user config files locations for theme (after login) - We should only have 1 config file. that file should only exist after login...
+
+8 - Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable.
+
+9 - Updates - Make it more responsive. Use d-bus streaming with websocket?
+
+use quantom filebrowser as our main navigator - DONE
+when we login we must also add the user to filebrowser - DONE
+filebrowser header should contain sessionid - DONE
+destroy the filebrowser config file after we create the container - DONE
+when the bridge does cleanup we also must kill the PTY session - check when is needed - DONE
+websocket should be persistent - DONE
+For main programa startup no config file should be needed... DONE
+bridge socket and bridge binary should not have the sessionid written - DONE
