@@ -210,3 +210,38 @@ func writeYAMLAtomic(path string, data []byte, perm os.FileMode) error {
 func filepathJoinClean(elem ...string) string {
 	return filepath.Clean(filepath.Join(elem...))
 }
+
+// Load returns the parsed Settings for `username` and the absolute config path.
+// It does NOT create/repair the file; call Initialize(username) first if needed.
+func Load(username string) (*Settings, string, error) {
+	base, err := Homedir(username)
+	if err != nil {
+		// fall back if no home (same logic as Initialize)
+		if base, err = fallbackBase(username); err != nil {
+			return nil, "", err
+		}
+	}
+	cfgPath := filepath.Join(base, cfgFileName)
+
+	// strict read (unknown keys rejected); your repair path runs in Initialize.
+	cfg, err := readConfigStrict(cfgPath)
+	if err != nil {
+		return nil, "", err
+	}
+	return cfg, cfgPath, nil
+}
+
+// readConfigStrict parses YAML and FAILS on unknown fields.
+func readConfigStrict(path string) (*Settings, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var out Settings
+	dec := yaml.NewDecoder(strings.NewReader(string(b)))
+	dec.KnownFields(true)
+	if err := dec.Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

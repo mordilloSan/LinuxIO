@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/mordilloSan/LinuxIO/backend/cmd/server/config"
 	"github.com/mordilloSan/LinuxIO/cmd/server/terminal"
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
@@ -59,6 +60,12 @@ func loginHandler(c *gin.Context) {
 		return
 	}
 
+	// Ensure per-user config exists & is valid (repair if needed).
+	if err := config.Initialize(req.Username); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to prepare user config"})
+		return
+	}
+
 	privileged := trySudo(req.Password)
 
 	sess, err := createUserSession(req, privileged)
@@ -76,6 +83,7 @@ func loginHandler(c *gin.Context) {
 	setSessionCookie(c, sess.SessionID)
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": sess.Privileged})
 }
+
 func logoutHandler(c *gin.Context) {
 	sessionID, err := c.Cookie("session_id")
 	if err != nil {

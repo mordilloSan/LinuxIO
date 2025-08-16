@@ -298,6 +298,9 @@ dev: setup dev-prep build-bridge
 
 build: build-vite golint build-backend build-bridge
 
+generate:
+	@go generate ./backend/cmd/server/config/init.go
+
 run:
 	@./linuxio-webserver \
 	  --verbose=$(VERBOSE) \
@@ -331,7 +334,8 @@ start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
 	  echo "✅ Ready on branch $$REL_BRANCH"; \
 	}
 
-open-pr: ## Open PR dev/<version> -> main (requires gh)
+## Open PR dev/<version> -> main (requires gh)
+open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \

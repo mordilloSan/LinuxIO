@@ -1,4 +1,3 @@
-// internal/config/zz_gen_config.go
 //go:build ignore
 // +build ignore
 
@@ -15,7 +14,7 @@ import (
 )
 
 func main() {
-	out := filepath.FromSlash("internal/static/config.generated.yaml")
+	out := filepath.FromSlash("config_generated.yaml")
 
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		log.Fatalf("mkdir: %v", err)
