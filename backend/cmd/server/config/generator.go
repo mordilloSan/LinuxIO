@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mordilloSan/LinuxIO/backend/cmd/server/config"
+	"github.com/mordilloSan/LinuxIO/cmd/server/config"
 	"gopkg.in/yaml.v3"
 )
 
