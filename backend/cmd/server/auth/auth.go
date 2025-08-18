@@ -13,7 +13,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/mordilloSan/LinuxIO/cmd/server/config"
 	"github.com/mordilloSan/LinuxIO/cmd/server/terminal"
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
@@ -57,12 +56,6 @@ func loginHandler(c *gin.Context) {
 
 	if err := authenticateUser(req); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication failed"})
-		return
-	}
-
-	// Ensure per-user config exists & is valid (repair if needed).
-	if err := config.Initialize(req.Username); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to prepare user config"})
 		return
 	}
 

@@ -71,36 +71,27 @@ func Initialize(username string) error {
 	return nil
 }
 
-// Homedir determines the user's home folder:
-// 1) $HOME (absolute & exists), else
-// 2) /etc/passwd (user.Lookup), exists.
-// Returns error if neither works.
+// Homedir determines the user's home folder
 func Homedir(username string) (string, error) {
 	if strings.TrimSpace(username) == "" {
 		return "", errors.New("empty username")
 	}
-
-	// 1) $HOME
+	// 1) Prefer the target user's passwd entry (correct when running as root)
+	if u, err := user.Lookup(username); err == nil && u.HomeDir != "" {
+		if fi, err2 := os.Stat(u.HomeDir); err2 == nil && fi.IsDir() {
+			return u.HomeDir, nil
+		} else if err2 != nil {
+			return "", err2
+		}
+		return "", errors.New("home path is not a directory")
+	}
+	// 2) Fall back to the process $HOME
 	if home := os.Getenv("HOME"); home != "" && filepath.IsAbs(home) {
 		if fi, err := os.Stat(home); err == nil && fi.IsDir() {
 			return home, nil
 		}
 	}
-
-	// 2) passwd entry
-	u, err := user.Lookup(username)
-	if err != nil {
-		return "", err
-	}
-	if u.HomeDir == "" {
-		return "", errors.New("no home directory in passwd")
-	}
-	if fi, err := os.Stat(u.HomeDir); err == nil && fi.IsDir() {
-		return u.HomeDir, nil
-	} else if err != nil {
-		return "", err
-	}
-	return "", errors.New("home path is not a directory")
+	return "", errors.New("could not resolve home dir for user")
 }
 
 // fallbackBase returns a writable, non-root-required base folder:
@@ -244,4 +235,43 @@ func readConfigStrict(path string) (*Settings, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// init.go (near other helpers)
+func chownIfRoot(path, username string) error {
+	if os.Geteuid() != 0 {
+		return nil // Nothing to do if not root
+	}
+	u, err := user.Lookup(username)
+	if err != nil {
+		return err
+	}
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("refusing to chown symlink")
+	}
+	return os.Chown(path, uid, gid)
+}
+
+// InitializeAndLoad ensures config exists, fixes it, corrects ownership (if root), then loads it.
+func InitializeAndLoad(username string) (*Settings, string, error) {
+	// 1) Create/repair
+	if err := Initialize(username); err != nil {
+		return nil, "", err
+	}
+	// 2) Strict load (this also determines the real path, respecting fallbacks)
+	cfg, cfgPath, err := Load(username)
+	if err != nil {
+		return nil, "", err
+	}
+	// 3) If root, fix ownership of file and parent dir
+	_ = chownIfRoot(filepath.Dir(cfgPath), username)
+	_ = chownIfRoot(cfgPath, username)
+	return cfg, cfgPath, nil
 }

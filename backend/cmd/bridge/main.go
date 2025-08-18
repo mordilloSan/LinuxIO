@@ -18,6 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/config"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
@@ -64,6 +65,14 @@ func main() {
 		}()
 	}
 
+	// Ensure per-user config exists, is valid, and (if root) owned by the session user
+	if cfg, cfgPath, err := config.InitializeAndLoad(Sess.User.ID); err != nil {
+		logger.Warnf("config init failed for %s: %v", Sess.User.ID, err)
+	} else {
+		logger.Infof("Config ready for %s at %s (theme=%s primary=%s)",
+			Sess.User.ID, cfgPath, cfg.ThemeSettings.Theme, cfg.ThemeSettings.PrimaryColor)
+	}
+
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)
 
@@ -88,7 +97,7 @@ func main() {
 					return
 				default:
 					logger.Warnf("⚠️ Accept failed: %v", err)
-					time.Sleep(50 * time.Millisecond) // optional: avoid tight loop during teardown
+					time.Sleep(50 * time.Millisecond) // avoid tight loop during teardown
 				}
 				continue
 			}
@@ -111,7 +120,7 @@ func main() {
 		cleanupDone <- struct{}{}
 	}()
 
-	// Wait for cleanup to complete; then exit naturally (lets logs flush)
+	// Wait for cleanup to complete; then exit
 	<-cleanupDone
 	logger.Infof("Bridge stopped.")
 }
