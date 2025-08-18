@@ -15,10 +15,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/cleanup"
+	"github.com/mordilloSan/LinuxIO/cmd/bridge/config"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
-	"github.com/mordilloSan/LinuxIO/internal/config"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/utils"

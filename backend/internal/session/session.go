@@ -438,7 +438,7 @@ func ValidateSessionFromRequest(r *http.Request) (*Session, error) {
 
 	sess, err := getSessionCopy(cookie.Value)
 	if err != nil {
-		logger.Warnf("Access attempt with unknown session_id: %s", cookie.Value)
+		logger.Debugf("Access attempt with unknown session_id: %s", cookie.Value)
 		return nil, fmt.Errorf("unknown session ID")
 	}
 

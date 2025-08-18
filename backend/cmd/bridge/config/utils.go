@@ -1,8 +1,7 @@
-//go:generate go run ./generator.go
-
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -11,65 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"gopkg.in/yaml.v3"
 )
-
-const (
-	cfgFileName = ".linuxio-config.yaml"
-	filePerm    = 0o664 // file:  rw-rw-r--
-	dirPerm     = 0o775 // dir:   rwxrwxr-x
-)
-
-// Initialize prepares the per-user LinuxIO configuration file for `username`.
-//
-// Flow:
-//  1. Resolve a base folder: try Homedir(username); if that fails, choose a
-//     writable POSIX/XDG fallback (no root required).
-//  2. Build <base>/.linuxio-config.yaml.
-//  3. If the file exists: repair in place (keep valid fields, fix only bad ones).
-//     If the file does not exist: create defaults.
-//  4. Ensure file permissions to 0o664.
-func Initialize(username string) error {
-	base, baseErr := Homedir(username)
-	if baseErr != nil {
-		logger.Warnf("homedir not available for %q: %v — using fallback", username, baseErr)
-		b, err := fallbackBase(username)
-		if err != nil {
-			logger.Errorf("fallback base resolution failed: %v", err)
-			return err
-		}
-		base = b
-	}
-	cfgPath := filepath.Join(base, cfgFileName)
-
-	exists, err := CheckConfig(cfgPath)
-	if err != nil {
-		logger.Errorf("check config: %v", err)
-		return err
-	}
-
-	if exists {
-		if err := repairConfig(cfgPath, base); err != nil {
-			return err
-		}
-		if err := ensureFilePerms(cfgPath, filePerm); err != nil {
-			logger.Errorf("chmod existing config: %v", err)
-			return err
-		}
-		logger.Debugf("Loaded config from %s", cfgPath)
-		return nil
-	}
-
-	// Create new with defaults (Docker.Folder = <base>/docker)
-	logger.Infof("New user detected - Generating default config for: %v", username)
-	if err := writeConfig(cfgPath, base); err != nil {
-		logger.Errorf("write default config: %v", err)
-		return err
-	}
-	logger.Infof("Created default config at %s", cfgPath)
-	return nil
-}
 
 // Homedir determines the user's home folder
 func Homedir(username string) (string, error) {
@@ -175,11 +117,13 @@ func writeConfigFrom(cfgPath string, cfg Settings) error {
 
 // writeYAMLAtomic writes data to path atomically using O_EXCL temp file + rename.
 func writeYAMLAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	f, err := os.CreateTemp(dir, base+".*.tmp")
 	if err != nil {
 		return err
 	}
+	tmp := f.Name()
 	_, werr := f.Write(data)
 	cerr := f.Close()
 	if werr != nil {
@@ -229,7 +173,7 @@ func readConfigStrict(path string) (*Settings, error) {
 		return nil, err
 	}
 	var out Settings
-	dec := yaml.NewDecoder(strings.NewReader(string(b)))
+	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
 	if err := dec.Decode(&out); err != nil {
 		return nil, err
@@ -257,21 +201,4 @@ func chownIfRoot(path, username string) error {
 		return errors.New("refusing to chown symlink")
 	}
 	return os.Chown(path, uid, gid)
-}
-
-// InitializeAndLoad ensures config exists, fixes it, corrects ownership (if root), then loads it.
-func InitializeAndLoad(username string) (*Settings, string, error) {
-	// 1) Create/repair
-	if err := Initialize(username); err != nil {
-		return nil, "", err
-	}
-	// 2) Strict load (this also determines the real path, respecting fallbacks)
-	cfg, cfgPath, err := Load(username)
-	if err != nil {
-		return nil, "", err
-	}
-	// 3) If root, fix ownership of file and parent dir
-	_ = chownIfRoot(filepath.Dir(cfgPath), username)
-	_ = chownIfRoot(cfgPath, username)
-	return cfg, cfgPath, nil
 }
