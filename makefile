@@ -57,8 +57,6 @@ define _require_gh
 	fi
 endef
 
-# Replace _read_version + _load_version + _branch_name with these:
-
 define _read_and_validate_version
 	# Read VERSION (from env or prompt), normalize V->v, validate, and set REL_BRANCH
 	if [ -z "$(VERSION)" ]; then \

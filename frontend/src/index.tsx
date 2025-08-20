@@ -3,13 +3,6 @@ import { BrowserRouter } from "react-router-dom";
 
 import App from "./App";
 
-// This hides the loading from index.html
-const splash = document.getElementById("splash");
-if (splash) {
-  splash.style.opacity = "0";
-  splash.remove();
-}
-
 // Start the App
 const container = document.getElementById("root");
 const root = createRoot(container!);

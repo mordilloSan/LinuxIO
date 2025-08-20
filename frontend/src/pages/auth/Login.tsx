@@ -32,7 +32,7 @@ const Login: React.FC = () => {
         {/* Paper form */}
         <Paper
           sx={(theme) => ({
-            p: 6,
+            p: 3,
             width: "100%",
             boxSizing: "border-box",
             backgroundColor: theme.palette.background.paper,
@@ -44,14 +44,14 @@ const Login: React.FC = () => {
             <LogoDisplayDark showText />
           </Box>
           {/* Title and subtitle */}
-          <Box textAlign="center">
+          <Box mb={1} textAlign="center">
             <Typography
               component="h1"
               variant="caption"
               gutterBottom
-              color="grey"
+              color="#9aa4af"
             >
-              Log in to your account to continue
+              Log in with your server user account
             </Typography>
           </Box>
           <LoginComponent />

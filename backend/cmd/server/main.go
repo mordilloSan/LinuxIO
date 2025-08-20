@@ -5,14 +5,16 @@ import (
 	"crypto/tls"
 	"embed"
 	"fmt"
+	"io/fs"
 	"log"
+	"mime"
+	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
-
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
@@ -24,7 +26,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/cmd/server/power"
 	"github.com/mordilloSan/LinuxIO/cmd/server/services"
 	"github.com/mordilloSan/LinuxIO/cmd/server/system"
-	"github.com/mordilloSan/LinuxIO/cmd/server/templates"
 	"github.com/mordilloSan/LinuxIO/cmd/server/theme"
 	"github.com/mordilloSan/LinuxIO/cmd/server/updates"
 	"github.com/mordilloSan/LinuxIO/cmd/server/websocket"
@@ -35,14 +36,12 @@ import (
 	"github.com/spf13/pflag"
 )
 
-//go:embed all:frontend/assets/*
-var StaticFS embed.FS
-
-//go:embed all:frontend/.vite/manifest.json
-var ViteManifest []byte
-
-//go:embed all:frontend/manifest.json all:frontend/favicon-*.png
-var PWAManifest embed.FS
+// --- Embed the built frontend (from Vite) ---
+// This expects your Vite build output at backend/cmd/server/frontend
+// (as configured in your vite.config.ts outDir).
+//
+//go:embed all:frontend/*
+var FrontendFS embed.FS
 
 func main() {
 	var env string
@@ -60,18 +59,17 @@ func main() {
 	env = strings.ToLower(env)
 
 	logger.Init(env, verbose)
-	// Gin should only be in debug mode (which prints routes) for dev+verbose.
 	if !(env == "development" && verbose) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	logger.Infof("🌱 Starting server in %s mode...", env)
 
-	// Sessions (Init starts actor + GC). Choose policy & timeouts.
+	// Sessions (Init starts actor + GC)
 	shutdownSessions, err := session.Init(&session.Config{
-		IdleTimeout:          30 * time.Minute, // sliding
-		AbsoluteTimeout:      6 * time.Hour,    // cap (matches your sessionDuration)
-		RefreshInterval:      60 * time.Second, // throttled refresh
-		SingleSessionPerUser: false,            // flip to true if you want exclusive login
+		IdleTimeout:          30 * time.Minute,
+		AbsoluteTimeout:      6 * time.Hour,
+		RefreshInterval:      60 * time.Second,
+		SingleSessionPerUser: false,
 		GCInterval:           10 * time.Minute,
 	})
 	if err != nil {
@@ -126,24 +124,26 @@ func main() {
 		benchmark.RegisterDebugRoutes(router, env)
 	}
 
-	// Static files (prod)
-	if env == "production" {
-		templates.RegisterStaticRoutes(router, StaticFS, PWAManifest)
-	}
-
 	// WebSocket
 	router.GET("/ws", websocket.WebSocketHandler)
 
-	// Frontend index + SPA fallback (pass vite dev port from flag)
-	router.GET("/", func(c *gin.Context) {
-		templates.ServeIndex(c, env, vitePort, ViteManifest)
-	})
-	router.NoRoute(func(c *gin.Context) {
-		templates.ServeIndex(c, env, vitePort, ViteManifest)
-	})
+	// --- Frontend (no templating, no manifest parsing) ---
+	if env == "development" {
+		// Let Vite dev server serve the SPA directly; just redirect unknown paths.
+		router.GET("/", func(c *gin.Context) {
+			c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://localhost:%d/", vitePort))
+		})
+		router.NoRoute(func(c *gin.Context) {
+			// Preserve the path (so /settings goes to Vite too)
+			c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://localhost:%d%s", vitePort, c.Request.URL.Path))
+		})
+	} else {
+		// Serve embedded build and SPA fallback
+		mountProductionSPA(router)
+	}
 
 	// HTTP server
-	addr := ":" + /* int to string */ fmt.Sprintf("%d", port)
+	addr := ":" + fmt.Sprintf("%d", port)
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: router,
@@ -168,7 +168,6 @@ func main() {
 	go func() {
 		var err error
 		if env == "production" {
-			// Print one banner line to STDOUT even in production (journald keeps the rest)
 			fmt.Printf("🚀 Server running at https://localhost:%d\n", port)
 			logger.Infof("🚀 Server running at https://localhost:%d", port)
 			err = srv.ListenAndServeTLS("", "")
@@ -214,6 +213,42 @@ func main() {
 	logger.Infof("Server stopped.")
 }
 
+// --- Production SPA mounting (embedded build) ---
+
+func mountProductionSPA(router *gin.Engine) {
+	ui, err := fs.Sub(FrontendFS, "frontend")
+	if err != nil {
+		logger.Error.Fatalf("failed to mount embedded frontend: %v", err)
+	}
+
+	// /assets/* (bundled JS/CSS/images)
+	if assets, err := fs.Sub(ui, "assets"); err == nil {
+		router.StaticFS("/assets", http.FS(assets))
+	}
+
+	// PWA/static files if present
+	router.GET("/manifest.json", func(c *gin.Context) { serveFileFS(c, ui, "manifest.json") })
+	router.GET("/favicon.ico", func(c *gin.Context) { serveFileFS(c, ui, "favicon.ico") })
+	router.GET("/favicon-5.png", func(c *gin.Context) { serveFileFS(c, ui, "favicon-5.png") })
+
+	// Root + SPA fallback
+	router.GET("/", func(c *gin.Context) { serveFileFS(c, ui, "index.html") })
+	router.NoRoute(func(c *gin.Context) { serveFileFS(c, ui, "index.html") })
+}
+
+func serveFileFS(c *gin.Context, fsys fs.FS, path string) {
+	b, err := fs.ReadFile(fsys, path)
+	if err != nil {
+		c.String(http.StatusNotFound, "%s not found", path)
+		return
+	}
+	ct := mime.TypeByExtension(filepath.Ext(path))
+	if ct == "" {
+		ct = "text/html; charset=utf-8"
+	}
+	c.Data(http.StatusOK, ct, b)
+}
+
 // httpErrorLogAdapter implements io.Writer and forwards http.Server errors into our logger.
 // We silently drop the noisy "TLS handshake error ... EOF" entries.
 type httpErrorLogAdapter struct{}
@@ -224,11 +259,9 @@ func (httpErrorLogAdapter) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	if strings.Contains(msg, "TLS handshake error") && strings.Contains(msg, "EOF") {
-		// keep it quiet; still visible at debug if you want:
 		logger.Debugf("[http.Server suppressed] %s", msg)
 		return len(p), nil
 	}
-	// Everything else goes through your logger (journald in prod)
 	logger.Warnf("[http.Server] %s", msg)
 	return len(p), nil
 }
