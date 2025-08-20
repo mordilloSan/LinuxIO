@@ -1,3 +1,4 @@
+// src/contexts/ThemeContext.tsx
 import React, {
   createContext,
   useEffect,
@@ -23,54 +24,120 @@ const initialState: ThemeContextType = {
   SidebarCollapsed: SIDEBAR_COLAPSED_STATE,
   setSidebarCollapsed: () => {},
   toggleTheme: () => {},
+  isLoaded: false,
 };
 
-const ThemeContext = createContext<ThemeContextType>(initialState);
+export const ThemeContext = createContext<ThemeContextType>(initialState);
 
-const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
+const LS_KEY = "linuxio:lastTheme";
+
+export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [theme, _setTheme] = useState(initialState.theme);
   const [primaryColor, _setPrimaryColor] = useState(DEFAULT_PRIMARY_COLOR);
   const [SidebarCollapsed, _setSidebarCollapsed] = useState(
     SIDEBAR_COLAPSED_STATE,
   );
   const [isLoaded, setIsLoaded] = useState(false);
+  const [canPersist, setCanPersist] = useState(false); // only POST after a successful GET
 
+  // 1) Bootstrap from cache (so login screen has a theme and we avoid a flash)
   useEffect(() => {
-    const fetchTheme = async () => {
-      try {
-        const response = await axios.get("/theme/get");
-        const fetchedTheme =
-          response.data.theme === "LIGHT" ? THEMES.LIGHT : THEMES.DARK;
-        const fetchedColor = response.data.primaryColor;
-        const fetchedColapsed = response.data.SidebarCollapsed;
-        _setTheme(fetchedTheme);
-        _setPrimaryColor(fetchedColor || DEFAULT_PRIMARY_COLOR);
-        _setSidebarCollapsed(fetchedColapsed ?? SIDEBAR_COLAPSED_STATE);
-        setIsLoaded(true);
-      } catch (error) {
-        console.error("Error fetching theme from backend:", error);
+    try {
+      const cached = JSON.parse(localStorage.getItem(LS_KEY) || "null");
+      if (cached?.theme && cached?.primaryColor) {
+        _setTheme(cached.theme === "LIGHT" ? THEMES.LIGHT : THEMES.DARK);
+        _setPrimaryColor(cached.primaryColor || DEFAULT_PRIMARY_COLOR);
+        _setSidebarCollapsed(
+          typeof cached.SidebarCollapsed === "boolean"
+            ? cached.SidebarCollapsed
+            : SIDEBAR_COLAPSED_STATE,
+        );
       }
+    } catch {
+      /* ignore cache errors */
+    }
+  }, []);
+
+  // 2) Try to fetch the user’s theme (works if logged in; returns 401 if not)
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await axios.get("/theme/get", { withCredentials: true });
+        if (cancelled) return;
+
+        if (res.status === 200 && res.data) {
+          const data = res.data;
+          const fetchedTheme =
+            String(data.theme).toUpperCase() === "LIGHT"
+              ? THEMES.LIGHT
+              : THEMES.DARK;
+
+          _setTheme(fetchedTheme);
+          _setPrimaryColor(data.primaryColor || DEFAULT_PRIMARY_COLOR);
+          _setSidebarCollapsed(
+            typeof data.sidebarCollapsed === "boolean"
+              ? data.sidebarCollapsed
+              : typeof data.SidebarCollapsed === "boolean" // tolerate old key
+                ? data.SidebarCollapsed
+                : SIDEBAR_COLAPSED_STATE,
+          );
+
+          // cache last-good
+          localStorage.setItem(
+            LS_KEY,
+            JSON.stringify({
+              theme: fetchedTheme,
+              primaryColor: data.primaryColor || DEFAULT_PRIMARY_COLOR,
+              SidebarCollapsed:
+                typeof data.sidebarCollapsed === "boolean"
+                  ? data.sidebarCollapsed
+                  : SIDEBAR_COLAPSED_STATE,
+            }),
+          );
+
+          setCanPersist(true); // we’re authenticated; allow POSTs
+        } else {
+          setCanPersist(false);
+        }
+      } catch {
+        // 401 / network error → unauthenticated or backend down
+        setCanPersist(false);
+      } finally {
+        if (!cancelled) setIsLoaded(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-
-    fetchTheme();
   }, []);
 
-  const debouncedSaveThemeSettings = useMemo(() => {
-    return debounce(
-      (themeToSave: string, colorToSave: string, colapsed: boolean) => {
-        axios
-          .post("/theme/set", {
-            theme: themeToSave,
-            primaryColor: colorToSave,
-            SidebarCollapsed: colapsed,
-          })
-          .catch((error) => {
-            console.error("Error saving theme settings:", error);
-          });
-      },
-      500,
-    ); // Save only after 500ms of inactivity
-  }, []);
+  // Debounced saver (no-op until canPersist becomes true)
+  const debouncedSaveThemeSettings = useMemo(
+    () =>
+      debounce(
+        (themeToSave: string, colorToSave: string, collapsed: boolean) => {
+          if (!canPersist) return;
+          axios
+            .post(
+              "/theme/set",
+              {
+                theme: themeToSave,
+                primaryColor: colorToSave,
+                sidebarCollapsed: collapsed, // new camelCase field
+              },
+              { withCredentials: true },
+            )
+            .catch(() => {
+              /* ignore to keep UX clean */
+            });
+        },
+        400,
+      ),
+    [canPersist],
+  );
 
   const setTheme = useCallback(
     (newTheme: string) => {
@@ -95,7 +162,6 @@ const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
           typeof valueOrUpdater === "function"
             ? valueOrUpdater(prev)
             : valueOrUpdater;
-
         debouncedSaveThemeSettings(theme, primaryColor, newValue);
         return newValue;
       });
@@ -104,8 +170,8 @@ const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   );
 
   const toggleTheme = useCallback(() => {
-    const newTheme = theme === THEMES.DARK ? THEMES.LIGHT : THEMES.DARK;
-    setTheme(newTheme);
+    const next = theme === THEMES.DARK ? THEMES.LIGHT : THEMES.DARK;
+    setTheme(next);
   }, [theme, setTheme]);
 
   const contextValue = useMemo(
@@ -137,5 +203,3 @@ const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     </ThemeContext.Provider>
   );
 };
-
-export { ThemeProvider, ThemeContext };

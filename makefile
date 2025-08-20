@@ -11,7 +11,7 @@ GO_BIN := $(shell which go)
 GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
 # Flags to pass into the Go binaries
-VERBOSE ?= false
+VERBOSE ?= true
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
 VITE_DEV_PORT = 3000
 SERVER_PORT = 8080

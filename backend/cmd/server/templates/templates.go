@@ -6,9 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"strconv"
 
-	"github.com/mordilloSan/LinuxIO/cmd/server/theme"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 
 	"github.com/gin-gonic/gin"
@@ -45,31 +43,14 @@ func ServeIndex(c *gin.Context, env string, viteDevPort int, viteManifest []byte
 		}
 	}
 
-	themeSettings, err := theme.LoadTheme()
-	if err != nil {
-		logger.Warnf("⚠️ Failed to load theme, using defaults: %v", err)
-		themeSettings = theme.ThemeSettings{
-			Theme:            "DARK",
-			PrimaryColor:     "#1976d2",
-			SidebarCollapsed: false,
-		}
-	}
-
 	background := "#ffffff"
 	shimmer := "#eeeeee"
-	if themeSettings.Theme == "DARK" {
-		background = "#1B2635"
-		shimmer = "#233044"
-	}
 
 	data := map[string]string{
 		"JSBundle":          js,
 		"CSSBundle":         css,
-		"PrimaryColor":      themeSettings.PrimaryColor,
-		"ThemeColor":        themeSettings.PrimaryColor,
 		"Background":        background,
 		"ShimmerBackground": shimmer,
-		"SidebarCollapsed":  strconv.FormatBool(themeSettings.SidebarCollapsed),
 	}
 
 	c.Status(http.StatusOK)

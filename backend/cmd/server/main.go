@@ -60,7 +60,8 @@ func main() {
 	env = strings.ToLower(env)
 
 	logger.Init(env, verbose)
-	if !verbose {
+	// Gin should only be in debug mode (which prints routes) for dev+verbose.
+	if !(env == "development" && verbose) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	logger.Infof("🌱 Starting server in %s mode...", env)

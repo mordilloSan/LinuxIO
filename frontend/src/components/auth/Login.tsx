@@ -57,7 +57,11 @@ function LogIn() {
         value={username}
         onChange={(e) => setUsername(e.target.value)}
         sx={{ my: 2 }}
-        autoComplete="username"
+        slotProps={{
+          inputLabel: {
+            shrink: true,
+          },
+        }}
       />
       <TextField
         label="Password"
@@ -69,6 +73,9 @@ function LogIn() {
         sx={{ my: 2 }}
         autoComplete="current-password"
         slotProps={{
+          inputLabel: {
+            shrink: true,
+          },
           input: {
             endAdornment: (
               <InputAdornment position="end">
@@ -96,7 +103,7 @@ function LogIn() {
           py: 2,
         }}
       >
-        Sign in
+        Log in
       </Button>
     </form>
   );

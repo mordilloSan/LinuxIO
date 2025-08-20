@@ -1,39 +1,63 @@
-import { Box, Typography, Paper } from "@mui/material";
-import React from "react";
+// src/pages/auth/Login.tsx
+import { Box, Typography, Paper, Container, CssBaseline } from "@mui/material";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import React, { useMemo } from "react";
 
 import LoginComponent from "@/components/auth/Login";
-import LogoDisplay from "@/components/logo/LogoDisplay";
+import LogoDisplayDark from "@/components/logo/LogoDisplayDark";
 
 const Login: React.FC = () => {
-  return (
-    <>
-      {/* Logo */}
-      <Box mb={2} display="flex" justifyContent="center">
-        <LogoDisplay showText />
-      </Box>
-
-      {/* Title and subtitle */}
-      <Box textAlign="center" mb={4}>
-        <Typography component="h1" variant="h5">
-          Log in to your account to continue
-        </Typography>
-      </Box>
-
-      {/* Paper form */}
-      <Paper
-        sx={(theme) => ({
-          p: 6,
-          width: "100%",
-          maxWidth: "100%",
-          boxSizing: "border-box",
-          [theme.breakpoints.up("md")]: {
-            p: 10,
+  const dark = useMemo(
+    () =>
+      createTheme({
+        palette: {
+          mode: "dark",
+          primary: { main: "#1976d2" },
+          background: {
+            default: "#1B2635",
+            paper: "#1E2A38",
           },
-        })}
-      >
-        <LoginComponent />
-      </Paper>
-    </>
+        },
+        typography: {
+          fontFamily: `"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"`,
+        },
+      }),
+    [],
+  );
+
+  return (
+    <ThemeProvider theme={dark}>
+      <CssBaseline />
+      <Container maxWidth="sm" sx={{ py: 8 }}>
+        {/* Paper form */}
+        <Paper
+          sx={(theme) => ({
+            p: 6,
+            width: "100%",
+            boxSizing: "border-box",
+            backgroundColor: theme.palette.background.paper,
+            [theme.breakpoints.up("md")]: { p: 6 },
+          })}
+        >
+          {/* Logo */}
+          <Box mb={1} display="flex" justifyContent="center">
+            <LogoDisplayDark showText />
+          </Box>
+          {/* Title and subtitle */}
+          <Box textAlign="center">
+            <Typography
+              component="h1"
+              variant="caption"
+              gutterBottom
+              color="grey"
+            >
+              Log in to your account to continue
+            </Typography>
+          </Box>
+          <LoginComponent />
+        </Paper>
+      </Container>
+    </ThemeProvider>
   );
 };
 
