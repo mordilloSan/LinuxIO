@@ -1,10 +1,10 @@
 {
   "name": "Linux Server i/O",
   "description": "Linux server managment tool",
-  "author": "Mordillo <miguelgalizamariz@gmail.com>",
+  "author": "MordilloSan <miguelgalizamariz@gmail.com>",
   "private": true,
   "type": "module",
-  "license": "MIT",
+  "license": "Apache License v2.0",
   "scripts": {},
   "browserslist": [
     "> 0.5%",

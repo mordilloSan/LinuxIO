@@ -40,24 +40,6 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [canPersist, setCanPersist] = useState(false); // only POST after a successful GET
 
-  // 1) Bootstrap from cache (so login screen has a theme and we avoid a flash)
-  useEffect(() => {
-    try {
-      const cached = JSON.parse(localStorage.getItem(LS_KEY) || "null");
-      if (cached?.theme && cached?.primaryColor) {
-        _setTheme(cached.theme === "LIGHT" ? THEMES.LIGHT : THEMES.DARK);
-        _setPrimaryColor(cached.primaryColor || DEFAULT_PRIMARY_COLOR);
-        _setSidebarCollapsed(
-          typeof cached.SidebarCollapsed === "boolean"
-            ? cached.SidebarCollapsed
-            : SIDEBAR_COLAPSED_STATE,
-        );
-      }
-    } catch {
-      /* ignore cache errors */
-    }
-  }, []);
-
   // 2) Try to fetch the user’s theme (works if logged in; returns 401 if not)
   useEffect(() => {
     let cancelled = false;
@@ -79,9 +61,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
           _setSidebarCollapsed(
             typeof data.sidebarCollapsed === "boolean"
               ? data.sidebarCollapsed
-              : typeof data.SidebarCollapsed === "boolean" // tolerate old key
-                ? data.SidebarCollapsed
-                : SIDEBAR_COLAPSED_STATE,
+              : SIDEBAR_COLAPSED_STATE,
           );
 
           // cache last-good

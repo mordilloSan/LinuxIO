@@ -2,16 +2,16 @@ package config
 
 // Settings holds the persisted configuration.
 type Settings struct {
-	ThemeSettings ThemeSettings `yaml:"themeSettings"`
-	Docker        Docker        `yaml:"docker"`
+	ThemeSettings ThemeSettings `json:"themeSettings" yaml:"themeSettings"`
+	Docker        Docker        `json:"docker" yaml:"docker"`
 }
 
 type ThemeSettings struct {
-	Theme            string `yaml:"theme"`        // "LIGHT" | "DARK"
-	PrimaryColor     string `yaml:"primaryColor"` // "#RRGGBB" or valid CSS color
-	SidebarCollapsed bool   `yaml:"sidebarCollapsed"`
+	Theme            string `json:"theme" yaml:"theme"`               // "LIGHT" | "DARK"
+	PrimaryColor     string `json:"primaryColor" yaml:"primaryColor"` // "#RRGGBB" or valid CSS color
+	SidebarCollapsed bool   `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
 }
 
 type Docker struct {
-	Folder string `yaml:"folder"` // absolute path
+	Folder string `json:"folder" yaml:"folder"` // absolute path
 }

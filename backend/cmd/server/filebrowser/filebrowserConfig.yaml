@@ -19,33 +19,6 @@ server:
             - /dev
             - /var/lib/docker/overlay2
   database: /home/filebrowser/data/database.db
-frontend:
-  disableDefaultLinks: true
-  disableUsedPercentage: false
-  styling:
-    customCSS: "custom.css"
-userDefaults:
-  viewMode: "normal"
-  preview:
-    image: false
-    popup: false
-    video: false
-    office: false
-    highQuality: false
-  stickySidebar: false
-  darkMode: true
-  disableSettings: true
-  lockPassword: true
-  singleClick: false
-  showHidden: true
-  permissions:
-    api: true
-    admin: true
-    modify: true
-    share: false
-    realtime: true
-  loginMethod: proxy
-  disableUpdateNotifications: true
 auth:
   methods:
     proxy:
@@ -54,3 +27,33 @@ auth:
       createUser: true
     password:
       enabled: false
+frontend:
+  disableDefaultLinks: true
+  disableUsedPercentage: true
+  styling:
+    customCSS: "custom.css"
+userDefaults:
+  editorQuickSave: false
+  hideSidebarFileActions: true
+  disableQuickToggles: true
+  disableSearchOptions: false
+  stickySidebar: false
+  darkMode: true
+  locale: "en"
+  viewMode: "normal"
+  singleClick: false
+  showHidden: true
+  dateFormat: true
+  themeColor: "var(--blue)"
+  quickDownload: false
+  lockPassword: true
+  disableSettings: true
+  permissions:
+    api: true
+    admin: true
+    modify: true
+    share: false
+    realtime: true
+  loginMethod: "proxy"
+  disableUpdateNotifications: true
+  deleteWithoutConfirming: false

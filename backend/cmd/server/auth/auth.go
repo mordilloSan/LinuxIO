@@ -28,7 +28,6 @@ type LoginRequest struct {
 
 const sessionDuration = 6 * time.Hour
 
-// Config is injected by main() so this package doesn't read env.
 type Config struct {
 	Env                  string
 	Verbose              bool
@@ -74,7 +73,11 @@ func loginHandler(c *gin.Context) {
 	}
 
 	setSessionCookie(c, sess.SessionID)
+
+	syncFilebrowser(c, sess.SessionID, sess.User.Name)
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": sess.Privileged})
+
 }
 
 func logoutHandler(c *gin.Context) {

@@ -7,7 +7,6 @@ import { GuestGuard } from "@/components/guards/GuestGuard";
 import AuthLayout from "@/layouts/Auth";
 import MainLayout from "@/layouts/Main";
 import Default from "@/pages/main/dashboard";
-import Filebrowser from "@/pages/main/filebrowser";
 import Terminal from "@/pages/main/terminal";
 
 const SignIn = lazy(() => import("@/pages/auth/Login"));
@@ -36,7 +35,7 @@ const routes = [
       { path: "services", element: <Services /> },
       { path: "network", element: <Network /> },
       { path: "hardware", element: <Hardware /> },
-      { path: "filebrowser/*", element: <Filebrowser /> },
+      { path: "filebrowser/*", element: <></> },
       { path: "terminal", element: <Terminal /> },
       { path: "wireguard", element: <Wireguard /> },
     ],

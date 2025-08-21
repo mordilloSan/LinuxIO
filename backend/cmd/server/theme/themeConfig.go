@@ -3,6 +3,7 @@ package theme
 import (
 	"net/http"
 	"os/user"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -14,18 +15,9 @@ import (
 // Reuse the struct from internal/config to avoid drift.
 type ThemeSettings = config.ThemeSettings
 
-// Public: return defaults (use for the login screen, before we know the user)
-func registerPublicThemeRoutes(r *gin.Engine) {
-	r.GET("/theme/default", func(c *gin.Context) {
-		// Any base is fine for theme-only defaults; use the current OS user's home.
-		u, _ := user.Current()
-		base := ""
-		if u != nil && u.HomeDir != "" {
-			base = u.HomeDir
-		}
-		def := config.DefaultSettings(base).ThemeSettings
-		c.JSON(http.StatusOK, def)
-	})
+// RegisterThemeRoutes wires the private (user) routes.
+func RegisterThemeRoutes(router *gin.Engine) {
+	registerPrivateThemeRoutes(router)
 }
 
 // Authenticated: read/write the logged-in user's theme
@@ -39,12 +31,18 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "no session user"})
 			return
 		}
-		cfg, _, err := config.Load(username)
+
+		cfg, cfgPath, err := config.Load(username)
 		if err != nil {
-			logger.Warnf("Load theme for %s failed: %v", username, err)
+			logger.Warnf("[theme.get] user=%q load failed: %v", username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load theme"})
 			return
 		}
+
+		logger.Infof("[theme.get] user=%q path=%s theme=%s primary=%s",
+			username, cfgPath, cfg.ThemeSettings.Theme, cfg.ThemeSettings.PrimaryColor)
+
+		// Normal response: just the theme settings
 		c.JSON(http.StatusOK, cfg.ThemeSettings)
 	})
 
@@ -61,9 +59,11 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 			return
 		}
-		// Validate
+
+		// Normalize & validate early (accept common lowercase from UI)
+		body.Theme = strings.ToUpper(strings.TrimSpace(body.Theme))
 		if body.Theme != "LIGHT" && body.Theme != "DARK" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid theme value"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid theme value (LIGHT|DARK)"})
 			return
 		}
 		if !config.IsValidCSSColor(body.PrimaryColor) {
@@ -71,45 +71,62 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 			return
 		}
 
-		// Load → update → save
+		// Load current -> update -> save
 		cfg, _, err := config.Load(username)
 		if err != nil {
-			logger.Warnf("Load before save for %s failed: %v", username, err)
+			logger.Warnf("[theme.set] user=%q load-before-save failed: %v", username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
 			return
 		}
+
+		prev := cfg.ThemeSettings
 		cfg.ThemeSettings = body
 
-		if _, err := config.Save(username, cfg); err != nil {
-			logger.Warnf("Save theme for %s failed: %v", username, err)
+		cfgPath, err := config.Save(username, cfg)
+		if err != nil {
+			logger.Warnf("[theme.set] user=%q save failed: %v", username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save theme"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "theme updated"})
-	})
-}
 
-// RegisterThemeRoutes wires both public (defaults) and private (user) routes.
-func RegisterThemeRoutes(router *gin.Engine) {
-	registerPublicThemeRoutes(router)  // for login page
-	registerPrivateThemeRoutes(router) // for authenticated UI
+		// Re-load to verify persistence
+		verifyCfg, verifyPath, vErr := config.Load(username)
+		ok := (vErr == nil &&
+			verifyCfg.ThemeSettings.Theme == body.Theme &&
+			verifyCfg.ThemeSettings.PrimaryColor == body.PrimaryColor)
+
+		if vErr != nil {
+			logger.Warnf("[theme.set] user=%q verify-load failed: %v (path=%s)", username, vErr, verifyPath)
+		}
+
+		logger.Infof("[theme.set] user=%q path=%s prev={%s,%s} new={%s,%s} verify=%v",
+			username, cfgPath,
+			prev.Theme, prev.PrimaryColor,
+			body.Theme, body.PrimaryColor, ok,
+		)
+
+		// Return compact info; client can ignore extras. (Useful while debugging.)
+		c.JSON(http.StatusOK, gin.H{
+			"message":        "theme updated",
+			"verify":         ok,
+			"path":           cfgPath,
+			"appliedTheme":   body.Theme,
+			"appliedPrimary": body.PrimaryColor,
+		})
+	})
 }
 
 // Helper: extract the session username placed by your auth middleware.
 // Adjust if your auth package exposes a helper; this version tries common keys.
 func usernameFromContext(c *gin.Context) string {
-	// common keys your middleware may set; adjust to your actual values
 	if v, ok := c.Get("user"); ok {
-		// string username
 		if s, ok := v.(string); ok && s != "" {
 			return s
 		}
-		// struct { ID string } or utils.User with ID
 		type withID interface{ GetID() string }
 		if w, ok := v.(withID); ok && w.GetID() != "" {
 			return w.GetID()
 		}
-		// fallback to map-like
 		if m, ok := v.(map[string]any); ok {
 			if s, ok := m["id"].(string); ok && s != "" {
 				return s
@@ -119,7 +136,6 @@ func usernameFromContext(c *gin.Context) string {
 			}
 		}
 	}
-	// last resort (not ideal, but avoids panic if something is misconfigured)
 	if u, err := user.Current(); err == nil && u.Username != "" {
 		return u.Username
 	}
