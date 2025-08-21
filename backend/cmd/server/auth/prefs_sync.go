@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -58,7 +59,7 @@ func warmupNavigator(c *gin.Context, sessionID string) error {
 	}
 	req.Header.Set("Cookie", "session_id="+sessionID)
 
-	resp, err := newHTTPClient(c).Do(req)
+	resp, err := NewHTTPClient(c).Do(req)
 	if err != nil {
 		return err
 	}
@@ -83,7 +84,7 @@ func updateUserPrefsWithSession(c *gin.Context, sessionID string, fbUserID int, 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cookie", "session_id="+sessionID)
 
-	resp, err := newHTTPClient(c).Do(req)
+	resp, err := NewHTTPClient(c).Do(req)
 	if err != nil {
 		return err
 	}
@@ -98,6 +99,45 @@ func updateUserPrefsWithSession(c *gin.Context, sessionID string, fbUserID int, 
 
 // helpers
 
+func origin(c *gin.Context) string {
+	if isHTTPS(c) {
+		return "https://" + c.Request.Host
+	}
+	return "http://" + c.Request.Host
+}
+
+func keys(m map[string]any) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	return ks
+}
+
+func NewHTTPClient(c *gin.Context) *http.Client {
+	tr := &http.Transport{ForceAttemptHTTP2: true}
+
+	if isHTTPS(c) {
+		// Use the pool derived from the in-memory self-signed server cert
+		var roots *x509.CertPool = TrustedRootPool()
+		// Fallback to system pool if for some reason it's not set (dev)
+		if roots == nil {
+			if sys, err := x509.SystemCertPool(); err == nil {
+				roots = sys
+			} else {
+				roots = x509.NewCertPool()
+			}
+		}
+		tr.TLSClientConfig = &tls.Config{
+			RootCAs:    roots,
+			ServerName: hostWithoutPort(c.Request.Host), // preserve hostname verification + SNI
+			MinVersion: tls.VersionTLS12,
+		}
+	}
+
+	return &http.Client{Timeout: 2 * time.Second, Transport: tr}
+}
+
 func isHTTPS(c *gin.Context) bool {
 	// direct TLS or TLS terminated upstream (proxy)
 	if c.Request.TLS != nil {
@@ -109,26 +149,30 @@ func isHTTPS(c *gin.Context) bool {
 	return false
 }
 
-func origin(c *gin.Context) string {
-	if isHTTPS(c) {
-		return "https://" + c.Request.Host
+func hostWithoutPort(h string) string {
+	if i := strings.IndexByte(h, ':'); i >= 0 {
+		return h[:i]
 	}
-	return "http://" + c.Request.Host
+	return h
 }
 
-func newHTTPClient(c *gin.Context) *http.Client {
-	tr := &http.Transport{}
-	if isHTTPS(c) {
-		// self-signed cert on local server in prod
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+var trustedRootPool *x509.CertPool
+
+func SetTrustedPoolFromServerCert(tc tls.Certificate) error {
+	if len(tc.Certificate) == 0 {
+		return fmt.Errorf("no certificate bytes in tls.Certificate")
 	}
-	return &http.Client{Timeout: 2 * time.Second, Transport: tr}
+	leaf, err := x509.ParseCertificate(tc.Certificate[0]) // DER -> *x509.Certificate
+	if err != nil {
+		return fmt.Errorf("parse leaf cert: %w", err)
+	}
+	p := x509.NewCertPool()
+	p.AddCert(leaf)
+	trustedRootPool = p
+	return nil
 }
 
-func keys(m map[string]any) []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	return ks
+// Accessor used by your internal HTTP client code
+func TrustedRootPool() *x509.CertPool {
+	return trustedRootPool
 }

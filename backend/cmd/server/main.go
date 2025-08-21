@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/web"
 
 	"github.com/mordilloSan/LinuxIO/cmd/server/cleanup"
@@ -102,6 +103,11 @@ func main() {
 			logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", err)
 		}
 		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+
+		// expose a pool built from the leaf cert so internal clients can trust it
+		if err := auth.SetTrustedPoolFromServerCert(cert); err != nil {
+			logger.Error.Fatalf("❌ Failed to set trusted pool: %v", err)
+		}
 	}
 
 	quit := make(chan os.Signal, 1)
