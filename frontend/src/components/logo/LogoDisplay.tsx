@@ -6,7 +6,7 @@ type LogoDisplayProps = {
   showText?: boolean;
 };
 
-const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = true }) => {
+const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
   const theme = useTheme();
 
   return (
@@ -15,7 +15,7 @@ const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = true }) => {
       noWrap
       sx={{
         fontWeight: 400,
-        fontSize: "1.25rem",
+        fontSize: "1.45rem",
         display: "inline-flex",
         alignItems: "center",
       }}

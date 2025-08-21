@@ -25,7 +25,7 @@ body {
 }
 
 /* To hide the sidebar button */
-button[aria-label="Fechar"][title="Fechar"].action.no-select {
+button[title="Fechar"].action.no-select {
   display: none !important;
 }
 

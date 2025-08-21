@@ -12,6 +12,7 @@ import dashboardItems from "@/components/sidebar/dashboardItems";
 import Sidebar from "@/components/sidebar/Sidebar";
 import useAppTheme from "@/hooks/useAppTheme";
 import useSidebar from "@/hooks/useSidebar";
+import PersistentFilebrowser from "@/pages/main/filebrowser/FilebrowserIframe";
 
 const Dashboard: React.FC = () => {
   const location = useLocation();
@@ -51,8 +52,11 @@ const Dashboard: React.FC = () => {
             overflow: "auto",
             background: theme.palette.background.default,
             p: { xs: 5, lg: 7 },
+            position: "relative",
           }}
         >
+          {/* Persistent iframe sits above the Outlet *inside* content area */}
+          <PersistentFilebrowser />
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
               <Outlet />

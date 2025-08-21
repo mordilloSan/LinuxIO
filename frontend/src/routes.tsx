@@ -1,6 +1,5 @@
 import React, { lazy } from "react";
 
-// Guards & Layouts
 import { WebSocketProvider } from "./contexts/WebSocketContext";
 
 import { AuthGuard } from "@/components/guards/AuthGuard";
@@ -8,10 +7,8 @@ import { GuestGuard } from "@/components/guards/GuestGuard";
 import AuthLayout from "@/layouts/Auth";
 import MainLayout from "@/layouts/Main";
 import Default from "@/pages/main/dashboard";
-import Filebrowser from "@/pages/main/filebrowser";
 import Terminal from "@/pages/main/terminal";
 
-// Lazy-loaded pages
 const SignIn = lazy(() => import("@/pages/auth/Login"));
 const Page404 = lazy(() => import("@/pages/auth/Page404"));
 const Updates = lazy(() => import("@/pages/main/updates"));
@@ -21,7 +18,6 @@ const Network = lazy(() => import("@/pages/main/network"));
 const Hardware = lazy(() => import("@/pages/main/hardware"));
 const Wireguard = lazy(() => import("@/pages/main/wireguard"));
 
-// Route config
 const routes = [
   {
     path: "/",
@@ -39,7 +35,7 @@ const routes = [
       { path: "services", element: <Services /> },
       { path: "network", element: <Network /> },
       { path: "hardware", element: <Hardware /> },
-      { path: "filebrowser/*", element: <Filebrowser /> },
+      { path: "filebrowser/*", element: <></> },
       { path: "terminal", element: <Terminal /> },
       { path: "wireguard", element: <Wireguard /> },
     ],

@@ -16,21 +16,18 @@ const compat = new FlatCompat({
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
-  // ✅ Base JS rules
   js.configs.recommended,
 
-  // ✅ Global definitions (console, window, React, etc.)
   {
     languageOptions: {
       globals: {
         ...globals.browser,
         ...globals.node,
-        React: "readonly", // for new JSX transform
+        React: "readonly",
       },
     },
   },
 
-  // ✅ TypeScript support
   {
     files: ["**/*.ts", "**/*.tsx"],
     languageOptions: {
@@ -53,7 +50,6 @@ export default [
     },
   },
 
-  // ✅ React + JSX + Hooks + Import Handling
   {
     files: ["**/*.js", "**/*.jsx", "**/*.tsx"],
     languageOptions: {

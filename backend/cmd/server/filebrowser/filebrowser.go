@@ -69,8 +69,6 @@ func isNetworkExistsError(err error) bool {
 	return bytes.Contains([]byte(s), []byte("already exists")) || bytes.Contains([]byte(s), []byte("409"))
 }
 
-// --- NEW: no host files/dirs; copy into container fs ----------------------------------
-
 func startFileBrowserContainer(secret string) error {
 	const (
 		containerName = "filebrowser-linuxio"
@@ -131,7 +129,7 @@ func startFileBrowserContainer(secret string) error {
 					Type:     mount.TypeBind,
 					Source:   "/",
 					Target:   "/server",
-					ReadOnly: true, // safer; flip if you truly need write
+					ReadOnly: true,
 				},
 			},
 			PortBindings: nat.PortMap{

@@ -11,7 +11,7 @@ GO_BIN := $(shell which go)
 GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
 # Flags to pass into the Go binaries
-VERBOSE ?= false
+VERBOSE ?= true
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
 VITE_DEV_PORT = 3000
 SERVER_PORT = 8080
@@ -57,31 +57,27 @@ define _require_gh
 	fi
 endef
 
-define _read_version
-	@if [ -z "$(VERSION)" ]; then \
-	  read -p "Enter version (e.g. v1.2.3): " VERSION; \
-	  if [ -z "$$VERSION" ]; then echo "No version provided."; exit 1; fi; \
-	  echo $$VERSION > .make_version_tmp; \
+define _read_and_validate_version
+	# Read VERSION (from env or prompt), normalize V->v, validate, and set REL_BRANCH
+	if [ -z "$(VERSION)" ]; then \
+	  read -p "Enter version (e.g. v1.2.3): " VERSION_INPUT; \
 	else \
-	  echo "$(VERSION)" > .make_version_tmp; \
-	fi
-endef
-
-define _load_version
-	$(eval VERSION := $(shell cat .make_version_tmp))
-	@if ! echo "$(VERSION)" | grep -Eq "^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$"; then \
-		echo "❌ VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$(VERSION)')"; \
-		rm -f .make_version_tmp; exit 1; \
-	fi
-endef
-
-define _branch_name
-	$(eval REL_BRANCH := dev/$(VERSION))
+	  VERSION_INPUT="$(VERSION)"; \
+	fi; \
+	VERSION="$${VERSION_INPUT:-}"; \
+	# normalize leading 'V' to 'v'
+	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
+	if ! echo "$$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$'; then \
+	  echo "❌ VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
+	  exit 1; \
+	fi; \
+	REL_BRANCH="dev/$$VERSION"
 endef
 
 define _repo_flag
 	$(if $(REPO),--repo "$(REPO)",)
 endef
+
 # ------------------------------------------------
 
 .ONESHELL:
@@ -300,6 +296,9 @@ dev: setup dev-prep build-bridge
 
 build: build-vite golint build-backend build-bridge
 
+generate:
+	@go generate ./backend/cmd/server/config/init.go
+
 run:
 	@./linuxio-webserver \
 	  --verbose=$(VERBOSE) \
@@ -317,37 +316,36 @@ clean:
 start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
 	@$(call _require_clean)
 	@$(call _require_gh)
-	@$(call _read_version)
-	@$(call _load_version)
-	@$(call _branch_name)
-	@git fetch origin
-	@git checkout $(DEFAULT_BASE_BRANCH)
-	@git pull --ff-only
-	@if git show-ref --verify --quiet refs/heads/$(REL_BRANCH); then \
-		echo "ℹ️  Branch $(REL_BRANCH) already exists, checking it out…"; \
-		git checkout $(REL_BRANCH); \
-	else \
-		echo "🌱 Creating branch $(REL_BRANCH) from $(DEFAULT_BASE_BRANCH)…"; \
-		git checkout -b $(REL_BRANCH) $(DEFAULT_BASE_BRANCH); \
-		git push -u origin $(REL_BRANCH); \
-	fi
-	@echo "✅ Ready on branch $(REL_BRANCH)"
-	@rm -f .make_version_tmp
+	@{ \
+	  $(call _read_and_validate_version); \
+	  git fetch origin; \
+	  git checkout $(DEFAULT_BASE_BRANCH); \
+	  git pull --ff-only; \
+	  if git show-ref --verify --quiet "refs/heads/$$REL_BRANCH"; then \
+	    echo "ℹ️  Branch $$REL_BRANCH already exists, checking it out…"; \
+	    git checkout "$$REL_BRANCH"; \
+	  else \
+	    echo "🌱 Creating branch $$REL_BRANCH from $(DEFAULT_BASE_BRANCH)…"; \
+	    git checkout -b "$$REL_BRANCH" "$(DEFAULT_BASE_BRANCH)"; \
+	    git push -u origin "$$REL_BRANCH"; \
+	  fi; \
+	  echo "✅ Ready on branch $$REL_BRANCH"; \
+	}
 
-open-pr: ## Open PR dev/<version> -> main (requires gh)
+## Open PR dev/<version> -> main (requires gh)
+open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
-	@$(call _read_version)
-	@$(call _load_version)
-	@$(call _branch_name)
-	@echo "🔁 Opening PR: $(REL_BRANCH) -> $(DEFAULT_BASE_BRANCH)…"
-	@gh pr create $(call _repo_flag) \
-		--base $(DEFAULT_BASE_BRANCH) \
-		--head $(REL_BRANCH) \
-		--title "Release $(VERSION)" \
-		--body "Automated release PR for $(VERSION)."
-	@gh pr view $(call _repo_flag) --web
-	@rm -f .make_version_tmp
+	@{ \
+	  $(call _read_and_validate_version); \
+	  echo "🔁 Opening PR: $$REL_BRANCH -> $(DEFAULT_BASE_BRANCH)…"; \
+	  gh pr create $(call _repo_flag) \
+	    --base $(DEFAULT_BASE_BRANCH) \
+	    --head "$$REL_BRANCH" \
+	    --title "Release $$VERSION" \
+	    --body "Automated release PR for $$VERSION."; \
+	  gh pr view $(call _repo_flag) --web; \
+	}
 
 promote-release:
 	@if [ -z "$(VERSION)" ]; then \

@@ -11,6 +11,23 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import useAuth from "@/hooks/useAuth";
 
+const BORDER_COLOR = "rgba(255,255,255,0.25)";
+
+const fieldSx = (theme: any) => ({
+  my: 1,
+
+  // label stays grey, even when focused
+  "& .MuiInputLabel-root": { color: BORDER_COLOR },
+
+  // outline: static on idle/hover, primary on focus
+  "& .MuiOutlinedInput-root": {
+    "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: BORDER_COLOR },
+    "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+      borderColor: theme.palette.primary.main,
+    },
+  },
+});
+
 function LogIn() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -52,29 +69,29 @@ function LogIn() {
       )}
       <TextField
         label="Username"
-        name="username"
         fullWidth
         value={username}
         onChange={(e) => setUsername(e.target.value)}
-        sx={{ my: 2 }}
         autoComplete="username"
+        sx={fieldSx}
+        slotProps={{ inputLabel: { shrink: true } }}
       />
+
       <TextField
         label="Password"
-        name="password"
         type={showPassword ? "text" : "password"}
         fullWidth
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        sx={{ my: 2 }}
         autoComplete="current-password"
+        sx={fieldSx}
         slotProps={{
+          inputLabel: { shrink: true },
           input: {
             endAdornment: (
               <InputAdornment position="end">
                 <IconButton
-                  aria-label="toggle password visibility"
-                  onClick={() => setShowPassword((prev) => !prev)}
+                  onClick={() => setShowPassword((p) => !p)}
                   edge="end"
                 >
                   {showPassword ? <VisibilityOff /> : <Visibility />}
@@ -92,11 +109,11 @@ function LogIn() {
         color="primary"
         disabled={loading}
         sx={{
-          mb: 3,
+          my: 2,
           py: 2,
         }}
       >
-        Sign in
+        Log in
       </Button>
     </form>
   );

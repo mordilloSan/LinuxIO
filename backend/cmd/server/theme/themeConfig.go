@@ -1,134 +1,143 @@
 package theme
 
 import (
-	"errors"
 	"net/http"
-	"os"
 	"os/user"
-	"path/filepath"
-
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"strings"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
+
+	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
+	"github.com/mordilloSan/LinuxIO/internal/config"
+	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
-type ThemeSettings struct {
-	Theme            string `json:"theme"`
-	PrimaryColor     string `json:"primaryColor"`
-	SidebarCollapsed bool   `json:"SidebarCollapsed"`
-}
+// Reuse the struct from internal/config to avoid drift.
+type ThemeSettings = config.ThemeSettings
 
-func InitTheme() error {
-	path, err := getThemeFilePath()
-	if err != nil {
-		logger.Errorf("Failed to determine theme config path: %v", err)
-		return err
-	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		logger.Infof("No theme file found, creating from default...")
-		defaultTheme := ThemeSettings{
-			Theme:            "DARK",
-			PrimaryColor:     "#2196f3",
-			SidebarCollapsed: false,
-		}
-		return SaveThemeToFile(defaultTheme)
-	}
-	return nil
-}
-
-func LoadTheme() (ThemeSettings, error) {
-	var settings ThemeSettings
-	path, err := getThemeFilePath()
-	if err != nil {
-		logger.Errorf("Failed to determine theme config path: %v", err)
-		return settings, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		logger.Errorf("Failed to read theme file: %v", err)
-		return settings, err
-	}
-	if err := yaml.Unmarshal(data, &settings); err != nil {
-		logger.Errorf("Failed to parse theme YAML: %v", err)
-		return settings, err
-	}
-	return settings, nil
-}
-
-func SaveThemeToFile(settings ThemeSettings) error {
-	path, err := getThemeFilePath()
-	if err != nil {
-		logger.Errorf("Failed to determine theme config path: %v", err)
-		return err
-	}
-	data, err := yaml.Marshal(&settings)
-	if err != nil {
-		logger.Errorf("Failed to encode theme YAML: %v", err)
-		return err
-	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		logger.Errorf("Failed to write theme YAML: %v", err)
-		return err
-	}
-	logger.Infof("Theme settings saved to %s", path)
-	return nil
-}
-
-// --- Gin Routes ---
-
+// RegisterThemeRoutes wires the private (user) routes.
 func RegisterThemeRoutes(router *gin.Engine) {
-	// ✅ Public route for fetching theme
-	router.GET("/theme/get", func(c *gin.Context) {
-		settings, err := LoadTheme()
+	registerPrivateThemeRoutes(router)
+}
+
+// Authenticated: read/write the logged-in user's theme
+func registerPrivateThemeRoutes(r *gin.Engine) {
+	group := r.Group("/theme", auth.AuthMiddleware())
+
+	// GET /theme/get -> user's saved theme (bridge has already ensured the file)
+	group.GET("/get", func(c *gin.Context) {
+		username := usernameFromContext(c)
+		if username == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no session user"})
+			return
+		}
+
+		cfg, cfgPath, err := config.Load(username)
 		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				if initErr := InitTheme(); initErr != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize theme"})
-					return
-				}
-				settings, err = LoadTheme()
-				if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load initialized theme"})
-					return
-				}
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load theme"})
-				return
+			logger.Warnf("[theme.get] user=%q load failed: %v", username, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load theme"})
+			return
+		}
+
+		logger.Infof("[theme.get] user=%q path=%s theme=%s primary=%s",
+			username, cfgPath, cfg.ThemeSettings.Theme, cfg.ThemeSettings.PrimaryColor)
+
+		// Normal response: just the theme settings
+		c.JSON(http.StatusOK, cfg.ThemeSettings)
+	})
+
+	// POST /theme/set -> update user's theme in the unified config file
+	group.POST("/set", func(c *gin.Context) {
+		username := usernameFromContext(c)
+		if username == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no session user"})
+			return
+		}
+
+		var body ThemeSettings
+		if err := c.BindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+			return
+		}
+
+		// Normalize & validate early (accept common lowercase from UI)
+		body.Theme = strings.ToUpper(strings.TrimSpace(body.Theme))
+		if body.Theme != "LIGHT" && body.Theme != "DARK" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid theme value (LIGHT|DARK)"})
+			return
+		}
+		if !config.IsValidCSSColor(body.PrimaryColor) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid primaryColor"})
+			return
+		}
+
+		// Load current -> update -> save
+		cfg, _, err := config.Load(username)
+		if err != nil {
+			logger.Warnf("[theme.set] user=%q load-before-save failed: %v", username, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
+			return
+		}
+
+		prev := cfg.ThemeSettings
+		cfg.ThemeSettings = body
+
+		cfgPath, err := config.Save(username, cfg)
+		if err != nil {
+			logger.Warnf("[theme.set] user=%q save failed: %v", username, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save theme"})
+			return
+		}
+
+		// Re-load to verify persistence
+		verifyCfg, verifyPath, vErr := config.Load(username)
+		ok := (vErr == nil &&
+			verifyCfg.ThemeSettings.Theme == body.Theme &&
+			verifyCfg.ThemeSettings.PrimaryColor == body.PrimaryColor)
+
+		if vErr != nil {
+			logger.Warnf("[theme.set] user=%q verify-load failed: %v (path=%s)", username, vErr, verifyPath)
+		}
+
+		logger.Infof("[theme.set] user=%q path=%s prev={%s,%s} new={%s,%s} verify=%v",
+			username, cfgPath,
+			prev.Theme, prev.PrimaryColor,
+			body.Theme, body.PrimaryColor, ok,
+		)
+
+		// Return compact info; client can ignore extras. (Useful while debugging.)
+		c.JSON(http.StatusOK, gin.H{
+			"message":        "theme updated",
+			"verify":         ok,
+			"path":           cfgPath,
+			"appliedTheme":   body.Theme,
+			"appliedPrimary": body.PrimaryColor,
+		})
+	})
+}
+
+// Helper: extract the session username placed by your auth middleware.
+// Adjust if your auth package exposes a helper; this version tries common keys.
+func usernameFromContext(c *gin.Context) string {
+	if v, ok := c.Get("user"); ok {
+		if s, ok := v.(string); ok && s != "" {
+			return s
+		}
+		type withID interface{ GetID() string }
+		if w, ok := v.(withID); ok && w.GetID() != "" {
+			return w.GetID()
+		}
+		if m, ok := v.(map[string]any); ok {
+			if s, ok := m["id"].(string); ok && s != "" {
+				return s
+			}
+			if s, ok := m["name"].(string); ok && s != "" {
+				return s
 			}
 		}
-		c.JSON(http.StatusOK, settings)
-	})
-
-	// 🔒 Protected route for saving theme
-	theme := router.Group("/theme", auth.AuthMiddleware())
-	theme.POST("/set", func(c *gin.Context) {
-		var body ThemeSettings
-
-		if err := c.BindJSON(&body); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-			return
-		}
-
-		if body.Theme != "LIGHT" && body.Theme != "DARK" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid theme value"})
-			return
-		}
-
-		if err := SaveThemeToFile(body); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save theme settings"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "Theme settings saved"})
-	})
-}
-
-func getThemeFilePath() (string, error) {
-	u, err := user.Current()
-	if err != nil {
-		return "", err
 	}
-	return filepath.Join(u.HomeDir, ".linuxio-theme.yaml"), nil
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		return u.Username
+	}
+	return ""
 }
