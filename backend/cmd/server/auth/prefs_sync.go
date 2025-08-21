@@ -119,7 +119,7 @@ func NewHTTPClient(c *gin.Context) *http.Client {
 
 	if isHTTPS(c) {
 		// Use the pool derived from the in-memory self-signed server cert
-		var roots *x509.CertPool = TrustedRootPool()
+		roots := TrustedRootPool()
 		// Fallback to system pool if for some reason it's not set (dev)
 		if roots == nil {
 			if sys, err := x509.SystemCertPool(); err == nil {
