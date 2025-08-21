@@ -9,7 +9,7 @@ import React, {
 } from "react";
 
 import { drawerWidth, collapsedDrawerWidth } from "@/constants";
-import useAppTheme from "@/hooks/useAppTheme";
+import { useConfigValue } from "@/hooks/useConfig";
 
 export interface SidebarContextType {
   collapsed: boolean;
@@ -33,34 +33,33 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const muiTheme = useMuiTheme();
   const isDesktop = useMediaQuery(muiTheme.breakpoints.up("md"));
-  const { SidebarCollapsed: collapsed, setSidebarCollapsed } = useAppTheme();
+
+  // New: grab persisted collapsed state from config
+  const [collapsed, setCollapsed] = useConfigValue("sidebarCollapsed");
 
   const [hovered, setHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const hoverEnabled = useRef(true);
 
-  // Toggle collapsed state, temporarily disables hover to avoid "double triggers"
   const toggleCollapse = useCallback(() => {
-    setSidebarCollapsed((prev) => {
-      const newState = !prev;
-      if (isDesktop && newState) {
+    setCollapsed((prev) => {
+      const next = !prev;
+      if (isDesktop && next) {
         hoverEnabled.current = false;
         setHovered(false);
         setTimeout(() => {
           hoverEnabled.current = true;
         }, 200);
       }
-      return newState;
+      return next;
     });
-  }, [isDesktop, setSidebarCollapsed]);
+  }, [isDesktop, setCollapsed]);
 
-  // Toggle mobile drawer
   const toggleMobileOpen = useCallback(() => {
     if (isDesktop) return;
     setMobileOpen((prev) => !prev);
   }, [isDesktop]);
 
-  // Sync UI state on breakpoint or collapse state changes
   useEffect(() => {
     if (isDesktop) {
       setMobileOpen(false);
@@ -70,16 +69,16 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [isDesktop, collapsed]);
 
-  // Responsive sidebar width
-  const sidebarWidth = useMemo(() => {
-    return isDesktop
-      ? collapsed
-        ? collapsedDrawerWidth
-        : drawerWidth
-      : drawerWidth;
-  }, [isDesktop, collapsed]);
+  const sidebarWidth = useMemo(
+    () =>
+      isDesktop
+        ? collapsed
+          ? collapsedDrawerWidth
+          : drawerWidth
+        : drawerWidth,
+    [isDesktop, collapsed],
+  );
 
-  // Memoize context value
   const value = useMemo(
     () => ({
       collapsed,

@@ -1,8 +1,8 @@
 package config
 
-// DefaultThemeSettings returns sane UI defaults.
-func DefaultThemeSettings() ThemeSettings {
-	return ThemeSettings{
+// DefaultAppSettings returns sane UI defaults.
+func DefaultAppSettings() AppSettings {
+	return AppSettings{
 		Theme:            "DARK",
 		PrimaryColor:     "#2196f3",
 		SidebarCollapsed: false,
@@ -19,7 +19,7 @@ func DefaultDocker(base string) Docker {
 // DefaultSettings composes full defaults for later expansion.
 func DefaultSettings(base string) *Settings {
 	return &Settings{
-		ThemeSettings: DefaultThemeSettings(),
-		Docker:        DefaultDocker(base),
+		AppSettings: DefaultAppSettings(),
+		Docker:      DefaultDocker(base),
 	}
 }

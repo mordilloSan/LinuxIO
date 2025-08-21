@@ -25,7 +25,7 @@ func WriteExampleYAML(path, base string) error {
 // Keep this in sync with your real defaults (used at runtime).
 func ExampleDefaults() Settings {
 	return Settings{
-		ThemeSettings: ThemeSettings{
+		AppSettings: AppSettings{
 			Theme:            "DARK",
 			PrimaryColor:     "#2196f3",
 			SidebarCollapsed: false,

@@ -1,6 +1,7 @@
 // src/components/PersistentFilebrowser.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import axios from "@/utils/axios";
 
 const FB_BASE = "/navigator";
 
@@ -18,8 +19,13 @@ export default function PersistentFilebrowser() {
 
   // First mount: load FB once in the background (hidden).
   useEffect(() => {
-    // warm caches too (optional)
-    fetch(FB_BASE + "/", { credentials: "include" }).catch(() => {});
+    const controller = new AbortController();
+    axios
+      .get(FB_BASE + "/", {
+        signal: controller.signal,   // cancel on unmount
+      })
+      .catch(() => { });
+    return () => controller.abort();
   }, []);
 
   // Mark ready after the FIRST load; stays mounted forever.
@@ -34,13 +40,9 @@ export default function PersistentFilebrowser() {
   // Keep parent router in sync with FileBrowser's internal navigation
   useEffect(() => {
     function onMsg(ev: MessageEvent) {
-      // Only react when FB is visible
       if (!isFBRoute) return;
-
-      // Same-origin guard
       if (ev.origin !== window.location.origin) return;
 
-      // Must come from our iframe
       const fromIframe =
         iframeRef.current?.contentWindow &&
         ev.source === iframeRef.current.contentWindow;
@@ -68,18 +70,13 @@ export default function PersistentFilebrowser() {
 
     const win = iframeRef.current?.contentWindow;
     try {
-      // Your FB can listen for this to navigate internally (no reload)
       win?.postMessage(
         { type: "linuxio:navigate", url: urlSuffix || "/" },
         window.location.origin,
       );
-    } catch {
-      // If not supported, as a fallback you could set location:
-      // win!.location.replace(FB_BASE + (urlSuffix || "/"));
-    }
+    } catch { }
   }, [isFBRoute, ready, location.pathname, location.search, location.hash]);
 
-  // components/PersistentFilebrowser.tsx
   return (
     <div
       id="filebrowser-layer"
@@ -89,7 +86,7 @@ export default function PersistentFilebrowser() {
         opacity: isFBRoute ? 1 : 0,
         visibility: isFBRoute ? "visible" : "hidden",
         pointerEvents: isFBRoute ? "auto" : "none",
-        transition: "opacity 160ms ease",
+        transition: "none",
         zIndex: 1,
       }}
     >

@@ -51,16 +51,16 @@ func sanitizeSettings(cfg *Settings, base string) (changed bool, fixes []string)
 	def := DefaultSettings(base)
 
 	// Theme: LIGHT or DARK
-	t := strings.ToUpper(strings.TrimSpace(cfg.ThemeSettings.Theme))
+	t := strings.ToUpper(strings.TrimSpace(cfg.AppSettings.Theme))
 	if t != "LIGHT" && t != "DARK" {
-		cfg.ThemeSettings.Theme = def.ThemeSettings.Theme
+		cfg.AppSettings.Theme = def.AppSettings.Theme
 		changed = true
 		fixes = append(fixes, "themeSettings.theme=default(DARK)")
 	}
 
 	// PrimaryColor: must be valid CSS color
-	if !IsValidCSSColor(cfg.ThemeSettings.PrimaryColor) {
-		cfg.ThemeSettings.PrimaryColor = def.ThemeSettings.PrimaryColor
+	if !IsValidCSSColor(cfg.AppSettings.PrimaryColor) {
+		cfg.AppSettings.PrimaryColor = def.AppSettings.PrimaryColor
 		changed = true
 		fixes = append(fixes, "themeSettings.primaryColor=default(#2196f3)")
 	}

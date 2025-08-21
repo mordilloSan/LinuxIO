@@ -70,7 +70,7 @@ func main() {
 		logger.Warnf("config init failed for %s: %v", Sess.User.ID, err)
 	} else {
 		logger.Infof("Config ready for %s at %s (theme=%s primary=%s)",
-			Sess.User.ID, cfgPath, cfg.ThemeSettings.Theme, cfg.ThemeSettings.PrimaryColor)
+			Sess.User.ID, cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor)
 	}
 
 	ShutdownChan := make(chan string, 1)

@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight } from "@mui/icons-material";
 import { Drawer, Box, useTheme, List } from "@mui/material";
 import React from "react";
 
-import SidebarNavListItem from "./SidebarNavListItem";
+import SidebarNavList from "./SidebarNavList";
 import LogoDisplay from "../logo/LogoDisplay";
 
 import { collapsedDrawerWidth, drawerWidth } from "@/constants";
@@ -99,7 +99,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
 
       <List disablePadding>
         {items.map((page) => (
-          <SidebarNavListItem
+          <SidebarNavList
             key={page.title}
             href={page.href}
             icon={page.icon}

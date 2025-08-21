@@ -24,8 +24,13 @@ body {
   transition: none !important;
 }
 
+#app {
+  transition: none !important;
+}
+
 /* To hide the sidebar button */
-button[title="Fechar"].action.no-select {
+
+#button-toggle-sidebar {
   display: none !important;
 }
 

@@ -9,7 +9,7 @@ import { lighten } from "polished";
 import React, { useContext } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
-import { ThemeContext } from "@/contexts/ThemeContext";
+import { ConfigContext } from "@/contexts/ConfigContext";
 
 interface SidebarNavListItemProps {
   href: string;
@@ -18,7 +18,7 @@ interface SidebarNavListItemProps {
   collapsed?: boolean;
 }
 
-const SidebarNavListItem: React.FC<SidebarNavListItemProps> = ({
+const SidebarNavList: React.FC<SidebarNavListItemProps> = ({
   href,
   title,
   icon,
@@ -26,7 +26,7 @@ const SidebarNavListItem: React.FC<SidebarNavListItemProps> = ({
 }) => {
   const theme = useTheme();
   const { pathname } = useLocation();
-  const { primaryColor } = useContext(ThemeContext);
+  const { primaryColor } = useContext(ConfigContext);
   const fallbackPrimary = "#3f5efb";
 
   const isActive = pathname === href || pathname.startsWith(href + "/");
@@ -110,4 +110,4 @@ const SidebarNavListItem: React.FC<SidebarNavListItemProps> = ({
   );
 };
 
-export default SidebarNavListItem;
+export default SidebarNavList;

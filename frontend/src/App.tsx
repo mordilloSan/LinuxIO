@@ -6,8 +6,6 @@ import { AuthProvider } from "./contexts/AuthContext";
 import routes from "./routes";
 import ReactQueryProvider from "./utils/ReactQueryProvider";
 
-import { SidebarProvider } from "@/contexts/SidebarContext";
-
 function App() {
   const content = useRoutes(routes);
 
@@ -15,7 +13,7 @@ function App() {
     <>
       <AuthProvider>
         <ReactQueryProvider>
-          <SidebarProvider>{content}</SidebarProvider>
+          {content}
         </ReactQueryProvider>
       </AuthProvider>
       <Toaster richColors position="top-right" />

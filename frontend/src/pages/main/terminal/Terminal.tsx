@@ -6,7 +6,7 @@ import { Minus, Plus, RotateCcw } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
-import useAppWebSocket from "@/hooks/useAppWebSocket";
+import useWebSocket from "@/hooks/useWebSocket";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
@@ -17,7 +17,7 @@ const TerminalXTerm: React.FC = () => {
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const theme = useTheme();
-  const { send, subscribe, ready } = useAppWebSocket();
+  const { send, subscribe, ready } = useWebSocket();
   const startedRef = useRef(false);
 
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);

@@ -12,7 +12,7 @@ import { ColorPicker, type IColor } from "react-color-palette";
 
 import "react-color-palette/css";
 import { DEFAULT_PRIMARY_COLOR } from "@/constants";
-import useTheme from "@/hooks/useAppTheme";
+import useTheme from "@/hooks/useConfig";
 import { hexToIColor } from "@/utils/hexToIColor";
 
 function NavbarColorCustomizer() {

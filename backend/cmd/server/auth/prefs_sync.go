@@ -32,7 +32,7 @@ func syncFilebrowser(c *gin.Context, sessionID string, username string) {
 	// derive dark from persisted config
 	dark := false
 	if cfg, _, err := config.Load(username); err == nil {
-		dark = strings.EqualFold(cfg.ThemeSettings.Theme, "DARK")
+		dark = strings.EqualFold(cfg.AppSettings.Theme, "DARK")
 	} else {
 		logger.Debugf("[login.sync] theme load failed for %s: %v", username, err)
 	}

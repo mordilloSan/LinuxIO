@@ -1,14 +1,14 @@
-// NavbarThemeToggle.tsx
 import { IconButton, Tooltip } from "@mui/material";
 import { Sun, Moon } from "lucide-react";
 import React from "react";
 
 import { THEMES } from "@/constants";
-import useTheme from "@/hooks/useAppTheme";
+import { useConfigValue } from "@/hooks/useConfig";
 import { setDarkMode } from "@/utils/filebrowserCache";
 
 function NavbarThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  // useConfigValue gives us [value, setter]
+  const [theme, setTheme] = useConfigValue("theme");
   const isDark = theme === THEMES.DARK;
 
   const isFBVisible = () => {
@@ -54,24 +54,22 @@ function NavbarThemeToggle() {
     const next = isDark ? THEMES.LIGHT : THEMES.DARK;
     const dark = next === THEMES.DARK;
 
-    // 1) switch app theme immediately for instant UI feedback
+    // 1) switch app theme immediately
     setTheme(next);
 
-    // 2) persist to FileBrowser and WAIT for it to finish
+    // 2) persist to FileBrowser
     try {
       await setDarkMode(dark);
     } catch {
-      // keep UX quiet; still attempt to refresh iframe below
+      // silent fail
     }
 
-    // 3) live update the iframe:
+    // 3) update iframe
     if (isFBVisible()) {
-      // If the iframe is on screen, prefer the DOM toggle (no reload, no flash)
       if (!tryClickIframeToggle()) {
-        // optional: last resort would be a visible reload, but we avoid flashing
+        // fallback could be a visible reload (we skip to avoid flashing)
       }
     } else {
-      // If hidden, refresh it in the background so it’s correct next time
       bgReloadIfHidden();
     }
   };
@@ -84,4 +82,5 @@ function NavbarThemeToggle() {
     </Tooltip>
   );
 }
+
 export default NavbarThemeToggle;

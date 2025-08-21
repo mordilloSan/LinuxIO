@@ -8,16 +8,16 @@ import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import Footer from "@/components/footer/Footer";
 import PageLoader from "@/components/loaders/PageLoader";
 import Navbar from "@/components/navbar/Navbar";
-import dashboardItems from "@/components/sidebar/dashboardItems";
+import dashboardItems from "@/components/sidebar/SidebarItems";
 import Sidebar from "@/components/sidebar/Sidebar";
-import useAppTheme from "@/hooks/useAppTheme";
 import useSidebar from "@/hooks/useSidebar";
 import PersistentFilebrowser from "@/pages/main/filebrowser/FilebrowserIframe";
+import useConfig from "@/hooks/useConfig";
 
 const Dashboard: React.FC = () => {
   const location = useLocation();
   const theme = useTheme();
-  const { isLoaded } = useAppTheme();
+  const { isLoaded } = useConfig();
   const { toggleMobileOpen, setMobileOpen, sidebarWidth } = useSidebar();
 
   // Auto-close mobile drawer on route change
