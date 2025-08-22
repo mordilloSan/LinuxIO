@@ -1,7 +1,7 @@
 import { Paper, ToggleButton, ToggleButtonGroup } from "@mui/material";
-import React, { useContext } from "react";
+import React from "react";
 
-import { ConfigContext } from "@/contexts/ConfigContext";
+import { useConfigValue } from "@/hooks/useConfig";
 
 type TabOption = {
   value: string;
@@ -19,7 +19,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
   onChange,
   options,
 }) => {
-  const { primaryColor } = useContext(ConfigContext);
+  const [primaryColor] = useConfigValue("primaryColor");
 
   return (
     <Paper

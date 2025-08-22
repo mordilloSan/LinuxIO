@@ -6,10 +6,11 @@ import {
   useTheme,
 } from "@mui/material";
 import { lighten } from "polished";
-import React, { useContext } from "react";
+import { useMemo } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
-import { ConfigContext } from "@/contexts/ConfigContext";
+import { useConfigValue } from "@/hooks/useConfig";
+import { COLOR_TOKENS, resolvePrimaryColor } from "@/theme/colors";
 
 interface SidebarNavListItemProps {
   href: string;
@@ -26,17 +27,19 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = ({
 }) => {
   const theme = useTheme();
   const { pathname } = useLocation();
-  const { primaryColor } = useContext(ConfigContext);
-  const fallbackPrimary = "#3f5efb";
+  const [primaryColor] = useConfigValue("primaryColor"); // token only
 
   const isActive = pathname === href || pathname.startsWith(href + "/");
-  const activeColor = primaryColor || fallbackPrimary;
+
+  const activeHex = useMemo(
+    () => resolvePrimaryColor(primaryColor, COLOR_TOKENS.blue),
+    [primaryColor],
+  );
 
   const renderIcon = () => {
     if (!icon) return null;
-    if (typeof icon === "string") {
+    if (typeof icon === "string")
       return <Icon icon={icon} width={24} height={24} />;
-    }
     const IconComponent = icon as React.ElementType;
     return <IconComponent />;
   };
@@ -64,14 +67,9 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = ({
           marginRight: collapsed ? 0 : theme.spacing(2),
         },
         "&.Mui-selected": {
-          background: `linear-gradient(90deg, ${lighten(
-            0.25,
-            activeColor,
-          )} 0%, ${activeColor} 50%)`,
+          background: `linear-gradient(90deg, ${lighten(0.25, activeHex)} 0%, ${activeHex} 50%)`,
           color: "#fff",
-          "& svg": {
-            color: "#fff",
-          },
+          "& svg": { color: "#fff" },
           "& .MuiListItemText-primary": {
             color: "#fff",
             fontWeight: theme.typography.fontWeightMedium,

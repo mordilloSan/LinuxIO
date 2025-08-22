@@ -12,9 +12,7 @@ function App() {
   return (
     <>
       <AuthProvider>
-        <ReactQueryProvider>
-          {content}
-        </ReactQueryProvider>
+        <ReactQueryProvider>{content}</ReactQueryProvider>
       </AuthProvider>
       <Toaster richColors position="top-right" />
     </>

@@ -5,24 +5,24 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import PageLoader from "@/components/loaders/PageLoader";
 import { ConfigProvider } from "@/contexts/ConfigContext";
-import useConfig from "@/hooks/useConfig";
-import useAuth from "@/hooks/useAuth";
-import createTheme from "@/theme";
 import { SidebarProvider } from "@/contexts/SidebarContext";
+import useAuth from "@/hooks/useAuth";
+import { useConfigValue, useConfigReady } from "@/hooks/useConfig";
+import createTheme from "@/theme";
 
-// Small wrapper that lives under ConfigProvider so it can read config
 function AuthedThemeShell({ children }: PropsWithChildren) {
-  const { config, isLoaded } = useConfig();
-  const { theme, primaryColor } = config;
+  const [themeName] = useConfigValue("theme");
+  const [primaryColorName] = useConfigValue("primaryColor");
+  const isLoaded = useConfigReady();
+
+  // Build MUI theme from variant + color *name* (resolver is inside createTheme)
   const muiTheme = useMemo(
-    () => createTheme(theme, primaryColor),
-    [theme, primaryColor],
+    () =>
+      createTheme(String(themeName), primaryColorName as string | undefined),
+    [themeName, primaryColorName],
   );
 
-  if (!isLoaded) {
-    // Don’t render sidebar or app content until config is ready
-    return <PageLoader />;
-  }
+  if (!isLoaded) return <PageLoader />;
 
   return <MuiThemeProvider theme={muiTheme}>{children}</MuiThemeProvider>;
 }
@@ -31,9 +31,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
   const { isAuthenticated, isInitialized } = useAuth();
   const location = useLocation();
 
-  if (!isInitialized) {
-    return <PageLoader />;
-  }
+  if (!isInitialized) return <PageLoader />;
 
   const isOnSignIn = location.pathname === "/sign-in";
   if (!isAuthenticated) {
@@ -43,8 +41,7 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
     const existing = params.get("redirect");
     const target =
       existing || `${location.pathname}${location.search}${location.hash}`;
-    const to = `/sign-in${target ? `?redirect=${encodeURIComponent(target)}` : ""
-      }`;
+    const to = `/sign-in${target ? `?redirect=${encodeURIComponent(target)}` : ""}`;
 
     return <Navigate to={to} replace />;
   }

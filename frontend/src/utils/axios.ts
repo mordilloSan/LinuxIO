@@ -44,7 +44,7 @@ axiosInstance.interceptors.response.use(
       return new Promise(() => {});
     }
     return Promise.reject(err);
-  }
+  },
 );
 
 export default axiosInstance;

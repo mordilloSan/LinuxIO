@@ -5,60 +5,43 @@ import {
   Popover,
   Typography,
   useTheme as useMuiTheme,
+  Box,
 } from "@mui/material";
 import { Paintbrush } from "lucide-react";
-import { useEffect, useState } from "react";
-import { ColorPicker, type IColor } from "react-color-palette";
+import { useMemo, useState } from "react";
 
-import "react-color-palette/css";
-import { DEFAULT_PRIMARY_COLOR } from "@/constants";
-import useTheme from "@/hooks/useConfig";
-import { hexToIColor } from "@/utils/hexToIColor";
+import { useConfigValue } from "@/hooks/useConfig";
+import { COLOR_TOKENS } from "@/theme/colors";
 
 function NavbarColorCustomizer() {
-  const { primaryColor, setPrimaryColor } = useTheme();
+  const [primaryColor, setPrimaryColor] = useConfigValue("primaryColor");
   const muiTheme = useMuiTheme();
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [color, setColor] = useState<IColor>(() => hexToIColor(primaryColor));
-
-  // Sync picker color when context color changes
-  useEffect(() => {
-    setColor((prev) => {
-      if (prev.hex !== primaryColor) {
-        return hexToIColor(primaryColor);
-      }
-      return prev;
-    });
-  }, [primaryColor]);
-
-  const handleChangeComplete = (newColor: IColor) => {
-    setColor(newColor);
-    setPrimaryColor(newColor.hex);
-  };
-
-  const handleOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
-
   const open = Boolean(anchorEl);
+
+  const tokenSwatches = useMemo(
+    () => Object.entries(COLOR_TOKENS).map(([name, hex]) => ({ name, hex })),
+    [],
+  );
 
   return (
     <>
       <Tooltip title="Customize primary color">
-        <IconButton color="inherit" onClick={handleOpen} size="large">
-          <Paintbrush />
+        <IconButton
+          color="inherit"
+          onClick={(e) => setAnchorEl(e.currentTarget)}
+          size="large"
+          aria-label="Customize primary color"
+        >
+          <Paintbrush size={18} />
         </IconButton>
       </Tooltip>
 
       <Popover
         open={open}
         anchorEl={anchorEl}
-        onClose={handleClose}
+        onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
         slotProps={{
@@ -68,7 +51,6 @@ function NavbarColorCustomizer() {
               p: 2,
               bgcolor: muiTheme.palette.background.paper,
               borderRadius: 2,
-              width: 250,
             },
           },
         }}
@@ -77,27 +59,53 @@ function NavbarColorCustomizer() {
           Primary Color
         </Typography>
 
-        <ColorPicker
-          height={150}
-          color={color}
-          onChange={setColor}
-          onChangeComplete={handleChangeComplete}
-          hideInput={["rgb", "hsv"]}
-        />
+        {/* Token swatches */}
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 1 }}>
+          {tokenSwatches.map(({ name, hex }) => (
+            <Box
+              key={name}
+              onClick={() => setPrimaryColor(name)}
+              role="button"
+              aria-label={`Set color ${name}`}
+              title={`${name} (${hex})`}
+              sx={{
+                width: 28,
+                height: 28,
+                borderRadius: 1,
+                bgcolor: hex,
+                border:
+                  muiTheme.palette.mode === "dark"
+                    ? "1px solid rgba(255,255,255,0.3)"
+                    : "1px solid rgba(0,0,0,0.1)",
+                cursor: "pointer",
+                outline:
+                  primaryColor?.toLowerCase() === name.toLowerCase()
+                    ? "2px solid currentColor"
+                    : "none",
+              }}
+            />
+          ))}
+        </Box>
 
-        <Button
-          variant="outlined"
-          fullWidth
-          size="small"
-          onClick={() => {
-            const reset = hexToIColor(DEFAULT_PRIMARY_COLOR);
-            setColor(reset);
-            setPrimaryColor(DEFAULT_PRIMARY_COLOR);
-          }}
-          sx={{ mt: 2 }}
-        >
-          Reset to Default
-        </Button>
+        <Box sx={{ display: "flex", gap: 1, mt: 2 }}>
+          <Button
+            variant="outlined"
+            fullWidth
+            size="small"
+            onClick={() => setPrimaryColor("blue")}
+            sx={{
+              mt: 2,
+              color: COLOR_TOKENS.blue,
+              borderColor: COLOR_TOKENS.blue,
+              "&:hover": {
+                borderColor: COLOR_TOKENS.blue,
+                backgroundColor: COLOR_TOKENS.blue,
+              },
+            }}
+          >
+            Reset to Default
+          </Button>
+        </Box>
       </Popover>
     </>
   );

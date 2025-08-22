@@ -1,6 +1,18 @@
+// src/hooks/useConfig.ts
 import { useContext, useCallback } from "react";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { AppConfig } from "@/types/config";
+import { setThemeColor, setDarkMode } from "@/utils/filebrowserCache";
+import {
+  setFBPrimaryToken,
+  setFBDarkMode,
+  isFBVisible,
+  bgReloadFBIfHidden,
+} from "@/utils/filebrowserDOM";
+
+function resolveNext<T>(prev: T, next: T | ((p: T) => T)): T {
+  return typeof next === "function" ? (next as (p: T) => T)(prev) : next;
+}
 
 const useConfig = () => {
   const ctx = useContext(ConfigContext);
@@ -8,15 +20,49 @@ const useConfig = () => {
   return ctx;
 };
 
-export default useConfig;
-
-// useConfigValue — select one key with type-safe getter+setter
 export function useConfigValue<K extends keyof AppConfig>(key: K) {
   const { config, setKey } = useConfig();
+
   const set = useCallback(
-    (v: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K])) =>
-      setKey(key, v),
-    [key, setKey]
+    (v: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K])) => {
+      const current = config[key];
+      const next = resolveNext(current, v);
+      setKey(key, next);
+
+      if (key === "primaryColor") {
+        const token = String(next);
+        void setThemeColor(token).catch(() => undefined);
+        setFBPrimaryToken(token); // live update, best-effort
+      }
+
+      if (key === "theme") {
+        const dark = String(next).toUpperCase() === "DARK";
+
+        (async () => {
+          try {
+            await setDarkMode(dark);
+          } catch {
+            // ignore; we'll still live-patch below
+          }
+
+          // small backoff helps in prod if FB persists prefs slightly after response
+          await new Promise((r) => setTimeout(r, 120));
+
+          if (isFBVisible()) {
+            setFBDarkMode(dark); // live patch when visible
+          } else {
+            bgReloadFBIfHidden(); // reload hidden iframe AFTER prefs saved
+          }
+        })();
+      }
+    },
+    [config, key, setKey],
   );
+
   return [config[key], set] as const;
+}
+
+export function useConfigReady(): boolean {
+  const { isLoaded } = useConfig();
+  return isLoaded;
 }

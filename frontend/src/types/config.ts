@@ -7,11 +7,11 @@ export type AppConfig = {
 export type ConfigContextType = {
   config: AppConfig;
   updateConfig: (
-    patch: Partial<AppConfig> | ((prev: AppConfig) => Partial<AppConfig>)
+    patch: Partial<AppConfig> | ((prev: AppConfig) => Partial<AppConfig>),
   ) => void;
   setKey: <K extends keyof AppConfig>(
     key: K,
-    value: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K])
+    value: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K]),
   ) => void;
   isLoaded: boolean;
 };

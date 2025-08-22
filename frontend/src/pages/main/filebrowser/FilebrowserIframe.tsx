@@ -1,7 +1,11 @@
 // src/components/PersistentFilebrowser.tsx
+import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+
+import { useConfigValue } from "@/hooks/useConfig";
 import axios from "@/utils/axios";
+import { setFBPrimaryToken, setFBDarkMode } from "@/utils/filebrowserDOM";
 
 const FB_BASE = "/navigator";
 
@@ -17,14 +21,23 @@ export default function PersistentFilebrowser() {
     [location.pathname],
   );
 
+  const muiTheme = useTheme();
+  const [primaryColor] = useConfigValue("primaryColor");
+
+  useEffect(() => {
+    if (!ready) return; // wait until the iframe has loaded once
+    // Push current app state into the iframe on first paint (and whenever it changes)
+    setFBPrimaryToken(String(primaryColor));
+    setFBDarkMode(muiTheme.palette.mode === "dark");
+  }, [ready, primaryColor, muiTheme.palette.mode]);
   // First mount: load FB once in the background (hidden).
   useEffect(() => {
     const controller = new AbortController();
     axios
       .get(FB_BASE + "/", {
-        signal: controller.signal,   // cancel on unmount
+        signal: controller.signal, // cancel on unmount
       })
-      .catch(() => { });
+      .catch(() => {});
     return () => controller.abort();
   }, []);
 
@@ -63,18 +76,23 @@ export default function PersistentFilebrowser() {
   // When the app route changes under /filebrowser, ask FB to navigate WITHOUT reload.
   useEffect(() => {
     if (!isFBRoute || !ready) return;
+
     const urlSuffix =
       location.pathname.replace(/^\/filebrowser/, "") +
       location.search +
       location.hash;
 
     const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+
     try {
-      win?.postMessage(
+      win.postMessage(
         { type: "linuxio:navigate", url: urlSuffix || "/" },
         window.location.origin,
       );
-    } catch { }
+    } catch (err) {
+      console.log("[filebrowser] postMessage failed:", err);
+    }
   }, [isFBRoute, ready, location.pathname, location.search, location.hash]);
 
   return (

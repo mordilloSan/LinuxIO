@@ -1,5 +1,6 @@
-// src/lib/filebrowser.ts (or src/utils/filebrowserCache.ts)
+// src/utils/filebrowserCache.ts
 import axios from "@/utils/axios";
+import { normalizeToken } from "@/theme/colors";
 
 type Prefs = Record<string, any>;
 const API = "/navigator/api/users";
@@ -116,10 +117,24 @@ export async function updateUserPrefs(prefs: Prefs): Promise<void> {
   await axios.put(API, payload, { params: { id } });
 }
 
-/** Convenience wrappers */
+/** Map our token -> FileBrowser CSS var like: var(--icon-blue) */
+function tokenToFbVar(token?: string): string {
+  const normalized = normalizeToken(token);
+  return `var(--icon-${normalized})`;
+}
+
+/** Convenience wrappers (existing ones kept as-is) */
 export const setDarkMode = (dark: boolean) =>
   updateUserPrefs({ darkMode: dark });
+
 export const setShowHidden = (show: boolean) =>
   updateUserPrefs({ showHidden: show });
+
 export const setViewMode = (mode: "normal" | "gallery" | "list" | string) =>
   updateUserPrefs({ viewMode: mode });
+
+/** NEW: set primary color token for FileBrowser */
+export const setThemeColor = (tokenName?: string) =>
+  updateUserPrefs({
+    themeColor: tokenToFbVar(tokenName),
+  });

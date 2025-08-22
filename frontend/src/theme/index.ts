@@ -1,36 +1,50 @@
-import "@mui/lab/themeAugmentation";
-import { Theme } from "@mui/material/styles";
-import { createTheme as createMuiTheme } from "@mui/material/styles";
+import {
+  Theme,
+  Components,
+  createTheme as createMuiTheme,
+} from "@mui/material/styles";
 import variants from "@/theme/variants";
 import typography from "@/theme/typography";
 import breakpoints from "@/theme/breakpoints";
 import shadows from "@/theme/shadows";
-import { Components } from "@mui/material/styles";
 import components from "@/theme/components";
+import { resolvePrimaryColor, getContrastText } from "@/theme/colors";
 
-const createTheme = (name: string, primaryColor?: string): Theme => {
-  let themeConfig = variants.find((variant) => variant.name === name);
-
+const createTheme = (
+  variantName: string,
+  primaryColorToken?: string,
+): Theme => {
+  let themeConfig = variants.find((v) => v.name === variantName);
   if (!themeConfig) {
-    console.warn(new Error(`The theme ${name} is not valid`));
+    console.warn(new Error(`The theme ${variantName} is not valid`));
     themeConfig = variants[0];
   }
+
+  const defaultPrimaryMain =
+    (themeConfig.palette?.primary?.main as string) ||
+    resolvePrimaryColor("blue");
+
+  const primaryMain = resolvePrimaryColor(
+    primaryColorToken,
+    defaultPrimaryMain,
+  );
 
   const palette = {
     ...themeConfig.palette,
     primary: {
       ...themeConfig.palette.primary,
-      ...(primaryColor && { main: primaryColor }),
+      main: primaryMain,
+      contrastText: getContrastText(primaryMain),
     },
   };
 
   return createMuiTheme(
     {
       spacing: 4,
-      breakpoints: breakpoints,
-      components: components as Components,
-      typography: typography,
-      shadows: shadows,
+      breakpoints,
+      components: components as Components<Theme>,
+      typography,
+      shadows,
       palette,
     },
     {
