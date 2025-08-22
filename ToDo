@@ -25,6 +25,8 @@ Tx and Rx
 
 8 - Test Multiple Users. And do this in fliebrowser specific
 
+9 - Bridge upon receiving exit command should cancel ongoing works. mainly d-bus?
+
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
 filebrowser header should contain sessionid - DONE

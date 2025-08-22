@@ -2,8 +2,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import axios from "@/utils/axios";
 import { useConfigReady, useConfigValue } from "@/hooks/useConfig";
+import axios from "@/utils/axios";
 import { setFBPrimaryToken } from "@/utils/filebrowserDOM";
 
 const FB_BASE = "/navigator";
@@ -29,7 +29,7 @@ export default function PersistentFilebrowser() {
       .get(FB_BASE + "/", {
         signal: controller.signal, // cancel on unmount
       })
-      .catch(() => { });
+      .catch(() => {});
     return () => controller.abort();
   }, []);
 
@@ -47,7 +47,6 @@ export default function PersistentFilebrowser() {
     if (!ready || !configReady) return;
     setFBPrimaryToken(String(primaryColor));
   }, [ready, configReady, primaryColor]);
-
 
   // Keep parent router in sync with FileBrowser's internal navigation
   useEffect(() => {

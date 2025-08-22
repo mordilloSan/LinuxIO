@@ -52,7 +52,7 @@ export function useConfigValue<K extends keyof AppConfig>(key: K) {
         })();
       }
     },
-    [config, key, setKey]
+    [config, key, setKey],
   );
 
   return [config[key], set] as const;
