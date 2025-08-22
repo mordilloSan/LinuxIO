@@ -3,12 +3,17 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import axios from "@/utils/axios";
+import { useConfigReady, useConfigValue } from "@/hooks/useConfig";
+import { setFBPrimaryToken } from "@/utils/filebrowserDOM";
 
 const FB_BASE = "/navigator";
 
 export default function PersistentFilebrowser() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
+
+  const configReady = useConfigReady();
+  const [primaryColor] = useConfigValue("primaryColor");
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -36,6 +41,13 @@ export default function PersistentFilebrowser() {
     i.addEventListener("load", onLoad);
     return () => i.removeEventListener("load", onLoad);
   }, []);
+
+  // As soon as iframe is ready (and config is loaded), inject primary color
+  useEffect(() => {
+    if (!ready || !configReady) return;
+    setFBPrimaryToken(String(primaryColor));
+  }, [ready, configReady, primaryColor]);
+
 
   // Keep parent router in sync with FileBrowser's internal navigation
   useEffect(() => {

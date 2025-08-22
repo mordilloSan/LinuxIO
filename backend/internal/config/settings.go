@@ -4,7 +4,7 @@ package config
 func DefaultAppSettings() AppSettings {
 	return AppSettings{
 		Theme:            "DARK",
-		PrimaryColor:     "#2196f3",
+		PrimaryColor:     "blue",
 		SidebarCollapsed: false,
 	}
 }
