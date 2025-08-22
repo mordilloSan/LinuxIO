@@ -1,11 +1,11 @@
 // src/theme/colors.ts
 export const COLOR_TOKENS = {
-  blue: "#1976d2",
-  red: "#ef5350",
-  green: "#4caf50",
-  yellow: "#ffd54f",
-  orange: "#ff9800",
-  violet: "#9c27b0",
+  blue: "#1d99f3",
+  red: "#da4453",
+  green: "#2ecc71",
+  yellow: "#fdbc4b",
+  orange: "#f47750",
+  violet: "#9b59b6",
 } as const;
 
 export type ColorName = keyof typeof COLOR_TOKENS;

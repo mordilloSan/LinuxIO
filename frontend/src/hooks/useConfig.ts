@@ -44,9 +44,8 @@ export function useConfigValue<K extends keyof AppConfig>(key: K) {
           } catch {
             // ignore; we'll still live-patch below
           }
-
           // small backoff helps in prod if FB persists prefs slightly after response
-          await new Promise((r) => setTimeout(r, 120));
+          await new Promise((r) => setTimeout(r, 100));
 
           if (isFBVisible()) {
             setFBDarkMode(dark); // live patch when visible

@@ -5,12 +5,9 @@ import {
   ListItemText,
   useTheme,
 } from "@mui/material";
-import { lighten } from "polished";
-import { useMemo } from "react";
+import { lighten } from "@mui/material/styles"; // use MUI's util
+import React from "react";
 import { NavLink, useLocation } from "react-router-dom";
-
-import { useConfigValue } from "@/hooks/useConfig";
-import { COLOR_TOKENS, resolvePrimaryColor } from "@/theme/colors";
 
 interface SidebarNavListItemProps {
   href: string;
@@ -27,14 +24,13 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = ({
 }) => {
   const theme = useTheme();
   const { pathname } = useLocation();
-  const [primaryColor] = useConfigValue("primaryColor"); // token only
 
   const isActive = pathname === href || pathname.startsWith(href + "/");
 
-  const activeHex = useMemo(
-    () => resolvePrimaryColor(primaryColor, COLOR_TOKENS.blue),
-    [primaryColor],
-  );
+  // Trust the theme
+  const primaryHex = theme.palette.primary.main;
+  const contrast = theme.palette.primary.contrastText;
+  const gradStart = lighten(primaryHex, 0.35);
 
   const renderIcon = () => {
     if (!icon) return null;
@@ -53,7 +49,6 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = ({
         margin: theme.spacing(1, 2),
         padding: theme.spacing(1.5, 3),
         borderRadius: "0 9999px 9999px 0",
-        fontWeight: theme.typography.fontWeightRegular,
         color: theme.sidebar.color,
         textTransform: "none",
         width: "auto",
@@ -67,11 +62,11 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = ({
           marginRight: collapsed ? 0 : theme.spacing(2),
         },
         "&.Mui-selected": {
-          background: `linear-gradient(90deg, ${lighten(0.25, activeHex)} 0%, ${activeHex} 50%)`,
-          color: "#fff",
-          "& svg": { color: "#fff" },
+          background: `linear-gradient(90deg, ${gradStart} 0%, ${primaryHex} 50%)`,
+          color: contrast,
+          "& svg": { color: contrast },
           "& .MuiListItemText-primary": {
-            color: "#fff",
+            color: contrast,
             fontWeight: theme.typography.fontWeightMedium,
           },
         },
@@ -89,7 +84,6 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = ({
           {renderIcon()}
         </ListItemIcon>
       )}
-
       <ListItemText
         primary={title}
         slotProps={{
@@ -98,7 +92,6 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = ({
               opacity: collapsed ? 0 : 1,
               transition: "opacity 0.3s ease",
               fontSize: theme.typography.body1.fontSize,
-              fontWeight: theme.typography.fontWeightRegular,
               whiteSpace: "nowrap",
             },
           },
