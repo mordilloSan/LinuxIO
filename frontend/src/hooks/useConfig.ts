@@ -39,17 +39,14 @@ export function useConfigValue<K extends keyof AppConfig>(key: K) {
         const dark = String(next).toUpperCase() === "DARK";
 
         (async () => {
-          try {
-            await setDarkMode(dark);
-          } catch {
-            // ignore; we'll still live-patch below
-          }
-          // small backoff helps in prod if FB persists prefs slightly after response
-          await new Promise((r) => setTimeout(r, 10));
-
           if (isFBVisible()) {
             setFBDarkMode(dark); // live patch when visible
           } else {
+            try {
+              await setDarkMode(dark);
+            } catch {
+              // ignore; we'll still live-patch below
+            }
             bgReloadFBIfHidden(); // reload hidden iframe AFTER prefs saved
           }
         })();
