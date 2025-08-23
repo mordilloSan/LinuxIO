@@ -7,7 +7,7 @@ import (
 )
 
 // HandlerFunc is the signature for bridge command handler functions.
-type HandlerFunc func(args []string) (any, error)
+type HandlerFunc func([]string) (any, error)
 
 // BridgeProcess tracks a running bridge subprocess.
 type BridgeProcess struct {

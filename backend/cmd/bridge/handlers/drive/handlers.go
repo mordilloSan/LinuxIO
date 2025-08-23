@@ -8,7 +8,7 @@ import (
 
 func DriveHandlers() map[string]types.HandlerFunc {
 	return map[string]types.HandlerFunc{
-		"get_drive_info": func(args []string) (any, error) {
+		"get_drive_info": func([]string) (any, error) {
 			return FetchDriveInfo()
 		},
 		"get_smart_info": func(args []string) (any, error) {

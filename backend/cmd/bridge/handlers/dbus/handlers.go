@@ -14,11 +14,11 @@ var systemDBusMu sync.Mutex
 
 func DbusHandlers() map[string]types.HandlerFunc {
 	return map[string]types.HandlerFunc{
-		"Reboot":         func(args []string) (any, error) { return nil, CallLogin1Action("Reboot") },
-		"PowerOff":       func(args []string) (any, error) { return nil, CallLogin1Action("PowerOff") },
-		"GetUpdates":     func(args []string) (any, error) { return GetUpdatesWithDetails() },
+		"Reboot":         func([]string) (any, error) { return nil, CallLogin1Action("Reboot") },
+		"PowerOff":       func([]string) (any, error) { return nil, CallLogin1Action("PowerOff") },
+		"GetUpdates":     func([]string) (any, error) { return GetUpdatesWithDetails() },
 		"InstallPackage": func(args []string) (any, error) { return nil, InstallPackage(args[0]) },
-		"ListServices":   func(args []string) (any, error) { return ListServices() },
+		"ListServices":   func([]string) (any, error) { return ListServices() },
 		"GetServiceInfo": func(args []string) (any, error) { return GetServiceInfo(args[0]) },
 		"StartService":   func(args []string) (any, error) { return nil, StartService(args[0]) },
 		"StopService":    func(args []string) (any, error) { return nil, StopService(args[0]) },
@@ -28,7 +28,7 @@ func DbusHandlers() map[string]types.HandlerFunc {
 		"DisableService": func(args []string) (any, error) { return nil, DisableService(args[0]) },
 		"MaskService":    func(args []string) (any, error) { return nil, MaskService(args[0]) },
 		"UnmaskService":  func(args []string) (any, error) { return nil, UnmaskService(args[0]) },
-		"GetNetworkInfo": func(args []string) (any, error) { return GetNetworkInfo() },
+		"GetNetworkInfo": func([]string) (any, error) { return GetNetworkInfo() },
 		"SetDNS":         func(args []string) (any, error) { return nil, SetDNS(args[0], args[1:]) },
 		"SetGateway":     func(args []string) (any, error) { return nil, SetGateway(args[0], args[1]) },
 		"SetMTU":         func(args []string) (any, error) { return nil, SetMTU(args[0], args[1]) },

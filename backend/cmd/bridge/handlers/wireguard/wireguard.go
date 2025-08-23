@@ -479,7 +479,7 @@ func WriteWireGuardConfigWithPostUpDown(path string, cfg InterfaceConfig, egress
 
 // --- Handler Implementations ---
 
-func ListInterfaces(args []string) (any, error) {
+func ListInterfaces([]string) (any, error) {
 	logger.Debugf(" Listing interfaces")
 	files, err := filepath.Glob("/etc/wireguard/*.conf")
 	if err != nil {

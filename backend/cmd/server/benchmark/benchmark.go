@@ -31,7 +31,7 @@ func benchmarkHandler(router *gin.Engine) gin.HandlerFunc {
 			c.JSON(401, gin.H{"error": "unauthorized"})
 			return
 		}
-		results := RunBenchmark("http://localhost:8080", "session_id="+cookie, router, 8)
+		results := RunBenchmark("http://localhost:8080", "session_id="+cookie, router)
 		var output []gin.H
 		for _, r := range results {
 			if r.Error != nil {
@@ -49,7 +49,7 @@ func benchmarkHandler(router *gin.Engine) gin.HandlerFunc {
 }
 
 // RunBenchmark performs parallel benchmarking of all GET /system/* endpoints
-func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine, concurrency int) []BenchmarkResult {
+func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine) []BenchmarkResult {
 	endpoints := getBenchmarkableEndpoints(router)
 	logger.Infof("📈 Running benchmark for %d /system/ endpoints...", len(endpoints))
 

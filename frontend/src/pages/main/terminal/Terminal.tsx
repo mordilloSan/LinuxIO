@@ -1,5 +1,5 @@
 import { Box, IconButton, Typography } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { darken, lighten, useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { Minus, Plus, RotateCcw } from "lucide-react";
@@ -151,17 +151,19 @@ const TerminalXTerm: React.FC = () => {
     >
       {/* HEADER BAR */}
       <Box
-        sx={{
+        sx={(theme) => ({
           display: "flex",
           alignItems: "center",
           px: 3,
           py: 1,
           minHeight: 64,
-          background: "rgba(50,60,70,0.74)",
-          mr: 2,
-          mb: 2,
-          boxShadow: "0 1px 8px rgba(0,0,0,0.10)",
-        }}
+          backgroundColor:
+            theme.palette.mode === "light"
+              ? darken(theme.sidebar.background, 0.07)
+              : lighten(theme.sidebar.background, 0.07),
+
+          boxShadow: theme.shadows[2],
+        })}
       >
         {/* Font Size Controls */}
         <Typography
