@@ -29,6 +29,8 @@ Tx and Rx
 
 10 - Optimize number of api calls when changing theme
 
+11 - Bridge shen starts should check if session is valid?
+
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
 filebrowser header should contain sessionid - DONE

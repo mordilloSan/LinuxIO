@@ -15,7 +15,7 @@ import (
 
 // ===== Config & model =====
 
-type Config struct {
+type SessionConfig struct {
 	// Sliding idle window (extended by activity, capped by absolute)
 	IdleTimeout time.Duration
 
@@ -32,7 +32,7 @@ type Config struct {
 	GCInterval time.Duration
 }
 
-var defaultConfig = Config{
+var defaultConfig = SessionConfig{
 	IdleTimeout:          30 * time.Minute,
 	AbsoluteTimeout:      12 * time.Hour,
 	RefreshInterval:      60 * time.Second,
@@ -57,7 +57,7 @@ type Session struct {
 // ===== Actor state =====
 
 type store struct {
-	cfg       Config
+	cfg       SessionConfig
 	sessions  map[string]Session             // id -> session
 	userIndex map[string]map[string]struct{} // userID -> set(sessionID)
 	gcTicker  *time.Ticker
@@ -72,7 +72,7 @@ var (
 
 // ===== Init / Shutdown =====
 
-func Init(cfg *Config) (shutdown func(), err error) {
+func Init(cfg *SessionConfig) (shutdown func(), err error) {
 	if mem != nil {
 		return nil, errors.New("session: already initialized")
 	}

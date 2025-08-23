@@ -65,7 +65,7 @@ func main() {
 		}()
 	}
 
-	// Ensure per-user config exists, is valid, and (if root) owned by the session user
+	// Ensure filebrowser per-user config exists, is valid, and (if root) owned by the session user
 	if cfg, cfgPath, err := config.InitializeAndLoad(Sess.User.ID); err != nil {
 		logger.Warnf("config init failed for %s: %v", Sess.User.ID, err)
 	} else {

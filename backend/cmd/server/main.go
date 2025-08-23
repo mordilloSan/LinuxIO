@@ -53,7 +53,7 @@ func main() {
 	logger.Infof("🌱 Starting server in %s mode...", env)
 
 	// Sessions Cleanup
-	shutdownSessions, err := session.Init(&session.Config{
+	shutdownSessions, err := session.Init(&session.SessionConfig{
 		IdleTimeout:          30 * time.Minute,
 		AbsoluteTimeout:      6 * time.Hour,
 		RefreshInterval:      60 * time.Second,
