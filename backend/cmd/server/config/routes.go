@@ -1,4 +1,4 @@
-package theme
+package config
 
 import (
 	"net/http"
@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
-	"github.com/mordilloSan/LinuxIO/internal/config"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
@@ -38,7 +37,7 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 			return
 		}
 
-		cfg, cfgPath, err := config.Load(username)
+		cfg, cfgPath, err := Load(username)
 		if err != nil {
 			logger.Warnf("[theme.get] user=%q load failed: %v", username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load theme"})
@@ -67,7 +66,7 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 		}
 
 		// Load current settings
-		cfg, _, err := config.Load(username)
+		cfg, _, err := Load(username)
 		if err != nil {
 			logger.Warnf("[theme.set] user=%q load-before-save failed: %v", username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
@@ -88,7 +87,7 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 
 		// Primary color if provided
 		if p.PrimaryColor != nil {
-			if !config.IsValidCSSColor(*p.PrimaryColor) {
+			if !IsValidCSSColor(*p.PrimaryColor) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid primaryColor"})
 				return
 			}
@@ -105,7 +104,7 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 		cfg.AppSettings = next
 
 		// Save
-		cfgPath, err := config.Save(username, cfg)
+		cfgPath, err := Save(username, cfg)
 		if err != nil {
 			logger.Warnf("[theme.set] user=%q save failed: %v", username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save theme"})
@@ -113,7 +112,7 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 		}
 
 		// Verify
-		verifyCfg, verifyPath, vErr := config.Load(username)
+		verifyCfg, verifyPath, vErr := Load(username)
 		ok := (vErr == nil &&
 			verifyCfg.AppSettings.Theme == next.Theme &&
 			verifyCfg.AppSettings.PrimaryColor == next.PrimaryColor &&

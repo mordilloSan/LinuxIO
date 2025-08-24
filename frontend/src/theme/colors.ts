@@ -1,4 +1,6 @@
 // src/theme/colors.ts
+
+//remember to Go code if you change this
 export const COLOR_TOKENS = {
   blue: "#1d99f3",
   red: "#da4453",

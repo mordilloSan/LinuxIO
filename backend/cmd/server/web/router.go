@@ -11,12 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/benchmark"
+	"github.com/mordilloSan/LinuxIO/cmd/server/config"
 	"github.com/mordilloSan/LinuxIO/cmd/server/docker"
 	"github.com/mordilloSan/LinuxIO/cmd/server/network"
 	"github.com/mordilloSan/LinuxIO/cmd/server/power"
 	"github.com/mordilloSan/LinuxIO/cmd/server/services"
 	"github.com/mordilloSan/LinuxIO/cmd/server/system"
-	"github.com/mordilloSan/LinuxIO/cmd/server/theme"
 	"github.com/mordilloSan/LinuxIO/cmd/server/updates"
 	"github.com/mordilloSan/LinuxIO/cmd/server/websocket"
 	"github.com/mordilloSan/LinuxIO/cmd/server/wireguard"
@@ -57,7 +57,7 @@ func BuildRouter(cfg Config) *gin.Engine {
 	services.RegisterServiceRoutes(r)
 	network.RegisterNetworkRoutes(r)
 	docker.RegisterDockerRoutes(r)
-	theme.RegisterThemeRoutes(r)
+	config.RegisterThemeRoutes(r)
 	power.RegisterPowerRoutes(r)
 	wireguard.RegisterWireguardRoutes(r)
 
@@ -65,7 +65,7 @@ func BuildRouter(cfg Config) *gin.Engine {
 	r.GET("/ws", websocket.WebSocketHandler)
 
 	// Filebrowser (auth protected)
-	r.Any("/navigator/*proxyPath", auth.AuthMiddleware(), auth.FilebrowserReverseProxy(cfg.FilebrowserSecret))
+	r.Any("/navigator/*proxyPath", auth.AuthMiddleware(), NavigatorDefaultsMiddleware(), auth.FilebrowserReverseProxy(cfg.FilebrowserSecret))
 
 	// Debug-only routes
 	if cfg.Env != "production" {

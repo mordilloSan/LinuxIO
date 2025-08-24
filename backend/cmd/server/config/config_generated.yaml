@@ -1,4 +1,4 @@
-themeSettings:
+appSettings:
     theme: DARK
     primaryColor: '#2196f3'
     sidebarCollapsed: false

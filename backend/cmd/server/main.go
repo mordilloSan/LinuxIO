@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/web"
 
 	"github.com/mordilloSan/LinuxIO/cmd/server/cleanup"
@@ -105,7 +105,7 @@ func main() {
 		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 
 		// Seed the *auth* package’s client trust pool used by syncFilebrowser
-		if err := auth.SetTrustedPoolFromServerCert(cert); err != nil {
+		if err := web.SetTrustedPoolFromServerCert(cert); err != nil {
 			logger.Error.Fatalf("❌ Failed to set trusted pool: %v", err)
 		}
 	}
@@ -143,17 +143,30 @@ func main() {
 		logger.Infof("🚨 Server stopped unexpectedly, beginning shutdown...")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// === graceful -> forced shutdown sequence ===
+	srv.SetKeepAlivesEnabled(false) // stop new keep-alive requests
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil && err != http.ErrServerClosed {
-		logger.Error.Fatalf("❌ Server forced to shutdown: %v", err)
+
+	if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if errors.Is(err, context.DeadlineExceeded) {
+			logger.Warnf("⏳ Graceful HTTP shutdown timed out; forcing close of remaining connections.")
+			if cerr := srv.Close(); cerr != nil && !errors.Is(cerr, http.ErrServerClosed) {
+				logger.Warnf("HTTP server force-close error: %v", cerr)
+			}
+		} else {
+			logger.Warnf("HTTP server shutdown error: %v", err)
+		}
 	}
 
-	// Cleanup
+	// Cleanup (signal bridges first so they cancel work promptly)
+	cleanup.ShutdownAllBridges("server_quit")
+
 	if err := cleanup.CleanupFilebrowserContainer(); err != nil {
 		logger.Warnf("FileBrowser cleanup error: %v", err)
 	}
-	cleanup.ShutdownAllBridges("server_quit")
+
 	if env == "production" {
 		fmt.Println("Server stopped.")
 	}

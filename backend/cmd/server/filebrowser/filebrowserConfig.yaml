@@ -24,36 +24,21 @@ auth:
     proxy:
       enabled: true
       header: "{{SECRET_KEY}}"
-      createUser: true
+      createUser: false
     password:
       enabled: false
 frontend:
+  name: ""
   disableDefaultLinks: true
-  disableUsedPercentage: true
+  externalLinks:
+    - text: "FileBrowser Quantum" # the text to display on the link  validate:required
+      url: "https://github.com/gtsteffaniak/filebrowser/releases/" # the url to link to  validate:required~
   styling:
     customCSS: "custom.css"
 userDefaults:
-  editorQuickSave: false
-  hideSidebarFileActions: true
-  disableQuickToggles: true
-  disableSearchOptions: false
-  stickySidebar: false
-  darkMode: true
-  locale: "en"
-  viewMode: "normal"
-  singleClick: false
-  showHidden: true
-  dateFormat: true
-  themeColor: "var(--blue)"
-  quickDownload: false
-  lockPassword: true
-  disableSettings: true
   permissions:
     api: true
     admin: true
     modify: true
     share: false
     realtime: true
-  loginMethod: "proxy"
-  disableUpdateNotifications: true
-  deleteWithoutConfirming: false

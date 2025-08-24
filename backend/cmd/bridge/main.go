@@ -18,8 +18,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/cmd/server/config"
 	"github.com/mordilloSan/LinuxIO/internal/bridge"
-	"github.com/mordilloSan/LinuxIO/internal/config"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
@@ -46,6 +46,7 @@ func main() {
 	pflag.StringVar(&env, "env", "production", "environment (development|production)")
 	pflag.BoolVar(&verbose, "verbose", false, "enable verbose logs") // presence-only: --verbose
 	pflag.Parse()
+
 	env = strings.ToLower(env)
 	logger.Init(env, verbose)
 
@@ -72,13 +73,8 @@ func main() {
 		}()
 	}
 
-	// Ensure filebrowser per-user config exists, is valid, and (if root) owned by the session user
-	if cfg, cfgPath, err := config.InitializeAndLoad(Sess.User.ID); err != nil {
-		logger.Warnf("config init failed for %s: %v", Sess.User.ID, err)
-	} else {
-		logger.Infof("Config ready for %s at %s (theme=%s primary=%s)",
-			Sess.User.ID, cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor)
-	}
+	// Ensure per-user config exists and is valid; logs internally.
+	config.EnsureConfigReady(Sess.User.ID)
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)

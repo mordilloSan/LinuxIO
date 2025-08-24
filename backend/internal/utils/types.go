@@ -3,6 +3,7 @@ package utils
 type User struct {
 	ID   string // Username (unique key)
 	Name string // Display name (can be same as ID)
+	FBID int    // Filebrowser user ID (if any)
 }
 
 type PeerConfig struct {
