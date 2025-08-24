@@ -10,6 +10,7 @@ import (
 	"os/user"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -31,6 +32,12 @@ var Sess = &session.Session{
 	User:         utils.User{ID: os.Getenv("LINUXIO_SESSION_USER"), Name: os.Getenv("LINUXIO_SESSION_USER")},
 	BridgeSecret: os.Getenv("LINUXIO_BRIDGE_SECRET"),
 }
+
+// Global shutdown signal for all handlers: closed when shutdown starts.
+var bridgeClosing = make(chan struct{})
+
+// Track in-flight requests to allow bounded wait on shutdown.
+var wg sync.WaitGroup
 
 func main() {
 	// Flags for mode only
@@ -110,10 +117,31 @@ func main() {
 	cleanupDone := make(chan struct{}, 1)
 	go func() {
 		reason := <-ShutdownChan
+
+		// Signal all goroutines that shutdown started
+		close(bridgeClosing)
+
+		// Stop accepting new connections and close listener
 		close(acceptDone)
 		if err := listener.Close(); err != nil {
 			logger.Warnf("failed to close listener: %v", err)
 		}
+
+		// Bounded wait for in-flight requests; do not block forever
+		waitCh := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(waitCh)
+		}()
+		const grace = 5 * time.Second
+		select {
+		case <-waitCh:
+			logger.Debugf("All in-flight requests finished before grace period.")
+		case <-time.After(grace):
+			logger.Warnf("⏳ In-flight handlers still running after %s; proceeding with cleanup.", grace)
+		}
+
+		// Cleanup artifacts regardless of handler state
 		if err := cleanup.FullCleanup(reason, Sess); err != nil {
 			logger.Warnf("FullCleanup failed (reason=%q): %v", reason, err)
 		}
@@ -127,6 +155,9 @@ func main() {
 
 // handleMainRequest processes incoming bridge requests.
 func handleMainRequest(conn net.Conn, id string) {
+	wg.Add(1)
+	defer wg.Done()
+
 	logger.Debugf("HANDLECONNECTION: [%s] called!", id)
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
@@ -176,30 +207,52 @@ func handleMainRequest(conn net.Conn, id string) {
 		return
 	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Errorf("🔥 Panic in %s command handler: %v", req.Type, r)
-			_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("panic: %v", r)})
-		}
-	}()
-	out, err := handler(req.Args)
-	if err == nil {
-		var raw json.RawMessage
-		if out != nil {
-			rawBytes, marshalErr := json.Marshal(out)
-			if marshalErr != nil {
-				_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "failed to marshal handler output"})
-				return
+	type result struct {
+		out any
+		err error
+	}
+	done := make(chan result, 1)
+
+	// Run the handler in its own goroutine so we can stop waiting during shutdown.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("🔥 Panic in %s command handler: %v", req.Type, r)
+				done <- result{nil, fmt.Errorf("panic: %v", r)}
 			}
-			raw = json.RawMessage(rawBytes)
+		}()
+		out, err := handler(req.Args)
+		done <- result{out, err}
+	}()
+
+	select {
+	case r := <-done:
+		if r.err == nil {
+			var raw json.RawMessage
+			if r.out != nil {
+				rawBytes, marshalErr := json.Marshal(r.out)
+				if marshalErr != nil {
+					_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "failed to marshal handler output"})
+					return
+				}
+				raw = json.RawMessage(rawBytes)
+			}
+			logger.Debugf("Responding to [%s]: status=ok output=%s", id, string(raw))
+			_ = encoder.Encode(types.BridgeResponse{Status: "ok", Output: raw})
+			return
 		}
-		logger.Debugf("Responding to [%s]: status=ok output=%s", id, string(raw))
-		_ = encoder.Encode(types.BridgeResponse{Status: "ok", Output: raw})
+		logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, r.err)
+		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: r.err.Error()})
+		return
+
+	case <-bridgeClosing:
+		// Bridge is shutting down → stop waiting and tell client.
+		_ = encoder.Encode(types.BridgeResponse{
+			Status: "error",
+			Error:  "canceled: bridge shutting down",
+		})
 		return
 	}
-
-	logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, err)
-	_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: err.Error()})
 }
 
 // CreateAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.
