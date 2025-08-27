@@ -3,15 +3,14 @@ import { IconButton, Tooltip } from "@mui/material";
 import { Sun, Moon } from "lucide-react";
 import React from "react";
 
-import { THEMES } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
 
 function NavbarThemeToggle() {
   const [theme, setTheme] = useConfigValue("theme");
-  const isDark = theme === THEMES.DARK;
+  const isDark = theme === "DARK";
 
   const toggleTheme = () => {
-    setTheme(isDark ? THEMES.LIGHT : THEMES.DARK);
+    setTheme(isDark ? "LIGHT" : "DARK");
   };
 
   return (

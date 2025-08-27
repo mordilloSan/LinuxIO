@@ -1,9 +1,7 @@
 import { Box, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
-import React, { useState, useEffect } from "react";
-
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import NetworkGraph from "./NetworkGraph";
-
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
@@ -21,8 +19,8 @@ const NetworkInterfacesCard: React.FC = () => {
   const { data: interfaces = [], isLoading } = useQuery<InterfaceStats[]>({
     queryKey: ["networkInterfaces"],
     queryFn: async () => {
-      const res = await axios.get("/network/info");
-      return res.data.map((iface: any) => ({
+      const { data } = await axios.get("/network/info");
+      return data.map((iface: any) => ({
         ...iface,
         ipv4: Array.isArray(iface.ipv4) ? iface.ipv4 : [],
         type: iface.name.startsWith("wl")
@@ -35,51 +33,62 @@ const NetworkInterfacesCard: React.FC = () => {
     refetchInterval: 1000,
   });
 
-  const [selected, setSelected] = useState("");
-  const [history, setHistory] = useState<
-    { time: number; rx: number; tx: number }[]
-  >([]);
-
-  const filteredInterfaces = interfaces.filter(
-    (iface) =>
-      !iface.name.startsWith("veth") &&
-      !iface.name.startsWith("docker") &&
-      !iface.name.startsWith("br") &&
-      iface.name !== "lo",
+  const filteredInterfaces = useMemo(
+    () =>
+      interfaces.filter(
+        (iface) =>
+          !iface.name.startsWith("veth") &&
+          !iface.name.startsWith("docker") &&
+          !iface.name.startsWith("br") &&
+          iface.name !== "lo",
+      ),
+    [interfaces]
   );
 
-  useEffect(() => {
-    if (filteredInterfaces.length && !selected) {
-      setSelected(filteredInterfaces[0].name);
-    } else if (
-      selected &&
-      !filteredInterfaces.some((iface) => iface.name === selected)
-    ) {
-      setSelected(filteredInterfaces[0]?.name ?? "");
-    }
-  }, [filteredInterfaces, selected]);
+  const [selected, setSelected] = useState<string>("");
 
-  const selectedInterface = filteredInterfaces.find(
-    (iface) => iface.name === selected,
+  // Adjust selection during render (no Effect needed)
+  const firstName = filteredInterfaces[0]?.name ?? "";
+  const selectedExists = selected && filteredInterfaces.some((i) => i.name === selected);
+  const effectiveSelected = selectedExists ? selected : firstName;
+  if (effectiveSelected !== selected) {
+    // guarded setState during render is fine; React will immediately re-render
+    setSelected(effectiveSelected);
+  }
+
+  const selectedInterface = useMemo(
+    () => filteredInterfaces.find((i) => i.name === effectiveSelected),
+    [filteredInterfaces, effectiveSelected]
   );
 
-  useEffect(() => {
-    if (selectedInterface) {
-      setHistory((prev) => [
-        ...prev.slice(-29),
-        {
-          time: Date.now(),
-          rx: selectedInterface.rx_speed,
-          tx: selectedInterface.tx_speed,
-        },
-      ]);
-    }
-  }, [selectedInterface]);
+  const [history, setHistory] = useState<{ time: number; rx: number; tx: number }[]>([]);
+  const lastSampleRef = useRef<number>(0);
 
-  const options = filteredInterfaces.map((iface) => ({
-    value: iface.name,
-    label: iface.name,
-  }));
+  // Keep this Effect: accumulate samples over time from external polling
+  useEffect(() => {
+    if (!selectedInterface) return;
+    const now = Date.now();
+
+    // Only append if speeds changed OR at least 250ms passed (avoid duplicate samples)
+    const shouldAppend =
+      now - lastSampleRef.current > 250 ||
+      history.length === 0 ||
+      history[history.length - 1].rx !== selectedInterface.rx_speed ||
+      history[history.length - 1].tx !== selectedInterface.tx_speed;
+
+    if (!shouldAppend) return;
+
+    setHistory((prev) => [
+      ...prev.slice(-29),
+      { time: now, rx: selectedInterface.rx_speed, tx: selectedInterface.tx_speed },
+    ]);
+    lastSampleRef.current = now;
+  }, [selectedInterface?.rx_speed, selectedInterface?.tx_speed, selectedInterface]); // deps on values
+
+  const options = useMemo(
+    () => filteredInterfaces.map((iface) => ({ value: iface.name, label: iface.name })),
+    [filteredInterfaces]
+  );
 
   const content = selectedInterface ? (
     isLoading ? (
@@ -88,8 +97,7 @@ const NetworkInterfacesCard: React.FC = () => {
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
         <Typography variant="body2">
           <strong>IPv4:</strong>{" "}
-          {Array.isArray(selectedInterface?.ipv4) &&
-          selectedInterface.ipv4.length > 0
+          {selectedInterface.ipv4 && selectedInterface.ipv4.length > 0
             ? selectedInterface.ipv4.join(", ")
             : "None"}
         </Typography>
@@ -124,16 +132,14 @@ const NetworkInterfacesCard: React.FC = () => {
       stats={content}
       stats2={content2}
       selectOptions={options}
-      selectedOption={selected}
-      selectedOptionLabel={selected}
+      selectedOption={effectiveSelected}
+      selectedOptionLabel={effectiveSelected}
       onSelect={(val: string) => {
         setSelected(val);
-        setHistory([]);
+        setHistory([]); // reset graph when switching interfaces
       }}
       connectionStatus={
-        selectedInterface?.ipv4 && selectedInterface.ipv4.length > 0
-          ? "online"
-          : "offline"
+        selectedInterface?.ipv4 && selectedInterface.ipv4.length > 0 ? "online" : "offline"
       }
     />
   );

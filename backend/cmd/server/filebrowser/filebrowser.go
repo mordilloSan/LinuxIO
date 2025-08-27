@@ -129,7 +129,7 @@ func startFileBrowserContainer(secret string) error {
 					Type:     mount.TypeBind,
 					Source:   "/",
 					Target:   "/server",
-					ReadOnly: true,
+					ReadOnly: false,
 				},
 			},
 			PortBindings: nat.PortMap{

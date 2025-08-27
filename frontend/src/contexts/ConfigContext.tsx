@@ -1,116 +1,58 @@
-import React, {
-  createContext,
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-} from "react";
-
-import {
-  DEFAULT_PRIMARY_COLOR,
-  SIDEBAR_COLAPSED_STATE,
-  THEMES,
-} from "@/constants";
-import {
-  AppConfig,
-  ConfigContextType,
-  ConfigProviderProps,
-} from "@/types/config";
+// src/contexts/ConfigContext.tsx
+import React, { createContext, useEffect, useState, useCallback, useMemo } from "react";
+import { AppConfig, ConfigContextType, ConfigProviderProps } from "@/types/config";
 import axios from "@/utils/axios";
-import { debounce } from "@/utils/debounce";
+import { toast } from "sonner";
 
-const initialConfig: AppConfig = {
-  theme: THEMES.DARK,
-  primaryColor: DEFAULT_PRIMARY_COLOR,
-  sidebarCollapsed: SIDEBAR_COLAPSED_STATE,
-};
-
-export const ConfigContext = createContext<ConfigContextType | undefined>(
-  undefined,
-);
+const initialConfig = {} as AppConfig;
+export const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
 export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const [config, setConfig] = useState<AppConfig>(initialConfig);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [canPersist, setCanPersist] = useState(false);
+  const [isLoaded, setLoaded] = useState(false);
 
-  // --- Load from backend ---
   useEffect(() => {
-    let mounted = true;
-    axios
-      .get("/theme/get")
-      .then((r) => {
-        if (!mounted) return;
-        setConfig((prev) => ({
-          ...prev,
-          ...r.data,
-        }));
-        setCanPersist(true);
-      })
-      .catch(() => {})
-      .finally(() => mounted && setIsLoaded(true));
-    return () => {
-      mounted = false;
-    };
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const r = await axios.get("/theme/get", { signal: controller.signal });
+        setConfig(r.data);
+      } catch {
+        toast.error("Session expired. Please sign in again.");
+        window.location.assign("/sign-in");
+        return;
+      } finally {
+        setLoaded(true);
+      }
+    })();
+    return () => controller.abort();
   }, []);
 
-  // --- Persist with debounce ---
-  const saveConfig = useCallback(
-    (cfg: AppConfig) => {
-      if (!canPersist) return;
-      axios.post("/theme/set", cfg);
-    },
-    [canPersist],
-  );
+  const save = useCallback((cfg: AppConfig) => {
+    if (!isLoaded) return;
+    axios.post("/theme/set", cfg).catch(() => { });
+  }, [isLoaded]);
 
-  const debouncedSave = useMemo(() => debounce(saveConfig, 400), [saveConfig]);
+  const setKey: ConfigContextType["setKey"] = useCallback((key, value) => {
+    setConfig(prev => {
+      const nextVal = typeof value === "function" ? (value as any)(prev[key]) : value;
+      if (Object.is(prev[key], nextVal)) return prev;
+      const next = { ...prev, [key]: nextVal } as AppConfig;
+      save(next);
+      return next;
+    });
+  }, [save]);
 
-  // --- Generic setters ---
-  const setKey: ConfigContextType["setKey"] = useCallback(
-    (key, value) => {
-      setConfig((prev) => {
-        const nextVal =
-          typeof value === "function"
-            ? (
-                value as (
-                  p: (typeof prev)[typeof key],
-                ) => (typeof prev)[typeof key]
-              )(prev[key])
-            : value;
+  const updateConfig: ConfigContextType["updateConfig"] = useCallback((patch) => {
+    setConfig(prev => {
+      const partial = typeof patch === "function" ? patch(prev) : patch;
+      const next = { ...prev, ...partial };
+      save(next);
+      return next;
+    });
+  }, [save]);
 
-        const next = { ...prev, [key]: nextVal } as AppConfig;
-        debouncedSave(next);
-        return next;
-      });
-    },
-    [debouncedSave],
-  );
-
-  const updateConfig: ConfigContextType["updateConfig"] = useCallback(
-    (patch) => {
-      setConfig((prev) => {
-        const partial = typeof patch === "function" ? patch(prev) : patch;
-        const next = { ...prev, ...partial };
-        debouncedSave(next);
-        return next;
-      });
-    },
-    [debouncedSave],
-  );
-
-  const contextValue = useMemo(
-    () => ({
-      config,
-      setKey,
-      updateConfig,
-      isLoaded,
-    }),
-    [config, setKey, updateConfig, isLoaded],
-  );
-
-  return (
-    <ConfigContext.Provider value={contextValue}>
-      {children}
-    </ConfigContext.Provider>
-  );
+  const value = useMemo(() => ({ config, setKey, updateConfig, isLoaded }), [config, setKey, updateConfig, isLoaded]);
+  if (!isLoaded) return null;
+  return <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>;
 };

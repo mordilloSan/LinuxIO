@@ -17,38 +17,48 @@ export interface SidebarContextType {
   mobileOpen: boolean;
   isDesktop: boolean;
   sidebarWidth: number;
-  setHovered: (value: boolean) => void;
+  setHovered: (value: boolean) => void;      // guarded
   setMobileOpen: (value: boolean) => void;
   toggleCollapse: () => void;
   toggleMobileOpen: () => void;
   hoverEnabledRef: React.RefObject<boolean>;
 }
 
-export const SidebarContext = createContext<SidebarContextType | undefined>(
-  undefined,
-);
+export const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
-export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const muiTheme = useMuiTheme();
   const isDesktop = useMediaQuery(muiTheme.breakpoints.up("md"));
 
-  // New: grab persisted collapsed state from config
+  // persisted collapsed flag
   const [collapsed, setCollapsed] = useConfigValue("sidebarCollapsed");
 
-  const [hovered, setHovered] = useState(false);
+  const [hovered, _setHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
   const hoverEnabled = useRef(true);
+  const collapseTimer = useRef<number | null>(null);
+
+  // Guarded setter so consumers don't need to read the ref
+  const setHovered = useCallback((v: boolean) => {
+    if (hoverEnabled.current) _setHovered(v);
+  }, []);
 
   const toggleCollapse = useCallback(() => {
-    setCollapsed((prev) => {
+    setCollapsed(prev => {
       const next = !prev;
+
+      // When collapsing on desktop, temporarily disable hover to avoid flicker
       if (isDesktop && next) {
         hoverEnabled.current = false;
-        setHovered(false);
-        setTimeout(() => {
+        _setHovered(false);
+
+        if (collapseTimer.current) {
+          window.clearTimeout(collapseTimer.current);
+        }
+        collapseTimer.current = window.setTimeout(() => {
           hoverEnabled.current = true;
+          collapseTimer.current = null;
         }, 200);
       }
       return next;
@@ -56,27 +66,31 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [isDesktop, setCollapsed]);
 
   const toggleMobileOpen = useCallback(() => {
-    if (isDesktop) return;
-    setMobileOpen((prev) => !prev);
+    if (!isDesktop) setMobileOpen(prev => !prev);
   }, [isDesktop]);
 
+  // Clean up pending timer
+  useEffect(() => {
+    return () => {
+      if (collapseTimer.current) {
+        window.clearTimeout(collapseTimer.current);
+      }
+    };
+  }, []);
+
+  // Respond to breakpoint (and optionally collapsed changes) responsively
   useEffect(() => {
     if (isDesktop) {
       setMobileOpen(false);
     } else {
-      setHovered(false);
+      _setHovered(false);
       setMobileOpen(false);
     }
-  }, [isDesktop, collapsed]);
+  }, [isDesktop, collapsed]); // remove `collapsed` if you don't want mobile to close on collapse
 
   const sidebarWidth = useMemo(
-    () =>
-      isDesktop
-        ? collapsed
-          ? collapsedDrawerWidth
-          : drawerWidth
-        : drawerWidth,
-    [isDesktop, collapsed],
+    () => (isDesktop ? (collapsed ? collapsedDrawerWidth : drawerWidth) : drawerWidth),
+    [isDesktop, collapsed]
   );
 
   const value = useMemo(
@@ -86,24 +100,14 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
       mobileOpen,
       isDesktop,
       sidebarWidth,
-      setHovered,
+      setHovered,          // guarded setter
       setMobileOpen,
       toggleCollapse,
       toggleMobileOpen,
       hoverEnabledRef: hoverEnabled,
     }),
-    [
-      collapsed,
-      hovered,
-      mobileOpen,
-      isDesktop,
-      sidebarWidth,
-      toggleCollapse,
-      toggleMobileOpen,
-    ],
+    [collapsed, hovered, mobileOpen, isDesktop, sidebarWidth, setHovered, toggleCollapse, toggleMobileOpen]
   );
 
-  return (
-    <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>
-  );
+  return <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>;
 };

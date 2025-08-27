@@ -2,17 +2,12 @@
 import { useContext, useCallback } from "react";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { AppConfig } from "@/types/config";
-import { setThemeColor, setDarkMode } from "@/utils/filebrowserCache";
 import {
-  setFBPrimaryToken,
-  setFBDarkMode,
-  isFBVisible,
-  bgReloadFBIfHidden,
-} from "@/utils/filebrowserDOM";
-
-function resolveNext<T>(prev: T, next: T | ((p: T) => T)): T {
-  return typeof next === "function" ? (next as (p: T) => T)(prev) : next;
-}
+  setFilebrowserThemeColor,
+  setFilebrowserDarkMode,
+  liveSetPrimaryToken,
+  liveSetDarkMode,
+} from "@/utils/filebrowser";
 
 const useConfig = () => {
   const ctx = useContext(ConfigContext);
@@ -23,36 +18,34 @@ const useConfig = () => {
 export function useConfigValue<K extends keyof AppConfig>(key: K) {
   const { config, setKey } = useConfig();
 
+  const effects = useCallback((k: keyof AppConfig, v: AppConfig[typeof k]) => {
+    switch (k) {
+      case "primaryColor": {
+        const token = String(v ?? "").trim();
+        void setFilebrowserThemeColor(token || undefined).catch(() => undefined);
+        liveSetPrimaryToken(token || undefined);
+        return;
+      }
+      case "theme": {
+        const dark = String(v).toUpperCase() === "DARK";
+        void setFilebrowserDarkMode(dark).catch(() => undefined);
+        liveSetDarkMode(dark);
+        return;
+      }
+      default:
+        return;
+    }
+  }, []);
+
   const set = useCallback(
-    (v: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K])) => {
-      const current = config[key];
-      const next = resolveNext(current, v);
-      setKey(key, next);
-
-      if (key === "primaryColor") {
-        const token = String(next);
-        void setThemeColor(token).catch(() => undefined);
-        setFBPrimaryToken(token); // live update, best-effort
-      }
-
-      if (key === "theme") {
-        const dark = String(next).toUpperCase() === "DARK";
-
-        (async () => {
-          if (isFBVisible()) {
-            setFBDarkMode(dark); // live patch when visible
-          } else {
-            try {
-              await setDarkMode(dark);
-            } catch {
-              // ignore; we'll still live-patch below
-            }
-            bgReloadFBIfHidden(); // reload hidden iframe AFTER prefs saved
-          }
-        })();
-      }
+    (next: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K])) => {
+      const cur = config[key];
+      const val = typeof next === "function" ? (next as any)(cur) : next;
+      if (Object.is(cur, val)) return;
+      setKey(key, val);
+      effects(key, val as AppConfig[K]);
     },
-    [config, key, setKey],
+    [config, key, setKey, effects]
   );
 
   return [config[key], set] as const;

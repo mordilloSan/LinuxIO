@@ -3,7 +3,7 @@ server:
   baseURL: /navigator/
   logging:
     - levels: "info|warning|error|debug"
-      apiLevels: disabled
+      apiLevels: enabled
       output: stdout
       utc: true
   sources:
@@ -19,26 +19,33 @@ server:
             - /dev
             - /var/lib/docker/overlay2
   database: /home/filebrowser/data/database.db
+  disablePreviews: true
+frontend:
+  disableDefaultLinks: true
+  styling:
+    customCSS: "custom.css"
 auth:
   methods:
     proxy:
       enabled: true
       header: "{{SECRET_KEY}}"
-      createUser: false
+      createUser: true
     password:
-      enabled: false
-frontend:
-  name: ""
-  disableDefaultLinks: true
-  externalLinks:
-    - text: "FileBrowser Quantum" # the text to display on the link  validate:required
-      url: "https://github.com/gtsteffaniak/filebrowser/releases/" # the url to link to  validate:required~
-  styling:
-    customCSS: "custom.css"
+      enabled: true
 userDefaults:
+  editorQuickSave: true
+  hideSidebarFileActions: true
+  stickySidebar: false
+  showHidden: true
+  dateFormat: true
+  quickDownload: false
+  lockPassword: true
+  disableSettings: true
   permissions:
     api: true
     admin: true
     modify: true
     share: false
     realtime: true
+  loginMethod: "proxy"
+  disableUpdateNotifications: true

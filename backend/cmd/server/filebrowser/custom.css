@@ -26,27 +26,3 @@ body {
 #app {
   transition: none !important;
 }
-
-/* To hide the sidebar button */
-
-#button-toggle-sidebar {
-  display: none !important;
-}
-
-/* To keep the switch view button on the right */
-.menu-button {
-  margin-left: auto !important;
-}
-
-#breadcrumbs {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
-  width: 100%;
-}
-
-.gallery-size.card {
-  margin-left: auto !important;
-}

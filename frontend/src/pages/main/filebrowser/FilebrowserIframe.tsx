@@ -1,101 +1,89 @@
-// src/components/PersistentFilebrowser.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { FB_BASE } from "@/utils/filebrowser";
 
-import { useConfigReady, useConfigValue } from "@/hooks/useConfig";
-import axios from "@/utils/axios";
-import { setFBPrimaryToken } from "@/utils/filebrowserDOM";
-
-const FB_BASE = "/navigator";
-
-export default function PersistentFilebrowser() {
+export default function FilebrowserIframe() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [ready, setReady] = useState(false);
 
-  const configReady = useConfigReady();
-  const [primaryColor] = useConfigValue("primaryColor");
+  // runtime flags for cross-window coordination
+  const fbReadyRef = useRef(false);
+  const lastSentRef = useRef<string>("");
 
   const location = useLocation();
   const navigate = useNavigate();
+  const isFBRoute = location.pathname.startsWith("/filebrowser");
 
-  const isFBRoute = useMemo(
-    () => location.pathname.startsWith("/filebrowser"),
-    [location.pathname],
-  );
+  // Keep latest values in a ref so the listener never goes stale
+  const latestRef = useRef({
+    isFBRoute,
+    path: location.pathname,
+    search: location.search,
+    hash: location.hash,
+    navigate,
+  });
+  latestRef.current = { isFBRoute, path: location.pathname, search: location.search, hash: location.hash, navigate };
 
-  useEffect(() => {
-    const controller = new AbortController();
-    axios
-      .get(FB_BASE + "/", {
-        signal: controller.signal, // cancel on unmount
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, []);
-
-  // Mark ready after the FIRST load; stays mounted forever.
-  useEffect(() => {
-    const i = iframeRef.current;
-    if (!i) return;
-    const onLoad = () => setReady(true);
-    i.addEventListener("load", onLoad);
-    return () => i.removeEventListener("load", onLoad);
-  }, []);
-
-  // As soon as iframe is ready (and config is loaded), inject primary color
-  useEffect(() => {
-    if (!ready || !configReady) return;
-    setFBPrimaryToken(String(primaryColor));
-  }, [ready, configReady, primaryColor]);
-
-  // Keep parent router in sync with FileBrowser's internal navigation
+  // 1) Subscribe to window messages ONCE
   useEffect(() => {
     function onMsg(ev: MessageEvent) {
-      if (!isFBRoute) return;
       if (ev.origin !== window.location.origin) return;
-
       const fromIframe =
-        iframeRef.current?.contentWindow &&
-        ev.source === iframeRef.current.contentWindow;
+        iframeRef.current?.contentWindow && ev.source === iframeRef.current.contentWindow;
       if (!fromIframe) return;
 
       const d = ev.data;
-      if (d && d.type === "filebrowser:navigation") {
+
+      // Handshake: mark iframe as ready to receive navigation
+      if (d?.type === "filebrowser:ready") {
+        fbReadyRef.current = true;
+        return;
+      }
+
+      // Sync parent route when FB navigates internally
+      if (latestRef.current.isFBRoute && d?.type === "filebrowser:navigation") {
         const url = String(d.url || "/");
         const next = `/filebrowser${url}`;
-        const cur = location.pathname + location.search + location.hash;
-        if (next !== cur) navigate(next, { replace: true });
+        const cur = latestRef.current.path + latestRef.current.search + latestRef.current.hash;
+        if (next !== cur) latestRef.current.navigate(next, { replace: true });
       }
     }
+
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [isFBRoute, location.pathname, location.search, location.hash, navigate]);
+  }, []);
 
-  // When the app route changes under /filebrowser, ask FB to navigate WITHOUT reload.
-  useEffect(() => {
-    if (!isFBRoute || !ready) return;
-
-    const urlSuffix =
+  // Precompute the suffix we want the iframe to navigate to
+  const urlSuffix = useMemo(
+    () =>
       location.pathname.replace(/^\/filebrowser/, "") +
       location.search +
-      location.hash;
+      location.hash,
+    [location.pathname, location.search, location.hash]
+  );
+
+  // 2) Push navigation to the iframe when our route changes under /filebrowser
+  useEffect(() => {
+    if (!isFBRoute) return;
+    if (urlSuffix === lastSentRef.current) return;
 
     const win = iframeRef.current?.contentWindow;
-    if (!win) return;
+    if (!win || !fbReadyRef.current) return; // wait for the iframe handshake
 
     try {
       win.postMessage(
         { type: "linuxio:navigate", url: urlSuffix || "/" },
-        window.location.origin,
+        window.location.origin
       );
-    } catch (err) {
-      console.log("[filebrowser] postMessage failed:", err);
+      lastSentRef.current = urlSuffix;
+    } catch {
+      // no-op
     }
-  }, [isFBRoute, ready, location.pathname, location.search, location.hash]);
+  }, [isFBRoute, urlSuffix]);
 
   return (
     <div
       id="filebrowser-layer"
+      aria-hidden={!isFBRoute}
       style={{
         position: "absolute",
         inset: 0,
@@ -104,18 +92,9 @@ export default function PersistentFilebrowser() {
         pointerEvents: isFBRoute ? "auto" : "none",
         transition: "none",
         zIndex: 1,
+        backgroundColor: "var(--app-bg, var(--mui-palette-background-default, transparent))",
       }}
     >
-      {!ready && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "var(--app-bg, var(--mui-palette-background-default, transparent))",
-          }}
-        />
-      )}
       <iframe
         id="filebrowser-iframe"
         ref={iframeRef}
@@ -127,8 +106,7 @@ export default function PersistentFilebrowser() {
           width: "100%",
           height: "100%",
           border: "none",
-          background:
-            "var(--app-bg, var(--mui-palette-background-default, transparent))",
+          background: "var(--app-bg, var(--mui-palette-background-default, transparent))",
         }}
       />
     </div>

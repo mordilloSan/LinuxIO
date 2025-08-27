@@ -1,6 +1,5 @@
 // src/theme/colors.ts
 
-//remember to Go code if you change this
 export const COLOR_TOKENS = {
   blue: "#1d99f3",
   red: "#da4453",
@@ -41,9 +40,4 @@ export function getContrastText(hex: string): "#000" | "#fff" {
 
   const luminance = 0.2126 * R + 0.7152 * G + 0.0722 * B;
   return luminance > 0.5 ? "#000" : "#fff";
-}
-
-export function normalizeToken(name?: string): keyof typeof COLOR_TOKENS {
-  const key = (name || "blue").toLowerCase() as keyof typeof COLOR_TOKENS;
-  return key in COLOR_TOKENS ? key : "blue";
 }

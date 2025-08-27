@@ -1,6 +1,5 @@
 import merge from "deepmerge";
 import { grey } from "@mui/material/colors";
-import { THEMES } from "@/constants";
 
 const customBlue = {
   50: "#e9f0fb",
@@ -16,7 +15,7 @@ const customBlue = {
 };
 
 const defaultVariant: VariantType = {
-  name: THEMES.LIGHT,
+  name: "LIGHT",
   palette: {
     mode: "light",
     primary: {
@@ -74,7 +73,7 @@ const defaultVariant: VariantType = {
 const darkVariant: VariantType = merge<VariantType, Partial<VariantType>>(
   defaultVariant,
   {
-    name: THEMES.DARK,
+    name: "DARK",
     palette: {
       mode: "dark",
       primary: {

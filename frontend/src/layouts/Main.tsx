@@ -1,7 +1,6 @@
 import { Box, CssBaseline } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { Suspense } from "react";
-import React, { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
@@ -12,20 +11,19 @@ import Sidebar from "@/components/sidebar/Sidebar";
 import dashboardItems from "@/components/sidebar/SidebarItems";
 import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
-import PersistentFilebrowser from "@/pages/main/filebrowser/FilebrowserIframe";
+import FilebrowserIframe from "@/pages/main/filebrowser/FilebrowserIframe";
 
 const Dashboard: React.FC = () => {
   const location = useLocation();
   const theme = useTheme();
   const isLoaded = useConfigReady();
-  const { toggleMobileOpen, setMobileOpen, sidebarWidth } = useSidebar();
+  const { toggleMobileOpen, setMobileOpen, sidebarWidth, isDesktop } = useSidebar();
 
-  // Auto-close mobile drawer on route change
+  // Auto-close mobile drawer on route change (mobile only)
   useEffect(() => {
-    setMobileOpen(false);
-  }, [location.pathname, setMobileOpen]);
+    if (!isDesktop) setMobileOpen(false);
+  }, [location.key, isDesktop, setMobileOpen]);
 
-  // Wait for theme to load before rendering layout
   if (!isLoaded) return null;
 
   return (
@@ -55,8 +53,7 @@ const Dashboard: React.FC = () => {
             position: "relative",
           }}
         >
-          {/* Persistent iframe sits above the Outlet *inside* content area */}
-          <PersistentFilebrowser />
+          <FilebrowserIframe />
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
               <Outlet />
