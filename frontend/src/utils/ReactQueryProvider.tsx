@@ -5,9 +5,9 @@ import {
   QueryCache,
 } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { AxiosError } from "axios";
 import React, { ReactNode } from "react";
 import { toast } from "sonner";
-import { AxiosError } from "axios";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof AxiosError) {
@@ -41,7 +41,8 @@ function makeQueryClient() {
     defaultOptions: {
       queries: {
         // Don’t retry on auth errors; otherwise retry once
-        retry: (failureCount, error) => (isAuthishStatus(error) ? false : failureCount < 1),
+        retry: (failureCount, error) =>
+          isAuthishStatus(error) ? false : failureCount < 1,
         refetchOnWindowFocus: false,
         staleTime: 2000,
       },
@@ -68,7 +69,9 @@ interface ReactQueryProviderProps {
   children: ReactNode;
 }
 
-const ReactQueryProvider: React.FC<ReactQueryProviderProps> = ({ children }) => {
+const ReactQueryProvider: React.FC<ReactQueryProviderProps> = ({
+  children,
+}) => {
   const queryClient = getQueryClient();
   return (
     <QueryClientProvider client={queryClient}>

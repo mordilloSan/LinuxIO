@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+
 import { FB_BASE } from "@/utils/filebrowser";
 
 export default function FilebrowserIframe() {
@@ -21,14 +22,21 @@ export default function FilebrowserIframe() {
     hash: location.hash,
     navigate,
   });
-  latestRef.current = { isFBRoute, path: location.pathname, search: location.search, hash: location.hash, navigate };
+  latestRef.current = {
+    isFBRoute,
+    path: location.pathname,
+    search: location.search,
+    hash: location.hash,
+    navigate,
+  };
 
   // 1) Subscribe to window messages ONCE
   useEffect(() => {
     function onMsg(ev: MessageEvent) {
       if (ev.origin !== window.location.origin) return;
       const fromIframe =
-        iframeRef.current?.contentWindow && ev.source === iframeRef.current.contentWindow;
+        iframeRef.current?.contentWindow &&
+        ev.source === iframeRef.current.contentWindow;
       if (!fromIframe) return;
 
       const d = ev.data;
@@ -43,7 +51,10 @@ export default function FilebrowserIframe() {
       if (latestRef.current.isFBRoute && d?.type === "filebrowser:navigation") {
         const url = String(d.url || "/");
         const next = `/filebrowser${url}`;
-        const cur = latestRef.current.path + latestRef.current.search + latestRef.current.hash;
+        const cur =
+          latestRef.current.path +
+          latestRef.current.search +
+          latestRef.current.hash;
         if (next !== cur) latestRef.current.navigate(next, { replace: true });
       }
     }
@@ -58,7 +69,7 @@ export default function FilebrowserIframe() {
       location.pathname.replace(/^\/filebrowser/, "") +
       location.search +
       location.hash,
-    [location.pathname, location.search, location.hash]
+    [location.pathname, location.search, location.hash],
   );
 
   // 2) Push navigation to the iframe when our route changes under /filebrowser
@@ -72,7 +83,7 @@ export default function FilebrowserIframe() {
     try {
       win.postMessage(
         { type: "linuxio:navigate", url: urlSuffix || "/" },
-        window.location.origin
+        window.location.origin,
       );
       lastSentRef.current = urlSuffix;
     } catch {
@@ -92,7 +103,8 @@ export default function FilebrowserIframe() {
         pointerEvents: isFBRoute ? "auto" : "none",
         transition: "none",
         zIndex: 1,
-        backgroundColor: "var(--app-bg, var(--mui-palette-background-default, transparent))",
+        backgroundColor:
+          "var(--app-bg, var(--mui-palette-background-default, transparent))",
       }}
     >
       <iframe
@@ -106,7 +118,8 @@ export default function FilebrowserIframe() {
           width: "100%",
           height: "100%",
           border: "none",
-          background: "var(--app-bg, var(--mui-palette-background-default, transparent))",
+          background:
+            "var(--app-bg, var(--mui-palette-background-default, transparent))",
         }}
       />
     </div>

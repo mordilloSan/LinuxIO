@@ -17,7 +17,8 @@ const Dashboard: React.FC = () => {
   const location = useLocation();
   const theme = useTheme();
   const isLoaded = useConfigReady();
-  const { toggleMobileOpen, setMobileOpen, sidebarWidth, isDesktop } = useSidebar();
+  const { toggleMobileOpen, setMobileOpen, sidebarWidth, isDesktop } =
+    useSidebar();
 
   // Auto-close mobile drawer on route change (mobile only)
   useEffect(() => {

@@ -22,7 +22,9 @@ export function useConfigValue<K extends keyof AppConfig>(key: K) {
     switch (k) {
       case "primaryColor": {
         const token = String(v ?? "").trim();
-        void setFilebrowserThemeColor(token || undefined).catch(() => undefined);
+        void setFilebrowserThemeColor(token || undefined).catch(
+          () => undefined,
+        );
         liveSetPrimaryToken(token || undefined);
         return;
       }
@@ -45,7 +47,7 @@ export function useConfigValue<K extends keyof AppConfig>(key: K) {
       setKey(key, val);
       effects(key, val as AppConfig[K]);
     },
-    [config, key, setKey, effects]
+    [config, key, setKey, effects],
   );
 
   return [config[key], set] as const;

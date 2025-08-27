@@ -7,6 +7,7 @@ import React, {
   useMemo,
 } from "react";
 import { toast } from "sonner";
+
 import useSessionChecker from "@/hooks/useSessionChecker";
 import {
   AuthContextType,
@@ -37,7 +38,12 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         user: action.payload.user,
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
-      return { ...state, isInitialized: true, isAuthenticated: false, user: null };
+      return {
+        ...state,
+        isInitialized: true,
+        isAuthenticated: false,
+        user: null,
+      };
     case AUTH_ACTIONS.SIGN_IN:
       return { ...state, isAuthenticated: true, user: action.payload.user };
     case AUTH_ACTIONS.SIGN_OUT:
@@ -82,7 +88,9 @@ function AuthProvider({ children }: AuthProviderProps) {
     if (broadcast) {
       try {
         localStorage.setItem("logout", String(Date.now()));
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
     // Use react-router navigate if available; otherwise:
@@ -137,7 +145,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       const user = await fetchUser();
       dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
     },
-    [fetchUser]
+    [fetchUser],
   );
 
   const signOut = useCallback(async () => {
@@ -156,10 +164,12 @@ function AuthProvider({ children }: AuthProviderProps) {
       signIn,
       signOut,
     }),
-    [state, signIn, signOut]
+    [state, signIn, signOut],
   );
 
-  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
+  );
 }
 
 export { AuthContext, AuthProvider };

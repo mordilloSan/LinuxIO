@@ -151,7 +151,10 @@ function bindAttrObservers(doc: Document, state: DarkState) {
       const so = new MutationObserver(() => {
         applyDarkNow(doc, state.wantDark);
       });
-      so.observe(sidebar, { attributes: true, attributeFilter: ["class", "style"] });
+      so.observe(sidebar, {
+        attributes: true,
+        attributeFilter: ["class", "style"],
+      });
       state.sidebarObs = so;
     } else {
       state.sidebarObs = undefined;
@@ -167,7 +170,10 @@ function bindAttrObservers(doc: Document, state: DarkState) {
       const oo = new MutationObserver(() => {
         applyDarkNow(doc, state.wantDark);
       });
-      oo.observe(overlay, { attributes: true, attributeFilter: ["class", "style"] });
+      oo.observe(overlay, {
+        attributes: true,
+        attributeFilter: ["class", "style"],
+      });
       state.overlayObs = oo;
     } else {
       state.overlayObs = undefined;
@@ -189,5 +195,7 @@ function applyDarkNow(doc: Document, dark: boolean): void {
   sidebar?.classList.toggle("dark-mode", dark);
   scroll?.classList.toggle("dark-mode", dark);
 
-  headerCards.forEach((el) => el.classList.toggle("dark-mode-item-header", dark));
+  headerCards.forEach((el) =>
+    el.classList.toggle("dark-mode-item-header", dark),
+  );
 }

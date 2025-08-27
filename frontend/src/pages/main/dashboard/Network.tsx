@@ -1,7 +1,9 @@
 import { Box, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React, { useMemo, useState, useEffect, useRef } from "react";
+
 import NetworkGraph from "./NetworkGraph";
+
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
@@ -42,14 +44,15 @@ const NetworkInterfacesCard: React.FC = () => {
           !iface.name.startsWith("br") &&
           iface.name !== "lo",
       ),
-    [interfaces]
+    [interfaces],
   );
 
   const [selected, setSelected] = useState<string>("");
 
   // Adjust selection during render (no Effect needed)
   const firstName = filteredInterfaces[0]?.name ?? "";
-  const selectedExists = selected && filteredInterfaces.some((i) => i.name === selected);
+  const selectedExists =
+    selected && filteredInterfaces.some((i) => i.name === selected);
   const effectiveSelected = selectedExists ? selected : firstName;
   if (effectiveSelected !== selected) {
     // guarded setState during render is fine; React will immediately re-render
@@ -58,10 +61,12 @@ const NetworkInterfacesCard: React.FC = () => {
 
   const selectedInterface = useMemo(
     () => filteredInterfaces.find((i) => i.name === effectiveSelected),
-    [filteredInterfaces, effectiveSelected]
+    [filteredInterfaces, effectiveSelected],
   );
 
-  const [history, setHistory] = useState<{ time: number; rx: number; tx: number }[]>([]);
+  const [history, setHistory] = useState<
+    { time: number; rx: number; tx: number }[]
+  >([]);
   const lastSampleRef = useRef<number>(0);
 
   // Keep this Effect: accumulate samples over time from external polling
@@ -80,14 +85,26 @@ const NetworkInterfacesCard: React.FC = () => {
 
     setHistory((prev) => [
       ...prev.slice(-29),
-      { time: now, rx: selectedInterface.rx_speed, tx: selectedInterface.tx_speed },
+      {
+        time: now,
+        rx: selectedInterface.rx_speed,
+        tx: selectedInterface.tx_speed,
+      },
     ]);
     lastSampleRef.current = now;
-  }, [selectedInterface?.rx_speed, selectedInterface?.tx_speed, selectedInterface]); // deps on values
+  }, [
+    selectedInterface?.rx_speed,
+    selectedInterface?.tx_speed,
+    selectedInterface,
+  ]); // deps on values
 
   const options = useMemo(
-    () => filteredInterfaces.map((iface) => ({ value: iface.name, label: iface.name })),
-    [filteredInterfaces]
+    () =>
+      filteredInterfaces.map((iface) => ({
+        value: iface.name,
+        label: iface.name,
+      })),
+    [filteredInterfaces],
   );
 
   const content = selectedInterface ? (
@@ -139,7 +156,9 @@ const NetworkInterfacesCard: React.FC = () => {
         setHistory([]); // reset graph when switching interfaces
       }}
       connectionStatus={
-        selectedInterface?.ipv4 && selectedInterface.ipv4.length > 0 ? "online" : "offline"
+        selectedInterface?.ipv4 && selectedInterface.ipv4.length > 0
+          ? "online"
+          : "offline"
       }
     />
   );

@@ -1,9 +1,17 @@
 import { ChevronLeft, ChevronRight } from "@mui/icons-material";
-import { Drawer, Box, useTheme, List, IconButton, Tooltip } from "@mui/material";
+import {
+  Drawer,
+  Box,
+  useTheme,
+  List,
+  IconButton,
+  Tooltip,
+} from "@mui/material";
 import React from "react";
 
 import SidebarNavList from "./SidebarNavList";
 import LogoDisplay from "../logo/LogoDisplay";
+
 import { collapsedDrawerWidth, drawerWidth } from "@/constants";
 import useSidebar from "@/hooks/useSidebar";
 import { SidebarItemsType } from "@/types/sidebar";
@@ -23,12 +31,11 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
     setMobileOpen,
   } = useSidebar();
 
-  const effectiveWidth =
-    !isDesktop
-      ? drawerWidth
-      : collapsed && !hovered
-        ? collapsedDrawerWidth
-        : drawerWidth;
+  const effectiveWidth = !isDesktop
+    ? drawerWidth
+    : collapsed && !hovered
+      ? collapsedDrawerWidth
+      : drawerWidth;
 
   const handleMouseEnter = () => {
     if (hoverEnabledRef.current) setHovered(true);
@@ -79,12 +86,19 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
             <IconButton
               onClick={toggleCollapse}
               size="small"
-              sx={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)" }}
+              sx={{
+                position: "absolute",
+                right: 4,
+                top: "50%",
+                transform: "translateY(-50%)",
+              }}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               edge="end"
             >
               {!collapsed && <ChevronLeft sx={{ width: 22, height: 22 }} />}
-              {hovered && collapsed && <ChevronRight sx={{ width: 22, height: 22 }} />}
+              {hovered && collapsed && (
+                <ChevronRight sx={{ width: 22, height: 22 }} />
+              )}
             </IconButton>
           </Tooltip>
         )}

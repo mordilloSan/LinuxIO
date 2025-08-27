@@ -17,16 +17,20 @@ export interface SidebarContextType {
   mobileOpen: boolean;
   isDesktop: boolean;
   sidebarWidth: number;
-  setHovered: (value: boolean) => void;      // guarded
+  setHovered: (value: boolean) => void; // guarded
   setMobileOpen: (value: boolean) => void;
   toggleCollapse: () => void;
   toggleMobileOpen: () => void;
   hoverEnabledRef: React.RefObject<boolean>;
 }
 
-export const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
+export const SidebarContext = createContext<SidebarContextType | undefined>(
+  undefined,
+);
 
-export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const muiTheme = useMuiTheme();
   const isDesktop = useMediaQuery(muiTheme.breakpoints.up("md"));
 
@@ -45,7 +49,7 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const toggleCollapse = useCallback(() => {
-    setCollapsed(prev => {
+    setCollapsed((prev) => {
       const next = !prev;
 
       // When collapsing on desktop, temporarily disable hover to avoid flicker
@@ -66,7 +70,7 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [isDesktop, setCollapsed]);
 
   const toggleMobileOpen = useCallback(() => {
-    if (!isDesktop) setMobileOpen(prev => !prev);
+    if (!isDesktop) setMobileOpen((prev) => !prev);
   }, [isDesktop]);
 
   // Clean up pending timer
@@ -89,8 +93,13 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [isDesktop, collapsed]); // remove `collapsed` if you don't want mobile to close on collapse
 
   const sidebarWidth = useMemo(
-    () => (isDesktop ? (collapsed ? collapsedDrawerWidth : drawerWidth) : drawerWidth),
-    [isDesktop, collapsed]
+    () =>
+      isDesktop
+        ? collapsed
+          ? collapsedDrawerWidth
+          : drawerWidth
+        : drawerWidth,
+    [isDesktop, collapsed],
   );
 
   const value = useMemo(
@@ -100,14 +109,25 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ child
       mobileOpen,
       isDesktop,
       sidebarWidth,
-      setHovered,          // guarded setter
+      setHovered, // guarded setter
       setMobileOpen,
       toggleCollapse,
       toggleMobileOpen,
       hoverEnabledRef: hoverEnabled,
     }),
-    [collapsed, hovered, mobileOpen, isDesktop, sidebarWidth, setHovered, toggleCollapse, toggleMobileOpen]
+    [
+      collapsed,
+      hovered,
+      mobileOpen,
+      isDesktop,
+      sidebarWidth,
+      setHovered,
+      toggleCollapse,
+      toggleMobileOpen,
+    ],
   );
 
-  return <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>;
+  return (
+    <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>
+  );
 };
