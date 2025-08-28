@@ -1,17 +1,22 @@
-GO_VERSION      = 1.24
-NODE_VERSION    = 22
+GO_VERSION      = 1.25.0
+NODE_VERSION    = 24
 GO_INSTALL_DIR := $(HOME)/.go
-# Use NVM if present; otherwise fall back to whatever Node is on PATH (CI).
-NVM_SETUP = export NVM_DIR="$$HOME/.nvm"; \
-            if [ -s "$$NVM_DIR/nvm.sh" ]; then \
-              . "$$NVM_DIR/nvm.sh"; \
-              nvm use $(NODE_VERSION) >/dev/null 2>&1 || true; \
-            fi
+
+# --- NVM/Node (Option A: single PATH for all recipes) ------------------------
+# NVM home + a stable "current" symlink we'll manage in ensure-node
+NVM_DIR ?= $(HOME)/.nvm
+# Prepend the "current" Node to PATH for every recipe (will work once ensure-node runs)
+export PATH := $(NVM_DIR)/versions/node/current/bin:$(PATH)
+
+# Source-able NVM setup (no nvm use here; PATH handles it)
+NVM_SETUP = export NVM_DIR="$(NVM_DIR)"; \
+            [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
+
 GO_BIN := $(shell which go)
 GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
 # Flags to pass into the Go binaries
-VERBOSE ?= false
+VERBOSE ?= true
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
 VITE_DEV_PORT = 3000
 SERVER_PORT = 8080
@@ -85,40 +90,93 @@ SHELL := /bin/bash
 
 default: help
 
+# Ensures NVM exists, installs Node $(NODE_VERSION), makes it default,
+# and creates/updates a stable "$(NVM_DIR)/versions/node/current" symlink.
 ensure-node:
 	@echo ""
 	@echo "📦 Ensuring Node.js $(NODE_VERSION) is available..."
-	@if [ ! -d "$$HOME/.nvm" ]; then \
+	@if [ ! -d "$(NVM_DIR)" ]; then \
 		curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash; \
 	fi
-	@bash -c '\
-	$(NVM_SETUP); \
-		nvm install $(NODE_VERSION) > /dev/null || true; \
-		nvm use $(NODE_VERSION) > /dev/null || true; \
+	@bash -lc '\
+		$(NVM_SETUP); \
+		nvm install $(NODE_VERSION) >/dev/null || true; \
+		nvm alias default $(NODE_VERSION); \
+		CURR="$$(nvm version $(NODE_VERSION))"; \
+		mkdir -p "$(NVM_DIR)/versions/node"; \
+		ln -snf "$(NVM_DIR)/versions/node/$$CURR" "$(NVM_DIR)/versions/node/current"; \
+		hash -r; \
+		echo "✔ Node path: $$(command -v node)"; \
 		echo "✔ Node version: $$(node -v)"; \
-		echo "✔ NPM version: $$(npm -v)"; \
-		echo "✔ NPX version: $$(npx -v)"; \
+		echo "✔ NPM version:  $$(npm -v)"; \
+		echo "✔ NPX version:  $$(npx -v)"; \
 	'
 	@echo "✅ Node.js environment ready!"
 
 ensure-go:
 	@echo ""
-	@echo "📦 Ensuring Go is available..."
-	@if ! command -v go >/dev/null 2>&1; then \
-		echo "⬇ Installing Go (no sudo)..."; \
-		curl -LO https://go.dev/dl/go$(GO_VERSION).linux-amd64.tar.gz; \
-		rm -rf $(GO_INSTALL_DIR); \
-		mkdir -p $(GO_INSTALL_DIR); \
-		tar -C $(GO_INSTALL_DIR) -xzf go$(GO_VERSION).linux-amd64.tar.gz --strip-components=1; \
-		rm go$(GO_VERSION).linux-amd64.tar.gz; \
-		if ! grep -q 'export PATH=$(GO_INSTALL_DIR)/bin' $$HOME/.bashrc; then \
-			echo 'export PATH=$(GO_INSTALL_DIR)/bin:$$PATH' >> $$HOME/.bashrc; \
+	@echo "📦 Ensuring Go $(GO_VERSION) is available..."
+	@bash -lc '\
+		set -euo pipefail; \
+		DESIRED="$(GO_VERSION)"; \
+		GO_DIR="$(GO_INSTALL_DIR)"; \
+		ARCH="$$(uname -m)"; \
+		case "$$ARCH" in \
+		  x86_64|amd64) GOARCH=amd64 ;; \
+		  aarch64|arm64) GOARCH=arm64 ;; \
+		  *) GOARCH=amd64 ;; \
+		esac; \
+		TMP="$$(mktemp -d)"; \
+		TARBALL="go$${DESIRED}.linux-$${GOARCH}.tar.gz"; \
+		URL="https://go.dev/dl/$${TARBALL}"; \
+		\
+		# Detect current version in user-local dir (if present) \
+		CUR=""; \
+		if [ -x "$${GO_DIR}/bin/go" ]; then \
+		  CUR="$$( "$${GO_DIR}/bin/go" version 2>/dev/null | awk "{print \$$3}" | sed "s/^go//" )"; \
 		fi; \
-		echo "✔ Go installed at $(GO_INSTALL_DIR)"; \
-		echo "💡 Please run 'source ~/.bashrc' or restart your terminal to use Go globally."; \
-	fi
-	@bash -c 'export PATH=$(GO_INSTALL_DIR)/bin:$$PATH && go version'
-	@echo "✅ Go is ready!"
+		if [ "$$CUR" = "$$DESIRED" ]; then \
+		  echo "✔ Go $$CUR already active at $$GO_DIR"; \
+		else \
+		  echo "⬇ Downloading $$URL"; \
+		  curl -fsSL "$$URL" -o "$$TMP/$$TARBALL"; \
+		  \
+		  if [ -w /usr/local ]; then \
+		    echo "🧹 Removing existing /usr/local/go (if any) …"; \
+		    rm -rf /usr/local/go; \
+		    echo "📦 Extracting into /usr/local …"; \
+		    tar -C /usr/local -xzf "$$TMP/$$TARBALL"; \
+		    echo "✔ Installed Go $$DESIRED to /usr/local/go"; \
+		    echo "ℹ️  Ensure /usr/local/go/bin is on your PATH"; \
+		  else \
+		    VERSIONS_DIR="$$HOME/.go-versions"; \
+		    DEST_VER_DIR="$$VERSIONS_DIR/go$${DESIRED}"; \
+		    echo "📁 User install (no sudo): $$DEST_VER_DIR"; \
+		    mkdir -p "$$VERSIONS_DIR"; \
+		    rm -rf "$$DEST_VER_DIR"; \
+		    tar -C "$$TMP" -xzf "$$TMP/$$TARBALL"; \
+		    mv "$$TMP/go" "$$DEST_VER_DIR"; \
+            # Symlink $(GO_INSTALL_DIR) -> versioned dir (avoids untar over existing) \
+		    ln -sfn "$$DEST_VER_DIR" "$$GO_DIR"; \
+		    echo "✔ Linked $$GO_DIR -> $$DEST_VER_DIR"; \
+		    if ! grep -q "$$GO_DIR/bin" "$$HOME/.bashrc" 2>/dev/null; then \
+		      echo "export PATH=$$GO_DIR/bin:\$$PATH" >> "$$HOME/.bashrc"; \
+		      echo "🔧 Added $$GO_DIR/bin to your ~/.bashrc PATH"; \
+		    fi; \
+		  fi; \
+		fi; \
+		\
+		# Show final version from preferred locations \
+		if [ -x "$$GO_DIR/bin/go" ]; then \
+		  "$$GO_DIR/bin/go" version || true; \
+		elif [ -x /usr/local/go/bin/go ]; then \
+		  /usr/local/go/bin/go version || true; \
+		else \
+		  echo "⚠️  Go not found on expected paths; check PATH."; \
+		fi; \
+		rm -rf "$$TMP"; \
+		echo "✅ Go is ready!"; \
+	'
 
 ensure-golint:
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
@@ -126,25 +184,24 @@ ensure-golint:
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GO_INSTALL_DIR)/bin v1.58.2; \
 	fi
 
-setup:
+setup: ensure-go ensure-node
 	@echo ""
 	@echo "📦 Installing frontend dependencies..."
 	@bash -c '\
-	$(NVM_SETUP); \
 		cd frontend && npm install --silent; \
 	'
 	@echo "✅ Frontend dependencies installed!"
 
 lint: setup
 	@echo "🔍 Running ESLint..."
-	@bash -c '$(NVM_SETUP); \
+	@bash -c '\
 		cd frontend && \
 		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!" \
 	'
 
 tsc: setup
 	@echo "🔍 Running TypeScript type checks..."
-	@bash -c '$(NVM_SETUP); \
+	@bash -c '\
 		cd frontend && \
 		npx tsc && echo "✅ TypeScript Linting Ok!" \
 	'
@@ -176,7 +233,6 @@ build-vite: lint tsc
 	@echo ""
 	@echo "📦 Building frontend..."
 	@bash -c '\
-	$(NVM_SETUP); \
 		cd frontend && \
 		VITE_API_URL=/ npx vite build && \
 		echo "✅ Frontend built successfully!" \
@@ -277,9 +333,7 @@ dev: setup dev-prep build-bridge
 	# On Ctrl-C/TERM: cleanup, restore TTY, exit success (no "Error 130")
 	trap 'trap - INT TERM; cleanup; stty "$$SAVED_STTY" 2>/dev/null || true; exit 0' INT TERM
 
-	# Frontend (foreground)
-	export NVM_DIR="$$HOME/.nvm"
-	. "$$NVM_DIR/nvm.sh" || true
+	# Frontend (foreground) — PATH already points to Node "current"
 	cd frontend
 	VITE_API_URL="http://localhost:$(SERVER_PORT)" npx vite --port $(VITE_DEV_PORT)
 	STATUS=$$?
