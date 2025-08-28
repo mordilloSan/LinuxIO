@@ -44,7 +44,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const save = useCallback(
     (cfg: AppConfig) => {
       if (!isLoaded) return;
-      axios.post("/theme/set", cfg).catch(() => { });
+      axios.post("/theme/set", cfg).catch(() => {});
     },
     [isLoaded],
   );

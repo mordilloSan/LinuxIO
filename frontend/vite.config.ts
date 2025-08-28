@@ -2,7 +2,6 @@ import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import reactBabel from "@vitejs/plugin-react";
 import reactSwc from "@vitejs/plugin-react-swc";
-import svgr from "@svgr/rollup";
 
 export default defineConfig(({ command }) => {
   const isBuild = command === "build";
@@ -17,7 +16,7 @@ export default defineConfig(({ command }) => {
   return {
     base: "/",
     clearScreen: false,
-    plugins: [reactPlugin, svgr(), tsconfigPaths()],
+    plugins: [reactPlugin, tsconfigPaths()],
     server: {
       proxy: {
         "/navigator": {

@@ -113,10 +113,10 @@ export default function FilebrowserIframe() {
         src={`${FB_BASE}/`}
         title="FileBrowser"
         allow="fullscreen"
-        loading="eager"
+        loading="lazy"
         style={{
           width: "100%",
-          height: "100%",
+          height: "99%",
           border: "none",
           background:
             "var(--app-bg, var(--mui-palette-background-default, transparent))",
