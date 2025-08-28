@@ -71,7 +71,7 @@ func main() {
 
 	// FileBrowser
 	filebrowserSecret := utils.GenerateSecretKey(32)
-	go filebrowser.StartServices(filebrowserSecret)
+	go filebrowser.StartServices(filebrowserSecret, verbose)
 
 	// Sub FS rooted at the build directory ("frontend")
 	ui, err := fs.Sub(FrontendFS, "frontend")

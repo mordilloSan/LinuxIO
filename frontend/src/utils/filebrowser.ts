@@ -82,74 +82,80 @@ export function liveSetPrimaryToken(token?: string): boolean {
   }
   return true;
 }
-
-/** Live set dark mode (no persistence): scoped observers for sidebar/overlay only. */
-export function liveSetDarkMode(wantDark: boolean): boolean {
-  const doc = getFbDoc();
-  if (!doc) return false;
-  ensureReactiveDarkMode(doc, wantDark);
-  return true;
-}
-
-/* ---------------- internal: reactive dark-mode controller (scoped) ---------------- */
+/* ---------------- sidebar-only reactive dark-mode controller ---------------- */
 
 type DarkState = {
   wantDark: boolean;
   treeObs?: MutationObserver;
   sidebarObs?: MutationObserver;
-  overlayObs?: MutationObserver;
   sidebarEl?: Element | null;
-  overlayEl?: Element | null;
   raf?: number;
 };
 
 const darkStates = new WeakMap<Document, DarkState>();
 
-function ensureReactiveDarkMode(doc: Document, wantDark: boolean) {
-  // remember target state
+export function liveSetDarkMode(wantDark: boolean): boolean {
+  const doc = getFbDoc();
+  if (!doc) return false;
+  ensureSidebarReactiveDarkMode(doc, wantDark);
+  const header = doc.querySelector<HTMLElement>("header.flexbar");
+  const scroll = doc.querySelector<HTMLElement>(".scroll-wrapper");
+  const headerCards = Array.from(
+    doc.querySelectorAll<HTMLElement>(".header.card"),
+  );
+
+  header?.classList.toggle("dark-mode-header", wantDark);
+  scroll?.classList.toggle("dark-mode", wantDark);
+  headerCards.forEach((el) =>
+    el.classList.toggle("dark-mode-item-header", wantDark),
+  );
+  return true;
+}
+
+function ensureSidebarReactiveDarkMode(doc: Document, wantDark: boolean) {
+  // remember target state per document
   const state = darkStates.get(doc) ?? { wantDark };
   state.wantDark = wantDark;
   darkStates.set(doc, state);
 
-  // apply immediately to whatever exists
-  applyDarkNow(doc, wantDark);
+  // apply immediately to whatever exists now
+  applySidebarDark(doc, wantDark);
 
-  // (re)bind attribute observers to specific nodes
-  bindAttrObservers(doc, state);
+  // (re)bind attribute observer to the sidebar only
+  bindSidebarObserver(doc, state);
 
-  // single subtree observer: only childList (no attributes) to notice mounts
+  // one subtree observer: watch for sidebar being remounted/replaced
   if (!state.treeObs) {
     const obs = new MutationObserver(() => {
-      // throttle to next frame
       if (state.raf) cancelAnimationFrame(state.raf);
       state.raf = requestAnimationFrame(() => {
         const s = darkStates.get(doc);
         if (!s) return;
-        // elements may have mounted/unmounted — rebind attr observers
-        bindAttrObservers(doc, s);
-        // and re-apply to any new nodes
-        applyDarkNow(doc, s.wantDark);
+        bindSidebarObserver(doc, s); // rebind if node changed
+        applySidebarDark(doc, s.wantDark); // re-apply class to fresh node
       });
     });
 
-    obs.observe(doc.body || doc, { childList: true, subtree: true });
+    if (doc.body) {
+      obs.observe(doc.body, { childList: true, subtree: true });
+    }
     state.treeObs = obs;
   }
 }
 
-/** Attach attribute observers only to the nodes that matter (sidebar & overlay). */
-function bindAttrObservers(doc: Document, state: DarkState) {
-  const sidebar = doc.querySelector("#sidebar");
-  const overlay = doc.querySelector(".overlay");
+/** Attach an attribute observer to the current sidebar node (if present). */
+function bindSidebarObserver(doc: Document, state: DarkState) {
+  const sidebar = doc.querySelector("nav#sidebar");
 
-  // rebind sidebar observer if node changed
+  // only (re)bind if the node identity changed
   if (sidebar !== state.sidebarEl) {
     state.sidebarObs?.disconnect();
     state.sidebarEl = sidebar || null;
 
     if (sidebar) {
       const so = new MutationObserver(() => {
-        applyDarkNow(doc, state.wantDark);
+        // if FB resets classes/styles, put ours back
+        applySidebarDark(doc, state.wantDark);
       });
       so.observe(sidebar, {
         attributes: true,
@@ -160,42 +166,10 @@ function bindAttrObservers(doc: Document, state: DarkState) {
       state.sidebarObs = undefined;
     }
   }
-
-  // rebind overlay observer if node changed
-  if (overlay !== state.overlayEl) {
-    state.overlayObs?.disconnect();
-    state.overlayEl = overlay || null;
-
-    if (overlay) {
-      const oo = new MutationObserver(() => {
-        applyDarkNow(doc, state.wantDark);
-      });
-      oo.observe(overlay, {
-        attributes: true,
-        attributeFilter: ["class", "style"],
-      });
-      state.overlayObs = oo;
-    } else {
-      state.overlayObs = undefined;
-    }
-  }
 }
 
-/** Freshly query and toggle classes so late-mounted or class-reset nodes are updated. */
-function applyDarkNow(doc: Document, dark: boolean): void {
-  const header = doc.querySelector<HTMLElement>("header.flexbar");
+/** Toggle only the sidebar’s dark class. */
+function applySidebarDark(doc: Document, dark: boolean): void {
   const sidebar = doc.querySelector<HTMLElement>("nav#sidebar");
-  const overlay = doc.querySelector<HTMLElement>(".overlay");
-  const scroll = doc.querySelector<HTMLElement>(".scroll-wrapper");
-  const headerCards = Array.from(
-    doc.querySelectorAll<HTMLElement>(".header.card"),
-  );
-
-  header?.classList.toggle("dark-mode-header", dark);
   sidebar?.classList.toggle("dark-mode", dark);
-  scroll?.classList.toggle("dark-mode", dark);
-
-  headerCards.forEach((el) =>
-    el.classList.toggle("dark-mode-item-header", dark),
-  );
 }

@@ -31,7 +31,7 @@ var (
 	dockerCtx context.Context
 )
 
-func StartServices(secret string) {
+func StartServices(secret string, debug bool) {
 	logger.Infof("📦 Checking docker installation...")
 	if err := docker.EnsureDockerAvailable(); err != nil {
 		logger.Errorf("❌ Docker not available: %v", err)
@@ -55,10 +55,10 @@ func StartServices(secret string) {
 	} else {
 		logger.Infof("✅ Created Docker network 'bridge-linuxio'")
 	}
-
-	if err := startFileBrowserContainer(secret); err != nil {
+	if err := startFileBrowserContainer(secret, debug); err != nil {
 		logger.Errorf("FileBrowser setup failed: %v", err)
 	}
+
 }
 
 func isNetworkExistsError(err error) bool {
@@ -69,7 +69,7 @@ func isNetworkExistsError(err error) bool {
 	return bytes.Contains([]byte(s), []byte("already exists")) || bytes.Contains([]byte(s), []byte("409"))
 }
 
-func startFileBrowserContainer(secret string) error {
+func startFileBrowserContainer(secret string, debug bool) error {
 	const (
 		containerName = "filebrowser-linuxio"
 		imageRef      = "docker.io/gtstef/filebrowser:latest"
@@ -78,7 +78,13 @@ func startFileBrowserContainer(secret string) error {
 	)
 
 	// 0) Build config contents in-memory
-	cfg := bytes.ReplaceAll(DefaultFilebrowserConfig, []byte("{{SECRET_KEY}}"), []byte(secret))
+	apiLevels := []byte(`"warning|error"`)
+	if debug {
+		apiLevels = []byte(`"info|warning|error|debug"`)
+	}
+	cfg := DefaultFilebrowserConfig
+	cfg = bytes.ReplaceAll(cfg, []byte("{{SECRET_KEY}}"), []byte(secret))
+	cfg = bytes.ReplaceAll(cfg, []byte("{{API_LEVELS}}"), apiLevels)
 
 	// 1) Remove any existing container
 	var err error
@@ -117,8 +123,8 @@ func startFileBrowserContainer(secret string) error {
 			Image: "gtstef/filebrowser",
 			Healthcheck: &container.HealthConfig{
 				Test:     []string{"CMD-SHELL", "wget --spider -q http://localhost:80/navigator/health || exit 1"},
-				Interval: 5 * time.Second,
-				Timeout:  10 * time.Second,
+				Interval: 30 * time.Second,
+				Timeout:  5 * time.Second,
 				Retries:  3,
 			},
 		},

@@ -26,3 +26,8 @@ body {
 #app {
   transition: none !important;
 }
+
+/* To remove the logout button */
+button.logout-button {
+  display: none !important;
+}

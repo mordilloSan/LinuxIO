@@ -3,7 +3,8 @@ server:
   baseURL: /navigator/
   logging:
     - levels: "info|warning|error|debug"
-      apiLevels: enabled
+      apiLevels: {{API_LEVELS}}
+      noColors: false
       output: stdout
       utc: true
   sources:
@@ -13,11 +14,6 @@ server:
         exclude:
           hidden: false
           ignoreZeroSizeFolders: false
-          folderPaths:
-            - /proc
-            - /sys
-            - /dev
-            - /var/lib/docker/overlay2
   database: /home/filebrowser/data/database.db
   disablePreviews: true
 frontend:
@@ -31,13 +27,14 @@ auth:
       header: "{{SECRET_KEY}}"
       createUser: true
     password:
-      enabled: true
+      enabled: false
 userDefaults:
   editorQuickSave: true
   hideSidebarFileActions: true
   stickySidebar: false
   showHidden: true
   dateFormat: true
+  gallerySize: 0
   quickDownload: false
   lockPassword: true
   disableSettings: true

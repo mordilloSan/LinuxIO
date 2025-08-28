@@ -111,7 +111,9 @@ func NavigatorDefaultsMiddleware() gin.HandlerFunc {
 		if setIfDiff(userObj, "lockPassword", true) {
 			which = append(which, "lockPassword")
 		}
-
+		if setIfDiff(userObj, "disableQuickToggles", true) {
+			which = append(which, "disableQuickToggles")
+		}
 		// Nothing to update? Done.
 		if len(which) == 0 {
 			logger.Debugf("[navigator.defaults] no changes for user=%s", username)
