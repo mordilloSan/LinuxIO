@@ -184,7 +184,7 @@ ensure-golint:
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GO_INSTALL_DIR)/bin v1.58.2; \
 	fi
 
-setup: ensure-go ensure-node
+setup: ensure-go ensure-node ensure-golint
 	@echo ""
 	@echo "📦 Installing frontend dependencies..."
 	@bash -c '\
@@ -192,21 +192,21 @@ setup: ensure-go ensure-node
 	'
 	@echo "✅ Frontend dependencies installed!"
 
-lint: setup
+lint:
 	@echo "🔍 Running ESLint..."
 	@bash -c '\
 		cd frontend && \
 		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!" \
 	'
 
-tsc: setup
+tsc:
 	@echo "🔍 Running TypeScript type checks..."
 	@bash -c '\
 		cd frontend && \
 		npx tsc && echo "✅ TypeScript Linting Ok!" \
 	'
 
-golint: ensure-golint
+golint: 
 	@echo "🔍 Running gofmt..."
 ifneq ($(CI),)
 	@fmt_out="$$(cd backend && gofmt -s -l .)"; \

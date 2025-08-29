@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
-	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
@@ -21,30 +20,26 @@ func ShutdownAllBridges(reason string) {
 
 	for _, id := range ids {
 		sess, err := session.GetSession(id)
-		if err != nil || sess == nil || sess.User.ID == "" {
+		if err != nil || sess == nil || sess.User.Username == "" {
 			continue
 		}
 
 		done := make(chan error, 1)
-		go func() {
-			_, e := bridge.CallWithSession(sess, "control", "shutdown", []string{reason})
+		go func(s *session.Session) {
+			_, e := bridge.CallWithSession(s, "control", "shutdown", []string{reason})
 			done <- e
-		}()
+		}(sess)
 
 		select {
 		case e := <-done:
 			if e != nil {
 				logger.Warnf("Bridge shutdown (session=%s) failed: %v", id, e)
 				// Best-effort: remove stale socket
-				if sock, pathErr := ipc.SocketPathFor(sess); pathErr == nil {
-					_ = os.Remove(sock)
-				}
+				_ = os.Remove(sess.SocketPath())
 			}
 		case <-time.After(2 * time.Second):
 			logger.Warnf("Bridge shutdown (session=%s) timed out", id)
-			if sock, pathErr := ipc.SocketPathFor(sess); pathErr == nil {
-				_ = os.Remove(sock)
-			}
+			_ = os.Remove(sess.SocketPath())
 		}
 	}
 }

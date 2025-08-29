@@ -26,11 +26,9 @@ var (
 
 // Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
-	socketPath, err := ipc.SocketPathFor(sess)
-	if err != nil {
-		return nil, fmt.Errorf("could not determine bridge socket path: %w", err)
-	}
+	socketPath := sess.SocketPath()
 	return callViaSocket(socketPath, reqType, command, args, sess.BridgeSecret)
+
 }
 
 func callViaSocket(socketPath, reqType, command string, args []string, secret string) ([]byte, error) {
@@ -47,7 +45,7 @@ func callViaSocket(socketPath, reqType, command string, args []string, secret st
 	}()
 
 	enc := json.NewEncoder(conn)
-	enc.SetEscapeHTML(false) // small but free win
+	enc.SetEscapeHTML(false)
 
 	dec := json.NewDecoder(conn)
 
@@ -97,15 +95,16 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 	// ---- Minimal env just for session hand-off (safer than argv) ----
 	childEnv := append(os.Environ(),
 		"LINUXIO_SESSION_ID="+sess.SessionID,
-		"LINUXIO_SESSION_USER="+sess.User.ID,
+		"LINUXIO_SESSION_USER="+sess.User.Username,
+		"LINUXIO_SESSION_UID="+sess.User.UID,
+		"LINUXIO_SESSION_GID="+sess.User.GID,
 		"LINUXIO_BRIDGE_SECRET="+sess.BridgeSecret,
 	)
 
 	// Build command
 	var cmd *exec.Cmd
 	if sess.Privileged {
-		// Preserve only the three session vars
-		preserve := "LINUXIO_SESSION_ID,LINUXIO_SESSION_USER,LINUXIO_BRIDGE_SECRET"
+		preserve := "LINUXIO_SESSION_ID,LINUXIO_SESSION_USER,LINUXIO_SESSION_UID,LINUXIO_SESSION_GID,LINUXIO_BRIDGE_SECRET"
 		sudoArgs := []string{"-S", "--preserve-env=" + preserve, "--", bridgeBinary}
 		sudoArgs = append(sudoArgs, args...)
 		cmd = exec.Command("sudo", sudoArgs...)
@@ -150,7 +149,6 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 		defer func() { _ = devnull.Close() }() // close parent's copy after Start
 	} else {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		// Send straight to terminal; don't accumulate unbounded buffers
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}

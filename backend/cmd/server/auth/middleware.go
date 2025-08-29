@@ -68,7 +68,7 @@ func FilebrowserReverseProxy(secret string) gin.HandlerFunc {
 			sess, err := session.GetSession(cookie.Value)
 			if err == nil && sess != nil {
 				// Set the header using the secret as header name
-				req.Header.Set(secret, sess.User.Name)
+				req.Header.Set(secret, sess.User.Username)
 			}
 		}
 

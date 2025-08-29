@@ -46,10 +46,10 @@ func StartTerminal(sess *session.Session) error {
 	}
 	sessionsMu.Unlock()
 
-	u, err := user.Lookup(sess.User.Name)
+	u, err := user.LookupId(sess.User.UID)
 	if err != nil {
-		logger.Errorf("Could not lookup user %s: %v", sess.User.Name, err)
-		return fmt.Errorf("could not lookup user %s: %w", sess.User.Name, err)
+		logger.Errorf("Could not lookup user %s: %v", sess.User.Username, err)
+		return fmt.Errorf("could not lookup user %s: %w", sess.User.Username, err)
 	}
 	userHome := u.HomeDir
 
@@ -84,7 +84,7 @@ func StartTerminal(sess *session.Session) error {
 	}
 	sessionsMu.Unlock()
 
-	logger.Infof("Started terminal for session %s (user: %s)", sess.SessionID, sess.User.Name)
+	logger.Infof("Started terminal for session %s (user: %s)", sess.SessionID, sess.User.Username)
 	return nil
 }
 

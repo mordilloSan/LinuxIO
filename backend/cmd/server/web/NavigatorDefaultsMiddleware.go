@@ -38,11 +38,11 @@ func NavigatorDefaultsMiddleware() gin.HandlerFunc {
 			return
 		}
 		sess, sErr := session.GetSession(cookie.Value)
-		if sErr != nil || sess == nil || sess.User.ID == "" {
+		if sErr != nil || sess == nil || sess.User.Username == "" {
 			c.Next()
 			return
 		}
-		username := sess.User.ID
+		username := sess.User.Username
 
 		// Ensure we only try once per user (until server restart).
 		if _, loaded := navDefaultsOnce.LoadOrStore(username, struct{}{}); loaded {

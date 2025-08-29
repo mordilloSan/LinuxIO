@@ -10,6 +10,7 @@ import (
 
 	"net/http"
 	"os/exec"
+	"os/user"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -104,7 +105,7 @@ func logoutHandler(c *gin.Context) {
 	terminal.CloseAllForSession(sess.SessionID)
 
 	// 2) Tell bridge to shutdown (logout). Ignore minor errors.
-	if sess.User.ID != "" {
+	if sess.User.Username != "" {
 		if _, err := bridge.CallWithSession(sess, "control", "shutdown", []string{"logout"}); err != nil {
 			logger.Warnf("CallWithSession for shutdown failed: %v", err)
 		}
@@ -144,16 +145,25 @@ func authenticateUser(req LoginRequest) error {
 }
 
 func createUserSession(req LoginRequest, privileged bool) (*session.Session, error) {
-	sessionID := uuid.New().String()
-	user := session.User{ID: req.Username, Name: req.Username}
 
-	if err := session.CreateSession(sessionID, user, sessionDuration, privileged); err != nil {
-		logger.Errorf("Failed to create session: %v", err)
-		return nil, err
+	sessionID := uuid.New().String()
+	sysu, err := user.Lookup(req.Username)
+	if err != nil {
+		return nil, fmt.Errorf("lookup user: %w", err)
 	}
-	sess, err := session.GetSession(sessionID)
-	if err != nil || sess == nil {
-		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, err)
+	user := session.User{
+		Username: req.Username,
+		UID:      sysu.Uid,
+		GID:      sysu.Gid,
+	}
+
+	if sessErr := session.CreateSession(sessionID, user, sessionDuration, privileged); sessErr != nil {
+		logger.Errorf("Failed to create session: %v", sessErr)
+		return nil, sessErr
+	}
+	sess, getSessErr := session.GetSession(sessionID)
+	if getSessErr != nil || sess == nil {
+		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, getSessErr)
 		return nil, fmt.Errorf("session retrieval failed")
 	}
 	return sess, nil

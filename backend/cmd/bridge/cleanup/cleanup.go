@@ -2,19 +2,17 @@ package cleanup
 
 import (
 	"fmt"
-
 	"os"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
 
-// killOwnSudoParents walks our parent chain and kills lingering sudo/env parents.
+// KillOwnSudoParents walks our parent chain and kills lingering sudo/env parents.
 // Touches only our own ancestors; safe for prod.
 func KillOwnSudoParents() {
 	ppid := os.Getppid()
@@ -60,31 +58,24 @@ func readPPID(pid int) (int, error) {
 // Right now that’s just removing the socket; extend here if you add more artifacts.
 func FullCleanup(shutdownReason string, sess *session.Session) error {
 	logger.Debugf("Shutdown initiated: %s", shutdownReason)
-
 	if err := cleanupBridgeSocket(sess); err != nil {
 		return fmt.Errorf("cleanup bridge socket: %w", err)
 	}
 	return nil
 }
 
-// CleanupBridgeSocket removes the bridge socket for the session (idempotent).
+// cleanupBridgeSocket removes the bridge socket for the session (idempotent).
 func cleanupBridgeSocket(sess *session.Session) error {
-	sock, err := ipc.SocketPathFor(sess)
-	if err != nil {
-		logger.Warnf("Could not determine bridge socket path: %v", err)
-		return err
-	}
+	sock := sess.SocketPath()
 
-	err = os.Remove(sock)
-	if err == nil {
+	if err := os.Remove(sock); err == nil {
 		logger.Infof("Removed bridge socket %s for session %s", sock, sess.SessionID)
 		return nil
 	} else if os.IsNotExist(err) {
-		// Nothing to remove; not an error.
 		logger.Debugf("Bridge socket %s not found (already removed) for session %s", sock, sess.SessionID)
 		return nil
+	} else {
+		logger.Warnf("Failed to remove bridge socket %s: %v", sock, err)
+		return err
 	}
-
-	logger.Warnf("Failed to remove bridge socket %s: %v", sock, err)
-	return err
 }
