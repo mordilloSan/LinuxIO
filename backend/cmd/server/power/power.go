@@ -4,15 +4,13 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
 
-func RegisterPowerRoutes(r *gin.Engine) {
-	group := r.Group("/power", auth.AuthMiddleware())
-
+// RegisterPowerRoutes mounts power actions on a pre-authenticated group.
+func RegisterPowerRoutes(group *gin.RouterGroup) {
 	group.POST("/reboot", func(c *gin.Context) {
 		sess := session.GetSessionOrAbort(c)
 		if sess == nil {

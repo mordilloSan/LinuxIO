@@ -12,9 +12,32 @@ import (
 	"github.com/shirou/gopsutil/v4/load"
 )
 
+// ---------- Types ----------
+
+type CPUInfoResponse struct {
+	VendorID           string             `json:"vendorId"`
+	ModelName          string             `json:"modelName"`
+	Family             string             `json:"family"`
+	Model              string             `json:"model"`
+	BaseMHz            float64            `json:"mhz"`
+	CurrentFrequencies []float64          `json:"currentFrequencies"` // MHz per logical core
+	Cores              int                `json:"cores"`              // logical cores
+	LoadAverage        *load.AvgStat      `json:"loadAverage,omitempty"`
+	PerCoreUsage       []float64          `json:"perCoreUsage"` // %
+	Temperature        map[string]float64 `json:"temperature"`  // e.g. {"core0": 42.5, "package": 55.1}
+}
+
+type LoadInfoResponse struct {
+	Load1  float64 `json:"load1"`
+	Load5  float64 `json:"load5"`
+	Load15 float64 `json:"load15"`
+}
+
+// ---------- Helpers ----------
+
 func getCurrentFrequencies() ([]float64, error) {
 	var freqs []float64
-	basePath := "/sys/devices/system/cpu"
+	const basePath = "/sys/devices/system/cpu"
 
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
@@ -38,60 +61,73 @@ func getCurrentFrequencies() ([]float64, error) {
 			continue
 		}
 
-		freqs = append(freqs, kHz/1000.0) // convert to MHz
+		freqs = append(freqs, kHz/1000.0) // MHz
 	}
 
 	return freqs, nil
 }
 
-func FetchCPUInfo() (map[string]any, error) {
+// NOTE: Assuming you already have getTemperatureMap() elsewhere in this package.
+// If it returns nil or errors, we’ll just send an empty map.
+func safeTemperatureMap() map[string]float64 {
+	m := getTemperatureMap()
+	if m == nil {
+		return map[string]float64{}
+	}
+	// Filter to CPU-related temps only
+	cpuTemps := make(map[string]float64, len(m))
+	for k, v := range m {
+		if strings.HasPrefix(k, "core") || k == "package" {
+			cpuTemps[k] = v
+		}
+	}
+	return cpuTemps
+}
+
+// ---------- Fetchers ----------
+
+func FetchCPUInfo() (*CPUInfoResponse, error) {
 	info, err := cpu.Info()
 	if err != nil || len(info) == 0 {
 		return nil, err
 	}
 
-	percent, _ := cpu.Percent(0, true)
-	counts, _ := cpu.Counts(true)
+	percent, _ := cpu.Percent(0, true) // per-core usage snapshot (%)
+	counts, _ := cpu.Counts(true)      // logical cores
 	loadAvg, _ := load.Avg()
-	allTemps := getTemperatureMap()
 	currentFreqs, _ := getCurrentFrequencies()
 
-	// Filter only CPU-related temps
-	cpuTemps := make(map[string]float64)
-	for k, v := range allTemps {
-		if strings.HasPrefix(k, "core") || k == "package" {
-			cpuTemps[k] = v
-		}
-	}
-
 	cpuData := info[0]
-	return map[string]any{
-		"vendorId":           cpuData.VendorID,
-		"modelName":          cpuData.ModelName,
-		"family":             cpuData.Family,
-		"model":              cpuData.Model,
-		"mhz":                cpuData.Mhz,
-		"currentFrequencies": currentFreqs,
-		"cores":              counts,
-		"loadAverage":        loadAvg,
-		"perCoreUsage":       percent,
-		"temperature":        cpuTemps,
+
+	return &CPUInfoResponse{
+		VendorID:           cpuData.VendorID,
+		ModelName:          cpuData.ModelName,
+		Family:             cpuData.Family,
+		Model:              cpuData.Model,
+		BaseMHz:            cpuData.Mhz,
+		CurrentFrequencies: currentFreqs,
+		Cores:              counts,
+		LoadAverage:        loadAvg,
+		PerCoreUsage:       percent,
+		Temperature:        safeTemperatureMap(),
 	}, nil
 }
 
-func FetchLoadInfo() (map[string]any, error) {
+func FetchLoadInfo() (*LoadInfoResponse, error) {
 	loadAvg, err := load.Avg()
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{
-		"load1":  loadAvg.Load1,
-		"load5":  loadAvg.Load5,
-		"load15": loadAvg.Load15,
+	return &LoadInfoResponse{
+		Load1:  loadAvg.Load1,
+		Load5:  loadAvg.Load5,
+		Load15: loadAvg.Load15,
 	}, nil
 }
 
-func getCPUInfo(c *gin.Context) {
+// ---------- Handlers ----------
+
+func getCPU(c *gin.Context) {
 	data, err := FetchCPUInfo()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get CPU info", "details": err.Error()})

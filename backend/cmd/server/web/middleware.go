@@ -1,4 +1,4 @@
-package auth
+package web
 
 import (
 	"context"
@@ -32,19 +32,6 @@ func CorsMiddleware(vitePort int) gin.HandlerFunc {
 			c.AbortWithStatus(http.StatusOK)
 			return
 		}
-		c.Next()
-	}
-}
-
-func AuthMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		sess, err := session.ValidateSessionFromRequest(c.Request)
-		if err != nil || sess == nil {
-			logger.Warnf("⚠️  Unauthorized request or expired session: %v", err)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-		c.Set("session", sess)
 		c.Next()
 	}
 }
@@ -102,4 +89,17 @@ func FilebrowserReverseProxy(secret string) gin.HandlerFunc {
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
 
+}
+
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sess, err := session.ValidateSessionFromRequest(c.Request)
+		if err != nil || sess == nil {
+			logger.Warnf("⚠️  Unauthorized request or expired session: %v", err)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		c.Set("session", sess)
+		c.Next()
+	}
 }

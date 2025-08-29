@@ -1,4 +1,4 @@
-package network
+package system
 
 import (
 	"fmt"
@@ -101,7 +101,7 @@ func StartSimpleNetInfoSampler() {
 	}()
 }
 
-func getSimpleNetInfoHandler(c *gin.Context) {
+func getNetworks(c *gin.Context) {
 	sess := session.GetSessionOrAbort(c)
 	if sess == nil {
 		return
@@ -121,8 +121,3 @@ func getSimpleNetInfoHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, infos)
 }
-
-// In your router registration, add the handler (example):
-// network.GET("/simple-info", getSimpleNetInfoHandler)
-//
-// And make sure to call StartSimpleNetInfoSampler() once during startup (main/init).

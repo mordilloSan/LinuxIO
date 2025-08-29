@@ -16,7 +16,7 @@ GO_BIN := $(shell which go)
 GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
 # Flags to pass into the Go binaries
-VERBOSE ?= true
+VERBOSE ?= false
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
 VITE_DEV_PORT = 3000
 SERVER_PORT = 8080
@@ -192,14 +192,14 @@ setup: ensure-go ensure-node ensure-golint
 	'
 	@echo "✅ Frontend dependencies installed!"
 
-lint:
+lint: setup
 	@echo "🔍 Running ESLint..."
 	@bash -c '\
 		cd frontend && \
 		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!" \
 	'
 
-tsc:
+tsc: setup
 	@echo "🔍 Running TypeScript type checks..."
 	@bash -c '\
 		cd frontend && \

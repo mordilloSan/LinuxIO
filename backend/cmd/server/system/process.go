@@ -1,19 +1,25 @@
+// file: cmd/server/system/proc_services.go
 package system
 
 import (
+	"net/http"
 	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
+// ---------- Processes ----------
+
 type ProcInfo struct {
-	Pid    int32   `json:"pid"`
-	Name   string  `json:"name"`
-	CPU    float64 `json:"cpu_percent"`
-	Memory float32 `json:"mem_percent"`
+	Pid     int32   `json:"pid"`
+	Name    string  `json:"name"`
+	CPU     float64 `json:"cpu_percent"`
+	Memory  float32 `json:"mem_percent"`
+	Running bool    `json:"running"`
 }
 
+// FetchProcesses returns a snapshot of processes (unprivileged).
 func FetchProcesses() ([]ProcInfo, error) {
 	procs, err := process.Processes()
 	if err != nil {
@@ -27,29 +33,38 @@ func FetchProcesses() ([]ProcInfo, error) {
 		wg.Add(1)
 		go func(p *process.Process) {
 			defer wg.Done()
+
 			name, _ := p.Name()
 			cpu, _ := p.CPUPercent()
 			mem, _ := p.MemoryPercent()
-			ch <- ProcInfo{Pid: p.Pid, Name: name, CPU: cpu, Memory: mem}
+			running, _ := p.IsRunning()
+
+			ch <- ProcInfo{
+				Pid:     p.Pid,
+				Name:    name,
+				CPU:     cpu,
+				Memory:  mem,
+				Running: running,
+			}
 		}(p)
 	}
 
 	wg.Wait()
 	close(ch)
 
-	var result []ProcInfo
+	result := make([]ProcInfo, 0, len(procs))
 	for info := range ch {
 		result = append(result, info)
 	}
-
 	return result, nil
 }
 
+// Gin handler
 func getProcesses(c *gin.Context) {
-	result, err := FetchProcesses()
+	list, err := FetchProcesses()
 	if err != nil {
-		c.JSON(500, gin.H{"error": "failed to list processes", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list processes", "details": err.Error()})
 		return
 	}
-	c.JSON(200, result)
+	c.JSON(http.StatusOK, list)
 }

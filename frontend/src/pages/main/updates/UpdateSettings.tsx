@@ -1,4 +1,3 @@
-// components/system/UpdateSettings.tsx
 import {
   Box,
   Typography,
@@ -33,7 +32,7 @@ const UpdateSettings: React.FC = () => {
 
   useEffect(() => {
     axios
-      .get("/system/updates/settings")
+      .get("/updates/settings")
       .then((res) => {
         setSettings(res.data);
       })
@@ -57,7 +56,7 @@ const UpdateSettings: React.FC = () => {
   const saveSettings = async (newSettings: Partial<Settings>) => {
     setSaving(true);
     try {
-      await axios.post("/system/updates/settings", {
+      await axios.post("/updates/settings", {
         enabled: newSettings.enabled,
         frequency: newSettings.frequency,
       });

@@ -1,4 +1,3 @@
-// components/system/UpdateStatus.tsx
 import { Box } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React, { useMemo } from "react";
@@ -17,7 +16,7 @@ const UpdateStatus: React.FC = () => {
     refetch: refetchUpdates,
   } = useQuery<{ updates: Update[] }>({
     queryKey: ["updateInfo"],
-    queryFn: () => axios.get("/system/updates").then((res) => res.data),
+    queryFn: () => axios.get("/updates/packages").then((res) => res.data),
     enabled: true,
     refetchInterval: 50000,
   });

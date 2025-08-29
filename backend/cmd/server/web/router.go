@@ -13,12 +13,12 @@ import (
 	"github.com/mordilloSan/LinuxIO/cmd/server/benchmark"
 	"github.com/mordilloSan/LinuxIO/cmd/server/config"
 	"github.com/mordilloSan/LinuxIO/cmd/server/docker"
+	"github.com/mordilloSan/LinuxIO/cmd/server/drives"
 	"github.com/mordilloSan/LinuxIO/cmd/server/network"
 	"github.com/mordilloSan/LinuxIO/cmd/server/power"
 	"github.com/mordilloSan/LinuxIO/cmd/server/services"
 	"github.com/mordilloSan/LinuxIO/cmd/server/system"
 	"github.com/mordilloSan/LinuxIO/cmd/server/updates"
-	"github.com/mordilloSan/LinuxIO/cmd/server/websocket"
 	"github.com/mordilloSan/LinuxIO/cmd/server/wireguard"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
@@ -40,39 +40,46 @@ func BuildRouter(cfg Config) *gin.Engine {
 		if err := r.SetTrustedProxies(nil); err != nil {
 			logger.Warnf("failed to set trusted proxies: %v", err)
 		}
-		r.Use(auth.CorsMiddleware(cfg.VitePort))
+		r.Use(CorsMiddleware(cfg.VitePort))
 		if cfg.Verbose {
 			r.Use(gin.Logger())
 		}
 	}
 
-	// Auth + APIs
-	auth.RegisterAuthRoutes(r, auth.Config{
+	// --- Auth routes (split public/private to avoid import cycles) ---
+	authPublic := r.Group("/auth")
+	authPrivate := r.Group("/auth")
+	authPrivate.Use(AuthMiddleware())
+
+	auth.RegisterAuthRoutes(authPublic, authPrivate, auth.Config{
 		Env:                  cfg.Env,
 		Verbose:              cfg.Verbose,
 		BridgeBinaryOverride: cfg.BridgeBinaryOverride,
 	})
-	system.RegisterSystemRoutes(r)
-	updates.RegisterUpdateRoutes(r)
-	services.RegisterServiceRoutes(r)
-	network.RegisterNetworkRoutes(r)
-	docker.RegisterDockerRoutes(r)
-	config.RegisterThemeRoutes(r)
-	power.RegisterPowerRoutes(r)
-	wireguard.RegisterWireguardRoutes(r)
 
-	// WebSocket
-	r.GET("/ws", websocket.WebSocketHandler)
+	// --- APIs ---
+	system.RegisterSystemRoutes(r.Group("/system")) //We want a public API just for get methods....
+	updates.RegisterUpdateRoutes(r.Group("/updates", AuthMiddleware()))
+	services.RegisterServiceRoutes(r.Group("/services", AuthMiddleware()))
+	network.RegisterNetworkRoutes(r.Group("/network", AuthMiddleware()))
+	docker.RegisterDockerRoutes(r.Group("/docker", AuthMiddleware()))
+	drives.RegisterDriveRoutes(r.Group("/drives", AuthMiddleware()))
+	power.RegisterPowerRoutes(r.Group("/power", AuthMiddleware()))
+	wireguard.RegisterWireguardRoutes(r.Group("/wireguard", AuthMiddleware()))
+	config.RegisterThemeRoutes(r.Group("/theme", AuthMiddleware()))
 
-	// Filebrowser (auth protected)
-	r.Any("/navigator/*proxyPath", auth.AuthMiddleware(), NavigatorDefaultsMiddleware(), auth.FilebrowserReverseProxy(cfg.FilebrowserSecret))
+	// --- WebSocket ---
+	r.GET("/ws", WebSocketHandler)
 
-	// Debug-only routes
+	// --- Filebrowser (auth protected) ---
+	r.Any("/navigator/*proxyPath", AuthMiddleware(), NavigatorDefaultsMiddleware(), FilebrowserReverseProxy(cfg.FilebrowserSecret))
+
+	// --- Debug-only routes ---
 	if cfg.Env != "production" {
 		benchmark.RegisterDebugRoutes(r, cfg.Env)
 	}
 
-	// Frontend (SPA)
+	// --- Frontend (SPA) ---
 	if cfg.Env == "development" {
 		r.GET("/", func(c *gin.Context) {
 			c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://localhost:%d/", cfg.VitePort))
@@ -117,7 +124,7 @@ func serveFileFS(c *gin.Context, fsys fs.FS, path string) {
 	c.Data(http.StatusOK, ct, b)
 }
 
-// httpErrorLogAdapter forwards http.Server errors into logger,
+// httpErrorLogAdapter forwards http.Server errors into logger
 type HTTPErrorLogAdapter struct{}
 
 func (HTTPErrorLogAdapter) Write(p []byte) (int, error) {

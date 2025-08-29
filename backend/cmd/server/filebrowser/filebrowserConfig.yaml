@@ -36,6 +36,7 @@ auth:
 userDefaults:
   editorQuickSave: true
   hideSidebarFileActions: true
+  disableQuickToggles: true
   stickySidebar: false
   showHidden: true
   dateFormat: true

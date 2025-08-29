@@ -3,7 +3,6 @@ package docker
 import (
 	"net/http"
 
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
@@ -222,23 +221,4 @@ func LogContainer(c *gin.Context) {
 	}
 	// If data is plain text, send as text/plain. If you wrap in JSON, set to application/json.
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", data)
-}
-
-func RegisterDockerRoutes(router *gin.Engine) {
-	docker := router.Group("/docker", auth.AuthMiddleware())
-	{
-		docker.GET("/containers", ListContainers)
-		docker.POST("/containers/:id/start", StartContainer)
-		docker.POST("/containers/:id/stop", StopContainer)
-		docker.POST("/containers/:id/restart", RestartContainer)
-		docker.POST("/containers/:id/remove", RemoveContainer)
-		docker.GET("/containers/:id/logs", LogContainer)
-		docker.GET("/images", ListImages)
-		docker.GET("/networks", ListDockerNetworks)
-		docker.POST("/networks", CreateDockerNetwork)
-		docker.DELETE("/networks/:name", DeleteDockerNetwork)
-		docker.GET("/volumes", ListDockerVolumes)
-		docker.POST("/volumes", CreateDockerVolume)
-		docker.DELETE("/volumes/:name", DeleteDockerVolume)
-	}
 }

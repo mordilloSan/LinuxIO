@@ -1,5 +1,4 @@
 import GppGoodOutlinedIcon from "@mui/icons-material/GppGoodOutlined";
-import HighlightOffIcon from "@mui/icons-material/HighlightOff";
 import SecurityUpdateWarningIcon from "@mui/icons-material/SecurityUpdateWarning";
 import { Typography, Box, useTheme } from "@mui/material";
 import { Link } from "@mui/material";
@@ -28,7 +27,7 @@ type SystemUpdatesResponse = {
 };
 
 type ServiceStatus = {
-  active_state: string;
+  running: boolean;
   // ...any other fields
 };
 
@@ -59,7 +58,7 @@ const SystemHealth = () => {
   // Services
   const { data: servicesRaw } = useQuery<ServiceStatus[]>({
     queryKey: ["SystemStatus"],
-    queryFn: () => axios.get("/system/services/status").then((res) => res.data),
+    queryFn: () => axios.get("/system/processes").then((res) => res.data),
     refetchInterval: 50000,
   });
 
@@ -73,10 +72,7 @@ const SystemHealth = () => {
   // --- Data extraction ---
   const services = Array.isArray(servicesRaw) ? servicesRaw : [];
   const units = services.length;
-  const failed = services.filter((svc) => svc.active_state === "failed").length;
-  const running = services.filter(
-    (svc) => svc.active_state === "active",
-  ).length;
+  const running = services.filter((svc) => svc.running === true).length;
 
   const updates = systemHealth?.updates ?? [];
   const totalPackages = updates.length;
@@ -86,11 +82,7 @@ const SystemHealth = () => {
   let statusColor = theme.palette.success.dark;
   let IconComponent = GppGoodOutlinedIcon;
   let iconLink = "/updates";
-  if (failed > 0) {
-    statusColor = theme.palette.error.main;
-    IconComponent = HighlightOffIcon;
-    iconLink = "/services";
-  } else if (totalPackages > 0) {
+  if (totalPackages > 0) {
     statusColor = theme.palette.warning.main;
     IconComponent = SecurityUpdateWarningIcon;
   }
@@ -151,7 +143,7 @@ const SystemHealth = () => {
           underline="hover"
           color="inherit"
         >
-          {failed > 0 ? `${failed} failed` : `${running}/${units} running`}
+          {`${running}/${units} running`}
         </Link>
       </Typography>
     </Box>

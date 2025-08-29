@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +19,14 @@ type BenchmarkResult struct {
 	Status   int
 	Latency  time.Duration
 	Error    error
+}
+
+type GroupedResults struct {
+	System    []gin.H `json:"system"`
+	Updates   []gin.H `json:"updates"`
+	Docker    []gin.H `json:"docker"`
+	Wireguard []gin.H `json:"wireguard"`
+	Other     []gin.H `json:"other"`
 }
 
 func RegisterDebugRoutes(router *gin.Engine, env string) {
@@ -32,30 +43,56 @@ func benchmarkHandler(router *gin.Engine) gin.HandlerFunc {
 			return
 		}
 		results := RunBenchmark("http://localhost:8080", "session_id="+cookie, router)
-		var output []gin.H
+
+		grouped := GroupedResults{
+			System:    []gin.H{},
+			Updates:   []gin.H{},
+			Docker:    []gin.H{},
+			Wireguard: []gin.H{},
+			Other:     []gin.H{},
+		}
+
 		for _, r := range results {
+			item := gin.H{"endpoint": r.Endpoint}
 			if r.Error != nil {
-				output = append(output, gin.H{"endpoint": r.Endpoint, "error": r.Error.Error()})
+				item["error"] = r.Error.Error()
 			} else {
-				output = append(output, gin.H{
-					"endpoint": r.Endpoint,
-					"status":   r.Status,
-					"latency":  fmt.Sprintf("%.2fms", float64(r.Latency.Microseconds())/1000),
-				})
+				item["status"] = r.Status
+				item["latency"] = fmt.Sprintf("%.2fms", float64(r.Latency.Microseconds())/1000)
+			}
+
+			switch {
+			case strings.HasPrefix(r.Endpoint, "/system/"):
+				grouped.System = append(grouped.System, item)
+			case strings.HasPrefix(r.Endpoint, "/updates/"):
+				grouped.Updates = append(grouped.Updates, item)
+			case strings.HasPrefix(r.Endpoint, "/docker/"):
+				grouped.Docker = append(grouped.Docker, item)
+			case strings.HasPrefix(r.Endpoint, "/wireguard/"):
+				grouped.Wireguard = append(grouped.Wireguard, item)
+			default:
+				grouped.Other = append(grouped.Other, item)
 			}
 		}
-		c.JSON(200, output)
+
+		// sort each group by latency ascending; errors go last
+		sortByLatency(grouped.System)
+		sortByLatency(grouped.Updates)
+		sortByLatency(grouped.Docker)
+		sortByLatency(grouped.Wireguard)
+		sortByLatency(grouped.Other)
+
+		c.JSON(200, grouped)
 	}
 }
 
-// RunBenchmark performs parallel benchmarking of all GET /system/* endpoints
+// RunBenchmark performs parallel benchmarking of all GET endpoints
 func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine) []BenchmarkResult {
 	endpoints := getBenchmarkableEndpoints(router)
-	logger.Infof("📈 Running benchmark for %d /system/ endpoints...", len(endpoints))
+	logger.Infof("📈 Running benchmark for %d endpoints...", len(endpoints))
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	var wg sync.WaitGroup
-	results := make([]BenchmarkResult, len(endpoints))
 	resultChan := make(chan BenchmarkResult, len(endpoints))
 
 	for _, endpoint := range endpoints {
@@ -65,7 +102,6 @@ func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine) []Be
 
 			req, err := http.NewRequest("GET", baseURL+endpoint, nil)
 			if err != nil {
-				logger.Errorf("❌ Failed to create request for %s: %v", endpoint, err)
 				resultChan <- BenchmarkResult{Endpoint: endpoint, Error: err}
 				return
 			}
@@ -76,20 +112,11 @@ func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine) []Be
 			latency := time.Since(start)
 
 			if err != nil {
-				logger.Warnf("⚠️ Request to %s failed: %v", endpoint, err)
 				resultChan <- BenchmarkResult{Endpoint: endpoint, Latency: latency, Error: err}
 				return
 			}
-			defer func() {
-				if cerr := resp.Body.Close(); cerr != nil {
-					logger.Warnf("failed to close response body: %v", cerr)
-				}
-			}()
-			if _, err := io.Copy(io.Discard, resp.Body); err != nil {
-				logger.Warnf("failed to discard response body: %v", err)
-			}
-
-			logger.Debugf("✅ %s -> %d in %.2fms", endpoint, resp.StatusCode, float64(latency.Microseconds())/1000)
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
 
 			resultChan <- BenchmarkResult{
 				Endpoint: endpoint,
@@ -102,32 +129,78 @@ func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine) []Be
 	wg.Wait()
 	close(resultChan)
 
-	i := 0
+	var results []BenchmarkResult
 	for res := range resultChan {
-		results[i] = res
-		i++
+		results = append(results, res)
 	}
 
-	logger.Infof("✅ Benchmark completed.")
+	logger.Debugf("Benchmark completed.")
 	return results
 }
 
 func getBenchmarkableEndpoints(router *gin.Engine) []string {
 	var endpoints []string
-	allowedPrefixes := []string{"/system/", "/docker/", "/wireguard/"}
+	allowedPrefixes := []string{"/system/", "/updates/", "/docker/", "/wireguard/"}
 
 	for _, route := range router.Routes() {
 		if route.Method != "GET" {
 			continue
 		}
+		// exclude parameterized paths like /system/:id
+		if strings.Contains(route.Path, ":") {
+			continue
+		}
 		for _, prefix := range allowedPrefixes {
-			if len(route.Path) >= len(prefix) && route.Path[:len(prefix)] == prefix {
+			if strings.HasPrefix(route.Path, prefix) {
 				endpoints = append(endpoints, route.Path)
 				break
 			}
 		}
 	}
-
-	logger.Debugf("🔍 Found %d GET benchmarkable routes", len(endpoints))
 	return endpoints
+}
+
+// ---- helpers ----
+
+func sortByLatency(arr []gin.H) {
+	sort.SliceStable(arr, func(i, j int) bool {
+		li, lok := latencyMs(arr[i])
+		lj, rok := latencyMs(arr[j])
+
+		// errors (no latency) go to the end
+		if !lok && rok {
+			return false
+		}
+		if lok && !rok {
+			return true
+		}
+		if !lok && !rok {
+			// both are errors → compare endpoints safely
+			ie, iok := arr[i]["endpoint"].(string)
+			je, jok := arr[j]["endpoint"].(string)
+			if iok && jok {
+				return ie < je
+			}
+			return false
+		}
+		return li < lj
+	})
+}
+
+func latencyMs(m gin.H) (float64, bool) {
+	val, ok := m["latency"]
+	if !ok {
+		return 0, false
+	}
+	s, ok := val.(string)
+	if !ok {
+		return 0, false
+	}
+	// strip trailing "ms"
+	s = strings.TrimSuffix(s, "ms")
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0, false
+	}
+	return f, true
 }

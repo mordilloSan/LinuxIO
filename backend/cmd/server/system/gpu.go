@@ -55,7 +55,7 @@ func FetchGPUInfo() ([]map[string]any, error) {
 }
 
 // HTTP handler
-func getGPUInfo(c *gin.Context) {
+func getGPU(c *gin.Context) {
 	data, err := FetchGPUInfo()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{

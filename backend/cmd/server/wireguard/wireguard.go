@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/session"
@@ -355,20 +354,4 @@ func WireguardDownInterface(c *gin.Context) {
 		return
 	}
 	c.JSON(200, out)
-}
-
-func RegisterWireguardRoutes(r *gin.Engine) {
-	wg := r.Group("/wireguard")
-	wg.Use(auth.AuthMiddleware())
-	wg.GET("/interfaces", WireguardListInterfaces)
-	wg.POST("/interface", WireguardAddInterface)
-	wg.DELETE("/interface/:name", WireguardRemoveInterface)
-	wg.GET("/interface/:name/peers", WireguardListPeers)
-	wg.POST("/interface/:name/peer", WireguardAddPeer)
-	wg.DELETE("/interface/:name/peer/:peername", WireguardRemovePeer)
-	wg.GET("/interface/:name/peer/:peername/qrcode", WireguardPeerQRCode)
-	wg.GET("/interface/:name/peer/:peername/config", WireguardPeerConfigDownload)
-	wg.GET("/interface/:name/keys", WireguardGetKeys)
-	wg.POST("/interface/:name/up", WireguardUpInterface)
-	wg.POST("/interface/:name/down", WireguardDownInterface)
 }

@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
-	"strings"
-	"time"
-
 	"net/http"
+	"os"
 	"os/exec"
 	"os/user"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -36,14 +35,17 @@ type Config struct {
 
 var cfg Config
 
-func RegisterAuthRoutes(router *gin.Engine, c Config) {
+// RegisterAuthRoutes wires public and private auth endpoints.
+// - pub: routes without auth middleware (e.g., /auth/login)
+// - priv: routes with auth middleware already attached (e.g., /auth/me, /auth/logout)
+func RegisterAuthRoutes(pub *gin.RouterGroup, priv *gin.RouterGroup, c Config) {
 	cfg = c
-	auth := router.Group("/auth")
-	{
-		auth.POST("/login", loginHandler)
-		auth.GET("/me", AuthMiddleware(), meHandler)
-		auth.GET("/logout", AuthMiddleware(), logoutHandler)
-	}
+	// public
+	pub.POST("/login", loginHandler)
+
+	// private (requires middleware applied by caller)
+	priv.GET("/me", meHandler)
+	priv.GET("/logout", logoutHandler)
 }
 
 func loginHandler(c *gin.Context) {
@@ -73,9 +75,7 @@ func loginHandler(c *gin.Context) {
 	}
 
 	setSessionCookie(c, sess.SessionID)
-
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": sess.Privileged})
-
 }
 
 func logoutHandler(c *gin.Context) {
@@ -91,6 +91,7 @@ func logoutHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session fetch failed"})
 		return
 	}
+
 	// Clear cookie early to prevent new activity during teardown
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie("session_id", "", -1, "/", "", false, true)
@@ -101,10 +102,10 @@ func logoutHandler(c *gin.Context) {
 		return
 	}
 
-	// 1) Close all terminals (main + containers) to stop PTY readers cleanly
+	// 1) Close all terminals (main + containers)
 	terminal.CloseAllForSession(sess.SessionID)
 
-	// 2) Tell bridge to shutdown (logout). Ignore minor errors.
+	// 2) Ask bridge to shutdown
 	if sess.User.Username != "" {
 		if _, err := bridge.CallWithSession(sess, "control", "shutdown", []string{"logout"}); err != nil {
 			logger.Warnf("CallWithSession for shutdown failed: %v", err)
@@ -126,13 +127,11 @@ func meHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "no active session"})
 		return
 	}
-
 	sess, ok := sessVal.(*session.Session)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid session type"})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"user": sess.User})
 }
 
@@ -145,25 +144,24 @@ func authenticateUser(req LoginRequest) error {
 }
 
 func createUserSession(req LoginRequest, privileged bool) (*session.Session, error) {
-
 	sessionID := uuid.New().String()
 	sysu, err := user.Lookup(req.Username)
 	if err != nil {
 		return nil, fmt.Errorf("lookup user: %w", err)
 	}
-	user := session.User{
+	u := session.User{
 		Username: req.Username,
 		UID:      sysu.Uid,
 		GID:      sysu.Gid,
 	}
 
-	if sessErr := session.CreateSession(sessionID, user, sessionDuration, privileged); sessErr != nil {
-		logger.Errorf("Failed to create session: %v", sessErr)
-		return nil, sessErr
+	if err := session.CreateSession(sessionID, u, sessionDuration, privileged); err != nil {
+		logger.Errorf("Failed to create session: %v", err)
+		return nil, err
 	}
-	sess, getSessErr := session.GetSession(sessionID)
-	if getSessErr != nil || sess == nil {
-		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, getSessErr)
+	sess, getErr := session.GetSession(sessionID)
+	if getErr != nil || sess == nil {
+		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, getErr)
 		return nil, fmt.Errorf("session retrieval failed")
 	}
 	return sess, nil
@@ -194,24 +192,16 @@ func setSessionCookie(c *gin.Context, sessionID string) {
 }
 
 // pamAuth authenticates a user via PAM ("login" service) and runs AcctMgmt.
-// It explicitly handles all conversation styles.
 func pamAuth(username, password string) error {
 	conv := func(style pam.Style, msg string) (string, error) {
 		switch style {
 		case pam.PromptEchoOff:
-			// Secret prompt (password)
 			return password, nil
 		case pam.PromptEchoOn:
-			// Visible prompt (often username or generic input)
 			return username, nil
-		case pam.ErrorMsg:
-			// PAM emitted an error message; nothing to return
-			return "", nil
-		case pam.TextInfo:
-			// Informational text; nothing to return
+		case pam.ErrorMsg, pam.TextInfo:
 			return "", nil
 		default:
-			// Binary or unknown prompt types
 			return "", fmt.Errorf("unsupported PAM style: %v (msg=%q)", style, msg)
 		}
 	}
@@ -221,12 +211,9 @@ func pamAuth(username, password string) error {
 		return fmt.Errorf("pam start: %w", err)
 	}
 
-	// Optional: set PAM items for auditing (ignored if not allowed by the stack)
 	if host, _ := os.Hostname(); host != "" {
 		_ = t.SetItem(pam.Rhost, host)
 	}
-	// You could also set pam.Tty or pam.Ruser if appropriate:
-	// _ = t.SetItem(pam.Tty, "linuxio")
 
 	if err := t.Authenticate(0); err != nil {
 		return fmt.Errorf("pam authenticate: %w", err)
@@ -242,21 +229,15 @@ func trySudo(password string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	// invalidate timestamp
-	_ = exec.Command("sudo", "-k").Run()
+	_ = exec.Command("sudo", "-k").Run() // invalidate timestamp
 
-	// Run sudo with stdin password, no prompt, validate privileges
 	cmd := exec.CommandContext(ctx, "sudo", "-S", "-p", "", "-v")
-
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
 	cmd.Stdin = strings.NewReader(password + "\n")
-
-	// Keep env, force consistent behavior
 	cmd.Env = append(os.Environ(), "LANG=C")
 
-	// Run — returns nil if sudo accepts the password
 	if err := cmd.Run(); err != nil {
 		return false
 	}

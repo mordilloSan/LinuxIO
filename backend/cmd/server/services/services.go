@@ -6,27 +6,10 @@ import (
 	"regexp"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
-
-func RegisterServiceRoutes(router *gin.Engine) {
-	system := router.Group("/system", auth.AuthMiddleware())
-	{
-		system.GET("/services/status", getServiceStatus)
-		system.GET("/services/:name", getServiceDetail)
-		system.POST("/services/:name/start", startService)
-		system.POST("/services/:name/stop", stopService)
-		system.POST("/services/:name/restart", restartService)
-		system.POST("/services/:name/reload", reloadService)
-		system.POST("/services/:name/enable", enableService)
-		system.POST("/services/:name/disable", disableService)
-		system.POST("/services/:name/mask", maskService)
-		system.POST("/services/:name/unmask", unmaskService)
-	}
-}
 
 func startService(c *gin.Context)   { serviceAction(c, "StartService") }
 func stopService(c *gin.Context)    { serviceAction(c, "StopService") }

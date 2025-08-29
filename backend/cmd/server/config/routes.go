@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
 )
 
 // Payload with pointer fields so we can detect what the client actually sent.
@@ -20,17 +20,16 @@ type appSettingsPayload struct {
 	SidebarCollapsedAlt *bool   `json:"SidebarCollapsed"`
 }
 
-// RegisterThemeRoutes wires the private (user) routes.
-func RegisterThemeRoutes(router *gin.Engine) {
-	registerPrivateThemeRoutes(router)
-}
-
-// Authenticated: read/write the logged-in user's theme/config
-func registerPrivateThemeRoutes(r *gin.Engine) {
-	group := r.Group("/theme", auth.AuthMiddleware())
-
+// RegisterThemeRoutes wires the private (user) routes under /theme.
+//
+// IMPORTANT: The provided group MUST already include your auth middleware.
+// Example caller:
+//
+//	priv := r.Group("/theme", web.AuthMiddleware())
+//	config.RegisterThemeRoutes(priv)
+func RegisterThemeRoutes(priv *gin.RouterGroup) {
 	// GET /theme/get -> user's saved theme settings
-	group.GET("/get", func(c *gin.Context) {
+	priv.GET("/get", func(c *gin.Context) {
 		username := usernameFromContext(c)
 		if username == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "no session user"})
@@ -52,7 +51,7 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 	})
 
 	// POST /theme/set -> update user's theme (and related UI settings)
-	group.POST("/set", func(c *gin.Context) {
+	priv.POST("/set", func(c *gin.Context) {
 		username := usernameFromContext(c)
 		if username == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "no session user"})
@@ -141,6 +140,14 @@ func registerPrivateThemeRoutes(r *gin.Engine) {
 
 // Helper: extract the session username placed by your auth middleware.
 func usernameFromContext(c *gin.Context) string {
+	// Preferred: our auth middleware sets "session" with *session.Session
+	if v, ok := c.Get("session"); ok {
+		if s, ok := v.(*session.Session); ok && s != nil && s.User.Username != "" {
+			return s.User.Username
+		}
+	}
+
+	// Fallbacks (legacy cases)
 	if v, ok := c.Get("user"); ok {
 		if s, ok := v.(string); ok && s != "" {
 			return s
@@ -158,6 +165,8 @@ func usernameFromContext(c *gin.Context) string {
 			}
 		}
 	}
+
+	// Last resort: current OS user (dev)
 	if u, err := user.Current(); err == nil && u.Username != "" {
 		return u.Username
 	}
