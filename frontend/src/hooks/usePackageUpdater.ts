@@ -9,7 +9,7 @@ export const usePackageUpdater = (onComplete: () => void) => {
   const updateOne = async (pkg: string) => {
     setUpdatingPackage(pkg);
     await axios.post("/system/update", { package: pkg });
-    await onComplete(); // refresh updates
+    onComplete(); // refresh updates
     setUpdatingPackage(null);
   };
 

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
 	qrcode "github.com/skip2/go-qrcode"
@@ -22,12 +23,12 @@ import (
 // --- Types ---
 
 type InterfaceConfig struct {
-	PrivateKey string             `json:"private_key"`
-	Address    []string           `json:"address"`
-	ListenPort int                `json:"listen_port"`
-	DNS        []string           `json:"dns"`
-	MTU        int                `json:"mtu"`
-	Peers      []utils.PeerConfig `json:"peers"`
+	PrivateKey string           `json:"private_key"`
+	Address    []string         `json:"address"`
+	ListenPort int              `json:"listen_port"`
+	DNS        []string         `json:"dns"`
+	MTU        int              `json:"mtu"`
+	Peers      []ipc.PeerConfig `json:"peers"`
 }
 
 type WireGuardInterfaceUI struct {
@@ -70,7 +71,7 @@ func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 		if sec.Name() != "Peer" && !strings.HasPrefix(sec.Name(), "Peer ") {
 			continue
 		}
-		pc := utils.PeerConfig{
+		pc := ipc.PeerConfig{
 			PublicKey:    sec.Key("PublicKey").String(),
 			PresharedKey: sec.Key("PresharedKey").String(),
 			Endpoint:     sec.Key("Endpoint").String(),
@@ -162,7 +163,7 @@ func filterEmpty(items []string) []string {
 }
 
 func RemovePeerFromConfig(cfg *InterfaceConfig, publicKey string) bool {
-	var newPeers []utils.PeerConfig
+	var newPeers []ipc.PeerConfig
 	removed := false
 	for _, p := range cfg.Peers {
 		if p.PublicKey == publicKey {
@@ -175,7 +176,7 @@ func RemovePeerFromConfig(cfg *InterfaceConfig, publicKey string) bool {
 	return removed
 }
 
-func AddOrUpdatePeerInConfig(cfg *InterfaceConfig, newPeer utils.PeerConfig) {
+func AddOrUpdatePeerInConfig(cfg *InterfaceConfig, newPeer ipc.PeerConfig) {
 	for i, p := range cfg.Peers {
 		if p.PublicKey == newPeer.PublicKey {
 			cfg.Peers[i] = newPeer
@@ -185,7 +186,7 @@ func AddOrUpdatePeerInConfig(cfg *InterfaceConfig, newPeer utils.PeerConfig) {
 	cfg.Peers = append(cfg.Peers, newPeer)
 }
 
-func ExportPeerConfigToDiskWithNumber(interfaceName string, peer utils.PeerConfig, ifaceCfg InterfaceConfig, publicIP string, peerNumber int) (string, error) {
+func ExportPeerConfigToDiskWithNumber(interfaceName string, peer ipc.PeerConfig, ifaceCfg InterfaceConfig, publicIP string, peerNumber int) (string, error) {
 	peerDir := filepath.Join("/etc/wireguard", interfaceName)
 	err := os.MkdirAll(peerDir, 0700)
 	if err != nil {
@@ -286,14 +287,14 @@ func isInterfaceUp(name string) bool {
 	return true
 }
 
-func listExportedPeersByFilename(interfaceName string) ([]utils.PeerConfig, error) {
+func listExportedPeersByFilename(interfaceName string) ([]ipc.PeerConfig, error) {
 	peerDir := filepath.Join("/etc/wireguard", interfaceName)
 	files, err := filepath.Glob(filepath.Join(peerDir, "*.conf"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list peer configs: %w", err)
 	}
 
-	var peers []utils.PeerConfig
+	var peers []ipc.PeerConfig
 
 	for _, file := range files {
 		iniFile, err := ini.Load(file)
@@ -305,7 +306,7 @@ func listExportedPeersByFilename(interfaceName string) ([]utils.PeerConfig, erro
 		ifaceSec := iniFile.Section("Interface")
 		peerSec := iniFile.Section("Peer")
 
-		pc := utils.PeerConfig{
+		pc := ipc.PeerConfig{
 			PrivateKey:   ifaceSec.Key("PrivateKey").String(),
 			AllowedIPs:   filterEmpty(strings.Split(ifaceSec.Key("Address").String(), ",")),
 			PublicKey:    peerSec.Key("PublicKey").String(),
@@ -479,7 +480,7 @@ func WriteWireGuardConfigWithPostUpDown(path string, cfg InterfaceConfig, egress
 
 // --- Handler Implementations ---
 
-func ListInterfaces(args []string) (any, error) {
+func ListInterfaces([]string) (any, error) {
 	logger.Debugf(" Listing interfaces")
 	files, err := filepath.Glob("/etc/wireguard/*.conf")
 	if err != nil {
@@ -536,7 +537,7 @@ func AddInterface(args []string) (any, error) {
 		mtu, _ = strconv.Atoi(args[5])
 	}
 
-	var peers []utils.PeerConfig
+	var peers []ipc.PeerConfig
 
 	if len(args) > 6 && args[6] != "" && args[6] != "null" && args[6] != "[]" {
 		if err := json.Unmarshal([]byte(args[6]), &peers); err != nil {
@@ -553,7 +554,7 @@ func AddInterface(args []string) (any, error) {
 				if err != nil {
 					return nil, fmt.Errorf("failed to generate peer key: %w", err)
 				}
-				peer := utils.PeerConfig{
+				peer := ipc.PeerConfig{
 					PublicKey:  peerPriv.PublicKey().String(),
 					PrivateKey: peerPriv.String(),
 					AllowedIPs: []string{
@@ -705,7 +706,7 @@ func AddPeer(args []string) (any, error) {
 	priv, _ := wgtypes.GeneratePrivateKey()
 	pub := priv.PublicKey().String()
 
-	peer := utils.PeerConfig{
+	peer := ipc.PeerConfig{
 		PublicKey:           pub,
 		PrivateKey:          priv.String(),
 		AllowedIPs:          []string{nextIP},

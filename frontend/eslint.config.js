@@ -17,7 +17,6 @@ const compat = new FlatCompat({
 /** @type {import("eslint").Linter.Config[]} */
 export default [
   js.configs.recommended,
-
   {
     languageOptions: {
       globals: {

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/internal/logger"
@@ -24,7 +25,7 @@ func repairConfig(cfgPath, base string) error {
 		return writeConfig(cfgPath, base)
 	}
 
-	// 2) Detect unknown keys (top-level + nested) for logging; they will be dropped on save.
+	// 2) Detect unknown keys (top-level + nested) based on actual struct tags
 	unknown := detectUnknownKeys(raw)
 
 	// 3) Sanitize fields (repair invalid/missing values to defaults)
@@ -51,18 +52,18 @@ func sanitizeSettings(cfg *Settings, base string) (changed bool, fixes []string)
 	def := DefaultSettings(base)
 
 	// Theme: LIGHT or DARK
-	t := strings.ToUpper(strings.TrimSpace(cfg.ThemeSettings.Theme))
+	t := strings.ToUpper(strings.TrimSpace(cfg.AppSettings.Theme))
 	if t != "LIGHT" && t != "DARK" {
-		cfg.ThemeSettings.Theme = def.ThemeSettings.Theme
+		cfg.AppSettings.Theme = def.AppSettings.Theme
 		changed = true
-		fixes = append(fixes, "themeSettings.theme=default(DARK)")
+		fixes = append(fixes, "appSettings.theme=default("+def.AppSettings.Theme+")")
 	}
 
 	// PrimaryColor: must be valid CSS color
-	if !IsValidCSSColor(cfg.ThemeSettings.PrimaryColor) {
-		cfg.ThemeSettings.PrimaryColor = def.ThemeSettings.PrimaryColor
+	if !IsValidCSSColor(cfg.AppSettings.PrimaryColor) {
+		cfg.AppSettings.PrimaryColor = def.AppSettings.PrimaryColor
 		changed = true
-		fixes = append(fixes, "themeSettings.primaryColor=default(#2196f3)")
+		fixes = append(fixes, "appSettings.primaryColor=default("+def.AppSettings.PrimaryColor+")")
 	}
 
 	// SidebarCollapsed is bool; zero-value is fine (no repair).
@@ -71,7 +72,7 @@ func sanitizeSettings(cfg *Settings, base string) (changed bool, fixes []string)
 	if p := strings.TrimSpace(cfg.Docker.Folder); p == "" || !filepath.IsAbs(p) {
 		cfg.Docker.Folder = def.Docker.Folder
 		changed = true
-		fixes = append(fixes, "docker.folder=default(<base>/docker)")
+		fixes = append(fixes, "docker.folder=default("+def.Docker.Folder+")")
 	} else {
 		// normalize for consistency
 		cleaned := filepath.Clean(p)
@@ -86,14 +87,14 @@ func sanitizeSettings(cfg *Settings, base string) (changed bool, fixes []string)
 	if fi, err := os.Stat(cfg.Docker.Folder); err == nil && !fi.IsDir() {
 		cfg.Docker.Folder = def.Docker.Folder
 		changed = true
-		fixes = append(fixes, "docker.folder existed as file → default(<base>/docker)")
+		fixes = append(fixes, "docker.folder existed as file → default("+def.Docker.Folder+")")
 	}
 
 	return changed, fixes
 }
 
-// detectUnknownKeys returns a list of unknown keys (top-level and nested) for logging.
-// Unknown keys are effectively dropped when we re-marshal from the typed struct.
+// detectUnknownKeys returns a list of unknown keys (top-level and nested)
+// by comparing the YAML against the struct schema (yaml tags) in types.go.
 func detectUnknownKeys(raw []byte) []string {
 	type anyMap = map[string]any
 
@@ -103,48 +104,88 @@ func detectUnknownKeys(raw []byte) []string {
 		return nil
 	}
 
-	unknown := []string{}
-	// Allowed schema
-	topAllowed := map[string]struct{}{
-		"themeSettings": {},
-		"docker":        {},
+	// Allowed top-level keys from Settings yaml tags
+	st := reflect.TypeOf(Settings{})
+	topTags := yamlFieldTags(st)
+
+	// For nested validation: map top-level yaml tag -> allowed nested tags (if struct)
+	nestedAllowed := map[string]map[string]struct{}{}
+	if st.Kind() == reflect.Ptr {
+		st = st.Elem()
 	}
-	themeAllowed := map[string]struct{}{
-		"theme":            {},
-		"primaryColor":     {},
-		"sidebarCollapsed": {},
-	}
-	dockerAllowed := map[string]struct{}{
-		"folder": {},
+	if st.Kind() == reflect.Struct {
+		for i := 0; i < st.NumField(); i++ {
+			f := st.Field(i)
+			topTag := yamlTagName(f.Tag.Get("yaml"))
+			if topTag == "" || topTag == "-" {
+				continue
+			}
+			ntags := yamlFieldTags(f.Type)
+			if len(ntags) > 0 {
+				nestedAllowed[topTag] = ntags
+			}
+		}
 	}
 
+	unknown := []string{}
+
 	for k, v := range m {
-		if _, ok := topAllowed[k]; !ok {
+		// unknown top-level key
+		if _, ok := topTags[k]; !ok {
 			unknown = append(unknown, k)
 			continue
 		}
-		switch k {
-		case "themeSettings":
-			if mm, ok := v.(map[string]any); ok {
-				for kk := range mm {
-					if _, ok := themeAllowed[kk]; !ok {
-						unknown = append(unknown, "themeSettings."+kk)
-					}
-				}
-			} else {
-				unknown = append(unknown, "themeSettings (expected map)")
+
+		// if this top-level key maps to a struct, validate nested keys
+		if allowedNested, hasNested := nestedAllowed[k]; hasNested {
+			mm, ok := v.(map[string]any)
+			if !ok {
+				unknown = append(unknown, k+" (expected map)")
+				continue
 			}
-		case "docker":
-			if mm, ok := v.(map[string]any); ok {
-				for kk := range mm {
-					if _, ok := dockerAllowed[kk]; !ok {
-						unknown = append(unknown, "docker."+kk)
-					}
+			for kk := range mm {
+				if _, ok := allowedNested[kk]; !ok {
+					unknown = append(unknown, k+"."+kk)
 				}
-			} else {
-				unknown = append(unknown, "docker (expected map)")
 			}
 		}
 	}
+
 	return unknown
+}
+
+// yamlFieldTags returns the set of yaml tag names for the fields of a struct type.
+// If t is nil or not a struct, returns an empty set.
+func yamlFieldTags(t reflect.Type) map[string]struct{} {
+	out := make(map[string]struct{})
+	if t == nil {
+		return out
+	}
+	// Deref pointer if needed
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return out
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := yamlTagName(f.Tag.Get("yaml"))
+		if tag == "" || tag == "-" {
+			continue
+		}
+		out[tag] = struct{}{}
+	}
+	return out
+}
+
+// yamlTagName extracts the name portion of a yaml tag (before any comma options).
+func yamlTagName(tag string) string {
+	if tag == "" {
+		return ""
+	}
+	if i := strings.IndexByte(tag, ','); i >= 0 {
+		tag = tag[:i]
+	}
+	return strings.TrimSpace(tag)
 }

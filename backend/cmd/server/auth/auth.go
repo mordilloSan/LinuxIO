@@ -10,14 +10,14 @@ import (
 
 	"net/http"
 	"os/exec"
+	"os/user"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/cmd/server/terminal"
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/mordilloSan/LinuxIO/internal/utils"
 	"github.com/msteinert/pam"
 )
 
@@ -74,8 +74,6 @@ func loginHandler(c *gin.Context) {
 
 	setSessionCookie(c, sess.SessionID)
 
-	syncFilebrowser(c, sess.SessionID, sess.User.Name)
-
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": sess.Privileged})
 
 }
@@ -107,7 +105,7 @@ func logoutHandler(c *gin.Context) {
 	terminal.CloseAllForSession(sess.SessionID)
 
 	// 2) Tell bridge to shutdown (logout). Ignore minor errors.
-	if sess.User.ID != "" {
+	if sess.User.Username != "" {
 		if _, err := bridge.CallWithSession(sess, "control", "shutdown", []string{"logout"}); err != nil {
 			logger.Warnf("CallWithSession for shutdown failed: %v", err)
 		}
@@ -147,16 +145,25 @@ func authenticateUser(req LoginRequest) error {
 }
 
 func createUserSession(req LoginRequest, privileged bool) (*session.Session, error) {
-	sessionID := uuid.New().String()
-	user := utils.User{ID: req.Username, Name: req.Username}
 
-	if err := session.CreateSession(sessionID, user, sessionDuration, privileged); err != nil {
-		logger.Errorf("Failed to create session: %v", err)
-		return nil, err
+	sessionID := uuid.New().String()
+	sysu, err := user.Lookup(req.Username)
+	if err != nil {
+		return nil, fmt.Errorf("lookup user: %w", err)
 	}
-	sess, err := session.GetSession(sessionID)
-	if err != nil || sess == nil {
-		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, err)
+	user := session.User{
+		Username: req.Username,
+		UID:      sysu.Uid,
+		GID:      sysu.Gid,
+	}
+
+	if sessErr := session.CreateSession(sessionID, user, sessionDuration, privileged); sessErr != nil {
+		logger.Errorf("Failed to create session: %v", sessErr)
+		return nil, sessErr
+	}
+	sess, getSessErr := session.GetSession(sessionID)
+	if getSessErr != nil || sess == nil {
+		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, getSessErr)
 		return nil, fmt.Errorf("session retrieval failed")
 	}
 	return sess, nil
@@ -186,14 +193,48 @@ func setSessionCookie(c *gin.Context, sessionID string) {
 	c.SetCookie("session_id", sessionID, int(sessionDuration.Seconds()), "/", "", secureCookie, true)
 }
 
+// pamAuth authenticates a user via PAM ("login" service) and runs AcctMgmt.
+// It explicitly handles all conversation styles.
 func pamAuth(username, password string) error {
-	t, err := pam.StartFunc("login", username, func(s pam.Style, msg string) (string, error) {
-		return password, nil
-	})
-	if err != nil {
-		return err
+	conv := func(style pam.Style, msg string) (string, error) {
+		switch style {
+		case pam.PromptEchoOff:
+			// Secret prompt (password)
+			return password, nil
+		case pam.PromptEchoOn:
+			// Visible prompt (often username or generic input)
+			return username, nil
+		case pam.ErrorMsg:
+			// PAM emitted an error message; nothing to return
+			return "", nil
+		case pam.TextInfo:
+			// Informational text; nothing to return
+			return "", nil
+		default:
+			// Binary or unknown prompt types
+			return "", fmt.Errorf("unsupported PAM style: %v (msg=%q)", style, msg)
+		}
 	}
-	return t.Authenticate(0)
+
+	t, err := pam.StartFunc("login", username, conv)
+	if err != nil {
+		return fmt.Errorf("pam start: %w", err)
+	}
+
+	// Optional: set PAM items for auditing (ignored if not allowed by the stack)
+	if host, _ := os.Hostname(); host != "" {
+		_ = t.SetItem(pam.Rhost, host)
+	}
+	// You could also set pam.Tty or pam.Ruser if appropriate:
+	// _ = t.SetItem(pam.Tty, "linuxio")
+
+	if err := t.Authenticate(0); err != nil {
+		return fmt.Errorf("pam authenticate: %w", err)
+	}
+	if err := t.AcctMgmt(0); err != nil {
+		return fmt.Errorf("pam account check: %w", err)
+	}
+	return nil
 }
 
 // trySudo silently validates whether the given password unlocks sudo.

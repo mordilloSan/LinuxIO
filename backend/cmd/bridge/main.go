@@ -7,30 +7,35 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers"
-	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
-	"github.com/mordilloSan/LinuxIO/internal/config"
+	"github.com/mordilloSan/LinuxIO/cmd/server/config"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/mordilloSan/LinuxIO/internal/utils"
 	"github.com/spf13/pflag"
 )
 
 // Build minimal session object from env (keeps secret out of argv)
 var Sess = &session.Session{
 	SessionID:    os.Getenv("LINUXIO_SESSION_ID"),
-	User:         utils.User{ID: os.Getenv("LINUXIO_SESSION_USER"), Name: os.Getenv("LINUXIO_SESSION_USER")},
+	User:         session.User{Username: os.Getenv("LINUXIO_SESSION_USER"), UID: os.Getenv("LINUXIO_SESSION_UID"), GID: os.Getenv("LINUXIO_SESSION_GID")},
 	BridgeSecret: os.Getenv("LINUXIO_BRIDGE_SECRET"),
 }
+
+// Global shutdown signal for all handlers: closed when shutdown starts.
+var bridgeClosing = make(chan struct{})
+
+// Track in-flight requests to allow bounded wait on shutdown.
+var wg sync.WaitGroup
 
 func main() {
 	// Flags for mode only
@@ -39,23 +44,30 @@ func main() {
 	pflag.StringVar(&env, "env", "production", "environment (development|production)")
 	pflag.BoolVar(&verbose, "verbose", false, "enable verbose logs") // presence-only: --verbose
 	pflag.Parse()
+
 	env = strings.ToLower(env)
 	logger.Init(env, verbose)
 
 	if len(Sess.BridgeSecret) < 64 {
-		fmt.Fprintln(os.Stderr, "Missing or invalid LINUXIO_BRIDGE_SECRET; bridge must be started by main LinuxIO process")
+		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
 		os.Exit(1)
 	}
 
-	socketPath, err := bridge.BridgeSocketPath(Sess)
-	if err != nil {
-		logger.Errorf("❌ Failed to determine bridge socket path: %v", err)
+	if Sess.User.UID == "" {
+		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
 		os.Exit(1)
 	}
-	listener, _, _, err := createAndOwnSocket(socketPath, Sess.User.ID)
+
+	_ = syscall.Umask(0o077)
+
+	if err := prepareRuntimeDir(Sess); err != nil {
+		logger.Error.Fatalf("prepare runtime dir: %v", err)
+	}
+	socketPath := Sess.SocketPath()
+
+	listener, err := createAndOwnSocket(socketPath, Sess.User.UID, Sess.User.GID)
 	if err != nil {
-		logger.Error.Fatalf("❌ %v", err)
-		os.Exit(1)
+		logger.Error.Fatalf("create socket: %v", err)
 	}
 
 	if env == "production" {
@@ -65,13 +77,8 @@ func main() {
 		}()
 	}
 
-	// Ensure per-user config exists, is valid, and (if root) owned by the session user
-	if cfg, cfgPath, err := config.InitializeAndLoad(Sess.User.ID); err != nil {
-		logger.Warnf("config init failed for %s: %v", Sess.User.ID, err)
-	} else {
-		logger.Infof("Config ready for %s at %s (theme=%s primary=%s)",
-			Sess.User.ID, cfgPath, cfg.ThemeSettings.Theme, cfg.ThemeSettings.PrimaryColor)
-	}
+	// Ensure per-user config exists and is valid; logs internally.
+	config.EnsureConfigReady(Sess.User.Username)
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)
@@ -110,10 +117,31 @@ func main() {
 	cleanupDone := make(chan struct{}, 1)
 	go func() {
 		reason := <-ShutdownChan
+
+		// Signal all goroutines that shutdown started
+		close(bridgeClosing)
+
+		// Stop accepting new connections and close listener
 		close(acceptDone)
 		if err := listener.Close(); err != nil {
 			logger.Warnf("failed to close listener: %v", err)
 		}
+
+		// Bounded wait for in-flight requests; do not block forever
+		waitCh := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(waitCh)
+		}()
+		const grace = 5 * time.Second
+		select {
+		case <-waitCh:
+			logger.Debugf("All in-flight requests finished before grace period.")
+		case <-time.After(grace):
+			logger.Warnf("⏳ In-flight handlers still running after %s; proceeding with cleanup.", grace)
+		}
+
+		// Cleanup artifacts regardless of handler state
 		if err := cleanup.FullCleanup(reason, Sess); err != nil {
 			logger.Warnf("FullCleanup failed (reason=%q): %v", reason, err)
 		}
@@ -127,6 +155,9 @@ func main() {
 
 // handleMainRequest processes incoming bridge requests.
 func handleMainRequest(conn net.Conn, id string) {
+	wg.Add(1)
+	defer wg.Done()
+
 	logger.Debugf("HANDLECONNECTION: [%s] called!", id)
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
@@ -136,28 +167,27 @@ func handleMainRequest(conn net.Conn, id string) {
 
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
+	encoder.SetEscapeHTML(false)
 
-	var req types.BridgeRequest
+	var req ipc.Request
 	if err := decoder.Decode(&req); err != nil {
 		if err == io.EOF {
 			logger.Debugf("🔁 [%s] connection closed without data", id)
 		} else {
 			logger.Warnf("❌ [%s] invalid JSON from client: %v", id, err)
 		}
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid JSON"})
-		return
-	}
-	// Secret validation ---
-	if req.Secret != Sess.BridgeSecret {
-		logger.Warnf("❌ [%s] invalid secret (got %q)", id, req.Secret)
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid secret"})
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
 		return
 	}
 
-	// (1) DEFENSE-IN-DEPTH: Validate handler name for fallback
+	if req.Secret != Sess.BridgeSecret {
+		logger.Warnf("❌ [%s] invalid secret", id)
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
+		return
+	}
 	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
 		logger.Warnf("❌ [%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid characters in command/type"})
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})
 		return
 	}
 
@@ -166,76 +196,158 @@ func handleMainRequest(conn net.Conn, id string) {
 	group, found := handlers.HandlersByType[req.Type]
 	if !found || group == nil {
 		logger.Warnf("❌ Unknown type: %s", req.Type)
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
 		return
 	}
 	handler, ok := group[req.Command]
 	if !ok {
 		logger.Warnf("❌ Unknown command for type %s: %s", req.Type, req.Command)
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
 		return
 	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Errorf("🔥 Panic in %s command handler: %v", req.Type, r)
-			_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("panic: %v", r)})
-		}
+	type result struct {
+		out any
+		err error
+	}
+	done := make(chan result, 1)
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("🔥 Panic in %s command handler: %v", req.Type, r)
+				done <- result{nil, fmt.Errorf("panic: %v", r)}
+			}
+		}()
+		out, err := handler(req.Args)
+		done <- result{out, err}
 	}()
-	out, err := handler(req.Args)
-	if err == nil {
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, r.err)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
+			return
+		}
+
+		// Prefer zero-copy paths when the handler already returns JSON.
 		var raw json.RawMessage
-		if out != nil {
-			rawBytes, marshalErr := json.Marshal(out)
+		switch v := r.out.(type) {
+		case nil:
+			// leave raw nil → {"status":"ok"}
+		case json.RawMessage:
+			raw = v
+		case []byte:
+			// Assume handler returned JSON bytes; if not, caller bug.
+			raw = json.RawMessage(v)
+		default:
+			b, marshalErr := json.Marshal(v)
 			if marshalErr != nil {
-				_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "failed to marshal handler output"})
+				_ = encoder.Encode(ipc.Response{Status: "error", Error: "failed to marshal handler output"})
 				return
 			}
-			raw = json.RawMessage(rawBytes)
+			raw = json.RawMessage(b)
 		}
-		logger.Debugf("Responding to [%s]: status=ok output=%s", id, string(raw))
-		_ = encoder.Encode(types.BridgeResponse{Status: "ok", Output: raw})
+
+		logger.Debugf("Responding to [%s]: status=ok, output-len=%d", id, len(raw))
+		_ = encoder.Encode(ipc.Response{Status: "ok", Output: raw})
+		return
+
+	case <-bridgeClosing:
+		_ = encoder.Encode(ipc.Response{
+			Status: "error",
+			Error:  "canceled: bridge shutting down",
+		})
 		return
 	}
-
-	logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, err)
-	_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: err.Error()})
 }
 
-// CreateAndOwnSocket creates a unix socket at socketPath, ensures only the target user can access it.
-func createAndOwnSocket(socketPath, username string) (net.Listener, int, int, error) {
-	u, err := user.Lookup(username)
+// CreateAndOwnSocket creates a unix socket at socketPath and sets 0600.
+func createAndOwnSocket(socketPath, uidStr, gidStr string) (net.Listener, error) {
+	if uidStr == "" {
+		return nil, fmt.Errorf("empty uid")
+	}
+
+	// Remove any stale socket first (idempotent).
+	_ = os.Remove(socketPath)
+
+	uid, err := strconv.Atoi(uidStr)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to lookup user %s: %w", username, err)
+		return nil, fmt.Errorf("atoi uid: %w", err)
 	}
-	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
 
-	_ = os.Remove(socketPath) // it's okay to ignore error here (socket might not exist)
-
-	listener, err := net.Listen("unix", socketPath)
+	// Bind the Unix socket.
+	l, err := net.Listen("unix", socketPath)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to listen on socket: %w", err)
+		return nil, fmt.Errorf("failed to listen on socket: %w", err)
 	}
 
-	if err := os.Chmod(socketPath, 0600); err != nil {
-		if cerr := listener.Close(); cerr != nil {
-			logger.Warnf("failed to close listener after chmod failure: %v", cerr)
-		}
-		if rerr := os.Remove(socketPath); rerr != nil {
-			logger.Warnf("failed to remove socket after chmod failure: %v", rerr)
-		}
-		return nil, 0, 0, fmt.Errorf("failed to chmod socket: %w", err)
-	}
-	if err := os.Chown(socketPath, uid, gid); err != nil {
-		if cerr := listener.Close(); cerr != nil {
-			logger.Warnf("failed to close listener after chown failure: %v", cerr)
-		}
-		if rerr := os.Remove(socketPath); rerr != nil {
-			logger.Warnf("failed to remove socket after chown failure: %v", rerr)
-		}
-		return nil, 0, 0, fmt.Errorf("failed to chown socket: %w", err)
+	// Unlink the path when the listener is closed.
+	if ul, ok := l.(*net.UnixListener); ok {
+		ul.SetUnlinkOnClose(true)
 	}
 
-	return listener, uid, gid, nil
+	// Lock down permissions.
+	if permErr := os.Chmod(socketPath, 0o600); permErr != nil {
+		_ = l.Close()
+		_ = os.Remove(socketPath)
+		return nil, fmt.Errorf("chmod socket: %w", permErr)
+	}
+
+	var gid int
+	if os.Geteuid() == 0 {
+		// Root may change ownership; require a gidStr.
+		if gidStr == "" {
+			_ = l.Close()
+			_ = os.Remove(socketPath)
+			return nil, fmt.Errorf("empty gid (required when running as root)")
+		}
+		gid, err = strconv.Atoi(gidStr)
+		if err != nil {
+			_ = l.Close()
+			_ = os.Remove(socketPath)
+			return nil, fmt.Errorf("atoi gid: %w", err)
+		}
+		if err := os.Chown(socketPath, uid, gid); err != nil {
+			_ = l.Close()
+			_ = os.Remove(socketPath)
+			return nil, fmt.Errorf("chown socket: %w", err)
+		}
+	}
+
+	return l, nil
+}
+
+func prepareRuntimeDir(sess *session.Session) error {
+	dir := sess.RuntimeDir()
+	tmpBase := filepath.Join(os.TempDir(), "linuxio-run")
+
+	// If using /tmp fallback, ensure parent is 0755 so user can traverse.
+	if strings.HasPrefix(dir, tmpBase+string(os.PathSeparator)) {
+		if err := os.MkdirAll(tmpBase, 0o755); err != nil {
+			return fmt.Errorf("ensure tmp base %q: %w", tmpBase, err)
+		}
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("ensure runtime dir %q: %w", dir, err)
+	}
+	// If running as root, chown the dir to the session user.
+	if os.Geteuid() == 0 && sess.User.UID != "" && sess.User.GID != "" {
+		uid, err := strconv.Atoi(sess.User.UID)
+		if err != nil {
+			return fmt.Errorf("atoi uid: %w", err)
+		}
+		gid, err := strconv.Atoi(sess.User.GID)
+		if err != nil {
+			return fmt.Errorf("atoi gid: %w", err)
+		}
+		if err := os.Chown(dir, uid, gid); err != nil {
+			return fmt.Errorf("chown %q: %w", dir, err)
+		}
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return fmt.Errorf("chmod %q: %w", dir, err)
+		}
+	}
+	return nil
 }

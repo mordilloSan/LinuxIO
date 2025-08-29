@@ -3,7 +3,8 @@ server:
   baseURL: /navigator/
   logging:
     - levels: "info|warning|error|debug"
-      apiLevels: disabled
+      apiLevels: {{API_LEVELS}}
+      noColors: false
       output: stdout
       utc: true
   sources:
@@ -19,6 +20,11 @@ server:
             - /dev
             - /var/lib/docker/overlay2
   database: /home/filebrowser/data/database.db
+  disablePreviews: true
+frontend:
+  disableDefaultLinks: true
+  styling:
+    customCSS: "custom.css"
 auth:
   methods:
     proxy:
@@ -27,24 +33,13 @@ auth:
       createUser: true
     password:
       enabled: false
-frontend:
-  disableDefaultLinks: true
-  disableUsedPercentage: true
-  styling:
-    customCSS: "custom.css"
 userDefaults:
-  editorQuickSave: false
+  editorQuickSave: true
   hideSidebarFileActions: true
-  disableQuickToggles: true
-  disableSearchOptions: false
   stickySidebar: false
-  darkMode: true
-  locale: "en"
-  viewMode: "normal"
-  singleClick: false
   showHidden: true
   dateFormat: true
-  themeColor: "var(--blue)"
+  gallerySize: 0
   quickDownload: false
   lockPassword: true
   disableSettings: true
@@ -56,4 +51,3 @@ userDefaults:
     realtime: true
   loginMethod: "proxy"
   disableUpdateNotifications: true
-  deleteWithoutConfirming: false

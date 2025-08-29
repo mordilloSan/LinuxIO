@@ -1,12 +1,11 @@
-import { Theme } from "@mui/material/styles";
-import { darken, lighten } from "polished";
+import { Theme, lighten, darken } from "@mui/material/styles";
 
 // === Helpers ===
 
 export const getHoverBackground = (theme: Theme) =>
   theme.palette.mode === "light"
-    ? darken(0.07, theme.sidebar.background)
-    : lighten(0.05, theme.sidebar.background);
+    ? darken(theme.sidebar.background, 0.07)
+    : lighten(theme.sidebar.background, 0.07);
 
 const hoverStyles = (theme: Theme) => ({
   background: getHoverBackground(theme),

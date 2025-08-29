@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
@@ -28,7 +28,7 @@ func RegisterPowerRoutes(r *gin.Engine) {
 			})
 			return
 		}
-		logger.Infof("Reboot triggered successfully for user %s (session: %s)", sess.User.ID, sess.SessionID)
+		logger.Infof("Reboot triggered successfully for user %s (session: %s)", sess.User.Username, sess.SessionID)
 		c.JSON(http.StatusOK, gin.H{"message": "rebooting...", "output": output})
 	})
 
@@ -47,7 +47,7 @@ func RegisterPowerRoutes(r *gin.Engine) {
 			})
 			return
 		}
-		logger.Infof("Shutdown triggered successfully for user %s (session: %s)", sess.User.ID, sess.SessionID)
+		logger.Infof("Shutdown triggered successfully for user %s (session: %s)", sess.User.Username, sess.SessionID)
 		c.JSON(http.StatusOK, gin.H{"message": "shutting down...", "output": output})
 	})
 }

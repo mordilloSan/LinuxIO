@@ -19,15 +19,17 @@ Tx and Rx
 
 5 - docker compose
 
-6 - Sinc theme between filebrowser and global app
+6 - Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable.
 
-7 - update user config files locations for theme (after login) - We should only have 1 config file. that file should only exist after login...
+7 - Updates - Make it more responsive. Use d-bus streaming with websocket?
 
-8 - Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable.
+8 - Test Multiple Users. And do this in fliebrowser specific
 
-9 - Updates - Make it more responsive. Use d-bus streaming with websocket?
+9 - Bridge upon receiving exit command should cancel ongoing works. mainly d-bus?
 
-10 - Test Multiple Users. And do this in fliebrowser specific
+10 - Optimize number of api calls when changing theme
+
+11 - Bridge shen starts should check if session is valid?
 
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
@@ -37,3 +39,5 @@ when the bridge does cleanup we also must kill the PTY session - check when is n
 websocket should be persistent - DONE
 For main programa startup no config file should be needed... DONE
 bridge socket and bridge binary should not have the sessionid written - DONE
+Sinc theme between filebrowser and global app2. - DONE
+Update user config files locations for theme (after login) - We should only have 1 config file. that file should only exist after login... - DONE

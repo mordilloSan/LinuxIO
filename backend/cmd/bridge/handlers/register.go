@@ -5,12 +5,12 @@ import (
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/drive"
-	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/wireguard"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 )
 
 // Map of type -> (command -> handler)
-var HandlersByType = map[string]map[string]types.HandlerFunc{}
+var HandlersByType = map[string]map[string]ipc.HandlerFunc{}
 
 func RegisterAllHandlers(shutdownChan chan string) {
 	HandlersByType["dbus"] = dbus.DbusHandlers()

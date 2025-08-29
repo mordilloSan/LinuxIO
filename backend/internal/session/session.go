@@ -15,24 +15,15 @@ import (
 
 // ===== Config & model =====
 
-type Config struct {
-	// Sliding idle window (extended by activity, capped by absolute)
-	IdleTimeout time.Duration
-
-	// Absolute maximum lifetime since creation (hard cap)
-	AbsoluteTimeout time.Duration
-
-	// Avoids refreshing on every request; only extend if at least this period passed
-	RefreshInterval time.Duration
-
-	// If true, a new login for a user revokes any previous sessions
-	SingleSessionPerUser bool
-
-	// GC cadence
-	GCInterval time.Duration
+type SessionConfig struct {
+	IdleTimeout          time.Duration // Sliding idle window (extended by activity, capped by absolute)
+	AbsoluteTimeout      time.Duration // Absolute maximum lifetime since creation (hard cap)
+	RefreshInterval      time.Duration // Avoids refreshing on every request; only extend if at least this period passed
+	SingleSessionPerUser bool          // If true, a new login for a user revokes any previous sessions
+	GCInterval           time.Duration // GC cadence
 }
 
-var defaultConfig = Config{
+var defaultConfig = SessionConfig{
 	IdleTimeout:          30 * time.Minute,
 	AbsoluteTimeout:      12 * time.Hour,
 	RefreshInterval:      60 * time.Second,
@@ -40,9 +31,15 @@ var defaultConfig = Config{
 	GCInterval:           10 * time.Minute,
 }
 
+type User struct {
+	Username string // Username (unique key)
+	UID      string // User ID
+	GID      string // Group ID
+}
+
 type Session struct {
 	SessionID    string
-	User         utils.User
+	User         User
 	Privileged   bool
 	BridgeSecret string
 
@@ -57,7 +54,7 @@ type Session struct {
 // ===== Actor state =====
 
 type store struct {
-	cfg       Config
+	cfg       SessionConfig
 	sessions  map[string]Session             // id -> session
 	userIndex map[string]map[string]struct{} // userID -> set(sessionID)
 	gcTicker  *time.Ticker
@@ -72,7 +69,7 @@ var (
 
 // ===== Init / Shutdown =====
 
-func Init(cfg *Config) (shutdown func(), err error) {
+func Init(cfg *SessionConfig) (shutdown func(), err error) {
 	if mem != nil {
 		return nil, errors.New("session: already initialized")
 	}
@@ -147,7 +144,7 @@ func Init(cfg *Config) (shutdown func(), err error) {
 	}, nil
 }
 
-// ===== internals (actor-only) =====
+// ===== internals =====
 
 func expired(sess *Session, now time.Time) bool {
 	return now.After(sess.AbsoluteUntil) || now.After(sess.IdleUntil)
@@ -159,20 +156,20 @@ func deleteSessionLocked(s *store, id string) {
 		return
 	}
 	delete(s.sessions, id)
-	if set, ok := s.userIndex[old.User.ID]; ok {
+	if set, ok := s.userIndex[old.User.Username]; ok {
 		delete(set, id)
 		if len(set) == 0 {
-			delete(s.userIndex, old.User.ID)
+			delete(s.userIndex, old.User.Username)
 		}
 	}
-	logger.Infof("Deleted session for user '%s'", old.User.ID)
+	logger.Infof("Deleted session for user '%s'", old.User.Username)
 }
 
 func indexSessionLocked(s *store, sess Session) {
-	set := s.userIndex[sess.User.ID]
+	set := s.userIndex[sess.User.Username]
 	if set == nil {
 		set = make(map[string]struct{})
-		s.userIndex[sess.User.ID] = set
+		s.userIndex[sess.User.Username] = set
 	}
 	set[sess.SessionID] = struct{}{}
 }
@@ -185,11 +182,11 @@ func randID(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// ===== Public API (compatible with your existing callers) =====
+// ===== Public API =====
 
 // CreateSession creates a new session, returns error if already exists.
 // `duration` is treated as absolute cap if provided; idle timeout comes from config.
-func CreateSession(id string, user utils.User, duration time.Duration, privileged bool) error {
+func CreateSession(id string, user User, duration time.Duration, privileged bool) error {
 	if mem == nil {
 		_, _ = Init(nil)
 	}
@@ -229,7 +226,7 @@ func CreateSession(id string, user utils.User, duration time.Duration, privilege
 
 		// Optional: one session per user
 		if s.cfg.SingleSessionPerUser {
-			if set, ok := s.userIndex[user.ID]; ok {
+			if set, ok := s.userIndex[user.Username]; ok {
 				for sid := range set {
 					deleteSessionLocked(s, sid)
 				}
@@ -243,7 +240,7 @@ func CreateSession(id string, user utils.User, duration time.Duration, privilege
 
 	err := <-done
 	if err == nil {
-		logger.Infof("Created session for user '%s'", user.ID)
+		logger.Infof("Created session for user '%s'", user.Username)
 	}
 	return err
 }
@@ -261,7 +258,7 @@ func DeleteSession(id string) error {
 	return <-done
 }
 
-// Generic access helpers remain (but use actor store)
+// Generic access helpers remain
 func withSession(id string, fn func(Session) error) error {
 	done := make(chan error, 1)
 	SessionMux <- func(s *store) {
@@ -318,7 +315,7 @@ func getSessionCopy(id string) (*Session, error) {
 	return result.sess, result.err
 }
 
-// Refactored public functions (kept)
+// Refactored public functions
 
 func GetSession(id string) (*Session, error) { return getSessionCopy(id) }
 
@@ -444,7 +441,7 @@ func ValidateSessionFromRequest(r *http.Request) (*Session, error) {
 
 	now := time.Now()
 	if now.After(sess.AbsoluteUntil) || now.After(sess.IdleUntil) {
-		logger.Warnf("Expired session access attempt by user '%s'", sess.User.ID)
+		logger.Warnf("Expired session access attempt by user '%s'", sess.User.Username)
 		return nil, fmt.Errorf("session expired")
 	}
 

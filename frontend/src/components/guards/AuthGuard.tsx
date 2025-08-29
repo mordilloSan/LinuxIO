@@ -4,19 +4,26 @@ import React, { PropsWithChildren, useMemo } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import PageLoader from "@/components/loaders/PageLoader";
-import { ThemeProvider } from "@/contexts/ThemeContext";
-import useAppTheme from "@/hooks/useAppTheme";
+import { ConfigProvider } from "@/contexts/ConfigContext";
+import { SidebarProvider } from "@/contexts/SidebarContext";
 import useAuth from "@/hooks/useAuth";
+import { useConfigValue, useConfigReady } from "@/hooks/useConfig";
 import createTheme from "@/theme";
 
-// Small wrapper that lives under ThemeProvider so it can use the hook
 function AuthedThemeShell({ children }: PropsWithChildren) {
-  const { theme, primaryColor, isLoaded } = useAppTheme();
+  const [themeName] = useConfigValue("theme");
+  const [primaryColorName] = useConfigValue("primaryColor");
+  const isLoaded = useConfigReady();
+
+  // Build MUI theme from variant + color *name* (resolver is inside createTheme)
   const muiTheme = useMemo(
-    () => createTheme(theme, primaryColor),
-    [theme, primaryColor],
+    () =>
+      createTheme(String(themeName), primaryColorName as string | undefined),
+    [themeName, primaryColorName],
   );
-  if (!isLoaded) return null;
+
+  if (!isLoaded) return <PageLoader />;
+
   return <MuiThemeProvider theme={muiTheme}>{children}</MuiThemeProvider>;
 }
 
@@ -28,22 +35,23 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
 
   const isOnSignIn = location.pathname === "/sign-in";
   if (!isAuthenticated) {
-    // Already on the login page? Don't redirect again.
     if (isOnSignIn) return <Outlet />;
 
-    // Reuse existing redirect if present; otherwise build one ONCE
     const params = new URLSearchParams(location.search);
     const existing = params.get("redirect");
     const target =
       existing || `${location.pathname}${location.search}${location.hash}`;
     const to = `/sign-in${target ? `?redirect=${encodeURIComponent(target)}` : ""}`;
+
     return <Navigate to={to} replace />;
   }
 
-  // Authenticated → mount theme providers here only
+  // Authenticated → load config, then theme, then sidebar
   return (
-    <ThemeProvider>
-      <AuthedThemeShell>{children ?? <Outlet />}</AuthedThemeShell>
-    </ThemeProvider>
+    <ConfigProvider>
+      <AuthedThemeShell>
+        <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
+      </AuthedThemeShell>
+    </ConfigProvider>
   );
 };

@@ -37,7 +37,6 @@ declare module "@mui/material/styles" {
     };
   }
 
-  // If you use `createTheme`, you also need this (optional but recommended):
   interface ThemeOptions {
     footer?: {
       color?: string;

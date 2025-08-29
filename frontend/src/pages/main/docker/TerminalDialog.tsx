@@ -18,7 +18,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import useAppWebSocket from "@/hooks/useAppWebSocket";
+import useWebSocket from "@/hooks/useWebSocket";
 
 interface Props {
   open: boolean;
@@ -43,7 +43,7 @@ const TerminalDialog: React.FC<Props> = ({
   const [loadingShells, setLoadingShells] = useState(false);
   const [hasLoadedShells, setHasLoadedShells] = useState(false);
 
-  const { send, subscribe, ready } = useAppWebSocket();
+  const { send, subscribe, ready } = useWebSocket();
   const theme = useTheme();
 
   // --- 1. On open: fetch available shells, set initial shell, and cleanup on close ---

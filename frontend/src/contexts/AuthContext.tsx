@@ -1,10 +1,10 @@
+// src/contexts/AuthContext.tsx
 import React, {
   createContext,
   useEffect,
   useReducer,
   useCallback,
   useMemo,
-  useState,
 } from "react";
 import { toast } from "sonner";
 
@@ -18,6 +18,7 @@ import {
   AuthUser,
 } from "@/types/auth";
 import axios from "@/utils/axios";
+import { resetFilebrowserUserCache } from "@/utils/filebrowser";
 
 const initialState: AuthState = {
   isAuthenticated: false,
@@ -49,7 +50,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
       return { ...state, isAuthenticated: false, user: null };
     default: {
       const exhaustiveCheck: never = action;
-      void exhaustiveCheck; // TypeScript exhaustiveness check
+      void exhaustiveCheck;
       return state;
     }
   }
@@ -60,9 +61,7 @@ AuthContext.displayName = "AuthContext";
 
 function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [sessionExpired, setSessionExpired] = useState(false);
 
-  // Memoize fetchUser so signIn and initialize can depend on it
   const fetchUser = useCallback(async (): Promise<AuthUser> => {
     const { data } = await axios.get<{ user: AuthUser }>("/auth/me");
     return data.user;
@@ -78,10 +77,30 @@ function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [fetchUser]);
 
+  // One place to clear local state and redirect.
+  // `broadcast` writes to localStorage so other tabs receive it.
+  const doLocalSignOut = useCallback((broadcast: boolean) => {
+    try {
+      resetFilebrowserUserCache();
+    } catch {
+      /* ignore */
+    }
+    if (broadcast) {
+      try {
+        localStorage.setItem("logout", String(Date.now()));
+      } catch {
+        /* ignore */
+      }
+    }
+    dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
+    // Use react-router navigate if available; otherwise:
+    window.location.assign("/sign-in");
+  }, []);
+
   const checkSession = useSessionChecker(fetchUser, state, dispatch, {
     onSignOut: () => {
       toast.error("Session expired. Please sign in again.");
-      setSessionExpired(true);
+      doLocalSignOut(false);
     },
     onSignIn: (user) => {
       toast.success(`Welcome back, ${user.name}!`);
@@ -89,44 +108,36 @@ function AuthProvider({ children }: AuthProviderProps) {
     log: true,
   });
 
+  // Init on mount
   useEffect(() => {
     initialize();
   }, [initialize]);
 
-  useEffect(() => {
-    if (sessionExpired) {
-      window.location.href = "/sign-in";
-    }
-  }, [sessionExpired]);
-
+  // Subscribe to visibility/focus to re-check session
   useEffect(() => {
     if (!state.isInitialized) return;
-
-    const handleVisibilityOrFocus = () => {
-      if (document.visibilityState === "visible") {
-        checkSession();
-      }
+    const handle = () => {
+      if (document.visibilityState === "visible") checkSession();
     };
-
-    window.addEventListener("visibilitychange", handleVisibilityOrFocus);
-    window.addEventListener("focus", handleVisibilityOrFocus);
-
+    window.addEventListener("visibilitychange", handle);
+    window.addEventListener("focus", handle);
     return () => {
-      window.removeEventListener("visibilitychange", handleVisibilityOrFocus);
-      window.removeEventListener("focus", handleVisibilityOrFocus);
+      window.removeEventListener("visibilitychange", handle);
+      window.removeEventListener("focus", handle);
     };
   }, [checkSession, state.isInitialized]);
 
+  // Cross-tab logout via localStorage
   useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
+    const onStorage = (e: StorageEvent) => {
       if (e.key === "logout") {
-        dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
-        window.location.href = "/sign-in";
+        // other tab asked us to logout; do not rebroadcast
+        doLocalSignOut(false);
       }
     };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, []);
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [doLocalSignOut]);
 
   const signIn = useCallback(
     async (username: string, password: string) => {
@@ -138,10 +149,13 @@ function AuthProvider({ children }: AuthProviderProps) {
   );
 
   const signOut = useCallback(async () => {
-    await axios.get("/auth/logout");
-    localStorage.setItem("logout", Date.now().toString());
-    dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
-  }, []);
+    try {
+      await axios.get("/auth/logout");
+    } catch {
+      // ignore; we still want to clear locally
+    }
+    doLocalSignOut(true);
+  }, [doLocalSignOut]);
 
   const contextValue = useMemo(
     () => ({

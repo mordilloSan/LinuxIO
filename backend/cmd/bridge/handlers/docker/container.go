@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"io"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/utils"
 	"golang.org/x/sys/unix"
 )
 
@@ -277,6 +277,6 @@ func LogContainer(id string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to decode logs: %w", err)
 	}
-	cleanLogs := utils.StripANSI(plainLogs)
+	cleanLogs := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`).ReplaceAllString(plainLogs, "")
 	return cleanLogs, nil
 }

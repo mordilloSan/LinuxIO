@@ -14,7 +14,7 @@ type Login1Manager struct {
 }
 
 // NewLogin1Manager connects to system D-Bus and prepares the login1 interface.
-func NewLogin1Manager(ctx context.Context) (*Login1Manager, error) {
+func NewLogin1Manager(context.Context) (*Login1Manager, error) {
 	systemDBusMu.Lock() // LOCK at start
 	defer systemDBusMu.Unlock()
 	conn, err := godbus.SystemBus()

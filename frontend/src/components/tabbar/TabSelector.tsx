@@ -1,13 +1,8 @@
 import { Paper, ToggleButton, ToggleButtonGroup } from "@mui/material";
-import React, { useContext } from "react";
+import { useTheme } from "@mui/material/styles";
+import React from "react";
 
-import { ThemeContext } from "@/contexts/ThemeContext";
-
-type TabOption = {
-  value: string;
-  label: string;
-};
-
+type TabOption = { value: string; label: string };
 interface TabSelectorProps {
   value: string;
   onChange: (value: string) => void;
@@ -19,7 +14,10 @@ const TabSelector: React.FC<TabSelectorProps> = ({
   onChange,
   options,
 }) => {
-  const { primaryColor } = useContext(ThemeContext);
+  const theme = useTheme();
+
+  const primaryHex = theme.palette.primary.main;
+  const contrast = theme.palette.getContrastText(primaryHex);
 
   return (
     <Paper
@@ -51,12 +49,10 @@ const TabSelector: React.FC<TabSelectorProps> = ({
             fontWeight: 500,
             transition: "background 0.1s",
           },
-          "& .Mui-selected": {
-            backgroundColor: `${primaryColor} !important`,
-            color: "#fff",
-            "&:hover": {
-              backgroundColor: primaryColor,
-            },
+          "& .MuiToggleButton-root.Mui-selected": {
+            backgroundColor: primaryHex,
+            color: contrast,
+            "&:hover": { backgroundColor: primaryHex },
           },
         }}
       >

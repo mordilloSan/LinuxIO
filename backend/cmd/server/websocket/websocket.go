@@ -19,7 +19,7 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(*http.Request) bool { return true },
 }
 
 type WSMessage struct {
@@ -107,12 +107,12 @@ func WebSocketHandler(c *gin.Context) {
 
 	defer func() { _ = safeConn.Close() }()
 
-	logger.Infof("[WebSocket] Connected: user=%s session=%s", sess.User.Name, sess.SessionID)
+	logger.Infof("[WebSocket] Connected: user=%s session=%s", sess.User.Username, sess.SessionID)
 
 	done := make(chan struct{})
 	defer func() {
 		close(done)
-		logger.Infof("[WebSocket] Disconnected: user=%s session=%s", sess.User.Name, sess.SessionID)
+		logger.Infof("[WebSocket] Disconnected: user=%s session=%s", sess.User.Username, sess.SessionID)
 	}()
 
 	for {
@@ -197,7 +197,7 @@ func WebSocketHandler(c *gin.Context) {
 				ts := terminal.Get(sess.SessionID)
 				if ts == nil || ts.PTY == nil {
 					if err := terminal.StartTerminal(sess); err != nil {
-						logger.Warnf("Could not start terminal for %s: %v", sess.User.Name, err)
+						logger.Warnf("Could not start terminal for %s: %v", sess.User.Username, err)
 						_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start shell.\r\n"})
 						continue
 					}

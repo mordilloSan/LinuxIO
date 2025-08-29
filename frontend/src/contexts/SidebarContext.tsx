@@ -9,7 +9,7 @@ import React, {
 } from "react";
 
 import { drawerWidth, collapsedDrawerWidth } from "@/constants";
-import useAppTheme from "@/hooks/useAppTheme";
+import { useConfigValue } from "@/hooks/useConfig";
 
 export interface SidebarContextType {
   collapsed: boolean;
@@ -17,7 +17,7 @@ export interface SidebarContextType {
   mobileOpen: boolean;
   isDesktop: boolean;
   sidebarWidth: number;
-  setHovered: (value: boolean) => void;
+  setHovered: (value: boolean) => void; // guarded
   setMobileOpen: (value: boolean) => void;
   toggleCollapse: () => void;
   toggleMobileOpen: () => void;
@@ -33,53 +33,75 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const muiTheme = useMuiTheme();
   const isDesktop = useMediaQuery(muiTheme.breakpoints.up("md"));
-  const { SidebarCollapsed: collapsed, setSidebarCollapsed } = useAppTheme();
 
-  const [hovered, setHovered] = useState(false);
+  // persisted collapsed flag
+  const [collapsed, setCollapsed] = useConfigValue("sidebarCollapsed");
+
+  const [hovered, _setHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const hoverEnabled = useRef(true);
 
-  // Toggle collapsed state, temporarily disables hover to avoid "double triggers"
+  const hoverEnabled = useRef(true);
+  const collapseTimer = useRef<number | null>(null);
+
+  // Guarded setter so consumers don't need to read the ref
+  const setHovered = useCallback((v: boolean) => {
+    if (hoverEnabled.current) _setHovered(v);
+  }, []);
+
   const toggleCollapse = useCallback(() => {
-    setSidebarCollapsed((prev) => {
-      const newState = !prev;
-      if (isDesktop && newState) {
+    setCollapsed((prev) => {
+      const next = !prev;
+
+      // When collapsing on desktop, temporarily disable hover to avoid flicker
+      if (isDesktop && next) {
         hoverEnabled.current = false;
-        setHovered(false);
-        setTimeout(() => {
+        _setHovered(false);
+
+        if (collapseTimer.current) {
+          window.clearTimeout(collapseTimer.current);
+        }
+        collapseTimer.current = window.setTimeout(() => {
           hoverEnabled.current = true;
+          collapseTimer.current = null;
         }, 200);
       }
-      return newState;
+      return next;
     });
-  }, [isDesktop, setSidebarCollapsed]);
+  }, [isDesktop, setCollapsed]);
 
-  // Toggle mobile drawer
   const toggleMobileOpen = useCallback(() => {
-    if (isDesktop) return;
-    setMobileOpen((prev) => !prev);
+    if (!isDesktop) setMobileOpen((prev) => !prev);
   }, [isDesktop]);
 
-  // Sync UI state on breakpoint or collapse state changes
+  // Clean up pending timer
+  useEffect(() => {
+    return () => {
+      if (collapseTimer.current) {
+        window.clearTimeout(collapseTimer.current);
+      }
+    };
+  }, []);
+
+  // Respond to breakpoint (and optionally collapsed changes) responsively
   useEffect(() => {
     if (isDesktop) {
       setMobileOpen(false);
     } else {
-      setHovered(false);
+      _setHovered(false);
       setMobileOpen(false);
     }
-  }, [isDesktop, collapsed]);
+  }, [isDesktop, collapsed]); // remove `collapsed` if you don't want mobile to close on collapse
 
-  // Responsive sidebar width
-  const sidebarWidth = useMemo(() => {
-    return isDesktop
-      ? collapsed
-        ? collapsedDrawerWidth
-        : drawerWidth
-      : drawerWidth;
-  }, [isDesktop, collapsed]);
+  const sidebarWidth = useMemo(
+    () =>
+      isDesktop
+        ? collapsed
+          ? collapsedDrawerWidth
+          : drawerWidth
+        : drawerWidth,
+    [isDesktop, collapsed],
+  );
 
-  // Memoize context value
   const value = useMemo(
     () => ({
       collapsed,
@@ -87,7 +109,7 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
       mobileOpen,
       isDesktop,
       sidebarWidth,
-      setHovered,
+      setHovered, // guarded setter
       setMobileOpen,
       toggleCollapse,
       toggleMobileOpen,
@@ -99,6 +121,7 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
       mobileOpen,
       isDesktop,
       sidebarWidth,
+      setHovered,
       toggleCollapse,
       toggleMobileOpen,
     ],

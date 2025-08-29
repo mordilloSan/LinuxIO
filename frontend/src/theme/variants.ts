@@ -1,6 +1,4 @@
-import merge from "deepmerge";
 import { grey } from "@mui/material/colors";
-import { THEMES } from "@/constants";
 
 const customBlue = {
   50: "#e9f0fb",
@@ -16,7 +14,7 @@ const customBlue = {
 };
 
 const defaultVariant: VariantType = {
-  name: THEMES.LIGHT,
+  name: "LIGHT",
   palette: {
     mode: "light",
     primary: {
@@ -71,64 +69,54 @@ const defaultVariant: VariantType = {
   },
 };
 
-const darkVariant: VariantType = merge<VariantType, Partial<VariantType>>(
-  defaultVariant,
-  {
-    name: THEMES.DARK,
-    palette: {
-      mode: "dark",
-      primary: {
-        main: customBlue[600],
-        contrastText: "#FFF",
-      },
-      secondary: {
-        main: customBlue[400],
-        contrastText: "#FFF",
-      },
-      background: {
-        default: "#1B2635",
-        paper: "#233044",
-      },
-      text: {
-        primary: "rgba(255, 255, 255, 0.95)",
-        secondary: "rgba(255, 255, 255, 0.5)",
-      },
-    },
-    header: {
-      color: grey[300],
-      background: "#1B2635",
-      search: {
-        color: grey[200],
-      },
-      indicator: {
-        background: customBlue[600], // or any color you want
-      },
-    },
-    footer: {
-      color: grey[300],
-      background: "#1B2635",
-    },
-    sidebar: {
-      color: grey[200],
-      background: "#1B2635",
-      header: {
-        color: grey[200],
-        background: "#1B2635",
-        brand: {
-          color: customBlue[500],
-        },
-      },
-      footer: {
-        color: grey[200],
-        background: "#1E2A38",
-      },
-      badge: {
-        color: "#FFF",
-        background: customBlue[500],
-      },
+const darkVariant: VariantType = {
+  ...defaultVariant,
+  name: "DARK",
+  palette: {
+    ...defaultVariant.palette,
+    mode: "dark",
+    primary: { main: customBlue[600], contrastText: "#FFF" },
+    secondary: { main: customBlue[400], contrastText: "#FFF" },
+    background: { default: "#1B2635", paper: "#233044" },
+    text: {
+      primary: "rgba(255, 255, 255, 0.95)",
+      secondary: "rgba(255, 255, 255, 0.5)",
     },
   },
-);
+  header: {
+    ...defaultVariant.header,
+    color: grey[300],
+    background: "#1B2635",
+    search: { color: grey[200] },
+    indicator: { background: customBlue[600] },
+  },
+  footer: {
+    ...defaultVariant.footer,
+    color: grey[300],
+    background: "#1B2635",
+  },
+  sidebar: {
+    ...defaultVariant.sidebar,
+    color: grey[200],
+    background: "#1B2635",
+    header: {
+      ...defaultVariant.sidebar.header,
+      color: grey[200],
+      background: "#1B2635",
+      brand: { color: customBlue[500] },
+    },
+    footer: {
+      ...defaultVariant.sidebar.footer,
+      color: grey[200],
+      background: "#1E2A38",
+    },
+    badge: {
+      ...defaultVariant.sidebar.badge,
+      color: "#FFF",
+      background: customBlue[500],
+    },
+  },
+};
 
 const variants: Array<VariantType> = [defaultVariant, darkVariant];
 

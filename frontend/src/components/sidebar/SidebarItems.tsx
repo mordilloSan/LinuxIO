@@ -14,7 +14,7 @@ import {
 
 import { SidebarItemsType } from "@/types/sidebar";
 
-const navItems: SidebarItemsType[] = [
+const SidebarItems: SidebarItemsType[] = [
   {
     href: "/",
     icon: Home,
@@ -77,4 +77,4 @@ const navItems: SidebarItemsType[] = [
   },
 ];
 
-export default navItems;
+export default SidebarItems;

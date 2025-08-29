@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 
