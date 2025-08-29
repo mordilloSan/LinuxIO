@@ -1,9 +1,9 @@
 package docker
 
-import "github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+import "github.com/mordilloSan/LinuxIO/internal/ipc"
 
-func DockerHandlers() map[string]types.HandlerFunc {
-	return map[string]types.HandlerFunc{
+func DockerHandlers() map[string]ipc.HandlerFunc {
+	return map[string]ipc.HandlerFunc{
 		"list_containers":    func([]string) (any, error) { return ListContainers() },
 		"start_container":    func(args []string) (any, error) { return StartContainer(args[0]) },
 		"stop_container":     func(args []string) (any, error) { return StopContainer(args[0]) },

@@ -40,9 +40,14 @@ var defaultConfig = SessionConfig{
 	GCInterval:           10 * time.Minute,
 }
 
+type User struct {
+	ID   string // Username (unique key)
+	Name string // Display name (can be same as ID)
+}
+
 type Session struct {
 	SessionID    string
-	User         utils.User
+	User         User
 	Privileged   bool
 	BridgeSecret string
 
@@ -189,7 +194,7 @@ func randID(n int) (string, error) {
 
 // CreateSession creates a new session, returns error if already exists.
 // `duration` is treated as absolute cap if provided; idle timeout comes from config.
-func CreateSession(id string, user utils.User, duration time.Duration, privileged bool) error {
+func CreateSession(id string, user User, duration time.Duration, privileged bool) error {
 	if mem == nil {
 		_, _ = Init(nil)
 	}

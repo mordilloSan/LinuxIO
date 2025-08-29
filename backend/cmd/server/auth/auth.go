@@ -13,11 +13,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/cmd/server/terminal"
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/mordilloSan/LinuxIO/internal/utils"
 	"github.com/msteinert/pam"
 )
 
@@ -146,7 +145,7 @@ func authenticateUser(req LoginRequest) error {
 
 func createUserSession(req LoginRequest, privileged bool) (*session.Session, error) {
 	sessionID := uuid.New().String()
-	user := utils.User{ID: req.Username, Name: req.Username}
+	user := session.User{ID: req.Username, Name: req.Username}
 
 	if err := session.CreateSession(sessionID, user, sessionDuration, privileged); err != nil {
 		logger.Errorf("Failed to create session: %v", err)

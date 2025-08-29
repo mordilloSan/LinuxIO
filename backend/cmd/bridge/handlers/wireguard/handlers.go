@@ -1,9 +1,9 @@
 package wireguard
 
-import "github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+import "github.com/mordilloSan/LinuxIO/internal/ipc"
 
-func WireguardHandlers() map[string]types.HandlerFunc {
-	return map[string]types.HandlerFunc{
+func WireguardHandlers() map[string]ipc.HandlerFunc {
+	return map[string]ipc.HandlerFunc{
 		"list_interfaces":      ListInterfaces,
 		"add_interface":        AddInterface,
 		"remove_interface":     RemoveInterface,

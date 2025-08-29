@@ -6,14 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 )
 
 // Needed to make sure one d-bus call at a time!
 var systemDBusMu sync.Mutex
 
-func DbusHandlers() map[string]types.HandlerFunc {
-	return map[string]types.HandlerFunc{
+func DbusHandlers() map[string]ipc.HandlerFunc {
+	return map[string]ipc.HandlerFunc{
 		"Reboot":         func([]string) (any, error) { return nil, CallLogin1Action("Reboot") },
 		"PowerOff":       func([]string) (any, error) { return nil, CallLogin1Action("PowerOff") },
 		"GetUpdates":     func([]string) (any, error) { return GetUpdatesWithDetails() },

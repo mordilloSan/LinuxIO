@@ -7,17 +7,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
-
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/mordilloSan/LinuxIO/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
-// Always: Unmarshal into types.BridgeResponse, then unmarshal Output.
+// Always: Unmarshal into ipc.Response, then unmarshal Output.
 
 func WireguardListInterfaces(c *gin.Context) {
 	sess := session.GetSessionOrAbort(c)
@@ -29,7 +27,7 @@ func WireguardListInterfaces(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
@@ -52,14 +50,14 @@ func WireguardAddInterface(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name       string             `json:"name"`
-		Address    []string           `json:"address"`
-		ListenPort int                `json:"listen_port"`
-		EgressNic  string             `json:"egress_nic"`
-		DNS        []string           `json:"dns"`
-		MTU        int                `json:"mtu"`
-		Peers      []utils.PeerConfig `json:"peers"`
-		NumPeers   int                `json:"num_peers"`
+		Name       string           `json:"name"`
+		Address    []string         `json:"address"`
+		ListenPort int              `json:"listen_port"`
+		EgressNic  string           `json:"egress_nic"`
+		DNS        []string         `json:"dns"`
+		MTU        int              `json:"mtu"`
+		Peers      []ipc.PeerConfig `json:"peers"`
+		NumPeers   int              `json:"num_peers"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
@@ -88,7 +86,7 @@ func WireguardAddInterface(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
@@ -117,7 +115,7 @@ func WireguardRemoveInterface(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
@@ -140,7 +138,7 @@ func WireguardListPeers(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
@@ -169,7 +167,7 @@ func WireguardAddPeer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
@@ -194,7 +192,7 @@ func WireguardRemovePeer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
@@ -219,7 +217,7 @@ func WireguardPeerQRCode(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
@@ -250,7 +248,7 @@ func WireguardPeerConfigDownload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
@@ -284,7 +282,7 @@ func WireguardGetKeys(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
@@ -313,7 +311,7 @@ func WireguardUpInterface(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(500, gin.H{"error": "invalid bridge response"})
 		return
@@ -342,7 +340,7 @@ func WireguardDownInterface(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(500, gin.H{"error": "invalid bridge response"})
 		return

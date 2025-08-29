@@ -3,11 +3,11 @@ package drive
 import (
 	"fmt"
 
-	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 )
 
-func DriveHandlers() map[string]types.HandlerFunc {
-	return map[string]types.HandlerFunc{
+func DriveHandlers() map[string]ipc.HandlerFunc {
+	return map[string]ipc.HandlerFunc{
 		"get_drive_info": func([]string) (any, error) {
 			return FetchDriveInfo()
 		},

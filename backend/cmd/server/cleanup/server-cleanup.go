@@ -4,7 +4,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
@@ -35,13 +36,13 @@ func ShutdownAllBridges(reason string) {
 			if e != nil {
 				logger.Warnf("Bridge shutdown (session=%s) failed: %v", id, e)
 				// Best-effort: remove stale socket
-				if sock, pathErr := bridge.BridgeSocketPath(sess); pathErr == nil {
+				if sock, pathErr := ipc.SocketPathFor(sess); pathErr == nil {
 					_ = os.Remove(sock)
 				}
 			}
 		case <-time.After(2 * time.Second):
 			logger.Warnf("Bridge shutdown (session=%s) timed out", id)
-			if sock, pathErr := bridge.BridgeSocketPath(sess); pathErr == nil {
+			if sock, pathErr := ipc.SocketPathFor(sess); pathErr == nil {
 				_ = os.Remove(sock)
 			}
 		}

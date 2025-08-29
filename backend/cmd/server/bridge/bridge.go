@@ -1,83 +1,32 @@
 package bridge
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
-	"io"
 	"net"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
 
 var (
-	processes   = make(map[string]*types.BridgeProcess)
+	processes   = make(map[string]*ipc.BridgeProcess)
 	processesMu sync.Mutex
 )
 
-// cache lookups to avoid repeated NSS calls
-var uidCache sync.Map // username -> uid string
-
-// BridgeSocketPath returns the per-session bridge socket path for the user.
-// It does NOT include the SessionID anywhere in the path to avoid leaking it.
-// Preferred base is /run/user/<uid>; falls back to /tmp/linuxio-run/<uid>.
-func BridgeSocketPath(sess *session.Session) (string, error) {
-	uid, err := lookupUIDCached(sess.User.ID)
-	if err != nil {
-		return "", fmt.Errorf("lookup user %q: %w", sess.User.ID, err)
-	}
-
-	// Prefer systemd user runtime dir
-	base := filepath.Join("/run/user", uid)
-	return filepath.Join(base, bridgeSocketFilename(sess.BridgeSecret)), nil
-}
-
-func lookupUIDCached(username string) (string, error) {
-	if v, ok := uidCache.Load(username); ok {
-		uidStr, ok := v.(string)
-		if !ok {
-			return "", fmt.Errorf("cached UID for %q has invalid type %T", username, v)
-		}
-		return uidStr, nil
-	}
-
-	u, err := user.Lookup(username)
-	if err != nil {
-		return "", err
-	}
-
-	uid := u.Uid
-	uidCache.Store(username, uid)
-	return uid, nil
-}
-
-// bridgeSocketFilename builds a short, opaque name from the BridgeSecret.
-// Example: linuxio-bridge-8f1c...f2a3.sock
-func bridgeSocketFilename(secret string) string {
-	// Derive a stable, non-reversible token from the secret (no SessionID).
-	sum := sha256.Sum256([]byte("linuxio-sock:" + secret))
-	// Keep it short to stay well under AF_UNIX path limits: first 12 bytes -> 24 hex chars.
-	token := hex.EncodeToString(sum[:12])
-	return "linuxio-bridge-" + token + ".sock"
-}
-
 // Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
-	socketPath, err := BridgeSocketPath(sess)
+	socketPath, err := ipc.SocketPathFor(sess)
 	if err != nil {
 		return nil, fmt.Errorf("could not determine bridge socket path: %w", err)
 	}
@@ -85,14 +34,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 }
 
 func callViaSocket(socketPath, reqType, command string, args []string, secret string) ([]byte, error) {
-	req := map[string]any{
-		"type":    reqType,
-		"command": command,
-		"secret":  secret,
-	}
-	if args != nil {
-		req["args"] = args
-	}
+	req := ipc.Request{Type: reqType, Command: command, Secret: secret, Args: args}
 
 	conn, err := net.DialTimeout("unix", socketPath, 2*time.Second)
 	if err != nil {
@@ -105,30 +47,23 @@ func callViaSocket(socketPath, reqType, command string, args []string, secret st
 	}()
 
 	enc := json.NewEncoder(conn)
+	enc.SetEscapeHTML(false) // small but free win
+
 	dec := json.NewDecoder(conn)
 
-	err = enc.Encode(req)
-	if err != nil {
+	if err := enc.Encode(req); err != nil {
 		return nil, fmt.Errorf("failed to send request to bridge: %w", err)
 	}
 
-	var resp types.BridgeResponse
-	err = dec.Decode(&resp)
-	if err != nil {
+	// Read exactly one JSON value from the stream and return it as-is.
+	var raw json.RawMessage
+	if err := dec.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("failed to decode response from bridge: %w", err)
 	}
-
-	var b []byte
-	b, err = json.Marshal(resp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal bridge response: %w", err)
-	}
-
-	return b, nil
+	return []byte(raw), nil
 }
 
-// StartBridge now takes env/verbose/bridgeBinaryPath from the caller (flags),
-// and uses ONLY the three per-session env vars for secure hand-off.
+// StartBridge starts a bridge process for the given session
 func StartBridge(sess *session.Session, sudoPassword string, envMode string, verbose bool, bridgeBinary string) error {
 	processesMu.Lock()
 	defer processesMu.Unlock()
@@ -207,17 +142,17 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 	if prod {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 		devnull, _ := os.OpenFile(os.DevNull, os.O_RDWR, 0)
-		// Keep stdin only if providing a sudo password
 		if !sess.Privileged || sudoPassword == "" {
 			cmd.Stdin = devnull
 		}
 		cmd.Stdout = devnull
 		cmd.Stderr = devnull
+		defer func() { _ = devnull.Close() }() // close parent's copy after Start
 	} else {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		var stdoutBuf, stderrBuf bytes.Buffer
-		cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
-		cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+		// Send straight to terminal; don't accumulate unbounded buffers
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 	}
 
 	if err := cmd.Start(); err != nil {
@@ -231,7 +166,7 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 		logger.Infof("Started bridge for session %s (pid=%d) using %s", sess.SessionID, cmd.Process.Pid, bridgeBinary)
 	}
 
-	processes[sess.SessionID] = &types.BridgeProcess{
+	processes[sess.SessionID] = &ipc.BridgeProcess{
 		Cmd:       cmd,
 		SessionID: sess.SessionID,
 		StartedAt: time.Now(),
@@ -265,7 +200,7 @@ func isExec(p string) bool {
 //  2. next to the server executable (prod-friendly)
 //  3. in development: walk up from CWD for a few levels
 //  4. PATH (current user)
-//  5. fallback to plain name (sudo may still find it via secure_path)
+//  5. fallback to plain name
 func GetBridgeBinaryPath(override, envMode string) string {
 	const binaryName = "linuxio-bridge"
 
@@ -304,7 +239,6 @@ func GetBridgeBinaryPath(override, envMode string) string {
 	}
 
 	// 5) last resort: name only (sudo may resolve via secure_path)
-	// (downgrade to debug to avoid noisy false alarms when sudo finds it)
 	logger.Debugf("%s not found beside server, in dev tree, or in user $PATH; "+
 		"will attempt plain name (sudo may resolve via secure_path). "+
 		"Consider passing --bridge-binary or installing into a well-known path.",

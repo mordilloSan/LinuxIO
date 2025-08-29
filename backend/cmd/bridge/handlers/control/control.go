@@ -1,12 +1,12 @@
 package control
 
 import (
-	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
-func ControlHandlers(shutdownChan chan string) map[string]types.HandlerFunc {
-	return map[string]types.HandlerFunc{
+func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
+	return map[string]ipc.HandlerFunc{
 		"shutdown": func(args []string) (any, error) {
 			reason := "unknown"
 			if len(args) > 0 {

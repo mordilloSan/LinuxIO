@@ -17,19 +17,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers"
-	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
 	"github.com/mordilloSan/LinuxIO/cmd/server/config"
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/mordilloSan/LinuxIO/internal/utils"
 	"github.com/spf13/pflag"
 )
 
 // Build minimal session object from env (keeps secret out of argv)
 var Sess = &session.Session{
 	SessionID:    os.Getenv("LINUXIO_SESSION_ID"),
-	User:         utils.User{ID: os.Getenv("LINUXIO_SESSION_USER"), Name: os.Getenv("LINUXIO_SESSION_USER")},
+	User:         session.User{ID: os.Getenv("LINUXIO_SESSION_USER"), Name: os.Getenv("LINUXIO_SESSION_USER")},
 	BridgeSecret: os.Getenv("LINUXIO_BRIDGE_SECRET"),
 }
 
@@ -55,7 +53,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	socketPath, err := bridge.BridgeSocketPath(Sess)
+	socketPath, err := ipc.SocketPathFor(Sess)
 	if err != nil {
 		logger.Errorf("❌ Failed to determine bridge socket path: %v", err)
 		os.Exit(1)
@@ -163,28 +161,27 @@ func handleMainRequest(conn net.Conn, id string) {
 
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
+	encoder.SetEscapeHTML(false)
 
-	var req types.BridgeRequest
+	var req ipc.Request
 	if err := decoder.Decode(&req); err != nil {
 		if err == io.EOF {
 			logger.Debugf("🔁 [%s] connection closed without data", id)
 		} else {
 			logger.Warnf("❌ [%s] invalid JSON from client: %v", id, err)
 		}
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid JSON"})
-		return
-	}
-	// Secret validation ---
-	if req.Secret != Sess.BridgeSecret {
-		logger.Warnf("❌ [%s] invalid secret (got %q)", id, req.Secret)
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid secret"})
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
 		return
 	}
 
-	// (1) DEFENSE-IN-DEPTH: Validate handler name for fallback
+	if req.Secret != Sess.BridgeSecret {
+		logger.Warnf("❌ [%s] invalid secret", id)
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
+		return
+	}
 	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
 		logger.Warnf("❌ [%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "invalid characters in command/type"})
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})
 		return
 	}
 
@@ -193,13 +190,13 @@ func handleMainRequest(conn net.Conn, id string) {
 	group, found := handlers.HandlersByType[req.Type]
 	if !found || group == nil {
 		logger.Warnf("❌ Unknown type: %s", req.Type)
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
 		return
 	}
 	handler, ok := group[req.Command]
 	if !ok {
 		logger.Warnf("❌ Unknown command for type %s: %s", req.Type, req.Command)
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
 		return
 	}
 
@@ -209,7 +206,6 @@ func handleMainRequest(conn net.Conn, id string) {
 	}
 	done := make(chan result, 1)
 
-	// Run the handler in its own goroutine so we can stop waiting during shutdown.
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -223,27 +219,37 @@ func handleMainRequest(conn net.Conn, id string) {
 
 	select {
 	case r := <-done:
-		if r.err == nil {
-			var raw json.RawMessage
-			if r.out != nil {
-				rawBytes, marshalErr := json.Marshal(r.out)
-				if marshalErr != nil {
-					_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: "failed to marshal handler output"})
-					return
-				}
-				raw = json.RawMessage(rawBytes)
-			}
-			logger.Debugf("Responding to [%s]: status=ok output=%s", id, string(raw))
-			_ = encoder.Encode(types.BridgeResponse{Status: "ok", Output: raw})
+		if r.err != nil {
+			logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, r.err)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
 			return
 		}
-		logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, r.err)
-		_ = encoder.Encode(types.BridgeResponse{Status: "error", Error: r.err.Error()})
+
+		// Prefer zero-copy paths when the handler already returns JSON.
+		var raw json.RawMessage
+		switch v := r.out.(type) {
+		case nil:
+			// leave raw nil → {"status":"ok"}
+		case json.RawMessage:
+			raw = v
+		case []byte:
+			// Assume handler returned JSON bytes; if not, caller bug.
+			raw = json.RawMessage(v)
+		default:
+			b, marshalErr := json.Marshal(v)
+			if marshalErr != nil {
+				_ = encoder.Encode(ipc.Response{Status: "error", Error: "failed to marshal handler output"})
+				return
+			}
+			raw = json.RawMessage(b)
+		}
+
+		logger.Debugf("Responding to [%s]: status=ok, output-len=%d", id, len(raw))
+		_ = encoder.Encode(ipc.Response{Status: "ok", Output: raw})
 		return
 
 	case <-bridgeClosing:
-		// Bridge is shutting down → stop waiting and tell client.
-		_ = encoder.Encode(types.BridgeResponse{
+		_ = encoder.Encode(ipc.Response{
 			Status: "error",
 			Error:  "canceled: bridge shutting down",
 		})
@@ -265,6 +271,10 @@ func createAndOwnSocket(socketPath, username string) (net.Listener, int, int, er
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to listen on socket: %w", err)
+	}
+
+	if ul, ok := listener.(*net.UnixListener); ok {
+		ul.SetUnlinkOnClose(true) // ensures the socket path is unlinked on Close()
 	}
 
 	if err := os.Chmod(socketPath, 0600); err != nil {

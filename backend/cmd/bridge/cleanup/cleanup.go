@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
@@ -69,7 +69,7 @@ func FullCleanup(shutdownReason string, sess *session.Session) error {
 
 // CleanupBridgeSocket removes the bridge socket for the session (idempotent).
 func cleanupBridgeSocket(sess *session.Session) error {
-	sock, err := bridge.BridgeSocketPath(sess)
+	sock, err := ipc.SocketPathFor(sess)
 	if err != nil {
 		logger.Warnf("Could not determine bridge socket path: %v", err)
 		return err

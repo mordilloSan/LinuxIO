@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/dbus"
-	"github.com/mordilloSan/LinuxIO/cmd/bridge/handlers/types"
-	"github.com/mordilloSan/LinuxIO/internal/bridge"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
@@ -27,7 +27,7 @@ func getNetworkInfo2(c *gin.Context) {
 		return
 	}
 
-	var resp types.BridgeResponse
+	var resp ipc.Response
 	if err := json.Unmarshal([]byte(rawResp), &resp); err != nil {
 		logger.Errorf("Invalid bridge response: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response", "detail": err.Error(), "output": rawResp})
