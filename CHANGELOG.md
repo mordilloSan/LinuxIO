@@ -1,5 +1,13 @@
 ## v0.2.4 — 2025-08-30
 
+* up (01c0c3b) — MordilloSan
+* docs(changelog): add notes for v0.2.4 (161e8c4) — MordilloSan
+* update (8582066) — MordilloSan
+
+_Compare: https://github.com/https://github.com/mordilloSan/LinuxIO/compare/v0.2.3...v0.2.4_
+
+## v0.2.4 — 2025-08-30
+
 * update (8582066) — MordilloSan
 
 _Compare: https://github.com/https://github.com/mordilloSan/LinuxIO/compare/v0.2.3...v0.2.4_
