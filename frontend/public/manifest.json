@@ -1,0 +1,18 @@
+{
+  "name": "Linux i/O",
+  "short_name": "Linux i/O",
+  "description": "A linux management tool",
+  "start_url": "/",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#1B2635",
+  "theme_color": "#1B2635",
+  "icons": [
+    { "src": "/favicon-6.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/favicon-1.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "/favicon-2.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "/favicon-3.png", "sizes": "64x64", "type": "image/png" },
+    { "src": "/favicon-4.png", "sizes": "48x48", "type": "image/png" },
+    { "src": "/favicon-5.png", "sizes": "32x32", "type": "image/png" }
+  ]
+}
