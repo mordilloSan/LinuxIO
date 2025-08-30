@@ -58,7 +58,7 @@ const NetworkInterfaceList = () => {
   const { data: interfaces = [], isLoading } = useQuery<NetworkInterface[]>({
     queryKey: ["networkInterfaceList"],
     queryFn: async () => {
-      const res = await axios.get("/network/info2");
+      const res = await axios.get("/network/info");
       return res.data;
     },
     select: (data: NetworkInterface[]) =>

@@ -20,7 +20,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/cmd/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/cmd/server/filebrowser"
-	"github.com/mordilloSan/LinuxIO/cmd/server/network"
 	"github.com/mordilloSan/LinuxIO/cmd/server/system"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
@@ -53,20 +52,10 @@ func main() {
 	logger.Infof("🌱 Starting server in %s mode...", env)
 
 	// Sessions Cleanup
-	shutdownSessions, err := session.Init(&session.SessionConfig{
-		IdleTimeout:          30 * time.Minute,
-		AbsoluteTimeout:      6 * time.Hour,
-		RefreshInterval:      60 * time.Second,
-		SingleSessionPerUser: false,
-		GCInterval:           10 * time.Minute,
-	})
-	if err != nil {
-		logger.Error.Fatalf("session init failed: %v", err)
-	}
-	defer shutdownSessions()
+	defer session.Init()()
 
-	// Background services
-	network.StartSimpleNetInfoSampler()
+	// API startup for chaching
+	system.StartSimpleNetInfoSampler()
 	system.InitGPUInfo()
 
 	// FileBrowser

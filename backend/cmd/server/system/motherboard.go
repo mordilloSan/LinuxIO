@@ -61,7 +61,7 @@ func FetchBaseboardInfo() (map[string]any, error) {
 	}, nil
 }
 
-func getBaseboardInfo(c *gin.Context) {
+func getMotherboard(c *gin.Context) {
 	data, err := FetchBaseboardInfo()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

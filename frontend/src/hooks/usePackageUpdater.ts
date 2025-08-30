@@ -8,7 +8,7 @@ export const usePackageUpdater = (onComplete: () => void) => {
 
   const updateOne = async (pkg: string) => {
     setUpdatingPackage(pkg);
-    await axios.post("/system/update", { package: pkg });
+    await axios.post("/updates/update", { package: pkg });
     onComplete(); // refresh updates
     setUpdatingPackage(null);
   };
@@ -29,7 +29,7 @@ export const usePackageUpdater = (onComplete: () => void) => {
         updated.add(pkg);
 
         // Refresh and update the remaining list
-        const res = await axios.get("/system/updates");
+        const res = await axios.get("/updates/packages");
         const fresh = res.data as { name: string }[];
         remaining = fresh
           .map((u) => u.name)

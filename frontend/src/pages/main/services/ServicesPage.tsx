@@ -10,7 +10,7 @@ const ServicesList: React.FC = () => {
   const { data, isLoading, isError, error } = useQuery<Service[]>({
     queryKey: ["services"],
     queryFn: async () => {
-      const res = await axios.get("/system/services/status");
+      const res = await axios.get("/services/status");
       return res.data;
     },
     refetchInterval: 2000,

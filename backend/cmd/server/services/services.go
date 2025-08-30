@@ -6,27 +6,11 @@ import (
 	"regexp"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
-
-func RegisterServiceRoutes(router *gin.Engine) {
-	system := router.Group("/system", auth.AuthMiddleware())
-	{
-		system.GET("/services/status", getServiceStatus)
-		system.GET("/services/:name", getServiceDetail)
-		system.POST("/services/:name/start", startService)
-		system.POST("/services/:name/stop", stopService)
-		system.POST("/services/:name/restart", restartService)
-		system.POST("/services/:name/reload", reloadService)
-		system.POST("/services/:name/enable", enableService)
-		system.POST("/services/:name/disable", disableService)
-		system.POST("/services/:name/mask", maskService)
-		system.POST("/services/:name/unmask", unmaskService)
-	}
-}
 
 func startService(c *gin.Context)   { serviceAction(c, "StartService") }
 func stopService(c *gin.Context)    { serviceAction(c, "StopService") }
@@ -41,10 +25,7 @@ var validServiceName = regexp.MustCompile(`^[\w.-]+\.service$`)
 
 // Generic handler for service actions
 func serviceAction(c *gin.Context, action string) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	serviceName := c.Param("name")
 
 	if !validServiceName.MatchString(serviceName) {
@@ -65,10 +46,7 @@ func serviceAction(c *gin.Context, action string) {
 }
 
 func getServiceStatus(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 
 	output, err := bridge.CallWithSession(sess, "dbus", "ListServices", nil)
 	if err != nil {
@@ -77,11 +55,8 @@ func getServiceStatus(c *gin.Context) {
 		return
 	}
 
-	var resp struct {
-		Status string          `json:"status"`
-		Output json.RawMessage `json:"output"`
-		Error  string          `json:"error"`
-	}
+	var resp ipc.Response
+
 	if err := json.Unmarshal([]byte(output), &resp); err != nil {
 		logger.Errorf("Failed to decode bridge response (user: %s): %v", sess.User.Username, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode bridge response"})
@@ -99,10 +74,7 @@ func getServiceStatus(c *gin.Context) {
 }
 
 func getServiceDetail(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	serviceName := c.Param("name")
 	logger.Infof("%s requested detail for %s (session: %s)", sess.User.Username, serviceName, sess.SessionID)
 
@@ -112,11 +84,7 @@ func getServiceDetail(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp struct {
-		Status string          `json:"status"`
-		Output json.RawMessage `json:"output"`
-		Error  string          `json:"error"`
-	}
+	var resp ipc.Response
 	if err := json.Unmarshal([]byte(output), &resp); err != nil {
 		logger.Errorf("Failed to decode bridge response for %s (user: %s): %v", serviceName, sess.User.Username, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode bridge response"})

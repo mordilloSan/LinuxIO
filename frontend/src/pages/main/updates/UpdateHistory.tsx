@@ -33,7 +33,7 @@ const UpdateHistoryCard: React.FC = () => {
   const { data: rows = [] } = useQuery<UpdateHistoryRow[]>({
     queryKey: ["updateHistory"],
     queryFn: async () => {
-      const res = await axios.get("/system/updates/update-history");
+      const res = await axios.get("/updates/update-history");
       return res.data.map((item: any) => ({
         date: item.date,
         upgrades: item.upgrades,

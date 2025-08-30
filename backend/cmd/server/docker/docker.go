@@ -3,7 +3,6 @@ package docker
 import (
 	"net/http"
 
-	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
@@ -12,10 +11,7 @@ import (
 )
 
 func ListContainers(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	data, err := bridge.CallWithSession(sess, "docker", "list_containers", nil)
 	if err != nil {
 		logger.Errorf("Bridge ListContainers: %v", err)
@@ -26,10 +22,7 @@ func ListContainers(c *gin.Context) {
 }
 
 func StartContainer(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	id := c.Param("id")
 	data, err := bridge.CallWithSession(sess, "docker", "start_container", []string{id})
 	if err != nil {
@@ -41,10 +34,7 @@ func StartContainer(c *gin.Context) {
 }
 
 func StopContainer(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	id := c.Param("id")
 	data, err := bridge.CallWithSession(sess, "docker", "stop_container", []string{id})
 	if err != nil {
@@ -56,10 +46,7 @@ func StopContainer(c *gin.Context) {
 }
 
 func RemoveContainer(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	id := c.Param("id")
 	data, err := bridge.CallWithSession(sess, "docker", "remove_container", []string{id})
 	if err != nil {
@@ -71,10 +58,7 @@ func RemoveContainer(c *gin.Context) {
 }
 
 func RestartContainer(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	id := c.Param("id")
 	data, err := bridge.CallWithSession(sess, "docker", "restart_container", []string{id})
 	if err != nil {
@@ -86,10 +70,7 @@ func RestartContainer(c *gin.Context) {
 }
 
 func ListImages(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	data, err := bridge.CallWithSession(sess, "docker", "list_images", nil)
 	if err != nil {
 		logger.Errorf("Bridge ListImages: %v", err)
@@ -100,10 +81,7 @@ func ListImages(c *gin.Context) {
 }
 
 func ListDockerNetworks(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	data, err := bridge.CallWithSession(sess, "docker", "list_networks", nil)
 	if err != nil {
 		logger.Errorf("Bridge ListNetworks: %v", err)
@@ -115,10 +93,7 @@ func ListDockerNetworks(c *gin.Context) {
 
 // CreateDockerNetwork handles the creation of a new Docker network.
 func CreateDockerNetwork(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 
 	var req struct {
 		Name string `json:"name" binding:"required"`
@@ -139,10 +114,7 @@ func CreateDockerNetwork(c *gin.Context) {
 
 // DeleteDockerVolume handles the deletion of a Docker volume.
 func DeleteDockerNetwork(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	data, err := bridge.CallWithSession(sess, "docker", "delete_network", []string{name})
 	if err != nil {
@@ -154,10 +126,7 @@ func DeleteDockerNetwork(c *gin.Context) {
 }
 
 func ListDockerVolumes(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	data, err := bridge.CallWithSession(sess, "docker", "list_volumes", nil)
 	if err != nil {
 		logger.Errorf("Bridge ListVolumes: %v", err)
@@ -169,10 +138,7 @@ func ListDockerVolumes(c *gin.Context) {
 
 // DeleteDockerVolume handles the deletion of a Docker volume.
 func DeleteDockerVolume(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	data, err := bridge.CallWithSession(sess, "docker", "delete_volume", []string{name})
 	if err != nil {
@@ -185,10 +151,7 @@ func DeleteDockerVolume(c *gin.Context) {
 
 // CreateDockerVolume handles the creation of a new Docker volume.
 func CreateDockerVolume(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 
 	var req struct {
 		Name string `json:"name" binding:"required"`
@@ -208,10 +171,7 @@ func CreateDockerVolume(c *gin.Context) {
 }
 
 func LogContainer(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	id := c.Param("id")
 	args := []string{id}
 	data, err := bridge.CallWithSession(sess, "docker", "get_container_logs", args)
@@ -222,23 +182,4 @@ func LogContainer(c *gin.Context) {
 	}
 	// If data is plain text, send as text/plain. If you wrap in JSON, set to application/json.
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", data)
-}
-
-func RegisterDockerRoutes(router *gin.Engine) {
-	docker := router.Group("/docker", auth.AuthMiddleware())
-	{
-		docker.GET("/containers", ListContainers)
-		docker.POST("/containers/:id/start", StartContainer)
-		docker.POST("/containers/:id/stop", StopContainer)
-		docker.POST("/containers/:id/restart", RestartContainer)
-		docker.POST("/containers/:id/remove", RemoveContainer)
-		docker.GET("/containers/:id/logs", LogContainer)
-		docker.GET("/images", ListImages)
-		docker.GET("/networks", ListDockerNetworks)
-		docker.POST("/networks", CreateDockerNetwork)
-		docker.DELETE("/networks/:name", DeleteDockerNetwork)
-		docker.GET("/volumes", ListDockerVolumes)
-		docker.POST("/volumes", CreateDockerVolume)
-		docker.DELETE("/volumes/:name", DeleteDockerVolume)
-	}
 }

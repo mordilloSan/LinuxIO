@@ -21,7 +21,7 @@ const NetworkInterfacesCard: React.FC = () => {
   const { data: interfaces = [], isLoading } = useQuery<InterfaceStats[]>({
     queryKey: ["networkInterfaces"],
     queryFn: async () => {
-      const { data } = await axios.get("/network/info");
+      const { data } = await axios.get("system/network");
       return data.map((iface: any) => ({
         ...iface,
         ipv4: Array.isArray(iface.ipv4) ? iface.ipv4 : [],
@@ -69,34 +69,35 @@ const NetworkInterfacesCard: React.FC = () => {
   >([]);
   const lastSampleRef = useRef<number>(0);
 
-  // Keep this Effect: accumulate samples over time from external polling
   useEffect(() => {
     if (!selectedInterface) return;
     const now = Date.now();
 
-    // Only append if speeds changed OR at least 250ms passed (avoid duplicate samples)
-    const shouldAppend =
-      now - lastSampleRef.current > 250 ||
-      history.length === 0 ||
-      history[history.length - 1].rx !== selectedInterface.rx_speed ||
-      history[history.length - 1].tx !== selectedInterface.tx_speed;
+    setHistory((prev) => {
+      const last = prev[prev.length - 1];
+      const shouldAppend =
+        now - lastSampleRef.current > 250 ||
+        prev.length === 0 ||
+        last?.rx !== selectedInterface.rx_speed ||
+        last?.tx !== selectedInterface.tx_speed;
 
-    if (!shouldAppend) return;
+      if (!shouldAppend) return prev;
 
-    setHistory((prev) => [
-      ...prev.slice(-29),
-      {
-        time: now,
-        rx: selectedInterface.rx_speed,
-        tx: selectedInterface.tx_speed,
-      },
-    ]);
-    lastSampleRef.current = now;
+      lastSampleRef.current = now;
+      return [
+        ...prev.slice(-29),
+        {
+          time: now,
+          rx: selectedInterface.rx_speed,
+          tx: selectedInterface.tx_speed,
+        },
+      ];
+    });
   }, [
     selectedInterface?.rx_speed,
     selectedInterface?.tx_speed,
     selectedInterface,
-  ]); // deps on values
+  ]);
 
   const options = useMemo(
     () =>

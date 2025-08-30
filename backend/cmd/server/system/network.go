@@ -1,4 +1,4 @@
-package network
+package system
 
 import (
 	"fmt"
@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/internal/session"
 	gopsnet "github.com/shirou/gopsutil/v4/net"
 )
 
@@ -101,12 +100,7 @@ func StartSimpleNetInfoSampler() {
 	}()
 }
 
-func getSimpleNetInfoHandler(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
-
+func getNetworks(c *gin.Context) {
 	simpleNetStatsLock.RLock()
 	infos := make([]SimpleNetInfo, 0, len(simpleNetStats))
 	for _, v := range simpleNetStats {
@@ -121,8 +115,3 @@ func getSimpleNetInfoHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, infos)
 }
-
-// In your router registration, add the handler (example):
-// network.GET("/simple-info", getSimpleNetInfoHandler)
-//
-// And make sure to call StartSimpleNetInfoSampler() once during startup (main/init).

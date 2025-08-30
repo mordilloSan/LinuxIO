@@ -5,43 +5,15 @@ import React, { useState, useEffect } from "react";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
+import { formatBytes } from "@/utils/formatBytes";
 
-interface SmartStatus {
-  passed: boolean;
-  [key: string]: any;
-}
-interface SmartInfo {
-  smart_status?: SmartStatus;
-  [key: string]: any;
-}
 interface DriveInfo {
   name: string;
   model: string;
-  size: string;
-  type: string;
+  sizeBytes: number;
+  transport: string;
   vendor?: string;
   serial?: string;
-  ro?: boolean;
-  smart?: SmartInfo;
-  smartError?: string;
-  power?: any;
-  powerError?: string;
-}
-
-function getConnectionStatus(
-  drive: DriveInfo | undefined,
-): "online" | "warning" | "error" {
-  if (!drive) return "warning";
-  if (drive.smartError) return "error";
-  if (
-    !drive.smart ||
-    Object.keys(drive.smart).length === 0 ||
-    !drive.smart.smart_status
-  )
-    return "warning";
-  if (drive.smart.smart_status.passed === true) return "online";
-  if (drive.smart.smart_status.passed === false) return "error";
-  return "warning";
 }
 
 const Drive: React.FC = () => {
@@ -56,15 +28,12 @@ const Drive: React.FC = () => {
 
   useEffect(() => {
     if (drives.length && !selected) {
-      const online = drives.find((d) => d.size !== "0" && d.size !== "0B");
+      const online = drives.find((d) => d.sizeBytes !== 0);
       setSelected(online?.name || drives[0].name);
     }
   }, [drives, selected]);
 
   const selectedDrive = drives.find((drive) => drive.name === selected);
-  const isDisconnected =
-    selectedDrive?.size === "0" || selectedDrive?.size === "0B";
-
   const content = selectedDrive ? (
     isLoading ? (
       <ComponentLoader />
@@ -74,10 +43,11 @@ const Drive: React.FC = () => {
           <strong>Model:</strong> {selectedDrive.model || "Unknown"}
         </Typography>
         <Typography variant="body2">
-          <strong>Type:</strong> {selectedDrive.type || "Unknown"}
+          <strong>Type:</strong> {selectedDrive.transport || "Unknown"}
         </Typography>
         <Typography variant="body2">
-          <strong>Size:</strong> {selectedDrive.size || "Unknown"}
+          <strong>Size:</strong>{" "}
+          {formatBytes(selectedDrive.sizeBytes) || "Unknown"}
         </Typography>
       </Box>
     )
@@ -99,9 +69,6 @@ const Drive: React.FC = () => {
       selectedOption={selected}
       selectedOptionLabel={selected}
       onSelect={(val: string) => setSelected(val)}
-      connectionStatus={
-        isDisconnected ? "offline" : getConnectionStatus(selectedDrive)
-      }
     />
   );
 };

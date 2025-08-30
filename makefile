@@ -1,25 +1,21 @@
-GO_VERSION      = 1.25.0
-NODE_VERSION    = 24
-GO_INSTALL_DIR := $(HOME)/.go
-
-# --- NVM/Node (Option A: single PATH for all recipes) ------------------------
-# NVM home + a stable "current" symlink we'll manage in ensure-node
-NVM_DIR ?= $(HOME)/.nvm
-# Prepend the "current" Node to PATH for every recipe (will work once ensure-node runs)
-export PATH := $(NVM_DIR)/versions/node/current/bin:$(PATH)
-
-# Source-able NVM setup (no nvm use here; PATH handles it)
-NVM_SETUP = export NVM_DIR="$(NVM_DIR)"; \
-            [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
-
-GO_BIN := $(shell which go)
-GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
-
-# Flags to pass into the Go binaries
-VERBOSE ?= true
-VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
+# Main flags
 VITE_DEV_PORT = 3000
 SERVER_PORT = 8080
+VERBOSE ?= true
+
+# Go and Node.js versions
+GO_VERSION      = 1.25.0
+NODE_VERSION    = 24
+
+# Helpers
+VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
+GO_INSTALL_DIR := $(HOME)/.go
+NVM_DIR ?= $(HOME)/.nvm
+export PATH := $(NVM_DIR)/versions/node/current/bin:$(PATH)
+NVM_SETUP = export NVM_DIR="$(NVM_DIR)"; \
+            [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
+GO_BIN := $(shell which go)
+GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
 # Colors
 COLOR_RESET  := \033[0m
@@ -40,15 +36,10 @@ BUILD_TIME  := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Centralize extra flags
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
 
-# Allow skipping lint during release builds
-SKIP_LINT ?= 0
-ifeq ($(filter 1 true yes on,$(SKIP_LINT)),)
-PREBUILD_LINT := golint
-endif
-
 # -------- Release flow helpers (gh CLI) --------
 DEFAULT_BASE_BRANCH := main
 REPO ?=              # optional owner/name; gh will infer from git remote if empty
+current_rel_branch = $(shell git branch --show-current)
 
 define _require_clean
 	@if ! git diff --quiet || ! git diff --cached --quiet; then \
@@ -90,8 +81,6 @@ SHELL := /bin/bash
 
 default: help
 
-# Ensures NVM exists, installs Node $(NODE_VERSION), makes it default,
-# and creates/updates a stable "$(NVM_DIR)/versions/node/current" symlink.
 ensure-node:
 	@echo ""
 	@echo "📦 Ensuring Node.js $(NODE_VERSION) is available..."
@@ -192,14 +181,14 @@ setup: ensure-go ensure-node ensure-golint
 	'
 	@echo "✅ Frontend dependencies installed!"
 
-lint:
+lint: setup
 	@echo "🔍 Running ESLint..."
 	@bash -c '\
 		cd frontend && \
 		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!" \
 	'
 
-tsc:
+tsc: setup
 	@echo "🔍 Running TypeScript type checks..."
 	@bash -c '\
 		cd frontend && \
@@ -238,7 +227,7 @@ build-vite: lint tsc
 		echo "✅ Frontend built successfully!" \
 	'
 
-build-backend: $(PREBUILD_LINT)
+build-backend:
 	@echo ""
 	@echo "📦 Building backend..."
 	@cd backend && \
@@ -259,7 +248,7 @@ build-backend: $(PREBUILD_LINT)
 	echo "📦 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
 
-build-bridge: $(PREBUILD_LINT)
+build-bridge:
 	@echo ""
 	@echo "🔌 Building bridge..."
 	@cd backend && \
@@ -386,8 +375,39 @@ start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
 	  echo "✅ Ready on branch $$REL_BRANCH"; \
 	}
 
-## Open PR dev/<version> -> main (requires gh)
-open-pr: generate
+# Prepend a section for the current dev/v* branch into CHANGELOG.md
+release-notes:
+	@set -euo pipefail; \
+	BRANCH="$$(git branch --show-current)"; \
+	if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	  echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
+	fi; \
+	VERSION="$${BRANCH#dev/}"; \
+	DATE="$$(date -u +%Y-%m-%d)"; \
+	git fetch --tags --force >/dev/null 2>&1 || true; \
+	PREV="$$(git tag --list 'v*' --sort=-v:refname | head -n1)"; \
+	REPO_SLUG="$$(git config --get remote.origin.url | sed -E 's#(git@|https://)github\.com[:/](.+)\.git#\2#')"; \
+	{ \
+	  echo "## $$VERSION — $$DATE"; \
+	  echo; \
+	  if [ -z "$$PREV" ]; then \
+	    echo "_First tagged release; including commits on $$BRANCH_"; \
+	    echo; \
+	    git log --no-merges --pretty='* %s (%h) — %an' origin/main..HEAD || git log --no-merges --pretty='* %s (%h) — %an'; \
+	  else \
+	    git log --no-merges --pretty='* %s (%h) — %an' "$$PREV..$$BRANCH"; \
+	    echo; \
+	    echo "_Compare: https://github.com/$$REPO_SLUG/compare/$${PREV}...$${VERSION}_"; \
+	  fi; \
+	  echo; \
+	} > .changelog.new; \
+	if [ -f CHANGELOG.md ]; then cat CHANGELOG.md >> .changelog.new; fi; \
+	mv .changelog.new CHANGELOG.md; \
+	git add CHANGELOG.md; \
+	git commit -m "docs(changelog): add notes for $$VERSION" || echo "ℹ️  No changes to commit."
+
+# Open PR dev/<version> -> main (requires gh)
+open-pr: generate release-notes
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
@@ -397,22 +417,35 @@ open-pr: generate
 	    --base $(DEFAULT_BASE_BRANCH) \
 	    --head "$$REL_BRANCH" \
 	    --title "Release $$VERSION" \
-	    --body "Automated release PR for $$VERSION."; \
+	    --body-file CHANGELOG.md; \
 	  gh pr view $(call _repo_flag) --web; \
 	}
 
-promote-release:
-	@if [ -z "$(VERSION)" ]; then \
-		read -p "Enter version (e.g. v1.2.3): " VERSION; \
-		if [ -z "$$VERSION" ]; then echo "No version given. Exiting."; exit 1; fi; \
-	fi; \
-	git checkout main && \
-	git pull && \
-	git merge dev && \
-	git push && \
-	git tag -a $${VERSION:-$(VERSION)} -m "Release $${VERSION:-$(VERSION)}" && \
-	git push origin $${VERSION:-$(VERSION)} && \
-	echo "✅ Merged dev into main and released $${VERSION:-$(VERSION)}!"
+# Merge the open release PR (dev/v*) into main.
+merge-release:
+	@$(call _require_gh)
+	@{ \
+	  set -euo pipefail; \
+	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
+	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	    echo "⚠️  Current branch '$$BRANCH' is not a dev/v* release branch."; \
+	    echo "    Checkout your release branch (e.g. dev/v1.2.3) or pass PR number via PR=<num>."; \
+	    exit 1; \
+	  fi; \
+	  if [ -n "$${PR:-}" ]; then \
+	    PRNUM="$${PR}"; \
+	  else \
+	    PRNUM="$$(gh pr list --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
+	  fi; \
+	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then \
+	    echo "❌ No open PR from $$BRANCH to main found."; exit 1; \
+	  fi; \
+	  echo "🔀 Merging PR #$$PRNUM into main…"; \
+	  gh pr merge "$$PRNUM" --merge --delete-branch; \
+	  VERSION="$${BRANCH#dev/}"; \
+	  echo "✅ Merged. Tagging will be created by CI as '$$VERSION'."; \
+	  echo "📦 Release build will start after the tag is pushed by the workflow."; \
+	}
 
 help:
 	@$(PRINTC) ""

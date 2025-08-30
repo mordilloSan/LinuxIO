@@ -75,7 +75,7 @@ func FetchSensorsInfo() []SensorGroup {
 	return groups
 }
 
-func getSensorData(c *gin.Context) {
+func getSensors(c *gin.Context) {
 	c.JSON(http.StatusOK, FetchSensorsInfo())
 }
 

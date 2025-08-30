@@ -27,12 +27,11 @@ var (
 // Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
 	socketPath := sess.SocketPath()
-	return callViaSocket(socketPath, reqType, command, args, sess.BridgeSecret)
-
+	return callViaSocket(socketPath, reqType, command, args, sess.BridgeSecret, sess.SessionID)
 }
 
-func callViaSocket(socketPath, reqType, command string, args []string, secret string) ([]byte, error) {
-	req := ipc.Request{Type: reqType, Command: command, Secret: secret, Args: args}
+func callViaSocket(socketPath, reqType, command string, args []string, secret string, sessionID string) ([]byte, error) {
+	req := ipc.Request{Type: reqType, Command: command, Secret: secret, Args: args, SessionID: sessionID}
 
 	conn, err := net.DialTimeout("unix", socketPath, 2*time.Second)
 	if err != nil {

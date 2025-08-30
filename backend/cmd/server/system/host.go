@@ -7,7 +7,7 @@ import (
 	"github.com/shirou/gopsutil/v4/host"
 )
 
-func getHostInfo(c *gin.Context) {
+func getHost(c *gin.Context) {
 	hostInfo, err := host.Info()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get host info", "details": err.Error()})

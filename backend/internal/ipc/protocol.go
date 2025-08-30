@@ -8,10 +8,11 @@ import (
 
 // Request/Response are the on-the-wire schema used over the unix socket.
 type Request struct {
-	Type    string   `json:"type"`
-	Command string   `json:"command"`
-	Args    []string `json:"args,omitempty"`
-	Secret  string   `json:"secret"`
+	Type      string   `json:"type"`
+	Command   string   `json:"command"`
+	Args      []string `json:"args,omitempty"`
+	Secret    string   `json:"secret"`
+	SessionID string   `json:"session_id"`
 }
 
 type Response struct {
