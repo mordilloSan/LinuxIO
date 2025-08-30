@@ -1,7 +1,6 @@
 name: Release
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*"
@@ -50,7 +49,10 @@ jobs:
 
       # Use the Go version from your module (backend/go.mod)
       - name: Set up Go
-        run: make ensure-go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          check-latest: true
 
       - name: Download Go modules
         working-directory: backend

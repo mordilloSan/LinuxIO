@@ -1,8 +1,6 @@
 module github.com/mordilloSan/LinuxIO
 
-go 1.24.1
-
-ignore ./frontend
+go 1.25
 
 require (
 	github.com/containerd/errdefs v1.0.0
