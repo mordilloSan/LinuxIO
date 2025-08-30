@@ -466,15 +466,45 @@ merge-release:
 	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
 	    echo "⚠️  Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
 	  fi; \
-	  PRNUM="$${PR:-$$(gh pr list --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
+	  PRNUM="$${PR:-$$(gh pr list $(call _repo_flag) --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
 	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo "❌ No open PR from $$BRANCH to main."; exit 1; fi; \
 	  echo "⏳ Waiting for checks on PR #$$PRNUM…"; \
-	  gh pr checks "$$PRNUM" --watch --interval 5; \
+	  gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
 	  echo "✅ Checks passed. Merging…"; \
-	  gh pr merge "$$PRNUM" --merge --delete-branch; \
+	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --delete-branch; \
 	  VERSION="$${BRANCH#dev/}"; \
-	  echo "🎉 Merged. CI will tag '$$VERSION' and the Release workflow will publish artifacts."; \
+	  echo "🔖 Tag to be released: $$VERSION"; \
+	  \
+	  # ---- Watch the Release workflow run ---- \
+	  WF_NAME="Release (tag + build)"; \
+	  REPO_SLUG="$$(git config --get remote.origin.url | sed -E 's#(git@|https://)github\.com[:/](.+)\.git#\2#')"; \
+	  echo "⏳ Waiting for workflow '$$WF_NAME' to start…"; \
+	  deadline=$$(( $$(date +%s) + 180 )); \
+	  run_id=""; \
+	  while [ $$(date +%s) -lt $$deadline ]; do \
+	    run_id="$$(gh run list --repo "$$REPO_SLUG" --workflow "$$WF_NAME" --branch main --status queued,in_progress --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"; \
+	    [ -n "$$run_id" ] && break; \
+	    sleep 5; \
+	  done; \
+	  if [ -z "$$run_id" ]; then \
+	    # Fallback: pick the most recent run of that workflow on main \
+	    run_id="$$(gh run list --repo "$$REPO_SLUG" --workflow "$$WF_NAME" --branch main --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"; \
+	  fi; \
+	  if [ -z "$$run_id" ]; then \
+	    echo "⚠️  Could not find a workflow run to watch. Check Actions manually."; \
+	    exit 0; \
+	  fi; \
+	  echo "🛰  Following workflow $$WF_NAME (run $$run_id)…"; \
+	  gh run watch --repo "$$REPO_SLUG" "$$run_id"; \
+	  concl="$$(gh run view --repo "$$REPO_SLUG" "$$run_id" --json conclusion -q .conclusion)"; \
+	  if [ "$$concl" != "success" ]; then \
+	    echo "❌ Release workflow failed (conclusion=$$concl)."; \
+	    exit 1; \
+	  fi; \
+	  echo "🎉 Release workflow succeeded for $$VERSION"; \
+	  gh release view "$$VERSION" --repo "$$REPO_SLUG" --web || true; \
 	}
+
 
 help:
 	@$(PRINTC) ""
