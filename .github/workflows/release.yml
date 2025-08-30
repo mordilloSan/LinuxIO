@@ -1,88 +1,123 @@
-name: Release
+name: Release (tag + build)
 
 on:
+  # Auto flow: merge dev/v* -> main
+  pull_request:
+    types: [closed]
+    branches: [main]
+  # Manual flow: run for a given tag (or latest)
   workflow_dispatch:
     inputs:
       tag:
         description: "Tag to release (leave blank to use latest v*)"
         required: false
-  workflow_run:
-    workflows: ["Tag on merge to main"]
-    types: [completed]
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  release:
+    # Only run on:
+    # - merged PRs where head is dev/v*
+    # - manual dispatch
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'dev/v'))
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout full history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve release tag
-        id: resolve_tag
+      # Decide the TAG we’ll release:
+      # - For merged PR: extract vX.Y.Z from head branch dev/vX.Y.Z and create tag if missing
+      # - For manual run: use input tag or latest v*
+      - name: Resolve tag (and create if from PR)
+        id: tag
         shell: bash
         run: |
           set -euo pipefail
           git fetch --tags --force
 
-          # 1) If user provided input on manual run, prefer it
-          if [[ -n "${{ github.event.inputs.tag || '' }}" ]]; then
-            TAG="${{ github.event.inputs.tag }}"
-          # 2) If this workflow was triggered by a tag push, use that tag
-          elif [[ "${GITHUB_REF_TYPE}" == "tag" && -n "${GITHUB_REF_NAME}" ]]; then
-            TAG="${GITHUB_REF_NAME}"
-          # 3) Otherwise, pick the latest v* tag (semver-sort)
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BRANCH="${{ github.event.pull_request.head.ref }}"   # e.g., dev/v0.2.4
+            TAG="${BRANCH#dev/}"                                # -> v0.2.4
+            echo "Derived tag from PR branch: $TAG"
+
+            # Configure identity for tagging
+            git config user.name  "${{ github.actor }}"
+            git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+            # Create the tag if it doesn't exist
+            if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+              echo "Tag $TAG already exists. Using it."
+            else
+              git tag -a "$TAG" -m "Release $TAG"
+              git push origin "$TAG"
+              echo "Created and pushed tag $TAG"
+            fi
+
           else
-            TAG="$(git tag -l 'v*' --sort=-v:refname | head -n 1 || true)"
-          fi
+            # Manual dispatch
+            IN="${{ github.event.inputs.tag || '' }}"
+            if [[ -n "$IN" ]]; then
+              TAG="$IN"
+              echo "Using user-provided tag: $TAG"
+            else
+              TAG="$(git tag -l 'v*' --sort=-v:refname | head -n1 || true)"
+              if [[ -z "$TAG" ]]; then
+                echo "No v* tag found; please provide one via manual input."
+                exit 1
+              fi
+              echo "Using latest tag: $TAG"
+            fi
 
-          if [[ -z "$TAG" ]]; then
-            echo "No v* tag found. Provide one in workflow_dispatch inputs or push a v* tag."
-            exit 1
-          fi
-
-          # Verify the tag exists locally
-          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "Tag '$TAG' does not exist in this repo."
-            exit 1
+            # Validate local tag exists
+            if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+              echo "Tag '$TAG' does not exist locally."
+              exit 1
+            fi
           fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Resolved tag: $TAG"
 
-      - name: Checkout tag commit (build the exact sources for the tag)
+      - name: Checkout the tag’s commit
         run: |
-          git checkout "${{ steps.resolve_tag.outputs.tag }}"
+          git checkout "${{ steps.tag.outputs.tag }}"
 
-      # Install system libs needed for CGO/dbus/PAM builds
+      # If "immutable releases" is enabled, we must delete an existing release before recreating.
+      - name: Delete existing release for this tag (if any)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          rid="$(gh api repos/${{ github.repository }}/releases/tags/$TAG -q .id 2>/dev/null || true)"
+          if [[ -n "${rid:-}" ]]; then
+            echo "Deleting existing release id=$rid for $TAG"
+            gh api -X DELETE repos/${{ github.repository }}/releases/"$rid"
+          else
+            echo "No existing release to delete for $TAG"
+          fi
+
+      # ---- Build toolchains ----
       - name: Install system build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libpam0g-dev libdbus-1-dev pkg-config build-essential
 
-      - name: Cache Go build and mod
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('backend/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      # Node for frontend
-      - name: Use Node 24 with npm cache
+      - name: Use Node 24 (with npm cache)
         uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend dependencies
+      - name: Install frontend deps
         working-directory: frontend
         run: npm ci
 
@@ -93,30 +128,30 @@ jobs:
         working-directory: backend
         run: go mod download
 
-      - name: Build Go backend binary
+      - name: Build Go backend
         env: { GOOS: linux, GOARCH: amd64 }
         run: SKIP_LINT=1 make build-backend
 
-      - name: Build Go bridge binary
+      - name: Build Go bridge
         env: { GOOS: linux, GOARCH: amd64 }
         run: SKIP_LINT=1 make build-bridge
 
       - name: Make artifacts executable
         run: chmod +x linuxio-webserver linuxio-bridge
 
-      # fix the tarball step variable
       - name: Create tarball
         run: |
-          tar czvf linuxio-${{ steps.resolve_tag.outputs.tag }}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
+          TAR="linuxio-${{ steps.tag.outputs.tag }}-linux-amd64.tar.gz"
+          tar czvf "$TAR" linuxio-webserver linuxio-bridge
+          echo "tarball=$TAR" >> "$GITHUB_OUTPUT"
 
-      # attach assets to the GitHub Release
-      - name: Create GitHub Release
+      - name: Create GitHub Release (with assets)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.resolve_tag.outputs.tag }}
+          tag_name: ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
           files: |
-            linuxio-${{ steps.resolve_tag.outputs.tag }}-linux-amd64.tar.gz
+            ${{ steps.create_tarball.outputs.tarball }}
             linuxio-webserver
             linuxio-bridge
           fail_on_unmatched_files: true
