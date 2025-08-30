@@ -97,12 +97,13 @@ jobs:
         run: |
           set -euo pipefail
           rid="$(gh api repos/${{ github.repository }}/releases/tags/$TAG -q .id 2>/dev/null || true)"
-          if [[ -n "${rid:-}" ]]; then
+          if [[ "$rid" =~ ^[0-9]+$ ]]; then
             echo "Deleting existing release id=$rid for $TAG"
             gh api -X DELETE repos/${{ github.repository }}/releases/"$rid"
           else
             echo "No existing release to delete for $TAG"
           fi
+          echo "✅ Deleted existing release for $TAG"
 
       # ---- Build toolchains ----
       - name: Install system build dependencies
