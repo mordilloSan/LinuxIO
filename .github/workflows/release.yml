@@ -9,63 +9,14 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code at tag
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # we need tags & history
 
-      - name: Compute version & prerelease flag
-        id: meta
-        run: |
-          echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-          if echo "${GITHUB_REF_NAME}" | grep -q -- '-rc'; then
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "prerelease=false" >> $GITHUB_OUTPUT
-          fi
-
-      # Try to extract just this version's section from CHANGELOG.md
-      - name: Extract release notes from CHANGELOG.md (section for this tag)
-        id: notes
-        run: |
-          VER="${{ steps.meta.outputs.version }}"
-          if [ -f CHANGELOG.md ]; then
-            awk -v ver="^##[[:space:]]"ver"([[:space:]]|$)" '
-              BEGIN{p=0}
-              $0 ~ ver {p=1}
-              p==1 && /^##[[:space:]]v/ && NR>1 {exit}
-              p==1 {print}
-            ' CHANGELOG.md > release-notes.md || true
-          fi
-
-          if [ ! -s release-notes.md ]; then
-            echo "CHANGELOG section not found; generating commit list…" >&2
-            git fetch --tags --force || true
-            CURR="${VER}"
-            PREV="$(git tag --list 'v*' --sort=-v:refname | grep -v "^${CURR}$" | head -n1 || true)"
-
-            {
-              echo "## ${CURR}"
-              echo
-              if [ -n "$PREV" ]; then
-                git log --no-merges --pretty='* %s (%h) — %an' "$PREV..${CURR}"
-                echo
-                echo "_Compare: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${CURR}_"
-              else
-                git log --no-merges --pretty='* %s (%h) — %an'
-              fi
-            } > release-notes.md
-          fi
-
-      # System deps for CGO/dbus/PAM builds
+      # Install system libs needed for CGO/dbus/PAM builds
       - name: Install system build dependencies
         run: |
           sudo apt-get update
@@ -82,11 +33,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      # Node with npm cache for frontend
-      - name: Use Node 22 with npm cache
+      # Node.js with npm cache for frontend
+      - name: Use Node 24 with npm cache
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -97,7 +48,7 @@ jobs:
       - name: Build frontend (Vite)
         run: make build-vite
 
-      # Go toolchain per backend/go.mod
+      # Use the Go version from your module (backend/go.mod)
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -107,36 +58,24 @@ jobs:
       - name: Download Go modules
         working-directory: backend
         run: |
+          go mod tidy
           go mod download
 
       - name: Build Go backend binary
-        env:
-          GOOS: linux
-          GOARCH: amd64
         run: SKIP_LINT=1 make build-backend
 
       - name: Build Go bridge binary
-        env:
-          GOOS: linux
-          GOARCH: amd64
         run: SKIP_LINT=1 make build-bridge
 
-      - name: Make artifacts executable
-        run: chmod +x linuxio-webserver linuxio-bridge
-
       - name: Create tarball
-        run: tar czvf linuxio-${{ steps.meta.outputs.version }}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
+        run: tar czvf linuxio-${{ github.ref_name }}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ steps.meta.outputs.version }}
-          prerelease: ${{ steps.meta.outputs.prerelease }}
-          body_path: release-notes.md
-          fail_on_unmatched_files: true
           files: |
             linuxio-webserver
             linuxio-bridge
-            linuxio-${{ steps.meta.outputs.version }}-linux-amd64.tar.gz
+            linuxio-${{ github.ref_name }}-linux-amd64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
