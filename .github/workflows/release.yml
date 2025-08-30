@@ -1,57 +1,68 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (leave blank to use latest v*)"
+        required: false
   push:
     tags:
       - "v*"
-  workflow_dispatch: {}  # manual runs allowed; will pick latest tag automatically
 
 permissions:
   contents: write
-
-concurrency:
-  group: release-${{ github.ref || github.run_id }}
-  cancel-in-progress: false
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Determine tag (use pushed tag, else latest tag)
-        id: meta
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: resolve_tag
+        shell: bash
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ] && [ -n "${GITHUB_REF_NAME}" ]; then
+          set -euo pipefail
+          git fetch --tags --force
+
+          # 1) If user provided input on manual run, prefer it
+          if [[ -n "${{ github.event.inputs.tag || '' }}" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          # 2) If this workflow was triggered by a tag push, use that tag
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" && -n "${GITHUB_REF_NAME}" ]]; then
             TAG="${GITHUB_REF_NAME}"
+          # 3) Otherwise, pick the latest v* tag (semver-sort)
           else
-            git init -q .
-            git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
-            git fetch --tags --force --depth=1 origin
-            TAG="$(git describe --tags --abbrev=0 || true)"
+            TAG="$(git tag -l 'v*' --sort=-v:refname | head -n 1 || true)"
           fi
 
-          if [ -z "$TAG" ]; then
-            echo "::error ::No tag found. Run this workflow from a tag push or create a v* tag first."
+          if [[ -z "$TAG" ]]; then
+            echo "No v* tag found. Provide one in workflow_dispatch inputs or push a v* tag."
+            exit 1
+          fi
+
+          # Verify the tag exists locally
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag '$TAG' does not exist in this repo."
             exit 1
           fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG"
 
-      - name: Checkout code at tag
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ steps.meta.outputs.tag }}
+      - name: Checkout tag commit (build the exact sources for the tag)
+        run: |
+          git checkout "${{ steps.resolve_tag.outputs.tag }}"
 
-      # System deps for CGO/dbus/PAM builds
+      # Install system libs needed for CGO/dbus/PAM builds
       - name: Install system build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libpam0g-dev libdbus-1-dev pkg-config build-essential
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          check-latest: true
 
       - name: Cache Go build and mod
         uses: actions/cache@v4
@@ -60,7 +71,8 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('backend/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-
+          restore-keys: |
+            ${{ runner.os }}-go-
 
       # Node for frontend
       - name: Use Node 24 with npm cache
@@ -98,12 +110,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}   # explicitly tell the action which tag
-          name: ${{ steps.meta.outputs.tag }}
-          body_path: CHANGELOG.md                   # or your extracted section file
-          files: |
-            linuxio-webserver
-            linuxio-bridge
-            linuxio-${{ steps.meta.outputs.tag }}-linux-amd64.tar.gz
+          tag_name: ${{ steps.resolve_tag.outputs.tag }}
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
