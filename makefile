@@ -411,17 +411,53 @@ open-pr: generate release-notes
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
-	  $(call _read_and_validate_version); \
-	  echo "🔁 Opening PR: $$REL_BRANCH -> $(DEFAULT_BASE_BRANCH)…"; \
+	  set -euo pipefail; \
+	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
+	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	    echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
+	  fi; \
+	  VERSION="$${BRANCH#dev/}"; \
+	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
+	  \
+	  # If a PR already exists, show it and exit \
+	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
+	  if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
+	    echo "ℹ️  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
+	    gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
+	    exit 0; \
+	  fi; \
+	  \
+	  echo "🔁 About to open PR:"; \
+	  echo "    Title : Release $$VERSION"; \
+	  echo "    Base  : $$BASE_BRANCH"; \
+	  echo "    Head  : $$BRANCH"; \
+	  echo "    Body  : CHANGELOG.md"; \
+	  \
+	  # Ask for confirmation unless YES=1 is set \
+	  if [ -z "$${YES:-}" ]; then \
+	    if [ -t 0 ]; then \
+	      read -r -p "Proceed? [y/N] " REPLY < /dev/tty || true; \
+	      case "$$REPLY" in \
+	        y|Y|yes|YES) ;; \
+	        *) echo "✋ Aborted."; exit 1;; \
+	      esac; \
+	    else \
+	      echo "⚠️  Non-interactive shell. Re-run with YES=1 to auto-confirm."; \
+	      exit 1; \
+	    fi; \
+	  fi; \
+	  \
+	  echo "🔁 Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
 	  gh pr create $(call _repo_flag) \
-	    --base $(DEFAULT_BASE_BRANCH) \
-	    --head "$$REL_BRANCH" \
+	    --base "$$BASE_BRANCH" \
+	    --head "$$BRANCH" \
 	    --title "Release $$VERSION" \
 	    --body-file CHANGELOG.md; \
-	  gh pr view $(call _repo_flag) --web; \
+	  gh pr view $(call _repo_flag) --web || true; \
 	}
 
 # Merge the open release PR (dev/v*) into main, waiting for checks to pass.
+# Github actions will tag and make the release....
 merge-release:
 	@$(call _require_gh)
 	@{ \

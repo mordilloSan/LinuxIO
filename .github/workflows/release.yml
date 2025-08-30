@@ -104,13 +104,21 @@ jobs:
       - name: Make artifacts executable
         run: chmod +x linuxio-webserver linuxio-bridge
 
+      # fix the tarball step variable
       - name: Create tarball
-        run: tar czvf linuxio-${{ steps.meta.outputs.tag }}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
+        run: |
+          tar czvf linuxio-${{ steps.resolve_tag.outputs.tag }}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
 
+      # attach assets to the GitHub Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.resolve_tag.outputs.tag }}
           generate_release_notes: true
+          files: |
+            linuxio-${{ steps.resolve_tag.outputs.tag }}-linux-amd64.tar.gz
+            linuxio-webserver
+            linuxio-bridge
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
