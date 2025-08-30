@@ -6,9 +6,9 @@ on:
       tag:
         description: "Tag to release (leave blank to use latest v*)"
         required: false
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: ["Tag on merge to main"]
+    types: [completed]
 
 permissions:
   contents: write
