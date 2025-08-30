@@ -422,6 +422,7 @@ open-pr: generate release-notes
 	}
 
 # Merge the open release PR (dev/v*) into main, waiting for checks to pass.
+# Github actions will tag and make the release....
 merge-release:
 	@$(call _require_gh)
 	@{ \
