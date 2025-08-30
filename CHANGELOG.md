@@ -1,5 +1,6 @@
 ## v0.2.2 — 2025-08-30
 
+* docs(changelog): add notes for v0.2.2 (acd66b8) — MordilloSan
 * docs(changelog): add notes for v0.2.2 (2a41273) — MordilloSan
 * docs(changelog): add notes for v0.2.2 (5037b09) — MordilloSan
 * docs(changelog): add notes for v0.2.2 (43f27fe) — MordilloSan
