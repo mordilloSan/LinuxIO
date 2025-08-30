@@ -50,10 +50,7 @@ jobs:
 
       # Use the Go version from your module (backend/go.mod)
       - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-          check-latest: true
+        run: make ensure-go
 
       - name: Download Go modules
         working-directory: backend
