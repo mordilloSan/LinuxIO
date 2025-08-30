@@ -76,5 +76,6 @@ jobs:
             linuxio-webserver
             linuxio-bridge
             linuxio-${{ github.ref_name }}-linux-amd64.tar.gz
+          body_path: CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

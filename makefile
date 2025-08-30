@@ -39,6 +39,7 @@ GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
 # -------- Release flow helpers (gh CLI) --------
 DEFAULT_BASE_BRANCH := main
 REPO ?=              # optional owner/name; gh will infer from git remote if empty
+current_rel_branch = $(shell git branch --show-current)
 
 define _require_clean
 	@if ! git diff --quiet || ! git diff --cached --quiet; then \
@@ -374,8 +375,39 @@ start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
 	  echo "✅ Ready on branch $$REL_BRANCH"; \
 	}
 
-## Open PR dev/<version> -> main (requires gh)
-open-pr: generate
+# Prepend a section for the current dev/v* branch into CHANGELOG.md
+release-notes:
+	@set -euo pipefail; \
+	BRANCH="$$(git branch --show-current)"; \
+	if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	  echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
+	fi; \
+	VERSION="$${BRANCH#dev/}"; \
+	DATE="$$(date -u +%Y-%m-%d)"; \
+	git fetch --tags --force >/dev/null 2>&1 || true; \
+	PREV="$$(git tag --list 'v*' --sort=-v:refname | head -n1)"; \
+	REPO_SLUG="$$(git config --get remote.origin.url | sed -E 's#(git@|https://)github\.com[:/](.+)\.git#\2#')"; \
+	{ \
+	  echo "## $$VERSION — $$DATE"; \
+	  echo; \
+	  if [ -z "$$PREV" ]; then \
+	    echo "_First tagged release; including commits on $$BRANCH_"; \
+	    echo; \
+	    git log --no-merges --pretty='* %s (%h) — %an' origin/main..HEAD || git log --no-merges --pretty='* %s (%h) — %an'; \
+	  else \
+	    git log --no-merges --pretty='* %s (%h) — %an' "$$PREV..$$BRANCH"; \
+	    echo; \
+	    echo "_Compare: https://github.com/$$REPO_SLUG/compare/$${PREV}...$${VERSION}_"; \
+	  fi; \
+	  echo; \
+	} > .changelog.new; \
+	if [ -f CHANGELOG.md ]; then cat CHANGELOG.md >> .changelog.new; fi; \
+	mv .changelog.new CHANGELOG.md; \
+	git add CHANGELOG.md; \
+	git commit -m "docs(changelog): add notes for $$VERSION" || echo "ℹ️  No changes to commit."
+
+# Open PR dev/<version> -> main (requires gh)
+open-pr: generate release-notes
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
@@ -385,22 +417,35 @@ open-pr: generate
 	    --base $(DEFAULT_BASE_BRANCH) \
 	    --head "$$REL_BRANCH" \
 	    --title "Release $$VERSION" \
-	    --body "Automated release PR for $$VERSION."; \
+	    --body-file CHANGELOG.md; \
 	  gh pr view $(call _repo_flag) --web; \
 	}
 
-promote-release:
-	@if [ -z "$(VERSION)" ]; then \
-		read -p "Enter version (e.g. v1.2.3): " VERSION; \
-		if [ -z "$$VERSION" ]; then echo "No version given. Exiting."; exit 1; fi; \
-	fi; \
-	git checkout main && \
-	git pull && \
-	git merge dev && \
-	git push && \
-	git tag -a $${VERSION:-$(VERSION)} -m "Release $${VERSION:-$(VERSION)}" && \
-	git push origin $${VERSION:-$(VERSION)} && \
-	echo "✅ Merged dev into main and released $${VERSION:-$(VERSION)}!"
+# Merge the open release PR (dev/v*) into main.
+merge-release: 
+	@$(call _require_gh)
+	@{ \
+	  set -euo pipefail; \
+	  BRANCH="$(current_rel_branch)"; \
+	  if ! echo $$BRANCH | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	    echo "⚠️  Current branch '$$BRANCH' is not a dev/v* release branch."; \
+	    echo "    Checkout your release branch (e.g. dev/v1.2.3) or pass PR number via PR=<num>."; \
+	  fi; \
+	  if [ -n "$$PR" ]; then \
+	    PRNUM="$$PR"; \
+	  else \
+	    PRNUM="$$(gh pr list --base main --head $$BRANCH --state open --json number --jq '.[0].number' || true)"; \
+	  fi; \
+	  if [ -z "$$PRNUM" ]; then \
+	    echo "❌ No open PR from $$BRANCH to main found."; exit 1; \
+	  fi; \
+	  echo "🔀 Merging PR #$$PRNUM into main…"; \
+	  gh pr merge $$PRNUM --merge --delete-branch; \
+	  VERSION="$${BRANCH#dev/}"; \
+	  echo "✅ Merged. Tagging will be created by CI as '$$VERSION'."; \
+	  echo "📦 Release build will start after the tag is pushed by the workflow."; \
+	}
+
 
 help:
 	@$(PRINTC) ""
