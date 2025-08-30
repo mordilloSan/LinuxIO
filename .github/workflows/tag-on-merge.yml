@@ -8,10 +8,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: tag-on-merge-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: false
-
 jobs:
   tag-if-release:
     if: >
@@ -24,15 +20,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
-          token: ${{ secrets.GH_PUSH_TOKEN }}
-
-
-      - name: Ensure PAT is available (so downstream workflows will trigger)
-        run: |
-          if [ -z "${{ secrets.GH_PUSH_TOKEN }}" ]; then
-            echo "::error::Missing GH_PUSH_TOKEN secret (needs repo + workflow scopes)."
-            exit 1
-          fi
 
       - name: Compute version from branch name
         id: v
@@ -46,9 +33,7 @@ jobs:
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: Create tag if missing (push with PAT so Release workflow triggers)
-        env:
-          PAT: ${{ secrets.GH_PUSH_TOKEN }}
+      - name: Create tag if missing
         run: |
           VERSION="${{ steps.v.outputs.version }}"
           if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
@@ -56,4 +41,4 @@ jobs:
             exit 0
           fi
           git tag -a "$VERSION" -m "Release $VERSION"
-          git push "https://x-access-token:${PAT}@github.com/${{ github.repository }}.git" "$VERSION"
+          git push origin "$VERSION"
