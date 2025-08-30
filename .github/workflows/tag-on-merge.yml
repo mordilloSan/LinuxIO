@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: tag-on-merge-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   tag-if-release:
     if: >
@@ -20,6 +24,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
+          token: ${{ secrets.GH_PUSH_TOKEN }}
 
       - name: Compute version from branch name
         id: v
@@ -33,7 +38,9 @@ jobs:
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: Create tag if missing
+      - name: Create tag if missing (push with PAT)
+        env:
+          PAT: ${{ secrets.GH_PUSH_TOKEN }}
         run: |
           VERSION="${{ steps.v.outputs.version }}"
           if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
@@ -41,4 +48,5 @@ jobs:
             exit 0
           fi
           git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin "$VERSION"
+          # Push via PAT so it triggers the Release workflow
+          git push "https://x-access-token:${PAT}@github.com/${{ github.repository }}.git" "$VERSION"
