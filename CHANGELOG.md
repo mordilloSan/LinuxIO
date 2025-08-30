@@ -1,3 +1,10 @@
+## v0.2.5 — 2025-08-30
+
+* up (2a63117) — MordilloSan
+* update (ee3ef0f) — MordilloSan
+
+_Compare: https://github.com/https://github.com/mordilloSan/LinuxIO/compare/v0.2.4...v0.2.5_
+
 ## v0.2.4 — 2025-08-30
 
 * up (01c0c3b) — MordilloSan
