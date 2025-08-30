@@ -23,7 +23,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: main  # use default GITHUB_TOKEN here
+          ref: main
+          token: ${{ secrets.GH_PUSH_TOKEN }}
+
 
       - name: Ensure PAT is available (so downstream workflows will trigger)
         run: |
