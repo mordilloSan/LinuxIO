@@ -75,8 +75,14 @@ func (sc *wsSafeConn) IsClosed() bool {
 func WebSocketHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
-		c.AbortWithStatus(http.StatusUnauthorized)
-		return
+		// Fallback attempt (optional)
+		if s, err := session.ValidateSessionFromRequest(c.Request); err == nil {
+			sess = s
+			c.Set("session", s)
+		} else {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
 	}
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

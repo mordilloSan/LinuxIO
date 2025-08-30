@@ -69,7 +69,7 @@ func BuildRouter(cfg Config) *gin.Engine {
 	config.RegisterThemeRoutes(r.Group("/theme", AuthMiddleware()))
 
 	// --- WebSocket ---
-	r.GET("/ws", WebSocketHandler, AuthMiddleware())
+	r.GET("/ws", WebSocketHandler)
 
 	// --- Filebrowser (auth protected) ---
 	r.Any("/navigator/*proxyPath", AuthMiddleware(), NavigatorDefaultsMiddleware(), FilebrowserReverseProxy(cfg.FilebrowserSecret))
