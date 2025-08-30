@@ -1,5 +1,6 @@
 ## Changelog for v0.2.2
 
+* chore(release): add release notes for v0.2.2 (364b838) — MordilloSan
 * docs(changelog): add notes for v0.2.2 (bc2bc48) — MordilloSan
 * chore(release): add release notes for v0.2.2 (ed70660) — MordilloSan
 * node update on workflow (cbd74d6) — MordilloSan
