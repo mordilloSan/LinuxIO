@@ -458,6 +458,7 @@ open-pr: generate release-notes
 
 # Merge the open release PR (dev/v*) into main, waiting for checks to pass.
 # Github actions will tag and make the release....
+# Merge the open release PR (dev/v*) into main, then follow the Release workflow with rich status.
 merge-release:
 	@$(call _require_gh)
 	@{ \
@@ -475,36 +476,95 @@ merge-release:
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
 	  \
-	  # ---- Watch the Release workflow run ---- \
-	  WF_NAME="Release (tag + build)"; \
+	  WF_NAME="$${WF_NAME:-Release (tag + build)}"; \
 	  REPO_SLUG="$$(git config --get remote.origin.url | sed -E 's#(git@|https://)github\.com[:/](.+)\.git#\2#')"; \
-	  echo "⏳ Waiting for workflow '$$WF_NAME' to start…"; \
-	  deadline=$$(( $$(date +%s) + 180 )); \
+	  echo "⏳ Waiting for workflow '$$WF_NAME' on 'main' to start…"; \
+	  deadline=$$(( $$(date +%s) + 240 )); \
 	  run_id=""; \
 	  while [ $$(date +%s) -lt $$deadline ]; do \
-	    run_id="$$(gh run list --repo "$$REPO_SLUG" --workflow "$$WF_NAME" --branch main --status queued,in_progress --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"; \
-	    [ -n "$$run_id" ] && break; \
+	    run_id="$$(gh run list --repo "$$REPO_SLUG" --workflow "$$WF_NAME" --branch main --event pull_request --json databaseId,status,createdAt -q 'map(select(.status=="in_progress" or .status=="queued")) | sort_by(.createdAt) | last.databaseId' 2>/dev/null || true)"; \
+	    [ -n "$$run_id" ] && [ "$$run_id" != "null" ] && break; \
 	    sleep 5; \
 	  done; \
-	  if [ -z "$$run_id" ]; then \
-	    # Fallback: pick the most recent run of that workflow on main \
+	  if [ -z "$$run_id" ] || [ "$$run_id" = "null" ]; then \
+	    # Fallback to latest run of that workflow on main \
 	    run_id="$$(gh run list --repo "$$REPO_SLUG" --workflow "$$WF_NAME" --branch main --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"; \
 	  fi; \
-	  if [ -z "$$run_id" ]; then \
+	  if [ -z "$$run_id" ] || [ "$$run_id" = "null" ]; then \
 	    echo "⚠️  Could not find a workflow run to watch. Check Actions manually."; \
 	    exit 0; \
 	  fi; \
 	  echo "🛰  Following workflow $$WF_NAME (run $$run_id)…"; \
-	  gh run watch --repo "$$REPO_SLUG" "$$run_id"; \
-	  concl="$$(gh run view --repo "$$REPO_SLUG" "$$run_id" --json conclusion -q .conclusion)"; \
+	  \
+	  fmt_status() { \
+	    case "$$1" in queued) echo "⏳ queued" ;; in_progress) echo "🔵 running" ;; completed) echo "✅ done" ;; *) echo "$$1" ;; esac; \
+	  }; \
+	  fmt_conc() { \
+	    case "$$1" in success) echo "✅ success" ;; failure) echo "❌ failure" ;; cancelled) echo "🚫 cancelled" ;; timed_out) echo "⏱ timeout" ;; *) echo "$${1:-—}" ;; esac; \
+	  }; \
+	  secs() { \
+	    # prints N/A or seconds between two RFC3339 timestamps \
+	    [ -z "$$1" ] && { echo "—"; return; }; \
+	    if [ -z "$$2" ]; then echo "—"; else \
+	      python3 - <<'PY' "$$1" "$$2"; \
+from datetime import datetime; import sys; \
+fmt="%Y-%m-%dT%H:%M:%SZ"; s=datetime.strptime(sys.argv[1],fmt); e=datetime.strptime(sys.argv[2],fmt); print(int((e-s).total_seconds())); \
+PY \
+	    fi; \
+	  }; \
+	  \
+	  # Live poll jobs + steps; also run a passive watcher to set proper exit status \
+	  ( gh run watch --repo "$$REPO_SLUG" "$$run_id" --exit-status ) & WATCH_PID=$$!; \
+	  last_hash=""; \
+	  while :; do \
+	    run_json="$$(gh run view --repo "$$REPO_SLUG" "$$run_id" --json status,conclusion,name,headBranch,createdAt,updatedAt,jobs 2>/dev/null || true)"; \
+	    [ -z "$$run_json" ] && echo "⚠️  Lost connection to run; continuing…" || true; \
+	    status="$$(echo "$$run_json" | jq -r '.status // "unknown"')" ; \
+	    conc="$$(echo "$$run_json" | jq -r '.conclusion // ""')" ; \
+	    jobs_json="$$(echo "$$run_json" | jq -c '.jobs // []')" ; \
+	    cur_hash="$$(echo "$$jobs_json" | sha1sum | cut -d' ' -f1)"; \
+	    if [ "$$cur_hash" != "$$last_hash" ]; then \
+	      clear; \
+	      echo "📦 Workflow: $$WF_NAME  |  Run: $$run_id  |  Status: $$(fmt_status "$$status")  $$( [ -n "$$conc" ] && echo "| Conclusion: $$(fmt_conc "$$conc")" )"; \
+	      echo ""; \
+	      printf "%-3s  %-36s  %-12s  %-12s  %-8s\n" "#" "Job" "Status" "Conclusion" "Secs"; \
+	      echo "----  ------------------------------------  ------------  ------------  -------"; \
+	      idx=1; \
+	      echo "$$jobs_json" | jq -r '.[] | "\(.databaseId)\t\(.name)\t\(.status)\t\(.conclusion // "")\t\(.startedAt // "")\t\(.completedAt // "")"' | while IFS=$$'\t' read -r jid jname jst jconc jstart jend; do \
+	        dur="$$(secs "$$jstart" "$$jend")"; \
+	        printf "%-3s  %-36s  %-12s  %-12s  %-8s\n" "$$idx" "$$jname" "$$(fmt_status "$$jst")" "$$(fmt_conc "$$jconc")" "$$dur"; \
+	        idx=$$((idx+1)); \
+	      done; \
+	      echo ""; \
+	      echo "🧭 Steps (running jobs):"; \
+	      echo "$$jobs_json" | jq -r '.[] | select(.status=="in_progress") | .databaseId' | while read -r jid; do \
+	        jname="$$(echo "$$jobs_json" | jq -r ".[] | select(.databaseId==$$jid) | .name")"; \
+	        echo "  • $$jname"; \
+	        gh api repos/"$$REPO_SLUG"/actions/jobs/"$$jid" -q '.steps[] | "     - \(.name): \(.status)\t\(.conclusion // "")"' 2>/dev/null || true; \
+	      done; \
+	      last_hash="$$cur_hash"; \
+	    fi; \
+	    [ "$$status" = "completed" ] && break; \
+	    sleep 5; \
+	  done; \
+	  wait "$$WATCH_PID" || true; \
+	  concl="$$(gh run view --repo "$$REPO_SLUG" "$$run_id" --json conclusion -q .conclusion 2>/dev/null || echo "")"; \
 	  if [ "$$concl" != "success" ]; then \
-	    echo "❌ Release workflow failed (conclusion=$$concl)."; \
+	    echo ""; echo "❌ Release workflow failed (conclusion=$$concl). Fetching failed job logs…"; \
+	    # Print logs for failed jobs \
+	    failed_ids="$$(gh run view --repo "$$REPO_SLUG" "$$run_id" --json jobs -q '.jobs[] | select(.conclusion=="failure") | .databaseId' 2>/dev/null || true)"; \
+	    if [ -n "$$failed_ids" ]; then \
+	      echo "$$failed_ids" | while read -r jid; do \
+	        jname="$$(gh run view --repo "$$REPO_SLUG" "$$run_id" --json jobs -q ".jobs[] | select(.databaseId==$$jid) | .name")"; \
+	        echo ""; echo "==== Logs for failed job: $$jname (id=$$jid) ===="; \
+	        gh run view --repo "$$REPO_SLUG" "$$run_id" --job "$$jid" --log || true; \
+	      done; \
+	    fi; \
 	    exit 1; \
 	  fi; \
 	  echo "🎉 Release workflow succeeded for $$VERSION"; \
 	  gh release view "$$VERSION" --repo "$$REPO_SLUG" --web || true; \
 	}
-
 
 help:
 	@$(PRINTC) ""
