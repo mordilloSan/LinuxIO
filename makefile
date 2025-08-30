@@ -454,7 +454,7 @@ help:
 
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript"
+	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint"
 	@$(PRINTC) ""
@@ -477,13 +477,18 @@ help:
 	@$(PRINTC) ""
 
 	@$(PRINTC) "$(COLOR_CYAN)  Release flow$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> off main (pushes upstream)"
-	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR from dev/<version> into main (uses gh)"
-	@$(PRINTC) "$(COLOR_GREEN)    make promote-release  $(COLOR_RESET) (Legacy) Merge dev→main, tag, and push release"
+	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> from main (pushes upstream)"
+	@$(PRINTC) "$(COLOR_GREEN)    make release-notes    $(COLOR_RESET) Prepend CHANGELOG section for current dev/<version>"
+	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR dev/<version> → main (uses gh)"
+	@$(PRINTC) "$(COLOR_GREEN)    make merge-release    $(COLOR_RESET) Wait for checks, merge PR to main, delete branch"
 	@$(PRINTC) ""
-	@$(PRINTC) "  💡 Tip: Use a workflow to tag on merge of dev/v* → main so your 'Release' workflow (on tags v*) triggers automatically."
+	@$(PRINTC) "  💡 Tip: Tag on merge of dev/v* → main via CI, then let your 'Release' workflow (on tags v*) publish artifacts."
 	@$(PRINTC) ""
 
-.PHONY: default help clean run build build-vite build-backend build-bridge \
-        dev dev-prep setup test lint tsc golint ensure-node ensure-go ensure-golint \
-        promote-release start-dev open-pr
+.PHONY: \
+	default help clean run \
+	build build-vite build-backend build-bridge \
+	dev dev-prep setup test lint tsc golint \
+	ensure-node ensure-go ensure-golint \
+	generate \
+	start-dev release-notes open-pr merge-release
