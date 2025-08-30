@@ -422,30 +422,30 @@ open-pr: generate release-notes
 	}
 
 # Merge the open release PR (dev/v*) into main.
-merge-release: 
+merge-release:
 	@$(call _require_gh)
 	@{ \
 	  set -euo pipefail; \
-	  BRANCH="$(current_rel_branch)"; \
-	  if ! echo $$BRANCH | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
+	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
 	    echo "⚠️  Current branch '$$BRANCH' is not a dev/v* release branch."; \
 	    echo "    Checkout your release branch (e.g. dev/v1.2.3) or pass PR number via PR=<num>."; \
+	    exit 1; \
 	  fi; \
-	  if [ -n "$$PR" ]; then \
-	    PRNUM="$$PR"; \
+	  if [ -n "$${PR:-}" ]; then \
+	    PRNUM="$${PR}"; \
 	  else \
-	    PRNUM="$$(gh pr list --base main --head $$BRANCH --state open --json number --jq '.[0].number' || true)"; \
+	    PRNUM="$$(gh pr list --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
 	  fi; \
-	  if [ -z "$$PRNUM" ]; then \
+	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then \
 	    echo "❌ No open PR from $$BRANCH to main found."; exit 1; \
 	  fi; \
 	  echo "🔀 Merging PR #$$PRNUM into main…"; \
-	  gh pr merge $$PRNUM --merge --delete-branch; \
+	  gh pr merge "$$PRNUM" --merge --delete-branch; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "✅ Merged. Tagging will be created by CI as '$$VERSION'."; \
 	  echo "📦 Release build will start after the tag is pushed by the workflow."; \
 	}
-
 
 help:
 	@$(PRINTC) ""
