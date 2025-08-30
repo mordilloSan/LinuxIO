@@ -1,7 +1,7 @@
 # Main flags
 VITE_DEV_PORT = 3000
 SERVER_PORT = 8080
-VERBOSE ?= false
+VERBOSE ?= true
 
 # Go and Node.js versions
 GO_VERSION      = 1.25.0
@@ -181,14 +181,14 @@ setup: ensure-go ensure-node ensure-golint
 	'
 	@echo "✅ Frontend dependencies installed!"
 
-lint:
+lint: setup
 	@echo "🔍 Running ESLint..."
 	@bash -c '\
 		cd frontend && \
 		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!" \
 	'
 
-tsc:
+tsc: setup
 	@echo "🔍 Running TypeScript type checks..."
 	@bash -c '\
 		cd frontend && \
