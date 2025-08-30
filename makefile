@@ -548,8 +548,6 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR dev/<version> → main (uses gh)"
 	@$(PRINTC) "$(COLOR_GREEN)    make merge-release    $(COLOR_RESET) Wait for checks, merge PR to main, delete branch"
 	@$(PRINTC) ""
-	@$(PRINTC) "  💡 Tip: Tag on merge of dev/v* → main via CI, then let your 'Release' workflow (on tags v*) publish artifacts."
-	@$(PRINTC) ""
 
 .PHONY: \
 	default help clean run \
