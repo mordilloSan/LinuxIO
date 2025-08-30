@@ -1,28 +1,58 @@
 name: Release
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*"
+  workflow_dispatch: {}  # manual runs allowed; will pick latest tag automatically
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.ref || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Determine tag (use pushed tag, else latest tag)
+        id: meta
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ] && [ -n "${GITHUB_REF_NAME}" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            git init -q .
+            git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+            git fetch --tags --force --depth=1 origin
+            TAG="$(git describe --tags --abbrev=0 || true)"
+          fi
 
-      # Install system libs needed for CGO/dbus/PAM builds
+          if [ -z "$TAG" ]; then
+            echo "::error ::No tag found. Run this workflow from a tag push or create a v* tag first."
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout code at tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.meta.outputs.tag }}
+
+      # System deps for CGO/dbus/PAM builds
       - name: Install system build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libpam0g-dev libdbus-1-dev pkg-config build-essential
 
-      # Cache Go build outputs and module cache
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          check-latest: true
+
       - name: Cache Go build and mod
         uses: actions/cache@v4
         with:
@@ -30,10 +60,9 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('backend/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          restore-keys: ${{ runner.os }}-go-
 
-      # Node.js with npm cache for frontend
+      # Node for frontend
       - name: Use Node 24 with npm cache
         uses: actions/setup-node@v4
         with:
@@ -48,34 +77,33 @@ jobs:
       - name: Build frontend (Vite)
         run: make build-vite
 
-      # Use the Go version from your module (backend/go.mod)
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-          check-latest: true
-
       - name: Download Go modules
         working-directory: backend
-        run: |
-          go mod tidy
-          go mod download
+        run: go mod download
 
       - name: Build Go backend binary
+        env: { GOOS: linux, GOARCH: amd64 }
         run: SKIP_LINT=1 make build-backend
 
       - name: Build Go bridge binary
+        env: { GOOS: linux, GOARCH: amd64 }
         run: SKIP_LINT=1 make build-bridge
 
+      - name: Make artifacts executable
+        run: chmod +x linuxio-webserver linuxio-bridge
+
       - name: Create tarball
-        run: tar czvf linuxio-${{ github.ref_name }}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
+        run: tar czvf linuxio-${{ steps.meta.outputs.tag }}-linux-amd64.tar.gz linuxio-webserver linuxio-bridge
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.meta.outputs.tag }}   # explicitly tell the action which tag
+          name: ${{ steps.meta.outputs.tag }}
+          body_path: CHANGELOG.md                   # or your extracted section file
           files: |
             linuxio-webserver
             linuxio-bridge
-            linuxio-${{ github.ref_name }}-linux-amd64.tar.gz
+            linuxio-${{ steps.meta.outputs.tag }}-linux-amd64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
