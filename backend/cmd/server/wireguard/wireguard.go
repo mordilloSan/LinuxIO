@@ -17,10 +17,7 @@ import (
 // Always: Unmarshal into ipc.Response, then unmarshal Output.
 
 func WireguardListInterfaces(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	data, err := bridge.CallWithSession(sess, "wireguard", "list_interfaces", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -44,10 +41,7 @@ func WireguardListInterfaces(c *gin.Context) {
 }
 
 func WireguardAddInterface(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	var req struct {
 		Name       string           `json:"name"`
 		Address    []string         `json:"address"`
@@ -104,10 +98,7 @@ func WireguardAddInterface(c *gin.Context) {
 }
 
 func WireguardRemoveInterface(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	data, err := bridge.CallWithSession(sess, "wireguard", "remove_interface", []string{name})
 	if err != nil {
@@ -127,10 +118,7 @@ func WireguardRemoveInterface(c *gin.Context) {
 }
 
 func WireguardListPeers(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	data, err := bridge.CallWithSession(sess, "wireguard", "list_peers", []string{name})
 	if err != nil {
@@ -155,10 +143,7 @@ func WireguardListPeers(c *gin.Context) {
 }
 
 func WireguardAddPeer(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	args := []string{name}
 	data, err := bridge.CallWithSession(sess, "wireguard", "add_peer", args)
@@ -179,10 +164,7 @@ func WireguardAddPeer(c *gin.Context) {
 }
 
 func WireguardRemovePeer(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	peername := c.Param("peername")
 	args := []string{name, peername}
@@ -204,10 +186,7 @@ func WireguardRemovePeer(c *gin.Context) {
 }
 
 func WireguardPeerQRCode(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	peername := c.Param("peername")
 	args := []string{name, peername}
@@ -235,10 +214,7 @@ func WireguardPeerQRCode(c *gin.Context) {
 }
 
 func WireguardPeerConfigDownload(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	interfaceName := c.Param("name")
 	peerName := c.Param("peername")
 	args := []string{interfaceName, peerName}
@@ -271,10 +247,7 @@ func WireguardPeerConfigDownload(c *gin.Context) {
 }
 
 func WireguardGetKeys(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	data, err := bridge.CallWithSession(sess, "wireguard", "get_keys", []string{name})
 	if err != nil {
@@ -300,10 +273,7 @@ func WireguardGetKeys(c *gin.Context) {
 
 // PUT /wireguard/interface/:name/up
 func WireguardUpInterface(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	data, err := bridge.CallWithSession(sess, "wireguard", "up_interface", []string{name})
 	if err != nil {
@@ -329,10 +299,7 @@ func WireguardUpInterface(c *gin.Context) {
 
 // PUT /wireguard/interface/:name/down
 func WireguardDownInterface(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	data, err := bridge.CallWithSession(sess, "wireguard", "down_interface", []string{name})
 	if err != nil {

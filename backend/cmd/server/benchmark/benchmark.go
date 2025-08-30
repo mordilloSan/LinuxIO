@@ -29,12 +29,6 @@ type GroupedResults struct {
 	Other     []gin.H `json:"other"`
 }
 
-func RegisterDebugRoutes(router *gin.Engine, env string) {
-	if env != "production" {
-		router.GET("/debug/benchmark", benchmarkHandler(router))
-	}
-}
-
 func benchmarkHandler(router *gin.Engine) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cookie, err := c.Cookie("session_id")

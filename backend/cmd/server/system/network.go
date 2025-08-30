@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/internal/session"
 	gopsnet "github.com/shirou/gopsutil/v4/net"
 )
 
@@ -102,11 +101,6 @@ func StartSimpleNetInfoSampler() {
 }
 
 func getNetworks(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
-
 	simpleNetStatsLock.RLock()
 	infos := make([]SimpleNetInfo, 0, len(simpleNetStats))
 	for _, v := range simpleNetStats {

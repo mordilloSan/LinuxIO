@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,14 +14,16 @@ import (
 	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
 
-// ===== Config & model =====
+////////////////////////////////////////////////////////////////////////////////
+// CONFIG & MODELS
+////////////////////////////////////////////////////////////////////////////////
 
 type SessionConfig struct {
-	IdleTimeout          time.Duration // Sliding idle window (extended by activity, capped by absolute)
-	AbsoluteTimeout      time.Duration // Absolute maximum lifetime since creation (hard cap)
-	RefreshInterval      time.Duration // Avoids refreshing on every request; only extend if at least this period passed
-	SingleSessionPerUser bool          // If true, a new login for a user revokes any previous sessions
-	GCInterval           time.Duration // GC cadence
+	IdleTimeout          time.Duration
+	AbsoluteTimeout      time.Duration
+	RefreshInterval      time.Duration
+	SingleSessionPerUser bool
+	GCInterval           time.Duration
 }
 
 var defaultConfig = SessionConfig{
@@ -32,9 +35,17 @@ var defaultConfig = SessionConfig{
 }
 
 type User struct {
-	Username string // Username (unique key)
-	UID      string // User ID
-	GID      string // Group ID
+	Username string
+	UID      string
+	GID      string
+}
+
+type Timing struct {
+	CreatedAt     time.Time
+	LastAccess    time.Time
+	LastRefresh   time.Time
+	IdleUntil     time.Time
+	AbsoluteUntil time.Time
 }
 
 type Session struct {
@@ -42,37 +53,41 @@ type Session struct {
 	User         User
 	Privileged   bool
 	BridgeSecret string
-
-	// Timing
-	CreatedAt     time.Time
-	LastAccess    time.Time
-	LastRefresh   time.Time
-	IdleUntil     time.Time // sliding
-	AbsoluteUntil time.Time // cap
+	Timing       Timing
 }
 
-// ===== Actor state =====
+////////////////////////////////////////////////////////////////////////////////
+// STORE (mutex-based)
+////////////////////////////////////////////////////////////////////////////////
 
 type store struct {
+	mu        sync.RWMutex
 	cfg       SessionConfig
-	sessions  map[string]Session             // id -> session
-	userIndex map[string]map[string]struct{} // userID -> set(sessionID)
+	sessions  map[string]Session             // sessionID -> Session
+	userIndex map[string]map[string]struct{} // username -> set(sessionID)
 	gcTicker  *time.Ticker
 	closing   chan struct{}
 }
 
-// Public state
 var (
-	mem        *store
-	SessionMux = make(chan func(*store)) // actor channel
+	mem               *store
+	ErrNotInitialized = errors.New("session: not initialized")
 )
 
-// ===== Init / Shutdown =====
+////////////////////////////////////////////////////////////////////////////////
+// INIT & SHUTDOWN
+////////////////////////////////////////////////////////////////////////////////
 
-func Init(cfg *SessionConfig) (shutdown func(), err error) {
-	if mem != nil {
-		return nil, errors.New("session: already initialized")
+func Init(cfgs ...*SessionConfig) (shutdown func()) {
+	var cfg *SessionConfig
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
 	}
+	if mem != nil {
+		logger.Warnf("session init: already initialized")
+		return func() {}
+	}
+
 	final := defaultConfig
 	if cfg != nil {
 		if cfg.IdleTimeout > 0 {
@@ -97,38 +112,27 @@ func Init(cfg *SessionConfig) (shutdown func(), err error) {
 		closing:   make(chan struct{}),
 	}
 
-	// Actor
-	go func() {
-		for f := range SessionMux {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logger.Errorf("Panic in session actor: %v", r)
-					}
-				}()
-				f(mem)
-			}()
-		}
-	}()
+	logger.Infof("🔑 Session system initialized (idle=%v, absolute=%v, refresh=%v, singleUser=%v, gc=%v)",
+		final.IdleTimeout, final.AbsoluteTimeout, final.RefreshInterval, final.SingleSessionPerUser, final.GCInterval)
 
-	// GC
+	// Periodic GC for expired sessions (GC-only)
 	mem.gcTicker = time.NewTicker(mem.cfg.GCInterval)
 	go func() {
 		for {
 			select {
 			case <-mem.gcTicker.C:
 				now := time.Now()
-				SessionMux <- func(s *store) {
-					collected := 0
-					for id, sess := range s.sessions {
-						if expired(&sess, now) {
-							deleteSessionLocked(s, id)
-							collected++
-						}
+				collected := 0
+				mem.mu.Lock()
+				for id, sess := range mem.sessions {
+					if expired(&sess, now) {
+						deleteSessionLocked(mem, id) // expects mem.mu held
+						collected++
 					}
-					if collected > 0 {
-						logger.Infof("Garbage collected %d expired sessions", collected)
-					}
+				}
+				mem.mu.Unlock()
+				if collected > 0 {
+					logger.Infof("🧽 Session GC: collected %d expired session(s)", collected)
 				}
 			case <-mem.closing:
 				return
@@ -141,15 +145,19 @@ func Init(cfg *SessionConfig) (shutdown func(), err error) {
 		if mem.gcTicker != nil {
 			mem.gcTicker.Stop()
 		}
-	}, nil
+		logger.Infof("🧹 Session system shut down")
+	}
 }
 
-// ===== internals =====
+////////////////////////////////////////////////////////////////////////////////
+// INTERNAL HELPERS
+////////////////////////////////////////////////////////////////////////////////
 
 func expired(sess *Session, now time.Time) bool {
-	return now.After(sess.AbsoluteUntil) || now.After(sess.IdleUntil)
+	return now.After(sess.Timing.AbsoluteUntil) || now.After(sess.Timing.IdleUntil)
 }
 
+// deleteSessionLocked expects s.mu to be held (write lock).
 func deleteSessionLocked(s *store, id string) {
 	old, ok := s.sessions[id]
 	if !ok {
@@ -182,283 +190,235 @@ func randID(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// ===== Public API =====
-
-// CreateSession creates a new session, returns error if already exists.
-// `duration` is treated as absolute cap if provided; idle timeout comes from config.
-func CreateSession(id string, user User, duration time.Duration, privileged bool) error {
+// updateSession expects mem != nil; it locks internally.
+func updateSession(id string, fn func(*Session) error) error {
 	if mem == nil {
-		_, _ = Init(nil)
+		return ErrNotInitialized
 	}
-	done := make(chan error, 1)
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
 
-	SessionMux <- func(s *store) {
-		if id == "" {
-			var err error
-			id, err = randID(16)
-			if err != nil {
-				done <- fmt.Errorf("failed generating session id: %w", err)
-				return
-			}
-		}
-		if _, exists := s.sessions[id]; exists {
-			done <- fmt.Errorf("session already exists for ID %s", id)
-			return
-		}
+	sess, exists := mem.sessions[id]
+	if !exists {
+		return fmt.Errorf("session ID '%s' not found", id)
+	}
+	if err := fn(&sess); err != nil {
+		return err
+	}
+	mem.sessions[id] = sess
+	return nil
+}
 
-		now := time.Now()
-		abs := s.cfg.AbsoluteTimeout
-		if duration > 0 && duration < abs {
-			abs = duration
+func getSessionCopy(id string) (*Session, error) {
+	if mem == nil {
+		return nil, ErrNotInitialized
+	}
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
+
+	sess, exists := mem.sessions[id]
+	if !exists {
+		return nil, fmt.Errorf("session not found")
+	}
+	copy := sess
+	return &copy, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PUBLIC API: SESSION LIFECYCLE
+////////////////////////////////////////////////////////////////////////////////
+
+func CreateSession(id string, user User, privileged bool) (*Session, error) {
+	if mem == nil {
+		return nil, ErrNotInitialized
+	}
+
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
+
+	// Generate ID if needed
+	if id == "" {
+		var err error
+		id, err = randID(16)
+		if err != nil {
+			return nil, fmt.Errorf("failed generating session id: %w", err)
 		}
-		bridgeSecret := utils.GenerateSecretKey(32)
-		sess := Session{
-			SessionID:     id,
-			User:          user,
-			Privileged:    privileged,
-			BridgeSecret:  bridgeSecret,
+	}
+	if _, exists := mem.sessions[id]; exists {
+		return nil, fmt.Errorf("session already exists for ID %s", id)
+	}
+
+	now := time.Now()
+	abs := mem.cfg.AbsoluteTimeout
+
+	bridgeSecret := utils.GenerateSecretKey(32)
+	sess := Session{
+		SessionID:    id,
+		User:         user,
+		Privileged:   privileged,
+		BridgeSecret: bridgeSecret,
+		Timing: Timing{
 			CreatedAt:     now,
 			LastAccess:    now,
 			LastRefresh:   now,
 			AbsoluteUntil: now.Add(abs),
-			IdleUntil:     now.Add(s.cfg.IdleTimeout),
-		}
-
-		// Optional: one session per user
-		if s.cfg.SingleSessionPerUser {
-			if set, ok := s.userIndex[user.Username]; ok {
-				for sid := range set {
-					deleteSessionLocked(s, sid)
+			IdleUntil: func() time.Time {
+				idle := now.Add(mem.cfg.IdleTimeout)
+				absUntil := now.Add(abs)
+				if idle.After(absUntil) {
+					idle = absUntil
 				}
+				return idle
+			}(),
+		},
+	}
+
+	if mem.cfg.SingleSessionPerUser {
+		if set, ok := mem.userIndex[user.Username]; ok {
+			for sid := range set {
+				deleteSessionLocked(mem, sid)
 			}
 		}
-
-		s.sessions[id] = sess
-		indexSessionLocked(s, sess)
-		done <- nil
 	}
 
-	err := <-done
-	if err == nil {
-		logger.Infof("Created session for user '%s'", user.Username)
-	}
-	return err
+	mem.sessions[id] = sess
+	indexSessionLocked(mem, sess)
+
+	copy := sess
+	logger.Infof("Created session for user '%s'", user.Username)
+	return &copy, nil
 }
 
 func DeleteSession(id string) error {
-	done := make(chan error, 1)
-	SessionMux <- func(s *store) {
-		if _, exists := s.sessions[id]; !exists {
-			done <- fmt.Errorf("session ID '%s' not found", id)
-			return
-		}
-		deleteSessionLocked(s, id)
-		done <- nil
+	if mem == nil {
+		return ErrNotInitialized
 	}
-	return <-done
-}
+	mem.mu.Lock()
+	defer mem.mu.Unlock()
 
-// Generic access helpers remain
-func withSession(id string, fn func(Session) error) error {
-	done := make(chan error, 1)
-	SessionMux <- func(s *store) {
-		sess, exists := s.sessions[id]
-		if !exists {
-			done <- fmt.Errorf("session ID '%s' not found", id)
-			return
-		}
-		done <- fn(sess)
+	if _, exists := mem.sessions[id]; !exists {
+		return fmt.Errorf("session ID '%s' not found", id)
 	}
-	return <-done
+	deleteSessionLocked(mem, id)
+	return nil
 }
-
-func updateSession(id string, fn func(*Session) error) error {
-	done := make(chan error, 1)
-	SessionMux <- func(s *store) {
-		sess, exists := s.sessions[id]
-		if !exists {
-			done <- fmt.Errorf("session ID '%s' not found", id)
-			return
-		}
-		if err := fn(&sess); err != nil {
-			done <- err
-			return
-		}
-
-		s.sessions[id] = sess
-		done <- nil
-	}
-	return <-done
-}
-
-func getSessionCopy(id string) (*Session, error) {
-	done := make(chan struct {
-		sess *Session
-		err  error
-	}, 1)
-	SessionMux <- func(s *store) {
-		sess, exists := s.sessions[id]
-		if !exists {
-			done <- struct {
-				sess *Session
-				err  error
-			}{nil, fmt.Errorf("session not found")}
-			return
-		}
-		copy := sess
-		done <- struct {
-			sess *Session
-			err  error
-		}{&copy, nil}
-	}
-	result := <-done
-	return result.sess, result.err
-}
-
-// Refactored public functions
 
 func GetSession(id string) (*Session, error) { return getSessionCopy(id) }
 
 func GetActiveSessionIDs() ([]string, error) {
-	done := make(chan struct {
-		ids []string
-		err error
-	}, 1)
-	SessionMux <- func(s *store) {
-		now := time.Now()
-		var active []string
-		for id, sess := range s.sessions {
-			if !expired(&sess, now) {
-				active = append(active, id)
-			}
-		}
-		done <- struct {
-			ids []string
-			err error
-		}{active, nil}
+	if mem == nil {
+		return nil, ErrNotInitialized
 	}
-	result := <-done
-	return result.ids, result.err
-}
+	now := time.Now()
 
-func SetSessionPrivileged(id string, privileged bool) error {
-	return updateSession(id, func(s *Session) error {
-		s.Privileged = privileged
-		return nil
-	})
-}
+	mem.mu.RLock()
+	defer mem.mu.RUnlock()
 
-func IsSessionPrivileged(id string) (bool, error) {
-	var result bool
-	err := withSession(id, func(s Session) error {
-		result = s.Privileged
-		return nil
-	})
-	return result, err
-}
-
-func IsSessionValid(id string) (bool, error) {
-	done := make(chan struct {
-		ok  bool
-		err error
-	}, 1)
-	SessionMux <- func(s *store) {
-		sess, ok := s.sessions[id]
-		if !ok {
-			done <- struct {
-				ok  bool
-				err error
-			}{false, fmt.Errorf("session not found")}
-			return
+	var active []string
+	for id, sess := range mem.sessions {
+		if !expired(&sess, now) {
+			active = append(active, id)
 		}
-		if expired(&sess, time.Now()) {
-			done <- struct {
-				ok  bool
-				err error
-			}{false, fmt.Errorf("session expired")}
-			return
-		}
-		done <- struct {
-			ok  bool
-			err error
-		}{true, nil}
 	}
-	res := <-done
-	return res.ok, res.err
+	return active, nil
 }
 
-// Touch updates LastAccess & IdleUntil (cap at AbsoluteUntil)
-func Touch(id string) error {
+func SetPrivileged(id string, v bool) error {
 	return updateSession(id, func(s *Session) error {
-		now := time.Now()
-		s.LastAccess = now
-		newIdle := now.Add(mem.cfg.IdleTimeout)
-		if newIdle.After(s.AbsoluteUntil) {
-			newIdle = s.AbsoluteUntil
-		}
-		s.IdleUntil = newIdle
+		s.Privileged = v
 		return nil
 	})
 }
 
-// Refresh extends idle window if RefreshInterval elapsed; otherwise only touch.
-func Refresh(id string) error {
+////////////////////////////////////////////////////////////////////////////////
+// REFRESH & VALIDATION
+////////////////////////////////////////////////////////////////////////////////
+
+func refresh(id string) error {
+	if mem == nil {
+		return ErrNotInitialized
+	}
+	cfg := mem.cfg
 	return updateSession(id, func(s *Session) error {
 		now := time.Now()
-		if now.Sub(s.LastRefresh) < mem.cfg.RefreshInterval {
-			s.LastAccess = now
+		if now.Sub(s.Timing.LastRefresh) < cfg.RefreshInterval {
+			s.Timing.LastAccess = now
 			return nil
 		}
-		s.LastAccess = now
-		s.LastRefresh = now
-		newIdle := now.Add(mem.cfg.IdleTimeout)
-		if newIdle.After(s.AbsoluteUntil) {
-			newIdle = s.AbsoluteUntil
+		s.Timing.LastAccess = now
+		s.Timing.LastRefresh = now
+
+		newIdle := now.Add(cfg.IdleTimeout)
+		if newIdle.After(s.Timing.AbsoluteUntil) {
+			newIdle = s.Timing.AbsoluteUntil
 		}
-		s.IdleUntil = newIdle
+		s.Timing.IdleUntil = newIdle
 		return nil
 	})
 }
 
-// ===== HTTP Helpers =====
-
-// ValidateSessionFromRequest validates the cookie and returns a COPY of the session.
-// **Also implements sliding expiration** via throttled Refresh() to keep your middleware unchanged.
+// ValidateSessionFromRequest reads the CookieName cookie,
+// verifies deadlines, and performs a throttled sliding refresh.
 func ValidateSessionFromRequest(r *http.Request) (*Session, error) {
 	if mem == nil {
-		_, _ = Init(nil)
+		return nil, ErrNotInitialized
 	}
-	cookie, err := r.Cookie("session_id")
+
+	cookie, err := r.Cookie(CookieName)
 	if err != nil || cookie.Value == "" {
-		return nil, fmt.Errorf("missing or invalid session_id cookie")
+		return nil, fmt.Errorf("missing or invalid %s cookie", CookieName)
 	}
 
 	sess, err := getSessionCopy(cookie.Value)
 	if err != nil {
-		logger.Debugf("Access attempt with unknown session_id: %s", cookie.Value)
+		logger.Debugf("Access attempt with unknown %s: %s", CookieName, cookie.Value)
 		return nil, fmt.Errorf("unknown session ID")
 	}
 
 	now := time.Now()
-	if now.After(sess.AbsoluteUntil) || now.After(sess.IdleUntil) {
+	if now.After(sess.Timing.AbsoluteUntil) || now.After(sess.Timing.IdleUntil) {
 		logger.Warnf("Expired session access attempt by user '%s'", sess.User.Username)
 		return nil, fmt.Errorf("session expired")
 	}
 
-	// Sliding refresh (throttled) – keeps middleware behavior identical
-	_ = Refresh(sess.SessionID)
-
+	_ = refresh(sess.SessionID) // slide idle window (throttled)
 	return sess, nil
 }
 
-// Convenience: GetSessionOrAbort still available for direct route usage
-func GetSessionOrAbort(c *gin.Context) *Session {
-	sess, err := ValidateSessionFromRequest(c.Request)
-	if err != nil || sess == nil {
-		logger.Warnf("Unauthorized access: %v", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
-		c.Abort()
-		return nil
+////////////////////////////////////////////////////////////////////////////////
+// COOKIE HELPERS
+////////////////////////////////////////////////////////////////////////////////
+
+const CookieName = "session_id"
+
+func CookieMaxAgeSeconds() int {
+	if mem == nil {
+		return int(defaultConfig.AbsoluteTimeout.Seconds())
 	}
-	return sess
+	sec := int(mem.cfg.AbsoluteTimeout.Seconds())
+	if sec <= 0 {
+		return int(defaultConfig.AbsoluteTimeout.Seconds())
+	}
+	return sec
+}
+
+func SetCookie(c *gin.Context, sessionID string, secure bool) {
+	c.SetSameSite(http.SameSiteStrictMode)
+	maxAge := CookieMaxAgeSeconds()
+	c.SetCookie(CookieName, sessionID, maxAge, "/", "", secure, true)
+}
+
+func DeleteCookie(c *gin.Context, secure bool) {
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie(CookieName, "", -1, "/", "", secure, true)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GIN HELPERS
+////////////////////////////////////////////////////////////////////////////////
+
+func SessionFromContext(c *gin.Context) *Session {
+	v, _ := c.Get("session")
+	s, _ := v.(*Session)
+	return s
 }

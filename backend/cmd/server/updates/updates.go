@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
@@ -14,10 +15,7 @@ import (
 func getUpdatesHandler(c *gin.Context) {
 	logger.Infof("🔍 Checking for system updates (D-Bus)...")
 
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 
 	output, err := bridge.CallWithSession(sess, "dbus", "GetUpdates", nil)
 	if err != nil {
@@ -31,11 +29,7 @@ func getUpdatesHandler(c *gin.Context) {
 	}
 
 	// 1. Unmarshal bridge response object
-	var resp struct {
-		Status string          `json:"status"`
-		Output json.RawMessage `json:"output"`
-		Error  string          `json:"error"`
-	}
+	var resp ipc.Response
 	if err := json.Unmarshal([]byte(output), &resp); err != nil {
 		logger.Errorf("❌ Failed to decode bridge response: %v\nOutput: %s", err, output)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -82,10 +76,7 @@ func updatePackageHandler(c *gin.Context) {
 
 	logger.Infof("📦 Triggering update for package: %s", req.PackageID)
 
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 
 	output, err := bridge.CallWithSession(sess, "dbus", "InstallPackage", []string{req.PackageID})
 

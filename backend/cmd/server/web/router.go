@@ -46,7 +46,7 @@ func BuildRouter(cfg Config) *gin.Engine {
 		}
 	}
 
-	// --- Auth routes (split public/private to avoid import cycles) ---
+	// --- Auth routes ---
 	authPublic := r.Group("/auth")
 	authPrivate := r.Group("/auth")
 	authPrivate.Use(AuthMiddleware())
@@ -69,7 +69,7 @@ func BuildRouter(cfg Config) *gin.Engine {
 	config.RegisterThemeRoutes(r.Group("/theme", AuthMiddleware()))
 
 	// --- WebSocket ---
-	r.GET("/ws", WebSocketHandler)
+	r.GET("/ws", WebSocketHandler, AuthMiddleware())
 
 	// --- Filebrowser (auth protected) ---
 	r.Any("/navigator/*proxyPath", AuthMiddleware(), NavigatorDefaultsMiddleware(), FilebrowserReverseProxy(cfg.FilebrowserSecret))

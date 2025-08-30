@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/cmd/server/terminal"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
@@ -23,29 +22,6 @@ import (
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
-}
-
-const sessionDuration = 6 * time.Hour
-
-type Config struct {
-	Env                  string
-	Verbose              bool
-	BridgeBinaryOverride string
-}
-
-var cfg Config
-
-// RegisterAuthRoutes wires public and private auth endpoints.
-// - pub: routes without auth middleware (e.g., /auth/login)
-// - priv: routes with auth middleware already attached (e.g., /auth/me, /auth/logout)
-func RegisterAuthRoutes(pub *gin.RouterGroup, priv *gin.RouterGroup, c Config) {
-	cfg = c
-	// public
-	pub.POST("/login", loginHandler)
-
-	// private (requires middleware applied by caller)
-	priv.GET("/me", meHandler)
-	priv.GET("/logout", logoutHandler)
 }
 
 func loginHandler(c *gin.Context) {
@@ -74,12 +50,13 @@ func loginHandler(c *gin.Context) {
 		return
 	}
 
-	setSessionCookie(c, sess.SessionID)
+	secure := (cfg.Env == "production") && (c.Request.TLS != nil)
+	session.SetCookie(c, sess.SessionID, secure)
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": sess.Privileged})
 }
 
 func logoutHandler(c *gin.Context) {
-	sessionID, err := c.Cookie("session_id")
+	sessionID, err := c.Cookie(session.CookieName)
 	if err != nil {
 		c.Status(http.StatusOK)
 		return
@@ -93,8 +70,8 @@ func logoutHandler(c *gin.Context) {
 	}
 
 	// Clear cookie early to prevent new activity during teardown
-	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie("session_id", "", -1, "/", "", false, true)
+	secure := (cfg.Env == "production") && (c.Request.TLS != nil)
+	session.DeleteCookie(c, secure)
 
 	if sess == nil {
 		logger.Debugf("No session found for ID: %s (already expired?)", sessionID)
@@ -144,7 +121,6 @@ func authenticateUser(req LoginRequest) error {
 }
 
 func createUserSession(req LoginRequest, privileged bool) (*session.Session, error) {
-	sessionID := uuid.New().String()
 	sysu, err := user.Lookup(req.Username)
 	if err != nil {
 		return nil, fmt.Errorf("lookup user: %w", err)
@@ -155,14 +131,10 @@ func createUserSession(req LoginRequest, privileged bool) (*session.Session, err
 		GID:      sysu.Gid,
 	}
 
-	if err := session.CreateSession(sessionID, u, sessionDuration, privileged); err != nil {
+	sess, err := session.CreateSession("", u, privileged)
+	if err != nil {
 		logger.Errorf("Failed to create session: %v", err)
 		return nil, err
-	}
-	sess, getErr := session.GetSession(sessionID)
-	if getErr != nil || sess == nil {
-		logger.Errorf("Failed to get session after creation (id=%s): %v", sessionID, getErr)
-		return nil, fmt.Errorf("session retrieval failed")
 	}
 	return sess, nil
 }
@@ -172,7 +144,8 @@ func startBridgeSession(sess *session.Session, password string) error {
 	if err := bridge.StartBridge(sess, password, cfg.Env, cfg.Verbose, bridgeBinary); err != nil {
 		if sess.Privileged {
 			logger.Warnf("Privileged bridge failed, retrying unprivileged: %v", err)
-			sess.Privileged = false
+			_ = session.SetPrivileged(sess.SessionID, false) // persist in store
+			sess.Privileged = false                          // keep local copy in sync
 			if err2 := bridge.StartBridge(sess, password, cfg.Env, cfg.Verbose, bridgeBinary); err2 != nil {
 				logger.Errorf("Unprivileged bridge also failed: %v", err2)
 				return err2
@@ -183,12 +156,6 @@ func startBridgeSession(sess *session.Session, password string) error {
 		}
 	}
 	return nil
-}
-
-func setSessionCookie(c *gin.Context, sessionID string) {
-	secureCookie := (cfg.Env == "production") && (c.Request.TLS != nil)
-	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie("session_id", sessionID, int(sessionDuration.Seconds()), "/", "", secureCookie, true)
 }
 
 // pamAuth authenticates a user via PAM ("login" service) and runs AcctMgmt.
@@ -206,7 +173,7 @@ func pamAuth(username, password string) error {
 		}
 	}
 
-	t, err := pam.StartFunc("login", username, conv)
+	t, err := pam.StartFunc("linuxio", username, conv)
 	if err != nil {
 		return fmt.Errorf("pam start: %w", err)
 	}

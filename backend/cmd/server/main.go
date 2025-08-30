@@ -52,19 +52,9 @@ func main() {
 	logger.Infof("🌱 Starting server in %s mode...", env)
 
 	// Sessions Cleanup
-	shutdownSessions, err := session.Init(&session.SessionConfig{
-		IdleTimeout:          30 * time.Minute,
-		AbsoluteTimeout:      6 * time.Hour,
-		RefreshInterval:      60 * time.Second,
-		SingleSessionPerUser: false,
-		GCInterval:           10 * time.Minute,
-	})
-	if err != nil {
-		logger.Error.Fatalf("session init failed: %v", err)
-	}
-	defer shutdownSessions()
+	defer session.Init()()
 
-	// API services
+	// API startup for chaching
 	system.StartSimpleNetInfoSampler()
 	system.InitGPUInfo()
 

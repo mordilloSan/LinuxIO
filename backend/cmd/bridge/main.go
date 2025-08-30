@@ -185,6 +185,11 @@ func handleMainRequest(conn net.Conn, id string) {
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
 		return
 	}
+	if req.SessionID != Sess.SessionID {
+		logger.Warnf("❌ [%s] session mismatch: got %q want %q", id, req.SessionID, Sess.SessionID)
+		_ = encoder.Encode(ipc.Response{Status: "error", Error: "session mismatch"})
+		return
+	}
 	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
 		logger.Warnf("❌ [%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})

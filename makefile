@@ -1,25 +1,21 @@
-GO_VERSION      = 1.25.0
-NODE_VERSION    = 24
-GO_INSTALL_DIR := $(HOME)/.go
-
-# --- NVM/Node (Option A: single PATH for all recipes) ------------------------
-# NVM home + a stable "current" symlink we'll manage in ensure-node
-NVM_DIR ?= $(HOME)/.nvm
-# Prepend the "current" Node to PATH for every recipe (will work once ensure-node runs)
-export PATH := $(NVM_DIR)/versions/node/current/bin:$(PATH)
-
-# Source-able NVM setup (no nvm use here; PATH handles it)
-NVM_SETUP = export NVM_DIR="$(NVM_DIR)"; \
-            [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
-
-GO_BIN := $(shell which go)
-GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
-
-# Flags to pass into the Go binaries
-VERBOSE ?= false
-VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
+# Main flags
 VITE_DEV_PORT = 3000
 SERVER_PORT = 8080
+VERBOSE ?= true
+
+# Go and Node.js versions
+GO_VERSION      = 1.25.0
+NODE_VERSION    = 24
+
+# Helpers
+VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
+GO_INSTALL_DIR := $(HOME)/.go
+NVM_DIR ?= $(HOME)/.nvm
+export PATH := $(NVM_DIR)/versions/node/current/bin:$(PATH)
+NVM_SETUP = export NVM_DIR="$(NVM_DIR)"; \
+            [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
+GO_BIN := $(shell which go)
+GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
 # Colors
 COLOR_RESET  := \033[0m
@@ -39,12 +35,6 @@ BUILD_TIME  := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Centralize extra flags
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
-
-# Allow skipping lint during release builds
-SKIP_LINT ?= 0
-ifeq ($(filter 1 true yes on,$(SKIP_LINT)),)
-PREBUILD_LINT := golint
-endif
 
 # -------- Release flow helpers (gh CLI) --------
 DEFAULT_BASE_BRANCH := main
@@ -90,8 +80,6 @@ SHELL := /bin/bash
 
 default: help
 
-# Ensures NVM exists, installs Node $(NODE_VERSION), makes it default,
-# and creates/updates a stable "$(NVM_DIR)/versions/node/current" symlink.
 ensure-node:
 	@echo ""
 	@echo "📦 Ensuring Node.js $(NODE_VERSION) is available..."
@@ -238,7 +226,7 @@ build-vite: lint tsc
 		echo "✅ Frontend built successfully!" \
 	'
 
-build-backend: $(PREBUILD_LINT)
+build-backend:
 	@echo ""
 	@echo "📦 Building backend..."
 	@cd backend && \
@@ -259,7 +247,7 @@ build-backend: $(PREBUILD_LINT)
 	echo "📦 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
 
-build-bridge: $(PREBUILD_LINT)
+build-bridge:
 	@echo ""
 	@echo "🔌 Building bridge..."
 	@cd backend && \

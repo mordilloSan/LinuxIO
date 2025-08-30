@@ -6,15 +6,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
+	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
 
 func getDiskInfo(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 
 	output, err := bridge.CallWithSession(sess, "system", "get_drive_info", nil)
 	if err != nil {
@@ -23,11 +21,7 @@ func getDiskInfo(c *gin.Context) {
 		return
 	}
 
-	var resp struct {
-		Status string          `json:"status"`
-		Output json.RawMessage `json:"output"`
-		Error  string          `json:"error"`
-	}
+	var resp ipc.Response
 	if err := json.Unmarshal([]byte(output), &resp); err != nil {
 		logger.Errorf("Failed to decode bridge response: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode bridge response"})

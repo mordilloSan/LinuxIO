@@ -14,10 +14,7 @@ import (
 )
 
 func getNetworkInfo(c *gin.Context) {
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	logger.Infof("%s requested network info (session: %s)", sess.User.Username, sess.SessionID)
 
 	rawResp, err := bridge.CallWithSession(sess, "dbus", "GetNetworkInfo", nil)
@@ -54,10 +51,7 @@ func postSetDNS(c *gin.Context) {
 		Interface string   `json:"interface"`
 		DNS       []string `json:"dns"`
 	}
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	if err := c.BindJSON(&req); err != nil || req.Interface == "" || len(req.DNS) == 0 {
 		logger.Warnf("Bad request for set-dns: %+v", req)
 		c.JSON(400, gin.H{"error": "invalid request"})
@@ -79,10 +73,7 @@ func postSetGateway(c *gin.Context) {
 		Interface string `json:"interface"`
 		Gateway   string `json:"gateway"`
 	}
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	if err := c.BindJSON(&req); err != nil || req.Interface == "" || req.Gateway == "" {
 		logger.Warnf("Bad request for set-gateway: %+v", req)
 		c.JSON(400, gin.H{"error": "invalid request"})
@@ -104,10 +95,7 @@ func postSetMTU(c *gin.Context) {
 		Interface string `json:"interface"`
 		MTU       string `json:"mtu"`
 	}
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	if err := c.BindJSON(&req); err != nil || req.Interface == "" || req.MTU == "" {
 		logger.Warnf("Bad request for set-mtu: %+v", req)
 		c.JSON(400, gin.H{"error": "invalid request"})
@@ -128,10 +116,7 @@ func postSetIPv4DHCP(c *gin.Context) {
 	var req struct {
 		Interface string `json:"interface"`
 	}
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	if err := c.BindJSON(&req); err != nil || req.Interface == "" {
 		logger.Warnf("Bad request for set-ipv4-dhcp: %+v", req)
 		c.JSON(400, gin.H{"error": "invalid request"})
@@ -153,10 +138,7 @@ func postSetIPv4Static(c *gin.Context) {
 		Interface   string `json:"interface"`
 		AddressCIDR string `json:"address_cidr"`
 	}
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	if err := c.BindJSON(&req); err != nil || req.Interface == "" || req.AddressCIDR == "" {
 		logger.Warnf("Bad request for set-ipv4-static: %+v", req)
 		c.JSON(400, gin.H{"error": "invalid request"})
@@ -177,10 +159,7 @@ func postSetIPv6DHCP(c *gin.Context) {
 	var req struct {
 		Interface string `json:"interface"`
 	}
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	if err := c.BindJSON(&req); err != nil || req.Interface == "" {
 		logger.Warnf("Bad request for set-ipv6-dhcp: %+v", req)
 		c.JSON(400, gin.H{"error": "invalid request"})
@@ -202,10 +181,7 @@ func postSetIPv6Static(c *gin.Context) {
 		Interface   string `json:"interface"`
 		AddressCIDR string `json:"address_cidr"`
 	}
-	sess := session.GetSessionOrAbort(c)
-	if sess == nil {
-		return
-	}
+	sess := session.SessionFromContext(c)
 	if err := c.BindJSON(&req); err != nil || req.Interface == "" || req.AddressCIDR == "" {
 		logger.Warnf("Bad request for set-ipv6-static: %+v", req)
 		c.JSON(400, gin.H{"error": "invalid request"})
