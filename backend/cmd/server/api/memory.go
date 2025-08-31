@@ -1,5 +1,5 @@
 // file: cmd/server/system/memory.go
-package system
+package api
 
 import (
 	"context"

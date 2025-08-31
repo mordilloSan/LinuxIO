@@ -270,12 +270,12 @@ build-bridge:
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 dev-prep:
-	@mkdir -p backend/cmd/server/frontend/assets
-	@mkdir -p backend/cmd/server/frontend/.vite
-	@touch backend/cmd/server/frontend/.vite/manifest.json
-	@touch backend/cmd/server/frontend/manifest.json
-	@touch backend/cmd/server/frontend/favicon-1.png
-	@touch backend/cmd/server/frontend/assets/index-mock.js
+	@mkdir -p backend/cmd/server/web/frontend/assets
+	@mkdir -p backend/cmd/server/web/frontend/.vite
+	@touch backend/cmd/server/web/frontend/.vite/manifest.json
+	@touch backend/cmd/server/web/frontend/manifest.json
+	@touch backend/cmd/server/web/frontend/favicon-1.png
+	@touch backend/cmd/server/web/frontend/assets/index-mock.js
 
 dev: setup dev-prep build-bridge
 	@echo ""

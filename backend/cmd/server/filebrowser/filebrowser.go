@@ -16,7 +16,8 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/mordilloSan/LinuxIO/cmd/server/docker"
+
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
@@ -59,14 +60,6 @@ func StartServices(secret string, debug bool) {
 		logger.Errorf("FileBrowser setup failed: %v", err)
 	}
 
-}
-
-func isNetworkExistsError(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return bytes.Contains([]byte(s), []byte("already exists")) || bytes.Contains([]byte(s), []byte("409"))
 }
 
 func startFileBrowserContainer(secret string, debug bool) error {
@@ -248,4 +241,12 @@ func parentDir(p string) string {
 		return p[:i]
 	}
 	return ""
+}
+
+func isNetworkExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return bytes.Contains([]byte(s), []byte("already exists")) || bytes.Contains([]byte(s), []byte("409"))
 }

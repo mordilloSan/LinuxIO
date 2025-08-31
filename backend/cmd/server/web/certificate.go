@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"math/big"
 	"net"
 	"time"
@@ -43,25 +42,4 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
 	return tls.X509KeyPair(certPEM, keyPEM)
-}
-
-var trustedRootPool *x509.CertPool
-
-func SetTrustedPoolFromServerCert(tc tls.Certificate) error {
-	if len(tc.Certificate) == 0 {
-		return fmt.Errorf("no certificate bytes in tls.Certificate")
-	}
-	leaf, err := x509.ParseCertificate(tc.Certificate[0]) // DER -> *x509.Certificate
-	if err != nil {
-		return fmt.Errorf("parse leaf cert: %w", err)
-	}
-	p := x509.NewCertPool()
-	p.AddCert(leaf)
-	trustedRootPool = p
-	return nil
-}
-
-// Accessor used by your internal HTTP client code
-func TrustedRootPool() *x509.CertPool {
-	return trustedRootPool
 }

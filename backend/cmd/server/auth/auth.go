@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
+	"github.com/mordilloSan/LinuxIO/cmd/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/cmd/server/terminal"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
@@ -52,6 +53,10 @@ func loginHandler(c *gin.Context) {
 
 	secure := (cfg.Env == "production") && (c.Request.TLS != nil)
 	session.SetCookie(c, sess.SessionID, secure)
+
+	if err := filebrowser.ApplyNavigatorDefaults(c, sess); err != nil {
+		logger.Warnf("[auth.login] navigator defaults failed for user=%s: %v", sess.User.Username, err)
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": sess.Privileged})
 }
 

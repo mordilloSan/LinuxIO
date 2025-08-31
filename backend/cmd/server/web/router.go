@@ -9,17 +9,18 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/mordilloSan/LinuxIO/cmd/server/api"
 	"github.com/mordilloSan/LinuxIO/cmd/server/auth"
 	"github.com/mordilloSan/LinuxIO/cmd/server/benchmark"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/drives"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/network"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/power"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/services"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/updates"
+	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/cmd/server/config"
-	"github.com/mordilloSan/LinuxIO/cmd/server/docker"
-	"github.com/mordilloSan/LinuxIO/cmd/server/drives"
-	"github.com/mordilloSan/LinuxIO/cmd/server/network"
-	"github.com/mordilloSan/LinuxIO/cmd/server/power"
-	"github.com/mordilloSan/LinuxIO/cmd/server/services"
-	"github.com/mordilloSan/LinuxIO/cmd/server/system"
-	"github.com/mordilloSan/LinuxIO/cmd/server/updates"
-	"github.com/mordilloSan/LinuxIO/cmd/server/wireguard"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
@@ -58,7 +59,7 @@ func BuildRouter(cfg Config) *gin.Engine {
 	})
 
 	// --- APIs ---
-	system.RegisterSystemRoutes(r.Group("/system")) //We want a public API just for get methods....
+	api.RegisterSystemRoutes(r.Group("/system")) //We want a public API just for get methods....
 	updates.RegisterUpdateRoutes(r.Group("/updates", AuthMiddleware()))
 	services.RegisterServiceRoutes(r.Group("/services", AuthMiddleware()))
 	network.RegisterNetworkRoutes(r.Group("/network", AuthMiddleware()))
@@ -72,7 +73,7 @@ func BuildRouter(cfg Config) *gin.Engine {
 	r.GET("/ws", WebSocketHandler)
 
 	// --- Filebrowser (auth protected) ---
-	r.Any("/navigator/*proxyPath", AuthMiddleware(), NavigatorDefaultsMiddleware(), FilebrowserReverseProxy(cfg.FilebrowserSecret))
+	r.Any("/navigator/*proxyPath", AuthMiddleware(), FilebrowserReverseProxy(cfg.FilebrowserSecret))
 
 	// --- Debug-only routes ---
 	if cfg.Env != "production" {

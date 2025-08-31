@@ -1,5 +1,5 @@
 // file: cmd/server/system/proc_services.go
-package system
+package api
 
 import (
 	"net/http"

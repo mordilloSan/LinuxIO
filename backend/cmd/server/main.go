@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"embed"
 	"errors"
 	"fmt"
@@ -16,18 +17,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/cmd/server/web"
+	"github.com/spf13/pflag"
 
+	"github.com/mordilloSan/LinuxIO/cmd/server/api"
 	"github.com/mordilloSan/LinuxIO/cmd/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/cmd/server/filebrowser"
-	"github.com/mordilloSan/LinuxIO/cmd/server/system"
+	"github.com/mordilloSan/LinuxIO/cmd/server/web"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
-	"github.com/spf13/pflag"
 )
 
-//go:embed all:frontend/*
+//go:embed all:web/frontend/*
 var FrontendFS embed.FS
 
 func main() {
@@ -55,15 +56,15 @@ func main() {
 	defer session.Init()()
 
 	// API startup for chaching
-	system.StartSimpleNetInfoSampler()
-	system.InitGPUInfo()
+	api.StartSimpleNetInfoSampler()
+	api.InitGPUInfo()
 
 	// FileBrowser
 	filebrowserSecret := utils.GenerateSecretKey(32)
 	go filebrowser.StartServices(filebrowserSecret, verbose)
 
-	// Sub FS rooted at the build directory ("frontend")
-	ui, err := fs.Sub(FrontendFS, "frontend")
+	// Sub FS rooted at the build directory ("web/frontend")
+	ui, err := fs.Sub(FrontendFS, "web/frontend")
 	if err != nil {
 		logger.Error.Fatalf("failed to mount embedded frontend: %v", err)
 	}
@@ -94,7 +95,7 @@ func main() {
 		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 
 		// Seed the *auth* package’s client trust pool used by syncFilebrowser
-		if err := web.SetTrustedPoolFromServerCert(cert); err != nil {
+		if err := SetTrustedPoolFromServerCert(cert); err != nil {
 			logger.Error.Fatalf("❌ Failed to set trusted pool: %v", err)
 		}
 	}
@@ -160,4 +161,20 @@ func main() {
 		fmt.Println("Server stopped.")
 	}
 	logger.Infof("Server stopped.")
+}
+
+var TrustedRootPool *x509.CertPool
+
+func SetTrustedPoolFromServerCert(tc tls.Certificate) error {
+	if len(tc.Certificate) == 0 {
+		return fmt.Errorf("no certificate bytes in tls.Certificate")
+	}
+	leaf, err := x509.ParseCertificate(tc.Certificate[0]) // DER -> *x509.Certificate
+	if err != nil {
+		return fmt.Errorf("parse leaf cert: %w", err)
+	}
+	p := x509.NewCertPool()
+	p.AddCert(leaf)
+	TrustedRootPool = p
+	return nil
 }
