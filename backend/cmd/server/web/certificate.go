@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"sync/atomic"
 	"time"
 )
 
@@ -26,11 +27,8 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		// Self-signed leaf; include SANs for hostname verification
-		DNSNames:    []string{"localhost"},
-		IPAddresses: []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
-		// If you really want it to be a CA (not necessary for a leaf), also include:
-		// IsCA: true, KeyUsage: x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		DNSNames:              []string{"localhost"},
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
@@ -42,4 +40,26 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
 	return tls.X509KeyPair(certPEM, keyPEM)
+}
+
+var pool atomic.Pointer[x509.CertPool]
+
+func SetRootPoolFromServerCert(tc tls.Certificate) {
+	cp := x509.NewCertPool()
+	if len(tc.Certificate) > 0 {
+		if leaf, err := x509.ParseCertificate(tc.Certificate[0]); err == nil {
+			cp.AddCert(leaf)
+		}
+	}
+	pool.Store(cp)
+}
+
+func GetRootPool() *x509.CertPool {
+	if p := pool.Load(); p != nil {
+		return p
+	}
+	if sys, err := x509.SystemCertPool(); err == nil {
+		return sys
+	}
+	return x509.NewCertPool()
 }

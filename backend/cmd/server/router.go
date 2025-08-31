@@ -1,4 +1,4 @@
-package web
+package main
 
 import (
 	"fmt"
@@ -21,6 +21,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/cmd/server/config"
+	"github.com/mordilloSan/LinuxIO/cmd/server/web"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 )
 
@@ -41,7 +42,7 @@ func BuildRouter(cfg Config) *gin.Engine {
 		if err := r.SetTrustedProxies(nil); err != nil {
 			logger.Warnf("failed to set trusted proxies: %v", err)
 		}
-		r.Use(CorsMiddleware(cfg.VitePort))
+		r.Use(web.CorsMiddleware(cfg.VitePort))
 		if cfg.Verbose {
 			r.Use(gin.Logger())
 		}
@@ -50,7 +51,7 @@ func BuildRouter(cfg Config) *gin.Engine {
 	// --- Auth routes ---
 	authPublic := r.Group("/auth")
 	authPrivate := r.Group("/auth")
-	authPrivate.Use(AuthMiddleware())
+	authPrivate.Use(web.AuthMiddleware())
 
 	auth.RegisterAuthRoutes(authPublic, authPrivate, auth.Config{
 		Env:                  cfg.Env,
@@ -60,22 +61,22 @@ func BuildRouter(cfg Config) *gin.Engine {
 
 	// --- APIs ---
 	api.RegisterSystemRoutes(r.Group("/system")) //We want a public API just for get methods....
-	updates.RegisterUpdateRoutes(r.Group("/updates", AuthMiddleware()))
-	services.RegisterServiceRoutes(r.Group("/services", AuthMiddleware()))
-	network.RegisterNetworkRoutes(r.Group("/network", AuthMiddleware()))
-	docker.RegisterDockerRoutes(r.Group("/docker", AuthMiddleware()))
-	drives.RegisterDriveRoutes(r.Group("/drives", AuthMiddleware()))
-	power.RegisterPowerRoutes(r.Group("/power", AuthMiddleware()))
-	wireguard.RegisterWireguardRoutes(r.Group("/wireguard", AuthMiddleware()))
-	config.RegisterThemeRoutes(r.Group("/theme", AuthMiddleware()))
+	updates.RegisterUpdateRoutes(r.Group("/updates", web.AuthMiddleware()))
+	services.RegisterServiceRoutes(r.Group("/services", web.AuthMiddleware()))
+	network.RegisterNetworkRoutes(r.Group("/network", web.AuthMiddleware()))
+	docker.RegisterDockerRoutes(r.Group("/docker", web.AuthMiddleware()))
+	drives.RegisterDriveRoutes(r.Group("/drives", web.AuthMiddleware()))
+	power.RegisterPowerRoutes(r.Group("/power", web.AuthMiddleware()))
+	wireguard.RegisterWireguardRoutes(r.Group("/wireguard", web.AuthMiddleware()))
+	config.RegisterThemeRoutes(r.Group("/theme", web.AuthMiddleware()))
 
 	// --- WebSocket ---
-	r.GET("/ws", WebSocketHandler)
+	r.GET("/ws", web.WebSocketHandler)
 
 	// --- Filebrowser (auth protected) ---
-	r.Any("/navigator/*proxyPath", AuthMiddleware(), FilebrowserReverseProxy(cfg.FilebrowserSecret))
+	r.Any("/navigator/*proxyPath", web.AuthMiddleware(), web.FilebrowserReverseProxy(cfg.FilebrowserSecret))
 
-	// --- Debug-only routes ---
+	// --- Benchmark in dev mode ---
 	if cfg.Env != "production" {
 		benchmark.RegisterDebugRoutes(r, cfg.Env)
 	}

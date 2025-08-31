@@ -12,12 +12,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/msteinert/pam"
+
 	"github.com/mordilloSan/LinuxIO/cmd/server/bridge"
 	"github.com/mordilloSan/LinuxIO/cmd/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/cmd/server/terminal"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/msteinert/pam"
 )
 
 type LoginRequest struct {

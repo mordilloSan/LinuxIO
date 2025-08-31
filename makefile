@@ -1,21 +1,19 @@
 # Main flags
 VITE_DEV_PORT = 3000
-SERVER_PORT = 8080
-VERBOSE ?= true
+SERVER_PORT   = 8080
+VERBOSE      ?= true
 
 # Go and Node.js versions
-GO_VERSION      = 1.25.0
-NODE_VERSION    = 24
+GO_VERSION   = 1.25.0
+NODE_VERSION = 24
 
 # Helpers
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
 GO_INSTALL_DIR := $(HOME)/.go
 NVM_DIR ?= $(HOME)/.nvm
-export PATH := $(NVM_DIR)/versions/node/current/bin:$(PATH)
+export PATH := $(GO_INSTALL_DIR)/bin:$(NVM_DIR)/versions/node/current/bin:$(PATH)
 NVM_SETUP = export NVM_DIR="$(NVM_DIR)"; \
             [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
-GO_BIN := $(shell which go)
-GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
 # Colors
 COLOR_RESET  := \033[0m
@@ -35,6 +33,23 @@ BUILD_TIME  := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Centralize extra flags
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
+
+# --- Go project root autodetection (supports backend/, go-backend/, or repo root) ---
+BACKEND_DIR := $(shell \
+  if [ -f backend/go.mod ]; then echo backend; \
+  elif [ -f go-backend/go.mod ]; then echo go-backend; \
+  elif [ -f go.mod ]; then echo .; \
+  else echo ""; fi )
+
+ifeq ($(BACKEND_DIR),)
+$(error Could not find go.mod in backend/, go-backend/, or project root)
+endif
+
+# Prefer user-local Go if present
+GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(shell which go))
+GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+GOLANGCI_LINT_VERSION ?= latest
+GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
 
 # -------- Release flow helpers (gh CLI) --------
 DEFAULT_BASE_BRANCH := main
@@ -145,7 +160,6 @@ ensure-go:
 		    rm -rf "$$DEST_VER_DIR"; \
 		    tar -C "$$TMP" -xzf "$$TMP/$$TARBALL"; \
 		    mv "$$TMP/go" "$$DEST_VER_DIR"; \
-            # Symlink $(GO_INSTALL_DIR) -> versioned dir (avoids untar over existing) \
 		    ln -sfn "$$DEST_VER_DIR" "$$GO_DIR"; \
 		    echo "✔ Linked $$GO_DIR -> $$DEST_VER_DIR"; \
 		    if ! grep -q "$$GO_DIR/bin" "$$HOME/.bashrc" 2>/dev/null; then \
@@ -167,11 +181,37 @@ ensure-go:
 		echo "✅ Go is ready!"; \
 	'
 
-ensure-golint:
-	@if ! command -v golangci-lint >/dev/null 2>&1; then \
-		echo "⬇ Installing golangci-lint..."; \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GO_INSTALL_DIR)/bin v1.58.2; \
-	fi
+# --- Build golangci-lint with the *local* Go toolchain ---
+ensure-golint: ensure-go
+	@{ set -euo pipefail; \
+	   bin="$(GOLANGCI_LINT)"; \
+	   need=1; \
+	   if [ -x "$$bin" ]; then \
+	     out="$$( "$$bin" version 2>/dev/null || true)"; \
+	     ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
+	     ver_no_v="$${ver#v}"; \
+	     major="$${ver_no_v%%.*}"; \
+	     built_ok="$$( printf '%s' "$$out" | grep -Eq 'built with go1\.25(\.|$$)' && echo yes || echo no )"; \
+	     if [ "$$major" = "2" ] && [ "$$built_ok" = "yes" ]; then need=0; fi; \
+	   fi; \
+	   if [ $$need -eq 1 ]; then \
+	     echo "⬇ Installing golangci-lint $(GOLANGCI_LINT_VERSION) (v2) with local Go ($(GO_BIN))..."; \
+	     rm -f "$$bin" || true; \
+	     PATH="$(GO_INSTALL_DIR)/bin:$$PATH" \
+	     GOBIN="$(GO_INSTALL_DIR)/bin" \
+	     GOTOOLCHAIN=local \
+	     GOFLAGS="-buildvcs=false" \
+	       "$(GO_BIN)" install "$(GOLANGCI_LINT_MODULE)@$(GOLANGCI_LINT_VERSION)"; \
+	   fi; \
+	   "$$bin" version | head -n1; \
+	   out="$$( "$$bin" version )"; \
+	   ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
+	   ver_no_v="$${ver#v}"; \
+	   major="$${ver_no_v%%.*}"; \
+	   [ "$$major" = "2" ] || { echo "❌ not a v2 golangci-lint"; exit 1; }; \
+	   echo "$$out" | grep -Eq 'built with go1\.25(\.|$$)' || { echo "❌ golangci-lint not built with Go 1.25"; exit 1; }; \
+	   echo "✔ golangci-lint v2 ready."; \
+	}
 
 setup: ensure-go ensure-node ensure-golint
 	@echo ""
@@ -195,20 +235,22 @@ tsc: setup
 		npx tsc && echo "✅ TypeScript Linting Ok!" \
 	'
 
-golint: 
+golint: ensure-golint
+	@set -euo pipefail
+	@echo "📁 Linting Go module in: $(BACKEND_DIR)"
 	@echo "🔍 Running gofmt..."
 ifneq ($(CI),)
-	@fmt_out="$$(cd backend && gofmt -s -l .)"; \
+	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
 	if [ -n "$$fmt_out" ]; then \
 		echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; \
 	fi
 else
-	@(cd backend && gofmt -s -w .)
+	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
 endif
 	@echo "🔍 Ensuring go.mod is tidy..."
-	@( cd backend && go mod tidy && go mod download )
+	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
 	@echo "🔍 Running golangci-lint..."
-	@( cd backend && $(GOLANGCI_LINT) run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
+	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go Linting Ok!"
 
 test: setup dev-prep
@@ -230,7 +272,7 @@ build-vite: lint tsc
 build-backend:
 	@echo ""
 	@echo "📦 Building backend..."
-	@cd backend && \
+	@cd "$(BACKEND_DIR)" && \
 	go build \
 	-ldflags "\
 		-X 'backend/version.Version=$(GIT_VERSION)' \
@@ -251,7 +293,7 @@ build-backend:
 build-bridge:
 	@echo ""
 	@echo "🔌 Building bridge..."
-	@cd backend && \
+	@cd "$(BACKEND_DIR)" && \
 	go build \
 	-ldflags "\
 		-X 'backend/version.Version=$(GIT_VERSION)' \
@@ -270,12 +312,12 @@ build-bridge:
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 dev-prep:
-	@mkdir -p backend/cmd/server/web/frontend/assets
-	@mkdir -p backend/cmd/server/web/frontend/.vite
-	@touch backend/cmd/server/web/frontend/.vite/manifest.json
-	@touch backend/cmd/server/web/frontend/manifest.json
-	@touch backend/cmd/server/web/frontend/favicon-1.png
-	@touch backend/cmd/server/web/frontend/assets/index-mock.js
+	@mkdir -p "$(BACKEND_DIR)/cmd/server/web/frontend/assets"
+	@mkdir -p "$(BACKEND_DIR)/cmd/server/web/frontend/.vite"
+	@touch "$(BACKEND_DIR)/cmd/server/web/frontend/.vite/manifest.json"
+	@touch "$(BACKEND_DIR)/cmd/server/web/frontend/manifest.json"
+	@touch "$(BACKEND_DIR)/cmd/server/web/frontend/favicon-1.png"
+	@touch "$(BACKEND_DIR)/cmd/server/web/frontend/assets/index-mock.js"
 
 dev: setup dev-prep build-bridge
 	@echo ""
@@ -286,7 +328,7 @@ dev: setup dev-prep build-bridge
 	if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echoctl; fi
 
 	# Start backend (flags, not env) in background and remember PID
-	( cd backend/cmd/server && \
+	( cd "$(BACKEND_DIR)/cmd/server" && \
 	  go run . \
 	    --env=development \
 	    $(VERBOSE_FLAG) \
@@ -340,7 +382,7 @@ dev: setup dev-prep build-bridge
 build: build-vite golint build-backend build-bridge
 
 generate:
-	@go generate ./backend/cmd/server/config/init.go
+	@cd "$(BACKEND_DIR)" && go generate ./cmd/server/config/init.go
 
 run:
 	@./linuxio-webserver \
@@ -352,7 +394,7 @@ clean:
 	@rm -f ./linuxio-bridge || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
-	@find backend/cmd/server/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@find "$(BACKEND_DIR)/cmd/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
 # ----- Release flow targets -----
@@ -473,18 +515,6 @@ merge-release:
 	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --delete-branch; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
-	  \
-	  # --- Find the exact workflow run for THIS merge commit --- \
-	  WF_NAME="$${WF_NAME:-Release (tag + build)}"; \
-	  REPO_SLUG="$$(git config --get remote.origin.url | sed -E 's#(git@|https://)github\.com[:/](.+)\.git#\2#')"; \
-	  MERGE_SHA="$$(gh pr view $(call _repo_flag) "$$PRNUM" --json mergeCommit -q .mergeCommit.oid 2>/dev/null || true)"; \
-	  git fetch origin main --quiet || true; \
-	  [ -z "$$MERGE_SHA" ] && MERGE_SHA="$$(git rev-parse origin/main)"; \
-	  echo "🔗 Merge commit: $$MERGE_SHA"; \
-	  \
-	  # Get workflow ID by name (more reliable than --workflow matching) \
-	  WF_ID="$$(gh api repos/"$$REPO_SLUG"/actions/workflows -q '.workflows[] | select(.name=="'"$$WF_NAME"'") | .id' | head -n1)"; \
-	  if [ -z "$$WF_ID" ]; then echo "❌ Could not find workflow named '$$WF_NAME'."; exit 1; fi; \
 	}
 
 help:
@@ -495,7 +525,7 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Toolchain setup$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-node      $(COLOR_RESET) Install/activate Node $(NODE_VERSION) via nvm"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go        $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
-	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go 1.25)"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
 	@$(PRINTC) ""
 

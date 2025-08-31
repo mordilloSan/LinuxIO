@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,7 +12,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/mordilloSan/LinuxIO/cmd/server/config"
+	"github.com/mordilloSan/LinuxIO/cmd/server/web"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
@@ -112,7 +113,7 @@ func ApplyNavigatorDefaults(c *gin.Context, sess *session.Session) error {
 	return nil
 }
 
-// ---- FB calls (unchanged) ----
+// ---- Helpers ----
 
 func fbLogin(ctx context.Context, c *gin.Context, sessionID string) error {
 	url := origin(c) + "/navigator/api/auth/login"
@@ -219,17 +220,11 @@ func origin(c *gin.Context) string {
 
 func newHTTPClient(c *gin.Context) *http.Client {
 	tr := &http.Transport{ForceAttemptHTTP2: true}
-	if c.Request.TLS != nil || strings.EqualFold(c.Request.Header.Get("X-Forwarded-Proto"), "https") {
-		roots := TrustedRootPool()
-		if roots == nil {
-			if sys, err := x509.SystemCertPool(); err == nil {
-				roots = sys
-			} else {
-				roots = x509.NewCertPool()
-			}
-		}
+
+	isHTTPS := c.Request.TLS != nil || strings.EqualFold(c.Request.Header.Get("X-Forwarded-Proto"), "https")
+	if isHTTPS {
 		tr.TLSClientConfig = &tls.Config{
-			RootCAs:    roots,
+			RootCAs:    web.GetRootPool(),
 			ServerName: hostWithoutPort(c.Request.Host),
 			MinVersion: tls.VersionTLS12,
 		}
@@ -242,14 +237,4 @@ func hostWithoutPort(h string) string {
 		return h[:i]
 	}
 	return h
-}
-
-// Accessor used by your internal HTTP client code
-func TrustedRootPool() *x509.CertPool {
-	// You can customize this to return a cached or custom pool if needed.
-	roots, err := x509.SystemCertPool()
-	if err != nil {
-		return x509.NewCertPool()
-	}
-	return roots
 }
