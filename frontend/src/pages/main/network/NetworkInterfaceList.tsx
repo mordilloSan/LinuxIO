@@ -110,9 +110,6 @@ const NetworkInterfaceList = () => {
   }
   return (
     <Box>
-      <Typography variant="h4" sx={{ mb: 2 }}>
-        Network Interfaces
-      </Typography>
       <Grid container spacing={4}>
         <AnimatePresence>
           {interfaces.map((iface) =>

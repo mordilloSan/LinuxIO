@@ -26,10 +26,15 @@ COLOR_RED    := \033[1;31m
 # Reusable color printer (interprets \033 escapes)
 PRINTC := printf '%b\n'
 
-# Version auto-detection (from git tags)
-GIT_VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
-GIT_COMMIT  := $(shell git rev-parse --short HEAD)
-BUILD_TIME  := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+# Version auto-detection
+GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD)
+GIT_TAG           := $(shell git describe --tags --exact-match 2>/dev/null || true)
+GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD)
+
+# If on a tag, use it; else strip "dev/" prefix from branch (dev/v0.1.1 -> v0.1.1)
+BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
+GIT_VERSION       := $(if $(GIT_TAG),$(GIT_TAG),$(BRANCH_VERSION))
+BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Centralize extra flags
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
@@ -37,7 +42,6 @@ GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
 # --- Go project root autodetection (supports backend/, go-backend/, or repo root) ---
 BACKEND_DIR := $(shell \
   if [ -f backend/go.mod ]; then echo backend; \
-  elif [ -f go-backend/go.mod ]; then echo go-backend; \
   elif [ -f go.mod ]; then echo .; \
   else echo ""; fi )
 
@@ -276,19 +280,17 @@ build-backend:
 	go build \
 	-ldflags "\
 		-X 'backend/version.Version=$(GIT_VERSION)' \
-		-X 'backend/version.CommitSHA=$(GIT_COMMIT)' \
+		-X 'backend/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
 		-X 'backend/version.Env=production'" \
-	-o ../linuxio-webserver ./cmd/server && \
+	-o ../linuxio ./ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
-	echo "📄 Path: $(PWD)/linuxio-webserver" && \
+	echo "📄 Path: $(PWD)/linuxio" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
-	echo "🔐 Commit: $(GIT_COMMIT)" && \
-	echo "⏱ Build Time: $(BUILD_TIME)" && \
-	echo "📦 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
-	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
+	echo "📦 Size: $$(du -h ../linuxio | cut -f1)" && \
+	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio | awk '{ print $$1 }')"
 
 build-bridge:
 	@echo ""
@@ -297,27 +299,25 @@ build-bridge:
 	go build \
 	-ldflags "\
 		-X 'backend/version.Version=$(GIT_VERSION)' \
-		-X 'backend/version.CommitSHA=$(GIT_COMMIT)' \
+		-X 'backend/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
 		-X 'backend/version.Env=production'" \
-	-o ../linuxio-bridge ./cmd/bridge && \
+	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-bridge" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
-	echo "🔐 Commit: $(GIT_COMMIT)" && \
-	echo "⏱ Build Time: $(BUILD_TIME)" && \
 	echo "📦 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 dev-prep:
-	@mkdir -p "$(BACKEND_DIR)/cmd/server/web/frontend/assets"
-	@mkdir -p "$(BACKEND_DIR)/cmd/server/web/frontend/.vite"
-	@touch "$(BACKEND_DIR)/cmd/server/web/frontend/.vite/manifest.json"
-	@touch "$(BACKEND_DIR)/cmd/server/web/frontend/manifest.json"
-	@touch "$(BACKEND_DIR)/cmd/server/web/frontend/favicon-1.png"
-	@touch "$(BACKEND_DIR)/cmd/server/web/frontend/assets/index-mock.js"
+	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/assets"
+	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/.vite"
+	@touch "$(BACKEND_DIR)/server/web/frontend/.vite/manifest.json"
+	@touch "$(BACKEND_DIR)/server/web/frontend/manifest.json"
+	@touch "$(BACKEND_DIR)/server/web/frontend/favicon-1.png"
+	@touch "$(BACKEND_DIR)/server/web/frontend/assets/index-mock.js"
 
 dev: setup dev-prep build-bridge
 	@echo ""
@@ -328,12 +328,10 @@ dev: setup dev-prep build-bridge
 	if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echoctl; fi
 
 	# Start backend (flags, not env) in background and remember PID
-	( cd "$(BACKEND_DIR)/cmd/server" && \
-	  go run . \
-	    --env=development \
-	    $(VERBOSE_FLAG) \
-	    --port=$(SERVER_PORT) \
-	    --vite-port=$(VITE_DEV_PORT) \
+	( cd "$(BACKEND_DIR)" && \
+    LINUXIO_ENV=development \
+    LINUXIO_VERBOSE=$(VERBOSE) \
+    go run . run -port=$(SERVER_PORT) \
 	) &
 	BACK_PID=$$!
 
@@ -382,19 +380,18 @@ dev: setup dev-prep build-bridge
 build: build-vite golint build-backend build-bridge
 
 generate:
-	@cd "$(BACKEND_DIR)" && go generate ./cmd/server/config/init.go
+	@cd "$(BACKEND_DIR)" && go generate ./server/config/init.go
 
 run:
-	@./linuxio-webserver \
-	  --verbose=$(VERBOSE) \
-	  --port=$(SERVER_PORT)
+	@LINUXIO_ENV=production \
+	./linuxio run -port=$(SERVER_PORT)
 
 clean:
-	@rm -f ./linuxio-webserver || true
+	@rm -f ./linuxio || true
 	@rm -f ./linuxio-bridge || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
-	@find "$(BACKEND_DIR)/cmd/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@find "$(BACKEND_DIR)/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
 # ----- Release flow targets -----

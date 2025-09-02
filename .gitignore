@@ -1,10 +1,10 @@
 # frontend Files
 frontend/node_modules/
-backend/cmd/server/web/frontend/
+backend/server/web/frontend/
 
 # Go Binaries
 linuxio-bridge
-linuxio-webserver
+linuxio
 
 # Logs and misc
 *.log
