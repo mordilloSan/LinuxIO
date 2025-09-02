@@ -333,6 +333,7 @@ dev: setup dev-prep build-bridge
 	( cd "$(BACKEND_DIR)" && \
     LINUXIO_ENV=development \
     LINUXIO_VERBOSE=$(VERBOSE) \
+    VITE_DEV_PORT=$(VITE_DEV_PORT) \
     go run . run -port=$(SERVER_PORT) \
 	) &
 	BACK_PID=$$!

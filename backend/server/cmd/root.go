@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -27,6 +28,15 @@ import (
 func envOrDefault(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+func intFromEnv(key string, def int) int {
+	if s := os.Getenv(key); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 && n < 65536 {
+			return n
+		}
 	}
 	return def
 }
@@ -60,11 +70,10 @@ func RunServer(cfg ServerConfig) {
 		logger.Error.Fatalf("failed to mount embedded frontend: %v", err)
 	}
 
-	// Build router
 	router := BuildRouter(Config{
 		Env:                  env,
 		Verbose:              verbose,
-		VitePort:             5173, // unchanged; dev-only if you keep that flow
+		VitePort:             intFromEnv("VITE_DEV_PORT", 3000),
 		BridgeBinaryOverride: cfg.BridgeBinaryPath,
 		FilebrowserSecret:    filebrowserSecret,
 		UI:                   ui,
