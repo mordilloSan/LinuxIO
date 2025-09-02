@@ -11,16 +11,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/version"
 )
 
-// These are set via -ldflags at build time:
-//
-//	-X github.com/mordilloSan/LinuxIO/server/cmd.Version=v0.3.0
-//	-X github.com/mordilloSan/LinuxIO/server/cmd.Commit=abcdef1
-//	-X github.com/mordilloSan/LinuxIO/server/cmd.BuildTime=2025-09-02T10:00:00Z
-var (
-	Version   = "dev"
-	CommitSHA = "unknown"
-)
-
 // ServerConfig is the minimal runtime config passed to the server.
 type ServerConfig struct {
 	Port             int

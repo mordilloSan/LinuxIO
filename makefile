@@ -26,28 +26,32 @@ COLOR_RED    := \033[1;31m
 # Reusable color printer (interprets \033 escapes)
 PRINTC := printf '%b\n'
 
-# Version auto-detection
-GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD)
-GIT_TAG           := $(shell git describe --tags --exact-match 2>/dev/null || true)
-GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD)
-
-# If on a tag, use it; else strip "dev/" prefix from branch (dev/v0.1.1 -> v0.1.1)
-BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
-GIT_VERSION       := $(if $(GIT_TAG),$(GIT_TAG),$(BRANCH_VERSION))
-BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-
 # Centralize extra flags
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
 
 # --- Go project root autodetection (supports backend/, go-backend/, or repo root) ---
+# --- Go project root autodetection (keep this early) ---
 BACKEND_DIR := $(shell \
   if [ -f backend/go.mod ]; then echo backend; \
   elif [ -f go.mod ]; then echo .; \
   else echo ""; fi )
-
 ifeq ($(BACKEND_DIR),)
 $(error Could not find go.mod in backend/, go-backend/, or project root)
 endif
+
+# Module path of the Go module (e.g., github.com/mordilloSan/LinuxIO)
+MODULE_PATH := $(shell cd "$(BACKEND_DIR)" && go list -m)
+
+# --- Git metadata (order matters!) ---
+GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD)
+GIT_TAG           := $(shell git describe --tags --exact-match 2>/dev/null || true)
+GIT_COMMIT        := $(shell git rev-parse HEAD)
+GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD)
+BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
+# If on a tag, use it. If branch is dev/vX.Y.Z, strip the prefix. Otherwise fallback to dev-<shortsha>.
+GIT_VERSION       := $(if $(GIT_TAG),$(GIT_TAG),$(if $(filter dev/%,$(GIT_BRANCH)),$(BRANCH_VERSION),dev-$(GIT_COMMIT_SHORT)))
+BUILD_TIME        := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
 
 # Prefer user-local Go if present
 GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(shell which go))
@@ -279,10 +283,9 @@ build-backend:
 	@cd "$(BACKEND_DIR)" && \
 	go build \
 	-ldflags "\
-		-X 'backend/version.Version=$(GIT_VERSION)' \
-		-X 'backend/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
-		-X 'backend/version.Env=production'" \
+		-X '$(MODULE_PATH)/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/version.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio ./ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
@@ -298,10 +301,9 @@ build-bridge:
 	@cd "$(BACKEND_DIR)" && \
 	go build \
 	-ldflags "\
-		-X 'backend/version.Version=$(GIT_VERSION)' \
-		-X 'backend/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
-		-X 'backend/version.Env=production'" \
+		-X '$(MODULE_PATH)/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/version.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "" && \

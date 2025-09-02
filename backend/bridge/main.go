@@ -15,13 +15,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/spf13/pflag"
+
 	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/server/config"
-	"github.com/spf13/pflag"
+	"github.com/mordilloSan/LinuxIO/version"
 )
 
 // Build minimal session object from env (keeps secret out of argv)
@@ -38,12 +40,20 @@ var bridgeClosing = make(chan struct{})
 var wg sync.WaitGroup
 
 func main() {
-	// Flags for mode only
 	var env string
 	var verbose bool
+	var showVersion bool
+
 	pflag.StringVar(&env, "env", "production", "environment (development|production)")
-	pflag.BoolVar(&verbose, "verbose", false, "enable verbose logs") // presence-only: --verbose
+	pflag.BoolVar(&verbose, "verbose", false, "enable verbose logs")
+	pflag.BoolVar(&showVersion, "version", false, "print version and exit")
 	pflag.Parse()
+
+	// accept BOTH: ./linuxio-bridge --version  AND  ./linuxio-bridge version
+	if showVersion || (len(pflag.Args()) > 0 && (pflag.Args()[0] == "version" || pflag.Args()[0] == "-version" || pflag.Args()[0] == "-v")) {
+		printBridgeVersion()
+		return
+	}
 
 	env = strings.ToLower(env)
 	logger.Init(env, verbose)
@@ -151,6 +161,11 @@ func main() {
 	// Wait for cleanup to complete; then exit
 	<-cleanupDone
 	logger.Infof("Bridge stopped.")
+}
+
+func printBridgeVersion() {
+	fmt.Printf("linuxio-bridge %s (commit %s, sha256 %s)\n",
+		version.Version, version.CommitSHA, version.SelfSHA256())
 }
 
 // handleMainRequest processes incoming bridge requests.
