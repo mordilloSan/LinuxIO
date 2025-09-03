@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
@@ -328,4 +330,46 @@ func cleanBackticks(path string) error {
 
 	cleaned := strings.ReplaceAll(string(data), "`", "")
 	return os.WriteFile(path, []byte(cleaned), 0600)
+}
+
+//for wireguard stats
+
+// --- rate cache for bytes/sec ---
+type rateSample struct {
+	rx int64
+	tx int64
+	ts time.Time
+}
+
+var (
+	rateMu    sync.Mutex
+	rateCache = map[string]rateSample{} // key: iface + "|" + publicKey
+)
+
+func computeRates(iface, pub string, rx, tx int64, now time.Time) (rxBps, txBps float64) {
+	key := iface + "|" + pub
+
+	rateMu.Lock()
+	defer rateMu.Unlock()
+
+	prev, ok := rateCache[key]
+	// store current sample immediately
+	rateCache[key] = rateSample{rx: rx, tx: tx, ts: now}
+
+	// first observation -> no rate yet
+	if !ok {
+		return 0, 0
+	}
+
+	dt := now.Sub(prev.ts).Seconds()
+	if dt <= 0.4 { // avoid noisy very-short intervals
+		return 0, 0
+	}
+
+	// counters can reset when interface bounces; guard negatives
+	if rx < prev.rx || tx < prev.tx {
+		return 0, 0
+	}
+
+	return float64(rx-prev.rx) / dt, float64(tx-prev.tx) / dt
 }

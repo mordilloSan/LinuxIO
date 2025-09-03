@@ -376,7 +376,7 @@ func ListPeers(args []string) (any, error) {
 		pc := ipc.PeerConfig{
 			PrivateKey: ifSec.Key("PrivateKey").String(),
 			AllowedIPs: parseCSV(ifSec.Key("Address").String()),
-			// NOTE: this value in exported file is the SERVER's public key; we will fix it below
+			// NOTE: exported file's [Peer] PublicKey is the SERVER key
 			PublicKey:           peerSec.Key("PublicKey").String(),
 			PresharedKey:        peerSec.Key("PresharedKey").String(),
 			Endpoint:            peerSec.Key("Endpoint").String(),
@@ -394,10 +394,12 @@ func ListPeers(args []string) (any, error) {
 			LastHandshakeUnix: 0,
 			RxBytes:           0,
 			TxBytes:           0,
+			RxBps:             0,
+			TxBps:             0,
 		})
 	}
 
-	// 2) Load main interface config to map AllowedIP (/32) -> peer public key (client)
+	// 2) Load main interface config to map AllowedIP (/32) -> client PublicKey
 	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
 	if err != nil {
 		logger.Warnf("ListPeers: could not parse main config for %s to map peer keys: %v", interfaceName, err)
@@ -408,7 +410,6 @@ func ListPeers(args []string) (any, error) {
 				ipToPub[ip] = p.PublicKey
 			}
 		}
-		// Fix public keys in our exported list to the client public key using AllowedIP
 		for i := range peers {
 			if len(peers[i].AllowedIPs) > 0 {
 				if pub, ok := ipToPub[peers[i].AllowedIPs[0]]; ok && pub != "" {
@@ -418,7 +419,7 @@ func ListPeers(args []string) (any, error) {
 		}
 	}
 
-	// 3) Query live stats with wgctrl and merge by peer public key
+	// 3) Query live stats (wgctrl) and merge by PublicKey; compute bps using cache
 	client, err := wgctrl.New()
 	if err != nil {
 		logger.Warnf("ListPeers: wgctrl.New failed (device may be down). Returning peers without stats: %v", err)
@@ -434,26 +435,40 @@ func ListPeers(args []string) (any, error) {
 		return peers, nil
 	}
 
+	now := time.Now()
 	statsByPub := make(map[string]struct {
 		hs time.Time
 		rx int64
 		tx int64
 	}, len(dev.Peers))
 
+	ratesByPub := make(map[string]struct {
+		rxBps float64
+		txBps float64
+	}, len(dev.Peers))
+
 	for _, pr := range dev.Peers {
-		statsByPub[pr.PublicKey.String()] = struct {
+		pub := pr.PublicKey.String()
+		statsByPub[pub] = struct {
 			hs time.Time
 			rx int64
 			tx int64
 		}{
 			hs: pr.LastHandshakeTime,
-			rx: int64(pr.ReceiveBytes),
-			tx: int64(pr.TransmitBytes),
+			rx: pr.ReceiveBytes,
+			tx: pr.TransmitBytes,
 		}
+
+		rxBps, txBps := computeRates(interfaceName, pub, pr.ReceiveBytes, pr.TransmitBytes, now)
+		ratesByPub[pub] = struct {
+			rxBps float64
+			txBps float64
+		}{rxBps: rxBps, txBps: txBps}
 	}
 
 	for i := range peers {
-		if st, ok := statsByPub[peers[i].PublicKey]; ok {
+		pub := peers[i].PublicKey
+		if st, ok := statsByPub[pub]; ok {
 			if st.hs.IsZero() {
 				peers[i].LastHandshake = "never"
 				peers[i].LastHandshakeUnix = 0
@@ -463,10 +478,15 @@ func ListPeers(args []string) (any, error) {
 			}
 			peers[i].RxBytes = st.rx
 			peers[i].TxBytes = st.tx
+
+			if r, ok := ratesByPub[pub]; ok {
+				peers[i].RxBps = r.rxBps
+				peers[i].TxBps = r.txBps
+			}
 		}
 	}
 
-	logger.Infof("ListPeers: found %d exported peers for %s (with runtime stats)", len(peers), interfaceName)
+	logger.Infof("ListPeers: found %d exported peers for %s (with runtime stats + bps)", len(peers), interfaceName)
 	return peers, nil
 }
 
