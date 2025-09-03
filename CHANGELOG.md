@@ -1,7 +1,17 @@
 ## v0.2.0 — 2025-09-03
 
+### 📚 Documentation
+
+* docs(changelog): update for v0.2.0 ([925906c](https://github.com/mordilloSan/LinuxIO/commit/925906c)) by @github-actions[bot]
+
+### 🔄 Other Changes
+
+* removed changelog generation from makefile to github actions ([559de05](https://github.com/mordilloSan/LinuxIO/commit/559de05)) by @MordilloSan
+
 ### 👥 Contributors
 
+* @MordilloSan
+* @github-actions[bot]
 
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.0
