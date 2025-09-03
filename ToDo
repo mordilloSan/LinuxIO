@@ -1,7 +1,3 @@
-4 - implement wireguard
-last handshake
-Tx and Rx
-
 5 - docker compose
 
 6 - Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable.
@@ -28,3 +24,4 @@ Separate the bridge and server code - DONE
 Optimize number of api calls when changing theme - DONE
 Implement a Global API for GET methods only with general info - DONE
 Bridge upon receiving exit command should cancel ongoing works - DONE
+Wireguard Testing and lasthandshake - DONE

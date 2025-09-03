@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/skip2/go-qrcode"
+	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
@@ -351,6 +353,7 @@ func ListPeers(args []string) (any, error) {
 	interfaceName := args[0]
 	logger.Debugf("ListPeers: listing exported peers for %s", interfaceName)
 
+	// 1) Read exported peer configs from disk (as before)
 	pattern := filepath.Join(peerDirPath(interfaceName), "*"+configExt)
 	files, err := filepath.Glob(pattern)
 	if err != nil {
@@ -358,7 +361,7 @@ func ListPeers(args []string) (any, error) {
 		return nil, fmt.Errorf("list peer configs: %w", err)
 	}
 
-	peers := make([]ipc.PeerConfig, 0, len(files))
+	peers := make([]PeerInfo, 0, len(files))
 
 	for _, file := range files {
 		iniFile, err := ini.Load(file)
@@ -371,8 +374,9 @@ func ListPeers(args []string) (any, error) {
 		peerSec := iniFile.Section("Peer")
 
 		pc := ipc.PeerConfig{
-			PrivateKey:          ifSec.Key("PrivateKey").String(),
-			AllowedIPs:          parseCSV(ifSec.Key("Address").String()),
+			PrivateKey: ifSec.Key("PrivateKey").String(),
+			AllowedIPs: parseCSV(ifSec.Key("Address").String()),
+			// NOTE: this value in exported file is the SERVER's public key; we will fix it below
 			PublicKey:           peerSec.Key("PublicKey").String(),
 			PresharedKey:        peerSec.Key("PresharedKey").String(),
 			Endpoint:            peerSec.Key("Endpoint").String(),
@@ -384,10 +388,85 @@ func ListPeers(args []string) (any, error) {
 			pc.Name = strings.TrimSuffix(filepath.Base(file), configExt)
 		}
 
-		peers = append(peers, pc)
+		peers = append(peers, PeerInfo{
+			PeerConfig:        pc,
+			LastHandshake:     "never",
+			LastHandshakeUnix: 0,
+			RxBytes:           0,
+			TxBytes:           0,
+		})
 	}
 
-	logger.Infof("ListPeers: found %d exported peers for %s", len(peers), interfaceName)
+	// 2) Load main interface config to map AllowedIP (/32) -> peer public key (client)
+	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
+	if err != nil {
+		logger.Warnf("ListPeers: could not parse main config for %s to map peer keys: %v", interfaceName, err)
+	} else {
+		ipToPub := make(map[string]string, len(cfg.Peers))
+		for _, p := range cfg.Peers {
+			for _, ip := range p.AllowedIPs {
+				ipToPub[ip] = p.PublicKey
+			}
+		}
+		// Fix public keys in our exported list to the client public key using AllowedIP
+		for i := range peers {
+			if len(peers[i].AllowedIPs) > 0 {
+				if pub, ok := ipToPub[peers[i].AllowedIPs[0]]; ok && pub != "" {
+					peers[i].PublicKey = pub
+				}
+			}
+		}
+	}
+
+	// 3) Query live stats with wgctrl and merge by peer public key
+	client, err := wgctrl.New()
+	if err != nil {
+		logger.Warnf("ListPeers: wgctrl.New failed (device may be down). Returning peers without stats: %v", err)
+		logger.Infof("ListPeers: found %d exported peers for %s", len(peers), interfaceName)
+		return peers, nil
+	}
+	defer client.Close()
+
+	dev, err := client.Device(interfaceName)
+	if err != nil {
+		logger.Warnf("ListPeers: client.Device(%s) failed (interface inactive?): %v", interfaceName, err)
+		logger.Infof("ListPeers: found %d exported peers for %s (no runtime stats)", len(peers), interfaceName)
+		return peers, nil
+	}
+
+	statsByPub := make(map[string]struct {
+		hs time.Time
+		rx int64
+		tx int64
+	}, len(dev.Peers))
+
+	for _, pr := range dev.Peers {
+		statsByPub[pr.PublicKey.String()] = struct {
+			hs time.Time
+			rx int64
+			tx int64
+		}{
+			hs: pr.LastHandshakeTime,
+			rx: int64(pr.ReceiveBytes),
+			tx: int64(pr.TransmitBytes),
+		}
+	}
+
+	for i := range peers {
+		if st, ok := statsByPub[peers[i].PublicKey]; ok {
+			if st.hs.IsZero() {
+				peers[i].LastHandshake = "never"
+				peers[i].LastHandshakeUnix = 0
+			} else {
+				peers[i].LastHandshake = st.hs.UTC().Format(time.RFC3339)
+				peers[i].LastHandshakeUnix = st.hs.Unix()
+			}
+			peers[i].RxBytes = st.rx
+			peers[i].TxBytes = st.tx
+		}
+	}
+
+	logger.Infof("ListPeers: found %d exported peers for %s (with runtime stats)", len(peers), interfaceName)
 	return peers, nil
 }
 

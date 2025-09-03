@@ -33,7 +33,15 @@ type WireGuardInterfaceUI struct {
 	PeerCount   int    `json:"peerCount"`
 }
 
-// --- IP Address Management ---
+type PeerInfo struct {
+	ipc.PeerConfig
+
+	LastHandshake     string `json:"last_handshake"`      // RFC3339 or "never"
+	LastHandshakeUnix int64  `json:"last_handshake_unix"` // 0 if never
+	RxBytes           int64  `json:"rx_bytes"`
+	TxBytes           int64  `json:"tx_bytes"`
+}
+
 type ipManager struct {
 	netBase    net.IP
 	serverHost int

@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/mordilloSan/LinuxIO/internal/ipc"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
-
-	"github.com/gin-gonic/gin"
 )
 
 // Always: Unmarshal into ipc.Response, then unmarshal Output.
