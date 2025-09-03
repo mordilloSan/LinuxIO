@@ -1,4 +1,23 @@
 ## v0.1.1 — 2025-09-03
 
-**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.1.1
+### 📚 Documentation\n\n* docs(changelog): add notes for v0.1.1 (489c591)
+* docs(changelog): add notes for v0.1.1 (6e70a25)
+* docs(changelog): add notes for v0.1.1 (2b46ee3)
+* docs(changelog): add notes for v0.1.1 (f49486f)
+* docs(changelog): add notes for v0.1.1 (aedbcdc)
+* docs(changelog): add notes for v0.1.1 (e4ae248)
+* docs(changelog): add notes for v0.1.1 (5666272)
+* docs(changelog): add notes for v0.1.1 (0842187)
+* docs(changelog): add notes for v0.1.1 (d18b0f3)
+* docs(changelog): add notes for v0.1.1 (9d5c0cb)\n\n### 🔄 Other Changes\n\n* first commit (0d815f1)
+* filebrowser middleware removal gitgnore update vite.config update server code reorganization: api code inside api folder bridge handlers inside bridge folder frontend static inside web/frontend folder (4268875)
+* vite config bug fix certificate consolidated make file improvement (1611194)
+* code folder reorganized main server rename (linuxio-webserver to linuxio server cli introduced. SHA256 on each binary (b51611c)
+* cli flags updated. (3711221)
+* vite dev port fix (3f0801f)
+* wireguard update. Testing works. (e4e7214)
+* wireguard code restructure wireguard addpeer bug fix (d8792da)
+* wireguard - lasthandshake and TX and RX (6e13d7a)
+* wireguard done (b5ac180)
+* makefile bug fix (ba6c7d4)\n\n**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.1.1
 
