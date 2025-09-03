@@ -221,7 +221,7 @@ ensure-golint: ensure-go
 	   echo "✔ golangci-lint v2 ready."; \
 	}
 
-setup: ensure-go ensure-node ensure-golint
+setup:
 	@echo ""
 	@echo "📦 Installing frontend dependencies..."
 	@bash -c '\
@@ -229,14 +229,14 @@ setup: ensure-go ensure-node ensure-golint
 	'
 	@echo "✅ Frontend dependencies installed!"
 
-lint: ensure-node
+lint: ensure-node setup
 	@echo "🔍 Running ESLint..."
 	@bash -c '\
 		cd frontend && \
 		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!" \
 	'
 
-tsc: ensure-node
+tsc: ensure-node setup
 	@echo "🔍 Running TypeScript type checks..."
 	@bash -c '\
 		cd frontend && \
@@ -417,87 +417,6 @@ start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
 	  echo "✅ Ready on branch $$REL_BRANCH"; \
 	}
 
-# Prepend a section for the current dev/v* branch into CHANGELOG.md
-release-notes:
-	@set -euo pipefail; \
-	if ! command -v gh >/dev/null 2>&1; then \
-	  echo "❌ GitHub CLI (gh) not found. Install: https://cli.github.com/"; \
-	  exit 1; \
-	fi; \
-	BRANCH="$$(git branch --show-current)"; \
-	if [ -z "$${VERSION:-}" ]; then \
-	  if echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    VERSION="$${BRANCH#dev/}"; \
-	  else \
-	    read -p "Enter version (e.g. v1.2.3): " VERSION; \
-	  fi; \
-	fi; \
-	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
-	DATE="$$(date -u +%Y-%m-%d)"; \
-	echo "📝 preparing notes for $$VERSION"; \
-	REPO_URL="$$(git config --get remote.origin.url)"; \
-	REPO_SLUG="$$(printf '%s' "$$REPO_URL" | sed 's#^.*github\.com[:/]##' | sed 's#\.git$$##')"; \
-	if [ -z "$$REPO_SLUG" ] || ! echo "$$REPO_SLUG" | grep -q '/'; then \
-	  echo "❌ Could not determine owner/repo from remote.origin.url='$$REPO_URL'"; \
-	  exit 1; \
-	fi; \
-	PREV="$$(git tag --list 'v*' --sort=-v:refname | head -n1)"; \
-	if [ -n "$$PREV" ]; then \
-	  BODY="$$(gh api repos/$$REPO_SLUG/releases/generate-notes -f tag_name="$$VERSION" -f previous_tag_name="$$PREV" --jq '.body')"; \
-	  # Fix the changelog URL to include dev/ prefix \
-	  BODY="$$(echo "$$BODY" | sed "s#https://github.com/$$REPO_SLUG/commits/v#https://github.com/$$REPO_SLUG/commits/dev/v#g")"; \
-	else \
-	  echo "ℹ️  No previous tag found. Generating changelog from all commits..."; \
-	  # Generate commit list manually when there's no previous tag \
-	  COMMITS="$$(git log --pretty=format:'* %s (%h)' --reverse)"; \
-	  if [ -z "$$COMMITS" ]; then \
-	    COMMITS="* Initial release"; \
-	  fi; \
-	  # Group commits by type (feat, fix, docs, etc.) \
-	  FEATURES="$$(echo "$$COMMITS" | grep -E '^\* feat(\(.*\))?:' || true)"; \
-	  FIXES="$$(echo "$$COMMITS" | grep -E '^\* fix(\(.*\))?:' || true)"; \
-	  DOCS="$$(echo "$$COMMITS" | grep -E '^\* docs(\(.*\))?:' || true)"; \
-	  OTHER="$$(echo "$$COMMITS" | grep -vE '^\* (feat|fix|docs)(\(.*\))?:' || true)"; \
-	  BODY=""; \
-	  if [ -n "$$FEATURES" ]; then \
-	    BODY="$$BODY### 🚀 Features\n\n$$FEATURES\n\n"; \
-	  fi; \
-	  if [ -n "$$FIXES" ]; then \
-	    BODY="$$BODY### 🐛 Bug Fixes\n\n$$FIXES\n\n"; \
-	  fi; \
-	  if [ -n "$$DOCS" ]; then \
-	    BODY="$$BODY### 📚 Documentation$$DOCS\n\n"; \
-	  fi; \
-	  if [ -n "$$OTHER" ]; then \
-	    BODY="$$BODY### 🔄 Other Changes\n\n$$OTHER\n\n"; \
-	  fi; \
-	  BODY="$$BODY**Full Changelog**: https://github.com/$$REPO_SLUG/commits/dev/$$VERSION"; \
-	fi; \
-	HEADER="## $$VERSION — $$DATE"; \
-	SEC_FILE="$$(mktemp)"; \
-	{ echo "$$HEADER"; echo; printf '%s\n' "$$BODY"; echo; } > "$$SEC_FILE"; \
-	if [ -f CHANGELOG.md ] && grep -q "^$${HEADER}$$" CHANGELOG.md; then \
-	  if [ "$${FORCE:-0}" = "1" ]; then \
-	    echo "♻️  Replacing existing section $$VERSION in CHANGELOG.md"; \
-	    perl -0777 -pe 'BEGIN{$$v=quotemeta($$ENV{HDR})} s/^$${v}\n(?:.*?\n)(?=^## |\z)/`cat $$ENV{SEC}`/ms' \
-	      -- - $$HDR="$$HEADER" $$SEC="$$SEC_FILE" CHANGELOG.md > CHANGELOG.md.new; \
-	    mv CHANGELOG.md.new CHANGELOG.md; \
-	  else \
-	    echo "✅ Section $$VERSION already present. (Use FORCE=1 to replace)"; \
-	    rm -f "$$SEC_FILE"; \
-	    exit 0; \
-	  fi; \
-	else \
-	  echo "➕ Prepending section $$VERSION to CHANGELOG.md"; \
-	  if [ -f CHANGELOG.md ]; then \
-	    cat "$$SEC_FILE" CHANGELOG.md > CHANGELOG.md.new && mv CHANGELOG.md.new CHANGELOG.md; \
-	  else \
-	    mv "$$SEC_FILE" CHANGELOG.md; \
-	  fi; \
-	fi; \
-	git add CHANGELOG.md >/dev/null 2>&1 || true; \
-	git commit -m "docs(changelog): add notes for $$VERSION" >/dev/null 2>&1 || echo "ℹ️  No changes to commit."
-
 # Open PR dev/<version> -> main (requires gh)
 open-pr: generate
 	@$(call _require_clean)
@@ -605,7 +524,6 @@ help:
 
 	@$(PRINTC) "$(COLOR_CYAN)  Release flow$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> from main (pushes upstream)"
-	@$(PRINTC) "$(COLOR_GREEN)    make release-notes    $(COLOR_RESET) Prepend CHANGELOG section for current dev/<version>"
 	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR dev/<version> → main (uses gh)"
 	@$(PRINTC) "$(COLOR_GREEN)    make merge-release    $(COLOR_RESET) Wait for checks, merge PR to main, delete branch"
 	@$(PRINTC) ""
@@ -616,4 +534,4 @@ help:
 	dev dev-prep setup test lint tsc golint \
 	ensure-node ensure-go ensure-golint \
 	generate \
-	start-dev release-notes open-pr merge-release
+	start-dev open-pr merge-release
