@@ -433,7 +433,7 @@ release-notes:
 	  echo "## $$VERSION — $$DATE"; \
 	  echo; \
 	  if [ -z "$$PREV" ]; then \
-	    echo "_First tagged release; including commits on $$BRANCH_"; \
+	    echo "_First tagged release; including commits on $${BRANCH}_"; \
 	    echo; \
 	    git log --no-merges --pretty='* %s (%h) — %an' origin/main..HEAD || git log --no-merges --pretty='* %s (%h) — %an'; \
 	  else \
