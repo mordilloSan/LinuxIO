@@ -1,6 +1,6 @@
 ## v0.1.1 — 2025-09-03
 
-### 📚 Documentation\n\n* docs(changelog): add notes for v0.1.1 (489c591)
+### 📚 Documentation* docs(changelog): add notes for v0.1.1 (489c591)
 * docs(changelog): add notes for v0.1.1 (6e70a25)
 * docs(changelog): add notes for v0.1.1 (2b46ee3)
 * docs(changelog): add notes for v0.1.1 (f49486f)
@@ -9,7 +9,8 @@
 * docs(changelog): add notes for v0.1.1 (5666272)
 * docs(changelog): add notes for v0.1.1 (0842187)
 * docs(changelog): add notes for v0.1.1 (d18b0f3)
-* docs(changelog): add notes for v0.1.1 (9d5c0cb)\n\n### 🔄 Other Changes\n\n* first commit (0d815f1)
+* docs(changelog): add notes for v0.1.1 (9d5c0cb)
+* docs(changelog): add notes for v0.1.1 (c12d9b4)\n\n### 🔄 Other Changes\n\n* first commit (0d815f1)
 * filebrowser middleware removal gitgnore update vite.config update server code reorganization: api code inside api folder bridge handlers inside bridge folder frontend static inside web/frontend folder (4268875)
 * vite config bug fix certificate consolidated make file improvement (1611194)
 * code folder reorganized main server rename (linuxio-webserver to linuxio server cli introduced. SHA256 on each binary (b51611c)
