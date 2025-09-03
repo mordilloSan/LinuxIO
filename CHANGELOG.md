@@ -1,3 +1,17 @@
+## v0.1.1 — 2025-09-03
+
+_First tagged release; including commits on dev/v0.1.1_
+
+* wireguard done (b5ac180) — MordilloSan
+* wireguard - lasthandshake and TX and RX (6e13d7a) — MordilloSan
+* wireguard code restructure wireguard addpeer bug fix (d8792da) — MordilloSan
+* wireguard update. Testing works. (e4e7214) — MordilloSan
+* vite dev port fix (3f0801f) — MordilloSan
+* cli flags updated. (3711221) — MordilloSan
+* code folder reorganized main server rename (linuxio-webserver to linuxio server cli introduced. SHA256 on each binary (b51611c) — MordilloSan
+* vite config bug fix certificate consolidated make file improvement (1611194) — MordilloSan
+* filebrowser middleware removal gitgnore update vite.config update server code reorganization: api code inside api folder bridge handlers inside bridge folder frontend static inside web/frontend folder (4268875) — MordilloSan
+
 ## v0.2.5 — 2025-08-30
 
 * up (2a63117) — MordilloSan
