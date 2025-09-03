@@ -16,6 +16,7 @@
 * docs(changelog): add notes for v0.1.1 ([d9bfd03](https://github.com/mordilloSan/LinuxIO/commit/d9bfd03)) by @MordilloSan
 * docs(changelog): add notes for v0.1.1 ([95ff96c](https://github.com/mordilloSan/LinuxIO/commit/95ff96c)) by @MordilloSan
 * docs(changelog): update for v0.1.1 ([6e740c4](https://github.com/mordilloSan/LinuxIO/commit/6e740c4)) by @github-actions[bot]
+* docs(changelog): update for v0.1.1 ([06b856e](https://github.com/mordilloSan/LinuxIO/commit/06b856e)) by @github-actions[bot]
 
 ### 🔄 Other Changes
 
@@ -33,6 +34,7 @@
 * changelog workflow update ([2701f38](https://github.com/mordilloSan/LinuxIO/commit/2701f38)) by @MordilloSan
 * linting ([f6c576e](https://github.com/mordilloSan/LinuxIO/commit/f6c576e)) by @MordilloSan
 * Merge branch 'dev/v0.1.1' of https://github.com/mordilloSan/LinuxIO into dev/v0.1.1 ([8188f8e](https://github.com/mordilloSan/LinuxIO/commit/8188f8e)) by @MordilloSan
+* makefile update for github actions ([a767198](https://github.com/mordilloSan/LinuxIO/commit/a767198)) by @MordilloSan
 
 ### 👥 Contributors
 
@@ -41,6 +43,4 @@
 
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.1.1
-
-# Changelog
 
