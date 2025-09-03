@@ -1,3 +1,11 @@
+## v0.2.0 — 2025-09-03
+
+### 👥 Contributors
+
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.0
+
 ## v0.1.1 — 2025-09-03
 
 ### 📚 Documentation
