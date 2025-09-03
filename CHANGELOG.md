@@ -1,5 +1,6 @@
 ## v0.1.1 — 2025-09-03
 
+* docs(changelog): add notes for v0.1.1 (f49486f) — MordilloSan
 * docs(changelog): add notes for v0.1.1 (2b46ee3) — MordilloSan
 * docs(changelog): add notes for v0.1.1 (6e70a25) — MordilloSan
 * makefile bug fix (ba6c7d4) — MordilloSan
