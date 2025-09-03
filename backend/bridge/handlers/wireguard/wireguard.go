@@ -364,8 +364,8 @@ func ListPeers(args []string) (any, error) {
 	peers := make([]PeerInfo, 0, len(files))
 
 	for _, file := range files {
-		iniFile, err := ini.Load(file)
-		if err != nil {
+		iniFile, loadErr := ini.Load(file)
+		if loadErr != nil {
 			logger.Warnf("ListPeers: failed to parse %s: %v", file, err)
 			continue
 		}

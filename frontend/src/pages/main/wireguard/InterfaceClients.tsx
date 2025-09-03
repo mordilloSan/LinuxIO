@@ -26,12 +26,12 @@ type Peer = {
   persistent_keepalive?: number;
 
   // New fields from server:
-  last_handshake?: string;        // RFC3339 or "never"
-  last_handshake_unix?: number;   // 0 if never
+  last_handshake?: string; // RFC3339 or "never"
+  last_handshake_unix?: number; // 0 if never
   rx_bytes?: number;
   tx_bytes?: number;
-  rx_bps?: number;                // bytes/sec
-  tx_bps?: number;                // bytes/sec
+  rx_bps?: number; // bytes/sec
+  tx_bps?: number; // bytes/sec
 };
 
 interface InterfaceDetailsProps {
@@ -97,7 +97,9 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   } = useQuery<Peer[]>({
     queryKey: ["wg-peers", interfaceName],
     queryFn: async () => {
-      const res = await axios.get(`/wireguard/interface/${interfaceName}/peers`);
+      const res = await axios.get(
+        `/wireguard/interface/${interfaceName}/peers`,
+      );
       return Array.isArray(res.data) ? res.data : res.data.peers || [];
     },
     enabled: !!interfaceName,
@@ -108,7 +110,9 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
 
   const handleDeletePeer = async (peerName: string) => {
     try {
-      await axios.delete(`/wireguard/interface/${interfaceName}/peer/${peerName}`);
+      await axios.delete(
+        `/wireguard/interface/${interfaceName}/peer/${peerName}`,
+      );
       refetch();
     } catch (error) {
       console.error("Failed to delete peer:", error);
@@ -172,12 +176,22 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
               >
                 <Card>
                   <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box
+                      display="flex"
+                      justifyContent="space-between"
+                      alignItems="center"
+                    >
                       <Box display="flex" alignItems="center" gap={1}>
                         <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
                           {peer.name || "Peer"}
                         </Typography>
-                        <Tooltip title={isOnline ? "Handshake < 3 minutes" : "No recent handshake"}>
+                        <Tooltip
+                          title={
+                            isOnline
+                              ? "Handshake < 3 minutes"
+                              : "No recent handshake"
+                          }
+                        >
                           <Chip
                             size="small"
                             label={isOnline ? "Online" : "Offline"}
