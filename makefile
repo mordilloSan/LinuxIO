@@ -420,36 +420,86 @@ start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
 # Prepend a section for the current dev/v* branch into CHANGELOG.md
 release-notes:
 	@set -euo pipefail; \
-	BRANCH="$$(git branch --show-current)"; \
-	if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	  echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
+	if ! command -v gh >/dev/null 2>&1; then \
+	  echo "❌ GitHub CLI (gh) not found. Install: https://cli.github.com/"; \
+	  exit 1; \
 	fi; \
-	VERSION="$${BRANCH#dev/}"; \
-	DATE="$$(date -u +%Y-%m-%d)"; \
-	git fetch --tags --force >/dev/null 2>&1 || true; \
-	PREV="$$(git tag --list 'v*' --sort=-v:refname | head -n1)"; \
-	REPO_SLUG="$$(git config --get remote.origin.url | sed -E 's#(git@|https://)github\.com[:/](.+)\.git#\2#')"; \
-	{ \
-	  echo "## $$VERSION — $$DATE"; \
-	  echo; \
-	  if [ -z "$$PREV" ]; then \
-	    echo "_First tagged release; including commits on $${BRANCH}_"; \
-	    echo; \
-	    git log --no-merges --pretty='* %s (%h) — %an' origin/main..HEAD || git log --no-merges --pretty='* %s (%h) — %an'; \
+	BRANCH="$$(git branch --show-current)"; \
+	if [ -z "$${VERSION:-}" ]; then \
+	  if echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	    VERSION="$${BRANCH#dev/}"; \
 	  else \
-	    git log --no-merges --pretty='* %s (%h) — %an' "$$PREV..$$BRANCH"; \
-	    echo; \
-	    echo "_Compare: https://github.com/$$REPO_SLUG/compare/$${PREV}...$${VERSION}_"; \
+	    read -p "Enter version (e.g. v1.2.3): " VERSION; \
 	  fi; \
-	  echo; \
-	} > .changelog.new; \
-	if [ -f CHANGELOG.md ]; then cat CHANGELOG.md >> .changelog.new; fi; \
-	mv .changelog.new CHANGELOG.md; \
-	git add CHANGELOG.md; \
-	git commit -m "docs(changelog): add notes for $$VERSION" || echo "ℹ️  No changes to commit."
+	fi; \
+	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
+	DATE="$$(date -u +%Y-%m-%d)"; \
+	echo "📝 preparing notes for $$VERSION"; \
+	REPO_URL="$$(git config --get remote.origin.url)"; \
+	REPO_SLUG="$$(printf '%s' "$$REPO_URL" | sed 's#^.*github\.com[:/]##' | sed 's#\.git$$##')"; \
+	if [ -z "$$REPO_SLUG" ] || ! echo "$$REPO_SLUG" | grep -q '/'; then \
+	  echo "❌ Could not determine owner/repo from remote.origin.url='$$REPO_URL'"; \
+	  exit 1; \
+	fi; \
+	PREV="$$(git tag --list 'v*' --sort=-v:refname | head -n1)"; \
+	if [ -n "$$PREV" ]; then \
+	  BODY="$$(gh api repos/$$REPO_SLUG/releases/generate-notes -f tag_name="$$VERSION" -f previous_tag_name="$$PREV" --jq '.body')"; \
+	  # Fix the changelog URL to include dev/ prefix \
+	  BODY="$$(echo "$$BODY" | sed "s#https://github.com/$$REPO_SLUG/commits/v#https://github.com/$$REPO_SLUG/commits/dev/v#g")"; \
+	else \
+	  echo "ℹ️  No previous tag found. Generating changelog from all commits..."; \
+	  # Generate commit list manually when there's no previous tag \
+	  COMMITS="$$(git log --pretty=format:'* %s (%h)' --reverse)"; \
+	  if [ -z "$$COMMITS" ]; then \
+	    COMMITS="* Initial release"; \
+	  fi; \
+	  # Group commits by type (feat, fix, docs, etc.) \
+	  FEATURES="$$(echo "$$COMMITS" | grep -E '^\* feat(\(.*\))?:' || true)"; \
+	  FIXES="$$(echo "$$COMMITS" | grep -E '^\* fix(\(.*\))?:' || true)"; \
+	  DOCS="$$(echo "$$COMMITS" | grep -E '^\* docs(\(.*\))?:' || true)"; \
+	  OTHER="$$(echo "$$COMMITS" | grep -vE '^\* (feat|fix|docs)(\(.*\))?:' || true)"; \
+	  BODY=""; \
+	  if [ -n "$$FEATURES" ]; then \
+	    BODY="$$BODY### 🚀 Features\n\n$$FEATURES\n\n"; \
+	  fi; \
+	  if [ -n "$$FIXES" ]; then \
+	    BODY="$$BODY### 🐛 Bug Fixes\n\n$$FIXES\n\n"; \
+	  fi; \
+	  if [ -n "$$DOCS" ]; then \
+	    BODY="$$BODY### 📚 Documentation$$DOCS\n\n"; \
+	  fi; \
+	  if [ -n "$$OTHER" ]; then \
+	    BODY="$$BODY### 🔄 Other Changes\n\n$$OTHER\n\n"; \
+	  fi; \
+	  BODY="$$BODY**Full Changelog**: https://github.com/$$REPO_SLUG/commits/dev/$$VERSION"; \
+	fi; \
+	HEADER="## $$VERSION — $$DATE"; \
+	SEC_FILE="$$(mktemp)"; \
+	{ echo "$$HEADER"; echo; printf '%s\n' "$$BODY"; echo; } > "$$SEC_FILE"; \
+	if [ -f CHANGELOG.md ] && grep -q "^$${HEADER}$$" CHANGELOG.md; then \
+	  if [ "$${FORCE:-0}" = "1" ]; then \
+	    echo "♻️  Replacing existing section $$VERSION in CHANGELOG.md"; \
+	    perl -0777 -pe 'BEGIN{$$v=quotemeta($$ENV{HDR})} s/^$${v}\n(?:.*?\n)(?=^## |\z)/`cat $$ENV{SEC}`/ms' \
+	      -- - $$HDR="$$HEADER" $$SEC="$$SEC_FILE" CHANGELOG.md > CHANGELOG.md.new; \
+	    mv CHANGELOG.md.new CHANGELOG.md; \
+	  else \
+	    echo "✅ Section $$VERSION already present. (Use FORCE=1 to replace)"; \
+	    rm -f "$$SEC_FILE"; \
+	    exit 0; \
+	  fi; \
+	else \
+	  echo "➕ Prepending section $$VERSION to CHANGELOG.md"; \
+	  if [ -f CHANGELOG.md ]; then \
+	    cat "$$SEC_FILE" CHANGELOG.md > CHANGELOG.md.new && mv CHANGELOG.md.new CHANGELOG.md; \
+	  else \
+	    mv "$$SEC_FILE" CHANGELOG.md; \
+	  fi; \
+	fi; \
+	git add CHANGELOG.md >/dev/null 2>&1 || true; \
+	git commit -m "docs(changelog): add notes for $$VERSION" >/dev/null 2>&1 || echo "ℹ️  No changes to commit."
 
 # Open PR dev/<version> -> main (requires gh)
-open-pr: generate release-notes
+open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
