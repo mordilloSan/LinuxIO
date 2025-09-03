@@ -35,6 +35,8 @@ interface CreateInterfaceDialogProps {
   existingNames: string[];
   existingPorts: number[];
   existingCIDRs: string[];
+  dns: string;
+  setDns: (dns: string) => void;
 }
 
 const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
@@ -57,6 +59,8 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
   existingNames,
   existingPorts,
   existingCIDRs,
+  dns,
+  setDns,
 }) => {
   const nameTaken = serverName && existingNames.some((n) => n === serverName);
   const portTaken =
@@ -102,6 +106,15 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
             error={!!cidrTaken}
             helperText={cidrTaken ? "This CIDR is already in use." : ""}
             disabled={loading}
+          />
+          <TextField
+            label="DNS (optional, comma-separated)"
+            value={dns}
+            onChange={(e) => setDns(e.target.value)}
+            fullWidth
+            margin="normal"
+            disabled={loading}
+            placeholder="e.g. 192.168.1.1, 1.1.1.1"
           />
           <TextField
             label="Peers"

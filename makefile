@@ -1,21 +1,19 @@
 # Main flags
 VITE_DEV_PORT = 3000
-SERVER_PORT = 8080
-VERBOSE ?= true
+SERVER_PORT   = 8080
+VERBOSE      ?= true
 
 # Go and Node.js versions
-GO_VERSION      = 1.25.0
-NODE_VERSION    = 24
+GO_VERSION   = 1.25.0
+NODE_VERSION = 24
 
 # Helpers
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
 GO_INSTALL_DIR := $(HOME)/.go
 NVM_DIR ?= $(HOME)/.nvm
-export PATH := $(NVM_DIR)/versions/node/current/bin:$(PATH)
+export PATH := $(GO_INSTALL_DIR)/bin:$(NVM_DIR)/versions/node/current/bin:$(PATH)
 NVM_SETUP = export NVM_DIR="$(NVM_DIR)"; \
             [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
-GO_BIN := $(shell which go)
-GOLANGCI_LINT := $(shell command -v golangci-lint || echo $(GO_INSTALL_DIR)/bin/golangci-lint)
 
 # Colors
 COLOR_RESET  := \033[0m
@@ -28,13 +26,38 @@ COLOR_RED    := \033[1;31m
 # Reusable color printer (interprets \033 escapes)
 PRINTC := printf '%b\n'
 
-# Version auto-detection (from git tags)
-GIT_VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
-GIT_COMMIT  := $(shell git rev-parse --short HEAD)
-BUILD_TIME  := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-
 # Centralize extra flags
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
+
+# --- Go project root autodetection (supports backend/, go-backend/, or repo root) ---
+# --- Go project root autodetection (keep this early) ---
+BACKEND_DIR := $(shell \
+  if [ -f backend/go.mod ]; then echo backend; \
+  elif [ -f go.mod ]; then echo .; \
+  else echo ""; fi )
+ifeq ($(BACKEND_DIR),)
+$(error Could not find go.mod in backend/, go-backend/, or project root)
+endif
+
+# Module path of the Go module (e.g., github.com/mordilloSan/LinuxIO)
+MODULE_PATH := $(shell cd "$(BACKEND_DIR)" && go list -m)
+
+# --- Git metadata (order matters!) ---
+GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD)
+GIT_TAG           := $(shell git describe --tags --exact-match 2>/dev/null || true)
+GIT_COMMIT        := $(shell git rev-parse HEAD)
+GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD)
+BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
+# If on a tag, use it. If branch is dev/vX.Y.Z, strip the prefix. Otherwise fallback to dev-<shortsha>.
+GIT_VERSION       := $(if $(GIT_TAG),$(GIT_TAG),$(if $(filter dev/%,$(GIT_BRANCH)),$(BRANCH_VERSION),dev-$(GIT_COMMIT_SHORT)))
+BUILD_TIME        := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+
+# Prefer user-local Go if present
+GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(shell which go))
+GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+GOLANGCI_LINT_VERSION ?= latest
+GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
 
 # -------- Release flow helpers (gh CLI) --------
 DEFAULT_BASE_BRANCH := main
@@ -145,7 +168,6 @@ ensure-go:
 		    rm -rf "$$DEST_VER_DIR"; \
 		    tar -C "$$TMP" -xzf "$$TMP/$$TARBALL"; \
 		    mv "$$TMP/go" "$$DEST_VER_DIR"; \
-            # Symlink $(GO_INSTALL_DIR) -> versioned dir (avoids untar over existing) \
 		    ln -sfn "$$DEST_VER_DIR" "$$GO_DIR"; \
 		    echo "✔ Linked $$GO_DIR -> $$DEST_VER_DIR"; \
 		    if ! grep -q "$$GO_DIR/bin" "$$HOME/.bashrc" 2>/dev/null; then \
@@ -167,11 +189,37 @@ ensure-go:
 		echo "✅ Go is ready!"; \
 	'
 
-ensure-golint:
-	@if ! command -v golangci-lint >/dev/null 2>&1; then \
-		echo "⬇ Installing golangci-lint..."; \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GO_INSTALL_DIR)/bin v1.58.2; \
-	fi
+# --- Build golangci-lint with the *local* Go toolchain ---
+ensure-golint: ensure-go
+	@{ set -euo pipefail; \
+	   bin="$(GOLANGCI_LINT)"; \
+	   need=1; \
+	   if [ -x "$$bin" ]; then \
+	     out="$$( "$$bin" version 2>/dev/null || true)"; \
+	     ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
+	     ver_no_v="$${ver#v}"; \
+	     major="$${ver_no_v%%.*}"; \
+	     built_ok="$$( printf '%s' "$$out" | grep -Eq 'built with go1\.25(\.|$$)' && echo yes || echo no )"; \
+	     if [ "$$major" = "2" ] && [ "$$built_ok" = "yes" ]; then need=0; fi; \
+	   fi; \
+	   if [ $$need -eq 1 ]; then \
+	     echo "⬇ Installing golangci-lint $(GOLANGCI_LINT_VERSION) (v2) with local Go ($(GO_BIN))..."; \
+	     rm -f "$$bin" || true; \
+	     PATH="$(GO_INSTALL_DIR)/bin:$$PATH" \
+	     GOBIN="$(GO_INSTALL_DIR)/bin" \
+	     GOTOOLCHAIN=local \
+	     GOFLAGS="-buildvcs=false" \
+	       "$(GO_BIN)" install "$(GOLANGCI_LINT_MODULE)@$(GOLANGCI_LINT_VERSION)"; \
+	   fi; \
+	   "$$bin" version | head -n1; \
+	   out="$$( "$$bin" version )"; \
+	   ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
+	   ver_no_v="$${ver#v}"; \
+	   major="$${ver_no_v%%.*}"; \
+	   [ "$$major" = "2" ] || { echo "❌ not a v2 golangci-lint"; exit 1; }; \
+	   echo "$$out" | grep -Eq 'built with go1\.25(\.|$$)' || { echo "❌ golangci-lint not built with Go 1.25"; exit 1; }; \
+	   echo "✔ golangci-lint v2 ready."; \
+	}
 
 setup: ensure-go ensure-node ensure-golint
 	@echo ""
@@ -181,34 +229,36 @@ setup: ensure-go ensure-node ensure-golint
 	'
 	@echo "✅ Frontend dependencies installed!"
 
-lint: setup
+lint: ensure-node
 	@echo "🔍 Running ESLint..."
 	@bash -c '\
 		cd frontend && \
 		npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!" \
 	'
 
-tsc: setup
+tsc: ensure-node
 	@echo "🔍 Running TypeScript type checks..."
 	@bash -c '\
 		cd frontend && \
 		npx tsc && echo "✅ TypeScript Linting Ok!" \
 	'
 
-golint: 
+golint: ensure-golint
+	@set -euo pipefail
+	@echo "📁 Linting Go module in: $(BACKEND_DIR)"
 	@echo "🔍 Running gofmt..."
 ifneq ($(CI),)
-	@fmt_out="$$(cd backend && gofmt -s -l .)"; \
+	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
 	if [ -n "$$fmt_out" ]; then \
 		echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; \
 	fi
 else
-	@(cd backend && gofmt -s -w .)
+	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
 endif
 	@echo "🔍 Ensuring go.mod is tidy..."
-	@( cd backend && go mod tidy && go mod download )
+	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
 	@echo "🔍 Running golangci-lint..."
-	@( cd backend && $(GOLANGCI_LINT) run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
+	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go Linting Ok!"
 
 test: setup dev-prep
@@ -230,52 +280,46 @@ build-vite: lint tsc
 build-backend:
 	@echo ""
 	@echo "📦 Building backend..."
-	@cd backend && \
+	@cd "$(BACKEND_DIR)" && \
 	go build \
 	-ldflags "\
-		-X 'backend/version.Version=$(GIT_VERSION)' \
-		-X 'backend/version.CommitSHA=$(GIT_COMMIT)' \
-		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
-		-X 'backend/version.Env=production'" \
-	-o ../linuxio-webserver ./cmd/server && \
+		-X '$(MODULE_PATH)/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/version.BuildTime=$(BUILD_TIME)'" \
+	-o ../linuxio ./ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
-	echo "📄 Path: $(PWD)/linuxio-webserver" && \
+	echo "📄 Path: $(PWD)/linuxio" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
-	echo "🔐 Commit: $(GIT_COMMIT)" && \
-	echo "⏱ Build Time: $(BUILD_TIME)" && \
-	echo "📦 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
-	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
+	echo "📦 Size: $$(du -h ../linuxio | cut -f1)" && \
+	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio | awk '{ print $$1 }')"
 
 build-bridge:
 	@echo ""
 	@echo "🔌 Building bridge..."
-	@cd backend && \
+	@cd "$(BACKEND_DIR)" && \
 	go build \
 	-ldflags "\
-		-X 'backend/version.Version=$(GIT_VERSION)' \
-		-X 'backend/version.CommitSHA=$(GIT_COMMIT)' \
-		-X 'backend/version.BuildTime=$(BUILD_TIME)' \
-		-X 'backend/version.Env=production'" \
-	-o ../linuxio-bridge ./cmd/bridge && \
+		-X '$(MODULE_PATH)/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/version.BuildTime=$(BUILD_TIME)'" \
+	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-bridge" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
-	echo "🔐 Commit: $(GIT_COMMIT)" && \
-	echo "⏱ Build Time: $(BUILD_TIME)" && \
 	echo "📦 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 dev-prep:
-	@mkdir -p backend/cmd/server/frontend/assets
-	@mkdir -p backend/cmd/server/frontend/.vite
-	@touch backend/cmd/server/frontend/.vite/manifest.json
-	@touch backend/cmd/server/frontend/manifest.json
-	@touch backend/cmd/server/frontend/favicon-1.png
-	@touch backend/cmd/server/frontend/assets/index-mock.js
+	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/assets"
+	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/.vite"
+	@touch "$(BACKEND_DIR)/server/web/frontend/.vite/manifest.json"
+	@touch "$(BACKEND_DIR)/server/web/frontend/manifest.json"
+	@touch "$(BACKEND_DIR)/server/web/frontend/favicon-1.png"
+	@touch "$(BACKEND_DIR)/server/web/frontend/assets/index-mock.js"
 
 dev: setup dev-prep build-bridge
 	@echo ""
@@ -286,12 +330,11 @@ dev: setup dev-prep build-bridge
 	if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echoctl; fi
 
 	# Start backend (flags, not env) in background and remember PID
-	( cd backend/cmd/server && \
-	  go run . \
-	    --env=development \
-	    $(VERBOSE_FLAG) \
-	    --port=$(SERVER_PORT) \
-	    --vite-port=$(VITE_DEV_PORT) \
+	( cd "$(BACKEND_DIR)" && \
+    LINUXIO_ENV=development \
+    LINUXIO_VERBOSE=$(VERBOSE) \
+    VITE_DEV_PORT=$(VITE_DEV_PORT) \
+    go run . run -port=$(SERVER_PORT) \
 	) &
 	BACK_PID=$$!
 
@@ -340,19 +383,18 @@ dev: setup dev-prep build-bridge
 build: build-vite golint build-backend build-bridge
 
 generate:
-	@go generate ./backend/cmd/server/config/init.go
+	@cd "$(BACKEND_DIR)" && go generate ./server/config/init.go
 
 run:
-	@./linuxio-webserver \
-	  --verbose=$(VERBOSE) \
-	  --port=$(SERVER_PORT)
+	@LINUXIO_ENV=production \
+	./linuxio run -port=$(SERVER_PORT)
 
 clean:
-	@rm -f ./linuxio-webserver || true
+	@rm -f ./linuxio || true
 	@rm -f ./linuxio-bridge || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
-	@find backend/cmd/server/frontend -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@find "$(BACKEND_DIR)/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
 # ----- Release flow targets -----
@@ -378,36 +420,86 @@ start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
 # Prepend a section for the current dev/v* branch into CHANGELOG.md
 release-notes:
 	@set -euo pipefail; \
-	BRANCH="$$(git branch --show-current)"; \
-	if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	  echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
+	if ! command -v gh >/dev/null 2>&1; then \
+	  echo "❌ GitHub CLI (gh) not found. Install: https://cli.github.com/"; \
+	  exit 1; \
 	fi; \
-	VERSION="$${BRANCH#dev/}"; \
-	DATE="$$(date -u +%Y-%m-%d)"; \
-	git fetch --tags --force >/dev/null 2>&1 || true; \
-	PREV="$$(git tag --list 'v*' --sort=-v:refname | head -n1)"; \
-	REPO_SLUG="$$(git config --get remote.origin.url | sed -E 's#(git@|https://)github\.com[:/](.+)\.git#\2#')"; \
-	{ \
-	  echo "## $$VERSION — $$DATE"; \
-	  echo; \
-	  if [ -z "$$PREV" ]; then \
-	    echo "_First tagged release; including commits on $$BRANCH_"; \
-	    echo; \
-	    git log --no-merges --pretty='* %s (%h) — %an' origin/main..HEAD || git log --no-merges --pretty='* %s (%h) — %an'; \
+	BRANCH="$$(git branch --show-current)"; \
+	if [ -z "$${VERSION:-}" ]; then \
+	  if echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	    VERSION="$${BRANCH#dev/}"; \
 	  else \
-	    git log --no-merges --pretty='* %s (%h) — %an' "$$PREV..$$BRANCH"; \
-	    echo; \
-	    echo "_Compare: https://github.com/$$REPO_SLUG/compare/$${PREV}...$${VERSION}_"; \
+	    read -p "Enter version (e.g. v1.2.3): " VERSION; \
 	  fi; \
-	  echo; \
-	} > .changelog.new; \
-	if [ -f CHANGELOG.md ]; then cat CHANGELOG.md >> .changelog.new; fi; \
-	mv .changelog.new CHANGELOG.md; \
-	git add CHANGELOG.md; \
-	git commit -m "docs(changelog): add notes for $$VERSION" || echo "ℹ️  No changes to commit."
+	fi; \
+	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
+	DATE="$$(date -u +%Y-%m-%d)"; \
+	echo "📝 preparing notes for $$VERSION"; \
+	REPO_URL="$$(git config --get remote.origin.url)"; \
+	REPO_SLUG="$$(printf '%s' "$$REPO_URL" | sed 's#^.*github\.com[:/]##' | sed 's#\.git$$##')"; \
+	if [ -z "$$REPO_SLUG" ] || ! echo "$$REPO_SLUG" | grep -q '/'; then \
+	  echo "❌ Could not determine owner/repo from remote.origin.url='$$REPO_URL'"; \
+	  exit 1; \
+	fi; \
+	PREV="$$(git tag --list 'v*' --sort=-v:refname | head -n1)"; \
+	if [ -n "$$PREV" ]; then \
+	  BODY="$$(gh api repos/$$REPO_SLUG/releases/generate-notes -f tag_name="$$VERSION" -f previous_tag_name="$$PREV" --jq '.body')"; \
+	  # Fix the changelog URL to include dev/ prefix \
+	  BODY="$$(echo "$$BODY" | sed "s#https://github.com/$$REPO_SLUG/commits/v#https://github.com/$$REPO_SLUG/commits/dev/v#g")"; \
+	else \
+	  echo "ℹ️  No previous tag found. Generating changelog from all commits..."; \
+	  # Generate commit list manually when there's no previous tag \
+	  COMMITS="$$(git log --pretty=format:'* %s (%h)' --reverse)"; \
+	  if [ -z "$$COMMITS" ]; then \
+	    COMMITS="* Initial release"; \
+	  fi; \
+	  # Group commits by type (feat, fix, docs, etc.) \
+	  FEATURES="$$(echo "$$COMMITS" | grep -E '^\* feat(\(.*\))?:' || true)"; \
+	  FIXES="$$(echo "$$COMMITS" | grep -E '^\* fix(\(.*\))?:' || true)"; \
+	  DOCS="$$(echo "$$COMMITS" | grep -E '^\* docs(\(.*\))?:' || true)"; \
+	  OTHER="$$(echo "$$COMMITS" | grep -vE '^\* (feat|fix|docs)(\(.*\))?:' || true)"; \
+	  BODY=""; \
+	  if [ -n "$$FEATURES" ]; then \
+	    BODY="$$BODY### 🚀 Features\n\n$$FEATURES\n\n"; \
+	  fi; \
+	  if [ -n "$$FIXES" ]; then \
+	    BODY="$$BODY### 🐛 Bug Fixes\n\n$$FIXES\n\n"; \
+	  fi; \
+	  if [ -n "$$DOCS" ]; then \
+	    BODY="$$BODY### 📚 Documentation$$DOCS\n\n"; \
+	  fi; \
+	  if [ -n "$$OTHER" ]; then \
+	    BODY="$$BODY### 🔄 Other Changes\n\n$$OTHER\n\n"; \
+	  fi; \
+	  BODY="$$BODY**Full Changelog**: https://github.com/$$REPO_SLUG/commits/dev/$$VERSION"; \
+	fi; \
+	HEADER="## $$VERSION — $$DATE"; \
+	SEC_FILE="$$(mktemp)"; \
+	{ echo "$$HEADER"; echo; printf '%s\n' "$$BODY"; echo; } > "$$SEC_FILE"; \
+	if [ -f CHANGELOG.md ] && grep -q "^$${HEADER}$$" CHANGELOG.md; then \
+	  if [ "$${FORCE:-0}" = "1" ]; then \
+	    echo "♻️  Replacing existing section $$VERSION in CHANGELOG.md"; \
+	    perl -0777 -pe 'BEGIN{$$v=quotemeta($$ENV{HDR})} s/^$${v}\n(?:.*?\n)(?=^## |\z)/`cat $$ENV{SEC}`/ms' \
+	      -- - $$HDR="$$HEADER" $$SEC="$$SEC_FILE" CHANGELOG.md > CHANGELOG.md.new; \
+	    mv CHANGELOG.md.new CHANGELOG.md; \
+	  else \
+	    echo "✅ Section $$VERSION already present. (Use FORCE=1 to replace)"; \
+	    rm -f "$$SEC_FILE"; \
+	    exit 0; \
+	  fi; \
+	else \
+	  echo "➕ Prepending section $$VERSION to CHANGELOG.md"; \
+	  if [ -f CHANGELOG.md ]; then \
+	    cat "$$SEC_FILE" CHANGELOG.md > CHANGELOG.md.new && mv CHANGELOG.md.new CHANGELOG.md; \
+	  else \
+	    mv "$$SEC_FILE" CHANGELOG.md; \
+	  fi; \
+	fi; \
+	git add CHANGELOG.md >/dev/null 2>&1 || true; \
+	git commit -m "docs(changelog): add notes for $$VERSION" >/dev/null 2>&1 || echo "ℹ️  No changes to commit."
 
 # Open PR dev/<version> -> main (requires gh)
-open-pr: generate release-notes
+open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
@@ -473,18 +565,6 @@ merge-release:
 	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --delete-branch; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
-	  \
-	  # --- Find the exact workflow run for THIS merge commit --- \
-	  WF_NAME="$${WF_NAME:-Release (tag + build)}"; \
-	  REPO_SLUG="$$(git config --get remote.origin.url | sed -E 's#(git@|https://)github\.com[:/](.+)\.git#\2#')"; \
-	  MERGE_SHA="$$(gh pr view $(call _repo_flag) "$$PRNUM" --json mergeCommit -q .mergeCommit.oid 2>/dev/null || true)"; \
-	  git fetch origin main --quiet || true; \
-	  [ -z "$$MERGE_SHA" ] && MERGE_SHA="$$(git rev-parse origin/main)"; \
-	  echo "🔗 Merge commit: $$MERGE_SHA"; \
-	  \
-	  # Get workflow ID by name (more reliable than --workflow matching) \
-	  WF_ID="$$(gh api repos/"$$REPO_SLUG"/actions/workflows -q '.workflows[] | select(.name=="'"$$WF_NAME"'") | .id' | head -n1)"; \
-	  if [ -z "$$WF_ID" ]; then echo "❌ Could not find workflow named '$$WF_NAME'."; exit 1; fi; \
 	}
 
 help:
@@ -495,7 +575,7 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Toolchain setup$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-node      $(COLOR_RESET) Install/activate Node $(NODE_VERSION) via nvm"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go        $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
-	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go 1.25)"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
 	@$(PRINTC) ""
 

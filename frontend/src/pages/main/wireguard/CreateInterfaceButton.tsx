@@ -27,6 +27,7 @@ const CreateInterfaceButton = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
+  const [dns, setDns] = useState("");
 
   // Fetch network info
   const {
@@ -167,12 +168,17 @@ const CreateInterfaceButton = () => {
     setLoading(true);
     setError(null);
     try {
+      const dnsArray = dns
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       const body = {
         name: serverName,
         address: [CIDR],
         listen_port: port,
         egress_nic: nic,
-        dns: [],
+        dns: dnsArray, // send if provided; backend treats [] as "no override"
         mtu: 0,
         peers: [],
         num_peers: peers,
@@ -181,6 +187,8 @@ const CreateInterfaceButton = () => {
 
       toast.success(`WireGuard interface '${serverName}' created`);
       setShowDialog(false);
+      // optionally reset dns
+      setDns("");
       queryClient.invalidateQueries({ queryKey: ["wireguardInterfaces"] });
     } catch (error: any) {
       const msg = error.response?.data?.error || error.message;
@@ -228,6 +236,8 @@ const CreateInterfaceButton = () => {
         existingNames={existingNames}
         existingPorts={existingPorts}
         existingCIDRs={existingCIDRs}
+        dns={dns}
+        setDns={setDns}
       />
     </>
   );

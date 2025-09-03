@@ -26,7 +26,6 @@ jobs:
        github.event.pull_request.merged == true &&
        startsWith(github.event.pull_request.head.ref, 'dev/v'))
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout full history
         uses: actions/checkout@v4
@@ -98,8 +97,8 @@ jobs:
       - name: Use Node 24 (with npm cache)
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend deps
@@ -122,12 +121,12 @@ jobs:
         run: SKIP_LINT=1 make build-bridge
 
       - name: Make artifacts executable
-        run: chmod +x linuxio-webserver linuxio-bridge
+        run: chmod +x linuxio linuxio-bridge
 
       - name: Create tarball
         run: |
           TAR="linuxio-${{ steps.tag.outputs.tag }}-linux-amd64.tar.gz"
-          tar czvf "$TAR" linuxio-webserver linuxio-bridge
+          tar czvf "$TAR" linuxio linuxio-bridge
           echo "tarball=$TAR" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release (with assets)
@@ -137,7 +136,7 @@ jobs:
           generate_release_notes: true
           files: |
             ${{ steps.create_tarball.outputs.tarball }}
-            linuxio-webserver
+            linuxio
             linuxio-bridge
           fail_on_unmatched_files: true
         env:

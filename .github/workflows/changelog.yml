@@ -1,0 +1,225 @@
+name: Generate Changelog
+
+on:
+  push:
+    branches:
+      - "dev/v*"
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to generate changelog for (e.g., v1.2.3)"
+        required: false
+        type: string
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for all tags and branches
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          elif [[ "${{ github.ref }}" == refs/heads/dev/* ]]; then
+            VERSION="${GITHUB_REF#refs/heads/dev/}"
+          else
+            echo "Error: Unable to determine version"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -v "^${{ steps.version.outputs.version }}$" | head -n1 || echo "")
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog content
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          PREV_TAG="${{ steps.prev_tag.outputs.prev_tag }}"
+
+          # Create temp file for changelog body
+          BODY_FILE=$(mktemp)
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "Generating changelog from $PREV_TAG to $VERSION"
+            
+            # Get commits between tags
+            COMMITS=$(git log ${PREV_TAG}..HEAD --pretty=format:'%s|%h|%an' --reverse)
+          else
+            echo "No previous tag found. Generating changelog from all commits."
+            
+            # Get all commits
+            COMMITS=$(git log --pretty=format:'%s|%h|%an' --reverse)
+          fi
+
+          # Initialize sections
+          FEATURES=""
+          FIXES=""
+          DOCS=""
+          STYLE=""
+          REFACTOR=""
+          PERF=""
+          TEST=""
+          BUILD=""
+          CI=""
+          CHORE=""
+          OTHER=""
+
+          # Process commits
+          while IFS='|' read -r message hash author; do
+            # Skip empty lines
+            [ -z "$message" ] && continue
+            
+            # Format commit entry
+            ENTRY="* $message ([${hash:0:7}](https://github.com/${{ github.repository }}/commit/$hash)) by @$author"
+            
+            # Categorize by conventional commit type
+            if [[ "$message" =~ ^feat(\(.*\))?: ]]; then
+              FEATURES="$FEATURES$ENTRY\n"
+            elif [[ "$message" =~ ^fix(\(.*\))?: ]]; then
+              FIXES="$FIXES$ENTRY\n"
+            elif [[ "$message" =~ ^docs(\(.*\))?: ]]; then
+              DOCS="$DOCS$ENTRY\n"
+            elif [[ "$message" =~ ^style(\(.*\))?: ]]; then
+              STYLE="$STYLE$ENTRY\n"
+            elif [[ "$message" =~ ^refactor(\(.*\))?: ]]; then
+              REFACTOR="$REFACTOR$ENTRY\n"
+            elif [[ "$message" =~ ^perf(\(.*\))?: ]]; then
+              PERF="$PERF$ENTRY\n"
+            elif [[ "$message" =~ ^test(\(.*\))?: ]]; then
+              TEST="$TEST$ENTRY\n"
+            elif [[ "$message" =~ ^build(\(.*\))?: ]]; then
+              BUILD="$BUILD$ENTRY\n"
+            elif [[ "$message" =~ ^ci(\(.*\))?: ]]; then
+              CI="$CI$ENTRY\n"
+            elif [[ "$message" =~ ^chore(\(.*\))?: ]]; then
+              CHORE="$CHORE$ENTRY\n"
+            else
+              OTHER="$OTHER$ENTRY\n"
+            fi
+          done <<< "$COMMITS"
+
+          # Build changelog body
+          {
+            [ -n "$FEATURES" ] && echo -e "### 🚀 Features\n\n$FEATURES"
+            [ -n "$FIXES" ] && echo -e "### 🐛 Bug Fixes\n\n$FIXES"
+            [ -n "$PERF" ] && echo -e "### ⚡ Performance\n\n$PERF"
+            [ -n "$REFACTOR" ] && echo -e "### ♻️ Refactoring\n\n$REFACTOR"
+            [ -n "$DOCS" ] && echo -e "### 📚 Documentation\n\n$DOCS"
+            [ -n "$STYLE" ] && echo -e "### 💄 Style\n\n$STYLE"
+            [ -n "$TEST" ] && echo -e "### 🧪 Tests\n\n$TEST"
+            [ -n "$BUILD" ] && echo -e "### 🏗️ Build\n\n$BUILD"
+            [ -n "$CI" ] && echo -e "### 🤖 CI/CD\n\n$CI"
+            [ -n "$CHORE" ] && echo -e "### 🔧 Chores\n\n$CHORE"
+            [ -n "$OTHER" ] && echo -e "### 🔄 Other Changes\n\n$OTHER"
+            
+            # Add contributors section
+            echo -e "### 👥 Contributors\n"
+            if [ -n "$PREV_TAG" ]; then
+              git log ${PREV_TAG}..HEAD --pretty=format:'* @%an' | sort -u
+            else
+              git log --pretty=format:'* @%an' | sort -u
+            fi
+            echo -e "\n"
+            
+            # Add full changelog link
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/commits/dev/$VERSION"
+          } > "$BODY_FILE"
+
+          # Save to output
+          echo "body_file=$BODY_FILE" >> $GITHUB_OUTPUT
+
+      - name: Update CHANGELOG.md
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DATE="${{ steps.version.outputs.date }}"
+          BODY_FILE="${{ steps.changelog.outputs.body_file }}"
+
+          # Create header
+          HEADER="## $VERSION — $DATE"
+
+          # Create new changelog entry
+          {
+            echo "$HEADER"
+            echo
+            cat "$BODY_FILE"
+            echo
+          } > new_entry.md
+
+          # Update or create CHANGELOG.md
+          if [ -f CHANGELOG.md ]; then
+            # Check if version already exists
+            if grep -q "^## $VERSION —" CHANGELOG.md; then
+              echo "Version $VERSION already exists in CHANGELOG.md, updating..."
+              # Create temp file without the existing version section
+              awk -v ver="$VERSION" '
+                /^## / { 
+                  if ($2 == ver) { 
+                    in_section=1; 
+                    next 
+                  } else if (in_section) { 
+                    in_section=0 
+                  } 
+                } 
+                !in_section { print }
+              ' CHANGELOG.md > CHANGELOG.tmp
+              cat new_entry.md CHANGELOG.tmp > CHANGELOG.md
+              rm CHANGELOG.tmp
+            else
+              # Prepend new entry
+              cat new_entry.md CHANGELOG.md > CHANGELOG.tmp
+              mv CHANGELOG.tmp CHANGELOG.md
+            fi
+          else
+            # Create new CHANGELOG.md
+            echo "# Changelog" > CHANGELOG.md
+            echo >> CHANGELOG.md
+            cat new_entry.md >> CHANGELOG.md
+          fi
+
+          # Clean up
+          rm -f new_entry.md "$BODY_FILE"
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add CHANGELOG.md
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "docs(changelog): update for ${{ steps.version.outputs.version }}"
+            git push
+          fi
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BODY_FILE="${{ steps.changelog.outputs.body_file }}"
+
+          # Create release using GitHub CLI
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes-file "$BODY_FILE" \
+            --target "${{ github.sha }}"

@@ -1,38 +1,46 @@
-## v0.2.5 — 2025-08-30
+## v0.1.1 — 2025-09-03
 
-* up (2a63117) — MordilloSan
-* update (ee3ef0f) — MordilloSan
+### 📚 Documentation
 
-_Compare: https://github.com/https://github.com/mordilloSan/LinuxIO/compare/v0.2.4...v0.2.5_
+* docs(changelog): add notes for v0.1.1 ([489c591](https://github.com/mordilloSan/LinuxIO/commit/489c591)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([6e70a25](https://github.com/mordilloSan/LinuxIO/commit/6e70a25)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([2b46ee3](https://github.com/mordilloSan/LinuxIO/commit/2b46ee3)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([f49486f](https://github.com/mordilloSan/LinuxIO/commit/f49486f)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([aedbcdc](https://github.com/mordilloSan/LinuxIO/commit/aedbcdc)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([e4ae248](https://github.com/mordilloSan/LinuxIO/commit/e4ae248)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([5666272](https://github.com/mordilloSan/LinuxIO/commit/5666272)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([0842187](https://github.com/mordilloSan/LinuxIO/commit/0842187)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([d18b0f3](https://github.com/mordilloSan/LinuxIO/commit/d18b0f3)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([9d5c0cb](https://github.com/mordilloSan/LinuxIO/commit/9d5c0cb)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([c12d9b4](https://github.com/mordilloSan/LinuxIO/commit/c12d9b4)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([d9bfd03](https://github.com/mordilloSan/LinuxIO/commit/d9bfd03)) by @MordilloSan
+* docs(changelog): add notes for v0.1.1 ([95ff96c](https://github.com/mordilloSan/LinuxIO/commit/95ff96c)) by @MordilloSan
+* docs(changelog): update for v0.1.1 ([6e740c4](https://github.com/mordilloSan/LinuxIO/commit/6e740c4)) by @github-actions[bot]
+* docs(changelog): update for v0.1.1 ([06b856e](https://github.com/mordilloSan/LinuxIO/commit/06b856e)) by @github-actions[bot]
 
-## v0.2.4 — 2025-08-30
+### 🔄 Other Changes
 
-* up (01c0c3b) — MordilloSan
-* docs(changelog): add notes for v0.2.4 (161e8c4) — MordilloSan
-* update (8582066) — MordilloSan
+* first commit ([0d815f1](https://github.com/mordilloSan/LinuxIO/commit/0d815f1)) by @MordilloSan
+* filebrowser middleware removal gitgnore update vite.config update server code reorganization: api code inside api folder bridge handlers inside bridge folder frontend static inside web/frontend folder ([4268875](https://github.com/mordilloSan/LinuxIO/commit/4268875)) by @MordilloSan
+* vite config bug fix certificate consolidated make file improvement ([1611194](https://github.com/mordilloSan/LinuxIO/commit/1611194)) by @MordilloSan
+* code folder reorganized main server rename (linuxio-webserver to linuxio server cli introduced. SHA256 on each binary ([b51611c](https://github.com/mordilloSan/LinuxIO/commit/b51611c)) by @MordilloSan
+* cli flags updated. ([3711221](https://github.com/mordilloSan/LinuxIO/commit/3711221)) by @MordilloSan
+* vite dev port fix ([3f0801f](https://github.com/mordilloSan/LinuxIO/commit/3f0801f)) by @MordilloSan
+* wireguard update. Testing works. ([e4e7214](https://github.com/mordilloSan/LinuxIO/commit/e4e7214)) by @MordilloSan
+* wireguard code restructure wireguard addpeer bug fix ([d8792da](https://github.com/mordilloSan/LinuxIO/commit/d8792da)) by @MordilloSan
+* wireguard - lasthandshake and TX and RX ([6e13d7a](https://github.com/mordilloSan/LinuxIO/commit/6e13d7a)) by @MordilloSan
+* wireguard done ([b5ac180](https://github.com/mordilloSan/LinuxIO/commit/b5ac180)) by @MordilloSan
+* makefile bug fix ([ba6c7d4](https://github.com/mordilloSan/LinuxIO/commit/ba6c7d4)) by @MordilloSan
+* changelog workflow update ([2701f38](https://github.com/mordilloSan/LinuxIO/commit/2701f38)) by @MordilloSan
+* linting ([f6c576e](https://github.com/mordilloSan/LinuxIO/commit/f6c576e)) by @MordilloSan
+* Merge branch 'dev/v0.1.1' of https://github.com/mordilloSan/LinuxIO into dev/v0.1.1 ([8188f8e](https://github.com/mordilloSan/LinuxIO/commit/8188f8e)) by @MordilloSan
+* makefile update for github actions ([a767198](https://github.com/mordilloSan/LinuxIO/commit/a767198)) by @MordilloSan
 
-_Compare: https://github.com/https://github.com/mordilloSan/LinuxIO/compare/v0.2.3...v0.2.4_
+### 👥 Contributors
 
-## v0.2.4 — 2025-08-30
+* @MordilloSan
+* @github-actions[bot]
 
-* update (8582066) — MordilloSan
 
-_Compare: https://github.com/https://github.com/mordilloSan/LinuxIO/compare/v0.2.3...v0.2.4_
-
-## v0.2.2 — 2025-08-30
-
-* docs(changelog): add notes for v0.2.2 (acd66b8) — MordilloSan
-* docs(changelog): add notes for v0.2.2 (2a41273) — MordilloSan
-* docs(changelog): add notes for v0.2.2 (5037b09) — MordilloSan
-* docs(changelog): add notes for v0.2.2 (43f27fe) — MordilloSan
-* chore(release): add release notes for v0.2.2 (1e70b11) — MordilloSan
-* chore(release): add release notes for v0.2.2 (364b838) — MordilloSan
-* docs(changelog): add notes for v0.2.2 (bc2bc48) — MordilloSan
-* chore(release): add release notes for v0.2.2 (ed70660) — MordilloSan
-* node update on workflow (cbd74d6) — MordilloSan
-* bug fix (d23cd10) — MordilloSan
-* session restructure (8e8b661) — MordilloSan
-* global API code (a1ee919) — MordilloSan
-
-_Compare: https://github.com/https://github.com/mordilloSan/LinuxIO/compare/v0.2.1...v0.2.2_
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.1.1
 
