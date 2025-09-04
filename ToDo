@@ -8,7 +8,7 @@
 
 11 - Bridge when starts should check if session is valid?
 
-12 - If session is garbage colected the bridge must exist as well.
+12 -
 
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
@@ -25,3 +25,4 @@ Optimize number of api calls when changing theme - DONE
 Implement a Global API for GET methods only with general info - DONE
 Bridge upon receiving exit command should cancel ongoing works - DONE
 Wireguard Testing and lasthandshake - DONE
+If session is garbage colected the bridge must exist as well - DONE

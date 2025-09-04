@@ -18,7 +18,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
 	"github.com/mordilloSan/LinuxIO/server/filebrowser"
-	"github.com/mordilloSan/LinuxIO/server/terminal"
 )
 
 type LoginRequest struct {
@@ -47,7 +46,7 @@ func loginHandler(c *gin.Context) {
 	}
 
 	if err := startBridgeSession(sess, req.Password); err != nil {
-		_ = session.DeleteSession(sess.SessionID)
+		_ = session.DeleteSession(sess.SessionID, session.ReasonManual)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start bridge"})
 		return
 	}
@@ -68,35 +67,12 @@ func logoutHandler(c *gin.Context) {
 		return
 	}
 
-	sess, err := session.GetSession(sessionID)
-	if err != nil {
-		logger.Errorf("Failed to get session (id=%s): %v", sessionID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "session fetch failed"})
-		return
-	}
-
-	// Clear cookie early to prevent new activity during teardown
+	// Clear cookie early
 	secure := (cfg.Env == "production") && (c.Request.TLS != nil)
 	session.DeleteCookie(c, secure)
 
-	if sess == nil {
-		logger.Debugf("No session found for ID: %s (already expired?)", sessionID)
-		c.Status(http.StatusOK)
-		return
-	}
-
-	// 1) Close all terminals (main + containers)
-	terminal.CloseAllForSession(sess.SessionID)
-
-	// 2) Ask bridge to shutdown
-	if sess.User.Username != "" {
-		if _, err := bridge.CallWithSession(sess, "control", "shutdown", []string{"logout"}); err != nil {
-			logger.Warnf("CallWithSession for shutdown failed: %v", err)
-		}
-	}
-
-	// 3) Delete session
-	if err := session.DeleteSession(sessionID); err != nil {
+	// Just delete with a reason — the registered hook will close terminals + shutdown bridge
+	if err := session.DeleteSession(sessionID, session.ReasonLogout); err != nil {
 		logger.Errorf("Failed to delete session %q: %v", sessionID, err)
 	}
 

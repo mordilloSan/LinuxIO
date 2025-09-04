@@ -20,8 +20,10 @@ import (
 	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
 	"github.com/mordilloSan/LinuxIO/server/api"
+	"github.com/mordilloSan/LinuxIO/server/bridge"
 	"github.com/mordilloSan/LinuxIO/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/server/filebrowser"
+	"github.com/mordilloSan/LinuxIO/server/terminal"
 	"github.com/mordilloSan/LinuxIO/server/web"
 )
 
@@ -55,6 +57,19 @@ func RunServer(cfg ServerConfig) {
 
 	// Sessions Cleanup
 	defer session.Init()()
+
+	// Fan-out all session deletions
+	session.RegisterOnDelete(func(sess session.Session, reason session.DeleteReason) {
+		// 1) Close all terminals for this session
+		terminal.CloseAllForSession(sess.SessionID)
+
+		// 2) Politely ask bridge to shutdown (best-effort)
+		if sess.User.Username != "" {
+			if _, err := bridge.CallWithSession(&sess, "control", "shutdown", []string{string(reason)}); err != nil {
+				logger.Warnf("Bridge shutdown for %s failed: %v", sess.SessionID, err)
+			}
+		}
+	})
 
 	// API startup for caching
 	api.StartSimpleNetInfoSampler()

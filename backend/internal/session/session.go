@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/utils"
 )
@@ -27,7 +28,7 @@ type SessionConfig struct {
 }
 
 var defaultConfig = SessionConfig{
-	IdleTimeout:          30 * time.Minute,
+	IdleTimeout:          5 * time.Minute,
 	AbsoluteTimeout:      12 * time.Hour,
 	RefreshInterval:      60 * time.Second,
 	SingleSessionPerUser: false,
@@ -73,6 +74,42 @@ var (
 	mem               *store
 	ErrNotInitialized = errors.New("session: not initialized")
 )
+
+// at top-level, near imports
+// ...
+type DeleteReason string
+
+const (
+	ReasonLogout     DeleteReason = "logout"
+	ReasonGCIdle     DeleteReason = "gc_idle"
+	ReasonGCAbsolute DeleteReason = "gc_absolute"
+	ReasonManual     DeleteReason = "manual"
+	ReasonServerQuit DeleteReason = "server_quit"
+)
+
+var (
+	onDeleteMu sync.RWMutex
+	onDelete   []func(Session, DeleteReason)
+)
+
+func RegisterOnDelete(fn func(Session, DeleteReason)) {
+	onDeleteMu.Lock()
+	onDelete = append(onDelete, fn)
+	onDeleteMu.Unlock()
+}
+
+func broadcastOnDelete(s Session, r DeleteReason) {
+	onDeleteMu.RLock()
+	subs := append([]func(Session, DeleteReason){}, onDelete...)
+	onDeleteMu.RUnlock()
+	for _, fn := range subs {
+		// fire-and-forget to avoid blocking
+		go func(f func(Session, DeleteReason)) {
+			defer func() { _ = recover() }()
+			f(s, r)
+		}(fn)
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // INIT & SHUTDOWN
@@ -122,18 +159,35 @@ func Init(cfgs ...*SessionConfig) (shutdown func()) {
 			select {
 			case <-mem.gcTicker.C:
 				now := time.Now()
-				collected := 0
+				var toNotify []struct {
+					s Session
+					r DeleteReason
+				}
+
 				mem.mu.Lock()
 				for id, sess := range mem.sessions {
 					if expired(&sess, now) {
-						deleteSessionLocked(mem, id) // expects mem.mu held
-						collected++
+						r := ReasonGCIdle
+						if now.After(sess.Timing.AbsoluteUntil) {
+							r = ReasonGCAbsolute
+						}
+						if removed := deleteSessionLocked(mem, id); removed != nil {
+							toNotify = append(toNotify, struct {
+								s Session
+								r DeleteReason
+							}{s: *removed, r: r})
+						}
 					}
 				}
 				mem.mu.Unlock()
-				if collected > 0 {
-					logger.Infof("🧽 Session GC: collected %d expired session(s)", collected)
+
+				for _, it := range toNotify {
+					broadcastOnDelete(it.s, it.r)
 				}
+				if n := len(toNotify); n > 0 {
+					logger.Infof("🧽 Session GC: collected %d expired session(s)", n)
+				}
+
 			case <-mem.closing:
 				return
 			}
@@ -158,10 +212,10 @@ func expired(sess *Session, now time.Time) bool {
 }
 
 // deleteSessionLocked expects s.mu to be held (write lock).
-func deleteSessionLocked(s *store, id string) {
+func deleteSessionLocked(s *store, id string) *Session {
 	old, ok := s.sessions[id]
 	if !ok {
-		return
+		return nil
 	}
 	delete(s.sessions, id)
 	if set, ok := s.userIndex[old.User.Username]; ok {
@@ -171,6 +225,21 @@ func deleteSessionLocked(s *store, id string) {
 		}
 	}
 	logger.Infof("Deleted session for user '%s'", old.User.Username)
+	return &old
+}
+
+func DeleteSession(id string, reason DeleteReason) error {
+	if mem == nil {
+		return ErrNotInitialized
+	}
+	mem.mu.Lock()
+	removed := deleteSessionLocked(mem, id)
+	mem.mu.Unlock()
+	if removed != nil {
+		broadcastOnDelete(*removed, reason)
+		return nil
+	}
+	return fmt.Errorf("session ID '%s' not found", id)
 }
 
 func indexSessionLocked(s *store, sess Session) {
@@ -233,10 +302,7 @@ func CreateSession(id string, user User, privileged bool) (*Session, error) {
 		return nil, ErrNotInitialized
 	}
 
-	mem.mu.Lock()
-	defer mem.mu.Unlock()
-
-	// Generate ID if needed
+	// Generate ID if needed (outside the lock is fine)
 	if id == "" {
 		var err error
 		id, err = randID(16)
@@ -244,13 +310,9 @@ func CreateSession(id string, user User, privileged bool) (*Session, error) {
 			return nil, fmt.Errorf("failed generating session id: %w", err)
 		}
 	}
-	if _, exists := mem.sessions[id]; exists {
-		return nil, fmt.Errorf("session already exists for ID %s", id)
-	}
 
 	now := time.Now()
 	abs := mem.cfg.AbsoluteTimeout
-
 	bridgeSecret := utils.GenerateSecretKey(32)
 	sess := Session{
 		SessionID:    id,
@@ -273,34 +335,33 @@ func CreateSession(id string, user User, privileged bool) (*Session, error) {
 		},
 	}
 
+	// ---- mutate store under lock
+	var toRevoke []string
+	mem.mu.Lock()
+	if _, exists := mem.sessions[id]; exists {
+		mem.mu.Unlock()
+		return nil, fmt.Errorf("session already exists for ID %s", id)
+	}
 	if mem.cfg.SingleSessionPerUser {
 		if set, ok := mem.userIndex[user.Username]; ok {
 			for sid := range set {
-				deleteSessionLocked(mem, sid)
+				toRevoke = append(toRevoke, sid)
 			}
 		}
 	}
-
 	mem.sessions[id] = sess
 	indexSessionLocked(mem, sess)
+	mem.mu.Unlock()
+	// ---- lock released
+
+	// Notify outside the lock
+	for _, sid := range toRevoke {
+		_ = DeleteSession(sid, ReasonManual) // or a custom ReasonReplaced
+	}
 
 	copy := sess
 	logger.Infof("Created session for user '%s'", user.Username)
 	return &copy, nil
-}
-
-func DeleteSession(id string) error {
-	if mem == nil {
-		return ErrNotInitialized
-	}
-	mem.mu.Lock()
-	defer mem.mu.Unlock()
-
-	if _, exists := mem.sessions[id]; !exists {
-		return fmt.Errorf("session ID '%s' not found", id)
-	}
-	deleteSessionLocked(mem, id)
-	return nil
 }
 
 func GetSession(id string) (*Session, error) { return getSessionCopy(id) }
@@ -377,11 +438,16 @@ func ValidateSessionFromRequest(r *http.Request) (*Session, error) {
 
 	now := time.Now()
 	if now.After(sess.Timing.AbsoluteUntil) || now.After(sess.Timing.IdleUntil) {
+		reason := ReasonGCIdle
+		if now.After(sess.Timing.AbsoluteUntil) {
+			reason = ReasonGCAbsolute
+		}
+		_ = DeleteSession(sess.SessionID, reason)
 		logger.Warnf("Expired session access attempt by user '%s'", sess.User.Username)
 		return nil, fmt.Errorf("session expired")
 	}
 
-	_ = refresh(sess.SessionID) // slide idle window (throttled)
+	_ = refresh(sess.SessionID)
 	return sess, nil
 }
 
