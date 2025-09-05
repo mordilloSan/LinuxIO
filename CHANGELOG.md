@@ -1,12 +1,15 @@
-## v0.2.0 — 2025-09-03
+## v0.2.0 — 2025-09-05
 
 ### 📚 Documentation
 
 * docs(changelog): update for v0.2.0 ([925906c](https://github.com/mordilloSan/LinuxIO/commit/925906c)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([2e71c43](https://github.com/mordilloSan/LinuxIO/commit/2e71c43)) by @github-actions[bot]
 
 ### 🔄 Other Changes
 
 * removed changelog generation from makefile to github actions ([559de05](https://github.com/mordilloSan/LinuxIO/commit/559de05)) by @MordilloSan
+* session update to kill bridge when expired ([aa163d1](https://github.com/mordilloSan/LinuxIO/commit/aa163d1)) by @MordilloSan
+* session code upgrade for store. Small bug fixes ([e752187](https://github.com/mordilloSan/LinuxIO/commit/e752187)) by @MordilloSan
 
 ### 👥 Contributors
 
