@@ -44,22 +44,29 @@ func intFromEnv(key string, def int) int {
 }
 
 func RunServer(cfg ServerConfig) {
-	// Optional: keep env/verbose behavior via ENV VARS (no CLI flags).
+	// Env + logging
 	env := strings.ToLower(envOrDefault("LINUXIO_ENV", "production"))
 	verbose := strings.EqualFold(os.Getenv("LINUXIO_VERBOSE"), "1") ||
 		strings.EqualFold(os.Getenv("LINUXIO_VERBOSE"), "true")
-
 	logger.Init(env, verbose)
 	if !(env == "development" && verbose) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	logger.Infof("🌱 Starting server in %s mode...", env)
 
-	// Sessions Cleanup
-	defer session.Init()()
+	// ----------------------------------------------------------------------------
+	// Sessions  + cleanup hooks
+	// ----------------------------------------------------------------------------
+	ms := session.New()
+	sm := session.NewManager(ms, session.SessionConfig{
+		Cookie: session.CookieConfig{
+			Secure: env == "production", // keep true when TLS-terminated upstream
+		},
+	})
+	defer sm.Close()
 
-	// Fan-out all session deletions
-	session.RegisterOnDelete(func(sess session.Session, reason session.DeleteReason) {
+	// Fan-out all session deletions (bridge+terminal cleanup)
+	sm.RegisterOnDelete(func(sess session.Session, reason session.DeleteReason) {
 		// 1) Close all terminals for this session
 		terminal.CloseAllForSession(sess.SessionID)
 
@@ -71,20 +78,24 @@ func RunServer(cfg ServerConfig) {
 		}
 	})
 
-	// API startup for caching
+	// ----------------------------------------------------------------------------
+	// Background samplers, GPU info, FileBrowser
+	// ----------------------------------------------------------------------------
 	api.StartSimpleNetInfoSampler()
 	api.InitGPUInfo()
 
-	// FileBrowser
 	filebrowserSecret := utils.GenerateSecretKey(32)
 	go filebrowser.StartServices(filebrowserSecret, verbose)
 
-	// Frontend FS
+	// ----------------------------------------------------------------------------
+	// Frontend assets
+	// ----------------------------------------------------------------------------
 	ui, err := web.UI()
 	if err != nil {
 		logger.Error.Fatalf("failed to mount embedded frontend: %v", err)
 	}
 
+	// Build router (pass session manager so /auth can use it)
 	router := BuildRouter(Config{
 		Env:                  env,
 		Verbose:              verbose,
@@ -92,15 +103,18 @@ func RunServer(cfg ServerConfig) {
 		BridgeBinaryOverride: cfg.BridgeBinaryPath,
 		FilebrowserSecret:    filebrowserSecret,
 		UI:                   ui,
-	})
+	}, sm)
 
+	// ----------------------------------------------------------------------------
 	// HTTP(S) server
+	// ----------------------------------------------------------------------------
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	srv := &http.Server{
 		Addr:     addr,
 		Handler:  router,
 		ErrorLog: log.New(HTTPErrorLogAdapter{}, "", 0),
 	}
+
 	if env == "production" {
 		cert, err := web.GenerateSelfSignedCert()
 		if err != nil {
@@ -143,7 +157,7 @@ func RunServer(cfg ServerConfig) {
 		logger.Infof("🚨 Server stopped unexpectedly, beginning shutdown...")
 	}
 
-	// graceful -> forced shutdown
+	// Graceful -> forced shutdown
 	srv.SetKeepAlivesEnabled(false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -161,7 +175,7 @@ func RunServer(cfg ServerConfig) {
 	}
 
 	// Cleanup
-	cleanup.ShutdownAllBridges("server_quit")
+	cleanup.ShutdownAllBridges(sm, "server_quit")
 	if err := cleanup.CleanupFilebrowserContainer(); err != nil {
 		logger.Warnf("FileBrowser cleanup error: %v", err)
 	}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { FB_BASE } from "@/utils/filebrowser";
@@ -6,15 +6,24 @@ import { FB_BASE } from "@/utils/filebrowser";
 export default function FilebrowserIframe() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // runtime flags for cross-window coordination
-  const fbReadyRef = useRef(false);
+  // handshake flag in state so effects can react to it
+  const [fbReady, setFbReady] = useState(false);
+
+  // remember the last suffix we sent to avoid echo loops
   const lastSentRef = useRef<string>("");
 
   const location = useLocation();
   const navigate = useNavigate();
+
   const isFBRoute = location.pathname.startsWith("/filebrowser");
 
-  // Keep latest values in a ref so the listener never goes stale
+  // Resolve the real origin of the FileBrowser app (works for absolute or relative FB_BASE)
+  const FB_ORIGIN = useMemo(
+    () => new URL(FB_BASE, window.location.href).origin,
+    [],
+  );
+
+  // Keep always-fresh values without re-binding the event listener
   const latestRef = useRef({
     isFBRoute,
     path: location.pathname,
@@ -30,40 +39,7 @@ export default function FilebrowserIframe() {
     navigate,
   };
 
-  // 1) Subscribe to window messages ONCE
-  useEffect(() => {
-    function onMsg(ev: MessageEvent) {
-      if (ev.origin !== window.location.origin) return;
-      const fromIframe =
-        iframeRef.current?.contentWindow &&
-        ev.source === iframeRef.current.contentWindow;
-      if (!fromIframe) return;
-
-      const d = ev.data;
-
-      // Handshake: mark iframe as ready to receive navigation
-      if (d?.type === "filebrowser:ready") {
-        fbReadyRef.current = true;
-        return;
-      }
-
-      // Sync parent route when FB navigates internally
-      if (latestRef.current.isFBRoute && d?.type === "filebrowser:navigation") {
-        const url = String(d.url || "/");
-        const next = `/filebrowser${url}`;
-        const cur =
-          latestRef.current.path +
-          latestRef.current.search +
-          latestRef.current.hash;
-        if (next !== cur) latestRef.current.navigate(next, { replace: true });
-      }
-    }
-
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
-
-  // Precompute the suffix we want the iframe to navigate to
+  // The suffix we want the iframe to show (everything after /filebrowser)
   const urlSuffix = useMemo(
     () =>
       location.pathname.replace(/^\/filebrowser/, "") +
@@ -72,24 +48,91 @@ export default function FilebrowserIframe() {
     [location.pathname, location.search, location.hash],
   );
 
-  // 2) Push navigation to the iframe when our route changes under /filebrowser
-  useEffect(() => {
-    if (!isFBRoute) return;
-    if (urlSuffix === lastSentRef.current) return;
+  // Build the iframe src once (stable after mount) to prevent reloads on route changes
+  const initialSrcRef = useRef<string>("");
+  if (!initialSrcRef.current) {
+    const suffix = isFBRoute ? urlSuffix || "/" : "/";
+    initialSrcRef.current = `${FB_BASE.replace(/\/+$/, "")}/${String(
+      suffix,
+    ).replace(/^\/+/, "")}`;
+  }
+  const iframeSrc = initialSrcRef.current;
 
+  // Helper: send navigation to the iframe (postMessage), targeted to FB_ORIGIN
+  const sendNavigate = (suffix: string) => {
     const win = iframeRef.current?.contentWindow;
-    if (!win || !fbReadyRef.current) return; // wait for the iframe handshake
-
+    if (!win) return;
     try {
       win.postMessage(
-        { type: "linuxio:navigate", url: urlSuffix || "/" },
-        window.location.origin,
+        { type: "linuxio:navigate", url: suffix || "/" },
+        FB_ORIGIN,
       );
-      lastSentRef.current = urlSuffix;
+      lastSentRef.current = suffix;
     } catch {
       // no-op
     }
-  }, [isFBRoute, urlSuffix]);
+  };
+
+  // Listen for messages from the iframe (handshake + internal navigation)
+  useEffect(() => {
+    function onMsg(ev: MessageEvent) {
+      // Only trust messages from the FileBrowser origin
+      if (ev.origin !== FB_ORIGIN) return;
+
+      const fromIframe =
+        iframeRef.current?.contentWindow &&
+        ev.source === iframeRef.current.contentWindow;
+      if (!fromIframe) return;
+
+      const d = ev.data;
+
+      // Handshake from iframe: it is ready to receive navigation updates
+      if (d?.type === "filebrowser:ready") {
+        setFbReady(true);
+
+        // On first ready, align iframe to our current route if needed
+        if (latestRef.current.isFBRoute) {
+          const curSuffix =
+            latestRef.current.path.replace(/^\/filebrowser/, "") +
+            latestRef.current.search +
+            latestRef.current.hash;
+          if (curSuffix !== lastSentRef.current) {
+            sendNavigate(curSuffix);
+          }
+        }
+        return;
+      }
+
+      // Iframe drove its own navigation → reflect in parent URL without echoing back
+      if (d?.type === "filebrowser:navigation") {
+        const url = String(d.url || "/"); // e.g. "/folder/a"
+        const next = `/filebrowser${url}`;
+        const cur =
+          latestRef.current.path +
+          latestRef.current.search +
+          latestRef.current.hash;
+
+        // Mark as already sent BEFORE navigating so the route-change effect won't bounce it back
+        lastSentRef.current = url;
+
+        if (latestRef.current.isFBRoute && next !== cur) {
+          latestRef.current.navigate(next, { replace: true });
+        }
+      }
+    }
+
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [FB_ORIGIN]);
+
+  // Parent route changed (or iframe became ready) → tell iframe to navigate
+  useEffect(() => {
+    if (!isFBRoute) return;
+    if (!fbReady) return; // wait for handshake
+    if (urlSuffix === lastSentRef.current) return; // avoid echo/bounce
+
+    sendNavigate(urlSuffix);
+  }, [isFBRoute, urlSuffix, fbReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -110,7 +153,7 @@ export default function FilebrowserIframe() {
       <iframe
         id="filebrowser-iframe"
         ref={iframeRef}
-        src={`${FB_BASE}/`}
+        src={iframeSrc} // stable after mount → no reloads when parent URL changes
         title="FileBrowser"
         allow="fullscreen"
         loading="lazy"

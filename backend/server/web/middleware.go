@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"github.com/mordilloSan/LinuxIO/internal/session"
 )
@@ -40,7 +41,10 @@ type ctxKey string
 
 const proxyPathKey ctxKey = "proxyPath"
 
-func FilebrowserReverseProxy(secret string) gin.HandlerFunc {
+// FilebrowserReverseProxy proxies to the FileBrowser service and
+// injects a per-request header (name = secret) with the LinuxIO username.
+// It reads the session cookie and resolves the session via the provided Manager.
+func FilebrowserReverseProxy(secret string, sm *session.Manager) gin.HandlerFunc {
 	target, _ := url.Parse("http://127.0.0.1:8090")
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
@@ -48,17 +52,10 @@ func FilebrowserReverseProxy(secret string) gin.HandlerFunc {
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
 		req.Host = target.Host
-
-		// Extract session_id cookie manually
-		cookie, err := req.Cookie("session_id")
-		if err == nil && cookie.Value != "" {
-			sess, err := session.GetSession(cookie.Value)
-			if err == nil && sess != nil {
-				// Set the header using the secret as header name
-				req.Header.Set(secret, sess.User.Username)
-			}
+		// Set a header named by 'secret' with the username.
+		if s, err := sm.ValidateFromRequest(req); err == nil && s != nil {
+			req.Header.Set(secret, s.User.Username)
 		}
-
 	}
 
 	proxy.ModifyResponse = func(resp *http.Response) error {
@@ -75,31 +72,15 @@ func FilebrowserReverseProxy(secret string) gin.HandlerFunc {
 		defer func() {
 			if rec := recover(); rec != nil {
 				if err, ok := rec.(error); ok && err == http.ErrAbortHandler {
-					// client closed connection — safe to ignore
-					return
+					return // client closed connection — ignore
 				}
 				if str, ok := rec.(string); ok && str == "net/http: abort Handler" {
 					return
 				}
-				// unexpected panic, rethrow
-				panic(rec)
+				panic(rec) // unexpected
 			}
 		}()
 
 		proxy.ServeHTTP(c.Writer, c.Request)
-	}
-
-}
-
-func AuthMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		sess, err := session.ValidateSessionFromRequest(c.Request)
-		if err != nil || sess == nil {
-			logger.Warnf("⚠️  Unauthorized request or expired session: %v", err)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-		c.Set("session", sess)
-		c.Next()
 	}
 }

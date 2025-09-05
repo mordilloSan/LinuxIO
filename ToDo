@@ -6,10 +6,6 @@
 
 8 - Test Multiple Users. And do this in fliebrowser specific
 
-11 - Bridge when starts should check if session is valid?
-
-12 -
-
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
 filebrowser header should contain sessionid - DONE

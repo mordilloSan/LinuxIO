@@ -1,53 +1,60 @@
-[![CodeQL Advanced](https://github.com/mordilloSan/LinuxIO/actions/workflows/codeql.yml/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions/workflows/codeql.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/backend)
+[![CodeQL](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql)
 
 ![Logo](frontend/public/Logo.png)
 
-**Linux i/O** is a modern dashboard for managing your Linux system using native tools.  
-It aims to unify essential functionality in a single web-based interface without reinventing the wheel.
+# Linux I/O
+
+A modern dashboard to manage your Linux system — Docker, WireGuard, updates, users, shares, sensors, and more — all in one web UI.
 
 ---
 
-## 🧠 Philosophy
+## 🧠 Philosophy and Inspiration
 
-Most Linux distributions already come with powerful tools for deploying apps, monitoring and control — `docker`, `systemctl`, `nmcli`, etc.  
-This project is about **leveraging those existing tools** by exposing their input/output via a friendly, minimal, and customizable web UI.
+Linux I/O is inspired by [Cockpit](https://cockpit-project.org/): a single place to manage your server.  
+But I wanted to go further — bring together **Docker management** (like Portainer), **WireGuard UI** (like Unraid), a **file explorer** (FileBrowser Quantum), and a straightforward **system API** (like Glances) into one cohesive app.
 
-Instead of replacing the Linux experience, **Linux i/O visualizes it.**
+The goal: **one tool** to easily manage a “normal” homelab without juggling five different UIs.
+
+Linux, as powerful as it is, suffers from too many distros, each with their set of tools.
+I did my best to make this distro-agnostic, but it’s not fully there yet.
+Base distro is debian/ubuntu
 
 ---
 
 ## ⚙️ Stack
 
-- **Frontend:**
+- **Frontend**
 
   - **Framework:** React + Vite + TypeScript
   - **Styling:** Material UI (based on the [Mira Theme](https://mira.bootlab.io))
-  - **REST API:** Axios
+  - **REST API:** Axios and Tanstack Query
 
-- **Backend:**
+- **Backend**
+
   - **Language:** Go
-  - **Authentication:** Auth done via existing PAM modules
-  - **HTTP Server:** API routes, middleware, authentication
-  - **REST API:** Gin
+  - **Authentication:** PAM modules
+  - **HTTP server:** Gin (API routes, middleware, authentication)
   - **WebSocket:** Gorilla
+
+- **Bridge**
+  - A helper binary for executing privileged system-level actions securely.
 
 ---
 
 ## 🚀 Features
 
-- 🔐 Authentication via PAM (or other pluggable systems)
-- 📊 System stats dashboard: CPU, memory, disk, network, etc
-- 🌐 Network Manager
-- 🔄 Software Update Manager
-- 🧠 Service Viewer: see running processes live
-- 🐳 Docker Manager
-- 👤 User Accounts
-- 📤 Share Manager
-- 🛡️ WireGuard management UI
-- 💡 Hardware and Sensor Information
-- 📁 Navigator using a File Explorer via [FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser)
-- 💻 Terminal output: view real-time output of Linux commands
+- 🔐 PAM authentication
+- 📊 Live system stats: CPU, memory, disk, network
+- 🌐 NetworkManager integration
+- 🔄 Software updates (PackageKit)
+- 🧠 Process viewer
+- 🐳 Docker manager
+- 👤 User accounts
+- 📤 Share manager
+- 🛡️ WireGuard UI
+- 💡 Hardware sensors (lm-sensors, SMART)
+- 📁 File Explorer via **FileBrowser Quantum**
+- 💻 Streaming command output (terminal view)
 
 ---
 
@@ -72,8 +79,8 @@ sudo dnf install -y make curl git lm_sensors pam-devel dnf-plugins-core smartmon
 ### Clone the repo
 
 ```bash
-git clone https://github.com/mordilloSan/IO-Linux-Server
-cd IO-Linux-Server
+git clone https://github.com/mordilloSan/LinuxIO
+cd LinuxIO
 ```
 
 ---
@@ -87,9 +94,9 @@ This repo uses `make` to simplify standard operations.
 ```bash
 make setup             # Install Node.js, Go, and frontend dependencies
 make lint              # Run ESLint linter on frontend
-make tsc               # Run TypeScript type checks on frontend
+make tsc               # Run TypeScript type checks
 make test              # Run ESLint + TypeScript type checks
-make dev               # Start frontend (Vite) and backend (Go) in dev mode (hot reload)
+make dev               # Start frontend (Vite) and backend (Go) in dev mode
 make build             # Build frontend, backend, and bridge for production
 make run               # Run production backend server
 make build-backend     # Build Go backend binary
@@ -122,7 +129,8 @@ Outputs all API paths and logs (from Gin)
 ### 🚀 Production Mode
 
 ```bash
-make prod
+make build
+make run
 ```
 
 - Compiles frontend via Vite serving static assets
@@ -137,14 +145,14 @@ make prod
 
 Under the hood:
 
-- The **React frontend** runs in `react/` and talks to the backend via Vite's proxy (see `vite.config.ts`).
+- The **React frontend** runs in `frontend/` and talks to the backend via Vite's proxy (see `vite.config.ts`).
 
 ---
 
 ## 📁 Project Structure
 
 ```
-IO_Linux_Server/
+LinuxIO/
 ├── backend/          # Gin powered backend
 ├── frontend/         # Vite powered React frontend
 ├── .gitignore        # List of files to be ignored by git
@@ -158,4 +166,11 @@ IO_Linux_Server/
 
 ## 📚 Learn More
 
-📖 For additional details, usage tips, or development notes, please visit the Wiki.
+- 📖 Wiki for extended docs
+- 🔐 Security Policy
+- ⚖️ License
+
+## 📊 Status & Roadmap
+
+**Status:** Active development — some features are experimental.  
+**Roadmap:** Update UI improvements, WireGuard peer UX, per-feature permissions, .deb/.rpm packaging.

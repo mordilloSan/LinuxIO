@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/internal/session"
 	"github.com/mordilloSan/LinuxIO/server/api"
 	"github.com/mordilloSan/LinuxIO/server/auth"
 	"github.com/mordilloSan/LinuxIO/server/benchmark"
@@ -34,7 +35,7 @@ type Config struct {
 	UI                   fs.FS
 }
 
-func BuildRouter(cfg Config) *gin.Engine {
+func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
@@ -51,30 +52,35 @@ func BuildRouter(cfg Config) *gin.Engine {
 	// --- Auth routes ---
 	authPublic := r.Group("/auth")
 	authPrivate := r.Group("/auth")
-	authPrivate.Use(web.AuthMiddleware())
+	authPrivate.Use(sm.RequireSession())
 
-	auth.RegisterAuthRoutes(authPublic, authPrivate, auth.Config{
+	auth.RegisterAuthRoutes(authPublic, authPrivate, sm, auth.Config{
 		Env:                  cfg.Env,
 		Verbose:              cfg.Verbose,
 		BridgeBinaryOverride: cfg.BridgeBinaryOverride,
 	})
 
 	// --- APIs ---
-	api.RegisterSystemRoutes(r.Group("/system")) //We want a public API just for get methods....
-	updates.RegisterUpdateRoutes(r.Group("/updates", web.AuthMiddleware()))
-	services.RegisterServiceRoutes(r.Group("/services", web.AuthMiddleware()))
-	network.RegisterNetworkRoutes(r.Group("/network", web.AuthMiddleware()))
-	docker.RegisterDockerRoutes(r.Group("/docker", web.AuthMiddleware()))
-	drives.RegisterDriveRoutes(r.Group("/drives", web.AuthMiddleware()))
-	power.RegisterPowerRoutes(r.Group("/power", web.AuthMiddleware()))
-	wireguard.RegisterWireguardRoutes(r.Group("/wireguard", web.AuthMiddleware()))
-	config.RegisterThemeRoutes(r.Group("/theme", web.AuthMiddleware()))
+	// Public read-only system endpoints:
+	api.RegisterSystemRoutes(r.Group("/system"))
+
+	// Protected endpoints:
+	updates.RegisterUpdateRoutes(r.Group("/updates", sm.RequireSession()))
+	services.RegisterServiceRoutes(r.Group("/services", sm.RequireSession()))
+	network.RegisterNetworkRoutes(r.Group("/network", sm.RequireSession()))
+	docker.RegisterDockerRoutes(r.Group("/docker", sm.RequireSession()))
+	drives.RegisterDriveRoutes(r.Group("/drives", sm.RequireSession()))
+	power.RegisterPowerRoutes(r.Group("/power", sm.RequireSession()))
+	wireguard.RegisterWireguardRoutes(r.Group("/wireguard", sm.RequireSession()))
+	config.RegisterThemeRoutes(r.Group("/theme", sm.RequireSession()))
 
 	// --- WebSocket ---
-	r.GET("/ws", web.WebSocketHandler)
+	// Keep behavior same as before (public). If you want it protected,
+	// change to: r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
+	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
 
 	// --- Filebrowser (auth protected) ---
-	r.Any("/navigator/*proxyPath", web.AuthMiddleware(), web.FilebrowserReverseProxy(cfg.FilebrowserSecret))
+	r.Any("/navigator/*proxyPath", sm.RequireSession(), web.FilebrowserReverseProxy(cfg.FilebrowserSecret, sm))
 
 	// --- Benchmark in dev mode ---
 	if cfg.Env != "production" {
