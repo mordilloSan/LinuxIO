@@ -338,8 +338,7 @@ dev: setup dev-prep build-bridge
 	) &
 	BACK_PID=$$!
 
-	# Wait until backend listens on $(SERVER_PORT) (up to 60s)
-	@echo "⏳ Waiting for backend port :$(SERVER_PORT) to listen..."
+	# Wait until backend listens on $(SERVER_PORT)
 	@timeout 60s bash -c 'until ss -ltn "sport = :$(SERVER_PORT)" | grep -q LISTEN; do sleep 0.2; done' \
 	  || { echo "❌ Backend port :$(SERVER_PORT) did not open in time"; cleanup; exit 1; }
 
@@ -370,7 +369,7 @@ dev: setup dev-prep build-bridge
 	VITE_API_URL="http://localhost:$(SERVER_PORT)" npx vite --port $(VITE_DEV_PORT)
 	STATUS=$$?
 
-	# Always clean up (if not already done via the trap)
+	# Always clean up
 	cleanup
 
 	# Restore TTY settings
@@ -397,8 +396,8 @@ clean:
 	@find "$(BACKEND_DIR)/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
-# ----- Release flow targets -----
-start-dev: ## Create dev/<version> from main and push (requires clean tree & gh)
+## Create dev/<version> from main and push (requires clean tree & gh)
+start-dev:
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \

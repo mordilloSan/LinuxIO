@@ -187,5 +187,5 @@ func RunServer(cfg ServerConfig) {
 	// Close sessions
 	sm.Close()
 
-	logger.Infof("✅ Shutdown complete")
+	logger.Infof("Shutdown complete")
 }

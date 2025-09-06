@@ -90,7 +90,7 @@ func updatePackageHandler(c *gin.Context) {
 		return
 	}
 
-	logger.Infof("✅ Package %s updated successfully.\nOutput:\n%s", req.PackageID, output)
+	logger.Infof("Package %s updated successfully.\nOutput:\n%s", req.PackageID, output)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "package updates triggered",
 		"output":  output,

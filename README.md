@@ -89,7 +89,7 @@ cd LinuxIO
 
 This repo uses `make` to simplify standard operations.
 
-✅ Run `make` inside the project directory to view available commands
+Run `make` inside the project directory to view available commands
 
 ```bash
 make setup             # Install Node.js, Go, and frontend dependencies

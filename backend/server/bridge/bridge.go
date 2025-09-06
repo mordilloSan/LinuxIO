@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
-
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -158,10 +157,15 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 	}
 
 	if sess.Privileged {
-		logger.Infof("Started privileged bridge for session %s (pid=%d) using %s", sess.SessionID, cmd.Process.Pid, bridgeBinary)
+		logger.Infof("Started privileged bridge")
 	} else {
-		logger.Infof("Started bridge for session %s (pid=%d) using %s", sess.SessionID, cmd.Process.Pid, bridgeBinary)
+		logger.Infof("Started bridge")
 	}
+
+	logger.Debugf(
+		"bridge started: session=%s pid=%d full_bin=%q",
+		sess.SessionID, cmd.Process.Pid, bridgeBinary,
+	)
 
 	processes[sess.SessionID] = &ipc.BridgeProcess{
 		Cmd:       cmd,

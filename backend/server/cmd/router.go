@@ -75,8 +75,6 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	config.RegisterThemeRoutes(r.Group("/theme", sm.RequireSession()))
 
 	// --- WebSocket ---
-	// Keep behavior same as before (public). If you want it protected,
-	// change to: r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
 	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
 
 	// --- Filebrowser (auth protected) ---
@@ -84,7 +82,7 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 
 	// --- Benchmark in dev mode ---
 	if cfg.Env != "production" {
-		benchmark.RegisterDebugRoutes(r, cfg.Env)
+		benchmark.RegisterDebugRoutes(r, cfg.Env, sm)
 	}
 
 	// --- Frontend (SPA) ---

@@ -106,8 +106,9 @@ func WebSocketHandler(c *gin.Context) {
 	}()
 
 	defer func() { _ = safeConn.Close() }()
-
-	logger.Infof("[WebSocket] Connected: user=%s session=%s", sess.User.Username, sess.SessionID)
+	logger.Infof("[WebSocket] Connected: user=%s", sess.User.Username)
+	logger.Debugf("[WebSocket] Connection details: user=%s session=%s remote=%s path=%s ua=%s",
+		sess.User.Username, sess.SessionID, c.ClientIP(), c.Request.URL.Path, c.Request.UserAgent())
 
 	done := make(chan struct{})
 	defer func() {

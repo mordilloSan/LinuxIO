@@ -105,6 +105,10 @@ func EnsureConfigReady(username string) {
 		logger.Debugf("ensured ownership for file %s (user=%s)", cfgPath, username)
 	}
 
-	logger.Infof("Config ready for %s at %s (theme=%s primary=%s)",
-		username, cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor)
+	logger.Infof("Config ready for %s", username)
+	logger.Debugf(
+		"config details: path=%q theme=%s primary=%s",
+		cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor,
+	)
+
 }

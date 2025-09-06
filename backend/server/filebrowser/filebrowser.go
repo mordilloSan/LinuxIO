@@ -51,10 +51,10 @@ func StartServices(secret string, debug bool) {
 		if !isNetworkExistsError(err) {
 			logger.Errorf("Failed to create Docker network: %v", err)
 		} else {
-			logger.Infof("Docker network 'bridge-linuxio' already exists")
+			logger.Debugf("Docker network 'bridge-linuxio' already exists")
 		}
 	} else {
-		logger.Infof("✅ Created Docker network 'bridge-linuxio'")
+		logger.Infof("Created Docker network 'bridge-linuxio'")
 	}
 	if err := startFileBrowserContainer(secret, debug); err != nil {
 		logger.Errorf("FileBrowser setup failed: %v", err)
@@ -161,7 +161,7 @@ func startFileBrowserContainer(secret string, debug bool) error {
 		_ = dockerCli.ContainerRemove(dockerCtx, resp.ID, container.RemoveOptions{Force: true})
 		return fmt.Errorf("start container: %w", err)
 	}
-	logger.Infof("Started FileBrowser container: %s", containerName)
+	logger.Infof("Started FileBrowser container")
 
 	return nil
 }

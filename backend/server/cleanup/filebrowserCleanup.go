@@ -41,7 +41,8 @@ func CleanupFilebrowserContainer() {
 			logger.Warnf("Failed to remove container %s: %v", containerName, err)
 		}
 	} else {
-		logger.Infof("Removed FileBrowser container: %s", containerName)
+		logger.Infof("Removed FileBrowser container")
+		logger.Debugf("Removed : %s", containerName)
 	}
 
 }

@@ -59,15 +59,14 @@ func (h *Handlers) Login(c *gin.Context) {
 		return
 	}
 
-	// Write cookie via Manager (mirrors SCS style).
+	// Write cookie via Manager
 	secure := (h.Env == "production") && (c.Request.TLS != nil)
 	if !secure && h.Env == "production" {
-		// In case you terminate TLS upstream and want Secure anyway, set Cookie.Secure in Manager config.
 		logger.Warnf("[auth.login] insecure cookie write under production env (no TLS detected)")
 	}
 	h.SM.WriteCookie(c.Writer, sess.SessionID)
 
-	// Navigator defaults (best-effort).
+	// Navigator defaults
 	if err := filebrowser.ApplyNavigatorDefaults(c, sess); err != nil {
 		logger.Warnf("[auth.login] navigator defaults failed for user=%s: %v", sess.User.Username, err)
 	}
@@ -76,21 +75,16 @@ func (h *Handlers) Login(c *gin.Context) {
 }
 
 func (h *Handlers) Logout(c *gin.Context) {
-	// Read cookie by name from Manager config
-	ck, err := c.Request.Cookie(h.SMCookieName())
+	ck, err := c.Request.Cookie(h.SM.CookieName())
 	if err != nil {
 		c.Status(http.StatusOK)
 		return
 	}
 
-	// Clear cookie first
 	h.SM.DeleteCookie(c.Writer)
-
-	// Delete session (hooks will do cleanup)
 	if err := h.SM.DeleteSession(ck.Value, session.ReasonLogout); err != nil {
 		logger.Errorf("Failed to delete session %q: %v", ck.Value, err)
 	}
-
 	logger.Infof("👋 Logged out session: %s", ck.Value)
 	c.Status(http.StatusOK)
 }
@@ -143,21 +137,6 @@ func (h *Handlers) startBridgeSession(sess *session.Session, password string) er
 		}
 	}
 	return nil
-}
-
-func (h *Handlers) SMCookieName() string              { return h.SMCookieCfg().Name }
-func (h *Handlers) SMCookieCfg() session.CookieConfig { return h.SMConfig().Cookie }
-func (h *Handlers) SMConfig() session.SessionConfig   { return h.SMConfigUnsafe() }
-
-// SMConfigUnsafe: quick helper to get the effective config (unexported in Manager).
-// If you prefer to avoid this helper, just hardcode cookie name from your config
-// at wire-up time and pass it into Handlers as a string.
-func (h *Handlers) SMConfigUnsafe() session.SessionConfig {
-	// NOTE: Manager doesn't expose cfg, so either:
-	// 1) store cookie name in Handlers at construction, or
-	// 2) add an exported getter on Manager.
-	// For now, assume cookie name = "session_id" (your default).
-	return session.SessionConfig{Cookie: session.CookieConfig{Name: "session_id"}}
 }
 
 // ---- auth primitives ----

@@ -58,7 +58,7 @@ var DefaultConfig = SessionConfig{
 		Name:        "session_id",
 		Path:        "/",
 		SameSite:    http.SameSiteStrictMode,
-		Secure:      true, // set false in dev
+		Secure:      true,
 		HTTPOnly:    true,
 		Partitioned: false,
 	},
@@ -150,6 +150,19 @@ func (m *Manager) Close() {
 	logger.Infof("Session manager stopped")
 
 }
+
+// -----------------------------------------------------------------------------
+// Read-only accessors (single source of truth for auth package)
+// -----------------------------------------------------------------------------
+
+// CookieName returns the effective cookie name in use.
+func (m *Manager) CookieName() string { return m.cfg.Cookie.Name }
+
+// CookieConfig returns a copy of the effective cookie config.
+func (m *Manager) CookieConfig() CookieConfig { return m.cfg.Cookie }
+
+// Config returns a copy of the effective session config.
+func (m *Manager) Config() SessionConfig { return m.cfg }
 
 // -----------------------------------------------------------------------------
 // Hooks
@@ -260,7 +273,7 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 		return nil, err
 	}
 
-	logger.Infof("✅ Created session for user '%s'", user.Username)
+	logger.Infof("Created session for user '%s'", user.Username)
 	return sess, nil
 }
 
