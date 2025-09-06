@@ -6,6 +6,7 @@
 * docs(changelog): update for v0.2.0 ([2e71c43](https://github.com/mordilloSan/LinuxIO/commit/2e71c43)) by @github-actions[bot]
 * docs(changelog): update for v0.2.0 ([6755546](https://github.com/mordilloSan/LinuxIO/commit/6755546)) by @github-actions[bot]
 * docs(changelog): update for v0.2.0 ([03fa714](https://github.com/mordilloSan/LinuxIO/commit/03fa714)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([e479ac8](https://github.com/mordilloSan/LinuxIO/commit/e479ac8)) by @github-actions[bot]
 
 ### 🔄 Other Changes
 
@@ -16,6 +17,7 @@
 * Merge branch 'dev/v0.2.0' of https://github.com/mordilloSan/LinuxIO into dev/v0.2.0 ([0faa4ec](https://github.com/mordilloSan/LinuxIO/commit/0faa4ec)) by @MordilloSan
 * logging improvements session manager cookie in benchmark API ([e7d35cd](https://github.com/mordilloSan/LinuxIO/commit/e7d35cd)) by @MordilloSan
 * Merge branch 'dev/v0.2.0' of https://github.com/mordilloSan/LinuxIO into dev/v0.2.0 ([c9f4b3c](https://github.com/mordilloSan/LinuxIO/commit/c9f4b3c)) by @MordilloSan
+* websocket, auth and vite build optimization root logging bug fix ([548f074](https://github.com/mordilloSan/LinuxIO/commit/548f074)) by @MordilloSan
 
 ### 👥 Contributors
 
