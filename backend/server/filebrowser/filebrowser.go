@@ -17,7 +17,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/docker"
 )
 
@@ -33,7 +33,7 @@ var (
 )
 
 func StartServices(secret string, debug bool) {
-	logger.Infof("📦 Checking docker installation...")
+	logger.Debugf("📦 Checking docker installation...")
 	if err := docker.EnsureDockerAvailable(); err != nil {
 		logger.Errorf("❌ Docker not available: %v", err)
 	}

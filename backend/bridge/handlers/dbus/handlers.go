@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/internal/ipc"
+	"github.com/mordilloSan/LinuxIO/common/ipc"
 )
 
 // Needed to make sure one d-bus call at a time!

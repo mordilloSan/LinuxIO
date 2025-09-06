@@ -97,7 +97,7 @@ Start () {
   ID_LIKE="${ID_LIKE:-}"
   UNAME_M="$(uname -m)"; readonly UNAME_M
   UNAME_U="$(uname -s)"; readonly UNAME_U
-  WORK_DIR="/home/$(logname)"; mkdir -p "$WORK_DIR"
+  WORK_DIR="$(getent passwd "${SUDO_UID:-0}" | cut -d: -f6 2>/dev/null || echo /root)"; mkdir -p "$WORK_DIR"
 
   # Managed files
   readonly PAM_LINUXIO="/etc/pam.d/linuxio"
@@ -129,7 +129,7 @@ Start () {
       NM_PKG="network-manager"
       ;;
     dnf)
-      PKGS_COMMON=( iputils lm_sensors nfs-utils wireguard-tools PackageKit dbus-daemon ca-certificates jq curl rsync NetworkManager )
+      PKGS_COMMON=( iputils lm_sensors nfs-utils wireguard-tools PackageKit ca-certificates jq curl rsync NetworkManager )
       PKGS_PAM=()
       PKGS_EXTRA=()
       DOCKER_DEPS=( dnf-plugins-core )
@@ -255,41 +255,59 @@ Reboot(){
 
 # ---------- PAM ----------
 Setup_PAM_LinuxIO() {
-  echo; Show 4 "\e[1mWriting /etc/pam.d/linuxio\e[0m"
+  echo; Show 4 "\e[1mWriting /etc/pam.d/linuxio (distro-safe)\e[0m"
   install -d -m 0755 /etc/pam.d /etc/linuxio
-  if [[ ! -f "${LINUXIO_DENY}" ]]; then
-    printf '%s\n' "root" > "${LINUXIO_DENY}.tmp"
-    chmod 0644 "${LINUXIO_DENY}.tmp"; chown root:root "${LINUXIO_DENY}.tmp"
-    mv -f "${LINUXIO_DENY}.tmp" "${LINUXIO_DENY}"
+  [[ -f "${LINUXIO_DENY}" ]] || { printf '%s\n' root >"${LINUXIO_DENY}.tmp"; chmod 0644 "${LINUXIO_DENY}.tmp"; chown root:root "${LINUXIO_DENY}.tmp"; mv -f "${LINUXIO_DENY}.tmp" "${LINUXIO_DENY}"; }
+
+  # Choose include targets that exist
+  AUTH_INC=""
+  ACCT_INC=""
+  PASS_INC=""
+  SESS_INC=""
+
+  if [[ -f /etc/pam.d/common-auth ]]; then
+    AUTH_INC="include common-auth"
+    ACCT_INC="include common-account"
+    PASS_INC="include common-password"
+    SESS_INC="include common-session-noninteractive"
+  elif [[ -f /etc/pam.d/system-auth ]]; then
+    AUTH_INC="include system-auth"
+    ACCT_INC="include system-auth"
+    PASS_INC="include system-auth"
+    # RHEL/Fedora often split session into password-auth too, but system-auth is fine here
+    SESS_INC="include system-auth"
   fi
-  cat > "${PAM_LINUXIO}.tmp" <<'PAM'
+
+  cat > "${PAM_LINUXIO}.tmp" <<PAM
 #%PAM-1.0
-# LinuxIO PAM stack (Cockpit-like). Managed by installer.
+# LinuxIO PAM stack (managed)
 # AUTH
 auth       [success=ok ignore=ignore module_unknown=ignore default=bad] pam_sepermit.so
-auth       include      common-auth
-auth       optional     pam_ssh_add.so
+${AUTH_INC:+auth       $AUTH_INC}
+auth       [success=ok ignore=ignore module_unknown=ignore default=bad] pam_ssh_add.so optional
 # ACCOUNT
 account    required     pam_listfile.so item=user sense=deny file=/etc/linuxio/disallowed-users onerr=succeed
 account    required     pam_nologin.so
-account    include      common-account
+${ACCT_INC:+account    $ACCT_INC}
 # PASSWORD
-password   include      common-password
+${PASS_INC:+password   $PASS_INC}
 # SESSION
 session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so close
 session    required     pam_loginuid.so
 session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so open env_params
 session    optional     pam_keyinit.so force revoke
-session    optional     pam_ssh_add.so
-session    include      common-session-noninteractive
+session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_ssh_add.so optional
+${SESS_INC:+session    $SESS_INC}
 session    required     pam_env.so
 session    required     pam_env.so user_readenv=1 envfile=/etc/default/locale
 PAM
+
   chmod 0644 "${PAM_LINUXIO}.tmp"; chown root:root "${PAM_LINUXIO}.tmp"
   mv -f "${PAM_LINUXIO}.tmp" "${PAM_LINUXIO}"
   command -v restorecon >/dev/null 2>&1 && restorecon -F "${PAM_LINUXIO}" || true
   Show 0 "PAM service ready at ${PAM_LINUXIO}"
 }
+
 
 # ---------- Docker ----------
 Install_Docker() {
@@ -324,13 +342,135 @@ Install_Packages() {
   if ((${#TO_INSTALL[@]})); then pkg_install "${TO_INSTALL[@]}"; fi
 }
 
-Enable_unattended_upgrades() {
-  [[ "$PKG_FAMILY" == "deb" ]] || return 0
-  if command -v dpkg-reconfigure >/dev/null 2>&1; then
-    printf 'Unattended-Upgrade::Automatic-Reboot "true";\n' >/etc/apt/apt.conf.d/51linuxio-unattended || true
-    DEBIAN_FRONTEND=noninteractive dpkg-reconfigure -f noninteractive unattended-upgrades || true
-    Show 0 "Unattended upgrades enabled"
-  fi
+# ---------- Auto updates across distros ----------
+Enable_Auto_Updates() {
+  case "$PKG_FAMILY" in
+    deb)
+      # Debian/Ubuntu: unattended-upgrades
+      if ! pkg_is_installed unattended-upgrades; then
+        pkg_install unattended-upgrades
+      fi
+
+      # Minimal, noninteractive enablement
+      install -d -m 0755 /etc/apt/apt.conf.d
+      cat > /etc/apt/apt.conf.d/20auto-upgrades <<'CONF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+Unattended-Upgrade::Automatic-Reboot "true";
+CONF
+      # Just in case the package wants reconfigure hooks
+      if command -v dpkg-reconfigure >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive dpkg-reconfigure -f noninteractive unattended-upgrades || true
+      fi
+      Show 0 "Automatic updates enabled via unattended-upgrades (Debian/Ubuntu)."
+      ;;
+
+    dnf)
+      if command -v dnf5 >/dev/null 2>&1; then
+        # DNF5
+        pkg_is_installed dnf5-plugin-automatic || pkg_install dnf5-plugin-automatic
+        # Ensure it *applies* updates (not just downloads)
+        install -d -m 0755 /etc/dnf
+        awk 'BEGIN{print "[commands]\napply_updates = yes"}' >/etc/dnf/automatic.conf
+        systemctl enable --now dnf5-automatic.timer 2>/dev/null || true
+        Show 0 "Automatic updates enabled via dnf5-automatic."
+      else
+        # DNF4
+        pkg_is_installed dnf-automatic || pkg_install dnf-automatic
+        # Default dnf-automatic also uses /etc/dnf/automatic.conf
+        install -d -m 0755 /etc/dnf
+        awk 'BEGIN{print "[commands]\napply_updates = yes"}' >/etc/dnf/automatic.conf
+        systemctl enable --now dnf-automatic.timer 2>/dev/null || true
+        Show 0 "Automatic updates enabled via dnf-automatic."
+      fi
+      ;;
+
+    zypper)
+      # openSUSE Leap/Tumbleweed: zypper-automatic (preferred) or YaST online update config
+      if pkg_is_installed zypper-automatic; then
+        systemctl enable --now zypper-automatic.timer 2>/dev/null || true
+        Show 0 "Automatic updates enabled via zypper-automatic."
+      else
+        # Fallback to YaST Online Update (patches) if zypper-automatic not available
+        if pkg_is_installed yast2-online-update-configuration || pkg_install yast2-online-update-configuration; then
+          # Non-interactive defaults: weekly patches
+          sed -i 's/^CHECK_ONLY=.*/CHECK_ONLY="no"/' /etc/sysconfig/online-update 2>/dev/null || true
+          sed -i 's/^AUTO_ONLINE_UPDATE=.*/AUTO_ONLINE_UPDATE="yes"/' /etc/sysconfig/online-update 2>/dev/null || true
+          systemctl enable --now online-update.timer 2>/dev/null || true
+          Show 0 "Automatic updates enabled via YaST Online Update (patches)."
+        else
+          Show 3 "zypper-automatic not found and YaST config unavailable; skipping auto-updates."
+        fi
+      fi
+      ;;
+
+    pacman)
+      # Arch: default to AUTO-DOWNLOAD; opt-in install with LINUXIO_PACMAN_AUTOINSTALL=1
+      install -d -m 0755 /etc/systemd/system
+
+      cat > /etc/systemd/system/pacman-download.service <<'UNIT'
+[Unit]
+Description=Download updated packages (pacman -Syuw)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pacman -Syuw --noconfirm
+Nice=10
+UNIT
+
+      cat > /etc/systemd/system/pacman-download.timer <<'UNIT'
+[Unit]
+Description=Daily download of updated packages
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1d
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+      systemctl enable --now pacman-download.timer 2>/dev/null || true
+      Show 0 "Automatic package download enabled (Arch)."
+
+      if [[ "${LINUXIO_PACMAN_AUTOINSTALL:-0}" == "1" ]]; then
+        cat > /etc/systemd/system/pacman-autoupgrade.service <<'UNIT'
+[Unit]
+Description=Unattended pacman upgrade (dangerous; read ArchWiki)
+
+[Service]
+Type=oneshot
+Environment=LC_ALL=C
+ExecStart=/usr/bin/pacman -Syu --noconfirm
+Nice=10
+UNIT
+
+        cat > /etc/systemd/system/pacman-autoupgrade.timer <<'UNIT'
+[Unit]
+Description=Daily unattended pacman upgrade
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=1d
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+        systemctl enable --now pacman-autoupgrade.timer 2>/dev/null || true
+        Show 3 "Enabled unattended pacman upgrades (YOU opted in). Be aware this is not recommended by Arch."
+      else
+        Show 3 "Arch: only downloads by default. Set LINUXIO_PACMAN_AUTOINSTALL=1 to auto-install (not recommended)."
+      fi
+      ;;
+
+    *)
+      Show 3 "Auto-updates not supported for PKG_FAMILY=$PKG_FAMILY"
+      ;;
+  esac
 }
 
 # ---------- NetworkManager enable + Ubuntu netplan override ----------
@@ -448,60 +588,9 @@ Ensure_PackageKit() {
   fi
 }
 
-# ---------- Pi-hole prep (only if systemd-resolved exists) ----------
-Pihole_DNS(){
-  if systemctl list-unit-files | grep -q '^systemd-resolved\.service'; then
-    echo; Show 4 "\e[1mPreparing for Pi-hole (systemd-resolved)\e[0m"
-    Show 2 "Disabling stub resolver"
-    GreyStart
-    sed -r -i.orig 's/#?DNSStubListener=yes/DNSStubListener=no/g' /etc/systemd/resolved.conf
-    Check_Success $? "Disable stub resolver"
-    Show 2 "Pointing resolv.conf to /run/systemd/resolve/resolv.conf"
-    sh -c 'rm -f /etc/resolv.conf && ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf'
-    Check_Success $? "Symlink set"
-    systemctl restart systemd-resolved
-    Check_Success $? "Restarting systemd-resolved"
-  else
-    Show 2 "Skipping Pi-hole prep (systemd-resolved not present)."
-    Show 2 "If you use Pi-hole without systemd-resolved, set DNS via NetworkManager or /etc/resolv.conf."
-  fi
-}
-
-# ---------- Debian/Ubuntu-only cleanup ----------
-Remove_cloudinit(){
-  [[ "$PKG_FAMILY" == "deb" ]] || return 0
-  Show 2 "Removing cloud-init (Deb/Ubuntu)"
-  if dpkg-query -W -f='${Status}' cloud-init 2>/dev/null | grep -q "ok installed"; then
-    GreyStart
-    apt-get autoremove -q -y --purge cloud-init || true
-    rm -rf /etc/cloud/ /var/lib/cloud/ || true
-    Show 0 "cloud-init removed"
-  else
-    Show 0 "cloud-init not installed."
-  fi
-}
-Remove_snap(){
-  [[ "$PKG_FAMILY" == "deb" ]] || return 0
-  Show 2 "Removing snap (Deb/Ubuntu)"
-  if dpkg-query -W -f='${Status}' snapd 2>/dev/null | grep -q "ok installed"; then
-    GreyStart
-    systemctl disable snapd.socket snapd.service || true
-    local SNAP_LIST
-    SNAP_LIST=$(snap list 2>/dev/null | sed '1d' | awk '{print $1}' || true)
-    for i in $SNAP_LIST; do snap remove --purge "$i" || true; done
-    snap remove --purge snapd || true
-    apt-get autoremove --purge -y snapd || true
-    rm -rf /var/cache/snapd/ ~/snap || true
-    Show 0 "snap removed"
-  else
-    Show 0 "snap not installed"
-  fi
-}
 
 Clean_Up(){
   echo; Show 4 "\e[1mStarting Clean Up\e[0m"
-  Remove_cloudinit
-  Remove_snap
   sed -i "/curl -fsSL/d" ~/.bashrc || true
   rm -f ~/resume-after-reboot || true
   Show 0 "Cleanup done"
@@ -526,21 +615,20 @@ Setup(){
 
   if ! [ -f ~/resume-after-reboot ]; then
     Update_System
-    Setup_PAM_LinuxIO
+
     Reboot
   else
     Show 2 "Resuming script after reboot..."
-    Setup_PAM_LinuxIO
   fi
 
   Install_Packages
   
-  Enable_unattended_upgrades
+  Enable_Auto_Updates
   Ensure_NetworkManager
   Ensure_PackageKit
 
-  Reboot
-  Pihole_DNS
+  Setup_PAM_LinuxIO
+
   Clean_Up
   Wrap_up_Banner
 }

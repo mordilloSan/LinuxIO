@@ -3,7 +3,7 @@ package auth
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/common/session"
 )
 
 type Config struct {

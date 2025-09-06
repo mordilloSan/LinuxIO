@@ -12,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/common/logger"
 )
 
 // -----------------------------------------------------------------------------
@@ -87,7 +87,7 @@ type Session struct {
 }
 
 // -----------------------------------------------------------------------------
-// Store interface — your memstore already satisfies this
+// Store interface
 // -----------------------------------------------------------------------------
 
 type Store interface {
@@ -98,7 +98,7 @@ type Store interface {
 }
 
 // -----------------------------------------------------------------------------
-// Manager (no globals)
+// Manager
 // -----------------------------------------------------------------------------
 
 type Manager struct {
@@ -130,7 +130,8 @@ func NewManager(store Store, cfg SessionConfig) *Manager {
 		m.cfg.Cookie = DefaultConfig.Cookie
 	}
 
-	logger.Infof("🔑 Session manager ready (idle=%v, absolute=%v, refresh=%v, singleUser=%v, gc=%v)",
+	logger.Infof("Session manager ready")
+	logger.Debugf("Session timings (idle=%v, absolute=%v, refresh=%v, singleUser=%v, gc=%v)",
 		m.cfg.IdleTimeout, m.cfg.AbsoluteTimeout, m.cfg.RefreshThrottle, m.cfg.SingleSessionPerUser, m.cfg.GCInterval)
 
 	// Background idle sweeper (absolute expiry handled by store TTL)
@@ -146,7 +147,8 @@ func (m *Manager) Close() {
 	if m.gcStop != nil {
 		close(m.gcStop)
 	}
-	logger.Infof("🧹 Session manager stopped")
+	logger.Infof("Session manager stopped")
+
 }
 
 // -----------------------------------------------------------------------------

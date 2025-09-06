@@ -14,8 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/msteinert/pam"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
 	"github.com/mordilloSan/LinuxIO/server/filebrowser"
 )

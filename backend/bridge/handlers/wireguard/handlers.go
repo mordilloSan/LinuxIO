@@ -1,6 +1,6 @@
 package wireguard
 
-import "github.com/mordilloSan/LinuxIO/internal/ipc"
+import "github.com/mordilloSan/LinuxIO/common/ipc"
 
 func WireguardHandlers() map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{

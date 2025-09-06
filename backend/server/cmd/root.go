@@ -16,9 +16,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/mordilloSan/LinuxIO/internal/utils"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/common/utils"
 	"github.com/mordilloSan/LinuxIO/server/api"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
 	"github.com/mordilloSan/LinuxIO/server/cleanup"
@@ -44,7 +44,9 @@ func intFromEnv(key string, def int) int {
 }
 
 func RunServer(cfg ServerConfig) {
+	// ----------------------------------------------------------------------------
 	// Env + logging
+	// ----------------------------------------------------------------------------
 	env := strings.ToLower(envOrDefault("LINUXIO_ENV", "production"))
 	verbose := strings.EqualFold(os.Getenv("LINUXIO_VERBOSE"), "1") ||
 		strings.EqualFold(os.Getenv("LINUXIO_VERBOSE"), "true")
@@ -63,13 +65,11 @@ func RunServer(cfg ServerConfig) {
 			Secure: env == "production", // keep true when TLS-terminated upstream
 		},
 	})
-	defer sm.Close()
 
 	// Fan-out all session deletions (bridge+terminal cleanup)
 	sm.RegisterOnDelete(func(sess session.Session, reason session.DeleteReason) {
 		// 1) Close all terminals for this session
 		terminal.CloseAllForSession(sess.SessionID)
-
 		// 2) Politely ask bridge to shutdown (best-effort)
 		if sess.User.Username != "" {
 			if _, err := bridge.CallWithSession(&sess, "control", "shutdown", []string{string(reason)}); err != nil {
@@ -79,13 +79,10 @@ func RunServer(cfg ServerConfig) {
 	})
 
 	// ----------------------------------------------------------------------------
-	// Background samplers, GPU info, FileBrowser
+	// Background samplers, GPU info
 	// ----------------------------------------------------------------------------
 	api.StartSimpleNetInfoSampler()
 	api.InitGPUInfo()
-
-	filebrowserSecret := utils.GenerateSecretKey(32)
-	go filebrowser.StartServices(filebrowserSecret, verbose)
 
 	// ----------------------------------------------------------------------------
 	// Frontend assets
@@ -95,7 +92,15 @@ func RunServer(cfg ServerConfig) {
 		logger.Error.Fatalf("failed to mount embedded frontend: %v", err)
 	}
 
-	// Build router (pass session manager so /auth can use it)
+	// ----------------------------------------------------------------------------
+	// Start required services
+	// ----------------------------------------------------------------------------
+	filebrowserSecret := utils.GenerateSecretKey(32)
+	filebrowser.StartServices(filebrowserSecret, verbose)
+
+	// ----------------------------------------------------------------------------
+	// Router
+	// ----------------------------------------------------------------------------
 	router := BuildRouter(Config{
 		Env:                  env,
 		Verbose:              verbose,
@@ -128,14 +133,14 @@ func RunServer(cfg ServerConfig) {
 	done := make(chan struct{})
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
+	// Start HTTP server AFTER services are ready
 	go func() {
 		var err error
 		if env == "production" {
-			fmt.Printf("🚀 Server running at https://localhost:%d\n", cfg.Port)
-			logger.Infof("🚀 Server running at https://localhost:%d", cfg.Port)
+			logger.Infof("HTTP server listening at https://localhost:%d", cfg.Port)
 			err = srv.ListenAndServeTLS("", "")
 		} else {
-			logger.Infof("🚀 Server running at http://localhost:%d", cfg.Port)
+			logger.Infof("HTTP server listening at http://localhost:%d", cfg.Port)
 			err = srv.ListenAndServe()
 		}
 		if err != nil && err != http.ErrServerClosed {
@@ -144,23 +149,20 @@ func RunServer(cfg ServerConfig) {
 		close(done)
 	}()
 
+	// ----------------------------------------------------------------------------
+	// Shutdown coordination
+	// ----------------------------------------------------------------------------
 	select {
 	case <-quit:
-		if env == "production" {
-			fmt.Println("🛑 Shutdown signal received, shutting down server...")
-		}
-		logger.Infof("🛑 Shutdown signal received, shutting down server...")
+		logger.Infof("🛑 Shutdown signal received")
 	case <-done:
-		if env == "production" {
-			fmt.Println("🚨 Server stopped unexpectedly, beginning shutdown...")
-		}
-		logger.Infof("🚨 Server stopped unexpectedly, beginning shutdown...")
+		logger.Infof("🚨 HTTP server stopped unexpectedly, beginning shutdown...")
 	}
 
 	// Graceful -> forced shutdown
 	srv.SetKeepAlivesEnabled(false)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -172,16 +174,18 @@ func RunServer(cfg ServerConfig) {
 		} else {
 			logger.Warnf("HTTP server shutdown error: %v", err)
 		}
+	} else {
+		logger.Infof("HTTP server clossed")
 	}
 
-	// Cleanup
+	// Stop background/attached services
+	cleanup.CleanupFilebrowserContainer()
+
+	// Tell bridges to quit before sessions close
 	cleanup.ShutdownAllBridges(sm, "server_quit")
-	if err := cleanup.CleanupFilebrowserContainer(); err != nil {
-		logger.Warnf("FileBrowser cleanup error: %v", err)
-	}
 
-	if env == "production" {
-		fmt.Println("Server stopped.")
-	}
-	logger.Infof("Server stopped.")
+	// Close sessions
+	sm.Close()
+
+	logger.Infof("✅ Shutdown complete")
 }

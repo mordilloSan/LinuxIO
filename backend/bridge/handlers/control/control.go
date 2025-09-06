@@ -1,8 +1,8 @@
 package control
 
 import (
-	"github.com/mordilloSan/LinuxIO/internal/ipc"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/common/ipc"
+	"github.com/mordilloSan/LinuxIO/common/logger"
 )
 
 func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {

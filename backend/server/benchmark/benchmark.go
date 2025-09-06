@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/common/logger"
 )
 
 type BenchmarkResult struct {

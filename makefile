@@ -1,7 +1,7 @@
 # Main flags
 VITE_DEV_PORT = 3000
 SERVER_PORT   = 8080
-VERBOSE      ?= true
+VERBOSE      ?= false
 
 # Go and Node.js versions
 GO_VERSION   = 1.25.0
@@ -338,11 +338,11 @@ dev: setup dev-prep build-bridge
 	) &
 	BACK_PID=$$!
 
-	# Wait (briefly) until backend listens on $(SERVER_PORT)
-	for _ in 1 2 3 4 5 6 7 8 9 10; do
-	  ss -ltn 'sport = :$(SERVER_PORT)' | grep -q LISTEN && break
-	  sleep 0.2
-	done
+	# Wait until backend listens on $(SERVER_PORT) (up to 60s)
+	@echo "⏳ Waiting for backend port :$(SERVER_PORT) to listen..."
+	@timeout 60s bash -c 'until ss -ltn "sport = :$(SERVER_PORT)" | grep -q LISTEN; do sleep 0.2; done' \
+	  || { echo "❌ Backend port :$(SERVER_PORT) did not open in time"; cleanup; exit 1; }
+
 
 	cleanup_done=0
 	cleanup() {

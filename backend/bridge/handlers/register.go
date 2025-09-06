@@ -6,7 +6,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers/drive"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/internal/ipc"
+	"github.com/mordilloSan/LinuxIO/common/ipc"
 )
 
 // Map of type -> (command -> handler)

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/utils"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/utils"
 
 	godbus "github.com/godbus/dbus/v5"
 )
