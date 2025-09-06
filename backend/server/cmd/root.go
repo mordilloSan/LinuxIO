@@ -137,6 +137,7 @@ func RunServer(cfg ServerConfig) {
 	go func() {
 		var err error
 		if env == "production" {
+			fmt.Printf("🚀 Server running at https://localhost:%d\n", cfg.Port)
 			logger.Infof("HTTP server listening at https://localhost:%d", cfg.Port)
 			err = srv.ListenAndServeTLS("", "")
 		} else {
@@ -187,5 +188,8 @@ func RunServer(cfg ServerConfig) {
 	// Close sessions
 	sm.Close()
 
-	logger.Infof("Shutdown complete")
+	if env == "production" {
+		fmt.Println("Server stopped.")
+	}
+	logger.Infof("Server stopped.")
 }

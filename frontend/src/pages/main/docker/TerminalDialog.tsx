@@ -43,12 +43,15 @@ const TerminalDialog: React.FC<Props> = ({
   const [loadingShells, setLoadingShells] = useState(false);
   const [hasLoadedShells, setHasLoadedShells] = useState(false);
 
-  const { send, subscribe, ready } = useWebSocket();
+  // CHANGED: ready -> status
+  const { send, subscribe, status } = useWebSocket();
+  const isOpen = status === "open";
+
   const theme = useTheme();
 
   // --- 1. On open: fetch available shells, set initial shell, and cleanup on close ---
   useEffect(() => {
-    if (open && ready && containerId) {
+    if (open && isOpen && containerId) {
       setLoadingShells(true);
       setHasLoadedShells(false);
       send({
@@ -66,7 +69,7 @@ const TerminalDialog: React.FC<Props> = ({
       xterm.current = null;
       fitAddon.current = null;
     }
-  }, [open, ready, containerId, send]);
+  }, [open, isOpen, containerId, send]);
 
   // --- 2. Listen for shell_list and set availableShells and initial shell ---
   useEffect(() => {
@@ -133,7 +136,7 @@ const TerminalDialog: React.FC<Props> = ({
 
     // Terminal input handler
     xterm.current.onData((data) => {
-      if (ready) {
+      if (isOpen) {
         send({
           type: "terminal_input",
           target: "container",
@@ -144,7 +147,7 @@ const TerminalDialog: React.FC<Props> = ({
     });
 
     // Send terminal_start when terminal is ready
-    if (ready && shell) {
+    if (isOpen && shell) {
       send({
         type: "terminal_start",
         target: "container",
@@ -171,7 +174,7 @@ const TerminalDialog: React.FC<Props> = ({
     open,
     shell,
     containerId,
-    ready,
+    isOpen,
     send,
     subscribe,
     availableShells.length,
@@ -183,7 +186,7 @@ const TerminalDialog: React.FC<Props> = ({
   // --- Shell picker handler ---
   const handleShellChange = (e: SelectChangeEvent<string>) => {
     const newShell = e.target.value as string;
-    if (ready && containerId && shell) {
+    if (isOpen && containerId && shell) {
       send({
         type: "terminal_close",
         target: "container",
@@ -196,7 +199,7 @@ const TerminalDialog: React.FC<Props> = ({
 
   // --- Dialog close handler ---
   const handleDialogClose = () => {
-    if (ready && containerId) {
+    if (isOpen && containerId) {
       send({
         type: "terminal_close",
         target: "container",
@@ -218,7 +221,7 @@ const TerminalDialog: React.FC<Props> = ({
               value={shell}
               onChange={handleShellChange}
               sx={{ minWidth: 80 }}
-              disabled={!ready || availableShells.length === 0}
+              disabled={!isOpen || availableShells.length === 0}
             >
               {availableShells.map((s) => (
                 <MenuItem value={s} key={s}>

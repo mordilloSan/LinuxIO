@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { FB_BASE } from "@/utils/filebrowser";
@@ -59,26 +65,27 @@ export default function FilebrowserIframe() {
   const iframeSrc = initialSrcRef.current;
 
   // Helper: send navigation to the iframe (postMessage), targeted to FB_ORIGIN
-  const sendNavigate = (suffix: string) => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    try {
-      win.postMessage(
-        { type: "linuxio:navigate", url: suffix || "/" },
-        FB_ORIGIN,
-      );
-      lastSentRef.current = suffix;
-    } catch {
-      // no-op
-    }
-  };
+  const sendNavigate = useCallback(
+    (suffix: string) => {
+      const win = iframeRef.current?.contentWindow;
+      if (!win) return;
+      try {
+        win.postMessage(
+          { type: "linuxio:navigate", url: suffix || "/" },
+          FB_ORIGIN,
+        );
+        lastSentRef.current = suffix;
+      } catch {
+        // no-op
+      }
+    },
+    [FB_ORIGIN],
+  );
 
   // Listen for messages from the iframe (handshake + internal navigation)
   useEffect(() => {
     function onMsg(ev: MessageEvent) {
-      // Only trust messages from the FileBrowser origin
       if (ev.origin !== FB_ORIGIN) return;
-
       const fromIframe =
         iframeRef.current?.contentWindow &&
         ev.source === iframeRef.current.contentWindow;
@@ -86,11 +93,8 @@ export default function FilebrowserIframe() {
 
       const d = ev.data;
 
-      // Handshake from iframe: it is ready to receive navigation updates
       if (d?.type === "filebrowser:ready") {
         setFbReady(true);
-
-        // On first ready, align iframe to our current route if needed
         if (latestRef.current.isFBRoute) {
           const curSuffix =
             latestRef.current.path.replace(/^\/filebrowser/, "") +
@@ -103,16 +107,14 @@ export default function FilebrowserIframe() {
         return;
       }
 
-      // Iframe drove its own navigation → reflect in parent URL without echoing back
       if (d?.type === "filebrowser:navigation") {
-        const url = String(d.url || "/"); // e.g. "/folder/a"
+        const url = String(d.url || "/");
         const next = `/filebrowser${url}`;
         const cur =
           latestRef.current.path +
           latestRef.current.search +
           latestRef.current.hash;
 
-        // Mark as already sent BEFORE navigating so the route-change effect won't bounce it back
         lastSentRef.current = url;
 
         if (latestRef.current.isFBRoute && next !== cur) {
@@ -123,7 +125,7 @@ export default function FilebrowserIframe() {
 
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [FB_ORIGIN]);
+  }, [FB_ORIGIN, sendNavigate]);
 
   // Parent route changed (or iframe became ready) → tell iframe to navigate
   useEffect(() => {
@@ -132,7 +134,7 @@ export default function FilebrowserIframe() {
     if (urlSuffix === lastSentRef.current) return; // avoid echo/bounce
 
     sendNavigate(urlSuffix);
-  }, [isFBRoute, urlSuffix, fbReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isFBRoute, urlSuffix, fbReady, sendNavigate]);
 
   return (
     <div
@@ -153,7 +155,7 @@ export default function FilebrowserIframe() {
       <iframe
         id="filebrowser-iframe"
         ref={iframeRef}
-        src={iframeSrc} // stable after mount → no reloads when parent URL changes
+        src={iframeSrc}
         title="FileBrowser"
         allow="fullscreen"
         loading="lazy"

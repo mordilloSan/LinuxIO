@@ -1,7 +1,7 @@
 # Main flags
 VITE_DEV_PORT = 3000
 SERVER_PORT   = 8080
-VERBOSE      ?= false
+VERBOSE      ?= true
 
 # Go and Node.js versions
 GO_VERSION   = 1.25.0
