@@ -5,6 +5,7 @@
 * docs(changelog): update for v0.2.0 ([925906c](https://github.com/mordilloSan/LinuxIO/commit/925906c)) by @github-actions[bot]
 * docs(changelog): update for v0.2.0 ([2e71c43](https://github.com/mordilloSan/LinuxIO/commit/2e71c43)) by @github-actions[bot]
 * docs(changelog): update for v0.2.0 ([6755546](https://github.com/mordilloSan/LinuxIO/commit/6755546)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([03fa714](https://github.com/mordilloSan/LinuxIO/commit/03fa714)) by @github-actions[bot]
 
 ### 🔄 Other Changes
 
@@ -13,6 +14,8 @@
 * session code upgrade for store. Small bug fixes ([e752187](https://github.com/mordilloSan/LinuxIO/commit/e752187)) by @MordilloSan
 * startup logging improvement folder rename for better consistency install file update makefile - dev workflow improvement ([252da4f](https://github.com/mordilloSan/LinuxIO/commit/252da4f)) by @MordilloSan
 * Merge branch 'dev/v0.2.0' of https://github.com/mordilloSan/LinuxIO into dev/v0.2.0 ([0faa4ec](https://github.com/mordilloSan/LinuxIO/commit/0faa4ec)) by @MordilloSan
+* logging improvements session manager cookie in benchmark API ([e7d35cd](https://github.com/mordilloSan/LinuxIO/commit/e7d35cd)) by @MordilloSan
+* Merge branch 'dev/v0.2.0' of https://github.com/mordilloSan/LinuxIO into dev/v0.2.0 ([c9f4b3c](https://github.com/mordilloSan/LinuxIO/commit/c9f4b3c)) by @MordilloSan
 
 ### 👥 Contributors
 
