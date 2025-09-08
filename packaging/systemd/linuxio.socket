@@ -1,0 +1,16 @@
+[Unit]
+Description=Socket for LinuxIO Web Server (TCP 8090)
+
+[Socket]
+# Bind any address on port 8090 (non-privileged)
+ListenStream=0.0.0.0:8090
+# Or only loopback:
+# ListenStream=127.0.0.1:8090
+
+# Nice-to-haves
+ReusePort=yes
+Backlog=256
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

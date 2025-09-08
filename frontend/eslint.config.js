@@ -71,14 +71,12 @@ export default [
       ...react.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
 
-      // ✅ React Compiler rule (manually enabled)
+      // React Compiler rule
       "react-hooks/react-compiler": "error",
 
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "react/no-unescaped-entities": "warn",
-
-      // 🧹 Unused import handling
       "no-unused-vars": "off",
       "unused-imports/no-unused-imports": "warn",
       "unused-imports/no-unused-vars": [
@@ -91,7 +89,6 @@ export default [
         },
       ],
 
-      // 📦 Import order and sorting
       "import/order": [
         "warn",
         {
@@ -108,7 +105,6 @@ export default [
     },
   },
 
-  // ✅ Prettier enforcement
   {
     plugins: {
       prettier,
@@ -118,11 +114,9 @@ export default [
     },
   },
 
-  // ✅ TanStack Query via compat
   ...compat.config({
     extends: ["plugin:@tanstack/query/recommended"],
   }),
 
-  // ✅ Additional Prettier formatting config
   prettierConfig,
 ];

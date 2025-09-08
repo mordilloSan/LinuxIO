@@ -1,6 +1,6 @@
 package docker
 
-import "github.com/mordilloSan/LinuxIO/internal/ipc"
+import "github.com/mordilloSan/LinuxIO/common/ipc"
 
 func DockerHandlers() map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{

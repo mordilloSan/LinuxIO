@@ -102,9 +102,6 @@ function AuthProvider({ children }: AuthProviderProps) {
       toast.error("Session expired. Please sign in again.");
       doLocalSignOut(false);
     },
-    onSignIn: (user) => {
-      toast.success(`Welcome back, ${user.name}!`);
-    },
     log: true,
   });
 
@@ -144,6 +141,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       await axios.post("/auth/login", { username, password });
       const user = await fetchUser();
       dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
+      toast.success(`Welcome, ${username}!`);
     },
     [fetchUser],
   );

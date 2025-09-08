@@ -6,132 +6,199 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/activation"
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/session"
-	"github.com/mordilloSan/LinuxIO/internal/utils"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/common/utils"
 	"github.com/mordilloSan/LinuxIO/server/api"
+	"github.com/mordilloSan/LinuxIO/server/bridge"
 	"github.com/mordilloSan/LinuxIO/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/server/filebrowser"
+	"github.com/mordilloSan/LinuxIO/server/terminal"
 	"github.com/mordilloSan/LinuxIO/server/web"
 )
 
-func envOrDefault(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+func trySystemdListener() (net.Listener, bool, error) {
+	listeners, err := activation.Listeners()
+	if err != nil {
+		return nil, false, err
 	}
-	return def
+	if len(listeners) == 0 {
+		return nil, false, nil
+	}
+	return listeners[0], true, nil
 }
 
-func intFromEnv(key string, def int) int {
-	if s := os.Getenv(key); s != "" {
-		if n, err := strconv.Atoi(s); err == nil && n > 0 && n < 65536 {
-			return n
-		}
+func socketActivationMode(m string) string {
+	v := strings.ToLower(strings.TrimSpace(m))
+	switch v {
+	case "on", "off", "auto":
+		return v
+	default:
+		return "auto"
 	}
-	return def
 }
 
 func RunServer(cfg ServerConfig) {
-	// Optional: keep env/verbose behavior via ENV VARS (no CLI flags).
-	env := strings.ToLower(envOrDefault("LINUXIO_ENV", "production"))
-	verbose := strings.EqualFold(os.Getenv("LINUXIO_VERBOSE"), "1") ||
-		strings.EqualFold(os.Getenv("LINUXIO_VERBOSE"), "true")
-
+	// -------------------------------------------------------------------------
+	// Env + logging (from flags)
+	// -------------------------------------------------------------------------
+	env := strings.ToLower(cfg.Env) // "development" | "production"
+	verbose := cfg.Verbose
 	logger.Init(env, verbose)
 	if !(env == "development" && verbose) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	logger.Infof("🌱 Starting server in %s mode...", env)
 
-	// Sessions Cleanup
-	defer session.Init()()
+	// -------------------------------------------------------------------------
+	// Sessions + cleanup hooks
+	// -------------------------------------------------------------------------
+	ms := session.New()
+	sm := session.NewManager(ms, session.SessionConfig{
+		Cookie: session.CookieConfig{
+			Secure: env == "production",
+		},
+	})
+	sm.RegisterOnDelete(func(sess session.Session, reason session.DeleteReason) {
+		terminal.CloseAllForSession(sess.SessionID)
+		if sess.User.Username != "" {
+			if _, err := bridge.CallWithSession(&sess, "control", "shutdown", []string{string(reason)}); err != nil {
+				logger.Warnf("Bridge shutdown for %s failed: %v", sess.SessionID, err)
+			}
+		}
+	})
 
-	// API startup for caching
+	// -------------------------------------------------------------------------
+	// Background samplers, GPU info
+	// -------------------------------------------------------------------------
 	api.StartSimpleNetInfoSampler()
 	api.InitGPUInfo()
 
-	// FileBrowser
-	filebrowserSecret := utils.GenerateSecretKey(32)
-	go filebrowser.StartServices(filebrowserSecret, verbose)
-
-	// Frontend FS
+	// -------------------------------------------------------------------------
+	// Frontend assets
+	// -------------------------------------------------------------------------
 	ui, err := web.UI()
 	if err != nil {
 		logger.Error.Fatalf("failed to mount embedded frontend: %v", err)
 	}
 
+	// -------------------------------------------------------------------------
+	// Start required services
+	// -------------------------------------------------------------------------
+	filebrowserSecret := utils.GenerateSecretKey(32)
+	filebrowser.StartServices(filebrowserSecret, verbose)
+
+	// -------------------------------------------------------------------------
+	// Router
+	// -------------------------------------------------------------------------
 	router := BuildRouter(Config{
 		Env:                  env,
 		Verbose:              verbose,
-		VitePort:             intFromEnv("VITE_DEV_PORT", 3000),
+		VitePort:             cfg.ViteDevPort,
 		BridgeBinaryOverride: cfg.BridgeBinaryPath,
 		FilebrowserSecret:    filebrowserSecret,
 		UI:                   ui,
-	})
+	}, sm)
 
-	// HTTP(S) server
-	addr := fmt.Sprintf(":%d", cfg.Port)
+	// -------------------------------------------------------------------------
+	// HTTP(S) server with optional systemd socket activation
+	// -------------------------------------------------------------------------
 	srv := &http.Server{
-		Addr:     addr,
 		Handler:  router,
 		ErrorLog: log.New(HTTPErrorLogAdapter{}, "", 0),
 	}
-	if env == "production" {
-		cert, err := web.GenerateSelfSignedCert()
-		if err != nil {
-			logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", err)
+
+	mode := socketActivationMode(cfg.SocketActivation) // auto|on|off
+	useSD := (env == "production") && (mode != "off")
+
+	var ln net.Listener
+	var haveSD bool
+	if useSD {
+		var sdErr error
+		ln, haveSD, sdErr = trySystemdListener()
+		if sdErr != nil {
+			logger.Warnf("systemd activation check failed: %v", sdErr)
 		}
-		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-		web.SetRootPoolFromServerCert(cert)
+		if mode == "on" && !haveSD {
+			logger.Warnf("--socket-activation=on but no socket passed; falling back to self-bind.")
+		}
 	}
 
 	quit := make(chan os.Signal, 1)
 	done := make(chan struct{})
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	go func() {
-		var err error
-		if env == "production" {
-			fmt.Printf("🚀 Server running at https://localhost:%d\n", cfg.Port)
-			logger.Infof("🚀 Server running at https://localhost:%d", cfg.Port)
-			err = srv.ListenAndServeTLS("", "")
-		} else {
-			logger.Infof("🚀 Server running at http://localhost:%d", cfg.Port)
-			err = srv.ListenAndServe()
+	if haveSD && ln != nil {
+		// production + socket activation → TLS on inherited listener
+		cert, err := web.GenerateSelfSignedCert()
+		if err != nil {
+			logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", err)
 		}
-		if err != nil && err != http.ErrServerClosed {
-			logger.Error.Fatalf("server error: %v", err)
-		}
-		close(done)
-	}()
+		tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+		web.SetRootPoolFromServerCert(cert)
 
-	select {
-	case <-quit:
-		if env == "production" {
-			fmt.Println("🛑 Shutdown signal received, shutting down server...")
-		}
-		logger.Infof("🛑 Shutdown signal received, shutting down server...")
-	case <-done:
-		if env == "production" {
-			fmt.Println("🚨 Server stopped unexpectedly, beginning shutdown...")
-		}
-		logger.Infof("🚨 Server stopped unexpectedly, beginning shutdown...")
+		tlsLn := tls.NewListener(ln, tlsCfg)
+		logger.Infof("🔌 Using systemd socket activation (TLS) on %s", tlsLn.Addr())
+
+		go func() {
+			if err := srv.Serve(tlsLn); err != nil && err != http.ErrServerClosed {
+				logger.Error.Fatalf("server error: %v", err)
+			}
+			close(done)
+		}()
+	} else {
+		// self-bind (dev and local prod)
+		addr := fmt.Sprintf(":%d", cfg.Port)
+		srv.Addr = addr
+
+		go func() {
+			var err error
+			if env == "production" {
+				cert, cErr := web.GenerateSelfSignedCert()
+				if cErr != nil {
+					logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", cErr)
+				}
+				srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+				web.SetRootPoolFromServerCert(cert)
+
+				fmt.Printf("🚀 Server running at https://localhost:%d\n", cfg.Port)
+				logger.Infof("HTTP server listening at https://localhost:%d", cfg.Port)
+				err = srv.ListenAndServeTLS("", "")
+			} else {
+				logger.Infof("HTTP server listening at http://localhost:%d", cfg.Port)
+				err = srv.ListenAndServe()
+			}
+			if err != nil && err != http.ErrServerClosed {
+				logger.Error.Fatalf("server error: %v", err)
+			}
+			close(done)
+		}()
 	}
 
-	// graceful -> forced shutdown
+	// -------------------------------------------------------------------------
+	// Shutdown coordination
+	// -------------------------------------------------------------------------
+	select {
+	case <-quit:
+		logger.Infof("🛑 Shutdown signal received")
+	case <-done:
+		logger.Infof("🚨 HTTP server stopped unexpectedly, beginning shutdown...")
+	}
+
 	srv.SetKeepAlivesEnabled(false)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -143,13 +210,18 @@ func RunServer(cfg ServerConfig) {
 		} else {
 			logger.Warnf("HTTP server shutdown error: %v", err)
 		}
+	} else {
+		logger.Infof("HTTP server closed")
 	}
 
-	// Cleanup
-	cleanup.ShutdownAllBridges("server_quit")
-	if err := cleanup.CleanupFilebrowserContainer(); err != nil {
-		logger.Warnf("FileBrowser cleanup error: %v", err)
-	}
+	// Stop background/attached services
+	cleanup.CleanupFilebrowserContainer()
+
+	// Tell bridges to quit before sessions close
+	cleanup.ShutdownAllBridges(sm, "server_quit")
+
+	// Close sessions
+	sm.Close()
 
 	if env == "production" {
 		fmt.Println("Server stopped.")

@@ -1,3 +1,43 @@
+## v0.2.0 — 2025-09-08
+
+### 📚 Documentation
+
+* docs(changelog): update for v0.2.0 ([925906c](https://github.com/mordilloSan/LinuxIO/commit/925906c)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([2e71c43](https://github.com/mordilloSan/LinuxIO/commit/2e71c43)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([6755546](https://github.com/mordilloSan/LinuxIO/commit/6755546)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([03fa714](https://github.com/mordilloSan/LinuxIO/commit/03fa714)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([e479ac8](https://github.com/mordilloSan/LinuxIO/commit/e479ac8)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([b0c3741](https://github.com/mordilloSan/LinuxIO/commit/b0c3741)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([d43490d](https://github.com/mordilloSan/LinuxIO/commit/d43490d)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([18c3d49](https://github.com/mordilloSan/LinuxIO/commit/18c3d49)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([0a44505](https://github.com/mordilloSan/LinuxIO/commit/0a44505)) by @github-actions[bot]
+
+### 🔄 Other Changes
+
+* update on makefile. ([d4317c5](https://github.com/mordilloSan/LinuxIO/commit/d4317c5)) by @MordilloSan
+* removed changelog generation from makefile to github actions ([559de05](https://github.com/mordilloSan/LinuxIO/commit/559de05)) by @MordilloSan
+* session update to kill bridge when expired ([aa163d1](https://github.com/mordilloSan/LinuxIO/commit/aa163d1)) by @MordilloSan
+* session code upgrade for store. Small bug fixes ([e752187](https://github.com/mordilloSan/LinuxIO/commit/e752187)) by @MordilloSan
+* startup logging improvement folder rename for better consistency install file update makefile - dev workflow improvement ([252da4f](https://github.com/mordilloSan/LinuxIO/commit/252da4f)) by @MordilloSan
+* Merge branch 'dev/v0.2.0' of https://github.com/mordilloSan/LinuxIO into dev/v0.2.0 ([0faa4ec](https://github.com/mordilloSan/LinuxIO/commit/0faa4ec)) by @MordilloSan
+* logging improvements session manager cookie in benchmark API ([e7d35cd](https://github.com/mordilloSan/LinuxIO/commit/e7d35cd)) by @MordilloSan
+* Merge branch 'dev/v0.2.0' of https://github.com/mordilloSan/LinuxIO into dev/v0.2.0 ([c9f4b3c](https://github.com/mordilloSan/LinuxIO/commit/c9f4b3c)) by @MordilloSan
+* websocket, auth and vite build optimization root logging bug fix ([548f074](https://github.com/mordilloSan/LinuxIO/commit/548f074)) by @MordilloSan
+* port managment for dev mode and deployment install script systemd unit files PAM and misc files ([5b79dd8](https://github.com/mordilloSan/LinuxIO/commit/5b79dd8)) by @MordilloSan
+* final commit for install package ([3a62b66](https://github.com/mordilloSan/LinuxIO/commit/3a62b66)) by @MordilloSan
+* Merge branch 'dev/v0.2.0' of https://github.com/mordilloSan/LinuxIO into dev/v0.2.0 ([2257d05](https://github.com/mordilloSan/LinuxIO/commit/2257d05)) by @MordilloSan
+* Merge branch 'main' into dev/v0.2.0 ([08082f8](https://github.com/mordilloSan/LinuxIO/commit/08082f8)) by @mordillo
+* workflow bug fix ([336ee17](https://github.com/mordilloSan/LinuxIO/commit/336ee17)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+* @github-actions[bot]
+* @mordillo
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.0
+
 ## v0.1.1 — 2025-09-03
 
 ### 📚 Documentation

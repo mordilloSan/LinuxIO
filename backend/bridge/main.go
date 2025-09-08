@@ -19,9 +19,9 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers"
-	"github.com/mordilloSan/LinuxIO/internal/ipc"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/common/ipc"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/server/config"
 	"github.com/mordilloSan/LinuxIO/version"
 )

@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
+	"github.com/mordilloSan/LinuxIO/common/logger"
 
 	"github.com/gin-gonic/gin"
 )

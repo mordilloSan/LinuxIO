@@ -9,8 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/internal/ipc"
-	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/common/ipc"
+	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
 )
 

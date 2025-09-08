@@ -6,17 +6,17 @@ import (
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
+
+	"github.com/mordilloSan/LinuxIO/common/logger"
 )
 
-func CleanupFilebrowserContainer() error {
+func CleanupFilebrowserContainer() {
 	containerName := "/filebrowser-linuxio"
 	timeout := 0 // seconds
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		logger.Warnf("Failed to create Docker client: %v", err)
-		return err
 	}
 	defer func() {
 		if cerr := cli.Close(); cerr != nil {
@@ -41,8 +41,8 @@ func CleanupFilebrowserContainer() error {
 			logger.Warnf("Failed to remove container %s: %v", containerName, err)
 		}
 	} else {
-		logger.Infof("Removed FileBrowser container: %s", containerName)
+		logger.Infof("Removed FileBrowser container")
+		logger.Debugf("Removed : %s", containerName)
 	}
 
-	return nil
 }

@@ -15,10 +15,15 @@ import (
 type ServerConfig struct {
 	Port             int
 	BridgeBinaryPath string
+
+	// new:
+	Env              string // "development" | "production"
+	Verbose          bool
+	SocketActivation string // "auto" | "on" | "off"
+	ViteDevPort      int    // used only for dev CORS allowance
 }
 
 // StartLinuxIO is the CLI entrypoint (called from main.go).
-
 func StartLinuxIO() {
 	if len(os.Args) < 2 {
 		printGeneralUsage()
@@ -41,8 +46,13 @@ func StartLinuxIO() {
 		var cfg ServerConfig
 		var detach bool
 
-		runCmd.IntVar(&cfg.Port, "port", 8080, "HTTP server port")
+		runCmd.IntVar(&cfg.Port, "port", 8090, "HTTP server port (fallback if not socket-activated)")
 		runCmd.StringVar(&cfg.BridgeBinaryPath, "bridge-binary", "", "path to linuxio-bridge (optional)")
+		runCmd.StringVar(&cfg.Env, "env", "production", "environment: development|production")
+		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "verbose logging")
+		runCmd.StringVar(&cfg.SocketActivation, "socket-activation", "auto", "socket activation: auto|on|off")
+		runCmd.IntVar(&cfg.ViteDevPort, "vite-port", 3000, "vite dev server port (only used for dev CORS)")
+
 		runCmd.BoolVar(&detach, "detach", false, "run in background (daemonize)")
 
 		// Local usage for `run`
@@ -53,15 +63,19 @@ Usage:
   linuxio run [flags]
 
 Flags:
-  -port <int>             HTTP server port (default: 8080)
-  -bridge-binary <path>   Path to linuxio-bridge binary (optional)
-  -detach                 Run as a background process
+  -port <int>               HTTP server port (fallback if not socket-activated) (default: 8090)
+  -bridge-binary <path>     Path to linuxio-bridge binary (optional)
+  -env <development|production>  Environment (default: production)
+  -verbose                  Verbose logging
+  -socket-activation <auto|on|off>  systemd socket activation mode (default: auto)
+  -vite-port <int>          Vite dev server port for CORS in dev (default: 3000)
+  -detach                   Run as a background process
 `)
 		}
 
 		_ = runCmd.Parse(os.Args[2:])
 
-		// Validate port
+		// basic port validation
 		if cfg.Port <= 0 || cfg.Port > 65535 {
 			fmt.Fprintln(os.Stderr, "invalid -port: must be between 1 and 65535")
 			os.Exit(2)
@@ -72,7 +86,7 @@ Flags:
 			return
 		}
 
-		// Run the server in-foreground (or already-detached child)
+		// Run the server (foreground or already-detached child)
 		RunServer(cfg)
 		return
 
@@ -97,7 +111,7 @@ Commands:
 
 Examples:
   linuxio run
-  linuxio run -port 9090
+  linuxio run -env development -port 18090 -socket-activation off -verbose
   linuxio run -bridge-binary /usr/local/bin/linuxio-bridge
   linuxio run -detach
 
@@ -105,9 +119,7 @@ Use "linuxio <command> -h" for more info about a command.
 `)
 }
 
-// daemonReexec re-execs the current binary as a background process
-// with a new session (setsid), removes the -detach flag, and marks the
-// environment with LINUXIO_DETACHED=1 so we don't loop.
+// daemonReexec re-execs the current binary as a background process.
 func daemonReexec() {
 	orig := os.Args
 	args := []string{"run"}
@@ -128,7 +140,7 @@ func daemonReexec() {
 		Setsid: true, // new session
 	}
 
-	// Inherit stdout/stderr; change these to files if you prefer silent detachment.
+	// Inherit stdout/stderr
 	cmd.Stdin = nil
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

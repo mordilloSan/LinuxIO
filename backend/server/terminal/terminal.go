@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
 )
 
 type TerminalSession struct {

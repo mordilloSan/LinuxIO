@@ -6,8 +6,9 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
 	"gopkg.in/yaml.v3"
+
+	"github.com/mordilloSan/LinuxIO/common/logger"
 )
 
 // repairConfig loads cfgPath, validates keys/values, and rewrites only if needed.

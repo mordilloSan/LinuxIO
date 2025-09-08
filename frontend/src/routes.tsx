@@ -1,31 +1,32 @@
+// src/routes/index.tsx
 import React, { lazy } from "react";
-
-import { WebSocketProvider } from "./contexts/WebSocketContext";
 
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
-import AuthLayout from "@/layouts/Auth";
-import MainLayout from "@/layouts/Main";
-import Default from "@/pages/main/dashboard";
-import Terminal from "@/pages/main/terminal";
 
-const SignIn = lazy(() => import("@/pages/auth/Login"));
-const Page404 = lazy(() => import("@/pages/auth/Page404"));
+// LAZY EVERYTHING that belongs to the protected app:
+const MainLayout = lazy(() => import("@/layouts/Main"));
+const Default = lazy(() => import("@/pages/main/dashboard"));
 const Updates = lazy(() => import("@/pages/main/updates"));
 const Docker = lazy(() => import("@/pages/main/docker"));
 const Services = lazy(() => import("@/pages/main/services"));
 const Network = lazy(() => import("@/pages/main/network"));
 const Hardware = lazy(() => import("@/pages/main/hardware"));
 const Wireguard = lazy(() => import("@/pages/main/wireguard"));
+const Terminal = lazy(() => import("@/pages/main/terminal"));
+
+// LAZY auth pages too (keeps base bundle small)
+const AuthLayout = lazy(() => import("@/layouts/Auth"));
+const SignIn = lazy(() => import("@/pages/auth/Login"));
+const Page404 = lazy(() => import("@/pages/auth/Page404"));
 
 const routes = [
+  // Protected app
   {
     path: "/",
     element: (
       <AuthGuard>
-        <WebSocketProvider>
-          <MainLayout />
-        </WebSocketProvider>
+        <MainLayout />
       </AuthGuard>
     ),
     children: [
@@ -40,6 +41,8 @@ const routes = [
       { path: "wireguard", element: <Wireguard /> },
     ],
   },
+
+  // Auth (public)
   {
     path: "*",
     element: <AuthLayout />,

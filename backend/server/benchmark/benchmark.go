@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
+
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
 )
 
 type BenchmarkResult struct {
@@ -29,14 +31,26 @@ type GroupedResults struct {
 	Other     []gin.H `json:"other"`
 }
 
-func benchmarkHandler(router *gin.Engine) gin.HandlerFunc {
+// benchmarkHandler requires the session manager to read the real cookie name.
+func benchmarkHandler(router *gin.Engine, sm *session.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		cookie, err := c.Cookie("session_id")
-		if err != nil {
-			c.JSON(401, gin.H{"error": "unauthorized"})
+		// read auth cookie by the effective name from session manager
+		cookieName := sm.CookieName()
+		cookieVal, err := c.Cookie(cookieName)
+		if err != nil || cookieVal == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
-		results := RunBenchmark("http://localhost:8080", "session_id="+cookie, router)
+
+		// derive baseURL from the current request (works with TLS/reverse proxy)
+		scheme := "http"
+		if c.Request.TLS != nil {
+			scheme = "https"
+		}
+		host := c.Request.Host
+		baseURL := fmt.Sprintf("%s://%s", scheme, host)
+
+		results := RunBenchmark(baseURL, cookieName, cookieVal, router)
 
 		grouped := GroupedResults{
 			System:    []gin.H{},
@@ -76,12 +90,13 @@ func benchmarkHandler(router *gin.Engine) gin.HandlerFunc {
 		sortByLatency(grouped.Wireguard)
 		sortByLatency(grouped.Other)
 
-		c.JSON(200, grouped)
+		c.JSON(http.StatusOK, grouped)
 	}
 }
 
-// RunBenchmark performs parallel benchmarking of all GET endpoints
-func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine) []BenchmarkResult {
+// RunBenchmark performs parallel benchmarking of all GET endpoints.
+// It sets the Cookie header as "<cookieName>=<cookieVal>".
+func RunBenchmark(baseURL, cookieName, cookieVal string, router *gin.Engine) []BenchmarkResult {
 	endpoints := getBenchmarkableEndpoints(router)
 	logger.Infof("📈 Running benchmark for %d endpoints...", len(endpoints))
 
@@ -99,7 +114,7 @@ func RunBenchmark(baseURL string, sessionCookie string, router *gin.Engine) []Be
 				resultChan <- BenchmarkResult{Endpoint: endpoint, Error: err}
 				return
 			}
-			req.Header.Set("Cookie", sessionCookie)
+			req.Header.Set("Cookie", fmt.Sprintf("%s=%s", cookieName, cookieVal))
 
 			start := time.Now()
 			resp, err := client.Do(req)

@@ -3,7 +3,7 @@ package wireguard
 import (
 	"net"
 
-	"github.com/mordilloSan/LinuxIO/internal/ipc"
+	"github.com/mordilloSan/LinuxIO/common/ipc"
 )
 
 // --- Constants ---

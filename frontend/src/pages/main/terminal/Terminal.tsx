@@ -17,9 +17,12 @@ const TerminalXTerm: React.FC = () => {
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const theme = useTheme();
-  const { send, subscribe, ready } = useWebSocket();
-  const startedRef = useRef(false);
 
+  // CHANGED: ready -> status
+  const { send, subscribe, status } = useWebSocket();
+  const isOpen = status === "open";
+
+  const startedRef = useRef(false);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);
 
   // Update xterm font size when fontSize changes
@@ -61,7 +64,7 @@ const TerminalXTerm: React.FC = () => {
       const viewport = termRef.current?.querySelector(".xterm-viewport");
       if (viewport) viewport.classList.add("custom-scrollbar");
       fitAddon.current?.fit();
-      if (xterm.current && ready && !startedRef.current) {
+      if (xterm.current && isOpen && !startedRef.current) {
         send({
           type: "terminal_resize",
           payload: { cols: xterm.current.cols, rows: xterm.current.rows },
@@ -69,7 +72,7 @@ const TerminalXTerm: React.FC = () => {
         setTimeout(() => {
           send({ type: "terminal_start" });
           startedRef.current = true;
-        }, 40); // Small delay to let backend resize pty before launching shell
+        }, 40);
       }
     }, 30);
 
@@ -84,7 +87,7 @@ const TerminalXTerm: React.FC = () => {
 
     // Terminal input -> send to socket
     xterm.current.onData((data) => {
-      if (ready) {
+      if (isOpen) {
         send({ type: "terminal_input", data });
       }
     });
@@ -92,7 +95,7 @@ const TerminalXTerm: React.FC = () => {
     // Responsive fit on window resize
     const doFit = () => {
       fitAddon.current?.fit();
-      if (xterm.current && ready) {
+      if (xterm.current && isOpen) {
         send({
           type: "terminal_resize",
           payload: { cols: xterm.current.cols, rows: xterm.current.rows },
@@ -108,7 +111,7 @@ const TerminalXTerm: React.FC = () => {
       startedRef.current = false;
     };
   }, [
-    ready,
+    isOpen,
     send,
     subscribe,
     theme.palette.background.default,
@@ -161,7 +164,6 @@ const TerminalXTerm: React.FC = () => {
             theme.palette.mode === "light"
               ? darken(theme.sidebar.background, 0.07)
               : lighten(theme.sidebar.background, 0.07),
-
           boxShadow: theme.shadows[2],
         })}
       >
@@ -193,7 +195,6 @@ const TerminalXTerm: React.FC = () => {
           <Plus size={18} />
         </IconButton>
 
-        {/* Spacer */}
         <Box sx={{ flex: 1 }} />
 
         {/* Reset Button */}

@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/internal/ipc"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/common/ipc"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
 )
 
@@ -90,7 +90,7 @@ func updatePackageHandler(c *gin.Context) {
 		return
 	}
 
-	logger.Infof("✅ Package %s updated successfully.\nOutput:\n%s", req.PackageID, output)
+	logger.Infof("Package %s updated successfully.\nOutput:\n%s", req.PackageID, output)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "package updates triggered",
 		"output":  output,

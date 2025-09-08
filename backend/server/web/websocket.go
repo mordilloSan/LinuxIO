@@ -3,22 +3,23 @@ package web
 import (
 	"encoding/json"
 	"errors"
-	"strings"
-	"time"
-
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/session"
+
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/server/terminal"
 )
 
 var upgrader = websocket.Upgrader{
+	// Origin check is handled by the CORS middleware.
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
@@ -46,14 +47,12 @@ type wsSafeConn struct {
 	closed    uint32 // 0 open, 1 closed
 }
 
-// Helper: safe WriteJSON
 func (sc *wsSafeConn) WriteJSON(v interface{}) error {
 	sc.Mu.Lock()
 	defer sc.Mu.Unlock()
 	return sc.Conn.WriteJSON(v)
 }
 
-// Close politely, only once
 func (sc *wsSafeConn) Close() error {
 	var err error
 	sc.closeOnce.Do(func() {
@@ -73,17 +72,13 @@ func (sc *wsSafeConn) IsClosed() bool {
 }
 
 func WebSocketHandler(c *gin.Context) {
+	// Session must be injected by sm.RequireSession() on the route.
 	sess := session.SessionFromContext(c)
 	if sess == nil {
-		// Fallback attempt (optional)
-		if s, err := session.ValidateSessionFromRequest(c.Request); err == nil {
-			sess = s
-			c.Set("session", s)
-		} else {
-			c.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
 	}
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		logger.Errorf("[WebSocket] WS upgrade failed: %v", err)
@@ -91,7 +86,6 @@ func WebSocketHandler(c *gin.Context) {
 	}
 	safeConn := &wsSafeConn{Conn: conn}
 
-	// Close handler — expected closes as Debug
 	conn.SetCloseHandler(func(code int, text string) error {
 		switch code {
 		case websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived:
@@ -102,7 +96,6 @@ func WebSocketHandler(c *gin.Context) {
 		return nil
 	})
 
-	// Close on request context cancel — log only if we’re actually closing it here
 	ctx := c.Request.Context()
 	go func() {
 		<-ctx.Done()
@@ -113,8 +106,9 @@ func WebSocketHandler(c *gin.Context) {
 	}()
 
 	defer func() { _ = safeConn.Close() }()
-
-	logger.Infof("[WebSocket] Connected: user=%s session=%s", sess.User.Username, sess.SessionID)
+	logger.Infof("[WebSocket] Connected: user=%s", sess.User.Username)
+	logger.Debugf("[WebSocket] Connection details: user=%s session=%s remote=%s path=%s ua=%s",
+		sess.User.Username, sess.SessionID, c.ClientIP(), c.Request.URL.Path, c.Request.UserAgent())
 
 	done := make(chan struct{})
 	defer func() {
@@ -125,7 +119,6 @@ func WebSocketHandler(c *gin.Context) {
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			// Expected closes are Debug; warnings only for unexpected errors
 			if isExpectedWSClose(err) {
 				logger.Debugf("[WebSocket] WS disconnect: %v", err)
 			} else {
@@ -133,6 +126,7 @@ func WebSocketHandler(c *gin.Context) {
 			}
 			break
 		}
+
 		var wsMsg WSMessage
 		if err := json.Unmarshal(msg, &wsMsg); err != nil {
 			logger.Warnf("[WebSocket] Invalid JSON: %v", err)
@@ -144,7 +138,6 @@ func WebSocketHandler(c *gin.Context) {
 		switch wsMsg.Type {
 		case "terminal_start":
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				// ---- CONTAINER TERMINAL START ----
 				ts := terminal.GetContainerTerminal(sess.SessionID, wsMsg.ContainerID)
 				if ts == nil || ts.PTY == nil {
 					shell := wsMsg.Data
@@ -165,7 +158,6 @@ func WebSocketHandler(c *gin.Context) {
 					}
 					ts.Mu.Unlock()
 				}
-				// Reader goroutine (per container terminal)
 				go func(ts *terminal.TerminalSession) {
 					buf := make([]byte, 4096)
 					for {
@@ -198,9 +190,7 @@ func WebSocketHandler(c *gin.Context) {
 						}
 					}
 				}(ts)
-
 			} else {
-				// ---- MAIN TERMINAL ----
 				ts := terminal.Get(sess.SessionID)
 				if ts == nil || ts.PTY == nil {
 					if err := terminal.StartTerminal(sess); err != nil {
@@ -217,7 +207,6 @@ func WebSocketHandler(c *gin.Context) {
 					}
 					ts.Mu.Unlock()
 				}
-				// Reader goroutine (main shell)
 				go func(ts *terminal.TerminalSession) {
 					buf := make([]byte, 4096)
 					for {
@@ -250,18 +239,18 @@ func WebSocketHandler(c *gin.Context) {
 					}
 				}(ts)
 			}
+
 		case "terminal_input":
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				ts := terminal.GetContainerTerminal(sess.SessionID, wsMsg.ContainerID)
-				if ts != nil && ts.PTY != nil && wsMsg.Data != "" {
+				if ts := terminal.GetContainerTerminal(sess.SessionID, wsMsg.ContainerID); ts != nil && ts.PTY != nil && wsMsg.Data != "" {
 					_, _ = ts.PTY.Write([]byte(wsMsg.Data))
 				}
 			} else {
-				ts := terminal.Get(sess.SessionID)
-				if ts != nil && ts.PTY != nil && wsMsg.Data != "" {
+				if ts := terminal.Get(sess.SessionID); ts != nil && ts.PTY != nil && wsMsg.Data != "" {
 					_, _ = ts.PTY.Write([]byte(wsMsg.Data))
 				}
 			}
+
 		case "terminal_resize":
 			var size struct {
 				Cols int `json:"cols"`
@@ -269,20 +258,19 @@ func WebSocketHandler(c *gin.Context) {
 			}
 			_ = json.Unmarshal(wsMsg.Payload, &size)
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				ts := terminal.GetContainerTerminal(sess.SessionID, wsMsg.ContainerID)
-				if ts != nil && ts.PTY != nil {
+				if ts := terminal.GetContainerTerminal(sess.SessionID, wsMsg.ContainerID); ts != nil && ts.PTY != nil {
 					if err := pty.Setsize(ts.PTY, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)}); err != nil {
 						logger.Warnf("failed to set PTY size (container): %v", err)
 					}
 				}
 			} else {
-				ts := terminal.Get(sess.SessionID)
-				if ts != nil && ts.PTY != nil {
+				if ts := terminal.Get(sess.SessionID); ts != nil && ts.PTY != nil {
 					if err := pty.Setsize(ts.PTY, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)}); err != nil {
 						logger.Warnf("failed to set PTY size: %v", err)
 					}
 				}
 			}
+
 		case "list_shells":
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
 				shells, err := terminal.ListContainerShells(wsMsg.ContainerID)
@@ -301,6 +289,7 @@ func WebSocketHandler(c *gin.Context) {
 					Data:        shells,
 				})
 			}
+
 		case "terminal_close":
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
 				if err := terminal.CloseContainerTerminal(sess.SessionID, wsMsg.ContainerID); err != nil {
@@ -339,13 +328,12 @@ func isExpectedWSClose(err error) bool {
 			return true
 		}
 	}
-	// “use of closed network connection” after deferred Close is fine
 	return strings.Contains(strings.ToLower(err.Error()), "use of closed network connection")
 }
 
 func isExpectedPTYRead(err error) bool {
 	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "input/output error") || // EIO after PTY closed
+	return strings.Contains(s, "input/output error") ||
 		strings.Contains(s, "bad file descriptor") ||
 		strings.Contains(s, "file already closed")
 }

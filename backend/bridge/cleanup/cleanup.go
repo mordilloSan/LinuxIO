@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
 )
 
 // KillOwnSudoParents walks our parent chain and kills lingering sudo/env parents.
@@ -32,7 +32,7 @@ func KillOwnSudoParents() {
 			return
 		}
 
-		logger.Debugf("🧹 killing lingering parent pid=%d comm=%q", ppid, comm)
+		logger.Debugf("Killing lingering parent pid=%d comm=%q", ppid, comm)
 		_ = syscall.Kill(ppid, syscall.SIGTERM)
 		time.Sleep(200 * time.Millisecond)
 		_ = syscall.Kill(ppid, syscall.SIGKILL)

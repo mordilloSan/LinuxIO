@@ -1,18 +1,21 @@
+// src/contexts/WebSocketContext.tsx
 import React, {
   createContext,
   useRef,
   useCallback,
-  useEffect,
+  useLayoutEffect,
   useState,
 } from "react";
 
 type WebSocketMessage = any;
 type MessageHandler = (msg: WebSocketMessage) => void;
 
+type WSStatus = "idle" | "connecting" | "open" | "closed";
+
 interface WebSocketContextValue {
   send: (msg: any) => void;
   subscribe: (handler: MessageHandler) => () => void;
-  ready: boolean;
+  status: WSStatus;
 }
 
 export const WebSocketContext = createContext<WebSocketContextValue | null>(
@@ -22,26 +25,24 @@ export const WebSocketContext = createContext<WebSocketContextValue | null>(
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [ready, setReady] = useState(false);
+  const [status, setStatus] = useState<WSStatus>("idle");
   const wsRef = useRef<WebSocket | null>(null);
   const handlers = useRef<Set<MessageHandler>>(new Set());
 
-  useEffect(() => {
-    const wsUrl = import.meta.env.DEV
-      ? "ws://localhost:8080/ws"
-      : window.location.protocol === "https:"
-        ? `wss://${window.location.host}/ws`
-        : `ws://${window.location.host}/ws`;
+  useLayoutEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsUrl = `${proto}://${window.location.host}/ws`;
 
+    setStatus("connecting");
     const ws = new window.WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => setReady(true);
-    ws.onclose = () => setReady(false);
-    ws.onerror = () => setReady(false);
+    ws.onopen = () => setStatus("open");
+    ws.onclose = () => setStatus("closed");
+    ws.onerror = () => setStatus("closed");
 
     ws.onmessage = (event) => {
-      let msg;
+      let msg: any;
       try {
         msg = JSON.parse(event.data);
       } catch {
@@ -51,7 +52,13 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     return () => {
-      ws.close();
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+      wsRef.current = null;
+      setStatus("closed");
     };
   }, []);
 
@@ -69,7 +76,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   return (
-    <WebSocketContext.Provider value={{ send, subscribe, ready }}>
+    <WebSocketContext.Provider value={{ send, subscribe, status }}>
       {children}
     </WebSocketContext.Provider>
   );

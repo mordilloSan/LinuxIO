@@ -1,45 +1,42 @@
 package cleanup
 
 import (
-	"os"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/internal/logger"
-	"github.com/mordilloSan/LinuxIO/internal/session"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
 )
 
 // ShutdownAllBridges asks all active session bridges to exit.
-// Non-blocking per session with a small timeout; best-effort socket cleanup on failure.
-func ShutdownAllBridges(reason string) {
-	ids, err := session.GetActiveSessionIDs()
-	if err != nil || len(ids) == 0 {
+// Non-blocking per session with a small timeout; best-effort.
+func ShutdownAllBridges(sm *session.Manager, reason string) {
+	sessions, err := sm.ActiveSessions()
+	if err != nil || len(sessions) == 0 {
 		return
 	}
-	logger.Infof("Shutting down %d bridge(s)...", len(ids))
+	logger.Infof("Shutting down %d bridge(s)...", len(sessions))
 
-	for _, id := range ids {
-		sess, err := session.GetSession(id)
-		if err != nil || sess == nil || sess.User.Username == "" {
-			continue
-		}
-
+	for _, s := range sessions {
+		// fire each shutdown in its own goroutine with a per-call timeout
 		done := make(chan error, 1)
-		go func(s *session.Session) {
-			_, e := bridge.CallWithSession(s, "control", "shutdown", []string{reason})
+
+		go func(sess *session.Session) {
+			_, e := bridge.CallWithSession(sess, "control", "shutdown", []string{reason})
 			done <- e
-		}(sess)
+		}(s)
 
 		select {
 		case e := <-done:
 			if e != nil {
-				logger.Warnf("Bridge shutdown (session=%s) failed: %v", id, e)
-				// Best-effort: remove stale socket
-				_ = os.Remove(sess.SocketPath())
+				logger.Warnf("Bridge shutdown (session=%s) failed: %v", s.SessionID, e)
+				// Best effort socket cleanup is typically handled by the bridge.
+				// If you still want to remove the socket path here, add a helper in bridge:
+				// _ = os.Remove(bridge.SocketPathForSession(s))
 			}
 		case <-time.After(2 * time.Second):
-			logger.Warnf("Bridge shutdown (session=%s) timed out", id)
-			_ = os.Remove(sess.SocketPath())
+			logger.Warnf("Bridge shutdown (session=%s) timed out", s.SessionID)
+			// _ = os.Remove(bridge.SocketPathForSession(s)) // optional if you add that helper
 		}
 	}
 }

@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { FB_BASE } from "@/utils/filebrowser";
@@ -6,15 +12,24 @@ import { FB_BASE } from "@/utils/filebrowser";
 export default function FilebrowserIframe() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // runtime flags for cross-window coordination
-  const fbReadyRef = useRef(false);
+  // handshake flag in state so effects can react to it
+  const [fbReady, setFbReady] = useState(false);
+
+  // remember the last suffix we sent to avoid echo loops
   const lastSentRef = useRef<string>("");
 
   const location = useLocation();
   const navigate = useNavigate();
+
   const isFBRoute = location.pathname.startsWith("/filebrowser");
 
-  // Keep latest values in a ref so the listener never goes stale
+  // Resolve the real origin of the FileBrowser app (works for absolute or relative FB_BASE)
+  const FB_ORIGIN = useMemo(
+    () => new URL(FB_BASE, window.location.href).origin,
+    [],
+  );
+
+  // Keep always-fresh values without re-binding the event listener
   const latestRef = useRef({
     isFBRoute,
     path: location.pathname,
@@ -30,40 +45,7 @@ export default function FilebrowserIframe() {
     navigate,
   };
 
-  // 1) Subscribe to window messages ONCE
-  useEffect(() => {
-    function onMsg(ev: MessageEvent) {
-      if (ev.origin !== window.location.origin) return;
-      const fromIframe =
-        iframeRef.current?.contentWindow &&
-        ev.source === iframeRef.current.contentWindow;
-      if (!fromIframe) return;
-
-      const d = ev.data;
-
-      // Handshake: mark iframe as ready to receive navigation
-      if (d?.type === "filebrowser:ready") {
-        fbReadyRef.current = true;
-        return;
-      }
-
-      // Sync parent route when FB navigates internally
-      if (latestRef.current.isFBRoute && d?.type === "filebrowser:navigation") {
-        const url = String(d.url || "/");
-        const next = `/filebrowser${url}`;
-        const cur =
-          latestRef.current.path +
-          latestRef.current.search +
-          latestRef.current.hash;
-        if (next !== cur) latestRef.current.navigate(next, { replace: true });
-      }
-    }
-
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
-
-  // Precompute the suffix we want the iframe to navigate to
+  // The suffix we want the iframe to show (everything after /filebrowser)
   const urlSuffix = useMemo(
     () =>
       location.pathname.replace(/^\/filebrowser/, "") +
@@ -72,24 +54,87 @@ export default function FilebrowserIframe() {
     [location.pathname, location.search, location.hash],
   );
 
-  // 2) Push navigation to the iframe when our route changes under /filebrowser
+  // Build the iframe src once (stable after mount) to prevent reloads on route changes
+  const initialSrcRef = useRef<string>("");
+  if (!initialSrcRef.current) {
+    const suffix = isFBRoute ? urlSuffix || "/" : "/";
+    initialSrcRef.current = `${FB_BASE.replace(/\/+$/, "")}/${String(
+      suffix,
+    ).replace(/^\/+/, "")}`;
+  }
+  const iframeSrc = initialSrcRef.current;
+
+  // Helper: send navigation to the iframe (postMessage), targeted to FB_ORIGIN
+  const sendNavigate = useCallback(
+    (suffix: string) => {
+      const win = iframeRef.current?.contentWindow;
+      if (!win) return;
+      try {
+        win.postMessage(
+          { type: "linuxio:navigate", url: suffix || "/" },
+          FB_ORIGIN,
+        );
+        lastSentRef.current = suffix;
+      } catch {
+        // no-op
+      }
+    },
+    [FB_ORIGIN],
+  );
+
+  // Listen for messages from the iframe (handshake + internal navigation)
+  useEffect(() => {
+    function onMsg(ev: MessageEvent) {
+      if (ev.origin !== FB_ORIGIN) return;
+      const fromIframe =
+        iframeRef.current?.contentWindow &&
+        ev.source === iframeRef.current.contentWindow;
+      if (!fromIframe) return;
+
+      const d = ev.data;
+
+      if (d?.type === "filebrowser:ready") {
+        setFbReady(true);
+        if (latestRef.current.isFBRoute) {
+          const curSuffix =
+            latestRef.current.path.replace(/^\/filebrowser/, "") +
+            latestRef.current.search +
+            latestRef.current.hash;
+          if (curSuffix !== lastSentRef.current) {
+            sendNavigate(curSuffix);
+          }
+        }
+        return;
+      }
+
+      if (d?.type === "filebrowser:navigation") {
+        const url = String(d.url || "/");
+        const next = `/filebrowser${url}`;
+        const cur =
+          latestRef.current.path +
+          latestRef.current.search +
+          latestRef.current.hash;
+
+        lastSentRef.current = url;
+
+        if (latestRef.current.isFBRoute && next !== cur) {
+          latestRef.current.navigate(next, { replace: true });
+        }
+      }
+    }
+
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [FB_ORIGIN, sendNavigate]);
+
+  // Parent route changed (or iframe became ready) → tell iframe to navigate
   useEffect(() => {
     if (!isFBRoute) return;
-    if (urlSuffix === lastSentRef.current) return;
+    if (!fbReady) return; // wait for handshake
+    if (urlSuffix === lastSentRef.current) return; // avoid echo/bounce
 
-    const win = iframeRef.current?.contentWindow;
-    if (!win || !fbReadyRef.current) return; // wait for the iframe handshake
-
-    try {
-      win.postMessage(
-        { type: "linuxio:navigate", url: urlSuffix || "/" },
-        window.location.origin,
-      );
-      lastSentRef.current = urlSuffix;
-    } catch {
-      // no-op
-    }
-  }, [isFBRoute, urlSuffix]);
+    sendNavigate(urlSuffix);
+  }, [isFBRoute, urlSuffix, fbReady, sendNavigate]);
 
   return (
     <div
@@ -110,7 +155,7 @@ export default function FilebrowserIframe() {
       <iframe
         id="filebrowser-iframe"
         ref={iframeRef}
-        src={`${FB_BASE}/`}
+        src={iframeSrc}
         title="FileBrowser"
         allow="fullscreen"
         loading="lazy"
