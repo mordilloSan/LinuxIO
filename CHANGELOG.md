@@ -9,9 +9,11 @@
 * docs(changelog): update for v0.2.0 ([e479ac8](https://github.com/mordilloSan/LinuxIO/commit/e479ac8)) by @github-actions[bot]
 * docs(changelog): update for v0.2.0 ([b0c3741](https://github.com/mordilloSan/LinuxIO/commit/b0c3741)) by @github-actions[bot]
 * docs(changelog): update for v0.2.0 ([d43490d](https://github.com/mordilloSan/LinuxIO/commit/d43490d)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([18c3d49](https://github.com/mordilloSan/LinuxIO/commit/18c3d49)) by @github-actions[bot]
 
 ### 🔄 Other Changes
 
+* update on makefile. ([d4317c5](https://github.com/mordilloSan/LinuxIO/commit/d4317c5)) by @MordilloSan
 * removed changelog generation from makefile to github actions ([559de05](https://github.com/mordilloSan/LinuxIO/commit/559de05)) by @MordilloSan
 * session update to kill bridge when expired ([aa163d1](https://github.com/mordilloSan/LinuxIO/commit/aa163d1)) by @MordilloSan
 * session code upgrade for store. Small bug fixes ([e752187](https://github.com/mordilloSan/LinuxIO/commit/e752187)) by @MordilloSan
@@ -23,11 +25,13 @@
 * port managment for dev mode and deployment install script systemd unit files PAM and misc files ([5b79dd8](https://github.com/mordilloSan/LinuxIO/commit/5b79dd8)) by @MordilloSan
 * final commit for install package ([3a62b66](https://github.com/mordilloSan/LinuxIO/commit/3a62b66)) by @MordilloSan
 * Merge branch 'dev/v0.2.0' of https://github.com/mordilloSan/LinuxIO into dev/v0.2.0 ([2257d05](https://github.com/mordilloSan/LinuxIO/commit/2257d05)) by @MordilloSan
+* Merge branch 'main' into dev/v0.2.0 ([08082f8](https://github.com/mordilloSan/LinuxIO/commit/08082f8)) by @mordillo
 
 ### 👥 Contributors
 
 * @MordilloSan
 * @github-actions[bot]
+* @mordillo
 
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.0
