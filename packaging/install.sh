@@ -468,8 +468,8 @@ Setup(){
 
   Install_Packages
   Enable_Core_Services
-  Install_AutoUpdates     # <-- separate install
-  Enable_AutoUpdates      # <-- separate enable/configure
+  Install_AutoUpdates
+  Enable_AutoUpdates
 
   Resolve_Release_Tag
   Download_Binaries
