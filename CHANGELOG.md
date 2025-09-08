@@ -10,6 +10,7 @@
 * docs(changelog): update for v0.2.0 ([b0c3741](https://github.com/mordilloSan/LinuxIO/commit/b0c3741)) by @github-actions[bot]
 * docs(changelog): update for v0.2.0 ([d43490d](https://github.com/mordilloSan/LinuxIO/commit/d43490d)) by @github-actions[bot]
 * docs(changelog): update for v0.2.0 ([18c3d49](https://github.com/mordilloSan/LinuxIO/commit/18c3d49)) by @github-actions[bot]
+* docs(changelog): update for v0.2.0 ([0a44505](https://github.com/mordilloSan/LinuxIO/commit/0a44505)) by @github-actions[bot]
 
 ### 🔄 Other Changes
 
@@ -26,6 +27,7 @@
 * final commit for install package ([3a62b66](https://github.com/mordilloSan/LinuxIO/commit/3a62b66)) by @MordilloSan
 * Merge branch 'dev/v0.2.0' of https://github.com/mordilloSan/LinuxIO into dev/v0.2.0 ([2257d05](https://github.com/mordilloSan/LinuxIO/commit/2257d05)) by @MordilloSan
 * Merge branch 'main' into dev/v0.2.0 ([08082f8](https://github.com/mordilloSan/LinuxIO/commit/08082f8)) by @mordillo
+* workflow bug fix ([336ee17](https://github.com/mordilloSan/LinuxIO/commit/336ee17)) by @MordilloSan
 
 ### 👥 Contributors
 
