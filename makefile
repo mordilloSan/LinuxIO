@@ -184,17 +184,17 @@ ensure-golint: ensure-go
 	   echo "✔ golangci-lint v2 ready."; \
 	}
 
-setup: ensure-go ensure-node ensure-golint
+setup:
 	@echo ""
 	@echo "📦 Installing frontend dependencies..."
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
 
-lint: ensure-node
+lint: ensure-node setup
 	@echo "🔍 Running ESLint..."
 	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
 
-tsc: ensure-node
+tsc: ensure-node setup
 	@echo "🔍 Running TypeScript type checks..."
 	@bash -c 'cd frontend && npx tsc && echo "✅ TypeScript Linting Ok!"'
 
@@ -435,7 +435,15 @@ help:
 	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Release flow$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> from main"
-	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR dev/<version> → main"
-	@$(PRINTC) "$(COLOR_GREEN)    make merge-release    $(COLOR_RESET) Wait for checks, merge PR to main"
+	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> from main (pushes upstream)"
+	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR dev/<version> → main (uses gh)"
+	@$(PRINTC) "$(COLOR_GREEN)    make merge-release    $(COLOR_RESET) Wait for checks, merge PR to main, delete branch"
 	@$(PRINTC) ""
+
+.PHONY: \
+	default help clean run \
+	build build-vite build-backend build-bridge \
+	dev dev-prep setup test lint tsc golint \
+	ensure-node ensure-go ensure-golint \
+	generate \
+	start-dev open-pr merge-release
