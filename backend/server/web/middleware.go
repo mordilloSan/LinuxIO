@@ -2,10 +2,12 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -41,45 +43,56 @@ type ctxKey string
 
 const proxyPathKey ctxKey = "proxyPath"
 
-// FilebrowserReverseProxy proxies to the FileBrowser service and
-// injects a per-request header (name = secret) with the LinuxIO username.
-// It reads the session cookie and resolves the session via the provided Manager.
-func FilebrowserReverseProxy(secret string, sm *session.Manager) gin.HandlerFunc {
-	target, _ := url.Parse("http://127.0.0.1:8090")
-	proxy := httputil.NewSingleHostReverseProxy(target)
-
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		req.Host = target.Host
-		// Set a header named by 'secret' with the username.
-		if s, err := sm.ValidateFromRequest(req); err == nil && s != nil {
-			req.Header.Set(secret, s.User.Username)
-		}
-	}
-
-	proxy.ModifyResponse = func(resp *http.Response) error {
-		resp.Header.Set("X-Frame-Options", "SAMEORIGIN")
-		return nil
-	}
-
+// FilebrowserReverseProxy proxies to the FileBrowser service.
+// The target base URL is resolved on each request via getBaseURL() (e.g., "http://127.0.0.1:49154").
+func FilebrowserReverseProxy(secret string, sm *session.Manager, getBaseURL func() string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		proxyPath := c.Param("proxyPath")
-		c.Request = c.Request.WithContext(
-			context.WithValue(c.Request.Context(), proxyPathKey, proxyPath),
-		)
-
 		defer func() {
 			if rec := recover(); rec != nil {
-				if err, ok := rec.(error); ok && err == http.ErrAbortHandler {
-					return // client closed connection — ignore
+				if err, ok := rec.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+					return
 				}
 				if str, ok := rec.(string); ok && str == "net/http: abort Handler" {
 					return
 				}
-				panic(rec) // unexpected
+				panic(rec)
 			}
 		}()
+
+		base := strings.TrimSpace(getBaseURL())
+		if base == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "filebrowser not ready"})
+			return
+		}
+
+		target, err := url.Parse(base)
+		if err != nil {
+			logger.Warnf("invalid FileBrowser target URL %q: %v", base, err)
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
+
+		proxy := httputil.NewSingleHostReverseProxy(target)
+
+		originalDirector := proxy.Director
+		proxy.Director = func(req *http.Request) {
+			originalDirector(req)
+			req.Host = target.Host
+			// Set a header named by 'secret' with the username.
+			if s, err := sm.ValidateFromRequest(req); err == nil && s != nil {
+				req.Header.Set(secret, s.User.Username)
+			}
+		}
+
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			resp.Header.Set("X-Frame-Options", "SAMEORIGIN")
+			return nil
+		}
+
+		proxyPath := c.Param("proxyPath")
+		c.Request = c.Request.WithContext(
+			context.WithValue(c.Request.Context(), proxyPathKey, proxyPath),
+		)
 
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}

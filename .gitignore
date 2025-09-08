@@ -3,8 +3,8 @@ frontend/node_modules/
 backend/server/web/frontend/
 
 # Go Binaries
-linuxio-bridge
-linuxio
+./linuxio-bridge
+./linuxio
 
 # Logs and misc
 *.log

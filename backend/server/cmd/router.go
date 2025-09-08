@@ -23,6 +23,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/server/config"
+	"github.com/mordilloSan/LinuxIO/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/server/web"
 )
 
@@ -78,7 +79,11 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
 
 	// --- Filebrowser (auth protected) ---
-	r.Any("/navigator/*proxyPath", sm.RequireSession(), web.FilebrowserReverseProxy(cfg.FilebrowserSecret, sm))
+
+	r.Any("/navigator/*proxyPath", sm.RequireSession(), web.FilebrowserReverseProxy(cfg.FilebrowserSecret, sm, func() string {
+		return filebrowser.BaseURL // set when the container starts
+	}),
+	)
 
 	// --- Benchmark in dev mode ---
 	if cfg.Env != "production" {

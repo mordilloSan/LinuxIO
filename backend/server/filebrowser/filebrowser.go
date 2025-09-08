@@ -30,6 +30,10 @@ var EmbeddedCSS []byte
 var (
 	dockerCli *client.Client
 	dockerCtx context.Context
+
+	// BaseURL is the discovered http base (e.g. "http://127.0.0.1:49154")
+	// that the reverse proxy should forward to.
+	BaseURL string
 )
 
 func StartServices(secret string, debug bool) {
@@ -56,10 +60,10 @@ func StartServices(secret string, debug bool) {
 	} else {
 		logger.Infof("Created Docker network 'bridge-linuxio'")
 	}
+
 	if err := startFileBrowserContainer(secret, debug); err != nil {
 		logger.Errorf("FileBrowser setup failed: %v", err)
 	}
-
 }
 
 func startFileBrowserContainer(secret string, debug bool) error {
@@ -81,8 +85,7 @@ func startFileBrowserContainer(secret string, debug bool) error {
 
 	// 1) Remove any existing container
 	var err error
-	var containers []container.Summary
-	containers, err = dockerCli.ContainerList(dockerCtx, container.ListOptions{All: true})
+	containers, err := dockerCli.ContainerList(dockerCtx, container.ListOptions{All: true})
 	if err != nil {
 		return fmt.Errorf("list containers: %w", err)
 	}
@@ -90,9 +93,8 @@ func startFileBrowserContainer(secret string, debug bool) error {
 		for _, name := range c.Names {
 			if name == "/"+containerName {
 				logger.Infof("Found existing '%s' (status: %s), removing...", containerName, c.State)
-				err = dockerCli.ContainerRemove(dockerCtx, c.ID, container.RemoveOptions{Force: true})
-				if err != nil {
-					return fmt.Errorf("remove existing container '%s': %w", containerName, err)
+				if removalErr := dockerCli.ContainerRemove(dockerCtx, c.ID, container.RemoveOptions{Force: true}); removalErr != nil {
+					return fmt.Errorf("remove existing container '%s': %w", containerName, removalErr)
 				}
 				logger.Infof("Removed container '%s'", containerName)
 			}
@@ -100,17 +102,15 @@ func startFileBrowserContainer(secret string, debug bool) error {
 	}
 
 	// 2) Pull image if needed
-	var rc io.ReadCloser
-	rc, err = dockerCli.ImagePull(dockerCtx, imageRef, image.PullOptions{})
+	rc, err := dockerCli.ImagePull(dockerCtx, imageRef, image.PullOptions{})
 	if err != nil {
 		return fmt.Errorf("pull image: %w", err)
 	}
 	_, _ = io.Copy(io.Discard, rc)
 	_ = rc.Close()
 
-	// 3) Create container (no host bind mounts for cfg/css)
-	var resp container.CreateResponse
-	resp, err = dockerCli.ContainerCreate(
+	// 3) Create container — publish container 80 to a RANDOM localhost port
+	resp, err := dockerCli.ContainerCreate(
 		dockerCtx,
 		&container.Config{
 			Image: "gtstef/filebrowser",
@@ -131,8 +131,9 @@ func startFileBrowserContainer(secret string, debug bool) error {
 					ReadOnly: false,
 				},
 			},
+			// HostPort "" => Docker assigns an ephemeral host port.
 			PortBindings: nat.PortMap{
-				"80/tcp": []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: "8090"}},
+				"80/tcp": []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: ""}},
 			},
 		},
 		&network.NetworkingConfig{},
@@ -143,25 +144,39 @@ func startFileBrowserContainer(secret string, debug bool) error {
 		return fmt.Errorf("create container: %w", err)
 	}
 
-	// 4) Stage config + CSS inside the container filesystem (no host temp files)
+	// 4) Stage config + CSS inside the container
 	files := map[string][]byte{
 		ctrCfgPath: cfg,
 		ctrCSSPath: EmbeddedCSS,
 	}
-	err = copyFilesToContainer(dockerCtx, resp.ID, files)
-	if err != nil {
-		// best-effort cleanup
+	if copyErr := copyFilesToContainer(dockerCtx, resp.ID, files); copyErr != nil {
 		_ = dockerCli.ContainerRemove(dockerCtx, resp.ID, container.RemoveOptions{Force: true})
-		return fmt.Errorf("copy config/css into container: %w", err)
+		return fmt.Errorf("copy config/css into container: %w", copyErr)
 	}
 
 	// 5) Start the container
-	err = dockerCli.ContainerStart(dockerCtx, resp.ID, container.StartOptions{})
-	if err != nil {
+	if startErr := dockerCli.ContainerStart(dockerCtx, resp.ID, container.StartOptions{}); startErr != nil {
 		_ = dockerCli.ContainerRemove(dockerCtx, resp.ID, container.RemoveOptions{Force: true})
-		return fmt.Errorf("start container: %w", err)
+		return fmt.Errorf("start container: %w", startErr)
 	}
 	logger.Infof("Started FileBrowser container")
+
+	// 6) Discover the actual published host port and set BaseURL
+	inspect, err := dockerCli.ContainerInspect(dockerCtx, resp.ID)
+	if err != nil {
+		return fmt.Errorf("inspect container: %w", err)
+	}
+	if bindings, ok := inspect.NetworkSettings.Ports["80/tcp"]; ok && len(bindings) > 0 {
+		host := bindings[0].HostIP
+		if host == "" {
+			host = "127.0.0.1"
+		}
+		BaseURL = fmt.Sprintf("http://%s:%s", host, bindings[0].HostPort)
+		logger.Infof("FileBrowser published at %s", BaseURL)
+	} else {
+		// Shouldn’t happen, but give a clear log if it does.
+		return fmt.Errorf("no published port found for 80/tcp")
+	}
 
 	return nil
 }

@@ -19,7 +19,7 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	// If you want stricter origin checks, implement here.
+	// Origin check is handled by the CORS middleware.
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 

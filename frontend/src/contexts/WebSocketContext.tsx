@@ -3,7 +3,7 @@ import React, {
   createContext,
   useRef,
   useCallback,
-  useLayoutEffect, // ← change
+  useLayoutEffect,
   useState,
 } from "react";
 
@@ -25,33 +25,24 @@ export const WebSocketContext = createContext<WebSocketContextValue | null>(
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [status, setStatus] = useState<WSStatus>("idle"); // ← new
+  const [status, setStatus] = useState<WSStatus>("idle");
   const wsRef = useRef<WebSocket | null>(null);
   const handlers = useRef<Set<MessageHandler>>(new Set());
 
   useLayoutEffect(() => {
-    const wsUrl = import.meta.env.DEV
-      ? "ws://localhost:8080/ws"
-      : window.location.protocol === "https:"
-        ? `wss://${window.location.host}/ws`
-        : `ws://${window.location.host}/ws`;
+    const proto = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsUrl = `${proto}://${window.location.host}/ws`;
 
     setStatus("connecting");
     const ws = new window.WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      setStatus("open");
-    };
-    ws.onclose = () => {
-      setStatus("closed");
-    };
-    ws.onerror = () => {
-      setStatus("closed");
-    };
+    ws.onopen = () => setStatus("open");
+    ws.onclose = () => setStatus("closed");
+    ws.onerror = () => setStatus("closed");
 
     ws.onmessage = (event) => {
-      let msg;
+      let msg: any;
       try {
         msg = JSON.parse(event.data);
       } catch {

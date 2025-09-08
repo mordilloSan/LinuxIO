@@ -1,5 +1,6 @@
 // src/routes/index.tsx
 import React, { lazy } from "react";
+
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
 
