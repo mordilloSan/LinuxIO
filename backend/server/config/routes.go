@@ -8,6 +8,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/common/userconfig"
 )
 
 // Payload with pointer fields so we can detect what the client actually sent.
@@ -28,7 +29,7 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 			return
 		}
 
-		cfg, cfgPath, err := Load(sess.User.Username)
+		cfg, cfgPath, err := userconfig.Load(sess.User.Username)
 		if err != nil {
 			logger.Warnf("[theme.get] user=%q load failed: %v", sess.User.Username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load theme"})
@@ -55,8 +56,7 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 			return
 		}
 
-		// Load current settings
-		cfg, _, err := Load(sess.User.Username)
+		cfg, _, err := userconfig.Load(sess.User.Username)
 		if err != nil {
 			logger.Warnf("[theme.set] user=%q load-before-save failed: %v", sess.User.Username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
@@ -65,7 +65,6 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 		prev := cfg.AppSettings
 		next := prev
 
-		// Apply overrides...
 		if p.Theme != nil {
 			t := strings.ToUpper(strings.TrimSpace(*p.Theme))
 			if t != "LIGHT" && t != "DARK" {
@@ -75,7 +74,7 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 			next.Theme = t
 		}
 		if p.PrimaryColor != nil {
-			if !IsValidCSSColor(*p.PrimaryColor) {
+			if !userconfig.IsValidCSSColor(*p.PrimaryColor) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid primaryColor"})
 				return
 			}
@@ -88,7 +87,7 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 		}
 
 		cfg.AppSettings = next
-		cfgPath, err := Save(sess.User.Username, cfg)
+		cfgPath, err := userconfig.Save(sess.User.Username, cfg)
 		if err != nil {
 			logger.Warnf("[theme.set] user=%q save failed: %v", sess.User.Username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save theme"})

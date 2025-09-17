@@ -1,25 +1,25 @@
 [Unit]
 Description=LinuxIO Web Server
-Requires=linuxio.socket
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 User=linuxio
 Group=linuxio
-ExecStart=/usr/local/bin/linuxio
+SupplementaryGroups=docker
+ExecStart=/usr/local/bin/linuxio run --env=production --socket-activation=off --port=8090
+Restart=on-failure
+RestartSec=5s
 
-# Security hardening (read-only server)
-NoNewPrivileges=true
-PrivateTmp=true
+# Security hardening 
+PrivateTmp=false
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=false
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-RestrictSUIDSGID=true
 RestrictNamespaces=true
 RestrictRealtime=true
 DevicePolicy=closed
@@ -29,4 +29,3 @@ ReadOnlyPaths=/etc/linuxio
 
 [Install]
 WantedBy=multi-user.target
-Also=linuxio.socket

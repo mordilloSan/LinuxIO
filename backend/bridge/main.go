@@ -22,7 +22,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/server/config"
+	"github.com/mordilloSan/LinuxIO/common/userconfig"
 	"github.com/mordilloSan/LinuxIO/version"
 )
 
@@ -88,7 +88,7 @@ func main() {
 	}
 
 	// Ensure per-user config exists and is valid; logs internally.
-	config.EnsureConfigReady(Sess.User.Username)
+	userconfig.EnsureConfigReady(Sess.User.Username)
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)

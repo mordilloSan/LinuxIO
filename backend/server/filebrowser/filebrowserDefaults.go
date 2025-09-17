@@ -15,7 +15,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/server/config"
+	"github.com/mordilloSan/LinuxIO/common/userconfig"
 	"github.com/mordilloSan/LinuxIO/server/web"
 )
 
@@ -39,9 +39,9 @@ func ApplyNavigatorDefaults(c *gin.Context, sess *session.Session) error {
 	// Derive dark-mode & theme color from LinuxIO config
 	dark := false
 	themeHex := ""
-	if cfg, _, loadErr := config.Load(username); loadErr == nil {
+	if cfg, _, loadErr := userconfig.Load(username); loadErr == nil {
 		dark = strings.EqualFold(cfg.AppSettings.Theme, "DARK")
-		themeHex = config.NormalizeForFB(cfg.AppSettings.PrimaryColor) // centralized hex or ""
+		themeHex = userconfig.NormalizeForFB(cfg.AppSettings.PrimaryColor) // centralized hex or ""
 	}
 
 	// Short context for the 3 calls below

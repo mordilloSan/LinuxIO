@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -99,14 +100,31 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 		"LINUXIO_BRIDGE_SECRET="+sess.BridgeSecret,
 	)
 
+	needsSu := false
+	if sess.Privileged && os.Geteuid() != 0 {
+		needsSu = true
+		if cu, err := user.Current(); err == nil {
+			if cu.Username == sess.User.Username || (sess.User.UID != "" && cu.Uid == sess.User.UID) {
+				needsSu = false
+			}
+		}
+	}
+
 	// Build command
 	var cmd *exec.Cmd
 	if sess.Privileged {
 		preserve := "LINUXIO_SESSION_ID,LINUXIO_SESSION_USER,LINUXIO_SESSION_UID,LINUXIO_SESSION_GID,LINUXIO_BRIDGE_SECRET"
-		sudoArgs := []string{"-S", "--preserve-env=" + preserve, "--", bridgeBinary}
+		sudoArgs := []string{"-S", "-p", "", "--preserve-env=" + preserve, "--", bridgeBinary}
 		sudoArgs = append(sudoArgs, args...)
-		cmd = exec.Command("sudo", sudoArgs...)
-		cmd.Env = childEnv
+
+		if needsSu {
+			cmdString := "sudo -k; " + shellJoin(append([]string{"sudo"}, sudoArgs...))
+			cmd = exec.Command("su", "--preserve-environment", sess.User.Username, "-c", cmdString)
+			cmd.Env = childEnv
+		} else {
+			cmd = exec.Command("sudo", sudoArgs...)
+			cmd.Env = childEnv
+		}
 
 		if sudoPassword != "" {
 			stdin, perr := cmd.StdinPipe()
@@ -114,7 +132,11 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 				logger.Errorf("Failed to get stdin pipe: %v", perr)
 				return perr
 			}
-			pwBytes := []byte(sudoPassword + "\n")
+			pwSuffix := "\n"
+			if needsSu {
+				pwSuffix = "\n" + sudoPassword + "\n"
+			}
+			pwBytes := []byte(sudoPassword + pwSuffix)
 			go func() {
 				defer func() {
 					if cerr := stdin.Close(); cerr != nil {
@@ -193,6 +215,21 @@ func isExec(p string) bool {
 		return false
 	}
 	return st.Mode()&0111 != 0
+}
+
+func shellJoin(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = shellQuote(a)
+	}
+	return strings.Join(quoted, " ")
+}
+
+func shellQuote(arg string) string {
+	if arg == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
 }
 
 // GetBridgeBinaryPath returns an absolute or name-only path for the bridge.
