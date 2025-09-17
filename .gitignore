@@ -11,3 +11,4 @@ linuxio
 .DS_Store
 .vscode/
 *.swp
+linuxio-auth-helper
