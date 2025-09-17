@@ -59,13 +59,13 @@ current_rel_branch = $(shell git branch --show-current)
 
 define _require_clean
 	@if ! git diff --quiet || ! git diff --cached --quiet; then \
-		echo "❌ Working tree not clean. Commit/stash changes first."; exit 1; \
+		echo " Working tree not clean. Commit/stash changes first."; exit 1; \
 	fi
 endef
 
 define _require_gh
 	@if ! command -v gh >/dev/null 2>&1; then \
-		echo "❌ GitHub CLI (gh) not found. Install: https://cli.github.com/"; exit 1; \
+		echo " GitHub CLI (gh) not found. Install: https://cli.github.com/"; exit 1; \
 	fi
 endef
 
@@ -78,7 +78,7 @@ define _read_and_validate_version
 	VERSION="$${VERSION_INPUT:-}"; \
 	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
 	if ! echo "$$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$'; then \
-	  echo "❌ VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
+	  echo " VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
 	  exit 1; \
 	fi; \
 	REL_BRANCH="dev/$$VERSION"
@@ -91,7 +91,7 @@ default: help
 
 ensure-node:
 	@echo ""
-	@echo "📦 Ensuring Node.js $(NODE_VERSION) is available..."
+	@echo " Ensuring Node.js $(NODE_VERSION) is available..."
 	@if [ ! -d "$(NVM_DIR)" ]; then \
 		curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash; \
 	fi
@@ -112,7 +112,7 @@ ensure-node:
 
 ensure-go:
 	@echo ""
-	@echo "📦 Ensuring Go $(GO_VERSION) is available..."
+	@echo " Ensuring Go $(GO_VERSION) is available..."
 	@bash -lc '\
 		set -euo pipefail; \
 		DESIRED="$(GO_VERSION)"; \
@@ -155,7 +155,7 @@ ensure-go:
 		fi; \
 		if [ -x "$$GO_DIR/bin/go" ]; then "$$GO_DIR/bin/go" version || true; \
 		elif [ -x /usr/local/go/bin/go ]; then /usr/local/go/bin/go version || true; \
-		else echo "⚠️  Go not found on expected paths; check PATH."; fi; \
+		else echo "  Go not found on expected paths; check PATH."; fi; \
 		rm -rf "$$TMP"; \
 		echo "✅ Go is ready!"; \
 	'
@@ -180,56 +180,56 @@ ensure-golint: ensure-go
 	   out="$$( "$$bin" version )"; \
 	   ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
 	   ver_no_v="$${ver#v}"; major="$${ver_no_v%%.*}"; \
-	   [ "$$major" = "2" ] || { echo "❌ not a v2 golangci-lint"; exit 1; }; \
-	   echo "$$out" | grep -Eq 'built with go1\.25(\.|$$)' || { echo "❌ golangci-lint not built with Go 1.25"; exit 1; }; \
+	   [ "$$major" = "2" ] || { echo " not a v2 golangci-lint"; exit 1; }; \
+	   echo "$$out" | grep -Eq 'built with go1\.25(\.|$$)' || { echo " golangci-lint not built with Go 1.25"; exit 1; }; \
 	   echo "✔ golangci-lint v2 ready."; \
 	}
 
 setup:
 	@echo ""
-	@echo "📦 Installing frontend dependencies..."
+	@echo " Installing frontend dependencies..."
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
 
 lint: ensure-node setup
-	@echo "🔍 Running ESLint..."
+	@echo " Running ESLint..."
 	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
 
 tsc: ensure-node setup
-	@echo "🔍 Running TypeScript type checks..."
+	@echo " Running TypeScript type checks..."
 	@bash -c 'cd frontend && npx tsc && echo "✅ TypeScript Linting Ok!"'
 
 golint: ensure-golint
 	@set -euo pipefail
 	@echo "📁 Linting Go module in: $(BACKEND_DIR)"
-	@echo "🔍 Running gofmt..."
+	@echo " Running gofmt..."
 ifneq ($(CI),)
 	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
 	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
 else
 	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
 endif
-	@echo "🔍 Ensuring go.mod is tidy..."
+	@echo " Ensuring go.mod is tidy..."
 	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
-	@echo "🔍 Running golangci-lint..."
+	@echo " Running golangci-lint..."
 	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go Linting Ok!"
 
 test: setup dev-prep
 	@echo ""
-	@echo "📦 Running checks..."
+	@echo " Running checks..."
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory tsc
 	@$(MAKE) --no-print-directory golint
 
 build-vite: lint tsc
 	@echo ""
-	@echo "📦 Building frontend..."
+	@echo " Building frontend..."
 	@bash -c 'cd frontend && VITE_API_URL=/ npx vite build && echo "✅ Frontend built successfully!"'
 
 build-backend:
 	@echo ""
-	@echo "📦 Building backend..."
+	@echo " Building backend..."
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false" \
 	go build \
@@ -243,7 +243,7 @@ build-backend:
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
-	echo "📦 Size: $$(du -h ../linuxio | cut -f1)" && \
+	echo " Size: $$(du -h ../linuxio | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio | awk '{ print $$1 }')"
 
 build-bridge:
@@ -262,7 +262,7 @@ build-bridge:
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-bridge" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
-	echo "📦 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
+	echo " Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 build-auth-helper:
@@ -275,7 +275,7 @@ build-auth-helper:
 	echo "" && \
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-auth-helper" && \
-	echo "📦 Size: $$(du -h linuxio-auth-helper | cut -f1)" && \
+	echo " Size: $$(du -h linuxio-auth-helper | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"
 
 dev-prep:
@@ -306,7 +306,7 @@ dev: setup dev-prep build-bridge
 
 	# Wait until backend listens on $(SERVER_PORT)
 	@timeout 60s bash -c 'until ss -ltn "sport = :$(SERVER_PORT)" | grep -q LISTEN; do sleep 0.2; done' \
-	  || { echo "❌ Backend port :$(SERVER_PORT) did not open in time"; cleanup; exit 1; }
+	  || { echo " Backend port :$(SERVER_PORT) did not open in time"; cleanup; exit 1; }
 
 	cleanup_done=0
 	cleanup() {
@@ -380,7 +380,7 @@ open-pr: generate
 	  set -euo pipefail; \
 	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
 	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
+	    echo " Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
@@ -405,10 +405,10 @@ merge-release:
 	  set -euo pipefail; \
 	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
 	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo "⚠️  Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
+	    echo "  Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
 	  fi; \
 	  PRNUM="$${PR:-$$(gh pr list $(call _repo_flag) --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
-	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo "❌ No open PR from $$BRANCH to main."; exit 1; fi; \
+	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo " No open PR from $$BRANCH to main."; exit 1; fi; \
 	  echo "⏳ Waiting for checks on PR #$$PRNUM…"; \
 	  gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
 	  echo "✅ Checks passed. Merging…"; \

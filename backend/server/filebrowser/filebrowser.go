@@ -37,15 +37,15 @@ var (
 )
 
 func StartServices(secret string, debug bool) {
-	logger.Debugf("📦 Checking docker installation...")
+	logger.Debugf("Checking docker installation...")
 	if err := docker.EnsureDockerAvailable(); err != nil {
-		logger.Errorf("❌ Docker not available: %v", err)
+		logger.Errorf(" Docker not available: %v", err)
 	}
 
 	var err error
 	dockerCli, err = client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
-		logger.Errorf("❌ Failed to init Docker client: %v", err)
+		logger.Errorf(" Failed to init Docker client: %v", err)
 		return
 	}
 	dockerCtx = context.Background()

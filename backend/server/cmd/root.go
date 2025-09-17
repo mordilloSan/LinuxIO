@@ -109,7 +109,7 @@ func RunServer(cfg ServerConfig) {
 		if env == "production" {
 			cert, cErr := web.GenerateSelfSignedCert()
 			if cErr != nil {
-				logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", cErr)
+				logger.Error.Fatalf(" Failed to generate self-signed certificate: %v", cErr)
 			}
 			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 			web.SetRootPoolFromServerCert(cert)

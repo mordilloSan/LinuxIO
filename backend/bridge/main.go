@@ -114,7 +114,7 @@ func main() {
 				case <-acceptDone:
 					return
 				default:
-					logger.Warnf("⚠️ Accept failed: %v", err)
+					logger.Warnf(" Accept failed: %v", err)
 					time.Sleep(50 * time.Millisecond) // avoid tight loop during teardown
 				}
 				continue
@@ -187,24 +187,24 @@ func handleMainRequest(conn net.Conn, id string) {
 		if err == io.EOF {
 			logger.Debugf("🔁 [%s] connection closed without data", id)
 		} else {
-			logger.Warnf("❌ [%s] invalid JSON from client: %v", id, err)
+			logger.Warnf(" [%s] invalid JSON from client: %v", id, err)
 		}
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
 		return
 	}
 
 	if req.Secret != Sess.BridgeSecret {
-		logger.Warnf("❌ [%s] invalid secret", id)
+		logger.Warnf(" [%s] invalid secret", id)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
 		return
 	}
 	if req.SessionID != Sess.SessionID {
-		logger.Warnf("❌ [%s] session mismatch: got %q want %q", id, req.SessionID, Sess.SessionID)
+		logger.Warnf(" [%s] session mismatch: got %q want %q", id, req.SessionID, Sess.SessionID)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "session mismatch"})
 		return
 	}
 	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
-		logger.Warnf("❌ [%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
+		logger.Warnf(" [%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})
 		return
 	}
@@ -213,13 +213,13 @@ func handleMainRequest(conn net.Conn, id string) {
 
 	group, found := handlers.HandlersByType[req.Type]
 	if !found || group == nil {
-		logger.Warnf("❌ Unknown type: %s", req.Type)
+		logger.Warnf(" Unknown type: %s", req.Type)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
 		return
 	}
 	handler, ok := group[req.Command]
 	if !ok {
-		logger.Warnf("❌ Unknown command for type %s: %s", req.Type, req.Command)
+		logger.Warnf(" Unknown command for type %s: %s", req.Type, req.Command)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
 		return
 	}
@@ -244,7 +244,7 @@ func handleMainRequest(conn net.Conn, id string) {
 	select {
 	case r := <-done:
 		if r.err != nil {
-			logger.Errorf("❌ %s %s failed: %v", req.Type, req.Command, r.err)
+			logger.Errorf(" %s %s failed: %v", req.Type, req.Command, r.err)
 			_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
 			return
 		}

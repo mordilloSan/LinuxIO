@@ -58,7 +58,7 @@ Base distro is debian/ubuntu
 
 ---
 
-## 📦 Getting Started
+## Getting Started
 
 ### Install dependencies
 
