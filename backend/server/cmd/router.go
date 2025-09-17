@@ -15,6 +15,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/server/api"
 	"github.com/mordilloSan/LinuxIO/server/auth"
 	"github.com/mordilloSan/LinuxIO/server/benchmark"
+	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/drives"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/network"
@@ -22,7 +23,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/services"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/server/config"
 	"github.com/mordilloSan/LinuxIO/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/server/web"
 )

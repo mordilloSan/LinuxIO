@@ -6,6 +6,7 @@ VERBOSE      ?= true
 # Go and Node.js versions
 GO_VERSION   = 1.25.0
 NODE_VERSION = 24
+CC ?= cc
 
 # Helpers
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
@@ -264,6 +265,19 @@ build-bridge:
 	echo "📦 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
+build-auth-helper:
+	@echo ""
+	@echo "🛡️  Building PAM helper (C)..."
+	@set -euo pipefail; \
+	$(CC) -Wall -Wextra -O2 -fPIE -o linuxio-auth-helper \
+	  backend/cmd/linuxio-auth-helper/main.c -lpam && \
+	echo "✅ PAM helper built successfully!" && \
+	echo "" && \
+	echo "Summary:" && \
+	echo "📄 Path: $(PWD)/linuxio-auth-helper" && \
+	echo "📦 Size: $$(du -h linuxio-auth-helper | cut -f1)" && \
+	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"
+
 dev-prep:
 	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/assets"
 	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/.vite"
@@ -285,7 +299,6 @@ dev: setup dev-prep build-bridge
 		go run . run \
 		  -env development \
 		  -verbose=$(VERBOSE) \
-		  -socket-activation=off \
 		  -vite-port=$(VITE_DEV_PORT) \
 		  -port=$(SERVER_PORT) \
 	) &
@@ -320,22 +333,22 @@ dev: setup dev-prep build-bridge
 	[[ "$$STATUS" -eq 130 ]] && STATUS=0
 	exit "$$STATUS"
 
-build: build-vite golint build-backend build-bridge
+build: build-vite golint build-backend build-bridge build-auth-helper
 
 generate:
-	@cd "$(BACKEND_DIR)" && go generate ./server/config/init.go
+	@cd "$(BACKEND_DIR)" && go generate ./common/userconfig/init.go
 
 run:
 	@./linuxio run \
 	  -env production \
 	  -verbose=$(VERBOSE) \
-	  -socket-activation=off \
 	  -vite-port=$(VITE_DEV_PORT) \
 	  -port=$(SERVER_PORT)
 
 clean:
 	@rm -f ./linuxio || true
 	@rm -f ./linuxio-bridge || true
+	@rm -f ./linuxio-auth-helper || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
 	@find "$(BACKEND_DIR)/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
@@ -428,6 +441,7 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth-helper $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Build frontend + backend + bridge"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
@@ -441,8 +455,8 @@ help:
 	@$(PRINTC) ""
 
 .PHONY: \
-	default help clean run \
-	build build-vite build-backend build-bridge \
+    default help clean run \
+    build build-vite build-backend build-bridge build-auth-helper \
 	dev dev-prep setup test lint tsc golint \
 	ensure-node ensure-go ensure-golint \
 	generate \

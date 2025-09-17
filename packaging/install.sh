@@ -312,10 +312,11 @@ Download_Binaries() {
   #   https://github.com/<owner>/<repo>/releases/download/<tag>/linuxio-bridge
   local base="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${RELEASE_TAG}"
 
-  Show 2 "Downloading linuxio + linuxio-bridge (plain binaries) to staging..."
+  Show 2 "Downloading linuxio components to staging..."
   GreyStart
   curl -fL "$base/linuxio"        -o "$STAGING/linuxio"
   curl -fL "$base/linuxio-bridge" -o "$STAGING/linuxio-bridge"
+  curl -fL "$base/linuxio-auth-helper" -o "$STAGING/linuxio-auth-helper"
   Check_Success $? "Download binaries"
 }
 
@@ -324,6 +325,7 @@ Install_Binaries() {
   Show 2 "Installing binaries to $BIN_DIR"
   install -m 0755 "$STAGING/linuxio"        "$BIN_DIR/linuxio"
   install -m 0755 "$STAGING/linuxio-bridge" "$BIN_DIR/linuxio-bridge"
+  install -m 4755 "$STAGING/linuxio-auth-helper" "$BIN_DIR/linuxio-auth-helper"
 
   # Optional: sanity check that they’re executable and not empty
   if ! "$BIN_DIR/linuxio" --version >/dev/null 2>&1; then
@@ -332,7 +334,7 @@ Install_Binaries() {
   if ! "$BIN_DIR/linuxio-bridge" --version >/dev/null 2>&1; then
     Show 3 "linuxio-bridge did not run with --version; ensure correct arch/build."
   fi
-  Show 0 "Installed linuxio + linuxio-bridge"
+  Show 0 "Installed linuxio binaries"
 }
 
 Download_Packaging_Files() {
@@ -349,7 +351,6 @@ Download_Packaging_Files() {
   # systemd units
   mkdir -p "$STAGING/packaging/systemd"
   curl -fL "$raw/systemd/linuxio.service" -o "$STAGING/packaging/systemd/linuxio.service"
-  curl -fL "$raw/systemd/linuxio.socket"  -o "$STAGING/packaging/systemd/linuxio.socket"
   Check_Success $? "Download packaging files"
 }
 
@@ -363,8 +364,7 @@ Install_Packaging_Files() {
 
   # systemd units (install to /etc/systemd/system for admin override)
   install -m 0644 "$STAGING/packaging/systemd/linuxio.service" /etc/systemd/system/linuxio.service
-  install -m 0644 "$STAGING/packaging/systemd/linuxio.socket"  /etc/systemd/system/linuxio.socket
-  Show 0 "Installed systemd units"
+  Show 0 "Installed systemd service"
 }
 
 Enable_LinuxIO_Systemd() {
@@ -372,14 +372,11 @@ Enable_LinuxIO_Systemd() {
     Show 3 "systemd not present; skipping service enable"
     return
   fi
-  Show 2 "Reloading systemd and enabling socket-activation"
+  Show 2 "Reloading systemd and enabling linuxio.service"
   GreyStart
   systemctl daemon-reload || true
-  # Prefer socket activation; service will be activated on first connection
-  systemctl enable --now linuxio.socket || true
-  # (Optional) also enable the service for non-socket starts:
-  # systemctl enable linuxio.service || true
-  Check_Success $? "Enable linuxio.socket"
+  systemctl enable --now linuxio.service || true
+  Check_Success $? "Enable linuxio.service"
 }
 
 Cleanup_Staging() {
@@ -431,6 +428,27 @@ Enable_AutoUpdates() {
   esac
 }
 
+Ensure_LinuxIO_User() {
+  if ! id linuxio >/dev/null 2>&1; then
+    Show 2 "Creating system user 'linuxio'"
+    if useradd --system linuxio; then
+      Show 0 "Created system user linuxio"
+    else
+      Show 1 "Failed to create linuxio user"
+    fi
+  else
+    Show 2 "System user 'linuxio' already exists"
+  fi
+
+  if getent group docker >/dev/null 2>&1; then
+    if id -nG linuxio | tr ' ' '\n' | grep -qx docker; then
+      Show 2 "User linuxio already in docker group"
+    else
+      usermod -aG docker linuxio && Show 0 "Added linuxio to docker group" || Show 3 "Could not add linuxio to docker group"
+    fi
+  fi
+}
+
 Clean_Up(){
   echo; Show 4 "\e[1mStarting Clean Up\e[0m"
   sed -i "/curl -fsSL[[:space:]]\+${SCRIPT_LINK//\//\\/}[[:space:]]\+|[[:space:]]\+sudo[[:space:]]\+bash/d" "$TARGET_HOME/.bashrc" 2>/dev/null || true
@@ -470,6 +488,7 @@ Setup(){
   Enable_Core_Services
   Install_AutoUpdates
   Enable_AutoUpdates
+  Ensure_LinuxIO_User
 
   Resolve_Release_Tag
   Download_Binaries

@@ -9,8 +9,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mordilloSan/LinuxIO/common/userconfig"
 	"gopkg.in/yaml.v3"
+
+	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
 )
 
 func main() {
@@ -19,7 +20,7 @@ func main() {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		log.Fatalf("mkdir: %v", err)
 	}
-	data, err := yaml.Marshal(config.ExampleDefaults())
+	data, err := yaml.Marshal(userconfig.ExampleDefaults())
 	if err != nil {
 		log.Fatalf("marshal: %v", err)
 	}

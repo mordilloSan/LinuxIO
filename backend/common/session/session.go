@@ -298,7 +298,7 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 	}
 	_ = m.st.Delete(id)
 	if s, err := m.decode(b); err == nil {
-		logger.Infof("🗑️ Deleted session for user '%s' (reason=%s)", s.User.Username, r)
+		logger.Infof("Deleted session for user '%s' (reason=%s)", s.User.Username, r)
 		m.broadcastOnDelete(*s, r)
 	}
 	return nil

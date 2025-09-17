@@ -14,7 +14,7 @@ const (
 
 // RuntimeDir returns /run/user/<uid> or /tmp/linuxio-run/<uid> (no side effects).
 func (s *Session) RuntimeDir() string {
-	base := filepath.Join("/run/user", s.User.UID)
+	base := filepath.Join("/run/linuxio", s.User.UID)
 	if st, err := os.Stat(base); err == nil && st.IsDir() {
 		return base
 	}

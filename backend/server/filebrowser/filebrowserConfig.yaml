@@ -3,7 +3,7 @@ server:
   baseURL: /navigator/
   logging:
     - levels: "info|warning|error|debug"
-      apiLevels: {{API_LEVELS}}
+      apiLevels: { { API_LEVELS } }
       noColors: false
       output: stdout
       utc: true

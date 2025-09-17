@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -12,12 +13,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/msteinert/pam"
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
-	"github.com/mordilloSan/LinuxIO/server/filebrowser"
 )
 
 // Handlers bundles dependencies (no global state).
@@ -45,7 +44,7 @@ func (h *Handlers) Login(c *gin.Context) {
 		return
 	}
 
-	privileged := trySudo(req.Password)
+	privileged := trySudo(req.Username, req.Password)
 
 	sess, err := h.createUserSession(req, privileged)
 	if err != nil {
@@ -66,11 +65,6 @@ func (h *Handlers) Login(c *gin.Context) {
 	}
 	h.SM.WriteCookie(c.Writer, sess.SessionID)
 
-	// Navigator defaults
-	if err := filebrowser.ApplyNavigatorDefaults(c, sess); err != nil {
-		logger.Warnf("[auth.login] navigator defaults failed for user=%s: %v", sess.User.Username, err)
-	}
-
 	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": sess.Privileged})
 }
 
@@ -85,7 +79,7 @@ func (h *Handlers) Logout(c *gin.Context) {
 	if err := h.SM.DeleteSession(ck.Value, session.ReasonLogout); err != nil {
 		logger.Errorf("Failed to delete session %q: %v", ck.Value, err)
 	}
-	logger.Infof("👋 Logged out session: %s", ck.Value)
+	logger.Infof("Logged out session: %s", ck.Value)
 	c.Status(http.StatusOK)
 }
 
@@ -143,55 +137,85 @@ func (h *Handlers) startBridgeSession(sess *session.Session, password string) er
 
 func authenticateUser(req LoginRequest) error {
 	if err := pamAuth(req.Username, req.Password); err != nil {
-		logger.Warnf("❌ Authentication failed for user: %s", req.Username)
+		logger.Warnf("uthentication failed for user %s: %v", req.Username, err)
 		return err
 	}
 	return nil
 }
 
+const pamHelperDefault = "/usr/local/bin/linuxio-auth-helper"
+
 func pamAuth(username, password string) error {
-	conv := func(style pam.Style, msg string) (string, error) {
-		switch style {
-		case pam.PromptEchoOff:
-			return password, nil
-		case pam.PromptEchoOn:
-			return username, nil
-		case pam.ErrorMsg, pam.TextInfo:
-			return "", nil
-		default:
-			return "", fmt.Errorf("unsupported PAM style: %v (msg=%q)", style, msg)
-		}
+	helper := os.Getenv("LINUXIO_PAM_HELPER")
+	if helper == "" {
+		helper = pamHelperDefault
 	}
+	logger.Debugf("Invoking PAM helper %s for user %s", helper, username)
 
-	t, err := pam.StartFunc("linuxio", username, conv)
+	cmd := exec.Command(helper, username)
+	cmd.Env = append(os.Environ(), "LANG=C")
+	cmd.Stdout = io.Discard
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return fmt.Errorf("pam start: %w", err)
-	}
-	if host, _ := os.Hostname(); host != "" {
-		_ = t.SetItem(pam.Rhost, host)
+		return fmt.Errorf("pam helper stdin: %w", err)
 	}
 
-	if err := t.Authenticate(0); err != nil {
-		return fmt.Errorf("pam authenticate: %w", err)
-	}
-	if err := t.AcctMgmt(0); err != nil {
-		return fmt.Errorf("pam account check: %w", err)
+	pwBytes := []byte(password + "\n")
+	go func() {
+		defer func() {
+			zeroBytes(pwBytes)
+			if cerr := stdin.Close(); cerr != nil {
+				logger.Warnf("failed to close pam helper stdin: %v", cerr)
+			}
+		}()
+		if _, werr := stdin.Write(pwBytes); werr != nil {
+			logger.Warnf("failed to write password to pam helper: %v", werr)
+		}
+	}()
+
+	if err := cmd.Run(); err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return fmt.Errorf("pam helper failed: %s", errMsg)
 	}
 	return nil
 }
 
+func zeroBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
 // trySudo silently validates whether the given password unlocks sudo.
-func trySudo(password string) bool {
+func trySudo(username, password string) bool {
+	if username == "" || password == "" {
+		return false
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	_ = exec.Command("sudo", "-k").Run() // invalidate timestamp
+	_ = exec.Command("sudo", "-k").Run() // invalidate timestamp for current user
 
-	cmd := exec.CommandContext(ctx, "sudo", "-S", "-p", "", "-v")
+	// If the server runs as root or as the same user, use sudo directly.
+
+	var cmd *exec.Cmd
+	var stdinData string
+
+	// Switch to the login user first, then validate sudo inside that context.
+	cmd = exec.CommandContext(ctx, "su", "--preserve-environment", username, "-c", "sudo -k; sudo -S -p '' -v")
+	stdinData = password + "\n" + password + "\n"
+
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
-	cmd.Stdin = strings.NewReader(password + "\n")
+	cmd.Stdin = strings.NewReader(stdinData)
 	cmd.Env = append(os.Environ(), "LANG=C")
 
 	if err := cmd.Run(); err != nil {

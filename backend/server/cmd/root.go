@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/coreos/go-systemd/v22/activation"
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
@@ -27,27 +25,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/server/terminal"
 	"github.com/mordilloSan/LinuxIO/server/web"
 )
-
-func trySystemdListener() (net.Listener, bool, error) {
-	listeners, err := activation.Listeners()
-	if err != nil {
-		return nil, false, err
-	}
-	if len(listeners) == 0 {
-		return nil, false, nil
-	}
-	return listeners[0], true, nil
-}
-
-func socketActivationMode(m string) string {
-	v := strings.ToLower(strings.TrimSpace(m))
-	switch v {
-	case "on", "off", "auto":
-		return v
-	default:
-		return "auto"
-	}
-}
 
 func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
@@ -119,72 +96,36 @@ func RunServer(cfg ServerConfig) {
 		ErrorLog: log.New(HTTPErrorLogAdapter{}, "", 0),
 	}
 
-	mode := socketActivationMode(cfg.SocketActivation) // auto|on|off
-	useSD := (env == "production") && (mode != "off")
-
-	var ln net.Listener
-	var haveSD bool
-	if useSD {
-		var sdErr error
-		ln, haveSD, sdErr = trySystemdListener()
-		if sdErr != nil {
-			logger.Warnf("systemd activation check failed: %v", sdErr)
-		}
-		if mode == "on" && !haveSD {
-			logger.Warnf("--socket-activation=on but no socket passed; falling back to self-bind.")
-		}
-	}
-
 	quit := make(chan os.Signal, 1)
 	done := make(chan struct{})
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	if haveSD && ln != nil {
-		// production + socket activation → TLS on inherited listener
-		cert, err := web.GenerateSelfSignedCert()
-		if err != nil {
-			logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", err)
+	// self-bind (dev and local prod)
+	addr := fmt.Sprintf(":%d", cfg.Port)
+	srv.Addr = addr
+
+	go func() {
+		var err error
+		if env == "production" {
+			cert, cErr := web.GenerateSelfSignedCert()
+			if cErr != nil {
+				logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", cErr)
+			}
+			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+			web.SetRootPoolFromServerCert(cert)
+
+			fmt.Printf("🚀 Server running at https://localhost:%d\n", cfg.Port)
+			logger.Infof("HTTP server listening at https://localhost:%d", cfg.Port)
+			err = srv.ListenAndServeTLS("", "")
+		} else {
+			logger.Infof("HTTP server listening at http://localhost:%d", cfg.Port)
+			err = srv.ListenAndServe()
 		}
-		tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
-		web.SetRootPoolFromServerCert(cert)
-
-		tlsLn := tls.NewListener(ln, tlsCfg)
-		logger.Infof("🔌 Using systemd socket activation (TLS) on %s", tlsLn.Addr())
-
-		go func() {
-			if err := srv.Serve(tlsLn); err != nil && err != http.ErrServerClosed {
-				logger.Error.Fatalf("server error: %v", err)
-			}
-			close(done)
-		}()
-	} else {
-		// self-bind (dev and local prod)
-		addr := fmt.Sprintf(":%d", cfg.Port)
-		srv.Addr = addr
-
-		go func() {
-			var err error
-			if env == "production" {
-				cert, cErr := web.GenerateSelfSignedCert()
-				if cErr != nil {
-					logger.Error.Fatalf("❌ Failed to generate self-signed certificate: %v", cErr)
-				}
-				srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-				web.SetRootPoolFromServerCert(cert)
-
-				fmt.Printf("🚀 Server running at https://localhost:%d\n", cfg.Port)
-				logger.Infof("HTTP server listening at https://localhost:%d", cfg.Port)
-				err = srv.ListenAndServeTLS("", "")
-			} else {
-				logger.Infof("HTTP server listening at http://localhost:%d", cfg.Port)
-				err = srv.ListenAndServe()
-			}
-			if err != nil && err != http.ErrServerClosed {
-				logger.Error.Fatalf("server error: %v", err)
-			}
-			close(done)
-		}()
-	}
+		if err != nil && err != http.ErrServerClosed {
+			logger.Error.Fatalf("server error: %v", err)
+		}
+		close(done)
+	}()
 
 	// -------------------------------------------------------------------------
 	// Shutdown coordination

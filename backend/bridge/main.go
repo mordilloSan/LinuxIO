@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,10 +20,10 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers"
+	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
 	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/common/userconfig"
 	"github.com/mordilloSan/LinuxIO/version"
 )
 
@@ -82,12 +83,12 @@ func main() {
 
 	if env == "production" {
 		go func() {
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 			cleanup.KillOwnSudoParents()
 		}()
 	}
 
-	// Ensure per-user config exists and is valid; logs internally.
+	// Ensure per-user config exists and is valid
 	userconfig.EnsureConfigReady(Sess.User.Username)
 
 	ShutdownChan := make(chan string, 1)
@@ -119,7 +120,6 @@ func main() {
 				continue
 			}
 			id := uuid.NewString()
-			logger.Debugf("MAIN: spawning handler %s", id)
 			go handleMainRequest(conn, id)
 		}
 	}()
@@ -172,8 +172,6 @@ func printBridgeVersion() {
 func handleMainRequest(conn net.Conn, id string) {
 	wg.Add(1)
 	defer wg.Done()
-
-	logger.Debugf("HANDLECONNECTION: [%s] called!", id)
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
 			logger.Warnf("failed to close connection [%s]: %v", id, cerr)
@@ -269,8 +267,6 @@ func handleMainRequest(conn net.Conn, id string) {
 			}
 			raw = json.RawMessage(b)
 		}
-
-		logger.Debugf("Responding to [%s]: status=ok, output-len=%d", id, len(raw))
 		_ = encoder.Encode(ipc.Response{Status: "ok", Output: raw})
 		return
 
@@ -283,91 +279,73 @@ func handleMainRequest(conn net.Conn, id string) {
 	}
 }
 
-// CreateAndOwnSocket creates a unix socket at socketPath and sets 0600.
-func createAndOwnSocket(socketPath, uidStr, gidStr string) (net.Listener, error) {
-	if uidStr == "" {
-		return nil, fmt.Errorf("empty uid")
-	}
-
-	// Remove any stale socket first (idempotent).
+func createAndOwnSocket(socketPath, uidStr, _ string) (net.Listener, error) {
 	_ = os.Remove(socketPath)
 
-	uid, err := strconv.Atoi(uidStr)
-	if err != nil {
-		return nil, fmt.Errorf("atoi uid: %w", err)
-	}
-
-	// Bind the Unix socket.
 	l, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen on socket: %w", err)
 	}
 
-	// Unlink the path when the listener is closed.
 	if ul, ok := l.(*net.UnixListener); ok {
 		ul.SetUnlinkOnClose(true)
 	}
 
-	// Lock down permissions.
-	if permErr := os.Chmod(socketPath, 0o600); permErr != nil {
+	// perms first, then ownership
+	if err := os.Chmod(socketPath, 0o660); err != nil {
 		_ = l.Close()
 		_ = os.Remove(socketPath)
-		return nil, fmt.Errorf("chmod socket: %w", permErr)
+		return nil, fmt.Errorf("chmod: %w", err)
 	}
 
-	var gid int
 	if os.Geteuid() == 0 {
-		// Root may change ownership; require a gidStr.
-		if gidStr == "" {
-			_ = l.Close()
-			_ = os.Remove(socketPath)
-			return nil, fmt.Errorf("empty gid (required when running as root)")
-		}
-		gid, err = strconv.Atoi(gidStr)
+		uid, err := strconv.Atoi(uidStr)
 		if err != nil {
 			_ = l.Close()
 			_ = os.Remove(socketPath)
-			return nil, fmt.Errorf("atoi gid: %w", err)
+			return nil, fmt.Errorf("atoi uid: %w", err)
 		}
+		gid := resolveLinuxioGID()
 		if err := os.Chown(socketPath, uid, gid); err != nil {
 			_ = l.Close()
 			_ = os.Remove(socketPath)
-			return nil, fmt.Errorf("chown socket: %w", err)
+			return nil, fmt.Errorf("chown: %w", err)
 		}
 	}
-
 	return l, nil
 }
 
 func prepareRuntimeDir(sess *session.Session) error {
-	dir := sess.RuntimeDir()
-	tmpBase := filepath.Join(os.TempDir(), "linuxio-run")
+	base := "/run/linuxio"
+	if err := os.MkdirAll(base, 0o2770); err != nil {
+		return fmt.Errorf("mkdir %s: %w", base, err)
+	}
+	if os.Geteuid() == 0 {
+		if grp, _ := user.LookupGroup("linuxio"); grp != nil {
+			gid, _ := strconv.Atoi(grp.Gid)
+			_ = os.Chown(base, 0, gid)
+			_ = os.Chmod(base, 0o2770)
+		}
+	}
 
-	// If using /tmp fallback, ensure parent is 0755 so user can traverse.
-	if strings.HasPrefix(dir, tmpBase+string(os.PathSeparator)) {
-		if err := os.MkdirAll(tmpBase, 0o755); err != nil {
-			return fmt.Errorf("ensure tmp base %q: %w", tmpBase, err)
-		}
+	uid, _ := strconv.Atoi(sess.User.UID)
+	linuxioGID := resolveLinuxioGID()
+	dir := filepath.Join(base, sess.User.UID)
+	if err := os.MkdirAll(dir, 0o2770); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("ensure runtime dir %q: %w", dir, err)
-	}
-	// If running as root, chown the dir to the session user.
-	if os.Geteuid() == 0 && sess.User.UID != "" && sess.User.GID != "" {
-		uid, err := strconv.Atoi(sess.User.UID)
-		if err != nil {
-			return fmt.Errorf("atoi uid: %w", err)
-		}
-		gid, err := strconv.Atoi(sess.User.GID)
-		if err != nil {
-			return fmt.Errorf("atoi gid: %w", err)
-		}
-		if err := os.Chown(dir, uid, gid); err != nil {
-			return fmt.Errorf("chown %q: %w", dir, err)
-		}
-		if err := os.Chmod(dir, 0o700); err != nil {
-			return fmt.Errorf("chmod %q: %w", dir, err)
-		}
+	if os.Geteuid() == 0 {
+		_ = os.Chown(dir, uid, linuxioGID)
+		_ = os.Chmod(dir, 0o2770)
 	}
 	return nil
+}
+
+func resolveLinuxioGID() int {
+	grp, err := user.LookupGroup("linuxio")
+	if err != nil {
+		return 0
+	} // fallback to root group if missing
+	gid, _ := strconv.Atoi(grp.Gid)
+	return gid
 }

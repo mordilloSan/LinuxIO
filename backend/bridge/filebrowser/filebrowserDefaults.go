@@ -11,26 +11,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
-
+	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
+	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/common/userconfig"
+	"github.com/mordilloSan/LinuxIO/server/bridge"
 	"github.com/mordilloSan/LinuxIO/server/web"
 )
 
 // run-once guard (per user)
 var navDefaultsOnce sync.Map // username -> struct{}
 
-// Exported so auth (or others) can call it.
-func ApplyNavigatorDefaults(c *gin.Context, sess *session.Session) error {
+// Exported so auth (or bridge) can call it.
+// Pass a baseURL like "http://127.0.0.1:8090" or "https://linux.engmariz.com".
+func ApplyNavigatorDefaults(baseURL string, sess *session.Session) error {
 	// Defensive checks
-	if c == nil || c.Request == nil || sess == nil || sess.User.Username == "" || sess.SessionID == "" {
+	if baseURL == "" || sess == nil || sess.User.Username == "" || sess.SessionID == "" {
 		return fmt.Errorf("invalid input")
 	}
 	username := sess.User.Username
 
-	// Ensure we only try once per user (until server restart).
+	// Ensure we only try once per user (until restart).
 	if _, loaded := navDefaultsOnce.LoadOrStore(username, struct{}{}); loaded {
 		logger.Debugf("[navigator.defaults] already applied for user=%s", username)
 		return nil
@@ -39,23 +40,29 @@ func ApplyNavigatorDefaults(c *gin.Context, sess *session.Session) error {
 	// Derive dark-mode & theme color from LinuxIO config
 	dark := false
 	themeHex := ""
-	if cfg, _, loadErr := userconfig.Load(username); loadErr == nil {
-		dark = strings.EqualFold(cfg.AppSettings.Theme, "DARK")
-		themeHex = userconfig.NormalizeForFB(cfg.AppSettings.PrimaryColor) // centralized hex or ""
+	if data, err := bridge.CallWithSession(sess, "config", "theme_get", []string{username}); err == nil {
+		var resp ipc.Response
+		if err := json.Unmarshal(data, &resp); err == nil && resp.Status == "ok" && len(resp.Output) > 0 {
+			var cfg userconfig.AppSettings
+			if err := json.Unmarshal(resp.Output, &cfg); err == nil {
+				dark = strings.EqualFold(cfg.Theme, "DARK")
+				themeHex = userconfig.NormalizeForFB(cfg.PrimaryColor)
+			}
+		}
 	}
 
 	// Short context for the 3 calls below
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 1500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
 
 	// 1) Ensure FB login (SSO with same cookie)
-	if loginErr := fbLogin(ctx, c, sess.SessionID); loginErr != nil {
+	if loginErr := fbLogin(ctx, baseURL, sess.SessionID); loginErr != nil {
 		navDefaultsOnce.Delete(username) // allow retry on next call
 		return fmt.Errorf("fb login: %w", loginErr)
 	}
 
 	// 2) GET current user (self) to obtain numeric id & current fields
-	userObj, userID, err := fbGetSelf(ctx, c, sess.SessionID)
+	userObj, userID, err := fbGetSelf(ctx, baseURL, sess.SessionID)
 	if err != nil {
 		navDefaultsOnce.Delete(username)
 		return fmt.Errorf("fb get self: %w", err)
@@ -104,8 +111,8 @@ func ApplyNavigatorDefaults(c *gin.Context, sess *session.Session) error {
 	}
 
 	// 4) PUT patch using numeric id
-	if err := fbPatchUser(ctx, c, sess.SessionID, userID, which, userObj); err != nil {
-		navDefaultsOnce.Delete(username) // allow retry on next login or manual call
+	if err := fbPatchUser(ctx, baseURL, sess.SessionID, userID, which, userObj); err != nil {
+		navDefaultsOnce.Delete(username) // allow retry
 		return fmt.Errorf("fb patch user: %w", err)
 	}
 
@@ -115,14 +122,14 @@ func ApplyNavigatorDefaults(c *gin.Context, sess *session.Session) error {
 
 // ---- Helpers ----
 
-func fbLogin(ctx context.Context, c *gin.Context, sessionID string) error {
-	url := origin(c) + "/navigator/api/auth/login"
+func fbLogin(ctx context.Context, baseURL, sessionID string) error {
+	url := baseURL + "/navigator/api/auth/login"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Cookie", "session_id="+sessionID)
-	resp, err := newHTTPClient(c).Do(req)
+	resp, err := newHTTPClient(baseURL).Do(req)
 	if err != nil {
 		return err
 	}
@@ -133,15 +140,15 @@ func fbLogin(ctx context.Context, c *gin.Context, sessionID string) error {
 	return nil
 }
 
-func fbGetSelf(ctx context.Context, c *gin.Context, sessionID string) (map[string]any, int, error) {
-	url := origin(c) + "/navigator/api/users?id=self"
+func fbGetSelf(ctx context.Context, baseURL, sessionID string) (map[string]any, int, error) {
+	url := baseURL + "/navigator/api/users?id=self"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, 0, err
 	}
 	req.Header.Set("Cookie", "session_id="+sessionID)
 
-	resp, err := newHTTPClient(c).Do(req)
+	resp, err := newHTTPClient(baseURL).Do(req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -166,8 +173,8 @@ func fbGetSelf(ctx context.Context, c *gin.Context, sessionID string) (map[strin
 	return nil, 0, fmt.Errorf("self user has no numeric id")
 }
 
-func fbPatchUser(ctx context.Context, c *gin.Context, sessionID string, id int, which []string, fullUser map[string]any) error {
-	url := fmt.Sprintf("%s/navigator/api/users?id=%d", origin(c), id)
+func fbPatchUser(ctx context.Context, baseURL, sessionID string, id int, which []string, fullUser map[string]any) error {
+	url := fmt.Sprintf("%s/navigator/api/users?id=%d", baseURL, id)
 	payload := map[string]any{
 		"what":  "user",
 		"which": which,
@@ -182,7 +189,7 @@ func fbPatchUser(ctx context.Context, c *gin.Context, sessionID string, id int, 
 	req.Header.Set("Cookie", "session_id="+sessionID)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := newHTTPClient(c).Do(req)
+	resp, err := newHTTPClient(baseURL).Do(req)
 	if err != nil {
 		return err
 	}
@@ -208,24 +215,14 @@ func setIfDiff(m map[string]any, key string, v any) bool {
 	return true
 }
 
-func origin(c *gin.Context) string {
-	if c.Request.TLS != nil {
-		return "https://" + c.Request.Host
-	}
-	if proto := c.Request.Header.Get("X-Forwarded-Proto"); strings.EqualFold(proto, "https") {
-		return "https://" + c.Request.Host
-	}
-	return "http://" + c.Request.Host
-}
-
-func newHTTPClient(c *gin.Context) *http.Client {
+func newHTTPClient(baseURL string) *http.Client {
 	tr := &http.Transport{ForceAttemptHTTP2: true}
 
-	isHTTPS := c.Request.TLS != nil || strings.EqualFold(c.Request.Header.Get("X-Forwarded-Proto"), "https")
-	if isHTTPS {
+	if strings.HasPrefix(baseURL, "https://") {
+		host := hostWithoutPort(strings.TrimPrefix(baseURL, "https://"))
 		tr.TLSClientConfig = &tls.Config{
 			RootCAs:    web.GetRootPool(),
-			ServerName: hostWithoutPort(c.Request.Host),
+			ServerName: host,
 			MinVersion: tls.VersionTLS12,
 		}
 	}

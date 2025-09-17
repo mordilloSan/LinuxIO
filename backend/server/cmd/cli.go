@@ -17,10 +17,9 @@ type ServerConfig struct {
 	BridgeBinaryPath string
 
 	// new:
-	Env              string // "development" | "production"
-	Verbose          bool
-	SocketActivation string // "auto" | "on" | "off"
-	ViteDevPort      int    // used only for dev CORS allowance
+	Env         string // "development" | "production"
+	Verbose     bool
+	ViteDevPort int // used only for dev CORS allowance
 }
 
 // StartLinuxIO is the CLI entrypoint (called from main.go).
@@ -46,11 +45,10 @@ func StartLinuxIO() {
 		var cfg ServerConfig
 		var detach bool
 
-		runCmd.IntVar(&cfg.Port, "port", 8090, "HTTP server port (fallback if not socket-activated)")
+		runCmd.IntVar(&cfg.Port, "port", 8090, "HTTP server port")
 		runCmd.StringVar(&cfg.BridgeBinaryPath, "bridge-binary", "", "path to linuxio-bridge (optional)")
 		runCmd.StringVar(&cfg.Env, "env", "production", "environment: development|production")
 		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "verbose logging")
-		runCmd.StringVar(&cfg.SocketActivation, "socket-activation", "auto", "socket activation: auto|on|off")
 		runCmd.IntVar(&cfg.ViteDevPort, "vite-port", 3000, "vite dev server port (only used for dev CORS)")
 
 		runCmd.BoolVar(&detach, "detach", false, "run in background (daemonize)")
@@ -63,11 +61,10 @@ Usage:
   linuxio run [flags]
 
 Flags:
-  -port <int>               HTTP server port (fallback if not socket-activated) (default: 8090)
+  -port <int>               HTTP server port (default: 8090)
   -bridge-binary <path>     Path to linuxio-bridge binary (optional)
   -env <development|production>  Environment (default: production)
   -verbose                  Verbose logging
-  -socket-activation <auto|on|off>  systemd socket activation mode (default: auto)
   -vite-port <int>          Vite dev server port for CORS in dev (default: 3000)
   -detach                   Run as a background process
 `)
@@ -111,7 +108,7 @@ Commands:
 
 Examples:
   linuxio run
-  linuxio run -env development -port 18090 -socket-activation off -verbose
+  linuxio run -env development -port 18090 -verbose
   linuxio run -bridge-binary /usr/local/bin/linuxio-bridge
   linuxio run -detach
 
