@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
@@ -89,7 +90,7 @@ func RunServer(cfg ServerConfig) {
 	}, sm)
 
 	// -------------------------------------------------------------------------
-	// HTTP(S) server with optional systemd socket activation
+	// HTTP(S) server
 	// -------------------------------------------------------------------------
 	srv := &http.Server{
 		Handler:  router,
@@ -114,10 +115,23 @@ func RunServer(cfg ServerConfig) {
 			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 			web.SetRootPoolFromServerCert(cert)
 
+			// Export base URL and certificate for child bridge processes.
+			baseURL := fmt.Sprintf("https://localhost:%d", cfg.Port)
+			_ = os.Setenv("LINUXIO_SERVER_BASE_URL", baseURL)
+			if len(cert.Certificate) > 0 {
+				pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
+				if len(pemBytes) > 0 {
+					_ = os.Setenv("LINUXIO_SERVER_CERT", string(pemBytes))
+				}
+			}
+
 			fmt.Printf("🚀 Server running at https://localhost:%d\n", cfg.Port)
 			logger.Infof("HTTP server listening at https://localhost:%d", cfg.Port)
 			err = srv.ListenAndServeTLS("", "")
 		} else {
+			// Development: advertise HTTP base URL for bridge processes.
+			baseURL := fmt.Sprintf("http://localhost:%d", cfg.Port)
+			_ = os.Setenv("LINUXIO_SERVER_BASE_URL", baseURL)
 			logger.Infof("HTTP server listening at http://localhost:%d", cfg.Port)
 			err = srv.ListenAndServe()
 		}

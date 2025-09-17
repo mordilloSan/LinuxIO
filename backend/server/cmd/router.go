@@ -147,6 +147,11 @@ func (HTTPErrorLogAdapter) Write(p []byte) (int, error) {
 		logger.Debugf("[http.Server suppressed] %s", msg)
 		return len(p), nil
 	}
+	if strings.Contains(msg, "TLS handshake error") && strings.Contains(msg, "unknown certificate") {
+		// Browsers commonly abort on self-signed certs; not actionable noise.
+		logger.Debugf("[http.Server suppressed] %s", msg)
+		return len(p), nil
+	}
 	logger.Warnf("[http.Server] %s", msg)
 	return len(p), nil
 }

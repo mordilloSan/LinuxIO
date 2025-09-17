@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -220,11 +222,15 @@ func newHTTPClient(baseURL string) *http.Client {
 
 	if strings.HasPrefix(baseURL, "https://") {
 		host := hostWithoutPort(strings.TrimPrefix(baseURL, "https://"))
-		tr.TLSClientConfig = &tls.Config{
-			RootCAs:    web.GetRootPool(),
-			ServerName: host,
-			MinVersion: tls.VersionTLS12,
+		// Prefer an explicit PEM provided by the server via env (per-process),
+		// falling back to the library pool (system or previously set).
+		var pool = web.GetRootPool()
+		if pem := os.Getenv("LINUXIO_SERVER_CERT"); pem != "" {
+			if cp := x509.NewCertPool(); cp.AppendCertsFromPEM([]byte(pem)) {
+				pool = cp
+			}
 		}
+		tr.TLSClientConfig = &tls.Config{RootCAs: pool, ServerName: host, MinVersion: tls.VersionTLS12}
 	}
 	return &http.Client{Timeout: 2 * time.Second, Transport: tr}
 }

@@ -1,22 +1,22 @@
 package bridge
 
 import (
-    "encoding/json"
-    "errors"
-    "fmt"
-    "net"
-    "os"
-    "os/exec"
-    "os/user"
-    "path/filepath"
-    "strings"
-    "sync"
-    "syscall"
-    "time"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
 
-    "github.com/mordilloSan/LinuxIO/common/ipc"
-    "github.com/mordilloSan/LinuxIO/common/logger"
-    "github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/common/ipc"
+	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/common/session"
 )
 
 var (
@@ -31,33 +31,33 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 }
 
 func callViaSocket(socketPath, reqType, command string, args []string, secret string, sessionID string) ([]byte, error) {
-    req := ipc.Request{Type: reqType, Command: command, Secret: secret, Args: args, SessionID: sessionID}
+	req := ipc.Request{Type: reqType, Command: command, Secret: secret, Args: args, SessionID: sessionID}
 
-    // Be tolerant to a just-started bridge: retry for a short window when
-    // the socket may not exist yet or not accept connections immediately.
-    var conn net.Conn
-    var err error
-    const (
-        totalWait   = 2 * time.Second
-        step        = 100 * time.Millisecond
-        dialTimeout = 500 * time.Millisecond
-    )
-    deadline := time.Now().Add(totalWait)
-    for {
-        conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
-        if err == nil {
-            break
-        }
-        if time.Now().After(deadline) {
-            return nil, fmt.Errorf("failed to connect to bridge: %w", err)
-        }
-        time.Sleep(step)
-    }
-    defer func() {
-        if cerr := conn.Close(); cerr != nil {
-            logger.Warnf("failed to close connection: %v", cerr)
-        }
-    }()
+	// Be tolerant to a just-started bridge: retry for a short window when
+	// the socket may not exist yet or not accept connections immediately.
+	var conn net.Conn
+	var err error
+	const (
+		totalWait   = 2 * time.Second
+		step        = 100 * time.Millisecond
+		dialTimeout = 500 * time.Millisecond
+	)
+	deadline := time.Now().Add(totalWait)
+	for {
+		conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("failed to connect to bridge: %w", err)
+		}
+		time.Sleep(step)
+	}
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close connection: %v", cerr)
+		}
+	}()
 
 	enc := json.NewEncoder(conn)
 	enc.SetEscapeHTML(false)

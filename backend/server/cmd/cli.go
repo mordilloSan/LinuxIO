@@ -50,7 +50,6 @@ func StartLinuxIO() {
 		runCmd.StringVar(&cfg.Env, "env", "production", "environment: development|production")
 		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "verbose logging")
 		runCmd.IntVar(&cfg.ViteDevPort, "vite-port", 3000, "vite dev server port (only used for dev CORS)")
-
 		runCmd.BoolVar(&detach, "detach", false, "run in background (daemonize)")
 
 		// Local usage for `run`

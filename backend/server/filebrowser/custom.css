@@ -15,7 +15,7 @@ body {
 }
 
 /* Hide the sidebar when it does NOT have the "active" class */
-#sidebar:not(.active) {
+#sidebar {
   display: none !important;
 }
 
@@ -44,4 +44,10 @@ button.logout-button {
 
 .gallery-size.card {
   margin-left: auto !important;
+}
+
+/* Hide the "Switch view" button */
+button[aria-label="Close" i],
+button[title="Close" i] {
+  display: none !important;
 }

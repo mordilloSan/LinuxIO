@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -75,9 +76,9 @@ func startFileBrowserContainer(secret string, debug bool) error {
 	)
 
 	// 0) Build config contents in-memory
-	apiLevels := []byte(`"warning|error"`)
+	apiLevels := []byte(`warning|error`)
 	if debug {
-		apiLevels = []byte(`"info|warning|error|debug"`)
+		apiLevels = []byte(`info|warning|error|debug`)
 	}
 	cfg := DefaultFilebrowserConfig
 	cfg = bytes.ReplaceAll(cfg, []byte("{{SECRET_KEY}}"), []byte(secret))
@@ -161,7 +162,7 @@ func startFileBrowserContainer(secret string, debug bool) error {
 	}
 	logger.Infof("Started FileBrowser container")
 
-	// 6) Discover the actual published host port and set BaseURL
+	// 6) Discover the actual published host port and wait for readiness
 	inspect, err := dockerCli.ContainerInspect(dockerCtx, resp.ID)
 	if err != nil {
 		return fmt.Errorf("inspect container: %w", err)
@@ -171,7 +172,29 @@ func startFileBrowserContainer(secret string, debug bool) error {
 		if host == "" {
 			host = "127.0.0.1"
 		}
-		BaseURL = fmt.Sprintf("http://%s:%s", host, bindings[0].HostPort)
+		baseCandidate := fmt.Sprintf("http://%s:%s", host, bindings[0].HostPort)
+
+		// Poll the container's health endpoint until it's ready or timeout.
+		// Use the configured baseURL (/navigator/) for the health path.
+		client := &http.Client{Timeout: 1500 * time.Millisecond}
+		readyURL := baseCandidate + "/navigator/health"
+		deadline := time.Now().Add(15 * time.Second)
+		for {
+			resp, err := client.Get(readyURL)
+			if err == nil {
+				_ = resp.Body.Close()
+				if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+					break
+				}
+			}
+			if time.Now().After(deadline) {
+				logger.Warnf("FileBrowser not healthy yet at %s; proceeding anyway", readyURL)
+				break
+			}
+			time.Sleep(300 * time.Millisecond)
+		}
+
+		BaseURL = baseCandidate
 		logger.Infof("FileBrowser published at %s", BaseURL)
 	} else {
 		// Shouldn’t happen, but give a clear log if it does.

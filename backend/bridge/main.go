@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
+	fbnav "github.com/mordilloSan/LinuxIO/bridge/filebrowser"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
 	"github.com/mordilloSan/LinuxIO/common/ipc"
@@ -76,20 +77,42 @@ func main() {
 	}
 	socketPath := Sess.SocketPath()
 
-	listener, err := createAndOwnSocket(socketPath, Sess.User.UID, Sess.User.GID)
+	listener, err := createAndOwnSocket(socketPath, Sess.User.UID)
 	if err != nil {
 		logger.Error.Fatalf("create socket: %v", err)
 	}
 
 	if env == "production" {
 		go func() {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(250 * time.Millisecond)
 			cleanup.KillOwnSudoParents()
 		}()
 	}
 
 	// Ensure per-user config exists and is valid
 	userconfig.EnsureConfigReady(Sess.User.Username)
+
+	// Kick off Navigator defaults application in the background.
+	if base := os.Getenv("LINUXIO_SERVER_BASE_URL"); base != "" {
+		go func(baseURL string) {
+			// Try a few times with small backoff to ride out races.
+			var err error
+			for i := 0; i < 8; i++ {
+				err = fbnav.ApplyNavigatorDefaults(baseURL, Sess)
+				if err == nil {
+					return
+				}
+				select {
+				case <-bridgeClosing:
+					return
+				case <-time.After(time.Duration(250+100*i) * time.Millisecond):
+				}
+			}
+			logger.Debugf("[navigator.defaults] give up for user=%s: %v", Sess.User.Username, err)
+		}(base)
+	} else {
+		logger.Debugf("[navigator.defaults] no LINUXIO_SERVER_BASE_URL; skipping")
+	}
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)
@@ -279,7 +302,7 @@ func handleMainRequest(conn net.Conn, id string) {
 	}
 }
 
-func createAndOwnSocket(socketPath, uidStr, _ string) (net.Listener, error) {
+func createAndOwnSocket(socketPath, uidStr string) (net.Listener, error) {
 	_ = os.Remove(socketPath)
 
 	l, err := net.Listen("unix", socketPath)
@@ -305,7 +328,7 @@ func createAndOwnSocket(socketPath, uidStr, _ string) (net.Listener, error) {
 			_ = os.Remove(socketPath)
 			return nil, fmt.Errorf("atoi uid: %w", err)
 		}
-		gid := resolveLinuxioGID()
+		gid := resolveLinuxioGID() // or parse gidStr if you want to use the passed-in value
 		if err := os.Chown(socketPath, uid, gid); err != nil {
 			_ = l.Close()
 			_ = os.Remove(socketPath)
