@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
 	"sync/atomic"
@@ -62,4 +63,13 @@ func GetRootPool() *x509.CertPool {
 		return sys
 	}
 	return x509.NewCertPool()
+}
+
+func SetRootPoolFromPEM(pemData []byte) error {
+	cp := x509.NewCertPool()
+	if ok := cp.AppendCertsFromPEM(pemData); !ok {
+		return fmt.Errorf("invalid CA PEM")
+	}
+	pool.Store(cp)
+	return nil
 }

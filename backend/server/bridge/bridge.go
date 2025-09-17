@@ -129,7 +129,16 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 	// Build command
 	var cmd *exec.Cmd
 	if sess.Privileged {
-		preserve := "LINUXIO_SESSION_ID,LINUXIO_SESSION_USER,LINUXIO_SESSION_UID,LINUXIO_SESSION_GID,LINUXIO_BRIDGE_SECRET"
+		preserve := strings.Join([]string{
+			"LINUXIO_SESSION_ID",
+			"LINUXIO_SESSION_USER",
+			"LINUXIO_SESSION_UID",
+			"LINUXIO_SESSION_GID",
+			"LINUXIO_BRIDGE_SECRET",
+			"LINUXIO_SERVER_BASE_URL",
+			"LINUXIO_SERVER_CERT",
+		}, ",")
+
 		sudoArgs := []string{"-S", "-p", "", "--preserve-env=" + preserve, "--", bridgeBinary}
 		sudoArgs = append(sudoArgs, args...)
 

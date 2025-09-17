@@ -19,12 +19,13 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
-	fbnav "github.com/mordilloSan/LinuxIO/bridge/filebrowser"
+	"github.com/mordilloSan/LinuxIO/bridge/filebrowser"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
 	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/server/web"
 	"github.com/mordilloSan/LinuxIO/version"
 )
 
@@ -70,6 +71,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if pem := strings.TrimSpace(os.Getenv("LINUXIO_SERVER_CERT")); pem != "" {
+		if err := web.SetRootPoolFromPEM([]byte(pem)); err != nil {
+			logger.Warnf("failed to load LINUXIO_SERVER_CERT: %v", err)
+		} else {
+			logger.Debugf("Loaded server cert from LINUXIO_SERVER_CERT")
+		}
+	}
+
 	_ = syscall.Umask(0o077)
 
 	if err := prepareRuntimeDir(Sess); err != nil {
@@ -98,7 +107,7 @@ func main() {
 			// Try a few times with small backoff to ride out races.
 			var err error
 			for i := 0; i < 8; i++ {
-				err = fbnav.ApplyNavigatorDefaults(baseURL, Sess)
+				err = filebrowser.ApplyNavigatorDefaults(baseURL, Sess)
 				if err == nil {
 					return
 				}
@@ -108,10 +117,10 @@ func main() {
 				case <-time.After(time.Duration(250+100*i) * time.Millisecond):
 				}
 			}
-			logger.Debugf("[navigator.defaults] give up for user=%s: %v", Sess.User.Username, err)
+			logger.Debugf("Gave up for user=%s: %v", Sess.User.Username, err)
 		}(base)
 	} else {
-		logger.Debugf("[navigator.defaults] no LINUXIO_SERVER_BASE_URL; skipping")
+		logger.Debugf("No LINUXIO_SERVER_BASE_URL; skipping")
 	}
 
 	ShutdownChan := make(chan string, 1)
