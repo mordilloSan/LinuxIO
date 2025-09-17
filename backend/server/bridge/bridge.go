@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -107,7 +108,7 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 		args = append(args, "--verbose")
 	}
 
-	// ---- Minimal env just for session hand-off (safer than argv) ----
+	// ---- Minimal env just for session hand-off ----
 	childEnv := append(os.Environ(),
 		"LINUXIO_SESSION_ID="+sess.SessionID,
 		"LINUXIO_SESSION_USER="+sess.User.Username,
@@ -177,8 +178,20 @@ func StartBridge(sess *session.Session, sudoPassword string, envMode string, ver
 			}()
 		}
 	} else {
-		cmd = exec.Command(bridgeBinary, args...)
+		suCmd := shellJoin(append([]string{bridgeBinary}, args...))
+		cmd = exec.Command("su", "--preserve-environment", sess.User.Username, "-c", suCmd)
 		cmd.Env = childEnv
+
+		if sudoPassword != "" {
+			stdin, perr := cmd.StdinPipe()
+			if perr != nil {
+				return perr
+			}
+			go func() {
+				defer stdin.Close()
+				io.WriteString(stdin, sudoPassword+"\n")
+			}()
+		}
 	}
 
 	prod := strings.ToLower(envMode) == "production"
@@ -261,13 +274,10 @@ func shellQuote(arg string) string {
 // Search order:
 //  1. explicit override (if provided and executable)
 //  2. next to the server executable (prod-friendly)
-//  3. in development: walk up from CWD for a few levels
-//  4. PATH (current user)
-//  5. fallback to plain name
+//  3. PATH (current user)
 func GetBridgeBinaryPath(override, envMode string) string {
 	const binaryName = "linuxio-bridge"
 
-	// 1) explicit override
 	if override != "" {
 		if isExec(override) {
 			return override
@@ -275,7 +285,6 @@ func GetBridgeBinaryPath(override, envMode string) string {
 		logger.Warnf("bridge override is not executable: %s", override)
 	}
 
-	// 2) next to the server executable
 	if exe, err := os.Executable(); err == nil {
 		candidate := filepath.Join(filepath.Dir(exe), binaryName)
 		if isExec(candidate) {
@@ -283,28 +292,12 @@ func GetBridgeBinaryPath(override, envMode string) string {
 		}
 	}
 
-	// 3) dev: walk upward from CWD (project-root style)
-	if strings.ToLower(envMode) == "development" {
-		if dir, err := os.Getwd(); err == nil {
-			for i := 0; i < 5 && dir != string(filepath.Separator); i++ {
-				candidate := filepath.Join(dir, binaryName)
-				if isExec(candidate) {
-					return candidate
-				}
-				dir = filepath.Dir(dir)
-			}
-		}
-	}
-
-	// 4) PATH (current user)
 	if path, err := exec.LookPath(binaryName); err == nil {
 		return path
 	}
 
-	// 5) last resort: name only (sudo may resolve via secure_path)
-	logger.Debugf("%s not found beside server, in dev tree, or in user $PATH; "+
-		"will attempt plain name (sudo may resolve via secure_path). "+
+	logger.Debugf("%s not found beside server, or in user $PATH; "+
 		"Consider passing --bridge-binary or installing into a well-known path.",
 		binaryName)
-	return binaryName
+	return ""
 }

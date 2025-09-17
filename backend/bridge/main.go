@@ -25,8 +25,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/common/version"
 	"github.com/mordilloSan/LinuxIO/server/web"
-	"github.com/mordilloSan/LinuxIO/version"
 )
 
 // Build minimal session object from env (keeps secret out of argv)
