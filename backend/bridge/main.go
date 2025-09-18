@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -81,21 +80,11 @@ func main() {
 
 	_ = syscall.Umask(0o077)
 
-	if err := prepareRuntimeDir(Sess); err != nil {
-		logger.Error.Fatalf("prepare runtime dir: %v", err)
-	}
 	socketPath := Sess.SocketPath()
 
 	listener, err := createAndOwnSocket(socketPath, Sess.User.UID)
 	if err != nil {
 		logger.Error.Fatalf("create socket: %v", err)
-	}
-
-	if env == "production" {
-		go func() {
-			time.Sleep(250 * time.Millisecond)
-			cleanup.KillOwnSudoParents()
-		}()
 	}
 
 	// Ensure per-user config exists and is valid
@@ -345,32 +334,6 @@ func createAndOwnSocket(socketPath, uidStr string) (net.Listener, error) {
 		}
 	}
 	return l, nil
-}
-
-func prepareRuntimeDir(sess *session.Session) error {
-	base := "/run/linuxio"
-	if err := os.MkdirAll(base, 0o2770); err != nil {
-		return fmt.Errorf("mkdir %s: %w", base, err)
-	}
-	if os.Geteuid() == 0 {
-		if grp, _ := user.LookupGroup("linuxio"); grp != nil {
-			gid, _ := strconv.Atoi(grp.Gid)
-			_ = os.Chown(base, 0, gid)
-			_ = os.Chmod(base, 0o2770)
-		}
-	}
-
-	uid, _ := strconv.Atoi(sess.User.UID)
-	linuxioGID := resolveLinuxioGID()
-	dir := filepath.Join(base, sess.User.UID)
-	if err := os.MkdirAll(dir, 0o2770); err != nil {
-		return fmt.Errorf("mkdir %s: %w", dir, err)
-	}
-	if os.Geteuid() == 0 {
-		_ = os.Chown(dir, uid, linuxioGID)
-		_ = os.Chmod(dir, 0o2770)
-	}
-	return nil
 }
 
 func resolveLinuxioGID() int {

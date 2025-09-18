@@ -7,17 +7,24 @@ After=network-online.target
 User=linuxio
 Group=linuxio
 SupplementaryGroups=docker
+
+# Create /run/linuxio at start as root:linuxio with setgid and o+x
+PermissionsStartOnly=true
+ExecStartPre=/usr/bin/install -d -o root -g linuxio -m 02771 /run/linuxio
+
 ExecStart=/usr/local/bin/linuxio run --env=production --port=8090
 Restart=on-failure
 RestartSec=5s
 
-# Security hardening 
-PrivateTmp=false
+# Security hardening
+PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=false
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 RestrictNamespaces=true
@@ -26,6 +33,11 @@ DevicePolicy=closed
 PrivateDevices=true
 UMask=0027
 ReadOnlyPaths=/etc/linuxio
+RemoveIPC=true
+
+# Tighten syscalls
+SystemCallFilter=~@keyring @clock @cpu-emulation @debug @module @mount @obsolete @raw-io @reboot @swap
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target

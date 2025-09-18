@@ -385,7 +385,6 @@ Cleanup_Staging() {
 
 
 # ---------- Auto Updates (enable/configure) ----------
-# ---------- Auto Updates (enable only, no config writes) ----------
 Enable_AutoUpdates() {
   case "$PKG_FAMILY" in
     deb)

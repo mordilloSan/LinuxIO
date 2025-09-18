@@ -266,16 +266,15 @@ build-bridge:
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 build-auth-helper:
-	@echo ""
-	@echo "🛡️  Building PAM helper (C)..."
+	@echo "🛡️  Building Session helper (C)..."
 	@set -euo pipefail; \
-	$(CC) -Wall -Wextra -O2 -fPIE -o linuxio-auth-helper \
-	  backend/cmd/linuxio-auth-helper/main.c -lpam && \
-	echo "✅ PAM helper built successfully!" && \
-	echo "" && \
-	echo "Summary:" && \
-	echo "📄 Path: $(PWD)/linuxio-auth-helper" && \
-	echo " Size: $$(du -h linuxio-auth-helper | cut -f1)" && \
+	$(CC) -Wall -Wextra -O2 \
+    -fstack-protector-strong -D_FORTIFY_SOURCE=3 \
+    -fPIE -pie -Wl,-z,relro -Wl,-z,now \
+    -o linuxio-auth-helper packaging/linuxio-auth-helper.c -lpam
+	echo "✅ Session helper built successfully!"; \
+	echo "📄 Path: $(PWD)/linuxio-auth-helper"; \
+	echo " Size: $$(du -h linuxio-auth-helper | cut -f1)"; \
 	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"
 
 dev-prep:

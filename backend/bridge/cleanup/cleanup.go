@@ -3,56 +3,10 @@ package cleanup
 import (
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
-	"syscall"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
 )
-
-// KillOwnSudoParents walks our parent chain and kills lingering sudo/env parents.
-// Touches only our own ancestors; safe for prod.
-func KillOwnSudoParents() {
-	ppid := os.Getppid()
-	for ppid > 1 {
-		commB, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", ppid))
-		if err != nil {
-			return // parent already gone
-		}
-		comm := strings.TrimSpace(string(commB))
-		if comm != "sudo" && comm != "env" {
-			return // reached a non-wrapper parent; stop
-		}
-
-		// Read the *next* parent before killing this one
-		nextPPID, err := readPPID(ppid)
-		if err != nil {
-			return
-		}
-
-		logger.Debugf("Killing lingering parent pid=%d comm=%q", ppid, comm)
-		_ = syscall.Kill(ppid, syscall.SIGTERM)
-		time.Sleep(200 * time.Millisecond)
-		_ = syscall.Kill(ppid, syscall.SIGKILL)
-
-		ppid = nextPPID
-	}
-}
-
-func readPPID(pid int) (int, error) {
-	// /proc/<pid>/stat: pid (comm) state ppid ...
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return 0, err
-	}
-	fields := strings.Fields(string(b))
-	if len(fields) < 4 {
-		return 0, fmt.Errorf("invalid /proc/%d/stat", pid)
-	}
-	return strconv.Atoi(fields[3])
-}
 
 // FullCleanup does all bridge-side cleanup for a session.
 // Right now that’s just removing the socket; extend here if you add more artifacts.
