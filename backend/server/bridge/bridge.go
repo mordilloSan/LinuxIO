@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,8 +28,6 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 func callViaSocket(socketPath, reqType, command string, args []string, secret string, sessionID string) ([]byte, error) {
 	req := ipc.Request{Type: reqType, Command: command, Secret: secret, Args: args, SessionID: sessionID}
 
-	// Be tolerant to a just-started bridge: retry for a short window when
-	// the socket may not exist yet or not accept connections immediately.
 	var conn net.Conn
 	var err error
 	const (
@@ -78,28 +77,34 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	if bridgeBinary == "" {
 		bridgeBinary = GetBridgeBinaryPath("", envMode)
 	}
+	helperPath := getAuthHelperPath()
+
+	logger.Infof("[bridge] env=%s privileged=%v", strings.ToLower(envMode), sess.Privileged)
+	logger.Infof("[bridge] bridgeBinary=%q", bridgeBinary)
+	logger.Infof("[bridge] authHelper=%q", helperPath)
+
 	if bridgeBinary == "" {
 		return errors.New("bridge binary not found (looked beside server and in PATH)")
 	}
-
-	helperPath := getAuthHelperPath()
 	if helperPath == "" {
 		return errors.New("auth helper not found; expected /usr/local/bin/linuxio-auth-helper or LINUXIO_PAM_HELPER override")
 	}
 
-	// Build env for the helper
 	env := append(os.Environ(),
+		"LANG=C", // ensure predictable PAM error text
 		"LINUXIO_TARGET_USER="+sess.User.Username,
 		"LINUXIO_ENV="+strings.ToLower(envMode),
 		"LINUXIO_BRIDGE_BIN="+bridgeBinary,
 		"LINUXIO_PRIV="+map[bool]string{true: "1", false: "0"}[sess.Privileged],
-
 		"LINUXIO_SESSION_ID="+sess.SessionID,
 		"LINUXIO_SESSION_USER="+sess.User.Username,
 		"LINUXIO_SESSION_UID="+sess.User.UID,
 		"LINUXIO_SESSION_GID="+sess.User.GID,
 		"LINUXIO_BRIDGE_SECRET="+sess.BridgeSecret,
 	)
+	if verbose {
+		env = append(env, "LINUXIO_VERBOSE=1")
+	}
 	if v := os.Getenv("LINUXIO_SERVER_BASE_URL"); v != "" {
 		env = append(env, "LINUXIO_SERVER_BASE_URL="+v)
 	}
@@ -114,10 +119,10 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	if err != nil {
 		return fmt.Errorf("helper stdout pipe: %w", err)
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("helper stderr pipe: %w", err)
-	}
+
+	var stderrBuf bytes.Buffer // <-- new
+	cmd.Stderr = &stderrBuf    // <-- capture stderr into buffer
+
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("helper stdin pipe: %w", err)
@@ -136,7 +141,6 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	// Wait for single "OK\n" with timeout
 	okCh := make(chan string, 1)
 	errCh := make(chan error, 1)
-	seCh := make(chan string, 1)
 
 	go func() {
 		br := bufio.NewReader(stdout)
@@ -148,53 +152,41 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		okCh <- strings.TrimSpace(line)
 	}()
 
-	// capture stderr for diagnostics
-	go func() {
-		b, _ := io.ReadAll(stderr)
-		seCh <- strings.TrimSpace(string(b))
-	}()
+	// choose a slightly longer timeout to be kind to PAM on cold systems????
+	timeout := 2 * time.Second
 
 	select {
 	case line := <-okCh:
 		if line != "OK" {
-			var serr string
-			select {
-			case serr = <-seCh:
-			case <-time.After(200 * time.Millisecond):
-			}
-			_ = cmd.Wait()
+			_ = cmd.Wait() // ensure stderr is complete
+			serr := strings.TrimSpace(stderrBuf.String())
 			if serr != "" {
 				return fmt.Errorf("helper did not confirm: %q (%s)", line, serr)
 			}
 			return fmt.Errorf("helper did not confirm: %q", line)
 		}
+
 	case e := <-errCh:
-		var serr string
-		select {
-		case serr = <-seCh:
-		default:
-		}
-		_ = cmd.Wait()
+		_ = cmd.Wait() // ensure stderr is complete
+		serr := strings.TrimSpace(stderrBuf.String())
 		if serr != "" {
 			return fmt.Errorf("helper error: %v (%s)", e, serr)
 		}
 		return fmt.Errorf("helper error: %v", e)
-	case <-time.After(3 * time.Second):
+
+	case <-time.After(timeout):
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
-		var serr string
-		select {
-		case serr = <-seCh:
-		default:
-		}
+		serr := strings.TrimSpace(stderrBuf.String())
 		if serr != "" {
 			return fmt.Errorf("helper timeout waiting for OK: %s", serr)
 		}
 		return errors.New("helper timeout waiting for OK")
 	}
 
-	// Reap the parent helper (nanny owns bridge)
+	// Reap the parent helper (nanny owns bridge now)
 	if err := cmd.Wait(); err != nil {
+		// in normal path helper parent may exit non-zero; log but don’t fail
 		logger.Warnf("auth helper exited non-zero after OK: %v", err)
 	}
 
@@ -203,23 +195,45 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	return nil
 }
 
-// GetBridgeBinaryPath returns an absolute or name-only path for the bridge.
+// GetBridgeBinaryPath returns the path to the bridge binary.
+// In dev mode, prefer local (repo root / CWD). In prod, use beside server → PATH.
+// If 'override' is non-empty and executable, it wins.
 func GetBridgeBinaryPath(override, envMode string) string {
-	const binaryName = "linuxio-bridge"
+	const name = "linuxio-bridge"
+	env := strings.ToLower(strings.TrimSpace(envMode))
+	isDev := env == "dev" || env == "development"
 
 	if override != "" && isExec(override) {
 		return override
 	}
-	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), binaryName)
-		if isExec(candidate) {
-			return candidate
+
+	if isDev {
+		// 1) explicit repo root (set by Makefile/Air)
+		if root := strings.TrimSpace(os.Getenv("LINUXIO_PROJECT_ROOT")); root != "" {
+			if p := filepath.Join(root, name); isExec(p) {
+				return p
+			}
+		}
+		// 2) current working dir
+		if wd, _ := os.Getwd(); wd != "" {
+			if p := filepath.Join(wd, name); isExec(p) {
+				return p
+			}
 		}
 	}
-	if path, err := exec.LookPath(binaryName); err == nil {
-		return path
+
+	// prod (or dev fallback): beside server binary
+	if exe, err := os.Executable(); err == nil {
+		if p := filepath.Join(filepath.Dir(exe), name); isExec(p) {
+			return p
+		}
 	}
-	logger.Debugf("%s not found beside server, or in user $PATH; consider installing into a well-known path or pass --bridge-binary.", binaryName)
+	// PATH
+	if p, err := exec.LookPath(name); err == nil && isExec(p) {
+		return p
+	}
+
+	logger.Debugf("%s not found (env=%s). Consider LINUXIO_PROJECT_ROOT or --bridge-binary.", name, env)
 	return ""
 }
 
@@ -231,16 +245,46 @@ func isExec(p string) bool {
 	return st.Mode()&0111 != 0
 }
 
+// BEFORE:
+// func getAuthHelperPath(envMode string) string {
+
+// AFTER:
 func getAuthHelperPath() string {
+	// 1) explicit override
 	if v := os.Getenv("LINUXIO_PAM_HELPER"); v != "" && isExec(v) {
 		return v
 	}
-	const legacy = "/usr/local/bin/linuxio-auth-helper"
-	if isExec(legacy) {
-		return legacy
+
+	// 2) installed SUID helper (preferred)
+	const installed = "/usr/local/bin/linuxio-auth-helper"
+	if isExec(installed) {
+		// soft check for setuid bit; still return if stat fails
+		if st, err := os.Stat(installed); err == nil {
+			if (st.Mode() & os.ModeSetuid) != 0 {
+				return installed
+			}
+		}
+		return installed
 	}
 	if p, err := exec.LookPath("linuxio-auth-helper"); err == nil && isExec(p) {
 		return p
 	}
+
+	// 3) optional local fallback for CI/mocks only
+	allowLocal := strings.EqualFold(os.Getenv("LINUXIO_USE_LOCAL_HELPER"), "1") ||
+		strings.EqualFold(os.Getenv("LINUXIO_USE_LOCAL_HELPER"), "true")
+	if allowLocal {
+		if root := strings.TrimSpace(os.Getenv("LINUXIO_PROJECT_ROOT")); root != "" {
+			if p := filepath.Join(root, "linuxio-auth-helper"); isExec(p) {
+				return p
+			}
+		}
+		if wd, _ := os.Getwd(); wd != "" {
+			if p := filepath.Join(wd, "linuxio-auth-helper"); isExec(p) {
+				return p
+			}
+		}
+	}
+
 	return ""
 }

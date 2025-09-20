@@ -22,31 +22,31 @@ import (
 // - resize_container [containerID cols rows]
 // - close_container [containerID]
 func TerminalHandlers(sess *session.Session) map[string]ipc.HandlerFunc {
-    return map[string]ipc.HandlerFunc{
-        "start_main": func([]string) (any, error) {
-            return map[string]bool{"started": true}, bridgeTerminal.StartTerminal(sess)
-        },
-        "read_main_backlog": func([]string) (any, error) {
-            data, err := bridgeTerminal.ReadTerminalBacklog(sess.SessionID)
-            if err != nil {
-                // If no terminal yet, return empty backlog gracefully
-                return map[string]any{"data": ""}, nil
-            }
-            return map[string]any{"data": data}, nil
-        },
-        "read_main": func(args []string) (any, error) {
-            wait := 750
-            if len(args) > 0 {
-                if v, err := strconv.Atoi(args[0]); err == nil && v >= 0 {
-                    wait = v
-                }
-            }
-            data, closed, err := bridgeTerminal.ReadTerminal(sess.SessionID, wait)
-            if err != nil && data == "" {
-                return map[string]any{"data": "", "closed": true}, nil
-            }
-            return map[string]any{"data": data, "closed": closed}, nil
-        },
+	return map[string]ipc.HandlerFunc{
+		"start_main": func([]string) (any, error) {
+			return map[string]bool{"started": true}, bridgeTerminal.StartTerminal(sess)
+		},
+		"read_main_backlog": func([]string) (any, error) {
+			data, err := bridgeTerminal.ReadTerminalBacklog(sess.SessionID)
+			if err != nil {
+				// If no terminal yet, return empty backlog gracefully
+				return map[string]any{"data": ""}, nil
+			}
+			return map[string]any{"data": data}, nil
+		},
+		"read_main": func(args []string) (any, error) {
+			wait := 750
+			if len(args) > 0 {
+				if v, err := strconv.Atoi(args[0]); err == nil && v >= 0 {
+					wait = v
+				}
+			}
+			data, closed, err := bridgeTerminal.ReadTerminal(sess.SessionID, wait)
+			if err != nil && data == "" {
+				return map[string]any{"data": "", "closed": true}, nil
+			}
+			return map[string]any{"data": data, "closed": closed}, nil
+		},
 		"input_main": func(args []string) (any, error) {
 			if len(args) == 0 {
 				return map[string]bool{"ok": true}, nil

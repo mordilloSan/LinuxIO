@@ -258,6 +258,11 @@ int main(void) {
       pam_close_session(pamh, 0); pam_setcred(pamh, PAM_DELETE_CRED); pam_end(pamh, 0);
       return 5;
     }
+    if ((st.st_mode & 0111) == 0) {
+      fprintf(stderr, "bridge is not executable\n");
+      pam_close_session(pamh, 0); pam_setcred(pamh, PAM_DELETE_CRED); pam_end(pamh, 0);
+      return 5;
+    }
   }
 
   // ---------- Correct double-fork: NANNY first, then BRIDGE ----------
@@ -300,8 +305,20 @@ int main(void) {
         if (chdir(pw->pw_dir) != 0) { perror("chdir"); _exit(127); }
       }
 
-      char *const argv_child[] = { (char*)bridge_path, "--env", (char*)envmode, NULL };
+      const char *v = getenv("LINUXIO_VERBOSE");
+
+      char *argv_child[5];
+      int ai = 0;
+      argv_child[ai++] = (char*)bridge_path;
+      argv_child[ai++] = "--env";
+      argv_child[ai++] = (char*)envmode;
+      if (v && (v[0]=='1' || strcasecmp(v, "true")==0 || strcasecmp(v, "yes")==0)) {
+        argv_child[ai++] = "--verbose";
+      }
+      argv_child[ai] = NULL;
+
       execv(bridge_path, argv_child);
+
       perror("exec linuxio-bridge");
       _exit(127);
     }

@@ -63,8 +63,11 @@ function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const fetchUser = useCallback(async (): Promise<AuthUser> => {
-    const { data } = await axios.get<{ user: AuthUser }>("/auth/me");
-    return data.user;
+    const { data } = await axios.get<{ user: { username?: string; uid?: string; gid?: string } }>(
+      "/auth/me",
+    );
+    const username = data.user?.username || "";
+    return { id: username || data.user?.uid || "", name: username || "" };
   }, []);
 
   const initialize = useCallback(async () => {

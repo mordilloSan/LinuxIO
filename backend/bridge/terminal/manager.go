@@ -8,15 +8,15 @@ import (
 
 // TerminalSession holds state for a running PTY-backed shell.
 type TerminalSession struct {
-    PTY    *os.File
-    Cmd    *exec.Cmd
-    Mu     sync.Mutex
-    Open   bool
-    Buffer []byte
-    // Backlog retains a longer scrollback independent of read drains.
-    Backlog []byte
-    // notify is signaled (non-blocking) when new data is appended to Buffer.
-    notify chan struct{}
+	PTY    *os.File
+	Cmd    *exec.Cmd
+	Mu     sync.Mutex
+	Open   bool
+	Buffer []byte
+	// Backlog retains a longer scrollback independent of read drains.
+	Backlog []byte
+	// notify is signaled (non-blocking) when new data is appended to Buffer.
+	notify chan struct{}
 }
 
 type TerminalKey struct {
@@ -80,35 +80,35 @@ func delContainer(sessionID, containerID string) *TerminalSession {
 
 // appendOutput appends data to the session buffer with a soft cap and notifies readers.
 func (ts *TerminalSession) appendOutput(p []byte) {
-    ts.Mu.Lock()
-    // Cap the buffer to ~16KiB to prevent unbounded growth
-    const capSize = 8192 * 2
-    if len(ts.Buffer)+len(p) > capSize {
-        // keep tail
-        ts.Buffer = append(ts.Buffer[(len(ts.Buffer)+len(p))-capSize:], p...)
-    } else {
-        ts.Buffer = append(ts.Buffer, p...)
-    }
-    // Maintain a larger rolling backlog (~256KiB) for reconnections.
-    const backlogCap = 256 * 1024
-    if len(ts.Backlog)+len(p) > backlogCap {
-        // keep tail of backlog
-        ts.Backlog = append(ts.Backlog[(len(ts.Backlog)+len(p))-backlogCap:], p...)
-    } else {
-        ts.Backlog = append(ts.Backlog, p...)
-    }
-    // Non-blocking notify so concurrent writers don't deadlock
-    select {
-    case ts.notify <- struct{}{}:
-    default:
-    }
-    ts.Mu.Unlock()
+	ts.Mu.Lock()
+	// Cap the buffer to ~16KiB to prevent unbounded growth
+	const capSize = 8192 * 2
+	if len(ts.Buffer)+len(p) > capSize {
+		// keep tail
+		ts.Buffer = append(ts.Buffer[(len(ts.Buffer)+len(p))-capSize:], p...)
+	} else {
+		ts.Buffer = append(ts.Buffer, p...)
+	}
+	// Maintain a larger rolling backlog (~256KiB) for reconnections.
+	const backlogCap = 256 * 1024
+	if len(ts.Backlog)+len(p) > backlogCap {
+		// keep tail of backlog
+		ts.Backlog = append(ts.Backlog[(len(ts.Backlog)+len(p))-backlogCap:], p...)
+	} else {
+		ts.Backlog = append(ts.Backlog, p...)
+	}
+	// Non-blocking notify so concurrent writers don't deadlock
+	select {
+	case ts.notify <- struct{}{}:
+	default:
+	}
+	ts.Mu.Unlock()
 }
 
 // snapshotBacklog returns a copy of the current backlog as string.
 func (ts *TerminalSession) snapshotBacklog() string {
-    ts.Mu.Lock()
-    s := string(ts.Backlog)
-    ts.Mu.Unlock()
-    return s
+	ts.Mu.Lock()
+	s := string(ts.Backlog)
+	ts.Mu.Unlock()
+	return s
 }
