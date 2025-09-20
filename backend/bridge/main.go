@@ -20,6 +20,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/bridge/filebrowser"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers"
+	bridgeTerminal "github.com/mordilloSan/LinuxIO/bridge/terminal"
 	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
 	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
@@ -114,6 +115,11 @@ func main() {
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)
+	// Register per-session terminal handlers and eagerly start the main shell
+	handlers.RegisterTerminalHandlers(Sess)
+	if err := bridgeTerminal.StartTerminal(Sess); err != nil {
+		logger.Warnf("Failed to start session terminal: %v", err)
+	}
 
 	// Handle Ctrl-C / kill properly → request shutdown once
 	sigc := make(chan os.Signal, 2)

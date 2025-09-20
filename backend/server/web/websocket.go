@@ -4,18 +4,18 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/server/terminal"
+	"github.com/mordilloSan/LinuxIO/server/bridge"
 )
 
 var upgrader = websocket.Upgrader{
@@ -138,116 +138,101 @@ func WebSocketHandler(c *gin.Context) {
 		switch wsMsg.Type {
 		case "terminal_start":
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				ts := terminal.GetContainerTerminal(sess.SessionID, wsMsg.ContainerID)
-				if ts == nil || ts.PTY == nil {
-					shell := wsMsg.Data
-					if shell == "" {
-						shell = "bash"
-					}
-					if err := terminal.StartContainerTerminal(sess, wsMsg.ContainerID, shell); err != nil {
-						logger.Warnf("Could not start container terminal for %s: %v", wsMsg.ContainerID, err)
-						_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start container shell.\r\n"})
-						continue
-					}
-					ts = terminal.GetContainerTerminal(sess.SessionID, wsMsg.ContainerID)
-					_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Container shell started.\r\n"})
-				} else {
-					ts.Mu.Lock()
-					if len(ts.Buffer) > 0 {
-						_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: string(ts.Buffer)})
-					}
-					ts.Mu.Unlock()
+				// Start container terminal via bridge
+				shell := wsMsg.Data
+				if shell == "" {
+					shell = "bash"
 				}
-				go func(ts *terminal.TerminalSession) {
-					buf := make([]byte, 4096)
+				if _, err := bridge.CallWithSession(sess, "terminal", "start_container", []string{wsMsg.ContainerID, shell}); err != nil {
+					logger.Warnf("Could not start container terminal for %s: %v", wsMsg.ContainerID, err)
+					_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start container shell.\r\n"})
+					continue
+				}
+				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Container shell started.\r\n"})
+
+				// Poll bridge for output and forward to WS
+				go func(containerID string) {
 					for {
 						select {
 						case <-done:
 							return
 						default:
-							n, err := ts.PTY.Read(buf)
-							if n > 0 {
-								ts.Mu.Lock()
-								if len(ts.Buffer)+n > 8192*2 {
-									ts.Buffer = ts.Buffer[(len(ts.Buffer)+n)-8192*2:]
-								}
-								ts.Buffer = append(ts.Buffer, buf[:n]...)
-								ts.Mu.Unlock()
-								_ = safeConn.WriteJSON(WSResponse{
-									Type:        "terminal_output",
-									ContainerID: wsMsg.ContainerID,
-									Data:        string(buf[:n]),
-								})
-							}
-							if err != nil {
-								if isExpectedPTYRead(err) {
-									logger.Debugf("[WebSocket] pty closed (container, normal): %v", err)
-								} else {
-									logger.Warnf("[WebSocket] pty read error (container): %v", err)
-								}
-								return
-							}
+						}
+						data, closed, err := readFromBridgeContainer(sess, containerID, 1200)
+						if err != nil {
+							logger.Warnf("bridge read_container error: %v", err)
+							return
+						}
+						if data != "" {
+							_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", ContainerID: containerID, Data: data})
+						}
+						if closed {
+							return
+						}
+						if data == "" {
+							time.Sleep(60 * time.Millisecond)
 						}
 					}
-				}(ts)
-			} else {
-				ts := terminal.Get(sess.SessionID)
-				if ts == nil || ts.PTY == nil {
-					if err := terminal.StartTerminal(sess); err != nil {
-						logger.Warnf("Could not start terminal for %s: %v", sess.User.Username, err)
-						_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start shell.\r\n"})
-						continue
-					}
-					ts = terminal.Get(sess.SessionID)
-					_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell started.\r\n"})
-				} else {
-					ts.Mu.Lock()
-					if len(ts.Buffer) > 0 {
-						_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: string(ts.Buffer)})
-					}
-					ts.Mu.Unlock()
-				}
-				go func(ts *terminal.TerminalSession) {
-					buf := make([]byte, 4096)
-					for {
-						select {
-						case <-done:
+				}(wsMsg.ContainerID)
+            } else {
+                // Start main terminal via bridge
+                if _, err := bridge.CallWithSession(sess, "terminal", "start_main", nil); err != nil {
+                    logger.Warnf("Could not start terminal for %s: %v", sess.User.Username, err)
+                    _ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start shell.\r\n"})
+                    continue
+                }
+                _ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell started.\r\n"})
+
+                // Send retained backlog once on (re)start to repopulate xterm
+                if raw, err := bridge.CallWithSession(sess, "terminal", "read_main_backlog", nil); err == nil {
+                    var resp bridgeResp
+                    if json.Unmarshal(raw, &resp) == nil && strings.ToLower(resp.Status) == "ok" {
+                        var out struct{ Data string `json:"data"` }
+                        _ = json.Unmarshal(resp.Output, &out)
+                        if out.Data != "" {
+                            _ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: out.Data})
+                        }
+                    }
+                }
+
+                go func() {
+                    for {
+                        select {
+                        case <-done:
 							return
 						default:
-							n, err := ts.PTY.Read(buf)
-							if n > 0 {
-								ts.Mu.Lock()
-								if len(ts.Buffer)+n > 8192*2 {
-									ts.Buffer = ts.Buffer[(len(ts.Buffer)+n)-8192*2:]
-								}
-								ts.Buffer = append(ts.Buffer, buf[:n]...)
-								ts.Mu.Unlock()
-								_ = safeConn.WriteJSON(WSResponse{
-									Type: "terminal_output",
-									Data: string(buf[:n]),
-								})
-							}
-							if err != nil {
-								if isExpectedPTYRead(err) {
-									logger.Debugf("[WebSocket] pty closed (normal): %v", err)
-								} else {
-									logger.Warnf("[WebSocket] pty read error: %v", err)
-								}
-								return
-							}
+						}
+						data, closed, err := readFromBridgeMain(sess, 1200)
+						if err != nil {
+							logger.Warnf("bridge read_main error: %v", err)
+							return
+						}
+						if data != "" {
+							_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: data})
+						}
+						if closed {
+							return
+						}
+						if data == "" {
+							time.Sleep(60 * time.Millisecond)
 						}
 					}
-				}(ts)
+				}()
 			}
 
 		case "terminal_input":
+			if wsMsg.Data == "" {
+				continue
+			}
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				if ts := terminal.GetContainerTerminal(sess.SessionID, wsMsg.ContainerID); ts != nil && ts.PTY != nil && wsMsg.Data != "" {
-					_, _ = ts.PTY.Write([]byte(wsMsg.Data))
+				_, err := bridge.CallWithSession(sess, "terminal", "input_container", []string{wsMsg.ContainerID, wsMsg.Data})
+				if err != nil {
+					logger.Warnf("bridge input_container error: %v", err)
 				}
 			} else {
-				if ts := terminal.Get(sess.SessionID); ts != nil && ts.PTY != nil && wsMsg.Data != "" {
-					_, _ = ts.PTY.Write([]byte(wsMsg.Data))
+				_, err := bridge.CallWithSession(sess, "terminal", "input_main", []string{wsMsg.Data})
+				if err != nil {
+					logger.Warnf("bridge input_main error: %v", err)
 				}
 			}
 
@@ -258,66 +243,107 @@ func WebSocketHandler(c *gin.Context) {
 			}
 			_ = json.Unmarshal(wsMsg.Payload, &size)
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				if ts := terminal.GetContainerTerminal(sess.SessionID, wsMsg.ContainerID); ts != nil && ts.PTY != nil {
-					if err := pty.Setsize(ts.PTY, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)}); err != nil {
-						logger.Warnf("failed to set PTY size (container): %v", err)
-					}
+				_, err := bridge.CallWithSession(sess, "terminal", "resize_container", []string{wsMsg.ContainerID, strconv.Itoa(size.Cols), strconv.Itoa(size.Rows)})
+				if err != nil {
+					logger.Warnf("bridge resize_container error: %v", err)
 				}
 			} else {
-				if ts := terminal.Get(sess.SessionID); ts != nil && ts.PTY != nil {
-					if err := pty.Setsize(ts.PTY, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)}); err != nil {
-						logger.Warnf("failed to set PTY size: %v", err)
-					}
+				_, err := bridge.CallWithSession(sess, "terminal", "resize_main", []string{strconv.Itoa(size.Cols), strconv.Itoa(size.Rows)})
+				if err != nil {
+					logger.Warnf("bridge resize_main error: %v", err)
 				}
 			}
 
 		case "list_shells":
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				shells, err := terminal.ListContainerShells(wsMsg.ContainerID)
+				raw, err := bridge.CallWithSession(sess, "terminal", "list_shells", []string{wsMsg.ContainerID})
 				if err != nil {
-					_ = safeConn.WriteJSON(WSResponse{
-						Type:        "shell_list",
-						ContainerID: wsMsg.ContainerID,
-						Data:        []string{""},
-						Error:       err.Error(),
-					})
+					_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: []string{""}, Error: err.Error()})
 					continue
 				}
-				_ = safeConn.WriteJSON(WSResponse{
-					Type:        "shell_list",
-					ContainerID: wsMsg.ContainerID,
-					Data:        shells,
-				})
+				var resp bridgeResp
+				_ = json.Unmarshal(raw, &resp)
+				if strings.ToLower(resp.Status) != "ok" {
+					_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: []string{""}, Error: resp.Error})
+					continue
+				}
+				var shells []string
+				_ = json.Unmarshal(resp.Output, &shells)
+				_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: shells})
 			}
 
 		case "terminal_close":
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				if err := terminal.CloseContainerTerminal(sess.SessionID, wsMsg.ContainerID); err != nil {
-					logger.Warnf("Failed to close container terminal %s: %v", wsMsg.ContainerID, err)
-				} else {
-					logger.Infof("Closed terminal for container %s", wsMsg.ContainerID)
+				_, err := bridge.CallWithSession(sess, "terminal", "close_container", []string{wsMsg.ContainerID})
+				if err != nil {
+					logger.Warnf("bridge close_container error: %v", err)
 				}
-				_ = safeConn.WriteJSON(WSResponse{
-					Type:        "terminal_closed",
-					ContainerID: wsMsg.ContainerID,
-					Data:        "Container terminal closed.",
-				})
+				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_closed", ContainerID: wsMsg.ContainerID, Data: "Container terminal closed."})
 			} else {
-				if err := terminal.Close(sess.SessionID); err != nil {
-					logger.Warnf("Failed to close main terminal for session %s: %v", sess.SessionID, err)
-				} else {
-					logger.Infof("Closed main terminal for session %s", sess.SessionID)
+				_, err := bridge.CallWithSession(sess, "terminal", "close_main", nil)
+				if err != nil {
+					logger.Warnf("bridge close_main error: %v", err)
 				}
-				_ = safeConn.WriteJSON(WSResponse{
-					Type: "terminal_closed",
-					Data: "Main terminal closed.",
-				})
+				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_closed", Data: "Main terminal closed."})
 			}
 
 		default:
 			logger.Warnf("[WebSocket] Unknown message type: %s", wsMsg.Type)
 		}
 	}
+}
+
+// bridgeResp mirrors ipc.Response at the server boundary.
+type bridgeResp struct {
+	Status string          `json:"status"`
+	Output json.RawMessage `json:"output,omitempty"`
+	Error  string          `json:"error,omitempty"`
+}
+
+func readFromBridgeMain(sess *session.Session, waitMs int) (string, bool, error) {
+	if waitMs <= 0 {
+		waitMs = 750
+	}
+	raw, err := bridge.CallWithSession(sess, "terminal", "read_main", []string{strconv.Itoa(waitMs)})
+	if err != nil {
+		return "", false, err
+	}
+	var resp bridgeResp
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return "", false, err
+	}
+	if strings.ToLower(resp.Status) != "ok" {
+		return "", false, errors.New(resp.Error)
+	}
+	var out struct {
+		Data   string `json:"data"`
+		Closed bool   `json:"closed"`
+	}
+	_ = json.Unmarshal(resp.Output, &out)
+	return out.Data, out.Closed, nil
+}
+
+func readFromBridgeContainer(sess *session.Session, containerID string, waitMs int) (string, bool, error) {
+	if waitMs <= 0 {
+		waitMs = 750
+	}
+	raw, err := bridge.CallWithSession(sess, "terminal", "read_container", []string{containerID, strconv.Itoa(waitMs)})
+	if err != nil {
+		return "", false, err
+	}
+	var resp bridgeResp
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return "", false, err
+	}
+	if strings.ToLower(resp.Status) != "ok" {
+		return "", false, errors.New(resp.Error)
+	}
+	var out struct {
+		Data   string `json:"data"`
+		Closed bool   `json:"closed"`
+	}
+	_ = json.Unmarshal(resp.Output, &out)
+	return out.Data, out.Closed, nil
 }
 
 func isExpectedWSClose(err error) bool {
@@ -331,9 +357,4 @@ func isExpectedWSClose(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "use of closed network connection")
 }
 
-func isExpectedPTYRead(err error) bool {
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "input/output error") ||
-		strings.Contains(s, "bad file descriptor") ||
-		strings.Contains(s, "file already closed")
-}
+// PTY reading now occurs inside the bridge process.

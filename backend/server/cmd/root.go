@@ -23,7 +23,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/server/bridge"
 	"github.com/mordilloSan/LinuxIO/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/server/filebrowser"
-	"github.com/mordilloSan/LinuxIO/server/terminal"
 	"github.com/mordilloSan/LinuxIO/server/web"
 )
 
@@ -49,7 +48,6 @@ func RunServer(cfg ServerConfig) {
 		},
 	})
 	sm.RegisterOnDelete(func(sess session.Session, reason session.DeleteReason) {
-		terminal.CloseAllForSession(sess.SessionID)
 		if sess.User.Username != "" {
 			if _, err := bridge.CallWithSession(&sess, "control", "shutdown", []string{string(reason)}); err != nil {
 				logger.Warnf("Bridge shutdown for %s failed: %v", sess.SessionID, err)
