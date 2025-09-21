@@ -334,6 +334,9 @@ dev: setup dev-prep build-bridge
 
 build: build-vite golint build-backend build-bridge build-auth-helper
 
+localinstall: build-backend build-bridge build-auth-helper
+	./packaging/scripts/local_install.sh
+
 generate:
 	@cd "$(BACKEND_DIR)" && go generate ./common/userconfig/init.go
 

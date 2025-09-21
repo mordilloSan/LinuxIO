@@ -174,31 +174,33 @@ func WebSocketHandler(c *gin.Context) {
 						}
 					}
 				}(wsMsg.ContainerID)
-            } else {
-                // Start main terminal via bridge
-                if _, err := bridge.CallWithSession(sess, "terminal", "start_main", nil); err != nil {
-                    logger.Warnf("Could not start terminal for %s: %v", sess.User.Username, err)
-                    _ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start shell.\r\n"})
-                    continue
-                }
-                _ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell started.\r\n"})
+			} else {
+				// Start main terminal via bridge
+				if _, err := bridge.CallWithSession(sess, "terminal", "start_main", nil); err != nil {
+					logger.Warnf("Could not start terminal for %s: %v", sess.User.Username, err)
+					_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start shell.\r\n"})
+					continue
+				}
+				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell started.\r\n"})
 
-                // Send retained backlog once on (re)start to repopulate xterm
-                if raw, err := bridge.CallWithSession(sess, "terminal", "read_main_backlog", nil); err == nil {
-                    var resp bridgeResp
-                    if json.Unmarshal(raw, &resp) == nil && strings.ToLower(resp.Status) == "ok" {
-                        var out struct{ Data string `json:"data"` }
-                        _ = json.Unmarshal(resp.Output, &out)
-                        if out.Data != "" {
-                            _ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: out.Data})
-                        }
-                    }
-                }
+				// Send retained backlog once on (re)start to repopulate xterm
+				if raw, err := bridge.CallWithSession(sess, "terminal", "read_main_backlog", nil); err == nil {
+					var resp bridgeResp
+					if json.Unmarshal(raw, &resp) == nil && strings.ToLower(resp.Status) == "ok" {
+						var out struct {
+							Data string `json:"data"`
+						}
+						_ = json.Unmarshal(resp.Output, &out)
+						if out.Data != "" {
+							_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: out.Data})
+						}
+					}
+				}
 
-                go func() {
-                    for {
-                        select {
-                        case <-done:
+				go func() {
+					for {
+						select {
+						case <-done:
 							return
 						default:
 						}
