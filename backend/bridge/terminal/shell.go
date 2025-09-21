@@ -1,20 +1,20 @@
 package terminal
 
 import (
-	"errors"
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"os/user"
-	"strconv"
-	"strings"
-	"syscall"
-	"time"
+    "errors"
+    "fmt"
+    "io"
+    "os"
+    "os/exec"
+    "os/user"
+    "strconv"
+    "strings"
+    "syscall"
+    "time"
 
-	"github.com/creack/pty"
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/session"
+    "github.com/creack/pty"
+    "github.com/mordilloSan/LinuxIO/common/logger"
+    "github.com/mordilloSan/LinuxIO/common/session"
 )
 
 // StartTerminal starts an interactive login shell for the session's user.
@@ -25,49 +25,49 @@ func StartTerminal(sess *session.Session) error {
 		return nil
 	}
 
-	u, err := user.LookupId(sess.User.UID)
-	if err != nil {
-		logger.Errorf("lookup user %s failed: %v", sess.User.Username, err)
-		return fmt.Errorf("lookup user %s: %w", sess.User.Username, err)
-	}
-	userHome := u.HomeDir
+    u, err := user.LookupId(sess.User.UID)
+    if err != nil {
+        logger.Errorf("lookup user %s failed: %v", sess.User.Username, err)
+        return fmt.Errorf("lookup user %s: %w", sess.User.Username, err)
+    }
+    userHome := u.HomeDir
 
-	// Build a clean, user-oriented environment for the interactive shell.
-	// This ensures PS1 shows the correct user and history lands in the user's HOME.
-	env := append(os.Environ(),
-		"HOME="+userHome,
-		"USER="+sess.User.Username,
-		"LOGNAME="+sess.User.Username,
-		// Encourage colorized output
-		"TERM=xterm-256color",
-		"COLORTERM=truecolor",
-		"HISTFILE="+userHome+"/.bash_history",
-	)
+    // Build a clean, user-oriented environment for the interactive shell.
+    // This ensures PS1 shows the correct user and history lands in the user's HOME.
+    env := append(os.Environ(),
+        "HOME="+userHome,
+        "USER="+sess.User.Username,
+        "LOGNAME="+sess.User.Username,
+        // Encourage colorized output
+        "TERM=xterm-256color",
+        "COLORTERM=truecolor",
+        "HISTFILE="+userHome+"/.bash_history",
+    )
 
-	// Prefer bash, fall back to sh if not available.
-	shellPath := "bash"
-	if _, lookErr := exec.LookPath(shellPath); lookErr != nil {
-		shellPath = "sh"
-	}
+    // Prefer bash, fall back to sh if not available.
+    shellPath := "bash"
+    if _, lookErr := exec.LookPath(shellPath); lookErr != nil {
+        shellPath = "sh"
+    }
 
-	cmd := exec.Command(shellPath, "-i", "-l")
-	cmd.Dir = userHome
-	cmd.Env = append(env, "SHELL="+shellPath)
+    cmd := exec.Command(shellPath, "-i", "-l")
+    cmd.Dir = userHome
+    cmd.Env = append(env, "SHELL="+shellPath)
 
-	// Always create a new session and set controlling TTY.
-	sysAttr := &syscall.SysProcAttr{Setsid: true, Setctty: true}
+    // Always create a new session and set controlling TTY.
+    sysAttr := &syscall.SysProcAttr{Setsid: true, Setctty: true}
 
-	// If the bridge is running as root (privileged session), drop the PTY shell to the session user.
-	// This keeps privileged abilities in the bridge for API calls while the interactive shell
-	// runs as the actual user (expected username in prompt). Users can still sudo as needed.
-	if os.Geteuid() == 0 {
-		if uid, uerr := strconv.Atoi(sess.User.UID); uerr == nil {
-			if gid, gerr := strconv.Atoi(sess.User.GID); gerr == nil {
-				sysAttr.Credential = &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}
-			}
-		}
-	}
-	cmd.SysProcAttr = sysAttr
+    // If the bridge is running as root (privileged session), drop the PTY shell to the session user.
+    // This keeps privileged abilities in the bridge for API calls while the interactive shell
+    // runs as the actual user (expected username in prompt). Users can still sudo as needed.
+    if os.Geteuid() == 0 {
+        if uid, uerr := strconv.Atoi(sess.User.UID); uerr == nil {
+            if gid, gerr := strconv.Atoi(sess.User.GID); gerr == nil {
+                sysAttr.Credential = &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}
+            }
+        }
+    }
+    cmd.SysProcAttr = sysAttr
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -148,11 +148,11 @@ func ReadTerminal(sessionID string, waitMs int) (string, bool, error) {
 // ReadTerminalBacklog returns the retained scrollback for the user's main terminal
 // without draining it. Useful when the UI reconnects and needs prior context.
 func ReadTerminalBacklog(sessionID string) (string, error) {
-	ts := getOrNil(sessionID)
-	if ts == nil {
-		return "", errors.New("terminal not running")
-	}
-	return ts.snapshotBacklog(), nil
+    ts := getOrNil(sessionID)
+    if ts == nil {
+        return "", errors.New("terminal not running")
+    }
+    return ts.snapshotBacklog(), nil
 }
 
 // CloseTerminal terminates the main terminal and cleans up.

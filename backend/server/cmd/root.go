@@ -42,24 +42,11 @@ func RunServer(cfg ServerConfig) {
 	// Sessions + cleanup hooks
 	// -------------------------------------------------------------------------
 	ms := session.New()
-
-	sameSite := http.SameSiteStrictMode
-	cookieDomain := ""
-	if env == "development" {
-		sameSite = http.SameSiteLaxMode
-		// Keep Domain empty in dev so browsers treat it as host-only.
-		// Explicit Domain=localhost is rejected by some browsers/proxies.
-	}
-
 	sm := session.NewManager(ms, session.SessionConfig{
 		Cookie: session.CookieConfig{
-			Secure:   env == "production", // HTTPS only in prod
-			SameSite: sameSite,
-			Domain:   cookieDomain,
-			// Path, HttpOnly stay default
+			Secure: env == "production",
 		},
 	})
-
 	sm.RegisterOnDelete(func(sess session.Session, reason session.DeleteReason) {
 		if sess.User.Username != "" {
 			if _, err := bridge.CallWithSession(&sess, "control", "shutdown", []string{string(reason)}); err != nil {

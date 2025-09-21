@@ -23,12 +23,12 @@ func StartContainerTerminal(sess *session.Session, containerID, shell string) er
 	}
 
 	var shellArgs []string
-	switch shell {
-	case "bash":
-		shellArgs = []string{"exec", "-it", "-e", "TERM=xterm-256color", containerID, "bash", "-il"}
-	default:
-		shellArgs = []string{"exec", "-it", "-e", "TERM=xterm-256color", containerID, shell, "-i"}
-	}
+    switch shell {
+    case "bash":
+        shellArgs = []string{"exec", "-it", "-e", "TERM=xterm-256color", containerID, "bash", "-il"}
+    default:
+        shellArgs = []string{"exec", "-it", "-e", "TERM=xterm-256color", containerID, shell, "-i"}
+    }
 	cmd := exec.Command("docker", shellArgs...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
 	ptmx, err := pty.Start(cmd)

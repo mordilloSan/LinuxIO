@@ -1,23 +1,10 @@
 // src/utils/axios.ts
 import axios, { AxiosError } from "axios";
 
-const isDev = import.meta.env.DEV;
-
-// Resolve API base URL.
-// - Dev: use VITE_API_URL if provided, otherwise rely on the Vite proxy (empty string).
-// - Prod: fall back to VITE_API_URL (typically "/") so requests stay same-origin.
-const devApi = import.meta.env.VITE_API_URL as string | undefined;
-const baseURL = isDev ? devApi || "" : import.meta.env.VITE_API_URL ?? "";
-
 const axiosInstance = axios.create({
-  baseURL,
+  baseURL: import.meta.env.VITE_API_URL,
   withCredentials: true,
 });
-
-if (isDev) {
-  // eslint-disable-next-line no-console
-  console.info(`[axios] baseURL: ${baseURL || "(vite proxy)"}`);
-}
 
 let isAuthRedirect = false;
 

@@ -53,8 +53,7 @@ var DefaultConfig = SessionConfig{
 	AbsoluteTimeout:      12 * time.Hour,
 	RefreshThrottle:      60 * time.Second,
 	SingleSessionPerUser: false,
-	GCInterval:           15 * time.Second,
-
+	GCInterval:           10 * time.Minute,
 	Cookie: CookieConfig{
 		Name:        "session_id",
 		Path:        "/",
@@ -110,14 +109,10 @@ type Manager struct {
 	onDelete   []func(Session, DeleteReason)
 
 	gcStop chan struct{}
-
-	absTimersMu sync.Mutex
-	absTimers   map[string]chan struct{}
 }
 
 func NewManager(store Store, cfg SessionConfig) *Manager {
-	m := &Manager{st: store, cfg: cfg, absTimers: make(map[string]chan struct{})}
-
+	m := &Manager{st: store, cfg: cfg}
 	// Fill defaults
 	if m.cfg.IdleTimeout == 0 {
 		m.cfg.IdleTimeout = DefaultConfig.IdleTimeout
@@ -152,12 +147,8 @@ func (m *Manager) Close() {
 	if m.gcStop != nil {
 		close(m.gcStop)
 	}
-	m.cancelAllAbsTimers()
-	// Stop memstore cleanup if available
-	if s, ok := any(m.st).(interface{ StopCleanup() }); ok {
-		s.StopCleanup()
-	}
 	logger.Infof("Session manager stopped")
+
 }
 
 // -----------------------------------------------------------------------------
@@ -207,12 +198,10 @@ func randID(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func generateSecret(n int) (string, error) {
+func generateSecret(n int) string {
 	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("rand secret: %w", err)
-	}
-	return hex.EncodeToString(b), nil
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func expiredIdle(s *Session, now time.Time) bool     { return now.After(s.Timing.IdleUntil) }
@@ -245,15 +234,12 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 	if idle.After(abs) {
 		idle = abs
 	}
-	sec, err := generateSecret(32)
-	if err != nil {
-		return nil, err
-	}
+
 	sess := &Session{
 		SessionID:    id,
 		User:         user,
 		Privileged:   privileged,
-		BridgeSecret: sec,
+		BridgeSecret: generateSecret(32),
 		Timing: Timing{
 			CreatedAt:     now,
 			LastAccess:    now,
@@ -272,9 +258,6 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 					continue
 				}
 				if os.User.Username == user.Username {
-					// NEW: cancel timer for the old session
-					m.cancelAbsTimer(os.SessionID)
-
 					_ = m.st.Delete(tok)
 					m.broadcastOnDelete(*os, ReasonManual)
 				}
@@ -289,7 +272,6 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 	if err := m.st.Commit(id, b, abs); err != nil {
 		return nil, err
 	}
-	m.scheduleAbsoluteExpiry(sess)
 
 	logger.Infof("Created session for user '%s'", user.Username)
 	return sess, nil
@@ -314,10 +296,6 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 	if !ok {
 		return nil
 	}
-
-	// Cancel absolute-expiry timer
-	m.cancelAbsTimer(id)
-
 	_ = m.st.Delete(id)
 	if s, err := m.decode(b); err == nil {
 		logger.Infof("Deleted session for user '%s' (reason=%s)", s.User.Username, r)
@@ -399,30 +377,22 @@ func (m *Manager) ValidateFromRequest(r *http.Request) (*Session, error) {
 	if err != nil || ck.Value == "" {
 		return nil, fmt.Errorf("missing or invalid %s", m.cfg.Cookie.Name)
 	}
-
 	s, err := m.GetSession(ck.Value)
 	if err != nil {
 		logger.Debugf("Access attempt with unknown %s: %s", m.cfg.Cookie.Name, ck.Value)
 		return nil, fmt.Errorf("unknown session ID")
 	}
-
 	now := time.Now()
-
-	// Absolute expiry: delete + broadcast (bridge shutdown) and fail auth.
 	if expiredAbsolute(s, now) {
 		_ = m.DeleteSession(s.SessionID, ReasonGCAbsolute)
 		logger.Warnf("Expired session (absolute) by '%s'", s.User.Username)
 		return nil, fmt.Errorf("session expired")
 	}
-
-	// Idle expiry: delete + broadcast (bridge shutdown) and fail auth.
 	if expiredIdle(s, now) {
 		_ = m.DeleteSession(s.SessionID, ReasonGCIdle)
 		logger.Warnf("Expired session (idle) by '%s'", s.User.Username)
 		return nil, fmt.Errorf("session expired")
 	}
-
-	// Still valid → refresh (respects RefreshThrottle) and continue.
 	_ = m.Refresh(s.SessionID)
 	return s, nil
 }
@@ -474,12 +444,10 @@ func (m *Manager) gcLoop() {
 				if err != nil {
 					continue
 				}
+				// absolute expiry likely already gone due to Commit(expiry),
+				// here we enforce idle expiry.
 				if expiredIdle(s, now) {
 					_ = m.st.Delete(tok)
-
-					// NEW: cancel absolute-expiry timer for this session
-					m.cancelAbsTimer(s.SessionID)
-
 					m.broadcastOnDelete(*s, ReasonGCIdle)
 					collected++
 				}
@@ -513,67 +481,4 @@ func (m *Manager) ActiveSessions() ([]*Session, error) {
 		out = append(out, s)
 	}
 	return out, nil
-}
-
-func (m *Manager) scheduleAbsoluteExpiry(s *Session) {
-	if s == nil {
-		return
-	}
-	sess := *s
-	d := time.Until(sess.Timing.AbsoluteUntil)
-	if d < 0 {
-		d = 0
-	}
-
-	t := time.NewTimer(d)
-	ch := make(chan struct{})
-
-	m.absTimersMu.Lock()
-	if old, ok := m.absTimers[sess.SessionID]; ok {
-		close(old)
-	}
-	m.absTimers[sess.SessionID] = ch
-	m.absTimersMu.Unlock()
-
-	go func(cancel <-chan struct{}) {
-		defer t.Stop()
-		select {
-		case <-t.C:
-			_ = m.st.Delete(sess.SessionID) // best effort: ok if already gone
-			m.absTimersMu.Lock()
-			delete(m.absTimers, sess.SessionID)
-			m.absTimersMu.Unlock()
-			logger.Infof("Deleted session for user '%s' (reason=%s)", sess.User.Username, ReasonGCAbsolute)
-			m.broadcastOnDelete(sess, ReasonGCAbsolute)
-		case <-cancel:
-			if !t.Stop() {
-				select {
-				case <-t.C:
-				default:
-				}
-			}
-			return
-		}
-	}(ch)
-}
-
-func (m *Manager) cancelAbsTimer(id string) {
-	if id == "" {
-		return
-	}
-	m.absTimersMu.Lock()
-	if ch, ok := m.absTimers[id]; ok {
-		delete(m.absTimers, id)
-		close(ch)
-	}
-	m.absTimersMu.Unlock()
-}
-
-func (m *Manager) cancelAllAbsTimers() {
-	m.absTimersMu.Lock()
-	for id, ch := range m.absTimers {
-		delete(m.absTimers, id)
-		close(ch)
-	}
-	m.absTimersMu.Unlock()
 }

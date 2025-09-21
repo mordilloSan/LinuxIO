@@ -20,7 +20,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/bridge/filebrowser"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers"
-	"github.com/mordilloSan/LinuxIO/bridge/terminal"
+	bridgeTerminal "github.com/mordilloSan/LinuxIO/bridge/terminal"
 	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
 	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
@@ -44,35 +44,22 @@ var wg sync.WaitGroup
 
 func main() {
 	var env string
-	var verbose, showVersion bool
+	var verbose bool
+	var showVersion bool
 
 	pflag.StringVar(&env, "env", "production", "environment (development|production)")
 	pflag.BoolVar(&verbose, "verbose", false, "enable verbose logs")
 	pflag.BoolVar(&showVersion, "version", false, "print version and exit")
 	pflag.Parse()
 
+	// accept BOTH: ./linuxio-bridge --version  AND  ./linuxio-bridge version
 	if showVersion || (len(pflag.Args()) > 0 && (pflag.Args()[0] == "version" || pflag.Args()[0] == "-version" || pflag.Args()[0] == "-v")) {
 		printBridgeVersion()
 		return
 	}
 
-	// optional fallback if someone runs bridge manually without flags
-	if env == "" {
-		if v := strings.TrimSpace(os.Getenv("LINUXIO_ENV")); v != "" {
-			env = v
-		} else {
-			env = "production"
-		}
-	}
-	env = strings.ToLower(strings.TrimSpace(env))
-
-	effectiveVerbose := verbose
-	if env == "production" {
-		effectiveVerbose = true
-	}
-
-	logger.Init(env, effectiveVerbose)
-	logger.Infof("Bridge starting in %s mode (verbose=%v)", env, effectiveVerbose)
+	env = strings.ToLower(env)
+	logger.Init(env, verbose)
 
 	if len(Sess.BridgeSecret) < 64 {
 		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
@@ -130,7 +117,7 @@ func main() {
 	handlers.RegisterAllHandlers(ShutdownChan)
 	// Register per-session terminal handlers and eagerly start the main shell
 	handlers.RegisterTerminalHandlers(Sess)
-	if err := terminal.StartTerminal(Sess); err != nil {
+	if err := bridgeTerminal.StartTerminal(Sess); err != nil {
 		logger.Warnf("Failed to start session terminal: %v", err)
 	}
 

@@ -8,9 +8,6 @@ GO_VERSION   = 1.25.0
 NODE_VERSION = 24
 CC ?= cc
 
-# Project root
-PROJECT_ROOT := $(abspath .)
-
 # Helpers
 VERBOSE_FLAG := $(if $(filter true 1 yes on,$(VERBOSE)),--verbose,)
 GO_INSTALL_DIR := $(HOME)/.go
@@ -260,11 +257,6 @@ build-bridge:
 		-X '$(MODULE_PATH)/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/version.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio-bridge ./bridge && \
-	# Ensure safe permissions for helper validation
-	chmod 0755 ../linuxio-bridge
-	# For dev we default to unprivileged; keep ownership on the dev user.
-	# If you prefer privileged dev runs, instead do:
-	# sudo chown root:root ../linuxio-bridge
 	echo "✅ Bridge built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
@@ -279,32 +271,11 @@ build-auth-helper:
 	$(CC) -Wall -Wextra -O2 \
     -fstack-protector-strong -D_FORTIFY_SOURCE=3 \
     -fPIE -pie -Wl,-z,relro -Wl,-z,now \
-    -o linuxio-auth-helper packaging/linuxio-auth-helper.c -lpam; \
+    -o linuxio-auth-helper packaging/linuxio-auth-helper.c -lpam
 	echo "✅ Session helper built successfully!"; \
 	echo "📄 Path: $(PWD)/linuxio-auth-helper"; \
 	echo " Size: $$(du -h linuxio-auth-helper | cut -f1)"; \
 	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"
-
-install-auth-helper: build-auth-helper
-	@echo "🔐 Installing linuxio-auth-helper to /usr/local/bin (sudo)..."
-	@sudo install -o root -g root -m 4755 linuxio-auth-helper /usr/local/bin/linuxio-auth-helper
-	@echo "✅ Installed helper with SUID root (4755)."
-
-check-auth-helper:
-	@echo "🔎 Checking linuxio-auth-helper..."
-	@if ! command -v linuxio-auth-helper >/dev/null 2>&1; then \
-		echo "❌ linuxio-auth-helper not found. Run: make install-auth-helper"; exit 1; \
-	fi
-	@perm="$$(stat -c '%a %u %g' /usr/local/bin/linuxio-auth-helper 2>/dev/null || echo)"; \
-	if [ -z "$$perm" ]; then echo "❌ cannot stat helper; run make install-auth-helper"; exit 1; fi; \
-	mode=$$(echo $$perm | awk '{print $$1}'); \
-	uid=$$(echo $$perm | awk '{print $$2}'); \
-	gid=$$(echo $$perm | awk '{print $$3}'); \
-	if [ "$$mode" != "4755" ] || [ "$$uid" != "0" ] || [ "$$gid" != "0" ]; then \
-		echo "❌ helper must be 4755 root:root (got mode=$$mode uid=$$uid gid=$$gid)"; \
-		echo "   Fix with: make install-auth-helper"; exit 1; \
-	fi
-	@echo "✅ Helper looks good (4755 root:root)."
 
 dev-prep:
 	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/assets"
@@ -314,7 +285,7 @@ dev-prep:
 	@touch "$(BACKEND_DIR)/server/web/frontend/favicon-1.png"
 	@touch "$(BACKEND_DIR)/server/web/frontend/assets/index-mock.js"
 
-dev: setup dev-prep build-bridge check-auth-helper
+dev: setup dev-prep build-bridge
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
 	set -euo pipefail
@@ -323,13 +294,12 @@ dev: setup dev-prep build-bridge check-auth-helper
 	if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echoctl; fi
 
 	# Start backend (flags) in background and remember PID
-	( export LINUXIO_PROJECT_ROOT="$(PROJECT_ROOT)"; \
-	  cd "$(BACKEND_DIR)" && \
-	  go run . run \
-	    -env development \
-	    $(VERBOSE_FLAG) \
-	    -vite-port=$(VITE_DEV_PORT) \
-	    -port=$(SERVER_PORT) \
+	( cd "$(BACKEND_DIR)" && \
+		go run . run \
+		  -env development \
+		  -verbose=$(VERBOSE) \
+		  -vite-port=$(VITE_DEV_PORT) \
+		  -port=$(SERVER_PORT) \
 	) &
 	BACK_PID=$$!
 
@@ -370,7 +340,7 @@ generate:
 run:
 	@./linuxio run \
 	  -env production \
-	  $(VERBOSE_FLAG) \
+	  -verbose=$(VERBOSE) \
 	  -vite-port=$(VITE_DEV_PORT) \
 	  -port=$(SERVER_PORT)
 
@@ -451,43 +421,41 @@ help:
 	@$(PRINTC) "$(COLOR_BLUE)🛠️  Available commands:$(COLOR_RESET)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Toolchain setup$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make ensure-node          $(COLOR_RESET) Install/activate Node $(NODE_VERSION) via nvm"
-	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go            $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
-	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint        $(COLOR_RESET) Install golangci-lint (built with local Go 1.25)"
-	@$(PRINTC) "$(COLOR_GREEN)    make setup                $(COLOR_RESET) Install frontend dependencies (npm i)"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-node      $(COLOR_RESET) Install/activate Node $(NODE_VERSION) via nvm"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go        $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go 1.25)"
+	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make lint                 $(COLOR_RESET) Run ESLint (frontend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make tsc                  $(COLOR_RESET) Type-check with TypeScript (frontend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make golint               $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make test                 $(COLOR_RESET) Run lint + tsc + golint"
+	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
+	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
+	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep             $(COLOR_RESET) Create placeholder frontend assets for dev server"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge         $(COLOR_RESET) Build Go bridge binary (repo root)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth-helper    $(COLOR_RESET) Build the PAM authentication helper (local file)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make install-auth-helper  $(COLOR_RESET) Install helper to /usr/local/bin with SUID root (sudo)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make check-auth-helper    $(COLOR_RESET) Verify helper is present and 4755 root:root"
-	@$(PRINTC) "$(COLOR_YELLOW)    make dev                  $(COLOR_RESET) Start backend (Go) + frontend (Vite)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"
+	@$(PRINTC) "$(COLOR_YELLOW)    make dev              $(COLOR_RESET) Start backend (Go) + frontend (Vite) with live reload"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Build$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite           $(COLOR_RESET) Build frontend static assets (Vite)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend        $(COLOR_RESET) Build Go backend binary"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build                $(COLOR_RESET) Build frontend + backend + bridge + helper"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth-helper $(COLOR_RESET) Build the PAM authentication helper"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Build frontend + backend + bridge"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make run                  $(COLOR_RESET) Run production backend server"
-	@$(PRINTC) "$(COLOR_RED)    make clean                $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
+	@$(PRINTC) "$(COLOR_YELLOW)    make run              $(COLOR_RESET) Run production backend server"
+	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Release flow$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make start-dev            $(COLOR_RESET) Create and switch to dev/<version> from main (pushes upstream)"
-	@$(PRINTC) "$(COLOR_GREEN)    make open-pr              $(COLOR_RESET) Open PR dev/<version> → main (uses gh)"
-	@$(PRINTC) "$(COLOR_GREEN)    make merge-release        $(COLOR_RESET) Wait for checks, merge PR to main, delete branch"
+	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> from main (pushes upstream)"
+	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR dev/<version> → main (uses gh)"
+	@$(PRINTC) "$(COLOR_GREEN)    make merge-release    $(COLOR_RESET) Wait for checks, merge PR to main, delete branch"
 	@$(PRINTC) ""
 
 .PHONY: \
     default help clean run \
-    build build-vite build-backend build-bridge build-auth-helper install-auth-helper check-auth-helper \
+    build build-vite build-backend build-bridge build-auth-helper \
 	dev dev-prep setup test lint tsc golint \
 	ensure-node ensure-go ensure-golint \
 	generate \
