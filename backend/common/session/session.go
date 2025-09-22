@@ -49,11 +49,11 @@ type CookieConfig struct {
 }
 
 var DefaultConfig = SessionConfig{
-	IdleTimeout:          3 * time.Minute,
+	IdleTimeout:          30 * time.Minute,
 	AbsoluteTimeout:      12 * time.Hour,
 	RefreshThrottle:      60 * time.Second,
 	SingleSessionPerUser: false,
-	GCInterval:           10 * time.Minute,
+	GCInterval:           15 * time.Second,
 	Cookie: CookieConfig{
 		Name:        "session_id",
 		Path:        "/",
