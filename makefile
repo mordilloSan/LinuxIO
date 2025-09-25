@@ -285,7 +285,7 @@ dev-prep:
 	@touch "$(BACKEND_DIR)/server/web/frontend/favicon-1.png"
 	@touch "$(BACKEND_DIR)/server/web/frontend/assets/index-mock.js"
 
-dev: setup dev-prep build-bridge
+dev: setup dev-prep
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
 	set -euo pipefail
@@ -334,7 +334,7 @@ dev: setup dev-prep build-bridge
 
 build: build-vite golint build-backend build-bridge build-auth-helper
 
-localinstall: build-backend build-bridge build-auth-helper
+localinstall:
 	./packaging/scripts/local_install.sh
 
 generate:

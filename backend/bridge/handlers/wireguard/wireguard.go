@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/skip2/go-qrcode"
@@ -495,9 +496,18 @@ func UpInterface(args []string) (any, error) {
 		logger.Errorf("UpInterface: invalid arguments: %v", args)
 		return nil, fmt.Errorf("usage: up_interface <name>")
 	}
-
 	name := args[0]
-	cmd := exec.Command("wg-quick", "up", name)
+	cmd := exec.Command("/usr/bin/wg-quick", "up", name)
+
+	// Ensure real/effective/saved IDs are 0 in the child
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+	}
+
+	// predictable env
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	cmd.Dir = "/"
+
 	out, err := cmd.CombinedOutput()
 
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,7 +21,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/bridge/filebrowser"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers"
-	bridgeTerminal "github.com/mordilloSan/LinuxIO/bridge/terminal"
+	"github.com/mordilloSan/LinuxIO/bridge/terminal"
 	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
 	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
@@ -43,6 +44,20 @@ var bridgeClosing = make(chan struct{})
 var wg sync.WaitGroup
 
 func main() {
+	// panic catcher, optional but nice
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "[bridge] PANIC: %v\n", r)
+			os.Exit(1)
+		}
+	}()
+
+	// Decide log file path (no logger needed)
+	uid := os.Getenv("LINUXIO_SESSION_UID")
+	sid := os.Getenv("LINUXIO_SESSION_ID")
+	dbgPath := fmt.Sprintf("/run/linuxio/%s/bridge-%s.dbg", uid, sid[:8])
+	_ = os.MkdirAll(filepath.Dir(dbgPath), 0o750)
+
 	var env string
 	var verbose bool
 	var showVersion bool
@@ -59,6 +74,18 @@ func main() {
 	}
 
 	env = strings.ToLower(env)
+
+	// DO THIS PRINT BEFORE any risky init paths
+	sockFromEnv := strings.TrimSpace(os.Getenv("LINUXIO_SOCKET_PATH"))
+	var socketPath string
+	if sockFromEnv != "" {
+		socketPath = sockFromEnv
+	} else {
+		socketPath = Sess.SocketPath()
+	}
+	fmt.Fprintf(os.Stderr, "[bridge] boot: euid=%d uid=%s gid=%s socket=%s\n",
+		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
+
 	logger.Init(env, verbose)
 
 	if len(Sess.BridgeSecret) < 64 {
@@ -81,15 +108,19 @@ func main() {
 
 	_ = syscall.Umask(0o077)
 
-	socketPath := Sess.SocketPath()
+	logger.Infof("[bridge] starting (uid=%d) sock=%s", os.Geteuid(), socketPath)
 
+	fmt.Fprintf(os.Stderr, "[bridge] creating socket: %s\n", socketPath)
 	listener, err := createAndOwnSocket(socketPath, Sess.User.UID)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "[bridge] create socket FAILED: %v\n", err)
 		logger.Error.Fatalf("create socket: %v", err)
 	}
+	fmt.Fprintf(os.Stderr, "[bridge] LISTENING on %s\n", socketPath)
 
 	// Ensure per-user config exists and is valid
 	userconfig.EnsureConfigReady(Sess.User.Username)
+	fmt.Fprintln(os.Stderr, "[bridge] userconfig ready")
 
 	// Kick off Navigator defaults application in the background.
 	if base := os.Getenv("LINUXIO_SERVER_BASE_URL"); base != "" {
@@ -117,7 +148,7 @@ func main() {
 	handlers.RegisterAllHandlers(ShutdownChan)
 	// Register per-session terminal handlers and eagerly start the main shell
 	handlers.RegisterTerminalHandlers(Sess)
-	if err := bridgeTerminal.StartTerminal(Sess); err != nil {
+	if err := terminal.StartTerminal(Sess); err != nil {
 		logger.Warnf("Failed to start session terminal: %v", err)
 	}
 
@@ -307,38 +338,59 @@ func handleMainRequest(conn net.Conn, id string) {
 }
 
 func createAndOwnSocket(socketPath, uidStr string) (net.Listener, error) {
+	logger.Debugf("[socket] unlink-if-exists %s", socketPath)
 	_ = os.Remove(socketPath)
 
+	// Sanity-check parent directory exists (fail fast with a clear error)
+	parent := filepath.Dir(socketPath)
+	if st, err := os.Stat(parent); err != nil {
+		logger.Errorf("[socket] parent dir not accessible: %s: %v", parent, err)
+		return nil, fmt.Errorf("parent dir %s not accessible: %w", parent, err)
+	} else if !st.IsDir() {
+		logger.Errorf("[socket] parent is not a directory: %s", parent)
+		return nil, fmt.Errorf("parent path %s is not a directory", parent)
+	}
+
+	logger.Debugf("[socket] net.Listen(unix, %s)", socketPath)
 	l, err := net.Listen("unix", socketPath)
 	if err != nil {
+		logger.Errorf("[socket] listen FAILED on %s: %v", socketPath, err)
 		return nil, fmt.Errorf("failed to listen on socket: %w", err)
 	}
+	logger.Debugf("[socket] listen OK: %s", socketPath)
 
 	if ul, ok := l.(*net.UnixListener); ok {
 		ul.SetUnlinkOnClose(true)
 	}
 
-	// perms first, then ownership
 	if err := os.Chmod(socketPath, 0o660); err != nil {
+		logger.Errorf("[socket] chmod 0660 FAILED on %s: %v", socketPath, err)
 		_ = l.Close()
 		_ = os.Remove(socketPath)
 		return nil, fmt.Errorf("chmod: %w", err)
 	}
+	logger.Debugf("[socket] chmod 0660 OK: %s", socketPath)
 
+	// If running as root, chown socket to <uid>:linuxio so server (group linuxio) can connect.
 	if os.Geteuid() == 0 {
 		uid, err := strconv.Atoi(uidStr)
 		if err != nil {
+			logger.Errorf("[socket] atoi uid FAILED (%q): %v", uidStr, err)
 			_ = l.Close()
 			_ = os.Remove(socketPath)
 			return nil, fmt.Errorf("atoi uid: %w", err)
 		}
-		gid := resolveLinuxioGID() // or parse gidStr if you want to use the passed-in value
+		gid := resolveLinuxioGID()
 		if err := os.Chown(socketPath, uid, gid); err != nil {
+			logger.Errorf("[socket] chown %s to %d:%d FAILED: %v", socketPath, uid, gid, err)
 			_ = l.Close()
 			_ = os.Remove(socketPath)
 			return nil, fmt.Errorf("chown: %w", err)
 		}
+		logger.Debugf("[socket] chown OK (uid=%d gid=%d): %s", uid, gid, socketPath)
 	}
+
+	logger.Infof("[socket] LISTENING on %s", socketPath)
 	return l, nil
 }
 

@@ -73,26 +73,27 @@ func callViaSocket(socketPath, reqType, command string, args []string, secret st
 // StartBridge launches linuxio-bridge via the setuid helper.
 // The helper handles PAM, privilege mode (root vs user), and double-forking.
 // We only wait for a single "OK\n" line and then return.
-func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) error {
+// StartBridge launches linuxio-bridge via the setuid helper.
+// Returns (privilegedMode, error). privilegedMode reflects the helper's decision.
+func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
 	// Resolve bridge binary (helper also validates)
 	if bridgeBinary == "" {
 		bridgeBinary = GetBridgeBinaryPath("", envMode)
 	}
 	if bridgeBinary == "" {
-		return errors.New("bridge binary not found (looked beside server and in PATH)")
+		return false, errors.New("bridge binary not found (looked beside server and in PATH)")
 	}
 
 	helperPath := getAuthHelperPath()
 	if helperPath == "" {
-		return errors.New("auth helper not found; expected /usr/local/bin/linuxio-auth-helper or LINUXIO_PAM_HELPER override")
+		return false, errors.New("auth helper not found; expected /usr/local/bin/linuxio-auth-helper or LINUXIO_PAM_HELPER override")
 	}
 
-	// Build env for the helper
+	// Build env for the helper (helper now decides privilege itself)
 	env := append(os.Environ(),
 		"LINUXIO_TARGET_USER="+sess.User.Username,
 		"LINUXIO_ENV="+strings.ToLower(envMode),
 		"LINUXIO_BRIDGE_BIN="+bridgeBinary,
-		"LINUXIO_PRIV="+map[bool]string{true: "1", false: "0"}[sess.Privileged],
 
 		"LINUXIO_SESSION_ID="+sess.SessionID,
 		"LINUXIO_SESSION_USER="+sess.User.Username,
@@ -112,19 +113,19 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("helper stdout pipe: %w", err)
+		return false, fmt.Errorf("helper stdout pipe: %w", err)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return fmt.Errorf("helper stderr pipe: %w", err)
+		return false, fmt.Errorf("helper stderr pipe: %w", err)
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return fmt.Errorf("helper stdin pipe: %w", err)
+		return false, fmt.Errorf("helper stdin pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start helper: %w", err)
+		return false, fmt.Errorf("start helper: %w", err)
 	}
 
 	// Send password (one line)
@@ -133,53 +134,37 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		_, _ = io.WriteString(stdin, password+"\n")
 	}()
 
-	// Wait for single "OK\n" with timeout
-	okCh := make(chan string, 1)
-	errCh := make(chan error, 1)
-	seCh := make(chan string, 1)
+	// Read first line = MODE=...
+	br := bufio.NewReader(stdout)
 
-	go func() {
-		br := bufio.NewReader(stdout)
-		line, rerr := br.ReadString('\n')
-		if rerr != nil {
-			errCh <- rerr
-			return
+	readLine := func(timeout time.Duration) (string, error) {
+		type res struct {
+			s string
+			e error
 		}
-		okCh <- strings.TrimSpace(line)
-	}()
+		ch := make(chan res, 1)
+		go func() {
+			line, e := br.ReadString('\n')
+			ch <- res{line, e}
+		}()
+		select {
+		case r := <-ch:
+			return strings.TrimSpace(r.s), r.e
+		case <-time.After(timeout):
+			return "", fmt.Errorf("timeout waiting for helper line")
+		}
+	}
 
-	// capture stderr for diagnostics
+	// capture stderr for diagnostics (non-blocking)
+	seCh := make(chan string, 1)
 	go func() {
 		b, _ := io.ReadAll(stderr)
 		seCh <- strings.TrimSpace(string(b))
 	}()
 
-	select {
-	case line := <-okCh:
-		if line != "OK" {
-			var serr string
-			select {
-			case serr = <-seCh:
-			case <-time.After(200 * time.Millisecond):
-			}
-			_ = cmd.Wait()
-			if serr != "" {
-				return fmt.Errorf("helper did not confirm: %q (%s)", line, serr)
-			}
-			return fmt.Errorf("helper did not confirm: %q", line)
-		}
-	case e := <-errCh:
-		var serr string
-		select {
-		case serr = <-seCh:
-		default:
-		}
-		_ = cmd.Wait()
-		if serr != "" {
-			return fmt.Errorf("helper error: %v (%s)", e, serr)
-		}
-		return fmt.Errorf("helper error: %v", e)
-	case <-time.After(3 * time.Second):
+	// Expect MODE line, then OK
+	modeLine, e1 := readLine(2 * time.Second)
+	if e1 != nil && e1 != io.EOF {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		var serr string
@@ -188,9 +173,62 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		default:
 		}
 		if serr != "" {
-			return fmt.Errorf("helper timeout waiting for OK: %s", serr)
+			return false, fmt.Errorf("helper mode read error: %v (%s)", e1, serr)
 		}
-		return errors.New("helper timeout waiting for OK")
+		return false, fmt.Errorf("helper mode read error: %v", e1)
+	}
+
+	privileged := false
+	if strings.HasPrefix(modeLine, "MODE=") {
+		if strings.EqualFold(modeLine, "MODE=privileged") {
+			privileged = true
+		} else {
+			privileged = false
+		}
+		// read the next line for OK
+		okLine, e2 := readLine(2 * time.Second)
+		if e2 != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			var serr string
+			select {
+			case serr = <-seCh:
+			default:
+			}
+			if serr != "" {
+				return false, fmt.Errorf("helper did not confirm OK: %v (%s)", e2, serr)
+			}
+			return false, fmt.Errorf("helper did not confirm OK: %v", e2)
+		}
+		if okLine != "OK" {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			var serr string
+			select {
+			case serr = <-seCh:
+			default:
+			}
+			if serr != "" {
+				return false, fmt.Errorf("helper did not confirm: %q (%s)", okLine, serr)
+			}
+			return false, fmt.Errorf("helper did not confirm: %q", okLine)
+		}
+	} else if modeLine == "OK" {
+		// Backward-compat: old helper prints only OK, no MODE.
+		privileged = false
+	} else {
+		// Unexpected first line
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		var serr string
+		select {
+		case serr = <-seCh:
+		default:
+		}
+		if serr != "" {
+			return false, fmt.Errorf("unexpected helper output: %q (%s)", modeLine, serr)
+		}
+		return false, fmt.Errorf("unexpected helper output: %q", modeLine)
 	}
 
 	// Reap the parent helper (nanny owns bridge)
@@ -199,8 +237,8 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	}
 
 	logger.Infof("Bridge launch acknowledged (session=%s, user=%s, privileged=%v)",
-		sess.SessionID, sess.User.Username, sess.Privileged)
-	return nil
+		sess.SessionID, sess.User.Username, privileged)
+	return privileged, nil
 }
 
 // GetBridgeBinaryPath returns an absolute or name-only path for the bridge.
