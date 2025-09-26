@@ -21,14 +21,9 @@ import (
 // Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
 	socketPath := sess.SocketPath()
-	return callViaSocket(socketPath, reqType, command, args, sess.BridgeSecret, sess.SessionID)
-}
 
-func callViaSocket(socketPath, reqType, command string, args []string, secret string, sessionID string) ([]byte, error) {
-	req := ipc.Request{Type: reqType, Command: command, Secret: secret, Args: args, SessionID: sessionID}
+	req := ipc.Request{Type: reqType, Command: command, Secret: sess.BridgeSecret, Args: args, SessionID: sess.SessionID}
 
-	// Be tolerant to a just-started bridge: retry for a short window when
-	// the socket may not exist yet or not accept connections immediately.
 	var conn net.Conn
 	var err error
 	const (
@@ -78,7 +73,7 @@ func callViaSocket(socketPath, reqType, command string, args []string, secret st
 func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
 	// Resolve bridge binary (helper also validates)
 	if bridgeBinary == "" {
-		bridgeBinary = GetBridgeBinaryPath("", envMode)
+		bridgeBinary = GetBridgeBinaryPath("")
 	}
 	if bridgeBinary == "" {
 		return false, errors.New("bridge binary not found (looked beside server and in PATH)")
@@ -94,13 +89,15 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		"LINUXIO_TARGET_USER="+sess.User.Username,
 		"LINUXIO_ENV="+strings.ToLower(envMode),
 		"LINUXIO_BRIDGE_BIN="+bridgeBinary,
-
 		"LINUXIO_SESSION_ID="+sess.SessionID,
 		"LINUXIO_SESSION_USER="+sess.User.Username,
 		"LINUXIO_SESSION_UID="+sess.User.UID,
 		"LINUXIO_SESSION_GID="+sess.User.GID,
 		"LINUXIO_BRIDGE_SECRET="+sess.BridgeSecret,
 	)
+	if verbose {
+		env = append(env, "LINUXIO_VERBOSE=1")
+	}
 	if v := os.Getenv("LINUXIO_SERVER_BASE_URL"); v != "" {
 		env = append(env, "LINUXIO_SERVER_BASE_URL="+v)
 	}
@@ -242,7 +239,7 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 }
 
 // GetBridgeBinaryPath returns an absolute or name-only path for the bridge.
-func GetBridgeBinaryPath(override, envMode string) string {
+func GetBridgeBinaryPath(override string) string {
 	const binaryName = "linuxio-bridge"
 
 	if override != "" && isExec(override) {

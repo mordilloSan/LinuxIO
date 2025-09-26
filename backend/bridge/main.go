@@ -44,20 +44,6 @@ var bridgeClosing = make(chan struct{})
 var wg sync.WaitGroup
 
 func main() {
-	// panic catcher, optional but nice
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "[bridge] PANIC: %v\n", r)
-			os.Exit(1)
-		}
-	}()
-
-	// Decide log file path (no logger needed)
-	uid := os.Getenv("LINUXIO_SESSION_UID")
-	sid := os.Getenv("LINUXIO_SESSION_ID")
-	dbgPath := fmt.Sprintf("/run/linuxio/%s/bridge-%s.dbg", uid, sid[:8])
-	_ = os.MkdirAll(filepath.Dir(dbgPath), 0o750)
-
 	var env string
 	var verbose bool
 	var showVersion bool
@@ -67,6 +53,16 @@ func main() {
 	pflag.BoolVar(&showVersion, "version", false, "print version and exit")
 	pflag.Parse()
 
+	// If --verbose wasn’t passed, allow env to set a default.
+	if !pflag.Lookup("verbose").Changed {
+		if s := strings.TrimSpace(os.Getenv("LINUXIO_VERBOSE")); s != "" {
+			switch strings.ToLower(s) {
+			case "1", "true", "yes", "on":
+				verbose = true
+			}
+		}
+	}
+
 	// accept BOTH: ./linuxio-bridge --version  AND  ./linuxio-bridge version
 	if showVersion || (len(pflag.Args()) > 0 && (pflag.Args()[0] == "version" || pflag.Args()[0] == "-version" || pflag.Args()[0] == "-v")) {
 		printBridgeVersion()
@@ -75,7 +71,6 @@ func main() {
 
 	env = strings.ToLower(env)
 
-	// DO THIS PRINT BEFORE any risky init paths
 	sockFromEnv := strings.TrimSpace(os.Getenv("LINUXIO_SOCKET_PATH"))
 	var socketPath string
 	if sockFromEnv != "" {
@@ -127,7 +122,7 @@ func main() {
 		go func(baseURL string) {
 			// Try a few times with small backoff to ride out races.
 			var err error
-			for i := 0; i < 8; i++ {
+			for i := range 8 {
 				err = filebrowser.ApplyNavigatorDefaults(baseURL, Sess)
 				if err == nil {
 					return

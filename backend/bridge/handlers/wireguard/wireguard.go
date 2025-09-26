@@ -529,7 +529,17 @@ func DownInterface(args []string) (any, error) {
 	}
 
 	name := args[0]
-	cmd := exec.Command("wg-quick", "down", name)
+	cmd := exec.Command("/usr/bin/wg-quick", "down", name)
+
+	// Ensure real/effective/saved IDs are 0 in the child
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+	}
+
+	// predictable env
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	cmd.Dir = "/"
+
 	out, err := cmd.CombinedOutput()
 
 	if err != nil {

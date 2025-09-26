@@ -39,7 +39,7 @@ func (h *Handlers) Login(c *gin.Context) {
 		return
 	}
 
-	bridgeBinary := bridge.GetBridgeBinaryPath(h.BridgeBinaryOverride, h.Env)
+	bridgeBinary := bridge.GetBridgeBinaryPath(h.BridgeBinaryOverride)
 	privileged, err := bridge.StartBridge(sess, req.Password, h.Env, h.Verbose, bridgeBinary)
 	if err != nil {
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
