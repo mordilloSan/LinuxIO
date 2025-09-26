@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>   // strcasecmp
 #include <syslog.h>
 #include <stdarg.h>
 
@@ -42,8 +43,7 @@ static void secure_bzero(void *p, size_t n) {
 #endif
 
 // -------- PAM conversation ----
-static int pam_conv_func(int n, const struct pam_message **msg,
-                         struct pam_response **resp, void *appdata_ptr) {
+static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, void *appdata_ptr) {
   const char *password = (const char*)appdata_ptr;
   struct pam_response *r = calloc((size_t)n, sizeof(*r));
   if (!r) return PAM_CONV_ERR;
@@ -227,7 +227,6 @@ static int redirect_bridge_output(uid_t owner_uid, gid_t linuxio_gid, const char
   }
   if (fchown(fd, owner_uid, linuxio_gid) != 0) {
     journal_errorf("fchown(%s) failed: %m", path);
-    // non-fatal
   }
 
   if (dup2(fd, STDOUT_FILENO) < 0) { journal_errorf("dup2 stdout->file failed: %m"); close(fd); return -1; }
@@ -405,6 +404,18 @@ int main(void) {
   const char *server_base = getenv("LINUXIO_SERVER_BASE_URL");
   const char *server_cert = getenv("LINUXIO_SERVER_CERT");
 
+  // Verbose preference from server
+  const char *verbose_in = getenv("LINUXIO_VERBOSE");
+  int verbose = 0;
+  if (verbose_in && *verbose_in) {
+    if (!strcasecmp(verbose_in, "1") ||
+        !strcasecmp(verbose_in, "true") ||
+        !strcasecmp(verbose_in, "yes") ||
+        !strcasecmp(verbose_in, "on")) {
+      verbose = 1;
+    }
+  }
+
   // Now wipe the password; we no longer need it
   if (password) { secure_bzero(password, strlen(password)); free(password); password = NULL; }
 
@@ -471,8 +482,11 @@ int main(void) {
         if (chdir(pw->pw_dir) != 0) { perror("chdir"); _exit(127); }
       }
 
+      // Also forward verbosity to the bridge via env
+      if (verbose) setenv("LINUXIO_VERBOSE", "1", 1);
+
       // Redirect bridge stdout/stderr to journald (or file fallback)
-      uid_t owner_uid = pw->pw_uid;
+      uid_t owner_uid = pw->pw_uid; // keep logs under the user's /run/linuxio/<uid> even in privileged mode
       if (redirect_bridge_output(owner_uid, linuxio_gid, sess_id) != 0) {
         int devnull = open("/dev/null", O_WRONLY);
         if (devnull >= 0) {
@@ -482,7 +496,15 @@ int main(void) {
         }
       }
 
-      char *const argv_child[] = { (char*)bridge_path, "--env", (char*)envmode, NULL };
+      // Build argv: linuxio-bridge --env <env> [--verbose]
+      char *argv_child[6];
+      int ai = 0;
+      argv_child[ai++] = (char*)bridge_path;
+      argv_child[ai++] = "--env";
+      argv_child[ai++] = (char*)envmode;
+      if (verbose) argv_child[ai++] = "--verbose";
+      argv_child[ai++] = NULL;
+
       execv(bridge_path, argv_child);
       perror("exec linuxio-bridge");
       _exit(127);

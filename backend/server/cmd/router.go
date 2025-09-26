@@ -116,6 +116,10 @@ func mountProductionSPA(r *gin.Engine, ui fs.FS) {
 	r.GET("/manifest.json", func(c *gin.Context) { serveFileFS(c, ui, "manifest.json") })
 	r.GET("/favicon.ico", func(c *gin.Context) { serveFileFS(c, ui, "favicon.ico") })
 	r.GET("/favicon-5.png", func(c *gin.Context) { serveFileFS(c, ui, "favicon-5.png") })
+	r.GET("/favicon-4.png", func(c *gin.Context) { serveFileFS(c, ui, "favicon-4.png") })
+	r.GET("/favicon-3.png", func(c *gin.Context) { serveFileFS(c, ui, "favicon-3.png") })
+	r.GET("/favicon-2.png", func(c *gin.Context) { serveFileFS(c, ui, "favicon-2.png") })
+	r.GET("/favicon-1.png", func(c *gin.Context) { serveFileFS(c, ui, "favicon-1.png") })
 
 	// Root + SPA fallback
 	r.GET("/", func(c *gin.Context) { serveFileFS(c, ui, "index.html") })
