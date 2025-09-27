@@ -66,9 +66,6 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 }
 
 // StartBridge launches linuxio-bridge via the setuid helper.
-// The helper handles PAM, privilege mode (root vs user), and double-forking.
-// We only wait for a single "OK\n" line and then return.
-// StartBridge launches linuxio-bridge via the setuid helper.
 // Returns (privilegedMode, error). privilegedMode reflects the helper's decision.
 func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
 	// Resolve bridge binary (helper also validates)
@@ -116,20 +113,16 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	if err != nil {
 		return false, fmt.Errorf("helper stderr pipe: %w", err)
 	}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return false, fmt.Errorf("helper stdin pipe: %w", err)
+	// If your helper expects one line of password (or an empty line), just:
+	if password == "" {
+		cmd.Stdin = strings.NewReader("\n") // harmless if helper ignores it
+	} else {
+		cmd.Stdin = strings.NewReader(password + "\n")
 	}
 
 	if err := cmd.Start(); err != nil {
 		return false, fmt.Errorf("start helper: %w", err)
 	}
-
-	// Send password (one line)
-	go func() {
-		defer func() { _ = stdin.Close() }()
-		_, _ = io.WriteString(stdin, password+"\n")
-	}()
 
 	// Read first line = MODE=...
 	br := bufio.NewReader(stdout)
@@ -210,9 +203,6 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 			}
 			return false, fmt.Errorf("helper did not confirm: %q", okLine)
 		}
-	} else if modeLine == "OK" {
-		// Backward-compat: old helper prints only OK, no MODE.
-		privileged = false
 	} else {
 		// Unexpected first line
 		_ = cmd.Process.Kill()

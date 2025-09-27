@@ -71,6 +71,17 @@ func main() {
 
 	env = strings.ToLower(env)
 
+	// Early-fatal checks → use stderr (logger not initialized yet)
+	if len(Sess.BridgeSecret) < 64 {
+		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
+		os.Exit(1)
+	}
+	if Sess.User.UID == "" {
+		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
+		os.Exit(1)
+	}
+
+	// Resolve socket path (safe to do pre-init)
 	sockFromEnv := strings.TrimSpace(os.Getenv("LINUXIO_SOCKET_PATH"))
 	var socketPath string
 	if sockFromEnv != "" {
@@ -78,20 +89,12 @@ func main() {
 	} else {
 		socketPath = Sess.SocketPath()
 	}
-	fmt.Fprintf(os.Stderr, "[bridge] boot: euid=%d uid=%s gid=%s socket=%s\n",
-		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
 
+	// Initialize logger ASAP
 	logger.Init(env, verbose)
 
-	if len(Sess.BridgeSecret) < 64 {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
-		os.Exit(1)
-	}
-
-	if Sess.User.UID == "" {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
-		os.Exit(1)
-	}
+	logger.Infof("[bridge] boot: euid=%d uid=%s gid=%s socket=%s",
+		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
 
 	if pem := strings.TrimSpace(os.Getenv("LINUXIO_SERVER_CERT")); pem != "" {
 		if err := web.SetRootPoolFromPEM([]byte(pem)); err != nil {
@@ -102,20 +105,17 @@ func main() {
 	}
 
 	_ = syscall.Umask(0o077)
-
 	logger.Infof("[bridge] starting (uid=%d) sock=%s", os.Geteuid(), socketPath)
 
-	fmt.Fprintf(os.Stderr, "[bridge] creating socket: %s\n", socketPath)
 	listener, err := createAndOwnSocket(socketPath, Sess.User.UID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[bridge] create socket FAILED: %v\n", err)
 		logger.Error.Fatalf("create socket: %v", err)
 	}
-	fmt.Fprintf(os.Stderr, "[bridge] LISTENING on %s\n", socketPath)
+	logger.Infof("[bridge] LISTENING on %s", socketPath)
 
 	// Ensure per-user config exists and is valid
 	userconfig.EnsureConfigReady(Sess.User.Username)
-	fmt.Fprintln(os.Stderr, "[bridge] userconfig ready")
+	logger.Debugf("[bridge] userconfig ready")
 
 	// Kick off Navigator defaults application in the background.
 	if base := os.Getenv("LINUXIO_SERVER_BASE_URL"); base != "" {
@@ -141,6 +141,7 @@ func main() {
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)
+
 	// Register per-session terminal handlers and eagerly start the main shell
 	handlers.RegisterTerminalHandlers(Sess)
 	if err := terminal.StartTerminal(Sess); err != nil {
@@ -167,7 +168,7 @@ func main() {
 				case <-acceptDone:
 					return
 				default:
-					logger.Warnf(" Accept failed: %v", err)
+					logger.Warnf("Accept failed: %v", err)
 					time.Sleep(50 * time.Millisecond) // avoid tight loop during teardown
 				}
 				continue
@@ -240,24 +241,24 @@ func handleMainRequest(conn net.Conn, id string) {
 		if err == io.EOF {
 			logger.Debugf("🔁 [%s] connection closed without data", id)
 		} else {
-			logger.Warnf(" [%s] invalid JSON from client: %v", id, err)
+			logger.Warnf("[%s] invalid JSON from client: %v", id, err)
 		}
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
 		return
 	}
 
 	if req.Secret != Sess.BridgeSecret {
-		logger.Warnf(" [%s] invalid secret", id)
+		logger.Warnf("[%s] invalid secret", id)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
 		return
 	}
 	if req.SessionID != Sess.SessionID {
-		logger.Warnf(" [%s] session mismatch: got %q want %q", id, req.SessionID, Sess.SessionID)
+		logger.Warnf("[%s] session mismatch: got %q want %q", id, req.SessionID, Sess.SessionID)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "session mismatch"})
 		return
 	}
 	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
-		logger.Warnf(" [%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
+		logger.Warnf("[%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})
 		return
 	}
@@ -266,13 +267,13 @@ func handleMainRequest(conn net.Conn, id string) {
 
 	group, found := handlers.HandlersByType[req.Type]
 	if !found || group == nil {
-		logger.Warnf(" Unknown type: %s", req.Type)
+		logger.Warnf("Unknown type: %s", req.Type)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
 		return
 	}
 	handler, ok := group[req.Command]
 	if !ok {
-		logger.Warnf(" Unknown command for type %s: %s", req.Type, req.Command)
+		logger.Warnf("Unknown command for type %s: %s", req.Type, req.Command)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
 		return
 	}
@@ -297,7 +298,7 @@ func handleMainRequest(conn net.Conn, id string) {
 	select {
 	case r := <-done:
 		if r.err != nil {
-			logger.Errorf(" %s %s failed: %v", req.Type, req.Command, r.err)
+			logger.Errorf("%s %s failed: %v", req.Type, req.Command, r.err)
 			_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
 			return
 		}

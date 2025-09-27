@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <sys/select.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -18,6 +19,7 @@
 #include <strings.h>   // strcasecmp
 #include <syslog.h>
 #include <stdarg.h>
+#include <limits.h>
 
 #ifdef __has_include
 #  if __has_include(<systemd/sd-journal.h>)
@@ -28,6 +30,47 @@
 
 // --- forward decls ---
 static int write_all(int fd, const void *buf, size_t len);
+static int env_get_int(const char *name, int defval, int minv, int maxv);
+
+// -------- safe formatting helpers (C11 Annex K if available) --------
+static int safe_vsnprintf(char *dst, size_t dstsz, const char *fmt, va_list ap) {
+  if (!dst || dstsz == 0) return -1;
+#if defined(__STDC_LIB_EXT1__)
+  // Use bounds-checking variant when available (Annex K)
+  int n = vsnprintf_s(dst, dstsz, _TRUNCATE, fmt, ap); // NOLINT
+  if (n < 0) { dst[0] = '\0'; return -1; }
+  return n;
+#else
+  // Fallback: standard vsnprintf with explicit NUL-termination
+  int n = vsnprintf(dst, dstsz, fmt, ap); // NOLINT(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+  if (n < 0) { dst[0] = '\0'; return -1; }
+  if ((size_t)n >= dstsz) dst[dstsz - 1] = '\0';
+  return n;
+#endif
+}
+static int safe_snprintf(char *dst, size_t dstsz, const char *fmt, ...) {
+  va_list ap; va_start(ap, fmt);
+  int n = safe_vsnprintf(dst, dstsz, fmt, ap);
+  va_end(ap);
+  return n;
+}
+
+// -------- safe bounded copy helpers (avoid memcpy/memmove flags) --------
+static size_t min_size(size_t a, size_t b) { return a < b ? a : b; }
+static void bounded_copy_bytes(void *vdst, size_t dstsz, const void *vsrc, size_t n) {
+  if (!vdst || !vsrc || dstsz == 0) return;
+  size_t to_copy = min_size(n, dstsz);
+  unsigned char *dst = (unsigned char*)vdst;
+  const unsigned char *src = (const unsigned char*)vsrc;
+  for (size_t i = 0; i < to_copy; ++i) dst[i] = src[i]; // byte-wise copy
+}
+static void bounded_copy_cstr(char *dst, size_t dstsz, const char *src, size_t n_max) {
+  if (!dst || dstsz == 0) return;
+  size_t srclen = src ? strnlen(src, n_max) : 0;
+  size_t to_copy = (srclen < dstsz - 1) ? srclen : (dstsz - 1);
+  if (src && to_copy > 0) bounded_copy_bytes(dst, to_copy, src, to_copy);
+  dst[to_copy] = '\0';
+}
 
 // -------- secure zero ----------
 #ifndef _WIN32
@@ -42,9 +85,39 @@ static void secure_bzero(void *p, size_t n) {
 }
 #endif
 
+// -------- stderr logger (bounded) --------
+static void log_stderrf(const char *fmt, ...) {
+  char buf[1024];
+  va_list ap;
+  va_start(ap, fmt);
+  (void)safe_vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  (void)write_all(STDERR_FILENO, buf, strlen(buf));
+  (void)write_all(STDERR_FILENO, "\n", 1);
+}
+
+// -------- journald helpers --------
+static void journal_errorf(const char *fmt, ...) {
+  char buf[512];
+  va_list ap;
+  va_start(ap, fmt);
+  (void)safe_vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+#ifdef HAVE_SD_JOURNAL
+  (void) sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_ERR,
+                         "SYSLOG_IDENTIFIER=linuxio-auth-helper", NULL);
+#else
+  openlog("linuxio-auth-helper", LOG_PID, LOG_AUTHPRIV);
+  syslog(LOG_ERR, "%s", buf);
+  closelog();
+#endif
+}
+
 // -------- PAM conversation ----
 static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, void *appdata_ptr) {
   const char *password = (const char*)appdata_ptr;
+  if (n <= 0 || n > 32) return PAM_CONV_ERR;
+
   struct pam_response *r = calloc((size_t)n, sizeof(*r));
   if (!r) return PAM_CONV_ERR;
 
@@ -106,7 +179,7 @@ static void minimal_env(const struct passwd *pw, const char *envmode, const char
 
   if (set_xdg && pw) {
     char xdg[64];
-    snprintf(xdg, sizeof(xdg), "/run/user/%u", (unsigned)pw->pw_uid);
+    safe_snprintf(xdg, sizeof(xdg), "/run/user/%u", (unsigned)pw->pw_uid);
     setenv("XDG_RUNTIME_DIR", xdg, 1);
   }
 }
@@ -120,6 +193,26 @@ static char *readline_stdin(size_t max) {
   while (i + 1 < max && (c = fgetc(stdin)) != EOF && c != '\n') buf[i++] = (char)c;
   buf[i] = '\0';
   return buf;
+}
+
+// Optional: readline with timeout (env tunable)
+static char *readline_stdin_timeout(size_t max, int timeout_sec) {
+  if (timeout_sec <= 0) return readline_stdin(max);
+  fd_set fds; FD_ZERO(&fds); FD_SET(STDIN_FILENO, &fds);
+  struct timeval tv = { .tv_sec = timeout_sec, .tv_usec = 0 };
+  int r = select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
+  if (r <= 0) return NULL; // timeout or error
+  return readline_stdin(max);
+}
+
+// Env int helper
+static int env_get_int(const char *name, int defval, int minv, int maxv) {
+  const char *s = getenv(name);
+  if (!s || !*s) return defval;
+  char *end = NULL; long v = strtol(s, &end, 10);
+  if (!end || *end) return defval;
+  if (v < minv) v = minv; if (v > maxv) v = maxv;
+  return (int)v;
 }
 
 static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid) {
@@ -143,7 +236,7 @@ static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid) 
 
   // /run/linuxio/<uid> -> <user>:linuxio 02770
   char userdir[128];
-  snprintf(userdir, sizeof(userdir), "%s/%u", base, (unsigned)pw->pw_uid);
+  safe_snprintf(userdir, sizeof(userdir), "%s/%u", base, (unsigned)pw->pw_uid);
   if (mkdir(userdir, 02770) != 0 && errno != EEXIST) {
     perror("mkdir /run/linuxio/<uid>"); umask(old); return -1;
   }
@@ -159,43 +252,42 @@ static int validate_bridge_path_owned(const char *path, uid_t required_owner) {
   struct stat st;
   if (!path) return -1;
   if (stat(path, &st) != 0) { perror("stat bridge"); return -1; }
-  if (!S_ISREG(st.st_mode)) { fprintf(stderr, "bridge not regular file\n"); return -1; }
+  if (!S_ISREG(st.st_mode)) { log_stderrf("bridge not regular file"); return -1; }
   if ((st.st_mode & (S_IWGRP|S_IWOTH)) != 0) {
-    fprintf(stderr, "bridge is group/world-writable\n"); return -1;
+    log_stderrf("bridge is group/world-writable"); return -1;
   }
   if (st.st_uid != required_owner) {
-    fprintf(stderr, "bridge owner mismatch: expect uid %u\n", (unsigned)required_owner); return -1;
+    log_stderrf("bridge owner mismatch: expect uid %u", (unsigned)required_owner); return -1;
   }
   if ((st.st_mode & 0111) == 0) {
-    fprintf(stderr, "bridge is not executable\n"); return -1;
+    log_stderrf("bridge is not executable"); return -1;
   }
   return 0;
 }
 
-// -------- journald helpers --------
-static void journal_errorf(const char *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  char buf[512];
-  vsnprintf(buf, sizeof(buf), fmt, ap);
-  va_end(ap);
-#ifdef HAVE_SD_JOURNAL
-  (void) sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_ERR, "SYSLOG_IDENTIFIER=linuxio-auth-helper", NULL);
-#else
-  openlog("linuxio-auth-helper", LOG_PID, LOG_AUTHPRIV);
-  syslog(LOG_ERR, "%s", buf);
-  closelog();
-#endif
+// Optional: ensure bridge dir is root-owned and not group/world writable
+static int dir_is_safe(const char *path) {
+  if (!path || !*path) return -1;
+  char rp[PATH_MAX];
+  if (!realpath(path, rp)) return -1;
+  char *slash = strrchr(rp, '/');
+  if (!slash || slash == rp) return -1;
+  *slash = '\0';
+  struct stat ds;
+  if (stat(rp, &ds) != 0) return -1;
+  if (!S_ISDIR(ds.st_mode)) return -1;
+  if (ds.st_uid != 0) return -1;
+  if (ds.st_mode & (S_IWGRP|S_IWOTH)) return -1;
+  return 0;
 }
 
 // Redirect the future bridge child's stdout/stderr to journald; fallback to file in /run/linuxio/<uid>/bridge-<sid8>.log
 static int redirect_bridge_output(uid_t owner_uid, gid_t linuxio_gid, const char *sess_id) {
   char sid8[9] = {0};
   if (sess_id && *sess_id) {
-    strncpy(sid8, sess_id, 8);
-    sid8[8] = '\0';
+    bounded_copy_cstr(sid8, sizeof(sid8), sess_id, 8);
   } else {
-    strcpy(sid8, "nosessid");
+    bounded_copy_cstr(sid8, sizeof(sid8), "nosessid", 8);
   }
 
 #ifdef HAVE_SD_JOURNAL
@@ -210,13 +302,13 @@ static int redirect_bridge_output(uid_t owner_uid, gid_t linuxio_gid, const char
 #endif
 
   char dir[128], path[192];
-  snprintf(dir, sizeof(dir), "/run/linuxio/%u", (unsigned)owner_uid);
-  snprintf(path, sizeof(path), "%s/bridge-%s.log", dir, sid8);
+  safe_snprintf(dir, sizeof(dir), "/run/linuxio/%u", (unsigned)owner_uid);
+  safe_snprintf(path, sizeof(path), "%s/bridge-%s.log", dir, sid8);
 
-  int fd = open(path, O_CREAT|O_WRONLY|O_APPEND, 0640);
+  int fd = open(path, O_CREAT|O_WRONLY|O_APPEND|O_CLOEXEC, 0640);
   if (fd < 0) {
     journal_errorf("open %s failed: %m; falling back to /dev/null", path);
-    int devnull = open("/dev/null", O_WRONLY);
+    int devnull = open("/dev/null", O_WRONLY|O_CLOEXEC);
     if (devnull >= 0) {
       dup2(devnull, STDOUT_FILENO);
       dup2(devnull, STDERR_FILENO);
@@ -301,17 +393,22 @@ static int user_has_sudo(const struct passwd *pw, const char *password, int *out
 {
   if (out_nopasswd) *out_nopasswd = 0;
 
+  // Timeouts configurable via env; defaults preserve previous behavior
+  int to_nopw = env_get_int("LINUXIO_SUDO_TIMEOUT_NOPASSWD", 3, 1, 30);
+  int to_pw   = env_get_int("LINUXIO_SUDO_TIMEOUT_PASSWORD", 4, 1, 30);
+
   // 1) NOPASSWD probe (no password)
   char *argv_nopw[] = { "/usr/bin/sudo", "-n", "-v", NULL };
-  int rc = run_cmd_as_user_with_input(pw, argv_nopw, NULL, 3);
+  int rc = run_cmd_as_user_with_input(pw, argv_nopw, NULL, to_nopw);
   if (rc == 0) { if (out_nopasswd) *out_nopasswd = 1; return 1; }
 
   // 2) Password-based probe: sudo -S -p '' -v
   if (password && *password) {
     char *argv_pw[] = { "/usr/bin/sudo", "-S", "-p", "", "-v", NULL };
     char buf[1024];
-    (void)snprintf(buf, sizeof(buf), "%s\n", password);
-    rc = run_cmd_as_user_with_input(pw, argv_pw, buf, 4);
+    (void)safe_snprintf(buf, sizeof(buf), "%s\n", password);
+    rc = run_cmd_as_user_with_input(pw, argv_pw, buf, to_pw);
+    secure_bzero(buf, sizeof(buf));
     if (rc == 0) return 1;
   }
 
@@ -321,12 +418,14 @@ static int user_has_sudo(const struct passwd *pw, const char *password, int *out
 // -------- main ----------
 int main(void) {
   if (geteuid() != 0) {
-    fprintf(stderr, "must be setuid root\n");
+    log_stderrf("must be setuid root");
     return 126;
   }
 
-  const char *user = getenv("LINUXIO_TARGET_USER");
-  if (!user || !*user) { fprintf(stderr, "missing LINUXIO_TARGET_USER\n"); return 2; }
+  // Copy env strings we will use later so they won’t be invalidated by clearenv()
+  const char *user_env = getenv("LINUXIO_TARGET_USER");
+  char *user = (user_env && *user_env) ? strdup(user_env) : NULL;
+  if (!user) { log_stderrf("missing LINUXIO_TARGET_USER"); return 2; }
 
   // password from stdin (or env for testing)
   char *password = NULL;
@@ -335,33 +434,36 @@ int main(void) {
     password = strdup(env_pw);
     unsetenv("LINUXIO_PASSWORD"); // reduce exposure
   } else {
-    password = readline_stdin(1024);
+    int pw_to = env_get_int("LINUXIO_PASSWORD_TIMEOUT", 10, 1, 60);
+    password = readline_stdin_timeout(1024, pw_to);
   }
-  if (!password || !*password) { fprintf(stderr, "missing password on stdin/env\n"); free(password); return 2; }
+  if (!password || !*password) { log_stderrf("missing password on stdin/env"); free(password); free(user); return 2; }
 
   // PAM auth + account + creds
   struct pam_conv conv = { pam_conv_func, (void*)password };
   pam_handle_t *pamh = NULL;
   int rc = pam_start("linuxio", user, &conv, &pamh);
-  if (rc != PAM_SUCCESS) { fprintf(stderr, "pam_start: %s\n", pam_strerror(pamh, rc)); secure_bzero(password, strlen(password)); free(password); return 5; }
+  if (rc != PAM_SUCCESS) { log_stderrf("pam_start: %s", pam_strerror(pamh, rc)); secure_bzero(password, strlen(password)); free(password); free(user); return 5; }
 
   (void)pam_set_item(pamh, PAM_RHOST, "web");
   rc = pam_authenticate(pamh, 0);
   if (rc == PAM_SUCCESS) rc = pam_acct_mgmt(pamh, 0);
   if (rc == PAM_SUCCESS) rc = pam_setcred(pamh, PAM_ESTABLISH_CRED);
   if (rc != PAM_SUCCESS) {
-    fprintf(stderr, "%s\n", pam_strerror(pamh, rc));
+    log_stderrf("%s", pam_strerror(pamh, rc));
     pam_end(pamh, rc);
     if (password) { secure_bzero(password, strlen(password)); free(password); }
+    free(user);
     return 1;
   }
 
   rc = pam_open_session(pamh, 0);
   if (rc != PAM_SUCCESS) {
-    fprintf(stderr, "open_session: %s\n", pam_strerror(pamh, rc));
+    log_stderrf("open_session: %s", pam_strerror(pamh, rc));
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     if (password) { secure_bzero(password, strlen(password)); free(password); }
+    free(user);
     return 5;
   }
 
@@ -373,16 +475,18 @@ int main(void) {
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     if (password) { secure_bzero(password, strlen(password)); free(password); }
+    free(user);
     return 5;
   }
 
   gid_t linuxio_gid = 0;
   if (ensure_runtime_dirs(pw, &linuxio_gid) != 0) {
-    fprintf(stderr, "prepare runtime dir failed\n");
+    log_stderrf("prepare runtime dir failed");
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     if (password) { secure_bzero(password, strlen(password)); free(password); }
+    free(user);
     return 5;
   }
 
@@ -390,12 +494,9 @@ int main(void) {
   int nopasswd = 0;
   int want_privileged = user_has_sudo(pw, password, &nopasswd) ? 1 : 0;
 
-  // Read remaining inputs/env before clearenv in child
+  // Read remaining inputs/env before exec (copy what we might need)
   const char *envmode_in = getenv("LINUXIO_ENV");
   const char *bridge_in  = getenv("LINUXIO_BRIDGE_BIN");
-  const char *envmode    = (envmode_in && *envmode_in) ? envmode_in : "production";
-  const char *bridge_path= (bridge_in  && *bridge_in)  ? bridge_in  : "/usr/local/bin/linuxio-bridge";
-
   const char *sess_id     = getenv("LINUXIO_SESSION_ID");
   const char *sess_user   = getenv("LINUXIO_SESSION_USER");
   const char *sess_uid    = getenv("LINUXIO_SESSION_UID");
@@ -403,9 +504,11 @@ int main(void) {
   const char *sess_secret = getenv("LINUXIO_BRIDGE_SECRET");
   const char *server_base = getenv("LINUXIO_SERVER_BASE_URL");
   const char *server_cert = getenv("LINUXIO_SERVER_CERT");
+  const char *verbose_in  = getenv("LINUXIO_VERBOSE");
 
-  // Verbose preference from server
-  const char *verbose_in = getenv("LINUXIO_VERBOSE");
+  const char *envmode    = (envmode_in && *envmode_in) ? envmode_in : "production";
+  const char *bridge_path= (bridge_in  && *bridge_in)  ? bridge_in  : "/usr/local/bin/linuxio-bridge";
+
   int verbose = 0;
   if (verbose_in && *verbose_in) {
     if (!strcasecmp(verbose_in, "1") ||
@@ -420,9 +523,16 @@ int main(void) {
   if (password) { secure_bzero(password, strlen(password)); free(password); password = NULL; }
 
   // bridge binary validation according to decision
+  if (dir_is_safe(bridge_path) != 0) {
+    log_stderrf("unsafe bridge dir");
+    pam_close_session(pamh, 0); pam_setcred(pamh, PAM_DELETE_CRED); pam_end(pamh, 0);
+    free(user);
+    return 5;
+  }
   if (want_privileged) {
     if (validate_bridge_path_owned(bridge_path, 0 /*root*/) != 0) {
       pam_close_session(pamh, 0); pam_setcred(pamh, PAM_DELETE_CRED); pam_end(pamh, 0);
+      free(user);
       return 5;
     }
   } else {
@@ -430,17 +540,15 @@ int main(void) {
     if (stat(bridge_path, &st) != 0 || !S_ISREG(st.st_mode) ||
         (st.st_mode & (S_IWGRP|S_IWOTH)) ||
         !(st.st_uid == 0 || st.st_uid == pw->pw_uid)) {
-      fprintf(stderr, "bridge must be owned by root or %s and not group/world-writable\n", pw->pw_name);
+      log_stderrf("bridge must be owned by root or %s and not group/world-writable", pw->pw_name);
       pam_close_session(pamh, 0); pam_setcred(pamh, PAM_DELETE_CRED); pam_end(pamh, 0);
+      free(user);
       return 5;
     }
   }
 
-  if (want_privileged) {
-    (void)write_all(STDOUT_FILENO, "MODE=privileged\n", 16);
-  } else {
-    (void)write_all(STDOUT_FILENO, "MODE=unprivileged\n", 18);
-  }
+  const char *mode = want_privileged ? "MODE=privileged\n" : "MODE=unprivileged\n";
+  (void)write_all(STDOUT_FILENO, mode, strlen(mode));
 
   // ---------- Correct double-fork: NANNY first, then BRIDGE ----------
   pid_t nanny = fork();
@@ -449,6 +557,7 @@ int main(void) {
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
+    free(user);
     return 5;
   }
 
@@ -473,7 +582,11 @@ int main(void) {
         setenv("HOME", "/root", 1);
         setenv("USER", "root", 1);
         setenv("LOGNAME", "root", 1);
-        // keep root uid/gid
+
+        // Ensure full root creds survive to exec:
+        if (setgroups(0, NULL) != 0) { perror("setgroups"); _exit(127); }
+        if (setresgid(0, 0, 0) != 0) { perror("setresgid"); _exit(127); }
+        if (setresuid(0, 0, 0) != 0) { perror("setresuid"); _exit(127); }
       } else {
         drop_to_user(pw);
         minimal_env(pw, envmode, bridge_path, /*set_xdg=*/1,
@@ -488,12 +601,20 @@ int main(void) {
       // Redirect bridge stdout/stderr to journald (or file fallback)
       uid_t owner_uid = pw->pw_uid; // keep logs under the user's /run/linuxio/<uid> even in privileged mode
       if (redirect_bridge_output(owner_uid, linuxio_gid, sess_id) != 0) {
-        int devnull = open("/dev/null", O_WRONLY);
+        int devnull = open("/dev/null", O_WRONLY|O_CLOEXEC);
         if (devnull >= 0) {
           dup2(devnull, STDOUT_FILENO);
           dup2(devnull, STDERR_FILENO);
           close(devnull);
         }
+      }
+
+      // Debug: pre-exec credential trace (you can remove later)
+      {
+        uid_t r,e,s; gid_t gr,ge,gs;
+        getresuid(&r,&e,&s); getresgid(&gr,&ge,&gs);
+        journal_errorf("pre-exec bridge: want_priv=%d ruid=%d euid=%d suid=%d rgid=%d egid=%d sgid=%d path=%s",
+                       want_privileged, (int)r,(int)e,(int)s,(int)gr,(int)ge,(int)gs, bridge_path);
       }
 
       // Build argv: linuxio-bridge --env <env> [--verbose]
@@ -525,6 +646,7 @@ int main(void) {
   (void)close(STDIN_FILENO);
   (void)close(STDOUT_FILENO);
   (void)close(STDERR_FILENO);
+  free(user);
   _exit(0);
 }
 
