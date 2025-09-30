@@ -1,3 +1,44 @@
+## v0.3.0 — 2025-09-30
+
+### 🏗️ Build
+
+* build(deps-dev): bump vite ([50a1091](https://github.com/mordilloSan/LinuxIO/commit/50a1091)) by @dependabot[bot]
+
+### 🔄 Other Changes
+
+* giv code refactor ([f3c2e26](https://github.com/mordilloSan/LinuxIO/commit/f3c2e26)) by @MordilloSan
+* update ([d5a7773](https://github.com/mordilloSan/LinuxIO/commit/d5a7773)) by @MordilloSan
+* removing emojis ([6f7952f](https://github.com/mordilloSan/LinuxIO/commit/6f7952f)) by @MordilloSan
+* update ([08b49c6](https://github.com/mordilloSan/LinuxIO/commit/08b49c6)) by @MordilloSan
+* update ([cd85719](https://github.com/mordilloSan/LinuxIO/commit/cd85719)) by @MordilloSan
+* FB update ([cae33f0](https://github.com/mordilloSan/LinuxIO/commit/cae33f0)) by @MordilloSan
+* update ([4efc9ca](https://github.com/mordilloSan/LinuxIO/commit/4efc9ca)) by @MordilloSan
+* Merge pull request #3 from mordilloSan/dependabot/npm_and_yarn/frontend/npm_and_yarn-f5c1666f0c ([df271e1](https://github.com/mordilloSan/LinuxIO/commit/df271e1)) by @mordillo
+* update ([eb3a1a4](https://github.com/mordilloSan/LinuxIO/commit/eb3a1a4)) by @MordilloSan
+* Merge branch 'main' of https://github.com/mordilloSan/LinuxIO ([fba3b51](https://github.com/mordilloSan/LinuxIO/commit/fba3b51)) by @MordilloSan
+* update ([62fcdd4](https://github.com/mordilloSan/LinuxIO/commit/62fcdd4)) by @MordilloSan
+* users update ([8d4ccd2](https://github.com/mordilloSan/LinuxIO/commit/8d4ccd2)) by @MordilloSan
+* terminal update ([27ce646](https://github.com/mordilloSan/LinuxIO/commit/27ce646)) by @MordilloSan
+* update ([50ec190](https://github.com/mordilloSan/LinuxIO/commit/50ec190)) by @MordilloSan
+* Revert "update" ([887b456](https://github.com/mordilloSan/LinuxIO/commit/887b456)) by @MordilloSan
+* script update ([3ebbb69](https://github.com/mordilloSan/LinuxIO/commit/3ebbb69)) by @MordilloSan
+* update ([4a7f44c](https://github.com/mordilloSan/LinuxIO/commit/4a7f44c)) by @MordilloSan
+* update ([8dea4e5](https://github.com/mordilloSan/LinuxIO/commit/8dea4e5)) by @MordilloSan
+* update ([d21c625](https://github.com/mordilloSan/LinuxIO/commit/d21c625)) by @MordilloSan
+* update ([763423d](https://github.com/mordilloSan/LinuxIO/commit/763423d)) by @MordilloSan
+* update ([2091971](https://github.com/mordilloSan/LinuxIO/commit/2091971)) by @MordilloSan
+* update dev mode ([ec20376](https://github.com/mordilloSan/LinuxIO/commit/ec20376)) by @MordilloSan
+* update ([fe6815f](https://github.com/mordilloSan/LinuxIO/commit/fe6815f)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+* @dependabot[bot]
+* @mordillo
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.3.0
+
 ## v0.2.0 — 2025-09-08
 
 ### 📚 Documentation
