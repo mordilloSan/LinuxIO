@@ -12,3 +12,4 @@ linuxio
 .vscode/
 *.swp
 linuxio-auth-helper
+.linuxio/dev.env

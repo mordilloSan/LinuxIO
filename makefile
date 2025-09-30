@@ -285,25 +285,27 @@ dev-prep:
 	@touch "$(BACKEND_DIR)/server/web/frontend/favicon-1.png"
 	@touch "$(BACKEND_DIR)/server/web/frontend/assets/index-mock.js"
 
-dev: setup dev-prep
+dev: setup dev-prep devinstall
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
 	set -euo pipefail
 
-	# TTY polish: hide '^C' echo and restore it later
+	# TTY polish
 	if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echoctl; fi
 
-	# Start backend (flags) in background and remember PID
-	( cd "$(BACKEND_DIR)" && \
-		go run . run \
-		  -env development \
-		  -verbose=$(VERBOSE) \
-		  -vite-port=$(VITE_DEV_PORT) \
-		  -port=$(SERVER_PORT) \
+	# Backend (same shell: source env, then run)
+	( \
+	  . .linuxio/dev.env; \
+	  cd "$(BACKEND_DIR)"; \
+	  go run . run \
+	    -env development \
+	    -verbose=$(VERBOSE) \
+	    -vite-port=$(VITE_DEV_PORT) \
+	    -port=$(SERVER_PORT); \
 	) &
+
 	BACK_PID=$$!
 
-	# Wait until backend listens on $(SERVER_PORT)
 	@timeout 60s bash -c 'until ss -ltn "sport = :$(SERVER_PORT)" | grep -q LISTEN; do sleep 0.2; done' \
 	  || { echo " Backend port :$(SERVER_PORT) did not open in time"; cleanup; exit 1; }
 
@@ -318,10 +320,9 @@ dev: setup dev-prep
 	  kill -TERM "$$WATCH_PID" 2>/dev/null || true
 	  wait "$$WATCH_PID" 2>/dev/null || true
 	}
-
 	trap 'trap - INT TERM; cleanup; stty "$$SAVED_STTY" 2>/dev/null || true; exit 0' INT TERM
 
-	# Frontend (foreground)
+	# Frontend
 	cd frontend
 	VITE_API_URL="http://localhost:$(SERVER_PORT)" npx vite --port $(VITE_DEV_PORT)
 	STATUS=$$?
@@ -331,11 +332,13 @@ dev: setup dev-prep
 	stty "$$SAVED_STTY" 2>/dev/null || true
 	[[ "$$STATUS" -eq 130 ]] && STATUS=0
 	exit "$$STATUS"
-
 build: build-vite golint build-backend build-bridge build-auth-helper
 
 localinstall:
 	./packaging/scripts/local_install.sh
+
+devinstall:
+	./packaging/scripts/dev_install.sh
 
 generate:
 	@cd "$(BACKEND_DIR)" && go generate ./common/userconfig/init.go

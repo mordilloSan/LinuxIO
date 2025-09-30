@@ -79,12 +79,11 @@ func RunServer(cfg ServerConfig) {
 	// Router
 	// -------------------------------------------------------------------------
 	router := BuildRouter(Config{
-		Env:                  env,
-		Verbose:              verbose,
-		VitePort:             cfg.ViteDevPort,
-		BridgeBinaryOverride: cfg.BridgeBinaryPath,
-		FilebrowserSecret:    filebrowserSecret,
-		UI:                   ui,
+		Env:               env,
+		Verbose:           verbose,
+		VitePort:          cfg.ViteDevPort,
+		FilebrowserSecret: filebrowserSecret,
+		UI:                ui,
 	}, sm)
 
 	// -------------------------------------------------------------------------

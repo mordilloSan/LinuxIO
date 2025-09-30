@@ -19,7 +19,6 @@ if [[ -z "${BUILD_HOME:-}" ]]; then
   echo "Could not resolve home for user '$BUILD_USER'"; exit 1
 fi
 
-# Build (as the non-root user) with a PATH that includes common Go locations
 echo "==> Building as $BUILD_USER in $SRC_DIR"
 sudo -u "$BUILD_USER" env -i \
   HOME="$BUILD_HOME" \
@@ -63,6 +62,17 @@ hash -r 2>/dev/null || true
 echo "==> Done. Installed:"
 ls -l "$DEST_DIR/linuxio" "$DEST_DIR/linuxio-bridge" "$DEST_DIR/linuxio-auth-helper"
 
+# Helper to remove built binaries from the repo (not source code)
+remove_repo_artifacts() {
+  echo "==> Removing build artifacts from repo:"
+  for f in linuxio linuxio-bridge linuxio-auth-helper; do
+    if [[ -f "$SRC_DIR/$f" ]]; then
+      rm -f -- "$SRC_DIR/$f"
+      echo "   removed $SRC_DIR/$f"
+    fi
+  done
+}
+
 # Restart service if present (robust check)
 if $SUDO_CMD systemctl show -p LoadState --value linuxio.service 2>/dev/null | grep -qx loaded; then
   echo "==> Restarting linuxio.service"
@@ -70,6 +80,8 @@ if $SUDO_CMD systemctl show -p LoadState --value linuxio.service 2>/dev/null | g
     echo "✅ linuxio.service restarted successfully"
     echo "==> Current status:"
     $SUDO_CMD systemctl --no-pager --full --lines=20 status linuxio.service || true
+    # Only clean artifacts after a successful restart
+    remove_repo_artifacts
   else
     rc="$?"
     echo "❌ linuxio.service restart failed (exit $rc)"
@@ -81,4 +93,6 @@ if $SUDO_CMD systemctl show -p LoadState --value linuxio.service 2>/dev/null | g
   fi
 else
   echo "Note: linuxio.service not loaded; skipping restart."
+  # No service to restart; install succeeded, so clean now.
+  remove_repo_artifacts
 fi
