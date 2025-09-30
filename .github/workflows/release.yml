@@ -51,16 +51,15 @@ jobs:
             git config user.name  "${{ github.actor }}"
             git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-            # Create the tag if it doesn't exist
-            if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-              echo "Tag $TAG already exists. Using it."
-            else
-              git tag -a "$TAG" -m "Release $TAG"
+            # Create tag atomically (fails if exists)
+            if git tag -a "$TAG" -m "Release $TAG" 2>/dev/null; then
               git push origin "$TAG"
-              echo "Created and pushed tag $TAG"
+              echo "Created tag $TAG"
+            else
+              echo "Tag $TAG already exists (created by another workflow?)"
             fi
 
-          else
+          else  
             # Manual dispatch
             IN="${{ github.event.inputs.tag || '' }}"
             if [[ -n "$IN" ]]; then
@@ -114,30 +113,70 @@ jobs:
 
       - name: Build Go backend
         env: { GOOS: linux, GOARCH: amd64 }
-        run: SKIP_LINT=1 make build-backend
+        run: make build-backend
 
       - name: Build Go bridge
         env: { GOOS: linux, GOARCH: amd64 }
-        run: SKIP_LINT=1 make build-bridge
+        run: make build-bridge
+
+      - name: Build Go auth helper
+        env: { GOOS: linux, GOARCH: amd64 }
+        run: make build-auth-helper
 
       - name: Make artifacts executable
-        run: chmod +x linuxio linuxio-bridge
+        run: chmod +x linuxio linuxio-bridge linuxio-auth-helper
 
       - name: Create tarball
+        id: create_tarball
         run: |
           TAR="linuxio-${{ steps.tag.outputs.tag }}-linux-amd64.tar.gz"
-          tar czvf "$TAR" linuxio linuxio-bridge
+          tar czvf "$TAR" linuxio linuxio-bridge linuxio-auth-helper
           echo "tarball=$TAR" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release (with assets)
-        uses: softprops/action-gh-release@v2
+      - name: Generate checksums
+        run: |
+          sha256sum linuxio linuxio-bridge linuxio-auth-helper *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Verify binaries before release
+        run: |
+          for bin in linuxio linuxio-bridge; do
+            chmod +x "$bin"
+            ./"$bin" --version || { echo "$bin verification failed"; exit 1; }
+          done
+
+          # Verify auth helper is a valid ELF executable
+          file linuxio-auth-helper | grep -q "ELF.*executable" || {
+            echo "linuxio-auth-helper is not a valid executable"
+            exit 1
+          }
+
+      - name: Create draft release
+        id: create_release
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          generate_release_notes: true
-          files: |
+          tag: ${{ steps.tag.outputs.tag }}
+          draft: true
+          generateReleaseNotes: true
+          artifacts: |
             ${{ steps.create_tarball.outputs.tarball }}
             linuxio
             linuxio-bridge
-          fail_on_unmatched_files: true
+            linuxio-auth-helper
+            SHA256SUMS
+
+      - name: Publish release atomically
+        if: success()
+        run: |
+          for i in {1..3}; do
+            if gh release edit "${{ steps.tag.outputs.tag }}" --draft=false; then
+              echo "Release published successfully"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying..."
+            sleep 5
+          done
+          echo "Failed to publish release after 3 attempts"
+          exit 1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}

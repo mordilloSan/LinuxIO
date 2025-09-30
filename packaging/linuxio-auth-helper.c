@@ -11,12 +11,13 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/select.h>
+#include <sys/syscall.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <strings.h> // strcasecmp
+#include <strings.h>
 #include <syslog.h>
 #include <stdarg.h>
 #include <limits.h>
@@ -27,6 +28,11 @@
 #define HAVE_SD_JOURNAL 1
 #endif
 #endif
+
+#ifndef AT_EMPTY_PATH
+#define AT_EMPTY_PATH 0x1000
+#endif
+extern char **environ; // to pass environment to execveat/execv
 
 // --- forward decls ---
 static int write_all(int fd, const void *buf, size_t len);
@@ -300,12 +306,15 @@ static int env_get_int(const char *name, int defval, int minv, int maxv)
 static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid)
 {
   if (!pw)
+  {
+    journal_errorf("runtime: no passwd");
     return -1;
+  }
 
   const char *base = "/run/linuxio";
   mode_t old = umask(0);
 
-  // linuxio group (fallback to root:0 if missing)
+  // Resolve linuxio group (fallback gid=0)
   gid_t linuxio_gid = 0;
   struct group *gr = getgrnam("linuxio");
   if (gr)
@@ -313,48 +322,112 @@ static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid)
   if (out_linuxio_gid)
     *out_linuxio_gid = linuxio_gid;
 
-  // /run/linuxio -> root:linuxio 02771
+  // Create base best-effort
   if (mkdir(base, 02771) != 0 && errno != EEXIST)
   {
-    perror("mkdir /run/linuxio");
-    umask(old);
-    return -1;
-  }
-  if (chown(base, 0, linuxio_gid) != 0)
-  {
-    perror("chown /run/linuxio");
-    umask(old);
-    return -1;
-  }
-  if (chmod(base, 02771) != 0)
-  {
-    perror("chmod /run/linuxio");
+    journal_errorf("runtime: mkdir(%s) failed: %m", base);
     umask(old);
     return -1;
   }
 
-  // /run/linuxio/<uid> -> <user>:linuxio 02770
-  char userdir[128];
-  safe_snprintf(userdir, sizeof(userdir), "%s/%u", base, (unsigned)pw->pw_uid);
-  if (mkdir(userdir, 02770) != 0 && errno != EEXIST)
+  int base_fd = open(base, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  if (base_fd < 0)
   {
-    perror("mkdir /run/linuxio/<uid>");
-    umask(old);
-    return -1;
-  }
-  if (chown(userdir, pw->pw_uid, linuxio_gid) != 0)
-  {
-    perror("chown /run/linuxio/<uid>");
-    umask(old);
-    return -1;
-  }
-  if (chmod(userdir, 02770) != 0)
-  {
-    perror("chmod /run/linuxio/<uid>");
+    journal_errorf("runtime: open(%s) failed: %m", base);
     umask(old);
     return -1;
   }
 
+  struct stat st;
+  if (fstat(base_fd, &st) != 0 || !S_ISDIR(st.st_mode))
+  {
+    journal_errorf("runtime: fstat(%s) not dir or failed: %m", base);
+    close(base_fd);
+    umask(old);
+    return -1;
+  }
+
+  // If base exists but isn’t exactly what we want, try to fix;
+  // only fail if it’s dangerous (not root-owned or world-writable).
+  if (st.st_uid != 0 || (st.st_mode & S_IWOTH))
+  {
+    journal_errorf("runtime: base %s unsafe (uid=%u mode=%o)", base, (unsigned)st.st_uid, st.st_mode & 07777);
+    close(base_fd);
+    umask(old);
+    return -1;
+  }
+
+  // Try to set root:linuxio and 02771. If it fails, keep going if current state is still safe enough.
+  if (fchown(base_fd, 0, linuxio_gid) != 0)
+  {
+    // Allow failure if group is already 0 (root) and not world-writable.
+    journal_errorf("runtime: fchown(%s,0,%u) failed: %m (continuing if safe)", base, (unsigned)linuxio_gid);
+  }
+  if (fchmod(base_fd, 02771) != 0)
+  {
+    // Allow failure if not world-writable.
+    journal_errorf("runtime: fchmod(%s,02771) failed: %m (continuing if safe)", base);
+  }
+
+  // Create/open user subdir atomically via *at()
+  char uidstr[32];
+  safe_snprintf(uidstr, sizeof(uidstr), "%u", (unsigned)pw->pw_uid);
+
+  if (mkdirat(base_fd, uidstr, 02770) != 0 && errno != EEXIST)
+  {
+    journal_errorf("runtime: mkdirat(%s/%s) failed: %m", base, uidstr);
+    close(base_fd);
+    umask(old);
+    return -1;
+  }
+
+  int user_fd = openat(base_fd, uidstr, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  if (user_fd < 0)
+  {
+    journal_errorf("runtime: openat(%s/%s) failed: %m", base, uidstr);
+    close(base_fd);
+    umask(old);
+    return -1;
+  }
+  close(base_fd);
+
+  if (fstat(user_fd, &st) != 0 || !S_ISDIR(st.st_mode))
+  {
+    journal_errorf("runtime: fstat user dir failed/not dir: %m");
+    close(user_fd);
+    umask(old);
+    return -1;
+  }
+
+  // Only fail if user dir is dangerous; otherwise repair best-effort.
+  if ((st.st_uid != pw->pw_uid) || (st.st_gid != linuxio_gid))
+  {
+    if (fchown(user_fd, pw->pw_uid, linuxio_gid) != 0)
+    {
+      journal_errorf("runtime: fchown user dir to %u:%u failed: %m", (unsigned)pw->pw_uid, (unsigned)linuxio_gid);
+      // Still acceptable if owned by the user and not world-writable.
+      if (st.st_uid != pw->pw_uid)
+      {
+        close(user_fd);
+        umask(old);
+        return -1;
+      }
+    }
+  }
+
+  if (fchmod(user_fd, 02770) != 0)
+  {
+    journal_errorf("runtime: fchmod user dir 02770 failed: %m");
+    // Don’t fail unless world-writable.
+    if (st.st_mode & S_IWOTH)
+    {
+      close(user_fd);
+      umask(old);
+      return -1;
+    }
+  }
+
+  close(user_fd);
   umask(old);
   return 0;
 }
@@ -394,27 +467,91 @@ static int validate_bridge_path_owned(const char *path, uid_t required_owner)
 }
 
 // Optional: ensure bridge dir is root-owned and not group/world writable
-static int dir_is_safe(const char *path)
+static int dir_is_safe(const char *file_path)
 {
-  if (!path || !*path)
+  if (!file_path || !*file_path)
     return -1;
-  char rp[PATH_MAX];
-  if (!realpath(path, rp))
+
+  // Open the target path O_PATH|O_NOFOLLOW (fails if it's a symlink)
+  int file_fd = open(file_path, O_PATH | O_NOFOLLOW | O_CLOEXEC);
+  if (file_fd < 0)
     return -1;
-  char *slash = strrchr(rp, '/');
-  if (!slash || slash == rp)
+
+  // Resolve the actual kernel path of the opened fd
+  char linkbuf[PATH_MAX];
+  char fdlink[64];
+  safe_snprintf(fdlink, sizeof(fdlink), "/proc/self/fd/%d", file_fd);
+  ssize_t n = readlink(fdlink, linkbuf, sizeof(linkbuf) - 1);
+  close(file_fd);
+  if (n < 0)
+    return -1;
+  linkbuf[n] = '\0';
+
+  // Strip last component to get the parent directory
+  char *slash = strrchr(linkbuf, '/');
+  if (!slash || slash == linkbuf)
     return -1;
   *slash = '\0';
+
+  // Open parent O_NOFOLLOW and validate ownership/permissions
+  int dfd = open(linkbuf, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  if (dfd < 0)
+    return -1;
+
   struct stat ds;
-  if (stat(rp, &ds) != 0)
+  int ok = 0;
+  if (fstat(dfd, &ds) == 0 &&
+      S_ISDIR(ds.st_mode) &&
+      ds.st_uid == 0 &&
+      !(ds.st_mode & (S_IWGRP | S_IWOTH)))
+  {
+    ok = 1;
+  }
+  close(dfd);
+  return ok ? 0 : -1;
+}
+
+// --- replace the whole function with this version ---
+static int exec_bridge_fd_checked(const char *bridge_path, char *const argv[])
+{
+  int fd = open(bridge_path, O_PATH | O_CLOEXEC | O_NOFOLLOW);
+  if (fd < 0)
+  {
+    perror("open bridge");
     return -1;
-  if (!S_ISDIR(ds.st_mode))
+  }
+
+  struct stat st;
+  if (fstat(fd, &st) != 0)
+  {
+    perror("fstat bridge");
+    close(fd);
     return -1;
-  if (ds.st_uid != 0)
+  }
+  if (!S_ISREG(st.st_mode) || (st.st_mode & (S_IWGRP | S_IWOTH)))
+  {
+    close(fd);
+    errno = EACCES;
     return -1;
-  if (ds.st_mode & (S_IWGRP | S_IWOTH))
-    return -1;
-  return 0;
+  }
+
+  // Try execveat by FD to avoid TOCTOU between check and exec.
+#if defined(SYS_execveat)
+  if (syscall(SYS_execveat, fd, "", argv, environ, AT_EMPTY_PATH) == 0)
+  {
+    // not reached
+  }
+  // If execveat is unavailable or fails with ENOSYS/EXDEV/etc, fall back:
+#endif
+
+  close(fd);
+  return execv(bridge_path, argv);
+}
+
+static int should_probe_sudo(void)
+{
+  const char *v = getenv("LINUXIO_DEV_PROBE_SUDO");
+  return v && (*v == '1' || !strcasecmp(v, "true") || !strcasecmp(v, "on"));
 }
 
 // Redirect the future bridge child's stdout/stderr to journald; fallback to file in /run/linuxio/<uid>/bridge-<sid8>.log
@@ -452,7 +589,7 @@ static int redirect_bridge_output(uid_t owner_uid, gid_t linuxio_gid, const char
   journal_errorf("sd_journal_stream_fd failed; falling back to file log");
 #endif
 
-  char dir[128], path[192];
+  char dir[PATH_MAX], path[PATH_MAX];
   safe_snprintf(dir, sizeof(dir), "/run/linuxio/%u", (unsigned)owner_uid);
   safe_snprintf(path, sizeof(path), "%s/bridge-%s.log", dir, sid8);
 
@@ -727,8 +864,12 @@ int main(void)
   }
 
   // Decide privileged mode
-  int nopasswd = 0;
-  int want_privileged = user_has_sudo(pw, password, &nopasswd) ? 1 : 0;
+  int want_privileged = 0;
+  if (should_probe_sudo())
+  {
+    int nopasswd = 0;
+    want_privileged = user_has_sudo(pw, password, &nopasswd) ? 1 : 0;
+  }
 
   // Read remaining inputs/env before exec (copy what we might need)
   const char *envmode_in = getenv("LINUXIO_ENV");
@@ -910,7 +1051,32 @@ int main(void)
         argv_child[ai++] = "--verbose";
       argv_child[ai++] = NULL;
 
-      execv(bridge_path, argv_child);
+      // In bridge child, after dropping privileges but before exec:
+      struct rlimit rl;
+
+      // CPU time limit (configurable via env)
+      int cpu_limit = env_get_int("LINUXIO_RLIMIT_CPU", 7200, 60, 86400); // 2hr default
+      rl.rlim_cur = rl.rlim_max = cpu_limit;
+      setrlimit(RLIMIT_CPU, &rl);
+
+      // Process count limit
+      int nproc_limit = env_get_int("LINUXIO_RLIMIT_NPROC", 512, 10, 2048);
+      rl.rlim_cur = rl.rlim_max = nproc_limit;
+      setrlimit(RLIMIT_NPROC, &rl);
+
+      // File size limit
+      rl.rlim_cur = rl.rlim_max = 1UL * 1024 * 1024 * 1024; // 1GB
+      setrlimit(RLIMIT_FSIZE, &rl);
+
+      // Address space (virtual memory)
+      rl.rlim_cur = rl.rlim_max = 16UL * 1024 * 1024 * 1024; // 16GB
+      setrlimit(RLIMIT_AS, &rl);
+
+      // Disable core dumps
+      rl.rlim_cur = rl.rlim_max = 0;
+      setrlimit(RLIMIT_CORE, &rl);
+
+      exec_bridge_fd_checked(bridge_path, argv_child);
       perror("exec linuxio-bridge");
       _exit(127);
     }

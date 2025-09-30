@@ -332,6 +332,7 @@ dev: setup dev-prep devinstall
 	stty "$$SAVED_STTY" 2>/dev/null || true
 	[[ "$$STATUS" -eq 130 ]] && STATUS=0
 	exit "$$STATUS"
+
 build: build-vite golint build-backend build-bridge build-auth-helper
 
 localinstall:
