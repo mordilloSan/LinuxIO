@@ -312,9 +312,9 @@ static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid)
   }
 
   const char *base = "/run/linuxio";
-  mode_t old = umask(0);
+  mode_t old_umask = umask(0);
 
-  // Resolve linuxio group (fallback gid=0)
+  // Resolve linuxio group (fallback gid=0 if absent)
   gid_t linuxio_gid = 0;
   struct group *gr = getgrnam("linuxio");
   if (gr)
@@ -322,113 +322,88 @@ static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid)
   if (out_linuxio_gid)
     *out_linuxio_gid = linuxio_gid;
 
-  // Create base best-effort
+  // 1) Ensure /run/linuxio exists with sane ownership/perms
   if (mkdir(base, 02771) != 0 && errno != EEXIST)
   {
     journal_errorf("runtime: mkdir(%s) failed: %m", base);
-    umask(old);
-    return -1;
-  }
-
-  int base_fd = open(base, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-  if (base_fd < 0)
-  {
-    journal_errorf("runtime: open(%s) failed: %m", base);
-    umask(old);
+    umask(old_umask);
     return -1;
   }
 
   struct stat st;
-  if (fstat(base_fd, &st) != 0 || !S_ISDIR(st.st_mode))
+  if (stat(base, &st) != 0 || !S_ISDIR(st.st_mode))
   {
-    journal_errorf("runtime: fstat(%s) not dir or failed: %m", base);
-    close(base_fd);
-    umask(old);
+    journal_errorf("runtime: stat(%s) failed or not dir: %m", base);
+    umask(old_umask);
     return -1;
   }
 
-  // If base exists but isn’t exactly what we want, try to fix;
-  // only fail if it’s dangerous (not root-owned or world-writable).
+  // Only fail if base is dangerous (not root-owned OR world-writable)
   if (st.st_uid != 0 || (st.st_mode & S_IWOTH))
   {
-    journal_errorf("runtime: base %s unsafe (uid=%u mode=%o)", base, (unsigned)st.st_uid, st.st_mode & 07777);
-    close(base_fd);
-    umask(old);
+    journal_errorf("runtime: base %s unsafe (uid=%u mode=%o)",
+                   base, (unsigned)st.st_uid, st.st_mode & 07777);
+    umask(old_umask);
     return -1;
   }
 
-  // Try to set root:linuxio and 02771. If it fails, keep going if current state is still safe enough.
-  if (fchown(base_fd, 0, linuxio_gid) != 0)
-  {
-    // Allow failure if group is already 0 (root) and not world-writable.
-    journal_errorf("runtime: fchown(%s,0,%u) failed: %m (continuing if safe)", base, (unsigned)linuxio_gid);
-  }
-  if (fchmod(base_fd, 02771) != 0)
-  {
-    // Allow failure if not world-writable.
-    journal_errorf("runtime: fchmod(%s,02771) failed: %m (continuing if safe)", base);
-  }
+  // Try to fix group/mode best-effort (do not fail on error)
+  (void)chown(base, 0, linuxio_gid);
+  (void)chmod(base, 02771);
 
-  // Create/open user subdir atomically via *at()
-  char uidstr[32];
-  safe_snprintf(uidstr, sizeof(uidstr), "%u", (unsigned)pw->pw_uid);
+  // 2) Ensure /run/linuxio/<uid> exists with user:linuxio and 02770
+  char userdir[64];
+  safe_snprintf(userdir, sizeof(userdir), "%s/%u", base, (unsigned)pw->pw_uid);
 
-  if (mkdirat(base_fd, uidstr, 02770) != 0 && errno != EEXIST)
+  if (mkdir(userdir, 02770) != 0 && errno != EEXIST)
   {
-    journal_errorf("runtime: mkdirat(%s/%s) failed: %m", base, uidstr);
-    close(base_fd);
-    umask(old);
+    journal_errorf("runtime: mkdir(%s) failed: %m", userdir);
+    umask(old_umask);
     return -1;
   }
 
-  int user_fd = openat(base_fd, uidstr, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-  if (user_fd < 0)
+  if (stat(userdir, &st) != 0 || !S_ISDIR(st.st_mode))
   {
-    journal_errorf("runtime: openat(%s/%s) failed: %m", base, uidstr);
-    close(base_fd);
-    umask(old);
-    return -1;
-  }
-  close(base_fd);
-
-  if (fstat(user_fd, &st) != 0 || !S_ISDIR(st.st_mode))
-  {
-    journal_errorf("runtime: fstat user dir failed/not dir: %m");
-    close(user_fd);
-    umask(old);
+    journal_errorf("runtime: stat(%s) failed or not dir: %m", userdir);
+    umask(old_umask);
     return -1;
   }
 
-  // Only fail if user dir is dangerous; otherwise repair best-effort.
-  if ((st.st_uid != pw->pw_uid) || (st.st_gid != linuxio_gid))
+  // If ownership/group not as desired, try to fix; only fail if ends up unsafe
+  if (st.st_uid != pw->pw_uid || st.st_gid != linuxio_gid)
   {
-    if (fchown(user_fd, pw->pw_uid, linuxio_gid) != 0)
+    if (chown(userdir, pw->pw_uid, linuxio_gid) != 0)
     {
-      journal_errorf("runtime: fchown user dir to %u:%u failed: %m", (unsigned)pw->pw_uid, (unsigned)linuxio_gid);
-      // Still acceptable if owned by the user and not world-writable.
+      journal_errorf("runtime: chown(%s) to %u:%u failed: %m",
+                     userdir, (unsigned)pw->pw_uid, (unsigned)linuxio_gid);
+      // Acceptable if already user-owned and not world-writable; otherwise fail.
       if (st.st_uid != pw->pw_uid)
       {
-        close(user_fd);
-        umask(old);
+        umask(old_umask);
         return -1;
       }
     }
-  }
-
-  if (fchmod(user_fd, 02770) != 0)
-  {
-    journal_errorf("runtime: fchmod user dir 02770 failed: %m");
-    // Don’t fail unless world-writable.
-    if (st.st_mode & S_IWOTH)
+    // Refresh stat after potential chown
+    if (stat(userdir, &st) != 0)
     {
-      close(user_fd);
-      umask(old);
+      journal_errorf("runtime: stat(%s) after chown failed: %m", userdir);
+      umask(old_umask);
       return -1;
     }
   }
 
-  close(user_fd);
-  umask(old);
+  // Ensure permissions; only fail if world-writable remains
+  if (chmod(userdir, 02770) != 0)
+  {
+    journal_errorf("runtime: chmod(%s,02770) failed: %m", userdir);
+    if (st.st_mode & S_IWOTH)
+    {
+      umask(old_umask);
+      return -1;
+    }
+  }
+
+  umask(old_umask);
   return 0;
 }
 

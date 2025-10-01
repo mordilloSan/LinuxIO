@@ -81,6 +81,9 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		return false, errors.New("auth helper not found; expected /usr/local/bin/linuxio-auth-helper or LINUXIO_PAM_HELPER override")
 	}
 
+	logger.Debugf("Using bridge binary: %s", bridgeBinary)
+	logger.Debugf("Using auth helper: %s", helperPath)
+
 	// Build env for the helper (helper now decides privilege itself)
 	env := append(os.Environ(),
 		"LINUXIO_TARGET_USER="+sess.User.Username,
@@ -235,16 +238,20 @@ func GetBridgeBinaryPath(override string) string {
 	if override != "" && isExec(override) {
 		return override
 	}
+	if v := os.Getenv("LINUXIO_BRIDGE_BIN"); v != "" && isExec(v) {
+		return v
+	}
+
 	if exe, err := os.Executable(); err == nil {
 		candidate := filepath.Join(filepath.Dir(exe), binaryName)
 		if isExec(candidate) {
 			return candidate
 		}
 	}
-	if path, err := exec.LookPath(binaryName); err == nil {
+	if path, err := exec.LookPath(binaryName); err == nil && isExec(path) {
 		return path
 	}
-	logger.Debugf("%s not found beside server, or in user $PATH; consider installing into a well-known path or pass --bridge-binary.", binaryName)
+	logger.Debugf("[bridge.GetBridgeBinaryPath] %s not found beside server, or in user $PATH; consider installing into a well-known path or setting LINUXIO_BRIDGE_BIN.", binaryName)
 	return ""
 }
 

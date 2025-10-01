@@ -32,8 +32,10 @@ import (
 
 // Build minimal session object from env (keeps secret out of argv)
 var Sess = &session.Session{
-	SessionID:    os.Getenv("LINUXIO_SESSION_ID"),
-	User:         session.User{Username: os.Getenv("LINUXIO_SESSION_USER"), UID: os.Getenv("LINUXIO_SESSION_UID"), GID: os.Getenv("LINUXIO_SESSION_GID")},
+	SessionID: os.Getenv("LINUXIO_SESSION_ID"),
+	User: session.User{Username: os.Getenv("LINUXIO_SESSION_USER"),
+		UID: os.Getenv("LINUXIO_SESSION_UID"),
+		GID: os.Getenv("LINUXIO_SESSION_GID")},
 	BridgeSecret: os.Getenv("LINUXIO_BRIDGE_SECRET"),
 }
 
