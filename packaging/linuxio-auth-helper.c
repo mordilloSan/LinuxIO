@@ -144,6 +144,24 @@ static void journal_errorf(const char *fmt, ...)
 #endif
 }
 
+// Add this after journal_errorf()
+static void journal_infof(const char *fmt, ...)
+{
+  char buf[512];
+  va_list ap;
+  va_start(ap, fmt);
+  (void)safe_vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+#ifdef HAVE_SD_JOURNAL
+  (void)sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_INFO,
+                        "SYSLOG_IDENTIFIER=linuxio-auth-helper", NULL);
+#else
+  openlog("linuxio-auth-helper", LOG_PID, LOG_AUTHPRIV);
+  syslog(LOG_INFO, "%s", buf);
+  closelog();
+#endif
+}
+
 // -------- PAM conversation ----
 static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, void *appdata_ptr)
 {
@@ -523,12 +541,6 @@ static int exec_bridge_fd_checked(const char *bridge_path, char *const argv[])
   return execv(bridge_path, argv);
 }
 
-static int should_probe_sudo(void)
-{
-  const char *v = getenv("LINUXIO_DEV_PROBE_SUDO");
-  return v && (*v == '1' || !strcasecmp(v, "true") || !strcasecmp(v, "on"));
-}
-
 // Redirect the future bridge child's stdout/stderr to journald; fallback to file in /run/linuxio/<uid>/bridge-<sid8>.log
 static int redirect_bridge_output(uid_t owner_uid, gid_t linuxio_gid, const char *sess_id)
 {
@@ -728,7 +740,7 @@ int main(void)
     return 126;
   }
 
-  // Copy env strings we will use later so they won’t be invalidated by clearenv()
+  // Copy env strings we will use later so they won't be invalidated by clearenv()
   const char *user_env = getenv("LINUXIO_TARGET_USER");
   char *user = (user_env && *user_env) ? strdup(user_env) : NULL;
   if (!user)
@@ -840,19 +852,22 @@ int main(void)
 
   // Decide privileged mode
   int want_privileged = 0;
-  if (should_probe_sudo())
-  {
-    int nopasswd = 0;
-    want_privileged = user_has_sudo(pw, password, &nopasswd) ? 1 : 0;
-  }
+  int nopasswd = 0;
+  want_privileged = user_has_sudo(pw, password, &nopasswd) ? 1 : 0;
+
+  // ===== DEBUG: Compare ENV vs DEDUCED UID/GID =====
+  char deduced_uid_str[32];
+  char deduced_gid_str[32];
+  safe_snprintf(deduced_uid_str, sizeof(deduced_uid_str), "%u", (unsigned)pw->pw_uid);
+  safe_snprintf(deduced_gid_str, sizeof(deduced_gid_str), "%u", (unsigned)pw->pw_gid);
 
   // Read remaining inputs/env before exec (copy what we might need)
   const char *envmode_in = getenv("LINUXIO_ENV");
   const char *bridge_in = getenv("LINUXIO_BRIDGE_BIN");
   const char *sess_id = getenv("LINUXIO_SESSION_ID");
   const char *sess_user = getenv("LINUXIO_SESSION_USER");
-  const char *sess_uid = getenv("LINUXIO_SESSION_UID");
-  const char *sess_gid = getenv("LINUXIO_SESSION_GID");
+  const char *sess_uid = deduced_uid_str;
+  const char *sess_gid = deduced_gid_str;
   const char *sess_secret = getenv("LINUXIO_BRIDGE_SECRET");
   const char *server_base = getenv("LINUXIO_SERVER_BASE_URL");
   const char *server_cert = getenv("LINUXIO_SERVER_CERT");
@@ -1012,8 +1027,8 @@ int main(void)
         gid_t gr, ge, gs;
         getresuid(&r, &e, &s);
         getresgid(&gr, &ge, &gs);
-        journal_errorf("pre-exec bridge: want_priv=%d ruid=%d euid=%d suid=%d rgid=%d egid=%d sgid=%d path=%s",
-                       want_privileged, (int)r, (int)e, (int)s, (int)gr, (int)ge, (int)gs, bridge_path);
+        journal_infof("pre-exec bridge: want_priv=%d ruid=%d euid=%d suid=%d rgid=%d egid=%d sgid=%d path=%s",
+                      want_privileged, (int)r, (int)e, (int)s, (int)gr, (int)ge, (int)gs, bridge_path);
       }
 
       // Build argv: linuxio-bridge --env <env> [--verbose]

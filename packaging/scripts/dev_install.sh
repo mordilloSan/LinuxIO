@@ -72,6 +72,10 @@ echo "==> Installing dev bridge + helper into enclave"
 $SUDO_CMD install -o root -g root -m 0755 "$SRC_DIR/linuxio-bridge"      "$SECURE_DEV_DIR/linuxio-bridge"
 $SUDO_CMD install -o root -g root -m 4755 "$SRC_DIR/linuxio-auth-helper" "$SECURE_DEV_DIR/linuxio-auth-helper"
 
+# Make enclave world-readable so all dev users can execute the binaries
+echo "==> Making enclave world-readable for multi-user dev"
+$SUDO_CMD chmod -R a+rX "$SRC_DIR/.linuxio"
+
 echo "==> Enclave contents:"
 ls -l "$SECURE_DEV_DIR/linuxio-bridge" "$SECURE_DEV_DIR/linuxio-auth-helper"
 

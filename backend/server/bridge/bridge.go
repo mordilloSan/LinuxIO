@@ -91,8 +91,6 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		"LINUXIO_BRIDGE_BIN="+bridgeBinary,
 		"LINUXIO_SESSION_ID="+sess.SessionID,
 		"LINUXIO_SESSION_USER="+sess.User.Username,
-		"LINUXIO_SESSION_UID="+sess.User.UID,
-		"LINUXIO_SESSION_GID="+sess.User.GID,
 		"LINUXIO_BRIDGE_SECRET="+sess.BridgeSecret,
 	)
 	if verbose {
