@@ -1,13 +1,11 @@
-package api
+package system
 
 import (
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/load"
 )
@@ -123,24 +121,4 @@ func FetchLoadInfo() (*LoadInfoResponse, error) {
 		Load5:  loadAvg.Load5,
 		Load15: loadAvg.Load15,
 	}, nil
-}
-
-// ---------- Handlers ----------
-
-func getCPU(c *gin.Context) {
-	data, err := FetchCPUInfo()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get CPU info", "details": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, data)
-}
-
-func getLoadInfo(c *gin.Context) {
-	data, err := FetchLoadInfo()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get load average", "details": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, data)
 }

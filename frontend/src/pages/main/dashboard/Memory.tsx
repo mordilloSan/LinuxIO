@@ -21,7 +21,7 @@ const MemoryUsage = () => {
   } = useQuery({
     queryKey: ["memoryInfo"],
     queryFn: async () => {
-      const response = await axios.get("/system/mem");
+      const response = await axios.get("/system/memory");
       return response.data;
     },
     refetchInterval: 2000,
@@ -29,8 +29,8 @@ const MemoryUsage = () => {
 
   const ramUsagePercentage = memoryData?.system.active
     ? parseFloat(
-        calculatePercentage(memoryData.system.active, memoryData.system.total),
-      )
+      calculatePercentage(memoryData.system.active, memoryData.system.total),
+    )
     : 0;
 
   const data = {

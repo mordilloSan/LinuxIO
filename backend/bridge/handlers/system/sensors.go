@@ -1,14 +1,11 @@
-package api
+package system
 
 import (
 	"fmt"
-	"net/http"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/gin-gonic/gin"
 )
 
 type SensorReading struct {
@@ -73,10 +70,6 @@ func FetchSensorsInfo() []SensorGroup {
 	}
 
 	return groups
-}
-
-func getSensors(c *gin.Context) {
-	c.JSON(http.StatusOK, FetchSensorsInfo())
 }
 
 func getTemperatureMap() map[string]float64 {

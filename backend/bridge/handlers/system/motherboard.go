@@ -1,13 +1,10 @@
-package api
+package system
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/gin-gonic/gin"
 )
 
 // ==== Types ====
@@ -85,13 +82,4 @@ func FetchBaseboardInfo() (MotherboardInfo, error) {
 	}
 
 	return info, nil
-}
-
-func getMotherboard(c *gin.Context) {
-	data, err := FetchBaseboardInfo()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, data)
 }

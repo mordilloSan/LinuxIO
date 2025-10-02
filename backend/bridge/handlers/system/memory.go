@@ -1,21 +1,17 @@
-// file: server/system/memory.go
-package api
+package system
 
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/shirou/gopsutil/v4/mem"
-
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/shirou/gopsutil/v4/mem"
 )
 
 // ---------- Public types & handler ----------
@@ -47,16 +43,6 @@ func FetchMemoryInfo() (*MemoryResponse, error) {
 	}
 
 	return &resp, nil
-}
-
-// Gin handler: /system/mem
-func getMem(c *gin.Context) {
-	data, err := FetchMemoryInfo()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get memory info", "details": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, data)
 }
 
 // ---------- ZFS ARC ----------

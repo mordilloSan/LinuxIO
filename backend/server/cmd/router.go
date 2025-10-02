@@ -21,6 +21,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/network"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/power"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/services"
+	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/server/filebrowser"
@@ -74,6 +75,7 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	power.RegisterPowerRoutes(r.Group("/power", sm.RequireSession()))
 	wireguard.RegisterWireguardRoutes(r.Group("/wireguard", sm.RequireSession()))
 	config.RegisterThemeRoutes(r.Group("/theme", sm.RequireSession()))
+	system.RegisterSystemRoutes(r.Group("/system", sm.RequireSession()))
 
 	// --- WebSocket ---
 	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
