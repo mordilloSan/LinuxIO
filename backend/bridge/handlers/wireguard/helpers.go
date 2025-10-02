@@ -16,7 +16,6 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 )
 
@@ -72,7 +71,7 @@ func newIPManager(serverCIDR string) (*ipManager, error) {
 	}, nil
 }
 
-func (m *ipManager) findNextAvailable(peers []ipc.PeerConfig) (string, int, error) {
+func (m *ipManager) findNextAvailable(peers []PeerConfig) (string, int, error) {
 	used := m.buildUsedIPMap(peers)
 
 	for i := minHostIP; i <= maxHostIP; i++ {
@@ -85,7 +84,7 @@ func (m *ipManager) findNextAvailable(peers []ipc.PeerConfig) (string, int, erro
 	return "", 0, fmt.Errorf("no available IPs in subnet")
 }
 
-func (m *ipManager) buildUsedIPMap(peers []ipc.PeerConfig) map[int]bool {
+func (m *ipManager) buildUsedIPMap(peers []PeerConfig) map[int]bool {
 	used := map[int]bool{
 		0:   true, // network
 		255: true, // broadcast
@@ -245,9 +244,9 @@ func parseOptionalInt(args []string, index int, defaultVal int) int {
 	return defaultVal
 }
 
-func parseOptionalPeers(args []string, index int) []ipc.PeerConfig {
+func parseOptionalPeers(args []string, index int) []PeerConfig {
 	if index < len(args) && args[index] != "" && args[index] != "null" && args[index] != "[]" {
-		var peers []ipc.PeerConfig
+		var peers []PeerConfig
 		if err := json.Unmarshal([]byte(args[index]), &peers); err == nil {
 			return peers
 		}
@@ -255,14 +254,14 @@ func parseOptionalPeers(args []string, index int) []ipc.PeerConfig {
 	return nil
 }
 
-func generatePeers(serverAddr string, count int) ([]ipc.PeerConfig, error) {
+func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 	ipMgr, err := newIPManager(serverAddr)
 	if err != nil {
 		logger.Errorf("generatePeers: newIPManager failed: %v", err)
 		return nil, err
 	}
 
-	peers := make([]ipc.PeerConfig, 0, count)
+	peers := make([]PeerConfig, 0, count)
 	used := ipMgr.buildUsedIPMap(nil)
 
 	for i := 0; i < count; i++ {
@@ -290,7 +289,7 @@ func generatePeers(serverAddr string, count int) ([]ipc.PeerConfig, error) {
 			return nil, fmt.Errorf("generate key for peer %d: %w", i+1, err)
 		}
 
-		peers = append(peers, ipc.PeerConfig{
+		peers = append(peers, PeerConfig{
 			PublicKey:           privKey.PublicKey().String(),
 			PrivateKey:          privKey.String(),
 			AllowedIPs:          []string{peerIP},

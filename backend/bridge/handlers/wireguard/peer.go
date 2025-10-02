@@ -9,13 +9,12 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 )
 
 // --- Peer Management ---
 
-func addPeerSection(iniFile *ini.File, peer ipc.PeerConfig) error {
+func addPeerSection(iniFile *ini.File, peer PeerConfig) error {
 	psec, err := iniFile.NewSection("Peer")
 	if err != nil {
 		return err
@@ -30,7 +29,7 @@ func addPeerSection(iniFile *ini.File, peer ipc.PeerConfig) error {
 	return nil
 }
 
-func ExportPeerConfig(interfaceName string, peer ipc.PeerConfig, ifaceCfg InterfaceConfig, publicIP string, peerNumber int, dnsOverride string) (string, error) {
+func ExportPeerConfig(interfaceName string, peer PeerConfig, ifaceCfg InterfaceConfig, publicIP string, peerNumber int, dnsOverride string) (string, error) {
 
 	// Ensure peer directory exists
 	peerDir := peerDirPath(interfaceName)

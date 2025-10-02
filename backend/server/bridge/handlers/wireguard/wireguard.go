@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/mordilloSan/LinuxIO/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
@@ -43,14 +44,14 @@ func WireguardListInterfaces(c *gin.Context) {
 func WireguardAddInterface(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	var req struct {
-		Name       string           `json:"name"`
-		Address    []string         `json:"address"`
-		ListenPort int              `json:"listen_port"`
-		EgressNic  string           `json:"egress_nic"`
-		DNS        []string         `json:"dns"`
-		MTU        int              `json:"mtu"`
-		Peers      []ipc.PeerConfig `json:"peers"`
-		NumPeers   int              `json:"num_peers"`
+		Name       string                 `json:"name"`
+		Address    []string               `json:"address"`
+		ListenPort int                    `json:"listen_port"`
+		EgressNic  string                 `json:"egress_nic"`
+		DNS        []string               `json:"dns"`
+		MTU        int                    `json:"mtu"`
+		Peers      []wireguard.PeerConfig `json:"peers"`
+		NumPeers   int                    `json:"num_peers"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})

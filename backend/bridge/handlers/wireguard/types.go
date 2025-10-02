@@ -2,8 +2,6 @@ package wireguard
 
 import (
 	"net"
-
-	"github.com/mordilloSan/LinuxIO/common/ipc"
 )
 
 // --- Constants ---
@@ -16,13 +14,24 @@ const (
 )
 
 // --- Types ---
+
+type PeerConfig struct {
+	PublicKey           string   `json:"public_key"`
+	PresharedKey        string   `json:"preshared_key"`
+	AllowedIPs          []string `json:"allowed_ips"`
+	Endpoint            string   `json:"endpoint"`
+	PersistentKeepalive int      `json:"persistent_keepalive"`
+	PrivateKey          string   `json:"private_key"`
+	Name                string   `json:"name,omitempty"`
+}
+
 type InterfaceConfig struct {
-	PrivateKey string           `json:"private_key"`
-	Address    []string         `json:"address"`
-	ListenPort int              `json:"listen_port"`
-	DNS        []string         `json:"dns"`
-	MTU        int              `json:"mtu"`
-	Peers      []ipc.PeerConfig `json:"peers"`
+	PrivateKey string       `json:"private_key"`
+	Address    []string     `json:"address"`
+	ListenPort int          `json:"listen_port"`
+	DNS        []string     `json:"dns"`
+	MTU        int          `json:"mtu"`
+	Peers      []PeerConfig `json:"peers"`
 }
 
 type WireGuardInterfaceUI struct {
@@ -34,7 +43,7 @@ type WireGuardInterfaceUI struct {
 }
 
 type PeerInfo struct {
-	ipc.PeerConfig
+	PeerConfig
 
 	LastHandshake     string  `json:"last_handshake"`      // RFC3339 or "never"
 	LastHandshakeUnix int64   `json:"last_handshake_unix"` // 0 if never

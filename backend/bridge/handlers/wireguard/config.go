@@ -6,7 +6,6 @@ import (
 
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 )
 
@@ -37,7 +36,7 @@ func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 			continue
 		}
 
-		pc := ipc.PeerConfig{
+		pc := PeerConfig{
 			PublicKey:    sec.Key("PublicKey").String(),
 			PresharedKey: sec.Key("PresharedKey").String(),
 			Endpoint:     sec.Key("Endpoint").String(),

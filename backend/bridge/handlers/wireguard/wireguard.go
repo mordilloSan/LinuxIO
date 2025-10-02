@@ -16,7 +16,6 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/utils"
 )
@@ -224,7 +223,7 @@ func AddPeer(args []string) (any, error) {
 	// Generate keys
 	priv, _ := wgtypes.GeneratePrivateKey()
 
-	peer := ipc.PeerConfig{
+	peer := PeerConfig{
 		PublicKey:           priv.PublicKey().String(),
 		PrivateKey:          priv.String(),
 		AllowedIPs:          []string{nextIP},
@@ -305,7 +304,7 @@ func RemovePeerByName(args []string) (any, error) {
 
 	// Remove peer from config
 	found := false
-	newPeers := make([]ipc.PeerConfig, 0, len(cfg.Peers))
+	newPeers := make([]PeerConfig, 0, len(cfg.Peers))
 	for _, p := range cfg.Peers {
 		// Check if this peer matches the AllowedIP
 		match := false
@@ -374,7 +373,7 @@ func ListPeers(args []string) (any, error) {
 		ifSec := iniFile.Section("Interface")
 		peerSec := iniFile.Section("Peer")
 
-		pc := ipc.PeerConfig{
+		pc := PeerConfig{
 			PrivateKey: ifSec.Key("PrivateKey").String(),
 			AllowedIPs: parseCSV(ifSec.Key("Address").String()),
 			// NOTE: exported file's [Peer] PublicKey is the SERVER key
