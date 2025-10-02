@@ -52,15 +52,6 @@ if [[ "${EUID}" -ne 0 ]]; then
   SUDO_CMD="sudo"
 fi
 
-# Warn if repo filesystem is mounted nosuid (SUID would be ignored if we were still using repo path)
-if command -v findmnt >/dev/null 2>&1; then
-  mp=$(findmnt -no TARGET "$SRC_DIR" || true)
-  opts=$(findmnt -no OPTIONS "$SRC_DIR" || true)
-  if [[ "$opts" == *nosuid* ]]; then
-    echo "ℹ️  Note: Repo filesystem has 'nosuid', but we're installing to /opt (which should not have nosuid)."
-  fi
-fi
-
 echo "==> Creating system-wide dev enclave: $SECURE_DEV_DIR"
 $SUDO_CMD mkdir -p "$SECURE_DEV_DIR"
 $SUDO_CMD chown root:root "$SECURE_DEV_DIR"
