@@ -12,7 +12,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/server/api"
 	"github.com/mordilloSan/LinuxIO/server/auth"
 	"github.com/mordilloSan/LinuxIO/server/benchmark"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/config"
@@ -61,10 +60,6 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 		Verbose:              cfg.Verbose,
 		BridgeBinaryOverride: cfg.BridgeBinaryOverride,
 	})
-
-	// --- APIs ---
-	// Public read-only system endpoints:
-	api.RegisterSystemRoutes(r.Group("/system"))
 
 	// Protected endpoints:
 	updates.RegisterUpdateRoutes(r.Group("/updates", sm.RequireSession()))

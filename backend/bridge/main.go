@@ -21,6 +21,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/bridge/filebrowser"
 	"github.com/mordilloSan/LinuxIO/bridge/handlers"
+	"github.com/mordilloSan/LinuxIO/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/bridge/terminal"
 	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
 	"github.com/mordilloSan/LinuxIO/common/ipc"
@@ -149,6 +150,11 @@ func main() {
 	if err := terminal.StartTerminal(Sess); err != nil {
 		logger.Warnf("Failed to start session terminal: %v", err)
 	}
+
+	// -------------------------------------------------------------------------
+	// Background samplers, GPU info
+	// -------------------------------------------------------------------------
+	system.StartSimpleNetInfoSampler()
 
 	// Handle Ctrl-C / kill properly → request shutdown once
 	sigc := make(chan os.Signal, 2)

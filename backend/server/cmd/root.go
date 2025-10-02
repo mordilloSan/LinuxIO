@@ -19,7 +19,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/common/utils"
-	"github.com/mordilloSan/LinuxIO/server/api"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
 	"github.com/mordilloSan/LinuxIO/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/server/filebrowser"
@@ -54,12 +53,6 @@ func RunServer(cfg ServerConfig) {
 			}
 		}
 	})
-
-	// -------------------------------------------------------------------------
-	// Background samplers, GPU info
-	// -------------------------------------------------------------------------
-	api.StartSimpleNetInfoSampler()
-	api.InitGPUInfo()
 
 	// -------------------------------------------------------------------------
 	// Frontend assets

@@ -18,14 +18,12 @@ var HandlersByType = map[string]map[string]ipc.HandlerFunc{}
 
 func RegisterAllHandlers(shutdownChan chan string) {
 	HandlersByType["dbus"] = dbus.DbusHandlers()
-	HandlersByType["system"] = drive.DriveHandlers()
+	HandlersByType["drives"] = drive.DriveHandlers()
 	HandlersByType["docker"] = docker.DockerHandlers()
 	HandlersByType["control"] = control.ControlHandlers(shutdownChan)
 	HandlersByType["wireguard"] = wireguard.WireguardHandlers()
 	HandlersByType["config"] = config.ThemeHandlers()
 	HandlersByType["system"] = system.SystemHandlers()
-
-	// terminal handlers need user/session context; get from global Sess in main? Pass via ctor.
 }
 
 // RegisterTerminalHandlers attaches terminal handlers that require the session context.
