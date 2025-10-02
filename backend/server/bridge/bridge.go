@@ -86,7 +86,6 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 
 	// Build env for the helper (helper now decides privilege itself)
 	env := append(os.Environ(),
-		"LINUXIO_TARGET_USER="+sess.User.Username,
 		"LINUXIO_ENV="+strings.ToLower(envMode),
 		"LINUXIO_BRIDGE_BIN="+bridgeBinary,
 		"LINUXIO_SESSION_ID="+sess.SessionID,

@@ -741,11 +741,11 @@ int main(void)
   }
 
   // Copy env strings we will use later so they won't be invalidated by clearenv()
-  const char *user_env = getenv("LINUXIO_TARGET_USER");
+  const char *user_env = getenv("LINUXIO_SESSION_USER");
   char *user = (user_env && *user_env) ? strdup(user_env) : NULL;
   if (!user)
   {
-    log_stderrf("missing LINUXIO_TARGET_USER");
+    log_stderrf("missing LINUXIO_SESSION_USER");
     return 2;
   }
 
