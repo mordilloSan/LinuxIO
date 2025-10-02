@@ -295,7 +295,7 @@ dev: setup dev-prep devinstall
 
 	# Backend (same shell: source env, then run)
 	( \
-	  . .linuxio/dev.env; \
+	  . dev.env; \
 	  cd "$(BACKEND_DIR)"; \
 	  go run . run \
 	    -env development \
@@ -358,6 +358,10 @@ clean:
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
 	@find "$(BACKEND_DIR)/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@if [ -d /tmp/linuxio/dev ]; then \
+		echo "Removing dev binaries from /tmp/linuxio/dev..."; \
+		sudo rm -rf /tmp/linuxio/dev; \
+	fi
 	@echo "🧹 Cleaned workspace."
 
 start-dev:

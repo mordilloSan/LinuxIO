@@ -5,9 +5,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 SRC_DIR="$(cd -- "$SCRIPT_DIR/../.." &>/dev/null && pwd)"
 
-# Secure dev enclave paths (inside repo)
-SECURE_DEV_DIR="$SRC_DIR/.linuxio/bin"
-DEV_ENV_FILE="$SRC_DIR/.linuxio/dev.env"
+# System-wide dev enclave (accessible to all users)
+SECURE_DEV_DIR="/tmp/linuxio/dev"
+DEV_ENV_FILE="$SRC_DIR/dev.env"
 
 # Figure out the real (non-root) user to build as
 if [[ -n "${SUDO_USER:-}" && "${EUID}" -eq 0 ]]; then
@@ -43,7 +43,7 @@ for f in linuxio-bridge linuxio-auth-helper; do
   [[ -f "$SRC_DIR/$f" ]] || { echo "Missing after build: $SRC_DIR/$f"; exit 1; }
 done
 
-# We need root for the secure enclave + SUID bits
+# We need root for system-wide install
 SUDO_CMD=""
 if [[ "${EUID}" -ne 0 ]]; then
   if ! command -v sudo >/dev/null 2>&1; then
@@ -52,43 +52,38 @@ if [[ "${EUID}" -ne 0 ]]; then
   SUDO_CMD="sudo"
 fi
 
-# Warn if repo filesystem is mounted nosuid (SUID would be ignored)
+# Warn if repo filesystem is mounted nosuid (SUID would be ignored if we were still using repo path)
 if command -v findmnt >/dev/null 2>&1; then
   mp=$(findmnt -no TARGET "$SRC_DIR" || true)
   opts=$(findmnt -no OPTIONS "$SRC_DIR" || true)
   if [[ "$opts" == *nosuid* ]]; then
-    echo "⚠️  Filesystem for $mp has 'nosuid' — SUID helper will NOT be effective here."
-    echo "    Move the repo or remount without 'nosuid' if you need privileged dev."
+    echo "ℹ️  Note: Repo filesystem has 'nosuid', but we're installing to /opt (which should not have nosuid)."
   fi
 fi
 
-echo "==> Creating secure dev enclave: $SECURE_DEV_DIR"
+echo "==> Creating system-wide dev enclave: $SECURE_DEV_DIR"
 $SUDO_CMD mkdir -p "$SECURE_DEV_DIR"
 $SUDO_CMD chown root:root "$SECURE_DEV_DIR"
 $SUDO_CMD chmod 0755 "$SECURE_DEV_DIR"
 
-# Install bridge (root:root 0755) and helper (root:root 4755) into the enclave
-echo "==> Installing dev bridge + helper into enclave"
+# Install bridge (root:root 0755) and helper (root:root 4755) to /opt
+echo "==> Installing dev bridge + helper to system location"
 $SUDO_CMD install -o root -g root -m 0755 "$SRC_DIR/linuxio-bridge"      "$SECURE_DEV_DIR/linuxio-bridge"
 $SUDO_CMD install -o root -g root -m 4755 "$SRC_DIR/linuxio-auth-helper" "$SECURE_DEV_DIR/linuxio-auth-helper"
 
-# Make enclave world-readable so all dev users can execute the binaries
-echo "==> Making enclave world-readable for multi-user dev"
-$SUDO_CMD chmod -R a+rX "$SRC_DIR/.linuxio"
-
-echo "==> Enclave contents:"
+echo "==> System enclave contents:"
 ls -l "$SECURE_DEV_DIR/linuxio-bridge" "$SECURE_DEV_DIR/linuxio-auth-helper"
 
-# Write dev env file to point your dev process to the secure enclave
+# Write dev env file to point your dev process to the system enclave
 mkdir -p "$(dirname "$DEV_ENV_FILE")"
 cat > "$DEV_ENV_FILE" <<EOF
 # Auto-generated on $(date -Iseconds)
-# Source this in your dev shell (or have 'make dev' source it) to use privileged binaries from inside the repo.
+# Source this in your dev shell (or have 'make dev' source it) to use dev binaries from /opt.
 
 # Ensure we run in development mode
 export LINUXIO_ENV="development"
 
-# Point helper + bridge at the secure, root-owned enclave inside the repo
+# Point helper + bridge at system-wide dev enclave
 export LINUXIO_PAM_HELPER="$SECURE_DEV_DIR/linuxio-auth-helper"
 export LINUXIO_BRIDGE_BIN="$SECURE_DEV_DIR/linuxio-bridge"
 
@@ -99,10 +94,10 @@ chmod 0644 "$DEV_ENV_FILE"
 
 echo "==> Wrote dev env: $DEV_ENV_FILE"
 echo "   Use it like:"
-echo "     source .linuxio/dev.env"
+echo "     source dev.env"
 echo "   or in your Makefile dev recipe before starting the backend."
 
-# --- Cleanup build artifacts in repo root (keep enclave copies) ---
+# --- Cleanup build artifacts in repo root (keep /opt copies) ---
 if [[ "${KEEP_ARTIFACTS:-0}" != "1" ]]; then
   echo "==> Removing repo-root build artifacts"
   for f in linuxio-bridge linuxio-auth-helper; do
@@ -116,4 +111,5 @@ else
   echo "==> KEEP_ARTIFACTS=1 set; leaving repo-root binaries in place"
 fi
 
-echo "✅ Done. Privileged dev will use binaries from: $SECURE_DEV_DIR"
+echo "✅ Done. Dev binaries installed to: $SECURE_DEV_DIR"
+echo "   All system users can now access these binaries."
