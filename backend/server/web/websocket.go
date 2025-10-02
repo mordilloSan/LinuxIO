@@ -72,7 +72,6 @@ func (sc *wsSafeConn) IsClosed() bool {
 }
 
 func WebSocketHandler(c *gin.Context) {
-	// Session must be injected by sm.RequireSession() on the route.
 	sess := session.SessionFromContext(c)
 	if sess == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)

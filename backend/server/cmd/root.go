@@ -7,13 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/coreos/go-systemd/activation"
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
@@ -35,7 +39,7 @@ func RunServer(cfg ServerConfig) {
 	if !(env == "development" && verbose) {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	logger.Infof("🌱 Starting server in %s mode...", env)
+	logger.Infof("Starting Linux I/O server in %s mode...", env)
 
 	// -------------------------------------------------------------------------
 	// Sessions + cleanup hooks
@@ -80,6 +84,20 @@ func RunServer(cfg ServerConfig) {
 	}, sm)
 
 	// -------------------------------------------------------------------------
+	// Track server activity
+	// -------------------------------------------------------------------------
+	var inFlight atomic.Int64
+	var lastHit atomic.Int64
+	lastHit.Store(time.Now().UnixNano())
+
+	router.Use(func(c *gin.Context) {
+		lastHit.Store(time.Now().UnixNano())
+		inFlight.Add(1)
+		defer inFlight.Add(-1)
+		c.Next()
+	})
+
+	// -------------------------------------------------------------------------
 	// HTTP(S) server
 	// -------------------------------------------------------------------------
 	srv := &http.Server{
@@ -97,15 +115,82 @@ func RunServer(cfg ServerConfig) {
 
 	go func() {
 		var err error
-		if env == "production" {
+		// -------- systemd socket activation first ----------
+		listeners, actErr := activation.Listeners()
+		if actErr != nil {
+			logger.Warnf("activation.Listeners error: %v", actErr)
+		}
+		if len(listeners) > 0 {
+			var stopOnce sync.Once
+			servStopped := make(chan struct{})
+			stop := func() { stopOnce.Do(func() { close(servStopped) }) }
+
+			if strings.ToLower(cfg.Env) == "production" {
+				cert, cErr := web.GenerateSelfSignedCert()
+				if cErr != nil {
+					logger.Error.Fatalf("Failed to generate cert: %v", cErr)
+				}
+				srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+				web.SetRootPoolFromServerCert(cert)
+
+				// Export base URL and cert for children (bridge, etc.)
+				_ = os.Setenv("LINUXIO_SERVER_BASE_URL", "https://localhost:8090")
+				if len(cert.Certificate) > 0 {
+					pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
+					if len(pemBytes) > 0 {
+						_ = os.Setenv("LINUXIO_SERVER_CERT", string(pemBytes))
+					}
+				}
+
+				for _, l := range listeners {
+					tlsLis := tls.NewListener(l, srv.TLSConfig)
+					go func(lis net.Listener) {
+						if e := srv.Serve(lis); e != nil && e != http.ErrServerClosed {
+							logger.Error.Fatalf("server error (TLS): %v", e)
+						}
+						stop()
+					}(tlsLis)
+				}
+				logger.Infof("Socket-activated HTTPS server listening on inherited sockets")
+			} else {
+				// Plain HTTP for dev
+				for _, l := range listeners {
+					go func(lis net.Listener) {
+						if e := srv.Serve(lis); e != nil && e != http.ErrServerClosed {
+							logger.Error.Fatalf("server error: %v", e)
+						}
+						stop()
+					}(l)
+				}
+				logger.Infof("Socket-activated HTTP server listening on inherited sockets")
+			}
+
+			// 🔻 Start idle-exit only in socket-activation mode
+			const idleGrace = 90 * time.Second  // tune to taste
+			const checkEvery = 10 * time.Second // tune to taste
+			startSocketIdleExitWatcher(
+				srv, sm, &inFlight, &lastHit,
+				idleGrace, checkEvery,
+				func(msg string, args ...any) { logger.Infof(msg, args...) },
+			)
+
+			// Block until Serve() exits (due to Shutdown or error)
+			<-servStopped
+			close(done)
+			return
+		}
+
+		// -------- fallback: self-bind (dev / manual runs) ----------
+		addr := fmt.Sprintf(":%d", cfg.Port)
+		srv.Addr = addr
+		if strings.ToLower(cfg.Env) == "production" {
 			cert, cErr := web.GenerateSelfSignedCert()
 			if cErr != nil {
-				logger.Error.Fatalf(" Failed to generate self-signed certificate: %v", cErr)
+				logger.Error.Fatalf("Failed to generate cert: %v", cErr)
 			}
 			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 			web.SetRootPoolFromServerCert(cert)
 
-			// Export base URL and certificate for child bridge processes.
 			baseURL := fmt.Sprintf("https://localhost:%d", cfg.Port)
 			_ = os.Setenv("LINUXIO_SERVER_BASE_URL", baseURL)
 			if len(cert.Certificate) > 0 {
@@ -115,16 +200,15 @@ func RunServer(cfg ServerConfig) {
 				}
 			}
 
-			fmt.Printf("🚀 Server running at https://localhost:%d\n", cfg.Port)
-			logger.Infof("HTTP server listening at https://localhost:%d", cfg.Port)
+			logger.Infof("HTTPS server (self-bound) at %s", baseURL)
 			err = srv.ListenAndServeTLS("", "")
 		} else {
-			// Development: advertise HTTP base URL for bridge processes.
 			baseURL := fmt.Sprintf("http://localhost:%d", cfg.Port)
 			_ = os.Setenv("LINUXIO_SERVER_BASE_URL", baseURL)
-			logger.Infof("HTTP server listening at http://localhost:%d", cfg.Port)
+			logger.Infof("HTTP server (self-bound) at %s", baseURL)
 			err = srv.ListenAndServe()
 		}
+
 		if err != nil && err != http.ErrServerClosed {
 			logger.Error.Fatalf("server error: %v", err)
 		}
@@ -138,7 +222,7 @@ func RunServer(cfg ServerConfig) {
 	case <-quit:
 		logger.Infof("🛑 Shutdown signal received")
 	case <-done:
-		logger.Infof("🚨 HTTP server stopped unexpectedly, beginning shutdown...")
+		logger.Infof("HTTP server stopped, beginning shutdown...")
 	}
 
 	srv.SetKeepAlivesEnabled(false)
@@ -148,7 +232,7 @@ func RunServer(cfg ServerConfig) {
 
 	if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		if errors.Is(err, context.DeadlineExceeded) {
-			logger.Warnf("⏳ Graceful HTTP shutdown timed out; forcing close of remaining connections.")
+			logger.Warnf("Graceful HTTP shutdown timed out; forcing close of remaining connections.")
 			if cerr := srv.Close(); cerr != nil && !errors.Is(cerr, http.ErrServerClosed) {
 				logger.Warnf("HTTP server force-close error: %v", cerr)
 			}
@@ -172,4 +256,46 @@ func RunServer(cfg ServerConfig) {
 		fmt.Println("Server stopped.")
 	}
 	logger.Infof("Server stopped.")
+}
+
+func startSocketIdleExitWatcher(
+	srv *http.Server,
+	sm *session.Manager,
+	inFlight *atomic.Int64,
+	lastHit *atomic.Int64,
+	idleGrace time.Duration,
+	checkEvery time.Duration,
+	logf func(string, ...any),
+) {
+	if idleGrace <= 0 || checkEvery <= 0 {
+		return
+	}
+	go func() {
+		t := time.NewTicker(checkEvery)
+		defer t.Stop()
+		for range t.C {
+			// no requests running?
+			if inFlight.Load() > 0 {
+				continue
+			}
+			// no recent hits?
+			if time.Since(time.Unix(0, lastHit.Load())) < idleGrace {
+				continue
+			}
+			// no active sessions?
+			act, err := sm.ActiveSessions()
+			if err != nil {
+				continue
+			}
+			if len(act) > 0 {
+				continue
+			}
+
+			logf("Idle for %v and no active sessions — exiting (socket will keep the port open)", idleGrace)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = srv.Shutdown(ctx)
+			cancel()
+			return
+		}
+	}()
 }

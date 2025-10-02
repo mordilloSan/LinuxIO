@@ -248,7 +248,7 @@ build-backend:
 
 build-bridge:
 	@echo ""
-	@echo "🔌 Building bridge..."
+	@echo "Building bridge..."
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false" \
 	go build \
@@ -266,6 +266,7 @@ build-bridge:
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 build-auth-helper:
+	@echo ""
 	@echo "🛡️  Building Session helper (C)..."
 	@set -euo pipefail; \
 	$(CC) -Wall -Wextra -O2 \
@@ -373,10 +374,10 @@ start-dev:
 	  git checkout $(DEFAULT_BASE_BRANCH); \
 	  git pull --ff-only; \
 	  if git show-ref --verify --quiet "refs/heads/$$REL_BRANCH"; then \
-	    echo "ℹ️  Branch $$REL_BRANCH already exists, checking it out…"; \
+	    echo "ℹBranch $$REL_BRANCH already exists, checking it out…"; \
 	    git checkout "$$REL_BRANCH"; \
 	  else \
-	    echo "🌱 Creating branch $$REL_BRANCH from $(DEFAULT_BASE_BRANCH)…"; \
+	    echo "Creating branch $$REL_BRANCH from $(DEFAULT_BASE_BRANCH)…"; \
 	    git checkout -b "$$REL_BRANCH" "$(DEFAULT_BASE_BRANCH)"; \
 	    git push -u origin "$$REL_BRANCH"; \
 	  fi; \

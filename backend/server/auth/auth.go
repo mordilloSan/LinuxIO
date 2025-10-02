@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"net/http"
 	"os/user"
 	"strings"
@@ -59,6 +60,43 @@ func (h *Handlers) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start bridge"})
 		return
 	}
+
+	// Verify bridge socket is ready with ping/pong
+	pingResp, err := bridge.CallWithSession(sess, "control", "ping", nil)
+	if err != nil {
+		logger.Errorf("[auth.login] bridge socket not ready after start: %v", err)
+		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
+		return
+	}
+
+	// Parse and validate ping response
+	var pingResult map[string]interface{}
+	if err := json.Unmarshal(pingResp, &pingResult); err != nil {
+		logger.Errorf("[auth.login] invalid ping response format: %v", err)
+		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
+		return
+	}
+
+	// Check the wrapper status first
+	if status, ok := pingResult["status"].(string); !ok || status != "ok" {
+		logger.Errorf("[auth.login] ping failed: %s", string(pingResp))
+		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
+		return
+	}
+
+	// Extract the nested output and verify it's a pong
+	output, ok := pingResult["output"].(map[string]interface{})
+	if !ok || output["type"] != "pong" {
+		logger.Errorf("[auth.login] unexpected ping response: %s", string(pingResp))
+		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
+		return
+	}
+
+	logger.Debugf("[auth.login] bridge confirmed ready (session=%s, pong received)", sess.SessionID)
 
 	// Persist actual mode (informational)
 	_ = h.SM.SetPrivileged(sess.SessionID, privileged)

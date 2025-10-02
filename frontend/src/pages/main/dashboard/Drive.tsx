@@ -13,11 +13,11 @@ interface ApiDisk {
   name: string;
   ro: boolean;
   serial?: string;
-  size: string;           // e.g. "0B", "953.9G"
-  type?: string;          // e.g. "nvme", "usb", "sata", etc.
+  size: string; // e.g. "0B", "953.9G"
+  type?: string; // e.g. "nvme", "usb", "sata", etc.
   vendor?: string;
-  power?: unknown;        // present for nvme
-  smart?: unknown;        // present for nvme
+  power?: unknown; // present for nvme
+  smart?: unknown; // present for nvme
 }
 
 // --- Component's normalized shape ---
@@ -44,19 +44,30 @@ function parseSizeToBytes(input: string | undefined | null): number {
 
   const unit = m[2] || "B";
   const pow =
-    unit === "B" ? 0 :
-      unit === "K" ? 1 :
-        unit === "M" ? 2 :
-          unit === "G" ? 3 :
-            unit === "T" ? 4 :
-              unit === "P" ? 5 : 0;
+    unit === "B"
+      ? 0
+      : unit === "K"
+        ? 1
+        : unit === "M"
+          ? 2
+          : unit === "G"
+            ? 3
+            : unit === "T"
+              ? 4
+              : unit === "P"
+                ? 5
+                : 0;
 
   // Use binary multiples (KiB, MiB, …) which most tools report
   return Math.floor(value * Math.pow(1024, pow));
 }
 
 const Drive: React.FC = () => {
-  const { data: drives = [], isLoading, isError } = useQuery<DriveInfo[]>({
+  const {
+    data: drives = [],
+    isLoading,
+    isError,
+  } = useQuery<DriveInfo[]>({
     queryKey: ["systemDrives"],
     queryFn: async () => {
       const res = await axios.get<ApiDisk[]>("/system/disk");
@@ -92,7 +103,7 @@ const Drive: React.FC = () => {
         selectOptions={[]}
         selectedOption={selected}
         selectedOptionLabel={selected}
-        onSelect={() => { }}
+        onSelect={() => {}}
       />
     );
   }
@@ -106,7 +117,7 @@ const Drive: React.FC = () => {
         selectOptions={[]}
         selectedOption=""
         selectedOptionLabel=""
-        onSelect={() => { }}
+        onSelect={() => {}}
       />
     );
   }
@@ -121,7 +132,8 @@ const Drive: React.FC = () => {
         <strong>Type:</strong> {selectedDrive.transport || "Unknown"}
       </Typography>
       <Typography variant="body2">
-        <strong>Size:</strong> {formatBytes(selectedDrive.sizeBytes) || "Unknown"}
+        <strong>Size:</strong>{" "}
+        {formatBytes(selectedDrive.sizeBytes) || "Unknown"}
       </Typography>
       {selectedDrive.vendor && (
         <Typography variant="body2">

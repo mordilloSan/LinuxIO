@@ -1,7 +1,7 @@
 [Unit]
 Description=LinuxIO Web Server
-Wants=network-online.target
-After=network-online.target
+Requires=linuxio.socket
+After=linuxio.socket network-online.target
 
 [Service]
 User=linuxio
@@ -12,7 +12,7 @@ SupplementaryGroups=docker
 PermissionsStartOnly=true
 ExecStartPre=/usr/bin/install -d -o root -g linuxio -m 02771 /run/linuxio
 
-ExecStart=/usr/local/bin/linuxio run --env=production --port=8090
+ExecStart=/usr/local/bin/linuxio run
 Restart=on-failure
 RestartSec=5s
 
@@ -34,10 +34,9 @@ PrivateDevices=true
 UMask=0027
 ReadOnlyPaths=/etc/linuxio
 RemoveIPC=true
-
-# Tighten syscalls
-SystemCallFilter=~@keyring @clock @cpu-emulation @debug @module @mount @obsolete @raw-io @reboot @swap
+SystemCallFilter=~@keyring @cpu-emulation @debug @module @mount @obsolete @raw-io @reboot @swap
 SystemCallErrorNumber=EPERM
 
 [Install]
+WantedBy=multi-user.target
 WantedBy=multi-user.target

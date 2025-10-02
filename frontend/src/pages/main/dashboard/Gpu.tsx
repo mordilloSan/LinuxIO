@@ -19,7 +19,11 @@ interface GpuDevice {
 }
 
 const GpuInfo: React.FC = () => {
-  const { data: gpus, isLoading, isError } = useQuery<GpuDevice[]>({
+  const {
+    data: gpus,
+    isLoading,
+    isError,
+  } = useQuery<GpuDevice[]>({
     queryKey: ["Gpuinfo"],
     queryFn: async () => {
       const res = await axios.get<GpuDevice[]>("/system/gpu"); // API returns an array
@@ -33,12 +37,17 @@ const GpuInfo: React.FC = () => {
   if (isLoading) {
     content = <Typography variant="body2">Loading…</Typography>;
   } else if (isError || !gpus || gpus.length === 0) {
-    content = <Typography variant="body2">No GPU information available.</Typography>;
+    content = (
+      <Typography variant="body2">No GPU information available.</Typography>
+    );
   } else {
     content = (
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {gpus.map((gpu, idx) => (
-          <Box key={`${gpu.vendor_id}-${gpu.device_id}-${idx}`} sx={{ display: "flex", flexDirection: "column" }}>
+          <Box
+            key={`${gpu.vendor_id}-${gpu.device_id}-${idx}`}
+            sx={{ display: "flex", flexDirection: "column" }}
+          >
             <Typography variant="body1">{`${gpu.vendor} — ${gpu.model}`}</Typography>
             <Typography variant="body2">{`Driver: ${gpu.driver}`}</Typography>
             <Typography variant="body2">{`Address: ${gpu.address}`}</Typography>
