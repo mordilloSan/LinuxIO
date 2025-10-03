@@ -2,8 +2,6 @@ package ipc
 
 import (
 	"encoding/json"
-	"os/exec"
-	"time"
 )
 
 // Request/Response are the on-the-wire schema used over the unix socket.
@@ -23,20 +21,3 @@ type Response struct {
 
 // Optional helper signature for bridge-side handlers
 type HandlerFunc func([]string) (any, error)
-
-// BridgeProcess tracks a running bridge subprocess.
-type BridgeProcess struct {
-	Cmd       *exec.Cmd
-	SessionID string
-	StartedAt time.Time
-}
-
-type PeerConfig struct {
-	PublicKey           string   `json:"public_key"`
-	PresharedKey        string   `json:"preshared_key"`
-	AllowedIPs          []string `json:"allowed_ips"`
-	Endpoint            string   `json:"endpoint"`
-	PersistentKeepalive int      `json:"persistent_keepalive"`
-	PrivateKey          string   `json:"private_key"`
-	Name                string   `json:"name,omitempty"`
-}
