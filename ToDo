@@ -1,0 +1,23 @@
+5 - docker compose
+
+6 - Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable.
+
+7 - Updates - Make it more responsive. Use d-bus streaming with websocket?
+
+use quantom filebrowser as our main navigator - DONE
+when we login we must also add the user to filebrowser - DONE
+filebrowser header should contain sessionid - DONE
+destroy the filebrowser config file after we create the container - DONE
+when the bridge does cleanup we also must kill the PTY session - check when is needed - DONE
+websocket should be persistent - DONE
+For main programa startup no config file should be needed... DONE
+bridge socket and bridge binary should not have the sessionid written - DONE
+Sinc theme between filebrowser and global app2. - DONE
+Update user config files locations for theme (after login) - We should only have 1 config file. that file should only exist after login... - DONE
+Separate the bridge and server code - DONE
+Optimize number of api calls when changing theme - DONE
+Implement a Global API for GET methods only with general info - DONE
+Bridge upon receiving exit command should cancel ongoing works - DONE
+Wireguard Testing and lasthandshake - DONE
+If session is garbage colected the bridge must exist as well - DONE
+Test Multiple Users - DONE

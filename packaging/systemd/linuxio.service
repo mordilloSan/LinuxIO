@@ -1,0 +1,42 @@
+[Unit]
+Description=LinuxIO Web Server
+Requires=linuxio.socket
+After=linuxio.socket network-online.target
+
+[Service]
+User=linuxio
+Group=linuxio
+SupplementaryGroups=docker
+
+# Create /run/linuxio at start as root:linuxio with setgid and o+x
+PermissionsStartOnly=true
+ExecStartPre=/usr/bin/install -d -o root -g linuxio -m 02771 /run/linuxio
+
+ExecStart=/usr/local/bin/linuxio run
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+RestrictRealtime=true
+DevicePolicy=closed
+PrivateDevices=true
+UMask=0027
+ReadOnlyPaths=/etc/linuxio
+RemoveIPC=true
+SystemCallFilter=~@keyring @cpu-emulation @debug @module @mount @obsolete @raw-io @reboot @swap
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=multi-user.target

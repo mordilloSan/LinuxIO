@@ -1,0 +1,16 @@
+[Unit]
+Description=LinuxIO Web Server (TCP socket)
+PartOf=linuxio.service
+
+[Socket]
+ListenStream=0.0.0.0:8090
+
+# Tuning
+Backlog=4096
+NoDelay=true
+ReusePort=false
+
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

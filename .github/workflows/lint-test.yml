@@ -1,0 +1,55 @@
+name: Lint and Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [dev, feature/**]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+      # Needed for github.com/msteinert/pam (CGO)
+      - name: Install PAM headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpam0g-dev
+      # For embedded files in go
+      - name: Create Frontend Files
+        run: |
+          make dev-prep
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: "v2.1.6"
+          working-directory: backend
+          install-mode: goinstall
+  format-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+      - working-directory: backend
+        run: go fmt ./...
+  lint-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - run: make lint
+  typescript-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - run: make tsc

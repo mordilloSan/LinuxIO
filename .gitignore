@@ -1,0 +1,15 @@
+# frontend Files
+frontend/node_modules/
+backend/server/web/frontend/
+
+# Go Binaries
+linuxio-bridge
+linuxio
+
+# Logs and misc
+*.log
+.DS_Store
+.vscode/
+*.swp
+linuxio-auth-helper
+frontend/package-lock.json

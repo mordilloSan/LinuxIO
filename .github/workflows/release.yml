@@ -1,0 +1,182 @@
+name: Release (tag + build)
+
+on:
+  # Auto flow: merge dev/v* -> main
+  pull_request:
+    types: [closed]
+    branches: [main]
+  # Manual flow: run for a given tag (or latest)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (leave blank to use latest v*)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Only run on:
+    # - merged PRs where head is dev/v*
+    # - manual dispatch
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'dev/v'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Decide the TAG we’ll release:
+      # - For merged PR: extract vX.Y.Z from head branch dev/vX.Y.Z and create tag if missing
+      # - For manual run: use input tag or latest v*
+      - name: Resolve tag (and create if from PR)
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BRANCH="${{ github.event.pull_request.head.ref }}"   # e.g., dev/v0.2.4
+            TAG="${BRANCH#dev/}"                                # -> v0.2.4
+            echo "Derived tag from PR branch: $TAG"
+
+            # Configure identity for tagging
+            git config user.name  "${{ github.actor }}"
+            git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+            # Create tag atomically (fails if exists)
+            if git tag -a "$TAG" -m "Release $TAG" 2>/dev/null; then
+              git push origin "$TAG"
+              echo "Created tag $TAG"
+            else
+              echo "Tag $TAG already exists (created by another workflow?)"
+            fi
+
+          else  
+            # Manual dispatch
+            IN="${{ github.event.inputs.tag || '' }}"
+            if [[ -n "$IN" ]]; then
+              TAG="$IN"
+              echo "Using user-provided tag: $TAG"
+            else
+              TAG="$(git tag -l 'v*' --sort=-v:refname | head -n1 || true)"
+              if [[ -z "$TAG" ]]; then
+                echo "No v* tag found; please provide one via manual input."
+                exit 1
+              fi
+              echo "Using latest tag: $TAG"
+            fi
+
+            # Validate local tag exists
+            if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+              echo "Tag '$TAG' does not exist locally."
+              exit 1
+            fi
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the tag’s commit
+        run: |
+          git checkout "${{ steps.tag.outputs.tag }}"
+
+      # ---- Build toolchains ----
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpam0g-dev libdbus-1-dev pkg-config build-essential
+
+      - name: Use Node 24 (with npm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend (Vite)
+        run: make build-vite
+
+      - name: Download Go modules
+        working-directory: backend
+        run: go mod download
+
+      - name: Build Go backend
+        env: { GOOS: linux, GOARCH: amd64 }
+        run: make build-backend
+
+      - name: Build Go bridge
+        env: { GOOS: linux, GOARCH: amd64 }
+        run: make build-bridge
+
+      - name: Build Go auth helper
+        env: { GOOS: linux, GOARCH: amd64 }
+        run: make build-auth-helper
+
+      - name: Make artifacts executable
+        run: chmod +x linuxio linuxio-bridge linuxio-auth-helper
+
+      - name: Create tarball
+        id: create_tarball
+        run: |
+          TAR="linuxio-${{ steps.tag.outputs.tag }}-linux-amd64.tar.gz"
+          tar czvf "$TAR" linuxio linuxio-bridge linuxio-auth-helper
+          echo "tarball=$TAR" >> "$GITHUB_OUTPUT"
+
+      - name: Generate checksums
+        run: |
+          sha256sum linuxio linuxio-bridge linuxio-auth-helper *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Verify binaries before release
+        run: |
+          for bin in linuxio linuxio-bridge; do
+            chmod +x "$bin"
+            ./"$bin" --version || { echo "$bin verification failed"; exit 1; }
+          done
+
+          # Verify auth helper is a valid ELF executable
+          file linuxio-auth-helper | grep -q "ELF.*executable" || {
+            echo "linuxio-auth-helper is not a valid executable"
+            exit 1
+          }
+
+      - name: Create draft release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.tag.outputs.tag }}
+          draft: true
+          generateReleaseNotes: true
+          artifacts: |
+            ${{ steps.create_tarball.outputs.tarball }}
+            linuxio
+            linuxio-bridge
+            linuxio-auth-helper
+            SHA256SUMS
+
+      - name: Publish release atomically
+        if: success()
+        run: |
+          for i in {1..3}; do
+            if gh release edit "${{ steps.tag.outputs.tag }}" --draft=false; then
+              echo "Release published successfully"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying..."
+            sleep 5
+          done
+          echo "Failed to publish release after 3 attempts"
+          exit 1
+        env:
+          GH_TOKEN: ${{ github.token }}
