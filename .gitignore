@@ -12,4 +12,3 @@ linuxio
 .vscode/
 *.swp
 linuxio-auth-helper
-frontend/package-lock.json
