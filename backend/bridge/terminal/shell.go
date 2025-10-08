@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
 )
@@ -62,8 +63,21 @@ func StartTerminal(sess *session.Session) error {
 	// runs as the actual user (expected username in prompt). Users can still sudo as needed.
 	if os.Geteuid() == 0 {
 		if uid, uerr := strconv.Atoi(sess.User.UID); uerr == nil {
+			// Validate UID is within valid range for uint32
+			if uid < 0 || uid > 4294967295 {
+				return errors.New("invalid UID: must be between 0 and 4294967295")
+			}
+
 			if gid, gerr := strconv.Atoi(sess.User.GID); gerr == nil {
-				sysAttr.Credential = &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}
+				// Validate GID is within valid range for uint32
+				if gid < 0 || gid > 4294967295 {
+					return errors.New("invalid GID: must be between 0 and 4294967295")
+				}
+
+				sysAttr.Credential = &syscall.Credential{
+					Uid: uint32(uid),
+					Gid: uint32(gid),
+				}
 			}
 		}
 	}
@@ -100,7 +114,21 @@ func ResizeTerminal(sessionID string, cols, rows int) error {
 	if ts == nil || ts.PTY == nil || !ts.Open {
 		return errors.New("terminal not running")
 	}
-	return pty.Setsize(ts.PTY, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	// Clamp values to valid range for uint16
+	safeUint16 := func(val int) uint16 {
+		if val < 0 {
+			return 0
+		}
+		if val > 65535 {
+			return 65535
+		}
+		return uint16(val)
+	}
+
+	return pty.Setsize(ts.PTY, &pty.Winsize{
+		Cols: safeUint16(cols),
+		Rows: safeUint16(rows),
+	})
 }
 
 // ReadTerminal returns buffered output (draining it). If buffer empty, waits up to waitMs for new data.

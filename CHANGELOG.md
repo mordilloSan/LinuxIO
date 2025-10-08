@@ -1,3 +1,17 @@
+## v0.2.1 — 2025-10-08
+
+### 🔄 Other Changes
+
+* codeql unit conversion fixes ([5a6b011](https://github.com/mordilloSan/LinuxIO/commit/5a6b011)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+* @github-actions[bot]
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.1
+
 ## v0.2.0 — 2025-10-08
 
 ### 🐛 Bug Fixes
