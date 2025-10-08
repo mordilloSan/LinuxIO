@@ -1,151 +1,215 @@
+# Linux I/O
+
+[![Release](https://img.shields.io/github/v/release/mordilloSan/LinuxIO)](https://github.com/mordilloSan/LinuxIO/releases/latest)
 [![CodeQL](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql)
+[![Go Lint](https://github.com/mordilloSan/LinuxIO/actions/workflows/release.yml/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions)
+[![License](https://img.shields.io/github/license/mordilloSan/LinuxIO)](LICENSE)
 
 ![Logo](frontend/public/Logo.png)
 
-# Linux I/O
-
-A modern dashboard to manage your Linux system — Docker, WireGuard, updates, users, shares, sensors, and more — all in one web UI.
+A modern web dashboard to manage your Linux system — Docker, WireGuard, updates, users, shares, sensors, and more — all from one unified interface.
 
 ---
 
-## 🧠 Philosophy and Inspiration
+## 🧠 Philosophy
 
-Linux I/O is inspired by [Cockpit](https://cockpit-project.org/): a single place to manage your server.  
-But I wanted to go further — bring together **Docker management** (like Portainer), **WireGuard UI** (like Unraid), a **file explorer** (FileBrowser Quantum), and a straightforward **system API** (like Glances) into one cohesive app.
+Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes further by integrating:
 
-The goal: **one tool** to easily manage a “normal” homelab without juggling five different UIs.
+- **Docker management** (like Portainer)
+- **WireGuard VPN** configuration
+- **File management** (FileBrowser Quantum integration)
+- **System monitoring** (CPU, RAM, disk, network)
 
-Linux, as powerful as it is, suffers from too many distros, each with their set of tools.
-I did my best to make this distro-agnostic, but it’s not fully there yet.
-Base distro is debian/ubuntu
-
----
-
-## ⚙️ Stack
-
-- **Frontend**
-
-  - **Framework:** React + Vite + TypeScript
-  - **Styling:** Material UI (based on the [Mira Theme](https://mira.bootlab.io))
-  - **REST API:** Axios and Tanstack Query
-
-- **Backend**
-
-  - **Language:** Go
-  - **Authentication:** PAM modules
-  - **HTTP server:** Gin (API routes, middleware, authentication)
-  - **WebSocket:** Gorilla
-
-- **Bridge**
-  - A helper binary for executing privileged system-level actions securely.
+**Goal:** One tool to manage your homelab without juggling multiple UIs.
 
 ---
 
 ## 🚀 Features
 
-- 🔐 PAM authentication
-- 📊 Live system stats: CPU, memory, disk, network
-- 🌐 NetworkManager integration
-- 🔄 Software updates (PackageKit)
-- 🧠 Process viewer
-- 🐳 Docker manager
-- 👤 User accounts
-- 📤 Share manager
-- 🛡️ WireGuard UI
-- 💡 Hardware sensors (lm-sensors, SMART)
-- 📁 File Explorer via **FileBrowser Quantum**
-- 💻 Streaming command output (terminal view)
+- 🔐 **PAM Authentication** - Login with your Linux credentials
+- 📊 **Live System Stats** - CPU, memory, disk, network monitoring
+- 🐳 **Docker Manager** - Container management
+- 🛡️ **WireGuard UI** - VPN configuration
+- 📁 **File Explorer** - Integrated FileBrowser Quantum
+- 👤 **User Accounts** - User management
+- 📤 **Share Manager** - Samba/NFS shares
+- 🌐 **NetworkManager** - Network configuration
+- 🔄 **Software Updates** - PackageKit integration
+- 💡 **Hardware Sensors** - lm-sensors & SMART monitoring
+- 💻 **Terminal** - Web-based command execution
 
 ---
 
-## Getting Started
+## 📦 Installation
 
-### Install dependencies
+### Quick Install (Recommended)
 
-**For Debian/Ubuntu:**
+Download the latest release:
 
 ```bash
+# Download latest release
+wget https://github.com/mordilloSan/LinuxIO/releases/latest/download/linuxio-v0.1.0-linux-amd64.tar.gz
 
+# Extract
+tar xzf linuxio-v0.1.0-linux-amd64.tar.gz
+
+# Install (creates systemd service)
+sudo ./linuxio install
+
+# Start the service
+sudo systemctl start linuxio
+```
+
+Access the dashboard at: `http://localhost:18090`
+
+### System Requirements
+
+**Debian/Ubuntu:**
+
+```bash
 sudo apt update
-sudo apt install -y make curl git lm-sensors libpam0g-dev policykit-1 smartmontools python3-gi python3-dbus
+sudo apt install -y docker.io lm-sensors libpam0g policykit-1 smartmontools
 ```
 
-**For Fedora / RHEL / CentOS:**
+**Fedora/RHEL/CentOS:**
 
 ```bash
-sudo dnf install -y make curl git lm_sensors pam-devel dnf-plugins-core smartmontools python3-gi python3-dbus
+sudo dnf install -y docker lm_sensors pam smartmontools
 ```
 
-### Clone the repo
+---
+
+## 🛠️ Development
+
+### Prerequisites
+
+- Go 1.25+
+- Node.js 24+
+- Make
+
+### Setup
 
 ```bash
+# Clone repository
 git clone https://github.com/mordilloSan/LinuxIO
 cd LinuxIO
-```
 
----
+# Install dependencies
+make setup
 
-## 🛠️ Available Commands
-
-This repo uses `make` to simplify standard operations.
-
-Run `make` inside the project directory to view available commands
-
-```bash
-make setup             # Install Node.js, Go, and frontend dependencies
-make lint              # Run ESLint linter on frontend
-make tsc               # Run TypeScript type checks
-make test              # Run ESLint + TypeScript type checks
-make dev               # Start frontend (Vite) and backend (Go) in dev mode
-make build             # Build frontend, backend, and bridge for production
-make run               # Run production backend server
-make build-backend     # Build Go backend binary
-make build-bridge      # Build Go bridge binary
-make build-vite        # Build frontend static files (Vite) for production
-make clean             # Remove build artifacts and node_modules
-
-```
-
----
-
-## 🔐 Logging In
-
-This project uses **PAM authentication** to log in directly to your Linux system using your own username and password.
-
----
-
-## 👨‍💼 Development & Deployment Workflow
-
-### 🛠️ Development Mode
-
-```bash
+# Start development server
 make dev
 ```
 
-Runs Vite dev server with proxying to Go API
+The frontend runs on `http://localhost:3000` with API proxy to `:18090`
 
-Outputs all API paths and logs (from Gin)
-
-### 🚀 Production Mode
+### Build from Source
 
 ```bash
+# Build everything (includes linting)
 make build
+
+# Or build components individually
+make build-backend      # Go backend binary
+make build-bridge       # Go bridge binary
+make build-auth-helper  # PAM authentication helper
+make build-vite         # Frontend static assets
+
+# Run locally
 make run
 ```
 
-- Compiles frontend via Vite serving static assets
+### Available Commands
 
-- Compiles bridge Go binary
+**Setup & Dependencies:**
 
-- Compiles main server Go binary
+```bash
+make ensure-node       # Install/activate Node.js 24 via nvm
+make ensure-go         # Install Go 1.25 (user-local, no sudo)
+make setup             # Install frontend dependencies (npm install)
+make devinstall        # Install dev binaries (auto-detects if needed)
+```
 
-- All logging done to journald.
+**Development:**
 
-### 🔪 How It Works
+```bash
+make dev               # Start dev mode with hot reload
+make dev-prep          # Create placeholder assets for dev server
+```
 
-Under the hood:
+**Quality Checks:**
 
-- The **React frontend** runs in `frontend/` and talks to the backend via Vite's proxy (see `vite.config.ts`).
+```bash
+make lint              # Run ESLint on frontend
+make tsc               # TypeScript type checking
+make golint            # Run gofmt + golangci-lint on backend
+make test              # Run all linters (lint + tsc + golint)
+```
+
+**Building:**
+
+```bash
+make build             # Build everything (frontend + backend + bridge + auth-helper)
+make build-vite        # Build frontend only
+make build-backend     # Build backend only
+make build-bridge      # Build bridge only
+make build-auth-helper # Build PAM helper only
+```
+
+**Running & Cleaning:**
+
+```bash
+make run               # Run production server
+make clean             # Remove build artifacts
+make clean-dev         # Remove dev binaries and sudo config
+make clean-all         # Full cleanup (workspace + dev environment)
+```
+
+**Release Workflow:**
+
+```bash
+make start-dev         # Create dev/vX.Y.Z branch
+make open-pr           # Open release PR
+make merge-release     # Merge PR and trigger release
+```
+
+**Complete reference:** Run `make help` for full command list with descriptions.
+
+---
+
+## ⚙️ Tech Stack
+
+### Frontend
+
+- **React 18** with TypeScript
+- **Vite** for blazing fast builds
+- **Material-UI** (Mira theme)
+- **TanStack Query** for data fetching
+
+### Backend
+
+- **Go 1.25**
+- **Gin** HTTP framework
+- **Gorilla WebSocket**
+- **PAM** authentication
+
+### Architecture
+
+- **Main Server**: Handles HTTP/HTTPS and WebSocket connections
+- **Bridge Process**: Per-user privileged operations with security isolation
+- **Docker Integration**: Containerized file browser (no exposed ports)
+
+---
+
+## 🔐 Security
+
+- PAM-based authentication
+- Session-based auth with secure cookies
+- Setuid helper for privilege management
+- Isolated bridge processes per user
+- TLS support with self-signed certificates
+
+See [SECURITY.md](SECURITY.md) for details.
 
 ---
 
@@ -153,24 +217,46 @@ Under the hood:
 
 ```
 LinuxIO/
-├── backend/          # Gin powered backend
-├── frontend/         # Vite powered React frontend
-├── .gitignore        # List of files to be ignored by git
-├── LICENSE           # License information
-├── makefile          # Automation of builds & setup
-├── README.md         # You're reading it!
-└── SECURITY.md       # Security  write up
+├── backend/          # Go backend (Gin + WebSocket)
+├── frontend/         # React frontend (Vite + TypeScript)
+├── packaging/        # Installation scripts & helpers
+├── .github/          # CI/CD workflows
+├── makefile          # Build automation
+└── README.md         # This file
 ```
 
 ---
 
-## 📚 Learn More
+## 🤝 Contributing
 
-- 📖 Wiki for extended docs
-- 🔐 Security Policy
-- ⚖️ License
+Contributions welcome! Please read our [Contributing Guide](CONTRIBUTING.md) first.
 
-## 📊 Status & Roadmap
+Use [conventional commits](https://www.conventionalcommits.org/) for pull requests:
 
-**Status:** Active development — some features are experimental.  
-**Roadmap:** Update UI improvements, WireGuard peer UX, per-feature permissions, .deb/.rpm packaging.
+```bash
+feat(docker): add container restart functionality
+fix(auth): resolve session timeout issue
+docs(readme): update installation instructions
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the [Apache License](LICENSE).
+
+---
+
+## 🙏 Acknowledgments
+
+- [Cockpit](https://cockpit-project.org/) - Inspiration
+- [FileBrowser Quantum](https://github.com/filebrowser/filebrowser) - File management
+- [Mira Theme](https://mira.bootlab.io) - UI design
+
+---
+
+## 📞 Support
+
+- 📖 [Wiki](https://github.com/mordilloSan/LinuxIO/wiki)
+- 🐛 [Issue Tracker](https://github.com/mordilloSan/LinuxIO/issues)
+- 💬 [Discussions](https://github.com/mordilloSan/LinuxIO/discussions)
