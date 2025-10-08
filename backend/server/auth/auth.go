@@ -3,14 +3,12 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
-	"os/user"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/server/bridge"
 )
 
 // Handlers bundles dependencies (no global state).
@@ -40,8 +38,8 @@ func (h *Handlers) Login(c *gin.Context) {
 		return
 	}
 
-	bridgeBinary := bridge.GetBridgeBinaryPath(h.BridgeBinaryOverride)
-	privileged, err := bridge.StartBridge(sess, req.Password, h.Env, h.Verbose, bridgeBinary)
+	bridgeBinary := getBridgeBinary(h.BridgeBinaryOverride)
+	privileged, err := startBridge(sess, req.Password, h.Env, h.Verbose, bridgeBinary)
 	if err != nil {
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
 
@@ -62,7 +60,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	}
 
 	// Verify bridge socket is ready with ping/pong
-	pingResp, err := bridge.CallWithSession(sess, "control", "ping", nil)
+	pingResp, err := callBridgeWithSess(sess, "control", "ping", nil)
 	if err != nil {
 		logger.Errorf("[auth.login] bridge socket not ready after start: %v", err)
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
@@ -140,7 +138,7 @@ func (h *Handlers) Me(c *gin.Context) {
 // ---- internals ----
 
 func (h *Handlers) createUserSession(req LoginRequest) (*session.Session, error) {
-	sysu, err := user.Lookup(req.Username)
+	sysu, err := lookupUser(req.Username)
 	if err != nil {
 		return nil, err
 	}
