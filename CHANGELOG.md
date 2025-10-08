@@ -3,6 +3,7 @@
 ### 🔄 Other Changes
 
 * pullrequest testing workflow update ([462bf3c](https://github.com/mordilloSan/LinuxIO/commit/462bf3c)) by @MordilloSan
+* makefile bugfix ([c96f47c](https://github.com/mordilloSan/LinuxIO/commit/c96f47c)) by @MordilloSan
 
 ### 👥 Contributors
 
