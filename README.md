@@ -144,6 +144,7 @@ make lint              # Run ESLint on frontend
 make tsc               # TypeScript type checking
 make golint            # Run gofmt + golangci-lint on backend
 make test              # Run all linters (lint + tsc + golint)
+make test-backend      # Run Go unit tests in backend
 ```
 
 **Building:**
