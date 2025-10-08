@@ -1,7 +1,13 @@
 ## v0.2.2 — 2025-10-08
 
+### 🔄 Other Changes
+
+* pullrequest testing workflow update ([462bf3c](https://github.com/mordilloSan/LinuxIO/commit/462bf3c)) by @MordilloSan
+
 ### 👥 Contributors
 
+* @MordilloSan
+* @github-actions[bot]
 
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.2
