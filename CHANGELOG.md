@@ -4,6 +4,7 @@
 
 * pullrequest testing workflow update ([462bf3c](https://github.com/mordilloSan/LinuxIO/commit/462bf3c)) by @MordilloSan
 * makefile bugfix ([c96f47c](https://github.com/mordilloSan/LinuxIO/commit/c96f47c)) by @MordilloSan
+* test workflow ([06d95fe](https://github.com/mordilloSan/LinuxIO/commit/06d95fe)) by @MordilloSan
 
 ### 👥 Contributors
 
