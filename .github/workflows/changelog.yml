@@ -209,17 +209,3 @@ jobs:
             git commit -m "docs(changelog): update for ${{ steps.version.outputs.version }}"
             git push
           fi
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          BODY_FILE="${{ steps.changelog.outputs.body_file }}"
-
-          # Create release using GitHub CLI
-          gh release create "$VERSION" \
-            --title "$VERSION" \
-            --notes-file "$BODY_FILE" \
-            --target "${{ github.sha }}"
