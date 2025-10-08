@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
 )
@@ -75,7 +76,19 @@ func ResizeContainerTerminal(sessionID, containerID string, cols, rows int) erro
 	if ts == nil || ts.PTY == nil || !ts.Open {
 		return errors.New("container terminal not running")
 	}
-	return pty.Setsize(ts.PTY, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+
+	// Validate terminal dimensions to prevent integer overflow
+	if cols < 0 || cols > 65535 {
+		return errors.New("invalid terminal width: must be between 0 and 65535")
+	}
+	if rows < 0 || rows > 65535 {
+		return errors.New("invalid terminal height: must be between 0 and 65535")
+	}
+
+	return pty.Setsize(ts.PTY, &pty.Winsize{
+		Cols: uint16(cols),
+		Rows: uint16(rows),
+	})
 }
 
 func ReadContainerTerminal(sessionID, containerID string, waitMs int) (string, bool, error) {
