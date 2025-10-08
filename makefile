@@ -450,9 +450,16 @@ open-pr: generate
 	      --body-file CHANGELOG.md; \
 	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; \
 	  fi; \
-	  echo "⏳ Waiting for checks on PR #$$PRNUM…"; \
-	  gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
-	  echo "✅ All checks passed!"; \
+	  echo "🔍 Checking for CI checks on PR #$$PRNUM…"; \
+	  CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
+	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
+	    echo "⚠️  No CI checks configured. Skipping check wait."; \
+	    echo "💡 Set up GitHub Actions to run tests automatically."; \
+	  else \
+	    echo "⏳ Waiting for checks on PR #$$PRNUM…"; \
+	    gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
+	    echo "✅ All checks passed!"; \
+	  fi; \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
@@ -467,16 +474,22 @@ merge-release:
 	  PRNUM="$${PR:-$$(gh pr list $(call _repo_flag) --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
 	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo "❌ No open PR from $$BRANCH to main."; exit 1; fi; \
 	  echo "🔍 Checking status of PR #$$PRNUM…"; \
-	  if ! gh pr checks $(call _repo_flag) "$$PRNUM" > /dev/null 2>&1; then \
+	  CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
+	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
+	    echo "⚠️  No CI checks configured. Proceeding with merge."; \
+	    echo "💡 Consider setting up GitHub Actions for automated testing."; \
+	  elif ! gh pr checks $(call _repo_flag) "$$PRNUM" > /dev/null 2>&1; then \
 	    echo "❌ Checks have not passed. Run 'make open-pr' to wait for checks."; \
 	    exit 1; \
+	  else \
+	    echo "✅ All checks passed."; \
 	  fi; \
-	  echo "✅ All checks passed. Merging PR #$$PRNUM…"; \
+	  echo "🔀 Merging PR #$$PRNUM…"; \
 	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --delete-branch; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
 	}
-
+	
 help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_BLUE)🛠️  Available commands:$(COLOR_RESET)"
