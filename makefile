@@ -433,7 +433,7 @@ open-pr: generate
 	  set -euo pipefail; \
 	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
 	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo " Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
+	    echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
@@ -441,15 +441,19 @@ open-pr: generate
 	  if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
 	    echo "ℹ️  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
 	    gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
-	    exit 0; \
+	  else \
+	    echo "🔁 Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
+	    gh pr create $(call _repo_flag) \
+	      --base "$$BASE_BRANCH" \
+	      --head "$$BRANCH" \
+	      --title "Release $$VERSION" \
+	      --body-file CHANGELOG.md; \
+	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; \
 	  fi; \
-	  echo "🔁 Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
-	  gh pr create $(call _repo_flag) \
-	    --base "$$BASE_BRANCH" \
-	    --head "$$BRANCH" \
-	    --title "Release $$VERSION" \
-	    --body-file CHANGELOG.md; \
-	  gh pr view $(call _repo_flag) --web || true; \
+	  echo "⏳ Waiting for checks on PR #$$PRNUM…"; \
+	  gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
+	  echo "✅ All checks passed!"; \
+	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
 merge-release:
@@ -458,13 +462,16 @@ merge-release:
 	  set -euo pipefail; \
 	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
 	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo "  Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
+	    echo "❌ Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
 	  fi; \
 	  PRNUM="$${PR:-$$(gh pr list $(call _repo_flag) --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
-	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo " No open PR from $$BRANCH to main."; exit 1; fi; \
-	  echo "⏳ Waiting for checks on PR #$$PRNUM…"; \
-	  gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
-	  echo "✅ Checks passed. Merging…"; \
+	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo "❌ No open PR from $$BRANCH to main."; exit 1; fi; \
+	  echo "🔍 Checking status of PR #$$PRNUM…"; \
+	  if ! gh pr checks $(call _repo_flag) "$$PRNUM" > /dev/null 2>&1; then \
+	    echo "❌ Checks have not passed. Run 'make open-pr' to wait for checks."; \
+	    exit 1; \
+	  fi; \
+	  echo "✅ All checks passed. Merging PR #$$PRNUM…"; \
 	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --delete-branch; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
