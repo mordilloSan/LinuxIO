@@ -15,12 +15,16 @@ import (
 type ServerConfig struct {
 	Port             int
 	BridgeBinaryPath string
-
-	// new:
-	Env         string // "development" | "production"
-	Verbose     bool
-	ViteDevPort int // used only for dev CORS allowance
+	Env              string // "development" | "production"
+	Verbose          bool
+	ViteDevPort      int // used only for dev CORS allowance
 }
+
+// test seams (override in tests)
+var (
+	runServerFunc = RunServer    // used by StartLinuxIO
+	execCommand   = exec.Command // used by daemonReexec
+)
 
 // StartLinuxIO is the CLI entrypoint (called from main.go).
 func StartLinuxIO() {
@@ -83,7 +87,7 @@ Flags:
 		}
 
 		// Run the server (foreground or already-detached child)
-		RunServer(cfg)
+		runServerFunc(cfg)
 		return
 
 	default:
@@ -130,7 +134,7 @@ func daemonReexec() {
 		args = append(args, a)
 	}
 
-	cmd := exec.Command(orig[0], args...)
+	cmd := execCommand(orig[0], args...)
 	cmd.Env = append(os.Environ(), "LINUXIO_DETACHED=1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // new session

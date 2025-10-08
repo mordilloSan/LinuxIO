@@ -222,6 +222,13 @@ test: setup dev-prep
 	@$(MAKE) --no-print-directory tsc
 	@$(MAKE) --no-print-directory golint
 
+test-backend:
+	@echo "Running Go unit tests (backend)..."
+	@cd "$(BACKEND_DIR)" && \
+		GOFLAGS="-buildvcs=false" \
+		go test ./... -count=1 -timeout 5m
+	@echo "✅ Backend tests passed!"
+
 build-vite: lint tsc
 	@echo ""
 	@echo " Building frontend..."

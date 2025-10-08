@@ -1,9 +1,12 @@
 package auth
 
 import (
+	"os/user"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/server/bridge"
 )
 
 type Config struct {
@@ -11,6 +14,14 @@ type Config struct {
 	Verbose              bool
 	BridgeBinaryOverride string
 }
+
+// --- test seams (overridden in tests) ---
+var (
+	startBridge        = bridge.StartBridge
+	callBridgeWithSess = bridge.CallWithSession
+	getBridgeBinary    = bridge.GetBridgeBinaryPath
+	lookupUser         = user.Lookup
+)
 
 // RegisterAuthRoutes wires public and private auth endpoints.
 // - pub: routes without auth middleware (e.g., /auth/login)
