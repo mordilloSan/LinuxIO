@@ -5,6 +5,7 @@
 * testing update ([a26ffb0](https://github.com/mordilloSan/LinuxIO/commit/a26ffb0)) by @MordilloSan
 * golinting update ([304d5f8](https://github.com/mordilloSan/LinuxIO/commit/304d5f8)) by @MordilloSan
 * github workflow update ([8eb8383](https://github.com/mordilloSan/LinuxIO/commit/8eb8383)) by @MordilloSan
+* linting update ([052a9d1](https://github.com/mordilloSan/LinuxIO/commit/052a9d1)) by @MordilloSan
 
 ### 👥 Contributors
 
