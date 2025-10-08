@@ -1,8 +1,8 @@
 ## v0.2.0 — 2025-10-08
 
-### 📚 Documentation
+### 🐛 Bug Fixes
 
-* docs(changelog): update for v0.2.0 ([56a407b](https://github.com/mordilloSan/LinuxIO/commit/56a407b)) by @github-actions[bot]
+* fix(ci): exclude bot commits from changelog generation ([b870c42](https://github.com/mordilloSan/LinuxIO/commit/b870c42)) by @MordilloSan
 
 ### 🔄 Other Changes
 
