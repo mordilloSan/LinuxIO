@@ -7,6 +7,7 @@
 ### 🔄 Other Changes
 
 * Update to the changelog workflow ([d9bac52](https://github.com/mordilloSan/LinuxIO/commit/d9bac52)) by @MordilloSan
+* readme update ([857bc16](https://github.com/mordilloSan/LinuxIO/commit/857bc16)) by @MordilloSan
 
 ### 👥 Contributors
 
