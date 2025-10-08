@@ -1,7 +1,13 @@
 ## v0.2.3 — 2025-10-08
 
+### 🔄 Other Changes
+
+* testing update ([a26ffb0](https://github.com/mordilloSan/LinuxIO/commit/a26ffb0)) by @MordilloSan
+
 ### 👥 Contributors
 
+* @MordilloSan
+* @github-actions[bot]
 
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.3
