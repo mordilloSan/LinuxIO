@@ -68,14 +68,23 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}()
 
 	lookupUser = func(username string) (*user.User, error) {
-		// fake /etc/passwd lookup
 		return &user.User{Username: username, Uid: "1000", Gid: "1000"}, nil
 	}
-	getBridgeBinary = func(override string) string { return "/fake/bridge" }
-	startBridge = func(_ *session.Session, _ string, _ string, _ bool, _ string) (bool, error) {
+	getBridgeBinary = func(override string) string {
+		_ = override
+		return "/fake/bridge"
+	}
+	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, error) {
+		_ = sess
+		_ = password
+		_ = env
+		_ = verbose
+		_ = bin
 		return true, nil // privileged
 	}
-	callBridgeWithSess = func(_ *session.Session, group, cmd string, _ []string) ([]byte, error) {
+	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string) ([]byte, error) {
+		_ = sess
+		_ = args
 		if group != "control" || cmd != "ping" {
 			t.Fatalf("unexpected bridge call %s.%s", group, cmd)
 		}
@@ -123,10 +132,19 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	lookupUser = func(username string) (*user.User, error) {
 		return &user.User{Username: username, Uid: "1000", Gid: "1000"}, nil
 	}
-	startBridge = func(_ *session.Session, _ string, _ string, _ bool, _ string) (bool, error) {
+	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, error) {
+		_ = sess
+		_ = password
+		_ = env
+		_ = verbose
+		_ = bin
 		return false, fmt.Errorf("authentication failed: bad credentials")
 	}
-	callBridgeWithSess = func(_ *session.Session, _, _ string, _ []string) ([]byte, error) {
+	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string) ([]byte, error) {
+		_ = sess
+		_ = group
+		_ = cmd
+		_ = args
 		t.Fatal("should not be called when startBridge fails")
 		return nil, nil
 	}
@@ -156,10 +174,19 @@ func TestLogin_BridgeStartsButPingFails_MapsTo500_AndSessionRemoved(t *testing.T
 	lookupUser = func(username string) (*user.User, error) {
 		return &user.User{Username: username, Uid: "1000", Gid: "1000"}, nil
 	}
-	startBridge = func(_ *session.Session, _ string, _ string, _ bool, _ string) (bool, error) {
+	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, error) {
+		_ = sess
+		_ = password
+		_ = env
+		_ = verbose
+		_ = bin
 		return false, nil // started ok (non-privileged)
 	}
-	callBridgeWithSess = func(_ *session.Session, _, _ string, _ []string) ([]byte, error) {
+	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string) ([]byte, error) {
+		_ = sess
+		_ = group
+		_ = cmd
+		_ = args
 		return nil, fmt.Errorf("socket not ready")
 	}
 
@@ -190,13 +217,23 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	// Stub seams for login:
 	oldStart, oldCall, oldLookup := startBridge, callBridgeWithSess, lookupUser
 	defer func() { startBridge, callBridgeWithSess, lookupUser = oldStart, oldCall, oldLookup }()
+
 	lookupUser = func(username string) (*user.User, error) {
 		return &user.User{Username: username, Uid: "1000", Gid: "1000"}, nil
 	}
-	startBridge = func(_ *session.Session, _ string, _ string, _ bool, _ string) (bool, error) {
+	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, error) {
+		_ = sess
+		_ = password
+		_ = env
+		_ = verbose
+		_ = bin
 		return false, nil
 	}
-	callBridgeWithSess = func(_ *session.Session, _, _ string, _ []string) ([]byte, error) {
+	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string) ([]byte, error) {
+		_ = sess
+		_ = group
+		_ = cmd
+		_ = args
 		return []byte(`{"status":"ok","output":{"type":"pong"}}`), nil
 	}
 

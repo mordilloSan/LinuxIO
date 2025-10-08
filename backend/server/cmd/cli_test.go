@@ -24,17 +24,23 @@ func TestStartLinuxIO_Help(t *testing.T) {
 	os.Stdout, os.Stderr = w1, w2
 
 	defer func() {
-		w1.Close()
-		w2.Close()
+		_ = w1.Close()
+		_ = w2.Close()
 		os.Stdout, os.Stderr = oldStdout, oldStderr
+		_ = r1.Close()
+		_ = r2.Close()
 	}()
 
 	withArgs([]string{"linuxio", "help"}, func() { StartLinuxIO() })
-	w1.Close()
-	w2.Close()
+	_ = w1.Close()
+	_ = w2.Close()
 
-	out.ReadFrom(r1)
-	errb.ReadFrom(r2)
+	if _, err := out.ReadFrom(r1); err != nil {
+		t.Fatalf("read stdout: %v", err)
+	}
+	if _, err := errb.ReadFrom(r2); err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
 
 	all := out.String() + errb.String()
 	if !strings.Contains(all, "LinuxIO Server") {
@@ -47,17 +53,21 @@ func TestStartLinuxIO_Version(t *testing.T) {
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	defer func() { os.Stdout = oldStdout }()
+	defer func() {
+		os.Stdout = oldStdout
+		_ = r.Close()
+	}()
 
 	withArgs([]string{"linuxio", "version"}, func() { StartLinuxIO() })
-	w.Close()
-	out.ReadFrom(r)
+	_ = w.Close()
+	if _, err := out.ReadFrom(r); err != nil {
+		t.Fatalf("read stdout: %v", err)
+	}
 
 	got := out.String()
 	if !strings.Contains(got, "linuxio ") {
 		t.Fatalf("expected 'linuxio ' prefix, got: %q", got)
 	}
-	// avoid asserting exact hash, just ensure it references our version package value
 	if version.Version != "" && !strings.Contains(got, version.Version) {
 		t.Fatalf("expected version %q in output, got %q", version.Version, got)
 	}
@@ -91,11 +101,16 @@ func TestStartLinuxIO_UnknownCommand_ShowsHelp(t *testing.T) {
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
 	os.Stderr = w
-	defer func() { os.Stderr = oldStderr }()
+	defer func() {
+		os.Stderr = oldStderr
+		_ = r.Close()
+	}()
 
 	withArgs([]string{"linuxio", "wat"}, func() { StartLinuxIO() })
-	w.Close()
-	errb.ReadFrom(r)
+	_ = w.Close()
+	if _, err := errb.ReadFrom(r); err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
 
 	if !strings.Contains(errb.String(), "unknown command") {
 		t.Fatalf("expected 'unknown command' in stderr, got: %q", errb.String())
