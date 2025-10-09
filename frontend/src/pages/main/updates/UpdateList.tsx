@@ -52,7 +52,7 @@ const UpdateList: React.FC<Props> = ({
   if (!updates.length && !isUpdating) {
     return (
       <Box sx={{ textAlign: "left" }}>
-        <Typography variant="h6">Your system is up to date 🎉</Typography>
+        <Typography variant="h6">Your system is up to date </Typography>
       </Box>
     );
   }
