@@ -1,7 +1,13 @@
 ## v0.2.6 — 2025-10-09
 
+### 🔄 Other Changes
+
+* versioning update ([84590ec](https://github.com/mordilloSan/LinuxIO/commit/84590ec)) by @MordilloSan
+
 ### 👥 Contributors
 
+* @MordilloSan
+* @github-actions[bot]
 
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.6
