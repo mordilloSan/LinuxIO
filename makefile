@@ -396,6 +396,7 @@ clean:
 	@rm -f ./linuxio-auth-helper || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
+	@rm -rf /tmp/linuxio/dev || true
 	@find "$(BACKEND_DIR)/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 	@echo "💡 Run 'make clean-dev' to also remove dev binaries and sudo config"

@@ -1,49 +1,81 @@
+import React from "react";
 import {
   Box,
-  Typography,
-  Button,
   LinearProgress,
-  Collapse,
+  Typography,
+  Alert,
+  IconButton,
 } from "@mui/material";
-import React from "react";
+import { Close as CloseIcon } from "@mui/icons-material";
 
-interface Props {
-  onUpdateAll: () => Promise<void>;
+interface UpdateActionsProps {
+  onUpdateAll: () => void;
   isUpdating: boolean;
   currentPackage: string | null;
   progress: number;
+  error?: string | null;
+  onClearError?: () => void;
+  updateCount: number;
 }
 
-const UpdateActions: React.FC<Props> = ({
-  onUpdateAll,
+const UpdateActions: React.FC<UpdateActionsProps> = ({
   isUpdating,
   currentPackage,
   progress,
+  error,
+  onClearError,
 }) => {
   return (
-    <>
-      <Collapse in={isUpdating}>
-        <Box sx={{ textAlign: "center", mb: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Updating {currentPackage}...
-          </Typography>
-          <LinearProgress variant="determinate" value={progress} />
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            {`${Math.round(progress)}% completed`}
-          </Typography>
-        </Box>
-      </Collapse>
-      <Box sx={{ display: "flex", justifyContent: "flex-end", pb: 2, px: 2 }}>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={onUpdateAll}
-          disabled={isUpdating}
+    <Box sx={{ mb: 3 }}>
+      {/* Error Alert */}
+      {error && (
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          action={
+            onClearError && (
+              <IconButton
+                aria-label="close"
+                color="inherit"
+                size="small"
+                onClick={onClearError}
+              >
+                <CloseIcon fontSize="inherit" />
+              </IconButton>
+            )
+          }
         >
-          {isUpdating ? "Updating..." : "Install All Updates"}
-        </Button>
-      </Box>
-    </>
+          {error}
+        </Alert>
+      )}
+
+      {/* Progress Indicator */}
+      {isUpdating && (
+        <Box sx={{ mt: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              mb: 1,
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              {currentPackage
+                ? `Updating: ${currentPackage.split(";")[0]}`
+                : "Preparing..."}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {Math.round(progress)}%
+            </Typography>
+          </Box>
+          <LinearProgress
+            variant="determinate"
+            value={progress}
+            sx={{ height: 8, borderRadius: 1 }}
+          />
+        </Box>
+      )}
+    </Box>
   );
 };
 
