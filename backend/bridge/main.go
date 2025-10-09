@@ -226,8 +226,7 @@ func main() {
 }
 
 func printBridgeVersion() {
-	fmt.Printf("linuxio-bridge %s (commit %s, sha256 %s)\n",
-		version.Version, version.CommitSHA, version.SelfSHA256())
+	fmt.Printf("linuxio-bridge %s\n", version.Version)
 }
 
 // handleMainRequest processes incoming bridge requests.

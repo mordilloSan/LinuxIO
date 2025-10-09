@@ -36,16 +36,28 @@ ifeq ($(BACKEND_DIR),)
 $(error Could not find go.mod in backend/ or project root)
 endif
 
-MODULE_PATH := $(shell cd "$(BACKEND_DIR)" && go list -m)
+MODULE_PATH = $(shell cd "$(BACKEND_DIR)" && go list -m 2>/dev/null || echo "github.com/mordilloSan/LinuxIO")
 
 # --- Git metadata ---
-GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD)
+# --- Git metadata ---
+GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 GIT_TAG           := $(shell git describe --tags --exact-match 2>/dev/null || true)
-GIT_COMMIT        := $(shell git rev-parse HEAD)
-GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD)
+GIT_COMMIT        := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
-GIT_VERSION       := $(if $(GIT_TAG),$(GIT_TAG),$(if $(filter dev/%,$(GIT_BRANCH)),$(BRANCH_VERSION),dev-$(GIT_COMMIT_SHORT)))
 BUILD_TIME        := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Determine version: prioritize dev branch, then tag, then commit
+ifneq ($(findstring dev/,$(GIT_BRANCH)),)
+  # On dev/vX.Y.Z branch - always use dev prefix
+  GIT_VERSION := dev-$(BRANCH_VERSION)
+else ifeq ($(GIT_TAG),)
+  # Not on dev branch and no tag - use commit
+  GIT_VERSION := dev-$(GIT_COMMIT_SHORT)
+else
+  # Not on dev branch but has tag - use tag (release)
+  GIT_VERSION := $(GIT_TAG)
+endif
 
 GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(shell which go))
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -221,6 +233,7 @@ test: setup dev-prep
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory tsc
 	@$(MAKE) --no-print-directory golint
+	@$(MAKE) --no-print-directory test-backend
 
 test-backend:
 	@echo "Running Go unit tests (backend)..."
@@ -234,16 +247,18 @@ build-vite: lint tsc
 	@echo " Building frontend..."
 	@bash -c 'cd frontend && VITE_API_URL=/ npx vite build && echo "✅ Frontend built successfully!"'
 
-build-backend:
+build-backend: ensure-go
 	@echo ""
 	@echo " Building backend..."
+	@echo "📦 Module: $(MODULE_PATH)"
+	@echo "🔖 Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false" \
 	go build \
 	-ldflags "\
-		-X '$(MODULE_PATH)/version.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/version.BuildTime=$(BUILD_TIME)'" \
+		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio ./ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
@@ -253,16 +268,18 @@ build-backend:
 	echo " Size: $$(du -h ../linuxio | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio | awk '{ print $$1 }')"
 
-build-bridge:
+build-bridge: ensure-go
 	@echo ""
-	@echo "Building bridge..."
+	@echo "🌉 Building bridge..."
+	@echo "📦 Module: $(MODULE_PATH)"
+	@echo "🔖 Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false" \
 	go build \
 	-ldflags "\
-		-X '$(MODULE_PATH)/version.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/version.BuildTime=$(BUILD_TIME)'" \
+		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "" && \
@@ -497,6 +514,23 @@ merge-release:
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
 	}
+
+version-debug:
+	@echo "=== Version Debug Info ==="
+	@echo "BACKEND_DIR:      $(BACKEND_DIR)"
+	@echo "MODULE_PATH:      $(MODULE_PATH)"
+	@echo "GIT_VERSION:      $(GIT_VERSION)"
+	@echo "GIT_COMMIT_SHORT: $(GIT_COMMIT_SHORT)"
+	@echo "BUILD_TIME:       $(BUILD_TIME)"
+	@echo ""
+	@echo "=== Testing go list -m ==="
+	@cd "$(BACKEND_DIR)" && go list -m
+	@echo ""
+	@echo "=== Build command preview ==="
+	@echo "go build -ldflags \\"
+	@echo "  -X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \\"
+	@echo "  -X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \\"
+	@echo "  -X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'"
 	
 help:
 	@$(PRINTC) ""
@@ -545,4 +579,4 @@ help:
 	dev dev-prep setup test lint tsc golint \
 	ensure-node ensure-go ensure-golint \
 	generate devinstall devinstall-force \
-	start-dev open-pr merge-release
+	start-dev open-pr merge-release version-debug

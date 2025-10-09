@@ -1,4 +1,4 @@
-import React from "react";
+import { Close as CloseIcon } from "@mui/icons-material";
 import {
   Box,
   LinearProgress,
@@ -6,7 +6,7 @@ import {
   Alert,
   IconButton,
 } from "@mui/material";
-import { Close as CloseIcon } from "@mui/icons-material";
+import React from "react";
 
 interface UpdateActionsProps {
   onUpdateAll: () => void;
