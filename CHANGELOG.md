@@ -1,7 +1,13 @@
-## v0.2.5 — 2025-10-08
+## v0.2.5 — 2025-10-09
+
+### 🔄 Other Changes
+
+* package updater refreshed ([0bb7a92](https://github.com/mordilloSan/LinuxIO/commit/0bb7a92)) by @MordilloSan
 
 ### 👥 Contributors
 
+* @MordilloSan
+* @github-actions[bot]
 
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.5
