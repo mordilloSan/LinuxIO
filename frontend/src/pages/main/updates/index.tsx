@@ -1,11 +1,15 @@
-import { Box, Fade } from "@mui/material";
-import React, { useState } from "react";
+import { Box, Fade, Button } from "@mui/material";
+import { useQuery } from "@tanstack/react-query";
+import React, { useMemo, useState } from "react";
+import RefreshIcon from "@mui/icons-material/Refresh";
 
 import UpdateHistory from "./UpdateHistory";
 import UpdateSettings from "./UpdateSettings";
 import UpdateStatus from "./UpdateStatus";
 
 import TabSelector from "@/components/tabbar/TabSelector";
+import { Update } from "@/types/update";
+import axios from "@/utils/axios";
 
 const tabOptions = [
   { value: "updates", label: "Updates" },
@@ -16,9 +20,46 @@ const tabOptions = [
 const Updates: React.FC = () => {
   const [tab, setTab] = useState("updates");
 
+  // Query updates for the button
+  const { data } = useQuery<{ updates: Update[] }>({
+    queryKey: ["updateInfo"],
+    queryFn: () => axios.get("/updates/packages").then((res) => res.data),
+    enabled: tab === "updates", // Only fetch when on updates tab
+    refetchInterval: 50000,
+  });
+
+  const updates = useMemo(() => data?.updates || [], [data]);
+
+  // Determine what button to show based on active tab
+  const getRightContent = () => {
+    if (tab === "updates" && updates.length > 0) {
+      return (
+        <Button
+          variant="contained"
+          size="small"
+          startIcon={<RefreshIcon />}
+          onClick={() => {
+            // We'll pass this function down to UpdateStatus
+            // or trigger it via a ref/callback
+          }}
+        >
+          Update All ({updates.length})
+        </Button>
+      );
+    }
+
+    // No buttons for history or settings
+    return null;
+  };
+
   return (
     <Box sx={{ px: 2 }}>
-      <TabSelector value={tab} onChange={setTab} options={tabOptions} />
+      <TabSelector
+        value={tab}
+        onChange={setTab}
+        options={tabOptions}
+        rightContent={getRightContent()}
+      />
       <Box sx={{ position: "relative", minHeight: 400 }}>
         <Fade in={tab === "updates"} timeout={300} unmountOnExit={false}>
           <Box
