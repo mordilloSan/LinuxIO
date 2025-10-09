@@ -23,7 +23,7 @@ const UpdateStatus: React.FC = () => {
 
   const updates = useMemo(() => data?.updates || [], [data]);
 
-  const { updateOne, updateAll, updatingPackage, progress } =
+  const { updateOne, updateAll, updatingPackage, progress, error, clearError } =
     usePackageUpdater(refetchUpdates);
 
   return (
@@ -33,6 +33,9 @@ const UpdateStatus: React.FC = () => {
         isUpdating={!!updatingPackage}
         currentPackage={updatingPackage}
         progress={progress}
+        error={error}
+        onClearError={clearError}
+        updateCount={updates.length}
       />
 
       <UpdateList
