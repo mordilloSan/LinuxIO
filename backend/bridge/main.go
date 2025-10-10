@@ -309,7 +309,28 @@ func handleMainRequest(conn net.Conn, id string) {
 			_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
 			return
 		}
-		_ = encoder.Encode(ipc.Response{Status: "ok", Output: r.out})
+
+		// Coerce r.out into json.RawMessage
+		var raw json.RawMessage
+		switch v := r.out.(type) {
+		case nil:
+			raw = nil
+		case json.RawMessage:
+			raw = v
+		case []byte:
+			// if bytes are already JSON, pass through; otherwise you might prefer json.Marshal(v)
+			raw = json.RawMessage(v)
+		default:
+			b, err := json.Marshal(v)
+			if err != nil {
+				logger.Errorf("%s %s marshal output failed: %v", req.Type, req.Command, err)
+				_ = encoder.Encode(ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
+				return
+			}
+			raw = b
+		}
+
+		_ = encoder.Encode(ipc.Response{Status: "ok", Output: raw})
 		return
 
 	case <-bridgeClosing:
