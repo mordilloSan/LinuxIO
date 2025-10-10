@@ -1,8 +1,9 @@
-## v0.2.6 — 2025-10-09
+## v0.2.6 — 2025-10-10
 
 ### 🔄 Other Changes
 
 * versioning update ([84590ec](https://github.com/mordilloSan/LinuxIO/commit/84590ec)) by @MordilloSan
+* websocket ([6f0f9e0](https://github.com/mordilloSan/LinuxIO/commit/6f0f9e0)) by @MordilloSan
 
 ### 👥 Contributors
 
