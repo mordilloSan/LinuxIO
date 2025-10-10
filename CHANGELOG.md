@@ -4,6 +4,7 @@
 
 * versioning update ([84590ec](https://github.com/mordilloSan/LinuxIO/commit/84590ec)) by @MordilloSan
 * websocket ([6f0f9e0](https://github.com/mordilloSan/LinuxIO/commit/6f0f9e0)) by @MordilloSan
+* env cleanup ([4305bbe](https://github.com/mordilloSan/LinuxIO/commit/4305bbe)) by @MordilloSan
 
 ### 👥 Contributors
 
