@@ -31,13 +31,62 @@ import (
 	"github.com/mordilloSan/LinuxIO/server/web"
 )
 
-// Build minimal session object from env (keeps secret out of argv)
+// envConfig holds all environment values we need, captured at startup
+type envConfig struct {
+	SessionID     string
+	Username      string
+	UID           string
+	GID           string
+	Secret        string
+	Verbose       string
+	SocketPath    string
+	ServerBaseURL string
+	ServerCert    string
+}
+
+// readAndClearEnvironment reads all needed environment variables,
+// validates critical ones, then clears the ENTIRE environment for security.
+func readAndClearEnvironment() envConfig {
+	config := envConfig{
+		SessionID:     os.Getenv("LINUXIO_SESSION_ID"),
+		Username:      os.Getenv("LINUXIO_SESSION_USER"),
+		UID:           os.Getenv("LINUXIO_SESSION_UID"),
+		GID:           os.Getenv("LINUXIO_SESSION_GID"),
+		Secret:        os.Getenv("LINUXIO_BRIDGE_SECRET"),
+		Verbose:       os.Getenv("LINUXIO_VERBOSE"),
+		SocketPath:    os.Getenv("LINUXIO_SOCKET_PATH"),
+		ServerBaseURL: os.Getenv("LINUXIO_SERVER_BASE_URL"),
+		ServerCert:    os.Getenv("LINUXIO_SERVER_CERT"),
+	}
+
+	// Validate critical fields before clearing environment
+	if config.Secret == "" || len(config.Secret) < 64 {
+		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
+		os.Exit(1)
+	}
+	if config.UID == "" {
+		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
+		os.Exit(1)
+	}
+
+	// SECURITY: Clear the ENTIRE environment immediately after reading
+	os.Clearenv()
+
+	return config
+}
+
+// Read and save environment, then immediately clear it for security
+var envCfg = readAndClearEnvironment()
+
+// Build minimal session object from our saved config
 var Sess = &session.Session{
-	SessionID: os.Getenv("LINUXIO_SESSION_ID"),
-	User: session.User{Username: os.Getenv("LINUXIO_SESSION_USER"),
-		UID: os.Getenv("LINUXIO_SESSION_UID"),
-		GID: os.Getenv("LINUXIO_SESSION_GID")},
-	BridgeSecret: os.Getenv("LINUXIO_BRIDGE_SECRET"),
+	SessionID: envCfg.SessionID,
+	User: session.User{
+		Username: envCfg.Username,
+		UID:      envCfg.UID,
+		GID:      envCfg.GID,
+	},
+	BridgeSecret: envCfg.Secret,
 }
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
@@ -56,9 +105,9 @@ func main() {
 	pflag.BoolVar(&showVersion, "version", false, "print version and exit")
 	pflag.Parse()
 
-	// If --verbose wasn’t passed, allow env to set a default.
+	// If --verbose wasn't passed, check our saved environment config
 	if !pflag.Lookup("verbose").Changed {
-		if s := strings.TrimSpace(os.Getenv("LINUXIO_VERBOSE")); s != "" {
+		if s := strings.TrimSpace(envCfg.Verbose); s != "" {
 			switch strings.ToLower(s) {
 			case "1", "true", "yes", "on":
 				verbose = true
@@ -74,36 +123,24 @@ func main() {
 
 	env = strings.ToLower(env)
 
-	// Early-fatal checks → use stderr (logger not initialized yet)
-	if len(Sess.BridgeSecret) < 64 {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
-		os.Exit(1)
-	}
-	if Sess.User.UID == "" {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
-		os.Exit(1)
-	}
-
-	// Resolve socket path (safe to do pre-init)
-	sockFromEnv := strings.TrimSpace(os.Getenv("LINUXIO_SOCKET_PATH"))
-	var socketPath string
-	if sockFromEnv != "" {
-		socketPath = sockFromEnv
-	} else {
+	// Use saved socket path from environment config
+	socketPath := strings.TrimSpace(envCfg.SocketPath)
+	if socketPath == "" {
 		socketPath = Sess.SocketPath()
 	}
 
 	// Initialize logger ASAP
 	logger.Init(env, verbose)
 
-	logger.Infof("[bridge] boot: euid=%d uid=%s gid=%s socket=%s",
+	logger.Infof("[bridge] boot: euid=%d uid=%s gid=%s socket=%s (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
 
-	if pem := strings.TrimSpace(os.Getenv("LINUXIO_SERVER_CERT")); pem != "" {
+	// Use saved server cert from environment config
+	if pem := strings.TrimSpace(envCfg.ServerCert); pem != "" {
 		if err := web.SetRootPoolFromPEM([]byte(pem)); err != nil {
 			logger.Warnf("failed to load LINUXIO_SERVER_CERT: %v", err)
 		} else {
-			logger.Debugf("Loaded server cert from LINUXIO_SERVER_CERT")
+			logger.Debugf("Loaded server cert from saved environment config")
 		}
 	}
 
@@ -120,13 +157,14 @@ func main() {
 	userconfig.EnsureConfigReady(Sess.User.Username)
 	logger.Debugf("[bridge] userconfig ready")
 
-	// Kick off Navigator defaults application in the background.
-	if base := os.Getenv("LINUXIO_SERVER_BASE_URL"); base != "" {
+	// Kick off Navigator defaults application in the background
+	// Use saved base URL from environment config
+	if base := envCfg.ServerBaseURL; base != "" {
 		go func(baseURL string) {
 			// Try a few times with small backoff to ride out races.
 			var err error
 			for i := range 8 {
-				err = filebrowser.ApplyNavigatorDefaults(baseURL, Sess)
+				err = filebrowser.ApplyNavigatorDefaults(baseURL, Sess, envCfg.ServerCert)
 				if err == nil {
 					return
 				}
@@ -136,10 +174,10 @@ func main() {
 				case <-time.After(time.Duration(250+100*i) * time.Millisecond):
 				}
 			}
-			logger.Debugf("Gave up for user=%s: %v", Sess.User.Username, err)
+			logger.Debugf("Gave up applying Navigator defaults for user=%s: %v", Sess.User.Username, err)
 		}(base)
 	} else {
-		logger.Debugf("No LINUXIO_SERVER_BASE_URL; skipping")
+		logger.Debugf("No LINUXIO_SERVER_BASE_URL; skipping Navigator defaults")
 	}
 
 	ShutdownChan := make(chan string, 1)
@@ -318,7 +356,6 @@ func handleMainRequest(conn net.Conn, id string) {
 		case json.RawMessage:
 			raw = v
 		case []byte:
-			// if bytes are already JSON, pass through; otherwise you might prefer json.Marshal(v)
 			raw = json.RawMessage(v)
 		default:
 			b, err := json.Marshal(v)
@@ -403,7 +440,7 @@ func resolveLinuxioGID() int {
 	grp, err := user.LookupGroup("linuxio")
 	if err != nil {
 		return 0
-	} // fallback to root group if missing
+	}
 	gid, _ := strconv.Atoi(grp.Gid)
 	return gid
 }
