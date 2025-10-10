@@ -44,50 +44,6 @@ type envConfig struct {
 	ServerCert    string
 }
 
-// readAndClearEnvironment reads all needed environment variables,
-// validates critical ones, then clears ONLY variables that start with LINUXIO
-// so child processes won't inherit secrets, while keeping the rest of the env.
-func readAndClearEnvironment() envConfig {
-	config := envConfig{
-		SessionID:     os.Getenv("LINUXIO_SESSION_ID"),
-		Username:      os.Getenv("LINUXIO_SESSION_USER"),
-		UID:           os.Getenv("LINUXIO_SESSION_UID"),
-		GID:           os.Getenv("LINUXIO_SESSION_GID"),
-		Secret:        os.Getenv("LINUXIO_BRIDGE_SECRET"),
-		Verbose:       os.Getenv("LINUXIO_VERBOSE"),
-		SocketPath:    os.Getenv("LINUXIO_SOCKET_PATH"),
-		ServerBaseURL: os.Getenv("LINUXIO_SERVER_BASE_URL"),
-		ServerCert:    os.Getenv("LINUXIO_SERVER_CERT"),
-	}
-
-	// Validate critical fields before clearing
-	if config.Secret == "" || len(config.Secret) < 64 {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
-		os.Exit(1)
-	}
-	if config.UID == "" {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
-		os.Exit(1)
-	}
-
-	// SECURITY: Clear ONLY LINUXIO* variables from the environment
-	clearLinuxioEnv()
-
-	return config
-}
-
-// clearLinuxioEnv removes any environment variable whose key starts with "LINUXIO"
-func clearLinuxioEnv() {
-	for _, kv := range os.Environ() {
-		if i := strings.IndexByte(kv, '='); i > 0 {
-			key := kv[:i]
-			if strings.HasPrefix(key, "LINUXIO") { // matches LINUXIO_* and any future LINUXIO vars
-				_ = os.Unsetenv(key)
-			}
-		}
-	}
-}
-
 // Read and save environment, then immediately clear it for security
 var envCfg = readAndClearEnvironment()
 
@@ -456,4 +412,49 @@ func resolveLinuxioGID() int {
 	}
 	gid, _ := strconv.Atoi(grp.Gid)
 	return gid
+}
+
+// readAndClearEnvironment reads all needed environment variables,
+// validates critical ones, then clears ONLY variables that start with LINUXIO
+// so child processes won't inherit secrets, while keeping the rest of the env.
+func readAndClearEnvironment() envConfig {
+	config := envConfig{
+		SessionID:     os.Getenv("LINUXIO_SESSION_ID"),
+		Username:      os.Getenv("LINUXIO_SESSION_USER"),
+		UID:           os.Getenv("LINUXIO_SESSION_UID"),
+		GID:           os.Getenv("LINUXIO_SESSION_GID"),
+		Secret:        os.Getenv("LINUXIO_BRIDGE_SECRET"),
+		Verbose:       os.Getenv("LINUXIO_VERBOSE"),
+		SocketPath:    os.Getenv("LINUXIO_SOCKET_PATH"),
+		ServerBaseURL: os.Getenv("LINUXIO_SERVER_BASE_URL"),
+		ServerCert:    os.Getenv("LINUXIO_SERVER_CERT"),
+	}
+
+	// Validate critical fields before clearing
+	if config.Secret == "" || len(config.Secret) < 64 {
+		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
+		os.Exit(1)
+	}
+	if config.UID == "" {
+		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
+		os.Exit(1)
+	}
+
+	// SECURITY: Clear ONLY LINUXIO* variables from the environment
+	clearLinuxioEnv()
+
+	return config
+}
+
+// clearLinuxioEnv removes any environment variable whose key starts with "LINUXIO"
+func clearLinuxioEnv() {
+	for _, kv := range os.Environ() {
+		if i := strings.IndexByte(kv, '='); i > 0 {
+			key := kv[:i]
+			if strings.HasPrefix(key, "LINUXIO") { // matches LINUXIO_* and any future LINUXIO vars
+				_ = os.Unsetenv(key)
+			}
+		}
+	}
+	logger.Debugf("ENV SCRUB: removed all LINUXIO* from process env")
 }
