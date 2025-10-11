@@ -599,8 +599,6 @@ changelog:
 	  head -n 30 CHANGELOG.md; \
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  echo ""; \
-	  git add CHANGELOG.md; \
-	  git commit -m "docs: update changelog for $$VERSION"; \
 	}
 
 open-pr: generate
