@@ -599,15 +599,11 @@ changelog:
 	  head -n 30 CHANGELOG.md; \
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  echo ""; \
-	  echo "💡 Review the changes, then:"; \
-	  echo "   git add CHANGELOG.md"; \
-	  echo "   git commit -m 'docs: update changelog for $$VERSION'"; \
-	  echo "   make open-pr"; \
 	  git add CHANGELOG.md; \
-	  git commit -m 'docs: update changelog for v0.2.6'; \
+	  git commit -m "docs: update changelog for $$VERSION"; \
 	}
 
-open-pr: generate changelog
+open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
@@ -718,13 +714,14 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Build frontend + backend + bridge"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make run              $(COLOR_RESET) Run production backend server"
+	@$(PRINTC) "$(COLOR_RED)    make run              $(COLOR_RESET) Run production backend server"
 	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
 	@$(PRINTC) "$(COLOR_RED)    make clean-dev        $(COLOR_RESET) Remove dev binaries and sudo config (sudo required)"
 	@$(PRINTC) "$(COLOR_RED)    make clean-all        $(COLOR_RESET) Full cleanup: workspace + dev environment"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Release flow$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> from main (pushes upstream)"
+	@$(PRINTC) "$(COLOR_GREEN)    make changelog        $(COLOR_RESET) Generate CHANGELOG.md for current dev/<version> branch"
 	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR dev/<version> → main (uses gh)"
 	@$(PRINTC) "$(COLOR_GREEN)    make merge-release    $(COLOR_RESET) Wait for checks, merge PR to main, delete branch"
 	@$(PRINTC) ""
@@ -735,4 +732,4 @@ help:
 	dev dev-prep setup test lint tsc golint \
 	ensure-node ensure-go ensure-golint \
 	generate devinstall devinstall-force \
-	start-dev open-pr merge-release version-debug
+	start-dev open-pr merge-release version-debug changelog
