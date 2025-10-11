@@ -603,8 +603,8 @@ changelog:
 	  echo "   git add CHANGELOG.md"; \
 	  echo "   git commit -m 'docs: update changelog for $$VERSION'"; \
 	  echo "   make open-pr"; \
-	  git add CHANGELOG.md \
-	  git commit -m 'docs: update changelog for v0.2.6' \
+	  git add CHANGELOG.md; \
+	  git commit -m 'docs: update changelog for v0.2.6'; \
 	}
 
 open-pr: generate changelog
