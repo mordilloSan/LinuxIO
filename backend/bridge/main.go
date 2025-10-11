@@ -44,8 +44,60 @@ type envConfig struct {
 	ServerCert    string
 }
 
-// Read and save environment, then immediately clear it for security
-var envCfg = readAndClearEnvironment()
+type boot struct {
+	SessionID     string `json:"session_id"`
+	Username      string `json:"username"`
+	UID           string `json:"uid"`
+	GID           string `json:"gid"`
+	Secret        string `json:"secret"`
+	ServerBaseURL string `json:"server_base_url,omitempty"`
+	ServerCert    string `json:"server_cert,omitempty"`
+	SocketPath    string `json:"socket_path,omitempty"`
+	Verbose       string `json:"verbose,omitempty"`
+}
+
+func readBootstrapFromFD3() (*boot, error) {
+	f := os.NewFile(uintptr(3), "bootstrapfd")
+	if f == nil {
+		return nil, os.ErrNotExist
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, 64*1024))
+	if err != nil || len(b) == 0 {
+		return nil, err
+	}
+	var v boot
+	if err := json.Unmarshal(b, &v); err != nil {
+		return nil, err
+	}
+	if v.Secret == "" || v.SessionID == "" {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return &v, nil
+}
+
+func initEnvCfg() envConfig {
+	if b, err := readBootstrapFromFD3(); err == nil && b != nil {
+		// prefer FD3 path
+		cfg := envConfig{
+			SessionID:     b.SessionID,
+			Username:      b.Username,
+			UID:           b.UID,
+			GID:           b.GID,
+			Secret:        b.Secret,
+			Verbose:       b.Verbose,
+			SocketPath:    b.SocketPath,
+			ServerBaseURL: b.ServerBaseURL,
+			ServerCert:    b.ServerCert,
+		}
+		return cfg
+	}
+	logger.Warnf("Failed to read bootstrap info from FD3")
+	return envConfig{}
+}
+
+// Capture config NOW (package init time)
+var envCfg = initEnvCfg()
 
 // Build minimal session object from our saved config
 var Sess = &session.Session{
@@ -56,6 +108,7 @@ var Sess = &session.Session{
 		GID:      envCfg.GID,
 	},
 	BridgeSecret: envCfg.Secret,
+	SocketPath:   envCfg.SocketPath,
 }
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
@@ -95,7 +148,9 @@ func main() {
 	// Use saved socket path from environment config
 	socketPath := strings.TrimSpace(envCfg.SocketPath)
 	if socketPath == "" {
-		socketPath = Sess.SocketPath()
+		// logger isn't initialized yet; print to stderr and exit
+		fmt.Fprintln(os.Stderr, "bridge bootstrap error: empty socket path in FD3 JSON")
+		os.Exit(1)
 	}
 
 	// Initialize logger ASAP
@@ -412,49 +467,4 @@ func resolveLinuxioGID() int {
 	}
 	gid, _ := strconv.Atoi(grp.Gid)
 	return gid
-}
-
-// readAndClearEnvironment reads all needed environment variables,
-// validates critical ones, then clears ONLY variables that start with LINUXIO
-// so child processes won't inherit secrets, while keeping the rest of the env.
-func readAndClearEnvironment() envConfig {
-	config := envConfig{
-		SessionID:     os.Getenv("LINUXIO_SESSION_ID"),
-		Username:      os.Getenv("LINUXIO_SESSION_USER"),
-		UID:           os.Getenv("LINUXIO_SESSION_UID"),
-		GID:           os.Getenv("LINUXIO_SESSION_GID"),
-		Secret:        os.Getenv("LINUXIO_BRIDGE_SECRET"),
-		Verbose:       os.Getenv("LINUXIO_VERBOSE"),
-		SocketPath:    os.Getenv("LINUXIO_SOCKET_PATH"),
-		ServerBaseURL: os.Getenv("LINUXIO_SERVER_BASE_URL"),
-		ServerCert:    os.Getenv("LINUXIO_SERVER_CERT"),
-	}
-
-	// Validate critical fields before clearing
-	if config.Secret == "" || len(config.Secret) < 64 {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
-		os.Exit(1)
-	}
-	if config.UID == "" {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
-		os.Exit(1)
-	}
-
-	// SECURITY: Clear ONLY LINUXIO* variables from the environment
-	clearLinuxioEnv()
-
-	return config
-}
-
-// clearLinuxioEnv removes any environment variable whose key starts with "LINUXIO"
-func clearLinuxioEnv() {
-	for _, kv := range os.Environ() {
-		if i := strings.IndexByte(kv, '='); i > 0 {
-			key := kv[:i]
-			if strings.HasPrefix(key, "LINUXIO") { // matches LINUXIO_* and any future LINUXIO vars
-				_ = os.Unsetenv(key)
-			}
-		}
-	}
-	logger.Debugf("ENV SCRUB: removed all LINUXIO* from process env")
 }

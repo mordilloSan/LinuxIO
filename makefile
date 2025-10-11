@@ -39,7 +39,6 @@ endif
 MODULE_PATH = $(shell cd "$(BACKEND_DIR)" && go list -m 2>/dev/null || echo "github.com/mordilloSan/LinuxIO")
 
 # --- Git metadata ---
-# --- Git metadata ---
 GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 GIT_TAG           := $(shell git describe --tags --exact-match 2>/dev/null || true)
 GIT_COMMIT        := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -95,6 +94,56 @@ define _read_and_validate_version
 	fi; \
 	REL_BRANCH="dev/$$VERSION"
 endef
+
+# ---- toolchain --------------------------------------------------------------
+CC       ?= gcc
+UNAME_S  := $(shell uname -s)
+
+# ---- toggles (override on CLI: make build-auth-helper LTO=0 STRIP=0 WERROR=1)
+LTO      ?= 1          # enable link-time optimization
+STRIP    ?= 1          # strip unneeded symbols after build
+WERROR   ?= 0          # treat warnings as errors (good in CI)
+
+# ---- warnings ---------------------------------------------------------------
+WARNFLAGS := \
+  -Wall -Wextra -Wformat=2 -Wformat-security -Wnull-dereference \
+  -Wshadow -Wpointer-arith -Wcast-qual -Wvla \
+  -Wstrict-overflow=2 -Winit-self -Wduplicated-cond -Wlogical-op
+
+ifeq ($(WERROR),1)
+  WARNFLAGS += -Werror
+endif
+
+# ---- codegen / security-friendly opts --------------------------------------
+OPTFLAGS := -O2 -fno-plt -fno-strict-aliasing -pipe
+
+# ---- hardening (compile-time) ----------------------------------------------
+HARDEN_CFLAGS := -fstack-protector-strong -D_FORTIFY_SOURCE=3 -fPIE
+ifeq ($(UNAME_S),Linux)
+  HARDEN_CFLAGS += -fstack-clash-protection
+endif
+
+# ---- hardening (link-time) -------------------------------------------------
+HARDEN_LDFLAGS := -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie
+# Keep --as-needed to avoid pulling unused libs into a SUID binary:
+HARDEN_LDFLAGS += -Wl,--as-needed
+
+# ---- size hygiene -----------------------------------------------------------
+SIZEFLAGS    := -ffunction-sections -fdata-sections
+SIZELDFLAGS  := -Wl,--gc-sections
+
+# ---- LTO (safe with PAM; disable for debug if needed) ----------------------
+LTOFLAGS :=
+ifeq ($(LTO),1)
+  LTOFLAGS := -flto
+endif
+
+# ---- standard ---------------------------------------------------------------
+CSTD := -std=gnu11
+
+# ---- final flags ------------------------------------------------------------
+CFLAGS  := $(CSTD) $(WARNFLAGS) $(OPTFLAGS) $(HARDEN_CFLAGS) $(SIZEFLAGS) $(LTOFLAGS)
+LDFLAGS := $(HARDEN_LDFLAGS) $(SIZELDFLAGS) $(LTOFLAGS)
 
 .ONESHELL:
 SHELL := /bin/bash
@@ -293,14 +342,15 @@ build-auth-helper:
 	@echo ""
 	@echo "🛡️  Building Session helper (C)..."
 	@set -euo pipefail; \
-	$(CC) -Wall -Wextra -O2 \
-    -fstack-protector-strong -D_FORTIFY_SOURCE=3 \
-    -fPIE -pie -Wl,-z,relro -Wl,-z,now \
-    -o linuxio-auth-helper packaging/linuxio-auth-helper.c -lpam
+	$(CC) $(CFLAGS) -o linuxio-auth-helper packaging/linuxio-auth-helper.c $(LDFLAGS) -lpam; \
+	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth-helper; fi; \
 	echo "✅ Session helper built successfully!"; \
-	echo "📄 Path: $(PWD)/linuxio-auth-helper"; \
+	echo "📄 Path: $$PWD/linuxio-auth-helper"; \
 	echo " Size: $$(du -h linuxio-auth-helper | cut -f1)"; \
-	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"
+	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"; \
+	if command -v checksec >/dev/null 2>&1; then \
+	  echo "🔎 checksec:"; checksec --file=linuxio-auth-helper || true; \
+	fi
 
 dev-prep:
 	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/assets"
