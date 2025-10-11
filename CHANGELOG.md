@@ -8,6 +8,7 @@
 * env bug fix ([8020e12](https://github.com/mordilloSan/LinuxIO/commit/8020e12)) by @MordilloSan
 * env bug fix ([b0d34c6](https://github.com/mordilloSan/LinuxIO/commit/b0d34c6)) by @MordilloSan
 * socket determination update enviorment variables removal C helper update ([0c9c973](https://github.com/mordilloSan/LinuxIO/commit/0c9c973)) by @MordilloSan
+* changelog update ([8dedd7c](https://github.com/mordilloSan/LinuxIO/commit/8dedd7c)) by @MordilloSan
 
 ### 👥 Contributors
 
