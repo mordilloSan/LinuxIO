@@ -20,9 +20,18 @@ import (
 
 // Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
-	socketPath := sess.SocketPath()
+	socketPath := sess.SocketPath // <-- field, not method
+	if socketPath == "" {
+		return nil, fmt.Errorf("empty session.SocketPath")
+	}
 
-	req := ipc.Request{Type: reqType, Command: command, Secret: sess.BridgeSecret, Args: args, SessionID: sess.SessionID}
+	req := ipc.Request{
+		Type:      reqType,
+		Command:   command,
+		Secret:    sess.BridgeSecret,
+		Args:      args,
+		SessionID: sess.SessionID,
+	}
 
 	var conn net.Conn
 	var err error
@@ -38,7 +47,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 			break
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("failed to connect to bridge: %w", err)
+			return nil, fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
 		}
 		time.Sleep(step)
 	}
@@ -50,14 +59,12 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 
 	enc := json.NewEncoder(conn)
 	enc.SetEscapeHTML(false)
-
 	dec := json.NewDecoder(conn)
 
 	if err := enc.Encode(req); err != nil {
 		return nil, fmt.Errorf("failed to send request to bridge: %w", err)
 	}
 
-	// Read exactly one JSON value from the stream and return it as-is.
 	var raw json.RawMessage
 	if err := dec.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("failed to decode response from bridge: %w", err)
@@ -91,6 +98,7 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		"LINUXIO_SESSION_ID="+sess.SessionID,
 		"LINUXIO_SESSION_USER="+sess.User.Username,
 		"LINUXIO_BRIDGE_SECRET="+sess.BridgeSecret,
+		"LINUXIO_SOCKET_PATH="+sess.SocketPath,
 	)
 	if verbose {
 		env = append(env, "LINUXIO_VERBOSE=1")

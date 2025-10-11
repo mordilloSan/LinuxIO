@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
+	"github.com/mordilloSan/LinuxIO/common/ipc"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
 	"github.com/mordilloSan/LinuxIO/server/bridge"
@@ -59,7 +60,7 @@ func (sc *wsSafeConn) Close() error {
 		_ = sc.Conn.WriteControl(
 			websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-			time.Now().Add(200*time.Millisecond),
+			time.Now().Add(1*time.Second),
 		)
 		err = sc.Conn.Close()
 		atomic.StoreUint32(&sc.closed, 1)
@@ -184,14 +185,10 @@ func WebSocketHandler(c *gin.Context) {
 
 				// Send retained backlog once on (re)start to repopulate xterm
 				if raw, err := bridge.CallWithSession(sess, "terminal", "read_main_backlog", nil); err == nil {
-					var resp bridgeResp
+					var resp ipc.Response
 					if json.Unmarshal(raw, &resp) == nil && strings.ToLower(resp.Status) == "ok" {
-						var out struct {
-							Data string `json:"data"`
-						}
-						_ = json.Unmarshal(resp.Output, &out)
-						if out.Data != "" {
-							_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: out.Data})
+						if dataStr := extractDataString(resp.Output); dataStr != "" {
+							_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: dataStr})
 						}
 					}
 				}
@@ -262,14 +259,13 @@ func WebSocketHandler(c *gin.Context) {
 					_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: []string{""}, Error: err.Error()})
 					continue
 				}
-				var resp bridgeResp
+				var resp ipc.Response
 				_ = json.Unmarshal(raw, &resp)
 				if strings.ToLower(resp.Status) != "ok" {
 					_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: []string{""}, Error: resp.Error})
 					continue
 				}
-				var shells []string
-				_ = json.Unmarshal(resp.Output, &shells)
+				shells := extractStringSlice(resp.Output)
 				_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: shells})
 			}
 
@@ -294,13 +290,6 @@ func WebSocketHandler(c *gin.Context) {
 	}
 }
 
-// bridgeResp mirrors ipc.Response at the server boundary.
-type bridgeResp struct {
-	Status string          `json:"status"`
-	Output json.RawMessage `json:"output,omitempty"`
-	Error  string          `json:"error,omitempty"`
-}
-
 func readFromBridgeMain(sess *session.Session, waitMs int) (string, bool, error) {
 	if waitMs <= 0 {
 		waitMs = 750
@@ -309,19 +298,17 @@ func readFromBridgeMain(sess *session.Session, waitMs int) (string, bool, error)
 	if err != nil {
 		return "", false, err
 	}
-	var resp bridgeResp
+	var resp ipc.Response
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return "", false, err
 	}
 	if strings.ToLower(resp.Status) != "ok" {
 		return "", false, errors.New(resp.Error)
 	}
-	var out struct {
-		Data   string `json:"data"`
-		Closed bool   `json:"closed"`
-	}
-	_ = json.Unmarshal(resp.Output, &out)
-	return out.Data, out.Closed, nil
+
+	// resp.Output is `any`, so type assert to map
+	data, closed := extractTerminalOutput(resp.Output)
+	return data, closed, nil
 }
 
 func readFromBridgeContainer(sess *session.Session, containerID string, waitMs int) (string, bool, error) {
@@ -332,19 +319,69 @@ func readFromBridgeContainer(sess *session.Session, containerID string, waitMs i
 	if err != nil {
 		return "", false, err
 	}
-	var resp bridgeResp
+	var resp ipc.Response
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return "", false, err
 	}
 	if strings.ToLower(resp.Status) != "ok" {
 		return "", false, errors.New(resp.Error)
 	}
-	var out struct {
-		Data   string `json:"data"`
-		Closed bool   `json:"closed"`
+
+	// resp.Output is `any`, so type assert to map
+	data, closed := extractTerminalOutput(resp.Output)
+	return data, closed, nil
+}
+
+// extractTerminalOutput extracts data and closed from resp.Output (which is type `any`)
+func extractTerminalOutput(output any) (data string, closed bool) {
+	if output == nil {
+		return "", false
 	}
-	_ = json.Unmarshal(resp.Output, &out)
-	return out.Data, out.Closed, nil
+
+	// When JSON unmarshals into `any`, objects become map[string]interface{}
+	if m, ok := output.(map[string]interface{}); ok {
+		if d, ok := m["data"].(string); ok {
+			data = d
+		}
+		if c, ok := m["closed"].(bool); ok {
+			closed = c
+		}
+	}
+	return data, closed
+}
+
+// extractDataString extracts the "data" field from resp.Output (which is type `any`)
+func extractDataString(output any) string {
+	if output == nil {
+		return ""
+	}
+
+	if m, ok := output.(map[string]interface{}); ok {
+		if d, ok := m["data"].(string); ok {
+			return d
+		}
+	}
+	return ""
+}
+
+// extractStringSlice extracts a []string from resp.Output (which is type `any`)
+func extractStringSlice(output any) []string {
+	if output == nil {
+		return []string{}
+	}
+
+	// Could be []interface{} when unmarshaled
+	if arr, ok := output.([]interface{}); ok {
+		result := make([]string, 0, len(arr))
+		for _, v := range arr {
+			if s, ok := v.(string); ok {
+				result = append(result, s)
+			}
+		}
+		return result
+	}
+
+	return []string{}
 }
 
 func isExpectedWSClose(err error) bool {

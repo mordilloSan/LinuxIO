@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -83,6 +84,7 @@ type Session struct {
 	User         User   `json:"user"`
 	Privileged   bool   `json:"privileged"`
 	BridgeSecret string `json:"bridge_secret"`
+	SocketPath   string `json:"socket_path"`
 	Timing       Timing `json:"timing"`
 }
 
@@ -248,6 +250,17 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 			AbsoluteUntil: abs,
 		},
 	}
+
+	// 🔧 NEW: generate and set the per-session socket path
+	uid64, err := strconv.ParseUint(user.UID, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("parse uid %q: %w", user.UID, err)
+	}
+	sp, err := SocketPath(uint32(uid64))
+	if err != nil {
+		return nil, fmt.Errorf("new socket path: %w", err)
+	}
+	sess.SocketPath = sp
 
 	// Enforce single-session-per-user
 	if m.cfg.SingleSessionPerUser {

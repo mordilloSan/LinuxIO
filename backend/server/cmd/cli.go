@@ -39,8 +39,7 @@ func StartLinuxIO() {
 		return
 
 	case "version", "--version", "-version":
-		fmt.Printf("linuxio %s (commit %s, sha256 %s)\n",
-			version.Version, version.CommitSHA, version.SelfSHA256())
+		fmt.Printf("linuxio %s\n", version.Version)
 		return
 
 	case "run":

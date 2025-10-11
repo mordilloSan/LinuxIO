@@ -1,8 +1,27 @@
-## v0.2.5 — 2025-10-09
+## v0.2.6 — 2025-10-11
+
+### 📚 Documentation
+
+* docs: update changelog for v0.2.6 ([8e4829a](https://github.com/owner/repo/commit/8e4829a)) by @MordilloSan
+* docs: update changelog for v0.2.6 ([c7c95b9](https://github.com/owner/repo/commit/c7c95b9)) by @MordilloSan
 
 ### 🔄 Other Changes
 
-* package updater refreshed ([0bb7a92](https://github.com/mordilloSan/LinuxIO/commit/0bb7a92)) by @MordilloSan
+* versioning update ([84590ec](https://github.com/owner/repo/commit/84590ec)) by @MordilloSan
+* websocket ([6f0f9e0](https://github.com/owner/repo/commit/6f0f9e0)) by @MordilloSan
+* env cleanup ([4305bbe](https://github.com/owner/repo/commit/4305bbe)) by @MordilloSan
+* env bug fix ([8020e12](https://github.com/owner/repo/commit/8020e12)) by @MordilloSan
+* env bug fix ([b0d34c6](https://github.com/owner/repo/commit/b0d34c6)) by @MordilloSan
+* socket determination update enviorment variables removal C helper update ([0c9c973](https://github.com/owner/repo/commit/0c9c973)) by @MordilloSan
+* changelog update ([8dedd7c](https://github.com/owner/repo/commit/8dedd7c)) by @MordilloSan
+* changelog update ([25e114f](https://github.com/owner/repo/commit/25e114f)) by @MordilloSan
+* makefile changelog code ([7bc5046](https://github.com/owner/repo/commit/7bc5046)) by @MordilloSan
+* makefile bugfix ([bbcb515](https://github.com/owner/repo/commit/bbcb515)) by @MordilloSan
+* makefile improvement ([0bf2ad8](https://github.com/owner/repo/commit/0bf2ad8)) by @MordilloSan
+* makefile update ([c49e945](https://github.com/owner/repo/commit/c49e945)) by @MordilloSan
+* changelog update ([1ac238f](https://github.com/owner/repo/commit/1ac238f)) by @MordilloSan
+* changelog ([6a1588c](https://github.com/owner/repo/commit/6a1588c)) by @MordilloSan
+* pull request workflow ([a6c0382](https://github.com/owner/repo/commit/a6c0382)) by @MordilloSan
 
 ### 👥 Contributors
 
@@ -10,74 +29,5 @@
 * @github-actions[bot]
 
 
-**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.5
-
-## v0.2.3 — 2025-10-08
-
-### 🔄 Other Changes
-
-* testing update ([a26ffb0](https://github.com/mordilloSan/LinuxIO/commit/a26ffb0)) by @MordilloSan
-* golinting update ([304d5f8](https://github.com/mordilloSan/LinuxIO/commit/304d5f8)) by @MordilloSan
-* github workflow update ([8eb8383](https://github.com/mordilloSan/LinuxIO/commit/8eb8383)) by @MordilloSan
-* linting update ([052a9d1](https://github.com/mordilloSan/LinuxIO/commit/052a9d1)) by @MordilloSan
-
-### 👥 Contributors
-
-* @MordilloSan
-* @github-actions[bot]
-
-
-**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.3
-
-## v0.2.2 — 2025-10-08
-
-### 🔄 Other Changes
-
-* pullrequest testing workflow update ([462bf3c](https://github.com/mordilloSan/LinuxIO/commit/462bf3c)) by @MordilloSan
-* makefile bugfix ([c96f47c](https://github.com/mordilloSan/LinuxIO/commit/c96f47c)) by @MordilloSan
-* test workflow ([06d95fe](https://github.com/mordilloSan/LinuxIO/commit/06d95fe)) by @MordilloSan
-* update to the workflow ([6baed35](https://github.com/mordilloSan/LinuxIO/commit/6baed35)) by @MordilloSan
-
-### 👥 Contributors
-
-* @MordilloSan
-* @github-actions[bot]
-
-
-**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.2
-
-## v0.2.1 — 2025-10-08
-
-### 🔄 Other Changes
-
-* codeql unit conversion fixes ([5a6b011](https://github.com/mordilloSan/LinuxIO/commit/5a6b011)) by @MordilloSan
-
-### 👥 Contributors
-
-* @MordilloSan
-* @github-actions[bot]
-
-
-**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.1
-
-## v0.2.0 — 2025-10-08
-
-### 🐛 Bug Fixes
-
-* fix(ci): exclude bot commits from changelog generation ([b870c42](https://github.com/mordilloSan/LinuxIO/commit/b870c42)) by @MordilloSan
-
-### 🔄 Other Changes
-
-* Update to the changelog workflow ([d9bac52](https://github.com/mordilloSan/LinuxIO/commit/d9bac52)) by @MordilloSan
-* readme update ([857bc16](https://github.com/mordilloSan/LinuxIO/commit/857bc16)) by @MordilloSan
-* makefile update ([5ff8ee6](https://github.com/mordilloSan/LinuxIO/commit/5ff8ee6)) by @MordilloSan
-* makefile bugfix ([9d41405](https://github.com/mordilloSan/LinuxIO/commit/9d41405)) by @MordilloSan
-
-### 👥 Contributors
-
-* @MordilloSan
-* @github-actions[bot]
-
-
-**Full Changelog**: https://github.com/mordilloSan/LinuxIO/commits/dev/v0.2.0
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.5...v0.2.6
 
