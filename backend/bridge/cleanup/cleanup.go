@@ -9,7 +9,6 @@ import (
 )
 
 // FullCleanup does all bridge-side cleanup for a session.
-// Right now that’s just removing the socket; extend here if you add more artifacts.
 func FullCleanup(shutdownReason string, sess *session.Session) error {
 	logger.Debugf("Shutdown initiated: %s", shutdownReason)
 	if err := cleanupBridgeSocket(sess); err != nil {
@@ -20,7 +19,11 @@ func FullCleanup(shutdownReason string, sess *session.Session) error {
 
 // cleanupBridgeSocket removes the bridge socket for the session (idempotent).
 func cleanupBridgeSocket(sess *session.Session) error {
-	sock := sess.SocketPath()
+	sock := sess.SocketPath // <-- field, not method
+	if sock == "" {
+		logger.Warnf("No socket path set on session %s; nothing to remove", sess.SessionID)
+		return nil
+	}
 
 	if err := os.Remove(sock); err == nil {
 		logger.Infof("Removed bridge socket %s for session %s", sock, sess.SessionID)
