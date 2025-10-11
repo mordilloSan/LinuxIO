@@ -1,6 +1,8 @@
-# Changelog
-
 ## v0.2.6 — 2025-10-11
+
+### 📚 Documentation
+
+* docs: update changelog for v0.2.6 ([8e4829a](https://github.com/owner/repo/commit/8e4829a)) by @MordilloSan
 
 ### 🔄 Other Changes
 
@@ -14,6 +16,7 @@
 * changelog update ([25e114f](https://github.com/owner/repo/commit/25e114f)) by @MordilloSan
 * makefile changelog code ([7bc5046](https://github.com/owner/repo/commit/7bc5046)) by @MordilloSan
 * makefile bugfix ([bbcb515](https://github.com/owner/repo/commit/bbcb515)) by @MordilloSan
+* makefile improvement ([0bf2ad8](https://github.com/owner/repo/commit/0bf2ad8)) by @MordilloSan
 
 ### 👥 Contributors
 
@@ -22,4 +25,6 @@
 
 
 **Full Changelog**: https://github.com/owner/repo/compare/v0.2.5...v0.2.6
+
+# Changelog
 
