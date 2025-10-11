@@ -501,7 +501,111 @@ start-dev:
 	  echo "✅ Ready on branch $$REL_BRANCH"; \
 	}
 
-open-pr: generate
+changelog:
+	@$(call _require_clean)
+	@{ \
+	  set -euo pipefail; \
+	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
+	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	    echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; \
+	    echo "💡 Run 'make start-dev VERSION=v1.2.3' first."; \
+	    exit 1; \
+	  fi; \
+	  VERSION="$${BRANCH#dev/}"; \
+	  DATE="$$(date -u +%Y-%m-%d)"; \
+	  echo "📝 Generating changelog for $$VERSION ($$DATE)..."; \
+	  echo ""; \
+	  PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -v "^$$VERSION$$" | head -n1 || echo "")"; \
+	  if [ -n "$$PREV_TAG" ]; then \
+	    echo "📍 Changes since $$PREV_TAG"; \
+	    COMMITS="$$(git log $${PREV_TAG}..HEAD --pretty=format:'%s|%h|%an' --reverse)"; \
+	  else \
+	    echo "📍 All commits (no previous tag found)"; \
+	    COMMITS="$$(git log --pretty=format:'%s|%h|%an' --reverse)"; \
+	  fi; \
+	  FEATURES=""; FIXES=""; DOCS=""; STYLE=""; REFACTOR=""; PERF=""; \
+	  TEST=""; BUILD=""; CI=""; CHORE=""; OTHER=""; \
+	  while IFS='|' read -r message hash author; do \
+	    [ -z "$$message" ] && continue; \
+	    [[ "$$author" == "github-actions[bot]" ]] && continue; \
+	    ENTRY="* $$message ([$${hash:0:7}](https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/commit/$$hash)) by @$$author"; \
+	    if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^docs(\(.*\))?: ]]; then DOCS="$$DOCS$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^style(\(.*\))?: ]]; then STYLE="$$STYLE$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^refactor(\(.*\))?: ]]; then REFACTOR="$$REFACTOR$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^perf(\(.*\))?: ]]; then PERF="$$PERF$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^test(\(.*\))?: ]]; then TEST="$$TEST$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^build(\(.*\))?: ]]; then BUILD="$$BUILD$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^ci(\(.*\))?: ]]; then CI="$$CI$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^chore(\(.*\))?: ]]; then CHORE="$$CHORE$$ENTRY"$$'\n'; \
+	    else OTHER="$$OTHER$$ENTRY"$$'\n'; fi; \
+	  done <<< "$$COMMITS"; \
+	  BODY_FILE="$$(mktemp)"; \
+	  { \
+	    [ -n "$$FEATURES" ] && printf "### 🚀 Features\n\n%b\n" "$$FEATURES"; \
+	    [ -n "$$FIXES" ] && printf "### 🐛 Bug Fixes\n\n%b\n" "$$FIXES"; \
+	    [ -n "$$PERF" ] && printf "### ⚡ Performance\n\n%b\n" "$$PERF"; \
+	    [ -n "$$REFACTOR" ] && printf "### ♻️ Refactoring\n\n%b\n" "$$REFACTOR"; \
+	    [ -n "$$DOCS" ] && printf "### 📚 Documentation\n\n%b\n" "$$DOCS"; \
+	    [ -n "$$STYLE" ] && printf "### 💄 Style\n\n%b\n" "$$STYLE"; \
+	    [ -n "$$TEST" ] && printf "### 🧪 Tests\n\n%b\n" "$$TEST"; \
+	    [ -n "$$BUILD" ] && printf "### 🏗️ Build\n\n%b\n" "$$BUILD"; \
+	    [ -n "$$CI" ] && printf "### 🤖 CI/CD\n\n%b\n" "$$CI"; \
+	    [ -n "$$CHORE" ] && printf "### 🔧 Chores\n\n%b\n" "$$CHORE"; \
+	    [ -n "$$OTHER" ] && printf "### 🔄 Other Changes\n\n%b\n" "$$OTHER"; \
+	    printf "### 👥 Contributors\n\n"; \
+	    if [ -n "$$PREV_TAG" ]; then \
+	      git log $${PREV_TAG}..HEAD --pretty=format:'* @%an' | sort -u; \
+	    else \
+	      git log --pretty=format:'* @%an' | sort -u; \
+	    fi; \
+	    printf "\n\n**Full Changelog**: https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/compare/$$PREV_TAG...$$VERSION\n"; \
+	  } > "$$BODY_FILE"; \
+	  HEADER="## $$VERSION — $$DATE"; \
+	  { \
+	    echo "$$HEADER"; \
+	    echo ""; \
+	    cat "$$BODY_FILE"; \
+	    echo ""; \
+	  } > new_entry.md; \
+	  if [ -f CHANGELOG.md ]; then \
+	    if grep -q "^## $$VERSION —" CHANGELOG.md; then \
+	      echo "⚠️  Version $$VERSION already exists in CHANGELOG.md, updating..."; \
+	      awk -v ver="$$VERSION" ' \
+	        /^## / { \
+	          if ($$2 == ver) { in_section=1; next } \
+	          else if (in_section) { in_section=0 } \
+	        } \
+	        !in_section { print } \
+	      ' CHANGELOG.md > CHANGELOG.tmp; \
+	      cat new_entry.md CHANGELOG.tmp > CHANGELOG.md; \
+	      rm CHANGELOG.tmp; \
+	    else \
+	      cat new_entry.md CHANGELOG.md > CHANGELOG.tmp; \
+	      mv CHANGELOG.tmp CHANGELOG.md; \
+	    fi; \
+	  else \
+	    echo "# Changelog" > CHANGELOG.md; \
+	    echo "" >> CHANGELOG.md; \
+	    cat new_entry.md >> CHANGELOG.md; \
+	  fi; \
+	  rm -f new_entry.md "$$BODY_FILE"; \
+	  echo ""; \
+	  echo "✅ CHANGELOG.md updated for $$VERSION"; \
+	  echo ""; \
+	  echo "📄 Preview:"; \
+	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+	  head -n 30 CHANGELOG.md; \
+	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+	  echo ""; \
+	  echo "💡 Review the changes, then:"; \
+	  echo "   git add CHANGELOG.md"; \
+	  echo "   git commit -m 'docs: update changelog for $$VERSION'"; \
+	  echo "   make open-pr"; \
+	}
+
+open-pr: generate changelog
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
