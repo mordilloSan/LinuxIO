@@ -31,13 +31,84 @@ import (
 	"github.com/mordilloSan/LinuxIO/server/web"
 )
 
-// Build minimal session object from env (keeps secret out of argv)
+// envConfig holds all environment values we need, captured at startup
+type envConfig struct {
+	SessionID     string
+	Username      string
+	UID           string
+	GID           string
+	Secret        string
+	Verbose       string
+	SocketPath    string
+	ServerBaseURL string
+	ServerCert    string
+}
+
+type boot struct {
+	SessionID     string `json:"session_id"`
+	Username      string `json:"username"`
+	UID           string `json:"uid"`
+	GID           string `json:"gid"`
+	Secret        string `json:"secret"`
+	ServerBaseURL string `json:"server_base_url,omitempty"`
+	ServerCert    string `json:"server_cert,omitempty"`
+	SocketPath    string `json:"socket_path,omitempty"`
+	Verbose       string `json:"verbose,omitempty"`
+}
+
+func readBootstrapFromFD3() (*boot, error) {
+	f := os.NewFile(uintptr(3), "bootstrapfd")
+	if f == nil {
+		return nil, os.ErrNotExist
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, 64*1024))
+	if err != nil || len(b) == 0 {
+		return nil, err
+	}
+	var v boot
+	if err := json.Unmarshal(b, &v); err != nil {
+		return nil, err
+	}
+	if v.Secret == "" || v.SessionID == "" {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return &v, nil
+}
+
+func initEnvCfg() envConfig {
+	if b, err := readBootstrapFromFD3(); err == nil && b != nil {
+		// prefer FD3 path
+		cfg := envConfig{
+			SessionID:     b.SessionID,
+			Username:      b.Username,
+			UID:           b.UID,
+			GID:           b.GID,
+			Secret:        b.Secret,
+			Verbose:       b.Verbose,
+			SocketPath:    b.SocketPath,
+			ServerBaseURL: b.ServerBaseURL,
+			ServerCert:    b.ServerCert,
+		}
+		return cfg
+	}
+	logger.Warnf("Failed to read bootstrap info from FD3")
+	return envConfig{}
+}
+
+// Capture config NOW (package init time)
+var envCfg = initEnvCfg()
+
+// Build minimal session object from our saved config
 var Sess = &session.Session{
-	SessionID: os.Getenv("LINUXIO_SESSION_ID"),
-	User: session.User{Username: os.Getenv("LINUXIO_SESSION_USER"),
-		UID: os.Getenv("LINUXIO_SESSION_UID"),
-		GID: os.Getenv("LINUXIO_SESSION_GID")},
-	BridgeSecret: os.Getenv("LINUXIO_BRIDGE_SECRET"),
+	SessionID: envCfg.SessionID,
+	User: session.User{
+		Username: envCfg.Username,
+		UID:      envCfg.UID,
+		GID:      envCfg.GID,
+	},
+	BridgeSecret: envCfg.Secret,
+	SocketPath:   envCfg.SocketPath,
 }
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
@@ -56,9 +127,9 @@ func main() {
 	pflag.BoolVar(&showVersion, "version", false, "print version and exit")
 	pflag.Parse()
 
-	// If --verbose wasn’t passed, allow env to set a default.
+	// If --verbose wasn't passed, check our saved environment config
 	if !pflag.Lookup("verbose").Changed {
-		if s := strings.TrimSpace(os.Getenv("LINUXIO_VERBOSE")); s != "" {
+		if s := strings.TrimSpace(envCfg.Verbose); s != "" {
 			switch strings.ToLower(s) {
 			case "1", "true", "yes", "on":
 				verbose = true
@@ -74,36 +145,26 @@ func main() {
 
 	env = strings.ToLower(env)
 
-	// Early-fatal checks → use stderr (logger not initialized yet)
-	if len(Sess.BridgeSecret) < 64 {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
+	// Use saved socket path from environment config
+	socketPath := strings.TrimSpace(envCfg.SocketPath)
+	if socketPath == "" {
+		// logger isn't initialized yet; print to stderr and exit
+		fmt.Fprintln(os.Stderr, "bridge bootstrap error: empty socket path in FD3 JSON")
 		os.Exit(1)
-	}
-	if Sess.User.UID == "" {
-		fmt.Fprintln(os.Stderr, "Bridge must be started by main LinuxIO process")
-		os.Exit(1)
-	}
-
-	// Resolve socket path (safe to do pre-init)
-	sockFromEnv := strings.TrimSpace(os.Getenv("LINUXIO_SOCKET_PATH"))
-	var socketPath string
-	if sockFromEnv != "" {
-		socketPath = sockFromEnv
-	} else {
-		socketPath = Sess.SocketPath()
 	}
 
 	// Initialize logger ASAP
 	logger.Init(env, verbose)
 
-	logger.Infof("[bridge] boot: euid=%d uid=%s gid=%s socket=%s",
+	logger.Infof("[bridge] boot: euid=%d uid=%s gid=%s socket=%s (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
 
-	if pem := strings.TrimSpace(os.Getenv("LINUXIO_SERVER_CERT")); pem != "" {
+	// Use saved server cert from environment config
+	if pem := strings.TrimSpace(envCfg.ServerCert); pem != "" {
 		if err := web.SetRootPoolFromPEM([]byte(pem)); err != nil {
 			logger.Warnf("failed to load LINUXIO_SERVER_CERT: %v", err)
 		} else {
-			logger.Debugf("Loaded server cert from LINUXIO_SERVER_CERT")
+			logger.Debugf("Loaded server cert from saved environment config")
 		}
 	}
 
@@ -120,13 +181,14 @@ func main() {
 	userconfig.EnsureConfigReady(Sess.User.Username)
 	logger.Debugf("[bridge] userconfig ready")
 
-	// Kick off Navigator defaults application in the background.
-	if base := os.Getenv("LINUXIO_SERVER_BASE_URL"); base != "" {
+	// Kick off Navigator defaults application in the background
+	// Use saved base URL from environment config
+	if base := envCfg.ServerBaseURL; base != "" {
 		go func(baseURL string) {
 			// Try a few times with small backoff to ride out races.
 			var err error
 			for i := range 8 {
-				err = filebrowser.ApplyNavigatorDefaults(baseURL, Sess)
+				err = filebrowser.ApplyNavigatorDefaults(baseURL, Sess, envCfg.ServerCert)
 				if err == nil {
 					return
 				}
@@ -136,10 +198,10 @@ func main() {
 				case <-time.After(time.Duration(250+100*i) * time.Millisecond):
 				}
 			}
-			logger.Debugf("Gave up for user=%s: %v", Sess.User.Username, err)
+			logger.Debugf("Gave up applying Navigator defaults for user=%s: %v", Sess.User.Username, err)
 		}(base)
 	} else {
-		logger.Debugf("No LINUXIO_SERVER_BASE_URL; skipping")
+		logger.Debugf("No LINUXIO_SERVER_BASE_URL; skipping Navigator defaults")
 	}
 
 	ShutdownChan := make(chan string, 1)
@@ -226,8 +288,7 @@ func main() {
 }
 
 func printBridgeVersion() {
-	fmt.Printf("linuxio-bridge %s (commit %s, sha256 %s)\n",
-		version.Version, version.CommitSHA, version.SelfSHA256())
+	fmt.Printf("linuxio-bridge %s\n", version.Version)
 }
 
 // handleMainRequest processes incoming bridge requests.
@@ -310,7 +371,27 @@ func handleMainRequest(conn net.Conn, id string) {
 			_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
 			return
 		}
-		_ = encoder.Encode(ipc.Response{Status: "ok", Output: r.out})
+
+		// Coerce r.out into json.RawMessage
+		var raw json.RawMessage
+		switch v := r.out.(type) {
+		case nil:
+			raw = nil
+		case json.RawMessage:
+			raw = v
+		case []byte:
+			raw = json.RawMessage(v)
+		default:
+			b, err := json.Marshal(v)
+			if err != nil {
+				logger.Errorf("%s %s marshal output failed: %v", req.Type, req.Command, err)
+				_ = encoder.Encode(ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
+				return
+			}
+			raw = b
+		}
+
+		_ = encoder.Encode(ipc.Response{Status: "ok", Output: raw})
 		return
 
 	case <-bridgeClosing:
@@ -383,7 +464,7 @@ func resolveLinuxioGID() int {
 	grp, err := user.LookupGroup("linuxio")
 	if err != nil {
 		return 0
-	} // fallback to root group if missing
+	}
 	gid, _ := strconv.Atoi(grp.Gid)
 	return gid
 }
