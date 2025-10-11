@@ -1,4 +1,4 @@
-## v0.2.6 — 2025-10-10
+## v0.2.6 — 2025-10-11
 
 ### 🔄 Other Changes
 
@@ -7,6 +7,7 @@
 * env cleanup ([4305bbe](https://github.com/mordilloSan/LinuxIO/commit/4305bbe)) by @MordilloSan
 * env bug fix ([8020e12](https://github.com/mordilloSan/LinuxIO/commit/8020e12)) by @MordilloSan
 * env bug fix ([b0d34c6](https://github.com/mordilloSan/LinuxIO/commit/b0d34c6)) by @MordilloSan
+* socket determination update enviorment variables removal C helper update ([0c9c973](https://github.com/mordilloSan/LinuxIO/commit/0c9c973)) by @MordilloSan
 
 ### 👥 Contributors
 
