@@ -625,16 +625,28 @@ open-pr: generate
 	      --body-file CHANGELOG.md; \
 	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; \
 	  fi; \
-	  echo "🔍 Checking for CI checks on PR #$$PRNUM…"; \
-	  CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
+	  echo ""; \
+	  echo "🔍 Waiting for CI checks to register..."; \
+	  sleep 3; \
+	  for i in 1 2 3 4 5; do \
+	    CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
+	    if ! echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
+	      break; \
+	    fi; \
+	    if [ $$i -lt 5 ]; then \
+	      echo "  Retrying in 2s... (attempt $$i/5)"; \
+	      sleep 2; \
+	    fi; \
+	  done; \
 	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
-	    echo "⚠️  No CI checks configured. Skipping check wait."; \
-	    echo "💡 Set up GitHub Actions to run tests automatically."; \
+	    echo "⚠️  No CI checks detected after 15s. Skipping check wait."; \
+	    echo "💡 Checks might start later - monitor the PR manually."; \
 	  else \
-	    echo "⏳ Waiting for checks on PR #$$PRNUM…"; \
+	    echo "⏳ Waiting for checks to complete on PR #$$PRNUM…"; \
 	    gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
 	    echo "✅ All checks passed!"; \
 	  fi; \
+	  echo ""; \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
