@@ -1,10 +1,5 @@
 ## v0.2.6 — 2025-10-11
 
-### 📚 Documentation
-
-* docs: update changelog for v0.2.6 ([8e4829a](https://github.com/owner/repo/commit/8e4829a)) by @MordilloSan
-* docs: update changelog for v0.2.6 ([c7c95b9](https://github.com/owner/repo/commit/c7c95b9)) by @MordilloSan
-
 ### 🔄 Other Changes
 
 * versioning update ([84590ec](https://github.com/owner/repo/commit/84590ec)) by @MordilloSan
@@ -23,8 +18,6 @@
 ### 👥 Contributors
 
 * @MordilloSan
-* @github-actions[bot]
-
 
 **Full Changelog**: https://github.com/owner/repo/compare/v0.2.5...v0.2.6
 
