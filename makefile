@@ -36,16 +36,27 @@ ifeq ($(BACKEND_DIR),)
 $(error Could not find go.mod in backend/ or project root)
 endif
 
-MODULE_PATH := $(shell cd "$(BACKEND_DIR)" && go list -m)
+MODULE_PATH = $(shell cd "$(BACKEND_DIR)" && go list -m 2>/dev/null || echo "github.com/mordilloSan/LinuxIO")
 
 # --- Git metadata ---
-GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD)
+GIT_BRANCH        := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 GIT_TAG           := $(shell git describe --tags --exact-match 2>/dev/null || true)
-GIT_COMMIT        := $(shell git rev-parse HEAD)
-GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD)
+GIT_COMMIT        := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
-GIT_VERSION       := $(if $(GIT_TAG),$(GIT_TAG),$(if $(filter dev/%,$(GIT_BRANCH)),$(BRANCH_VERSION),dev-$(GIT_COMMIT_SHORT)))
 BUILD_TIME        := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Determine version: prioritize dev branch, then tag, then commit
+ifneq ($(findstring dev/,$(GIT_BRANCH)),)
+  # On dev/vX.Y.Z branch - always use dev prefix
+  GIT_VERSION := dev-$(BRANCH_VERSION)
+else ifeq ($(GIT_TAG),)
+  # Not on dev branch and no tag - use commit
+  GIT_VERSION := dev-$(GIT_COMMIT_SHORT)
+else
+  # Not on dev branch but has tag - use tag (release)
+  GIT_VERSION := $(GIT_TAG)
+endif
 
 GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(shell which go))
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -83,6 +94,56 @@ define _read_and_validate_version
 	fi; \
 	REL_BRANCH="dev/$$VERSION"
 endef
+
+# ---- toolchain --------------------------------------------------------------
+CC       ?= gcc
+UNAME_S  := $(shell uname -s)
+
+# ---- toggles (override on CLI: make build-auth-helper LTO=0 STRIP=0 WERROR=1)
+LTO      ?= 1          # enable link-time optimization
+STRIP    ?= 1          # strip unneeded symbols after build
+WERROR   ?= 0          # treat warnings as errors (good in CI)
+
+# ---- warnings ---------------------------------------------------------------
+WARNFLAGS := \
+  -Wall -Wextra -Wformat=2 -Wformat-security -Wnull-dereference \
+  -Wshadow -Wpointer-arith -Wcast-qual -Wvla \
+  -Wstrict-overflow=2 -Winit-self -Wduplicated-cond -Wlogical-op
+
+ifeq ($(WERROR),1)
+  WARNFLAGS += -Werror
+endif
+
+# ---- codegen / security-friendly opts --------------------------------------
+OPTFLAGS := -O2 -fno-plt -fno-strict-aliasing -pipe
+
+# ---- hardening (compile-time) ----------------------------------------------
+HARDEN_CFLAGS := -fstack-protector-strong -D_FORTIFY_SOURCE=3 -fPIE
+ifeq ($(UNAME_S),Linux)
+  HARDEN_CFLAGS += -fstack-clash-protection
+endif
+
+# ---- hardening (link-time) -------------------------------------------------
+HARDEN_LDFLAGS := -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie
+# Keep --as-needed to avoid pulling unused libs into a SUID binary:
+HARDEN_LDFLAGS += -Wl,--as-needed
+
+# ---- size hygiene -----------------------------------------------------------
+SIZEFLAGS    := -ffunction-sections -fdata-sections
+SIZELDFLAGS  := -Wl,--gc-sections
+
+# ---- LTO (safe with PAM; disable for debug if needed) ----------------------
+LTOFLAGS :=
+ifeq ($(LTO),1)
+  LTOFLAGS := -flto
+endif
+
+# ---- standard ---------------------------------------------------------------
+CSTD := -std=gnu11
+
+# ---- final flags ------------------------------------------------------------
+CFLAGS  := $(CSTD) $(WARNFLAGS) $(OPTFLAGS) $(HARDEN_CFLAGS) $(SIZEFLAGS) $(LTOFLAGS)
+LDFLAGS := $(HARDEN_LDFLAGS) $(SIZELDFLAGS) $(LTOFLAGS)
 
 .ONESHELL:
 SHELL := /bin/bash
@@ -221,6 +282,7 @@ test: setup dev-prep
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory tsc
 	@$(MAKE) --no-print-directory golint
+	@$(MAKE) --no-print-directory test-backend
 
 test-backend:
 	@echo "Running Go unit tests (backend)..."
@@ -234,16 +296,18 @@ build-vite: lint tsc
 	@echo " Building frontend..."
 	@bash -c 'cd frontend && VITE_API_URL=/ npx vite build && echo "✅ Frontend built successfully!"'
 
-build-backend:
+build-backend: ensure-go
 	@echo ""
 	@echo " Building backend..."
+	@echo "📦 Module: $(MODULE_PATH)"
+	@echo "🔖 Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false" \
 	go build \
 	-ldflags "\
-		-X '$(MODULE_PATH)/version.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/version.BuildTime=$(BUILD_TIME)'" \
+		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio ./ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
@@ -253,16 +317,18 @@ build-backend:
 	echo " Size: $$(du -h ../linuxio | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio | awk '{ print $$1 }')"
 
-build-bridge:
+build-bridge: ensure-go
 	@echo ""
-	@echo "Building bridge..."
+	@echo "🌉 Building bridge..."
+	@echo "📦 Module: $(MODULE_PATH)"
+	@echo "🔖 Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false" \
 	go build \
 	-ldflags "\
-		-X '$(MODULE_PATH)/version.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/version.BuildTime=$(BUILD_TIME)'" \
+		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "" && \
@@ -276,14 +342,15 @@ build-auth-helper:
 	@echo ""
 	@echo "🛡️  Building Session helper (C)..."
 	@set -euo pipefail; \
-	$(CC) -Wall -Wextra -O2 \
-    -fstack-protector-strong -D_FORTIFY_SOURCE=3 \
-    -fPIE -pie -Wl,-z,relro -Wl,-z,now \
-    -o linuxio-auth-helper packaging/linuxio-auth-helper.c -lpam
+	$(CC) $(CFLAGS) -o linuxio-auth-helper packaging/linuxio-auth-helper.c $(LDFLAGS) -lpam; \
+	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth-helper; fi; \
 	echo "✅ Session helper built successfully!"; \
-	echo "📄 Path: $(PWD)/linuxio-auth-helper"; \
+	echo "📄 Path: $$PWD/linuxio-auth-helper"; \
 	echo " Size: $$(du -h linuxio-auth-helper | cut -f1)"; \
-	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"
+	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"; \
+	if command -v checksec >/dev/null 2>&1; then \
+	  echo "🔎 checksec:"; checksec --file=linuxio-auth-helper || true; \
+	fi
 
 dev-prep:
 	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/assets"
@@ -434,6 +501,106 @@ start-dev:
 	  echo "✅ Ready on branch $$REL_BRANCH"; \
 	}
 
+changelog:
+	@$(call _require_clean)
+	@{ \
+	  set -euo pipefail; \
+	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
+	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	    echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; \
+	    echo "💡 Run 'make start-dev VERSION=v1.2.3' first."; \
+	    exit 1; \
+	  fi; \
+	  VERSION="$${BRANCH#dev/}"; \
+	  DATE="$$(date -u +%Y-%m-%d)"; \
+	  echo "📝 Generating changelog for $$VERSION ($$DATE)..."; \
+	  echo ""; \
+	  PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -v "^$$VERSION$$" | head -n1 || echo "")"; \
+	  if [ -n "$$PREV_TAG" ]; then \
+	    echo "📍 Changes since $$PREV_TAG"; \
+	    COMMITS="$$(git log $${PREV_TAG}..HEAD --pretty=format:'%s|%h|%an' --reverse)"; \
+	  else \
+	    echo "📍 All commits (no previous tag found)"; \
+	    COMMITS="$$(git log --pretty=format:'%s|%h|%an' --reverse)"; \
+	  fi; \
+	  FEATURES=""; FIXES=""; DOCS=""; STYLE=""; REFACTOR=""; PERF=""; \
+	  TEST=""; BUILD=""; CI=""; CHORE=""; OTHER=""; \
+	  while IFS='|' read -r message hash author; do \
+	    [ -z "$$message" ] && continue; \
+	    [[ "$$author" == "github-actions[bot]" ]] && continue; \
+	    ENTRY="* $$message ([$${hash:0:7}](https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/commit/$$hash)) by @$$author"; \
+	    if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^docs(\(.*\))?: ]]; then DOCS="$$DOCS$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^style(\(.*\))?: ]]; then STYLE="$$STYLE$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^refactor(\(.*\))?: ]]; then REFACTOR="$$REFACTOR$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^perf(\(.*\))?: ]]; then PERF="$$PERF$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^test(\(.*\))?: ]]; then TEST="$$TEST$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^build(\(.*\))?: ]]; then BUILD="$$BUILD$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^ci(\(.*\))?: ]]; then CI="$$CI$$ENTRY"$$'\n'; \
+	    elif [[ "$$message" =~ ^chore(\(.*\))?: ]]; then CHORE="$$CHORE$$ENTRY"$$'\n'; \
+	    else OTHER="$$OTHER$$ENTRY"$$'\n'; fi; \
+	  done <<< "$$COMMITS"; \
+	  BODY_FILE="$$(mktemp)"; \
+	  { \
+	    [ -n "$$FEATURES" ] && printf "### 🚀 Features\n\n%b\n" "$$FEATURES"; \
+	    [ -n "$$FIXES" ] && printf "### 🐛 Bug Fixes\n\n%b\n" "$$FIXES"; \
+	    [ -n "$$PERF" ] && printf "### ⚡ Performance\n\n%b\n" "$$PERF"; \
+	    [ -n "$$REFACTOR" ] && printf "### ♻️ Refactoring\n\n%b\n" "$$REFACTOR"; \
+	    [ -n "$$DOCS" ] && printf "### 📚 Documentation\n\n%b\n" "$$DOCS"; \
+	    [ -n "$$STYLE" ] && printf "### 💄 Style\n\n%b\n" "$$STYLE"; \
+	    [ -n "$$TEST" ] && printf "### 🧪 Tests\n\n%b\n" "$$TEST"; \
+	    [ -n "$$BUILD" ] && printf "### 🏗️ Build\n\n%b\n" "$$BUILD"; \
+	    [ -n "$$CI" ] && printf "### 🤖 CI/CD\n\n%b\n" "$$CI"; \
+	    [ -n "$$CHORE" ] && printf "### 🔧 Chores\n\n%b\n" "$$CHORE"; \
+	    [ -n "$$OTHER" ] && printf "### 🔄 Other Changes\n\n%b\n" "$$OTHER"; \
+	    printf "### 👥 Contributors\n\n"; \
+	    if [ -n "$$PREV_TAG" ]; then \
+	      git log $${PREV_TAG}..HEAD --pretty=format:'* @%an' | sort -u; \
+	    else \
+	      git log --pretty=format:'* @%an' | sort -u; \
+	    fi; \
+	    printf "\n\n**Full Changelog**: https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/compare/$$PREV_TAG...$$VERSION\n"; \
+	  } > "$$BODY_FILE"; \
+	  HEADER="## $$VERSION — $$DATE"; \
+	  { \
+	    echo "$$HEADER"; \
+	    echo ""; \
+	    cat "$$BODY_FILE"; \
+	    echo ""; \
+	  } > new_entry.md; \
+	  if [ -f CHANGELOG.md ]; then \
+	    if grep -q "^## $$VERSION —" CHANGELOG.md; then \
+	      echo "⚠️  Version $$VERSION already exists in CHANGELOG.md, updating..."; \
+	      awk -v ver="$$VERSION" ' \
+	        /^## / { \
+	          if ($$2 == ver) { in_section=1; next } \
+	          else if (in_section) { in_section=0 } \
+	        } \
+	        !in_section { print } \
+	      ' CHANGELOG.md > CHANGELOG.tmp; \
+	      cat new_entry.md CHANGELOG.tmp > CHANGELOG.md; \
+	      rm CHANGELOG.tmp; \
+	    else \
+	      cat new_entry.md CHANGELOG.md > CHANGELOG.tmp; \
+	      mv CHANGELOG.tmp CHANGELOG.md; \
+	    fi; \
+	  else \
+	    echo "# Changelog" > CHANGELOG.md; \
+	    echo "" >> CHANGELOG.md; \
+	    cat new_entry.md >> CHANGELOG.md; \
+	  fi; \
+	  rm -f new_entry.md "$$BODY_FILE"; \
+	  echo ""; \
+	  echo "✅ CHANGELOG.md updated for $$VERSION"; \
+	  echo ""; \
+	  echo "📄 Preview:"; \
+	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+	  head -n 30 CHANGELOG.md; \
+	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+	  echo ""; \
+	}
+
 open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
@@ -458,16 +625,28 @@ open-pr: generate
 	      --body-file CHANGELOG.md; \
 	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; \
 	  fi; \
-	  echo "🔍 Checking for CI checks on PR #$$PRNUM…"; \
-	  CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
+	  echo ""; \
+	  echo "🔍 Waiting for CI checks to register..."; \
+	  sleep 3; \
+	  for i in 1 2 3 4 5; do \
+	    CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
+	    if ! echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
+	      break; \
+	    fi; \
+	    if [ $$i -lt 5 ]; then \
+	      echo "  Retrying in 2s... (attempt $$i/5)"; \
+	      sleep 2; \
+	    fi; \
+	  done; \
 	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
-	    echo "⚠️  No CI checks configured. Skipping check wait."; \
-	    echo "💡 Set up GitHub Actions to run tests automatically."; \
+	    echo "⚠️  No CI checks detected after 15s. Skipping check wait."; \
+	    echo "💡 Checks might start later - monitor the PR manually."; \
 	  else \
-	    echo "⏳ Waiting for checks on PR #$$PRNUM…"; \
+	    echo "⏳ Waiting for checks to complete on PR #$$PRNUM…"; \
 	    gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
 	    echo "✅ All checks passed!"; \
 	  fi; \
+	  echo ""; \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
@@ -497,6 +676,23 @@ merge-release:
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
 	}
+
+version-debug:
+	@echo "=== Version Debug Info ==="
+	@echo "BACKEND_DIR:      $(BACKEND_DIR)"
+	@echo "MODULE_PATH:      $(MODULE_PATH)"
+	@echo "GIT_VERSION:      $(GIT_VERSION)"
+	@echo "GIT_COMMIT_SHORT: $(GIT_COMMIT_SHORT)"
+	@echo "BUILD_TIME:       $(BUILD_TIME)"
+	@echo ""
+	@echo "=== Testing go list -m ==="
+	@cd "$(BACKEND_DIR)" && go list -m
+	@echo ""
+	@echo "=== Build command preview ==="
+	@echo "go build -ldflags \\"
+	@echo "  -X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \\"
+	@echo "  -X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \\"
+	@echo "  -X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'"
 	
 help:
 	@$(PRINTC) ""
@@ -528,13 +724,14 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Build frontend + backend + bridge"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make run              $(COLOR_RESET) Run production backend server"
+	@$(PRINTC) "$(COLOR_RED)    make run              $(COLOR_RESET) Run production backend server"
 	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
 	@$(PRINTC) "$(COLOR_RED)    make clean-dev        $(COLOR_RESET) Remove dev binaries and sudo config (sudo required)"
 	@$(PRINTC) "$(COLOR_RED)    make clean-all        $(COLOR_RESET) Full cleanup: workspace + dev environment"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Release flow$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> from main (pushes upstream)"
+	@$(PRINTC) "$(COLOR_GREEN)    make changelog        $(COLOR_RESET) Generate CHANGELOG.md for current dev/<version> branch"
 	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR dev/<version> → main (uses gh)"
 	@$(PRINTC) "$(COLOR_GREEN)    make merge-release    $(COLOR_RESET) Wait for checks, merge PR to main, delete branch"
 	@$(PRINTC) ""
@@ -545,4 +742,4 @@ help:
 	dev dev-prep setup test lint tsc golint \
 	ensure-node ensure-go ensure-golint \
 	generate devinstall devinstall-force \
-	start-dev open-pr merge-release
+	start-dev open-pr merge-release version-debug changelog

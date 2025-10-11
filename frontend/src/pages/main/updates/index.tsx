@@ -1,7 +1,7 @@
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { Box, Fade, Button } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
-import RefreshIcon from "@mui/icons-material/Refresh";
 
 import UpdateHistory from "./UpdateHistory";
 import UpdateSettings from "./UpdateSettings";

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -24,7 +23,7 @@ var navDefaultsOnce sync.Map // username -> struct{}
 
 // Exported so auth (or bridge) can call it.
 // Pass a baseURL like "http://127.0.0.1:8090" or "https://linux.engmariz.com".
-func ApplyNavigatorDefaults(baseURL string, sess *session.Session) error {
+func ApplyNavigatorDefaults(baseURL string, sess *session.Session, serverCert string) error {
 	// Defensive checks
 	if baseURL == "" || sess == nil || sess.User.Username == "" || sess.SessionID == "" {
 		return fmt.Errorf("invalid input")
@@ -51,13 +50,13 @@ func ApplyNavigatorDefaults(baseURL string, sess *session.Session) error {
 	defer cancel()
 
 	// 1) Ensure FB login (SSO with same cookie)
-	if loginErr := fbLogin(ctx, baseURL, sess.SessionID); loginErr != nil {
+	if loginErr := fbLogin(ctx, baseURL, sess.SessionID, serverCert); loginErr != nil {
 		navDefaultsOnce.Delete(username) // allow retry on next call
 		return fmt.Errorf("fb login: %w", loginErr)
 	}
 
 	// 2) GET current user (self) to obtain numeric id & current fields
-	userObj, userID, err := fbGetSelf(ctx, baseURL, sess.SessionID)
+	userObj, userID, err := fbGetSelf(ctx, baseURL, sess.SessionID, serverCert)
 	if err != nil {
 		navDefaultsOnce.Delete(username)
 		return fmt.Errorf("fb get self: %w", err)
@@ -106,7 +105,7 @@ func ApplyNavigatorDefaults(baseURL string, sess *session.Session) error {
 	}
 
 	// 4) PUT patch using numeric id
-	if err := fbPatchUser(ctx, baseURL, sess.SessionID, userID, which, userObj); err != nil {
+	if err := fbPatchUser(ctx, baseURL, sess.SessionID, userID, which, userObj, serverCert); err != nil {
 		navDefaultsOnce.Delete(username) // allow retry
 		return fmt.Errorf("fb patch user: %w", err)
 	}
@@ -117,14 +116,14 @@ func ApplyNavigatorDefaults(baseURL string, sess *session.Session) error {
 
 // ---- Helpers ----
 
-func fbLogin(ctx context.Context, baseURL, sessionID string) error {
+func fbLogin(ctx context.Context, baseURL, sessionID string, serverCert string) error {
 	url := baseURL + "/navigator/api/auth/login"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Cookie", "session_id="+sessionID)
-	resp, err := newHTTPClient(baseURL).Do(req)
+	resp, err := newHTTPClient(baseURL, serverCert).Do(req)
 	if err != nil {
 		return err
 	}
@@ -135,7 +134,7 @@ func fbLogin(ctx context.Context, baseURL, sessionID string) error {
 	return nil
 }
 
-func fbGetSelf(ctx context.Context, baseURL, sessionID string) (map[string]any, int, error) {
+func fbGetSelf(ctx context.Context, baseURL, sessionID string, serverCert string) (map[string]any, int, error) {
 	url := baseURL + "/navigator/api/users?id=self"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -143,7 +142,7 @@ func fbGetSelf(ctx context.Context, baseURL, sessionID string) (map[string]any, 
 	}
 	req.Header.Set("Cookie", "session_id="+sessionID)
 
-	resp, err := newHTTPClient(baseURL).Do(req)
+	resp, err := newHTTPClient(baseURL, serverCert).Do(req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -168,7 +167,7 @@ func fbGetSelf(ctx context.Context, baseURL, sessionID string) (map[string]any, 
 	return nil, 0, fmt.Errorf("self user has no numeric id")
 }
 
-func fbPatchUser(ctx context.Context, baseURL, sessionID string, id int, which []string, fullUser map[string]any) error {
+func fbPatchUser(ctx context.Context, baseURL, sessionID string, id int, which []string, fullUser map[string]any, serverCert string) error {
 	url := fmt.Sprintf("%s/navigator/api/users?id=%d", baseURL, id)
 	payload := map[string]any{
 		"what":  "user",
@@ -184,7 +183,7 @@ func fbPatchUser(ctx context.Context, baseURL, sessionID string, id int, which [
 	req.Header.Set("Cookie", "session_id="+sessionID)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := newHTTPClient(baseURL).Do(req)
+	resp, err := newHTTPClient(baseURL, serverCert).Do(req)
 	if err != nil {
 		return err
 	}
@@ -210,16 +209,14 @@ func setIfDiff(m map[string]any, key string, v any) bool {
 	return true
 }
 
-func newHTTPClient(baseURL string) *http.Client {
+func newHTTPClient(baseURL string, serverCert string) *http.Client {
 	tr := &http.Transport{ForceAttemptHTTP2: true}
 
-	if strings.HasPrefix(baseURL, "https://") {
-		host := hostWithoutPort(strings.TrimPrefix(baseURL, "https://"))
-		// Prefer an explicit PEM provided by the server via env (per-process),
-		// falling back to the library pool (system or previously set).
+	if after, ok := strings.CutPrefix(baseURL, "https://"); ok {
+		host := hostWithoutPort(after)
 		var pool = web.GetRootPool()
-		if pem := os.Getenv("LINUXIO_SERVER_CERT"); pem != "" {
-			if cp := x509.NewCertPool(); cp.AppendCertsFromPEM([]byte(pem)) {
+		if serverCert != "" {
+			if cp := x509.NewCertPool(); cp.AppendCertsFromPEM([]byte(serverCert)) {
 				pool = cp
 			}
 		}
