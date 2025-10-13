@@ -9,6 +9,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/control"
 )
 
 // Handlers bundles dependencies (no global state).
@@ -105,7 +106,19 @@ func (h *Handlers) Login(c *gin.Context) {
 	}
 	h.SM.WriteCookie(c.Writer, sess.SessionID)
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "privileged": privileged})
+	// Check for updates if user is privileged (sudo)
+	response := gin.H{
+		"success":    true,
+		"privileged": privileged,
+	}
+
+	if privileged {
+		if updateInfo := control.CheckForUpdate(); updateInfo != nil {
+			response["update"] = updateInfo
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *Handlers) Logout(c *gin.Context) {
