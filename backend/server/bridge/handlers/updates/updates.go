@@ -101,26 +101,3 @@ func updatePackageHandler(c *gin.Context) {
 		"output":  string(output), // Keep this - it's useful success output
 	})
 }
-
-// GET /updates/settings
-func getUpdateSettings(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"enabled":   true,
-		"frequency": "daily",
-		"lastRun":   "2025-05-15T12:34:00Z",
-	})
-}
-
-// POST /updates/settings
-func postUpdateSettings(c *gin.Context) {
-	var req struct {
-		Enabled   bool   `json:"enabled"`
-		Frequency string `json:"frequency"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid settings"})
-		return
-	}
-	// Save logic here...
-	c.Status(http.StatusNoContent)
-}
