@@ -101,4 +101,3 @@ func updatePackageHandler(c *gin.Context) {
 		"output":  string(output), // Keep this - it's useful success output
 	})
 }
-

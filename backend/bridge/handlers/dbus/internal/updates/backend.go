@@ -20,16 +20,16 @@ type AutoUpdateState struct {
 type Backend interface {
 	Name() string
 	Detect() bool
-	Read(ctx context.Context) (AutoUpdateState, error)
-	Apply(ctx context.Context, o AutoUpdateOptions) error
-	ApplyOfflineNow(ctx context.Context) error // optional; may return not-implemented
+	Read() (AutoUpdateState, error)
+	Apply(context.Context, AutoUpdateOptions) error
+	ApplyOfflineNow() error // optional; may return not-implemented
 }
 
 func SelectBackend() Backend {
 	backs := []Backend{
 		newAptBackend(), // Debian/Ubuntu
 		newDnfBackend(), // Fedora/RHEL
-		// (We don’t return pkgkit here; it’s auxiliary for offline apply)
+		// (We don't return pkgkit here; it's auxiliary for offline apply)
 	}
 	for _, b := range backs {
 		if b.Detect() {
