@@ -651,37 +651,37 @@ open-pr: generate
 	    echo "   (Press Ctrl+C to cancel)"; \
 	    echo ""; \
 	    if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echo -icanon min 0 time 0; fi; \
-	    cleanup_checks() { \
-	      [ -n "$$TIMER_PID" ] && kill $$TIMER_PID 2>/dev/null || true; \
-	      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
-	      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
-	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
-	      stty "$$SAVED_STTY" 2>/dev/null || true; \
-	      printf "\r\033[K"; \
-	    }; \
-	    trap 'cleanup_checks; exit 130' INT TERM; \
-	    START_TIME=$$(date +%s); \
-	    TIMER_PID=""; CHECK_PID=""; \
-	    ( \
-	      while true; do \
-	        ELAPSED=$$(($$(date +%s) - START_TIME)); \
-	        printf "\r⏱️  Elapsed: %02d:%02d - Checking status..." $$((ELAPSED/60)) $$((ELAPSED%60)); \
-	        sleep 1; \
-	      done \
-	    ) & \
-	    TIMER_PID=$$!; \
-	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 2>&1 | grep -vE "^Refreshing" ) & \
-	    CHECK_PID=$$!; \
-	    wait $$CHECK_PID; \
-	    CHECK_STATUS=$$?; \
-	    cleanup_checks; \
-	    trap - INT TERM; \
-	    TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
-	    if [ $$CHECK_STATUS -eq 0 ]; then \
-	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
-	    else \
-	      echo "❌ Checks failed or monitoring was interrupted"; \
-	    fi; \
+    cleanup_checks() { \
+      [ -n "$$TIMER_PID" ] && kill $$TIMER_PID 2>/dev/null || true; \
+      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
+      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
+      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
+      stty "$$SAVED_STTY" 2>/dev/null || true; \
+      printf "\r\033[K"; \
+    }; \
+    trap 'cleanup_checks; exit 130' INT TERM; \
+    START_TIME=$$(date +%s); \
+    TIMER_PID=""; CHECK_PID=""; \
+    ( \
+      while true; do \
+        ELAPSED=$$(($$(date +%s) - START_TIME)); \
+        printf "\r⏱️  Elapsed: %02d:%02d - Waiting for checks..." $$((ELAPSED/60)) $$((ELAPSED%60)); \
+        sleep 1; \
+      done \
+    ) & \
+    TIMER_PID=$$!; \
+    CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 2>&1)"; \
+    CHECK_STATUS=$$?; \
+    cleanup_checks; \
+    trap - INT TERM; \
+    TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
+    echo ""; \
+    echo "$$CHECK_OUTPUT"; \
+    if [ $$CHECK_STATUS -eq 0 ]; then \
+      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
+    else \
+      echo "❌ Checks failed or monitoring was interrupted"; \
+    fi; \
 	  fi; \
 	  echo ""; \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
