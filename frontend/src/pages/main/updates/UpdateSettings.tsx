@@ -13,6 +13,7 @@ import {
   Stack,
 } from "@mui/material";
 import React, { useEffect, useMemo, useState } from "react";
+
 import axios from "@/utils/axios";
 
 type Frequency = "hourly" | "daily" | "weekly";
@@ -88,7 +89,9 @@ const UpdateSettings: React.FC = () => {
         .map((s) => s.trim())
         .filter(Boolean),
     };
-    return JSON.stringify(serverState.options) !== JSON.stringify(draftWithExcludes);
+    return (
+      JSON.stringify(serverState.options) !== JSON.stringify(draftWithExcludes)
+    );
   }, [serverState, draft, excludeInput]);
 
   // -------- Save (explicit) --------
@@ -105,7 +108,7 @@ const UpdateSettings: React.FC = () => {
       };
       const res = await axios.put<ApiEnvelope<AutoUpdateState>>(
         "/updates/auto",
-        payload
+        payload,
       );
       if (res.data.status !== "ok" || !res.data.output) {
         throw new Error(res.data.error || "Unknown error");
@@ -125,7 +128,7 @@ const UpdateSettings: React.FC = () => {
   const handleApplyOffline = async () => {
     try {
       const res = await axios.post<ApiEnvelope<{ status: string }>>(
-        "/updates/apply-offline"
+        "/updates/apply-offline",
       );
       if (res.data.status !== "ok") {
         throw new Error(res.data.error || "Failed to schedule offline update");
@@ -164,7 +167,11 @@ const UpdateSettings: React.FC = () => {
         label="Enable automatic updates"
       />
 
-      <Stack direction="row" spacing={3} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+      <Stack
+        direction="row"
+        spacing={3}
+        sx={{ alignItems: "center", flexWrap: "wrap" }}
+      >
         <Box>
           <Typography variant="subtitle2" gutterBottom>
             Frequency
@@ -209,7 +216,10 @@ const UpdateSettings: React.FC = () => {
             size="small"
             value={draft.reboot_policy}
             onChange={(e: SelectChangeEvent<RebootPolicy>) =>
-              setDraft({ ...draft, reboot_policy: e.target.value as RebootPolicy })
+              setDraft({
+                ...draft,
+                reboot_policy: e.target.value as RebootPolicy,
+              })
             }
             disabled={saving}
           >
@@ -265,7 +275,11 @@ const UpdateSettings: React.FC = () => {
           Cancel
         </Button>
         <Box sx={{ flexGrow: 1 }} />
-        <Button variant="contained" onClick={handleApplyOffline} disabled={saving}>
+        <Button
+          variant="contained"
+          onClick={handleApplyOffline}
+          disabled={saving}
+        >
           Apply at next reboot (offline)
         </Button>
         {serverState.notes?.length ? (

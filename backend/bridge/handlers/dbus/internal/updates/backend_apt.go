@@ -20,7 +20,7 @@ func (*aptBackend) Detect() bool {
 	return fileExists("/usr/bin/apt") && (fileExists("/usr/bin/unattended-upgrades") || fileExists("/usr/bin/unattended-upgrade"))
 }
 
-func (b *aptBackend) Read(ctx context.Context) (AutoUpdateState, error) {
+func (b *aptBackend) Read() (AutoUpdateState, error) {
 	st := AutoUpdateState{
 		Backend: b.Name(),
 		Options: AutoUpdateOptions{
@@ -56,8 +56,8 @@ func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 APT::Periodic::Download-Upgradeable-Packages "%s";
 APT::Periodic::Unattended-Upgrade "%s";
 `, upd, dl, uu)
-	if err := fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/20auto-upgrades", []byte(content20), 0o644); err != nil {
-		return fmt.Errorf("failed to write 20auto-upgrades: %w", err)
+	if err2 := fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/20auto-upgrades", []byte(content20), 0o644); err2 != nil {
+		return fmt.Errorf("failed to write 20auto-upgrades: %w", err2)
 	}
 
 	/* 2) Write 50unattended-upgrades - controls allowed origins, reboot, and excludes */
@@ -90,8 +90,8 @@ Unattended-Upgrade::Package-Blacklist {
 Unattended-Upgrade::Automatic-Reboot "%s";
 Unattended-Upgrade::Automatic-Reboot-Time "03:30";
 `, formatOrigins(origins), bl.String(), reboot)
-	if err := fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/50unattended-upgrades", []byte(content50), 0o644); err != nil {
-		return fmt.Errorf("failed to write 50unattended-upgrades: %w", err)
+	if err3 := fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/50unattended-upgrades", []byte(content50), 0o644); err3 != nil {
+		return fmt.Errorf("failed to write 50unattended-upgrades: %w", err3)
 	}
 
 	/* 3) Write timer drop-ins - controls schedule frequency */
@@ -158,7 +158,7 @@ Unattended-Upgrade::Automatic-Reboot-Time "03:30";
 	return nil
 }
 
-func (b *aptBackend) ApplyOfflineNow(ctx context.Context) error {
+func (b *aptBackend) ApplyOfflineNow() error {
 	return fmt.Errorf("not implemented for apt; use packagekit backend")
 }
 

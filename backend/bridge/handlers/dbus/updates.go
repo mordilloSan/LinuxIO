@@ -40,9 +40,9 @@ func getAutoUpdates() (AutoUpdateState, error) {
 		if b == nil {
 			return fmt.Errorf("no supported backend found")
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		st, err := b.Read(ctx)
+		st, err := b.Read()
 		if err != nil {
 			return err
 		}
@@ -72,7 +72,7 @@ func setAutoUpdates(jsonArg string) (AutoUpdateState, error) {
 		if err := b.Apply(ctx, opts); err != nil { // opts now exactly matches backend type
 			return err
 		}
-		st, err := b.Read(ctx)
+		st, err := b.Read()
 		if err != nil {
 			return err
 		}
@@ -91,9 +91,9 @@ func applyOfflineUpdates() (any, error) {
 		if b == nil {
 			return fmt.Errorf("PackageKit not available")
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return b.ApplyOfflineNow(ctx)
+		return b.ApplyOfflineNow()
 	})
 }
 

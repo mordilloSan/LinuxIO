@@ -19,7 +19,7 @@ func (*dnfBackend) Detect() bool {
 	return fileExists("/usr/bin/dnf-automatic") || fileExists("/usr/lib/systemd/system/dnf-automatic.timer")
 }
 
-func (b *dnfBackend) Read(ctx context.Context) (AutoUpdateState, error) {
+func (b *dnfBackend) Read() (AutoUpdateState, error) {
 	return AutoUpdateState{
 		Backend: b.Name(),
 		Options: AutoUpdateOptions{
@@ -71,8 +71,8 @@ emit_via = motd
 %srandom_sleep = 0
 `, apply, upg, excludeLine)
 
-	if err := fsutil.WriteFileAtomic("/etc/dnf/automatic.conf", []byte(conf), 0o644); err != nil {
-		return err
+	if err2 := fsutil.WriteFileAtomic("/etc/dnf/automatic.conf", []byte(conf), 0o644); err2 != nil {
+		return err2
 	}
 
 	// Configure timer frequency
@@ -108,7 +108,7 @@ emit_via = motd
 	return nil
 }
 
-func (b *dnfBackend) ApplyOfflineNow(ctx context.Context) error {
+func (b *dnfBackend) ApplyOfflineNow() error {
 	return fmt.Errorf("not implemented for dnf; use packagekit backend")
 }
 
