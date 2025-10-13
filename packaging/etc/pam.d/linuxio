@@ -1,0 +1,20 @@
+#%PAM-1.0
+# LinuxIO PAM stack.
+# AUTH
+auth       [success=ok ignore=ignore module_unknown=ignore default=bad] pam_sepermit.so
+auth       include      common-auth
+# ACCOUNT
+account    required     pam_listfile.so item=user sense=deny file=/etc/linuxio/disallowed-users onerr=succeed
+account    required     pam_shells.so
+account    required     pam_nologin.so
+account    include      common-account
+# PASSWORD
+password   include      common-password
+# SESSION
+session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so close
+session    required     pam_loginuid.so
+session    [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so open env_params
+session    optional     pam_keyinit.so force revoke
+session    include      common-session-noninteractive
+session    required     pam_env.so
+session    required     pam_env.so user_readenv=1 envfile=/etc/default/locale

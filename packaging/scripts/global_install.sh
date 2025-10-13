@@ -129,6 +129,46 @@ Check_Permissions(){
 }
 Check_Connection(){ if wget -q --spider http://google.com; then Show 0 "Internet : \e[33mOnline\e[0m"; else Show 1 "No internet connection"; fi; }
 
+have_unit() {
+  # 0 if the unit exists (any state), else 1
+  local u="$1"
+  # (1) quick list check (services/timers/targets)
+  if systemctl list-unit-files --all --type=service --type=timer --type=target --no-legend 2>/dev/null \
+      | awk '{print $1}' | grep -Fxq "$u"; then
+    return 0
+  fi
+  # (2) vendor path present?
+  systemctl cat "$u" >/dev/null 2>&1 && return 0
+  # (3) status reports a unit (even if inactive/failed)
+  systemctl status "$u" >/dev/null 2>&1 && return 0
+  return 1
+}
+
+enable_one_of() {
+  # usage: enable_one_of "friendly name" unit1 unit2 ...
+  local label="$1"; shift
+  local unit
+  # ensure systemd’s caches are current
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  for unit in "$@"; do
+    if have_unit "$unit"; then
+      # some units are static → start is OK, enable may be a no-op
+      systemctl enable --now "$unit" >/dev/null 2>&1 || systemctl start "$unit" >/dev/null 2>&1 || true
+      Show 0 "Enabled $label ($unit)"
+      return 0
+    fi
+  done
+
+  # last-resort hints (one-shot, not noisy)
+  Show 3 "$label unit not found"
+  if command -v systemctl >/dev/null 2>&1; then
+    echo -e "${aCOLOUR[2]}--- systemctl units matching $label ---${COLOUR_RESET}"
+    systemctl list-unit-files --all --no-legend 2>/dev/null | grep -i "$label" || true
+    echo -e "${aCOLOUR[2]}--------------------------------------${COLOUR_RESET}"
+  fi
+  return 1
+}
+
 Welcome_Banner() {
   clear
   echo -e "${GREEN_LINE}${aCOLOUR[1]}"
@@ -234,22 +274,17 @@ Install_Packages() {
 
 # ---------- Services: NetworkManager & PackageKit ----------
 Enable_Core_Services() {
-  if systemctl list-unit-files | grep -q -E "^${NM_PKG}\.service"; then
-    systemctl enable --now "$NM_PKG" >/dev/null 2>&1 || true
-    Show 0 "Enabled NetworkManager ($NM_PKG)"
-  elif systemctl list-unit-files | grep -q "^NetworkManager\.service"; then
-    systemctl enable --now NetworkManager >/dev/null 2>&1 || true
-    Show 0 "Enabled NetworkManager"
-  else
-    Show 3 "NetworkManager service not found"
-  fi
+  # NetworkManager: try canonical unit, then common legacy/alias forms
+  enable_one_of "NetworkManager" \
+    "NetworkManager.service" \
+    "NetworkManager" \
+    "network-manager.service" \
+    "network-manager"
 
-  if systemctl list-unit-files | grep -q "^${PACKAGEKIT_SERVICE}\.service"; then
-    systemctl enable --now "${PACKAGEKIT_SERVICE}.service" >/dev/null 2>&1 || true
-    Show 0 "Enabled PackageKit (${PACKAGEKIT_SERVICE}.service)"
-  else
-    Show 3 "PackageKit service not found"
-  fi
+  # PackageKit: distros vary in casing; try both
+  enable_one_of "PackageKit" \
+    "packagekit.service" \
+    "PackageKit.service"
 }
 
 # ---------- Auto Updates (install) ----------
@@ -293,32 +328,52 @@ BIN_DIR="/usr/local/bin"
 STAGING="/tmp/linuxio-install.$$"
 
 Resolve_Release_Tag() {
+  # keep only for logging/packaging ref; not required for binaries anymore
   if [[ -n "$RELEASE_TAG" ]]; then
     Show 0 "Using release tag: $RELEASE_TAG"
     return
   fi
-  Show 2 "Resolving latest GitHub release tag for $REPO_OWNER/$REPO_NAME"
-  # Requires jq (already in your package set)
-  RELEASE_TAG="$(curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest" \
-    | jq -r '.tag_name' | sed -e 's/null//' )"
-  [[ -n "$RELEASE_TAG" ]] || Show 1 "Could not resolve latest release tag"
-  Show 0 "Latest tag: $RELEASE_TAG"
+  Show 0 "Using latest release (redirected by GitHub)"
+}
+
+PACKAGING_REF=""  # computed ref for raw file downloads
+
+Resolve_Packaging_Ref() {
+  # Prefer tag if it actually has the files; otherwise fallback to main.
+  if [[ -n "$RELEASE_TAG" ]]; then
+    local test_url="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${RELEASE_TAG}/packaging/systemd/linuxio.service"
+    if curl -fsI "$test_url" >/dev/null 2>&1; then
+      PACKAGING_REF="$RELEASE_TAG"
+      Show 0 "Packaging ref: $PACKAGING_REF"
+    else
+      PACKAGING_REF="main"
+      Show 3 "Packaging files not found at tag '$RELEASE_TAG' — falling back to '$PACKAGING_REF'"
+    fi
+  else
+    PACKAGING_REF="main"
+    Show 2 "Packaging ref: $PACKAGING_REF"
+  fi
 }
 
 Download_Binaries() {
   mkdir -p "$STAGING"
-  # You currently publish plain binaries:
-  #   https://github.com/<owner>/<repo>/releases/download/<tag>/linuxio
-  #   https://github.com/<owner>/<repo>/releases/download/<tag>/linuxio-bridge
-  local base="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${RELEASE_TAG}"
+
+  # If RELEASE_TAG override is set: use the tag, else use 'latest' redirector.
+  local base
+  if [[ -n "$RELEASE_TAG" ]]; then
+    base="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${RELEASE_TAG}"
+  else
+    base="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download"
+  fi
 
   Show 2 "Downloading linuxio components to staging..."
   GreyStart
-  curl -fL "$base/linuxio"        -o "$STAGING/linuxio"
-  curl -fL "$base/linuxio-bridge" -o "$STAGING/linuxio-bridge"
-  curl -fL "$base/linuxio-auth-helper" -o "$STAGING/linuxio-auth-helper"
+  curl -fsSL "$base/linuxio"               -o "$STAGING/linuxio"
+  curl -fsSL "$base/linuxio-bridge"        -o "$STAGING/linuxio-bridge"
+  curl -fsSL "$base/linuxio-auth-helper"   -o "$STAGING/linuxio-auth-helper"
   Check_Success $? "Download binaries"
 }
+
 
 Install_Binaries() {
   mkdir -p "$BIN_DIR"
@@ -338,19 +393,17 @@ Install_Binaries() {
 }
 
 Download_Packaging_Files() {
-  # Pull raw files for the selected tag from the repo
   mkdir -p "$STAGING/packaging"
-  local raw="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${RELEASE_TAG}/packaging"
+  local raw="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${PACKAGING_REF}/packaging"
 
-  Show 2 "Downloading packaging files (no PAM)"
+  Show 2 "Downloading packaging files"
   GreyStart
-  # etc/linuxio/disallowed-users
   mkdir -p "$STAGING/packaging/etc/linuxio"
-  curl -fL "$raw/etc/linuxio/disallowed-users" -o "$STAGING/packaging/etc/linuxio/disallowed-users"
+  curl -fsSL "$raw/etc/linuxio/disallowed-users" -o "$STAGING/packaging/etc/linuxio/disallowed-users"
 
-  # systemd units
   mkdir -p "$STAGING/packaging/systemd"
-  curl -fL "$raw/systemd/linuxio.service" -o "$STAGING/packaging/systemd/linuxio.service"
+  curl -fsSL "$raw/systemd/linuxio.service" -o "$STAGING/packaging/systemd/linuxio.service"
+  
   Check_Success $? "Download packaging files"
 }
 
@@ -388,44 +441,43 @@ Cleanup_Staging() {
 Enable_AutoUpdates() {
   case "$PKG_FAMILY" in
     deb)
-      # Debian/Ubuntu: just enable the service if it exists.
-      if systemctl list-unit-files | grep -q '^unattended-upgrades\.service'; then
-        systemctl enable --now unattended-upgrades.service >/dev/null 2>&1 || true
-        Show 0 "Enabled unattended-upgrades.service"
+      # Don’t “enable” unattended-upgrades.service (static); enable the timers instead.
+      if have_unit "apt-daily.timer"; then
+        systemctl enable --now apt-daily.timer >/dev/null 2>&1 || true
+        Show 0 "Enabled apt-daily.timer"
       else
-        Show 3 "unattended-upgrades.service not found (package may be missing)"
+        Show 3 "apt-daily.timer not found"
+      fi
+      if have_unit "apt-daily-upgrade.timer"; then
+        systemctl enable --now apt-daily-upgrade.timer >/dev/null 2>&1 || true
+        Show 0 "Enabled apt-daily-upgrade.timer"
+      else
+        Show 3 "apt-daily-upgrade.timer not found"
       fi
       ;;
 
     dnf)
-      # RHEL/Fedora: enable whichever dnf-automatic timer exists.
-      if systemctl list-unit-files | grep -q '^dnf-automatic\.timer'; then
-        systemctl enable --now dnf-automatic.timer >/dev/null 2>&1 || true
-        Show 0 "Enabled dnf-automatic.timer"
-      elif systemctl list-unit-files | grep -q '^dnf-automatic-install\.timer'; then
-        systemctl enable --now dnf-automatic-install.timer >/dev/null 2>&1 || true
-        Show 0 "Enabled dnf-automatic-install.timer"
-      else
+      # Try the more specific timers first, then the generic
+      if ! enable_one_of "dnf-automatic" \
+           "dnf-automatic-install.timer" \
+           "dnf-automatic-notifyonly.timer" \
+           "dnf-automatic-download.timer" \
+           "dnf-automatic.timer"; then
         Show 3 "No dnf-automatic timer found (package may be missing)"
       fi
       ;;
 
     zypper)
-      # SUSE: enable the zypper-automatic timer if present.
-      if systemctl list-unit-files | grep -q '^zypper-automatic\.timer'; then
-        systemctl enable --now zypper-automatic.timer >/dev/null 2>&1 || true
-        Show 0 "Enabled zypper-automatic.timer"
-      else
-        Show 3 "zypper-automatic.timer not found (package may be missing)"
-      fi
+      enable_one_of "zypper-automatic" "zypper-automatic.timer" \
+        || Show 3 "zypper-automatic.timer not found (package may be missing)"
       ;;
 
     pacman)
-      # Arch: do nothing by default.
       Show 3 "Arch Linux: auto-updates left disabled (managed by backend)."
       ;;
   esac
 }
+
 
 Ensure_LinuxIO_User() {
   if ! id linuxio >/dev/null 2>&1; then
@@ -492,8 +544,10 @@ Setup(){
   Resolve_Release_Tag
   Download_Binaries
   Install_Binaries
+  Resolve_Packaging_Ref
   Download_Packaging_Files
   Install_Packaging_Files
+
   Enable_LinuxIO_Systemd
   Cleanup_Staging
   Clean_Up
