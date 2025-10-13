@@ -1,3 +1,16 @@
+## v0.2.11 — 2025-10-13
+
+### 🔄 Other Changes
+
+* updatebanner bug ([26d0e10](https://github.com/owner/repo/commit/26d0e10)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.10...v0.2.11
+
 ## v0.2.10 — 2025-10-13
 
 ### 🔄 Other Changes
