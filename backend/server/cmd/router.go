@@ -15,6 +15,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/server/auth"
 	"github.com/mordilloSan/LinuxIO/server/benchmark"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/drives"
 	"github.com/mordilloSan/LinuxIO/server/bridge/handlers/network"
@@ -71,6 +72,7 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	wireguard.RegisterWireguardRoutes(r.Group("/wireguard", sm.RequireSession()))
 	config.RegisterThemeRoutes(r.Group("/theme", sm.RequireSession()))
 	system.RegisterSystemRoutes(r.Group("/system", sm.RequireSession()))
+	control.RegisterControlRoutes(r.Group("/control", sm.RequireSession()))
 
 	// --- WebSocket ---
 	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)

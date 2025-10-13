@@ -9,8 +9,10 @@ import PageLoader from "@/components/loaders/PageLoader";
 import Navbar from "@/components/navbar/Navbar";
 import Sidebar from "@/components/sidebar/Sidebar";
 import dashboardItems from "@/components/sidebar/SidebarItems";
+import UpdateBanner from "@/components/update/UpdateBanner";
 import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
+import { useUpdateInfo } from "@/hooks/useUpdateInfo";
 import FilebrowserIframe from "@/pages/main/filebrowser/FilebrowserIframe";
 
 const Dashboard: React.FC = () => {
@@ -19,6 +21,12 @@ const Dashboard: React.FC = () => {
   const isLoaded = useConfigReady();
   const { toggleMobileOpen, setMobileOpen, sidebarWidth, isDesktop } =
     useSidebar();
+  const { updateInfo, dismissUpdate } = useUpdateInfo();
+
+  useEffect(() => {
+    console.log("[Dashboard] Update info:", updateInfo);
+    console.log("[Dashboard] Update available:", updateInfo?.available);
+  }, [updateInfo]);
 
   // Auto-close mobile drawer on route change (mobile only)
   useEffect(() => {
@@ -44,6 +52,12 @@ const Dashboard: React.FC = () => {
         }}
       >
         <Navbar onDrawerToggle={toggleMobileOpen} />
+
+        {/* Update Banner - shows on all pages */}
+        {updateInfo?.available && (
+          <UpdateBanner updateInfo={updateInfo} onDismiss={dismissUpdate} />
+        )}
+
         <Box
           className="custom-scrollbar"
           sx={{
