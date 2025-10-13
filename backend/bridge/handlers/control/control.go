@@ -41,6 +41,10 @@ func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
 			_ = args // Acknowledge we're not using this
 			return map[string]string{"type": "pong"}, nil
 		},
+		"version": func(args []string) (any, error) {
+			_ = args // Acknowledge we're not using this
+			return getVersionInfo()
+		},
 		"update": func(args []string) (any, error) {
 			targetVersion := ""
 			if len(args) > 0 {
@@ -51,12 +55,41 @@ func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
 	}
 }
 
+type VersionInfo struct {
+	CurrentVersion  string `json:"current_version"`
+	LatestVersion   string `json:"latest_version,omitempty"`
+	UpdateAvailable bool   `json:"update_available"`
+	CheckedAt       string `json:"checked_at"`
+	Error           string `json:"error,omitempty"`
+}
+
 type UpdateResult struct {
 	Success        bool   `json:"success"`
 	Message        string `json:"message"`
 	CurrentVersion string `json:"current_version"`
 	NewVersion     string `json:"new_version,omitempty"`
 	Error          string `json:"error,omitempty"`
+}
+
+func getVersionInfo() (VersionInfo, error) {
+	currentVersion := getInstalledVersion()
+	info := VersionInfo{
+		CurrentVersion:  currentVersion,
+		UpdateAvailable: false,
+		CheckedAt:       time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Optionally check for latest version (non-blocking)
+	latestVersion, err := fetchLatestVersion()
+	if err != nil {
+		logger.Debugf("[version] failed to fetch latest version: %v", err)
+		info.Error = fmt.Sprintf("could not check for updates: %v", err)
+	} else {
+		info.LatestVersion = latestVersion
+		info.UpdateAvailable = currentVersion != latestVersion && currentVersion != "unknown"
+	}
+
+	return info, nil
 }
 
 func performUpdate(targetVersion string) (UpdateResult, error) {
