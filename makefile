@@ -636,13 +636,8 @@ open-pr: generate
 	  sleep 3; \
 	  for i in 1 2 3 4 5; do \
 	    CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
-	    if ! echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
-	      break; \
-	    fi; \
-	    if [ $$i -lt 5 ]; then \
-	      echo "  Retrying in 2s... (attempt $$i/5)"; \
-	      sleep 2; \
-	    fi; \
+	    if ! echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then break; fi; \
+	    if [ $$i -lt 5 ]; then echo "  Retrying in 2s... (attempt $$i/5)"; sleep 2; fi; \
 	  done; \
 	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
 	    echo "⚠️  No CI checks detected after 15s. Skipping check wait."; \
@@ -657,40 +652,27 @@ open-pr: generate
 	      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
-	      # restore scroll region and cursor; erase timer line \
-	      if command -v tput >/dev/null 2>&1; then \
-	        LINES=$$(tput lines 2>/dev/null || echo 0); \
-	        if [ "$$LINES" -gt 0 ]; then tput csr 0 $$((LINES-1)) 2>/dev/null || true; fi; \
-	        tput cnorm 2>/dev/null || true; \
-	        tput cup 0 0 2>/dev/null || true; \
-	        tput el 2>/dev/null || true; \
-	      fi; \
+	      printf '\033]0;\007' >/dev/tty 2>/dev/null || true; \
 	      [ -n "$$SAVED_STTY" ] && stty "$$SAVED_STTY" 2>/dev/null || true; \
 	    }; \
 	    trap 'cleanup_checks; exit 130' INT TERM; \
 	    START_TIME=$$(date +%s); \
+	    # --- zero-flicker timer in the window title --- \
 	    ( \
 	      START_TIME=$$START_TIME; \
-	      if command -v tput >/dev/null 2>&1; then \
-	        LINES=$$(tput lines 2>/dev/null || echo 0); \
-	        if [ "$$LINES" -gt 0 ]; then \
-	          # Reserve top line (row 0) outside the scroll region to prevent flicker \
-	          tput csr 1 $$((LINES-1)) 2>/dev/null || true; \
-	        fi; \
-	        tput civis 2>/dev/null || true; \
-	      fi; \
 	      while :; do \
 	        ELAPSED=$$(( $$(date +%s) - $$START_TIME )); \
-	        tput sc 2>/dev/null || true; \
-	        tput cup 0 0 2>/dev/null || true; \
-	        printf '⏱️  Elapsed: %02d:%02d - Checking status...' $$((ELAPSED/60)) $$((ELAPSED%60)); \
-	        tput el 2>/dev/null || true; \
-	        tput rc 2>/dev/null || true; \
+	        printf '\033]0;⏱️  %02d:%02d — waiting for PR checks…\007' $$((ELAPSED/60)) $$((ELAPSED%60)) >/dev/tty 2>/dev/null || true; \
 	        sleep 1; \
 	      done \
 	    ) & \
 	    TIMER_PID=$$!; \
-	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 ) & \
+	    # --- stream checks, hide the "Refreshing" noise --- \
+	    ( \
+	      stdbuf -oL -eL gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 2>&1 \
+	        | grep -vE '^(Refreshing|⟳|↻|→|<-|->)' \
+	        | sed -u 's/\r//g' \
+	    ) & \
 	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
 	    CHECK_STATUS=$$?; \
@@ -704,7 +686,6 @@ open-pr: generate
 	    fi; \
 	  fi; \
 	  echo ""; \
-	  # Open PR page exactly once (after all the above) \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
