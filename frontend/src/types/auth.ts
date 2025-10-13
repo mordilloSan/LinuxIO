@@ -77,6 +77,18 @@ export type AuthActionTypes = {
 export type AuthActions =
   ActionMap<AuthActionTypes>[keyof ActionMap<AuthActionTypes>];
 
+export interface UpdateInfo {
+  available: boolean;
+  current_version: string;
+  latest_version?: string;
+  release_url?: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  privileged: boolean;
+  update?: UpdateInfo;
+}
 /**
  * Props accepted by the `<AuthProvider>` component.
  */
