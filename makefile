@@ -660,16 +660,24 @@ open-pr: generate
 	      printf "\r\033[K"; \
 	    }; \
 	    trap 'cleanup_checks; exit 130' INT TERM; \
-	    START_TIME=$$(date +%s); \
-	    TIMER_PID=""; CHECK_PID=""; \
-	    ( \
-	      while true; do \
-	        ELAPSED=$$(($$(date +%s) - START_TIME)); \
-	        printf "\r⏱️  Elapsed: %02d:%02d - Checking status..." $$((ELAPSED/60)) $$((ELAPSED%60)); \
-	        sleep 1; \
-	      done \
-	    ) & \
-	    TIMER_PID=$$!; \
+      # Draw timer on the first row without interfering with gh output
+      ( 
+        START_TIME=$START_TIME
+        # hide cursor for neatness
+        tput civis 2>/dev/null || true
+        while :; do
+          ELAPSED=$(( $(date +%s) - START_TIME ))
+          # save cursor, jump to row 0 col 0, write timer, clear to EOL, restore cursor
+          tput sc 2>/dev/null || true
+          tput cup 0 0 2>/dev/null || true
+          printf '⏱️  Elapsed: %02d:%02d - Checking status...' $((ELAPSED/60)) $((ELAPSED%60))
+          tput el 2>/dev/null || true
+          tput rc 2>/dev/null || true
+          sleep 1
+        done
+      ) &
+      TIMER_PID=$!
+
 	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 ) & \
 	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
