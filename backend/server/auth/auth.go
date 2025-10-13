@@ -106,16 +106,14 @@ func (h *Handlers) Login(c *gin.Context) {
 	}
 	h.SM.WriteCookie(c.Writer, sess.SessionID)
 
-	// Check for updates if user is privileged (sudo)
 	response := gin.H{
 		"success":    true,
 		"privileged": privileged,
 	}
 
-	if privileged {
-		if updateInfo := control.CheckForUpdate(); updateInfo != nil {
-			response["update"] = updateInfo
-		}
+	// Always check for updates
+	if updateInfo := control.CheckForUpdate(); updateInfo != nil {
+		response["update"] = updateInfo
 	}
 
 	c.JSON(http.StatusOK, response)
