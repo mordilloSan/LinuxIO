@@ -2,15 +2,17 @@ package dbus
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
+	godbus "github.com/godbus/dbus/v5"
+
+	"github.com/mordilloSan/LinuxIO/bridge/handlers/dbus/internal/updates"
 	"github.com/mordilloSan/LinuxIO/common/logger"
 	"github.com/mordilloSan/LinuxIO/common/utils"
-
-	godbus "github.com/godbus/dbus/v5"
 )
 
 type UpdateDetail struct {
@@ -22,6 +24,77 @@ type UpdateDetail struct {
 	CVEs      []string `json:"cve"`
 	Restart   uint32   `json:"restart"`
 	State     uint32   `json:"state"`
+}
+
+// —— use type ALIASES, not new structs —— //
+type AutoUpdateOptions = updates.AutoUpdateOptions
+type AutoUpdateState = updates.AutoUpdateState
+
+func getAutoUpdates() (AutoUpdateState, error) {
+	var out AutoUpdateState
+	err := RetryOnceIfClosed(nil, func() error {
+		systemDBusMu.Lock()
+		defer systemDBusMu.Unlock()
+
+		b := updates.SelectBackend()
+		if b == nil {
+			return fmt.Errorf("no supported backend found")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		st, err := b.Read(ctx)
+		if err != nil {
+			return err
+		}
+		out = st
+		return nil
+	})
+	return out, err
+}
+
+func setAutoUpdates(jsonArg string) (AutoUpdateState, error) {
+	var opts AutoUpdateOptions
+	if err := json.Unmarshal([]byte(jsonArg), &opts); err != nil {
+		return AutoUpdateState{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	var out AutoUpdateState
+	err := RetryOnceIfClosed(nil, func() error {
+		systemDBusMu.Lock()
+		defer systemDBusMu.Unlock()
+
+		b := updates.SelectBackend()
+		if b == nil {
+			return fmt.Errorf("no supported backend found")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		if err := b.Apply(ctx, opts); err != nil { // opts now exactly matches backend type
+			return err
+		}
+		st, err := b.Read(ctx)
+		if err != nil {
+			return err
+		}
+		out = st
+		return nil
+	})
+	return out, err
+}
+
+func applyOfflineUpdates() (any, error) {
+	return nil, RetryOnceIfClosed(nil, func() error {
+		systemDBusMu.Lock()
+		defer systemDBusMu.Unlock()
+
+		b := updates.NewPkgKitBackendIfAvailable()
+		if b == nil {
+			return fmt.Errorf("PackageKit not available")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return b.ApplyOfflineNow(ctx)
+	})
 }
 
 // --- Helpers ---
