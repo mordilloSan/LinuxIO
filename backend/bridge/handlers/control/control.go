@@ -37,7 +37,8 @@ func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
 			}
 			return "Bridge shutting down", nil
 		},
-		"ping": func(_ []string) (any, error) {
+		"ping": func(args []string) (any, error) {
+			_ = args // Acknowledge we're not using this
 			return map[string]string{"type": "pong"}, nil
 		},
 		"update": func(args []string) (any, error) {
