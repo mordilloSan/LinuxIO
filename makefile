@@ -670,7 +670,7 @@ open-pr: generate
 	      done \
 	    ) & \
 	    TIMER_PID=$$!; \
-	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 ) & \
+	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 2>&1 | grep -vE "^Refreshing" ) & \
 	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
 	    CHECK_STATUS=$$?; \
