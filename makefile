@@ -651,28 +651,35 @@ open-pr: generate
 	    echo "   (Press Ctrl+C to cancel)"; \
 	    echo ""; \
 	    if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echo -icanon min 0 time 0; fi; \
-	    cleanup_checks() { \
-	      [ -n "$$TIMER_PID" ] && kill $$TIMER_PID 2>/dev/null || true; \
-	      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
-	      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
-	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
-	      stty "$$SAVED_STTY" 2>/dev/null || true; \
-	      printf "\r\033[K"; \
-	    }; \
-	    trap 'cleanup_checks; exit 130' INT TERM; \
-	    START_TIME=$$(date +%s); \
-	    TIMER_PID=""; CHECK_PID=""; \
-	    ( \
-	      while true; do \
-	        ELAPSED=$$(($$(date +%s) - START_TIME)); \
-	        printf "\r⏱️  Elapsed: %02d:%02d - Checking status..." $$((ELAPSED/60)) $$((ELAPSED%60)); \
-	        sleep 1; \
-	      done \
-	    ) & \
-	    TIMER_PID=$$!; \
-		( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 2>&1 | \
-		grep -v "^Refreshing" > /dev/null ) & \
-		CHECK_PID=$$!; \
+    cleanup_checks() { \
+      [ -n "$$TIMER_PID" ] && kill $$TIMER_PID 2>/dev/null || true; \
+      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
+      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
+      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
+      stty "$$SAVED_STTY" 2>/dev/null || true; \
+      tput cnorm 2>/dev/null || true; \
+      printf "\n"; \
+    }; \
+    trap 'cleanup_checks; exit 130' INT TERM; \
+    START_TIME=$$(date +%s); \
+    TIMER_PID=""; CHECK_PID=""; \
+    tput civis 2>/dev/null || true; \
+    printf "\n"; \
+    ( \
+      while true; do \
+        ELAPSED=$$(($$(date +%s) - START_TIME)); \
+        tput sc 2>/dev/null || true; \
+        tput cup 0 0 2>/dev/null || true; \
+        printf "⏱️  Elapsed: %02d:%02d - Watching checks..." $$((ELAPSED/60)) $$((ELAPSED%60)); \
+        tput el 2>/dev/null || true; \
+        tput rc 2>/dev/null || true; \
+        sleep 1; \
+      done \
+    ) & \
+    TIMER_PID=$$!; \
+    printf "\n"; \
+    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 2>&1 | grep -vE "Refreshing" ) & \
+    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
 	    CHECK_STATUS=$$?; \
 	    cleanup_checks; \
