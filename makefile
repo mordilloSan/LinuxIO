@@ -664,7 +664,7 @@ open-pr: generate
 	    TIMER_PID=""; CHECK_PID=""; \
 	    ( \
 	      while true; do \
-	        ELAPSED=$$(($(date +%s) - START_TIME)); \
+	        ELAPSED=$$(($$(date +%s) - START_TIME)); \
 	        printf "\r⏱️  Elapsed: %02d:%02d - Checking status..." $$((ELAPSED/60)) $$((ELAPSED%60)); \
 	        sleep 1; \
 	      done \
@@ -676,7 +676,7 @@ open-pr: generate
 	    CHECK_STATUS=$$?; \
 	    cleanup_checks; \
 	    trap - INT TERM; \
-	    TOTAL_TIME=$$(($(date +%s) - START_TIME)); \
+	    TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
 	    if [ $$CHECK_STATUS -eq 0 ]; then \
 	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
 	    else \
@@ -758,7 +758,7 @@ merge-release:
 	      TIMER_PID=""; WATCH_PID=""; \
 	      ( \
 	        while true; do \
-	          ELAPSED=$$(($(date +%s) - START_TIME)); \
+	          ELAPSED=$$(($$(date +%s) - START_TIME)); \
 	          RUN_INFO="$$(gh run view $(call _repo_flag) "$$RUN_ID" --json status,conclusion 2>/dev/null || echo '')"; \
 	          if [ -n "$$RUN_INFO" ]; then \
 	            CURRENT_STATUS="$$(echo "$$RUN_INFO" | jq -r '.status // "unknown"')"; \
@@ -776,7 +776,7 @@ merge-release:
 	      WATCH_STATUS=$$?; \
 	      cleanup_workflow; \
 	      trap - INT TERM; \
-	      TOTAL_TIME=$$(($(date +%s) - START_TIME)); \
+	      TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
 	      if [ $$WATCH_STATUS -eq 0 ]; then \
 	        echo "✅ Release workflow completed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
 	      else \
