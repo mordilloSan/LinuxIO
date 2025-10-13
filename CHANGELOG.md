@@ -1,3 +1,18 @@
+## v0.2.12 — 2025-10-13
+
+### 🔄 Other Changes
+
+* Bump github.com/quic-go/quic-go from 0.54.0 to 0.54.1 in /backend ([c58abf4](https://github.com/owner/repo/commit/c58abf4)) by @dependabot[bot]
+* Merge remote-tracking branch 'origin/dependabot/go_modules/backend/github.com/quic-go/quic-go-0.54.1' into dev/v0.2.12 ([acf2e52](https://github.com/owner/repo/commit/acf2e52)) by @MordilloSan
+* install process and makefile optimization ([b9cdf2d](https://github.com/owner/repo/commit/b9cdf2d)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+* @dependabot[bot]
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.11...v0.2.12
+
 ## v0.2.11 — 2025-10-13
 
 ### 🔄 Other Changes
