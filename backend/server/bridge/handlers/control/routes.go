@@ -14,7 +14,33 @@ import (
 
 // RegisterControlRoutes mounts all /control endpoints on the given (already-authenticated) group.
 func RegisterControlRoutes(control *gin.RouterGroup) {
-	control.POST("/update", TriggerUpdate)
+	control.GET("/version", GetVersion)    // New: check version (read-only)
+	control.POST("/update", TriggerUpdate) // Existing: trigger update
+}
+
+// GetVersion retrieves the current version info (no privileges required)
+func GetVersion(c *gin.Context) {
+	sess := session.SessionFromContext(c)
+	if sess == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no active session"})
+		return
+	}
+
+	// Call bridge to get version info (no args needed)
+	resp, err := bridge.CallWithSession(sess, "control", "version", []string{})
+	if err != nil {
+		logger.Errorf("[control.version] failed to get version: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("version check failed: %v", err)})
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp, &result); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response from bridge"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // TriggerUpdate executes the update via bridge control (must be privileged user)
