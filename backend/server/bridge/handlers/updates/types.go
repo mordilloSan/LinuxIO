@@ -27,3 +27,12 @@ type Update struct {
 	Restart   uint32   `json:"restart"`
 	State     uint32   `json:"state"`
 }
+
+type AutoUpdateOptions struct {
+	Enabled      bool     `json:"enabled"`
+	Frequency    string   `json:"frequency"`     // "hourly"|"daily"|"weekly"
+	Scope        string   `json:"scope"`         // "security"|"updates"|"all"
+	DownloadOnly bool     `json:"download_only"` // download but don’t auto-install
+	RebootPolicy string   `json:"reboot_policy"` // "never"|"if_needed"|"always"|"schedule"
+	ExcludePkgs  []string `json:"exclude_packages"`
+}

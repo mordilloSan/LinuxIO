@@ -18,9 +18,17 @@ func DbusHandlers() map[string]ipc.HandlerFunc {
 		"Reboot":   func([]string) (any, error) { return nil, CallLogin1Action("Reboot") },
 		"PowerOff": func([]string) (any, error) { return nil, CallLogin1Action("PowerOff") },
 
-		// Package management
+		// Updates management
 		"GetUpdates":     func([]string) (any, error) { return GetUpdatesWithDetails() },
 		"InstallPackage": func(args []string) (any, error) { return nil, InstallPackage(args[0]) },
+		"GetAutoUpdates": func([]string) (any, error) { return getAutoUpdates() },
+		"SetAutoUpdates": func(args []string) (any, error) {
+			if len(args) != 1 {
+				return nil, fmt.Errorf("SetAutoUpdates expects 1 JSON arg")
+			}
+			return setAutoUpdates(args[0])
+		},
+		"ApplyOfflineUpdates": func([]string) (any, error) { return applyOfflineUpdates() },
 
 		// Service management
 		"ListServices":   func([]string) (any, error) { return ListServices() },
