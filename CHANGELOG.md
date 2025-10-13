@@ -1,3 +1,16 @@
+## v0.2.10 — 2025-10-13
+
+### 🔄 Other Changes
+
+* version API ([8b7add0](https://github.com/owner/repo/commit/8b7add0)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.9...v0.2.10
+
 ## v0.2.9 — 2025-10-13
 
 ### 🔄 Other Changes
