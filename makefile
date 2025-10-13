@@ -676,8 +676,7 @@ open-pr: generate
           sleep 1
         done
       ) &
-      TIMER_PID=$!
-
+      TIMER_PID=$! \
 	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 ) & \
 	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
