@@ -110,8 +110,6 @@ Start () {
       PKGS_PAM=()
       PKGS_EXTRA=() # Arch: no official unattended upgrades; we only notify
       DOCKER_DEPS=()
-      NM_PKG="networkmanager"
-      PACKAGEKIT_SERVICE="packagekit"
       ;;
   esac
 
