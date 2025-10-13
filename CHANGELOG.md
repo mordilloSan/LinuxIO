@@ -1,3 +1,16 @@
+## v0.2.9 — 2025-10-13
+
+### 🔄 Other Changes
+
+* app update procedure ([49c3ef1](https://github.com/owner/repo/commit/49c3ef1)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.8...v0.2.9
+
 ## v0.2.8 — 2025-10-13
 
 ### 🔄 Other Changes
