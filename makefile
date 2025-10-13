@@ -618,6 +618,7 @@ open-pr: generate
 	  VERSION="$${BRANCH#dev/}"; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
 	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
+	  CREATED=0; \
 	  if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
 	    echo "ℹ️  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
 	  else \
@@ -628,6 +629,7 @@ open-pr: generate
 	      --title "Release $$VERSION" \
 	      --body-file CHANGELOG.md; \
 	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; \
+	    CREATED=1; \
 	  fi; \
 	  echo ""; \
 	  echo "🔍 Waiting for CI checks to register..."; \
@@ -655,28 +657,46 @@ open-pr: generate
 	      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
-	      tput cnorm 2>/dev/null || true; \
+	      # restore scroll region and cursor; erase timer line \
+	      if command -v tput >/dev/null 2>&1; then \
+	        LINES=$$(tput lines 2>/dev/null || echo 0); \
+	        if [ "$$LINES" -gt 0 ]; then tput csr 0 $$((LINES-1)) 2>/dev/null || true; fi; \
+	        tput cnorm 2>/dev/null || true; \
+	        tput cup 0 0 2>/dev/null || true; \
+	        tput el 2>/dev/null || true; \
+	      fi; \
 	      [ -n "$$SAVED_STTY" ] && stty "$$SAVED_STTY" 2>/dev/null || true; \
-	      printf "\r\033[K"; \
 	    }; \
 	    trap 'cleanup_checks; exit 130' INT TERM; \
 	    START_TIME=$$(date +%s); \
-	    tput civis 2>/dev/null || true; \
 	    ( \
+	      START_TIME=$$START_TIME; \
+	      if command -v tput >/dev/null 2>&1; then \
+	        LINES=$$(tput lines 2>/dev/null || echo 0); \
+	        if [ "$$LINES" -gt 0 ]; then \
+	          # Reserve top line (row 0) outside the scroll region to prevent flicker \
+	          tput csr 1 $$((LINES-1)) 2>/dev/null || true; \
+	        fi; \
+	        tput civis 2>/dev/null || true; \
+	      fi; \
 	      while :; do \
-	        ELAPSED=$$(($$(date +%s) - START_TIME)); \
-	        printf '\r⏱️  Elapsed: %02d:%02d - Watching checks...' $$((ELAPSED/60)) $$((ELAPSED%60)); \
+	        ELAPSED=$$(( $$(date +%s) - $$START_TIME )); \
+	        tput sc 2>/dev/null || true; \
+	        tput cup 0 0 2>/dev/null || true; \
+	        printf '⏱️  Elapsed: %02d:%02d - Checking status...' $$((ELAPSED/60)) $$((ELAPSED%60)); \
+	        tput el 2>/dev/null || true; \
+	        tput rc 2>/dev/null || true; \
 	        sleep 1; \
 	      done \
 	    ) & \
 	    TIMER_PID=$$!; \
-	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 2>&1 | grep -vE '^Refreshing' ) & \
+	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 ) & \
 	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
 	    CHECK_STATUS=$$?; \
 	    cleanup_checks; \
 	    trap - INT TERM; \
-	    TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
+	    TOTAL_TIME=$$(( $$(date +%s) - $$START_TIME )); \
 	    if [ $$CHECK_STATUS -eq 0 ]; then \
 	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
 	    else \
@@ -684,7 +704,7 @@ open-pr: generate
 	    fi; \
 	  fi; \
 	  echo ""; \
-	  echo "🌐 Opening PR in browser..."; \
+	  # Open PR page exactly once (after all the above) \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
