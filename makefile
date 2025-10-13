@@ -605,7 +605,7 @@ changelog:
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  echo ""; \
 	}
-  
+
 open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
@@ -657,14 +657,14 @@ open-pr: generate
 	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
 	      tput cnorm 2>/dev/null || true; \
 	      [ -n "$$SAVED_STTY" ] && stty "$$SAVED_STTY" 2>/dev/null || true; \
-	      printf '\n'; \
+	      printf "\r\033[K"; \
 	    }; \
 	    trap 'cleanup_checks; exit 130' INT TERM; \
 	    START_TIME=$$(date +%s); \
 	    tput civis 2>/dev/null || true; \
 	    ( \
 	      while :; do \
-	        ELAPSED=$$(( $$(date +%s) - START_TIME )); \
+	        ELAPSED=$$(($$(date +%s) - START_TIME)); \
 	        printf '\r⏱️  Elapsed: %02d:%02d - Watching checks...' $$((ELAPSED/60)) $$((ELAPSED%60)); \
 	        sleep 1; \
 	      done \
@@ -676,7 +676,7 @@ open-pr: generate
 	    CHECK_STATUS=$$?; \
 	    cleanup_checks; \
 	    trap - INT TERM; \
-	    TOTAL_TIME=$$(( $$(date +%s) - $$START_TIME )); \
+	    TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
 	    if [ $$CHECK_STATUS -eq 0 ]; then \
 	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
 	    else \
