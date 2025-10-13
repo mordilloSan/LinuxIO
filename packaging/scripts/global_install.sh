@@ -86,24 +86,18 @@ Start () {
       PKGS_PAM=( libpam0g libpam-modules libpam-modules-bin )
       PKGS_EXTRA=() # keep unattended-upgrades separate via Install_AutoUpdates
       DOCKER_DEPS=()
-      NM_PKG="network-manager"
-      PACKAGEKIT_SERVICE="packagekit"
       ;;
     dnf)
       PKGS_COMMON=( iputils lm_sensors nfs-utils wireguard-tools PackageKit ca-certificates jq curl rsync NetworkManager )
       PKGS_PAM=()
       PKGS_EXTRA=() # dnf-automatic installed in Install_AutoUpdates
       DOCKER_DEPS=( dnf-plugins-core )
-      NM_PKG="NetworkManager"
-      PACKAGEKIT_SERVICE="packagekit"
       ;;
     zypper)
       PKGS_COMMON=( iputils lm_sensors nfs-kernel-server nfs-client wireguard-tools PackageKit dbus-1 ca-certificates jq curl rsync NetworkManager )
       PKGS_PAM=()
       PKGS_EXTRA=() # zypper-automatic installed in Install_AutoUpdates
       DOCKER_DEPS=()
-      NM_PKG="NetworkManager"
-      PACKAGEKIT_SERVICE="packagekit"
       ;;
     pacman)
       PKGS_COMMON=( iputils lm_sensors nfs-utils wireguard-tools packagekit dbus ca-certificates jq curl rsync networkmanager )
