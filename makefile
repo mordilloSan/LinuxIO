@@ -605,7 +605,7 @@ changelog:
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  echo ""; \
 	}
-
+  
 open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
@@ -656,34 +656,33 @@ open-pr: generate
 	      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
-	      stty "$$SAVED_STTY" 2>/dev/null || true; \
-	      printf "\r\033[K"; \
+	      tput cnorm 2>/dev/null || true; \
+	      [ -n "$$SAVED_STTY" ] && stty "$$SAVED_STTY" 2>/dev/null || true; \
+	      printf '\r\033[K'; \
 	    }; \
 	    trap 'cleanup_checks; exit 130' INT TERM; \
-      # Draw timer on the first row without interfering with gh output
-      ( 
-        START_TIME=$START_TIME
-        # hide cursor for neatness
-        tput civis 2>/dev/null || true
-        while :; do
-          ELAPSED=$(( $(date +%s) - START_TIME ))
-          # save cursor, jump to row 0 col 0, write timer, clear to EOL, restore cursor
-          tput sc 2>/dev/null || true
-          tput cup 0 0 2>/dev/null || true
-          printf '⏱️  Elapsed: %02d:%02d - Checking status...' $((ELAPSED/60)) $((ELAPSED%60))
-          tput el 2>/dev/null || true
-          tput rc 2>/dev/null || true
-          sleep 1
-        done
-      ) &
-      TIMER_PID=$! \
+	    START_TIME=$$(date +%s); \
+	    ( \
+	      START_TIME=$$START_TIME; \
+	      tput civis 2>/dev/null || true; \
+	      while :; do \
+	        ELAPSED=$$(( $$(date +%s) - $$START_TIME )); \
+	        tput sc 2>/dev/null || true; \
+	        tput cup 0 0 2>/dev/null || true; \
+	        printf '⏱️  Elapsed: %02d:%02d - Checking status...' $$((ELAPSED/60)) $$((ELAPSED%60)); \
+	        tput el 2>/dev/null || true; \
+	        tput rc 2>/dev/null || true; \
+	        sleep 1; \
+	      done \
+	    ) & \
+	    TIMER_PID=$$!; \
 	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 ) & \
 	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
 	    CHECK_STATUS=$$?; \
 	    cleanup_checks; \
 	    trap - INT TERM; \
-	    TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
+	    TOTAL_TIME=$$(( $$(date +%s) - $$START_TIME )); \
 	    if [ $$CHECK_STATUS -eq 0 ]; then \
 	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
 	    else \
