@@ -620,7 +620,6 @@ open-pr: generate
 	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
 	  if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
 	    echo "ℹ️  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
-	    gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	  else \
 	    echo "🔁 Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
 	    gh pr create $(call _repo_flag) \
@@ -658,25 +657,20 @@ open-pr: generate
 	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
 	      tput cnorm 2>/dev/null || true; \
 	      [ -n "$$SAVED_STTY" ] && stty "$$SAVED_STTY" 2>/dev/null || true; \
-	      printf '\r\033[K'; \
+	      printf '\n'; \
 	    }; \
 	    trap 'cleanup_checks; exit 130' INT TERM; \
 	    START_TIME=$$(date +%s); \
+	    tput civis 2>/dev/null || true; \
 	    ( \
-	      START_TIME=$$START_TIME; \
-	      tput civis 2>/dev/null || true; \
 	      while :; do \
-	        ELAPSED=$$(( $$(date +%s) - $$START_TIME )); \
-	        tput sc 2>/dev/null || true; \
-	        tput cup 0 0 2>/dev/null || true; \
-	        printf '⏱️  Elapsed: %02d:%02d - Checking status...' $$((ELAPSED/60)) $$((ELAPSED%60)); \
-	        tput el 2>/dev/null || true; \
-	        tput rc 2>/dev/null || true; \
+	        ELAPSED=$$(( $$(date +%s) - START_TIME )); \
+	        printf '\r⏱️  Elapsed: %02d:%02d - Watching checks...' $$((ELAPSED/60)) $$((ELAPSED%60)); \
 	        sleep 1; \
 	      done \
 	    ) & \
 	    TIMER_PID=$$!; \
-	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 ) & \
+	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 2>&1 | grep -vE '^Refreshing' ) & \
 	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
 	    CHECK_STATUS=$$?; \
@@ -690,6 +684,7 @@ open-pr: generate
 	    fi; \
 	  fi; \
 	  echo ""; \
+	  echo "🌐 Opening PR in browser..."; \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
