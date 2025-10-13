@@ -277,12 +277,13 @@ endif
 	@echo "✅ Go Linting Ok!"
 
 test: setup dev-prep
-	@echo ""
-	@echo " Running checks..."
-	@$(MAKE) --no-print-directory lint
-	@$(MAKE) --no-print-directory tsc
-	@$(MAKE) --no-print-directory golint
-	@$(MAKE) --no-print-directory test-backend
+	@echo " Running checks (parallel)..."
+	@{ \
+	  $(MAKE) --no-print-directory lint & \
+	  $(MAKE) --no-print-directory tsc & \
+	  $(MAKE) --no-print-directory golint & \
+	  wait; \
+	} && $(MAKE) --no-print-directory test-backend
 
 test-backend:
 	@echo "Running Go unit tests (backend)..."
