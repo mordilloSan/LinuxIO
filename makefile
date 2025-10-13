@@ -690,12 +690,8 @@ open-pr: generate
 	      done \
 	    ) & \
 	    TIMER_PID=$$!; \
-      ( \
-        stdbuf -oL -eL gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 --color=never 2>&1 \
-          | sed -u 's/\r//g' \
-          | grep -vE '^Refreshing' \
-      ) & \
-      CHECK_PID=$$!; \
+	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 ) & \
+	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
 	    CHECK_STATUS=$$?; \
 	    cleanup_checks; \
