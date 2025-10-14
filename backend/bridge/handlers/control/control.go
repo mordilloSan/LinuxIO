@@ -150,16 +150,10 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 		}, nil
 	}
 
-	// Stop service before replacing binaries
-	logger.Debugf("[update] stopping service")
-	if err := stopService(); err != nil {
-		logger.Warnf("[update] failed to stop service: %v (continuing anyway)", err)
-	}
-
-	// Install new binaries
+	// Install new binaries WHILE service is still running
+	// Linux allows replacing running binaries - the old file handle stays valid
 	logger.Debugf("[update] installing binaries")
 	if err := installBinaries(tmpDir); err != nil {
-		_ = startService() // Try to restart old service
 		return UpdateResult{
 			Success:        false,
 			CurrentVersion: currentVersion,
@@ -167,23 +161,30 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 		}, nil
 	}
 
-	// Start service with new binaries
-	logger.Debugf("[update] starting service")
-	if err := startService(); err != nil {
-		return UpdateResult{
-			Success:        false,
-			CurrentVersion: currentVersion,
-			NewVersion:     targetVersion,
-			Error:          fmt.Sprintf("binaries updated but failed to start service: %v", err),
-		}, nil
+	// Reload systemd daemon to pick up any service changes
+	logger.Debugf("[update] reloading systemd daemon")
+	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
+		logger.Warnf("[update] daemon-reload failed: %v (continuing anyway)", err)
 	}
 
-	logger.Infof("[update] successfully updated to %s", targetVersion)
+	// Restart service with new binaries
+	// Note: This will terminate the current process, so we spawn it in background
+	logger.Infof("[update] restarting service with new version %s", targetVersion)
+	go func() {
+		// Small delay to allow this function to return response first
+		time.Sleep(500 * time.Millisecond)
+		if err := restartService(); err != nil {
+			logger.Errorf("[update] failed to restart service: %v", err)
+		}
+	}()
+
+	// Return success immediately - service will restart momentarily
+	logger.Infof("[update] binaries updated, service restart initiated")
 	return UpdateResult{
 		Success:        true,
 		CurrentVersion: currentVersion,
 		NewVersion:     targetVersion,
-		Message:        fmt.Sprintf("successfully updated from %s to %s", currentVersion, targetVersion),
+		Message:        fmt.Sprintf("successfully updated from %s to %s - service restarting", currentVersion, targetVersion),
 	}, nil
 }
 
@@ -407,12 +408,7 @@ func installBinaries(srcDir string) error {
 	return nil
 }
 
-func stopService() error {
-	cmd := exec.Command("systemctl", "stop", "linuxio.service")
-	return cmd.Run()
-}
-
-func startService() error {
-	cmd := exec.Command("systemctl", "start", "linuxio.service")
+func restartService() error {
+	cmd := exec.Command("systemctl", "restart", "linuxio.service")
 	return cmd.Run()
 }
