@@ -1,3 +1,19 @@
+## v0.2.21 — 2025-10-14
+
+### 🔄 Other Changes
+
+* go reportcard readme update ([1d18b5e](https://github.com/owner/repo/commit/1d18b5e)) by @MordilloSan
+* testing workflow and general linting ([0456cce](https://github.com/owner/repo/commit/0456cce)) by @MordilloSan
+* app update fix attempt ([9c49eed](https://github.com/owner/repo/commit/9c49eed)) by @MordilloSan
+* readme update ([af60e75](https://github.com/owner/repo/commit/af60e75)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.20...v0.2.21
+
 ## v0.2.20 — 2025-10-14
 
 ### 🔄 Other Changes
