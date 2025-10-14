@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/dbus/internal/fsutil"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/dbus/internal/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/systemd"
 )
 
 type aptBackend struct{}

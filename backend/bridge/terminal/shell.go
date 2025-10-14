@@ -14,8 +14,8 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // StartTerminal starts an interactive login shell for the session's user.
