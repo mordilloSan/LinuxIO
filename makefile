@@ -605,7 +605,7 @@ changelog:
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  echo ""; \
 	}
-  
+
 open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
@@ -664,6 +664,9 @@ open-pr: generate
 	        fi; \
 	        tput cup 0 0 2>/dev/null || true; \
 	        tput el 2>/dev/null || true; \
+	        if [ "$$LINES" -gt 0 ]; then \
+	          tput cup $$LINES 0 2>/dev/null || true; \
+	        fi; \
 	        tput cnorm 2>/dev/null || true; \
 	      fi; \
 	      [ -n "$$SAVED_STTY" ] && stty "$$SAVED_STTY" 2>/dev/null || true; \
