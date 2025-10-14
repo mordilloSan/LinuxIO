@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/mordilloSan/LinuxIO)](https://github.com/mordilloSan/LinuxIO/releases/latest)
 [![CodeQL](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql)
-[![Go Lint](https://github.com/mordilloSan/LinuxIO/actions/workflows/release.yml/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/backend)
 [![License](https://img.shields.io/github/license/mordilloSan/LinuxIO)](LICENSE)
 
 ![Logo](frontend/public/Logo.png)
