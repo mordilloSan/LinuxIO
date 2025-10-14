@@ -1,3 +1,19 @@
+## v0.2.20 — 2025-10-14
+
+### 🔄 Other Changes
+
+* Atualizar o go.mod ([9ca7f8e](https://github.com/owner/repo/commit/9ca7f8e)) by @mordillo
+* go path fix ([01c0a4f](https://github.com/owner/repo/commit/01c0a4f)) by @MordilloSan
+* go path bug fix ([ce91a24](https://github.com/owner/repo/commit/ce91a24)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+* @mordillo
+
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.16...v0.2.20
+
 ## v0.2.15 — 2025-10-14
 
 ### 🔄 Other Changes
