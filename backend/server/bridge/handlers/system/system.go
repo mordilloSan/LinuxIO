@@ -20,5 +20,4 @@ func RegisterSystemRoutes(sys *gin.RouterGroup) {
 	sys.GET("/disk", handleGetDisk)
 	sys.GET("/updates", handleGetFastUpdates)
 	sys.GET("/network", handleGetNetwork)
-
 }

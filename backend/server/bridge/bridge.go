@@ -265,7 +265,7 @@ func isExec(p string) bool {
 	if err != nil || st.IsDir() {
 		return false
 	}
-	return st.Mode()&0111 != 0
+	return st.Mode()&0o111 != 0
 }
 
 func getAuthHelperPath() string {

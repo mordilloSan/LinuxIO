@@ -5,9 +5,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"regexp"
-
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/docker/docker/api/types"

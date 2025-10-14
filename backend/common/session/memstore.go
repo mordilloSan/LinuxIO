@@ -90,7 +90,7 @@ func (m *MemStore) All() (map[string][]byte, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var mm = make(map[string][]byte)
+	mm := make(map[string][]byte)
 
 	for token, item := range m.items {
 		if item.expiration > time.Now().UnixNano() {
