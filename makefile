@@ -657,13 +657,17 @@ open-pr: generate
 	      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
-	      # restore scroll region and cursor; erase timer line \
 	      if command -v tput >/dev/null 2>&1; then \
 	        LINES=$$(tput lines 2>/dev/null || echo 0); \
-	        if [ "$$LINES" -gt 0 ]; then tput csr 0 $$((LINES-1)) 2>/dev/null || true; fi; \
-	        tput cnorm 2>/dev/null || true; \
+	        if [ "$$LINES" -gt 0 ]; then \
+	          tput csr 0 $$((LINES-1)) 2>/dev/null || true; \
+	        fi; \
 	        tput cup 0 0 2>/dev/null || true; \
 	        tput el 2>/dev/null || true; \
+	        if [ "$$LINES" -gt 0 ]; then \
+	          tput cup $$LINES 0 2>/dev/null || true; \
+	        fi; \
+	        tput cnorm 2>/dev/null || true; \
 	      fi; \
 	      [ -n "$$SAVED_STTY" ] && stty "$$SAVED_STTY" 2>/dev/null || true; \
 	    }; \
@@ -674,7 +678,6 @@ open-pr: generate
 	      if command -v tput >/dev/null 2>&1; then \
 	        LINES=$$(tput lines 2>/dev/null || echo 0); \
 	        if [ "$$LINES" -gt 0 ]; then \
-	          # Reserve top line (row 0) outside the scroll region to prevent flicker \
 	          tput csr 1 $$((LINES-1)) 2>/dev/null || true; \
 	        fi; \
 	        tput civis 2>/dev/null || true; \
@@ -694,8 +697,10 @@ open-pr: generate
 	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
 	    CHECK_STATUS=$$?; \
+	    sleep 0.2; \
 	    cleanup_checks; \
 	    trap - INT TERM; \
+	    echo ""; \
 	    TOTAL_TIME=$$(( $$(date +%s) - $$START_TIME )); \
 	    if [ $$CHECK_STATUS -eq 0 ]; then \
 	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
@@ -704,7 +709,6 @@ open-pr: generate
 	    fi; \
 	  fi; \
 	  echo ""; \
-	  # Open PR page exactly once (after all the above) \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
@@ -734,18 +738,19 @@ merge-release:
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
 	  echo ""; \
-	  echo "🔍 Checking for release workflow..."; \
-	  sleep 3; \
-	  for i in 1 2 3 4 5; do \
-	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --branch=main --limit=1 --json databaseId,status,conclusion,name,createdAt,displayTitle --jq '.[0]' 2>/dev/null || echo '')"; \
-	    if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
-	      break; \
-	    fi; \
-	    if [ $$i -lt 5 ]; then \
-	      echo "  Waiting for workflow to start... (attempt $$i/5)"; \
-	      sleep 2; \
-	    fi; \
-	  done; \
+    echo "🔍 Checking for release workflow..."; \
+    MERGE_TIME=$$(date -u +%s); \
+    sleep 3; \
+    for i in 1 2 3 4 5 6 7 8 9 10; do \
+      WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --branch=main --limit=5 --json databaseId,status,conclusion,name,createdAt,displayTitle --jq '[.[] | select(.createdAt | fromdateiso8601 > '$$MERGE_TIME')] | .[0]' 2>/dev/null || echo '')"; \
+      if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
+      break; \
+      fi; \
+      if [ $$i -lt 10 ]; then \
+      echo "  Waiting for workflow to start... (attempt $$i/10)"; \
+      sleep 2; \
+      fi; \
+    done; \
 	  if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
 	    RUN_ID="$$(echo "$$WORKFLOW_RUN" | jq -r '.databaseId')"; \
 	    STATUS="$$(echo "$$WORKFLOW_RUN" | jq -r '.status')"; \
