@@ -1,3 +1,22 @@
+## v0.2.13 — 2025-10-14
+
+### 🔄 Other Changes
+
+* update banner ([65baf24](https://github.com/owner/repo/commit/65baf24)) by @MordilloSan
+* changelog ([a5fc615](https://github.com/owner/repo/commit/a5fc615)) by @MordilloSan
+* makefile update ([a410fd3](https://github.com/owner/repo/commit/a410fd3)) by @MordilloSan
+* makefile update ([917e569](https://github.com/owner/repo/commit/917e569)) by @MordilloSan
+* Merge pull request #13 from mordilloSan/dev/v0.2.12 ([0203e18](https://github.com/owner/repo/commit/0203e18)) by @mordillo
+* makefile update ([e1c9825](https://github.com/owner/repo/commit/e1c9825)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+* @mordillo
+
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.12...v0.2.13
+
 ## v0.2.12 — 2025-10-14
 
 ### 🔄 Other Changes
