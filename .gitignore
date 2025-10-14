@@ -3,12 +3,12 @@ frontend/node_modules/
 backend/server/web/frontend/
 
 # Go Binaries
-linuxio-bridge
-linuxio
+./linuxio-bridge
+./linuxio
+./linuxio-auth-helper
 
 # Logs and misc
 *.log
 .DS_Store
 .vscode/
 *.swp
-linuxio-auth-helper

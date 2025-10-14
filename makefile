@@ -70,13 +70,13 @@ current_rel_branch = $(shell git branch --show-current)
 
 define _require_clean
 	@if ! git diff --quiet || ! git diff --cached --quiet; then \
-		echo " Working tree not clean. Commit/stash changes first."; exit 1; \
+		echo "❌ Working tree not clean. Commit/stash changes first."; exit 1; \
 	fi
 endef
 
 define _require_gh
 	@if ! command -v gh >/dev/null 2>&1; then \
-		echo " GitHub CLI (gh) not found. Install: https://cli.github.com/"; exit 1; \
+		echo "❌ GitHub CLI (gh) not found. Install: https://cli.github.com/"; exit 1; \
 	fi
 endef
 
@@ -89,10 +89,14 @@ define _read_and_validate_version
 	VERSION="$${VERSION_INPUT:-}"; \
 	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
 	if ! echo "$$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$'; then \
-	  echo " VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
+	  echo "❌ VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
 	  exit 1; \
 	fi; \
 	REL_BRANCH="dev/$$VERSION"
+endef
+
+define _repo_flag
+$(if $(REPO),--repo $(REPO),)
 endef
 
 # ---- toolchain --------------------------------------------------------------
@@ -152,7 +156,7 @@ default: help
 
 ensure-node:
 	@echo ""
-	@echo " Ensuring Node.js $(NODE_VERSION) is available..."
+	@echo "🔧 Ensuring Node.js $(NODE_VERSION) is available..."
 	@if [ ! -d "$(NVM_DIR)" ]; then \
 		curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash; \
 	fi
@@ -173,7 +177,7 @@ ensure-node:
 
 ensure-go:
 	@echo ""
-	@echo " Ensuring Go $(GO_VERSION) is available..."
+	@echo "🔧 Ensuring Go $(GO_VERSION) is available..."
 	@bash -lc '\
 		set -euo pipefail; \
 		DESIRED="$(GO_VERSION)"; \
@@ -216,7 +220,7 @@ ensure-go:
 		fi; \
 		if [ -x "$$GO_DIR/bin/go" ]; then "$$GO_DIR/bin/go" version || true; \
 		elif [ -x /usr/local/go/bin/go ]; then /usr/local/go/bin/go version || true; \
-		else echo "  Go not found on expected paths; check PATH."; fi; \
+		else echo "⚠️  Go not found on expected paths; check PATH."; fi; \
 		rm -rf "$$TMP"; \
 		echo "✅ Go is ready!"; \
 	'
@@ -241,43 +245,43 @@ ensure-golint: ensure-go
 	   out="$$( "$$bin" version )"; \
 	   ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
 	   ver_no_v="$${ver#v}"; major="$${ver_no_v%%.*}"; \
-	   [ "$$major" = "2" ] || { echo " not a v2 golangci-lint"; exit 1; }; \
-	   echo "$$out" | grep -Eq 'built with go1\.25(\.|$$)' || { echo " golangci-lint not built with Go 1.25"; exit 1; }; \
+	   [ "$$major" = "2" ] || { echo "❌ not a v2 golangci-lint"; exit 1; }; \
+	   echo "$$out" | grep -Eq 'built with go1\.25(\.|$$)' || { echo "❌ golangci-lint not built with Go 1.25"; exit 1; }; \
 	   echo "✔ golangci-lint v2 ready."; \
 	}
 
 setup:
 	@echo ""
-	@echo " Installing frontend dependencies..."
+	@echo "📦 Installing frontend dependencies..."
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
 
 lint: ensure-node setup
-	@echo " Running ESLint..."
+	@echo "🔍 Running ESLint..."
 	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
 
 tsc: ensure-node setup
-	@echo " Running TypeScript type checks..."
+	@echo "🔍 Running TypeScript type checks..."
 	@bash -c 'cd frontend && npx tsc && echo "✅ TypeScript Linting Ok!"'
 
 golint: ensure-golint
 	@set -euo pipefail
 	@echo "📁 Linting Go module in: $(BACKEND_DIR)"
-	@echo " Running gofmt..."
+	@echo "🔍 Running gofmt..."
 ifneq ($(CI),)
 	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
 	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
 else
 	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
 endif
-	@echo " Ensuring go.mod is tidy..."
+	@echo "🔍 Ensuring go.mod is tidy..."
 	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
-	@echo " Running golangci-lint..."
+	@echo "🔍 Running golangci-lint..."
 	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go Linting Ok!"
 
 test: setup dev-prep
-	@echo " Running checks (parallel)..."
+	@echo "🧪 Running checks (parallel)..."
 	@{ \
 	  $(MAKE) --no-print-directory lint & \
 	  $(MAKE) --no-print-directory tsc & \
@@ -286,7 +290,7 @@ test: setup dev-prep
 	} && $(MAKE) --no-print-directory test-backend
 
 test-backend:
-	@echo "Running Go unit tests (backend)..."
+	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
 		GOFLAGS="-buildvcs=false" \
 		go test ./... -count=1 -timeout 5m
@@ -294,12 +298,12 @@ test-backend:
 
 build-vite: lint tsc
 	@echo ""
-	@echo " Building frontend..."
+	@echo "🏗️  Building frontend..."
 	@bash -c 'cd frontend && VITE_API_URL=/ npx vite build && echo "✅ Frontend built successfully!"'
 
 build-backend: ensure-go
 	@echo ""
-	@echo " Building backend..."
+	@echo "🏗️  Building backend..."
 	@echo "📦 Module: $(MODULE_PATH)"
 	@echo "🔖 Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
@@ -315,7 +319,7 @@ build-backend: ensure-go
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
-	echo " Size: $$(du -h ../linuxio | cut -f1)" && \
+	echo "📊 Size: $$(du -h ../linuxio | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio | awk '{ print $$1 }')"
 
 build-bridge: ensure-go
@@ -336,7 +340,7 @@ build-bridge: ensure-go
 	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-bridge" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
-	echo " Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
+	echo "📊 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 build-auth-helper:
@@ -347,7 +351,7 @@ build-auth-helper:
 	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth-helper; fi; \
 	echo "✅ Session helper built successfully!"; \
 	echo "📄 Path: $$PWD/linuxio-auth-helper"; \
-	echo " Size: $$(du -h linuxio-auth-helper | cut -f1)"; \
+	echo "📊 Size: $$(du -h linuxio-auth-helper | cut -f1)"; \
 	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"; \
 	if command -v checksec >/dev/null 2>&1; then \
 	  echo "🔎 checksec:"; checksec --file=linuxio-auth-helper || true; \
@@ -385,7 +389,7 @@ dev: setup dev-prep devinstall
 	BACK_PID=$$!
 
 	@timeout 60s bash -c 'until ss -ltn "sport = :$(SERVER_PORT)" | grep -q LISTEN; do sleep 0.2; done' \
-	  || { echo " Backend port :$(SERVER_PORT) did not open in time"; cleanup; exit 1; }
+	  || { echo "❌ Backend port :$(SERVER_PORT) did not open in time"; cleanup; exit 1; }
 
 	cleanup_done=0
 	cleanup() {
@@ -492,7 +496,7 @@ start-dev:
 	  git checkout $(DEFAULT_BASE_BRANCH); \
 	  git pull --ff-only; \
 	  if git show-ref --verify --quiet "refs/heads/$$REL_BRANCH"; then \
-	    echo "ℹBranch $$REL_BRANCH already exists, checking it out…"; \
+	    echo "ℹ️  Branch $$REL_BRANCH already exists, checking it out…"; \
 	    git checkout "$$REL_BRANCH"; \
 	  else \
 	    echo "Creating branch $$REL_BRANCH from $(DEFAULT_BASE_BRANCH)…"; \
@@ -614,9 +618,9 @@ open-pr: generate
 	  VERSION="$${BRANCH#dev/}"; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
 	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
+	  CREATED=0; \
 	  if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
 	    echo "ℹ️  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
-	    gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	  else \
 	    echo "🔁 Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
 	    gh pr create $(call _repo_flag) \
@@ -625,6 +629,7 @@ open-pr: generate
 	      --title "Release $$VERSION" \
 	      --body-file CHANGELOG.md; \
 	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; \
+	    CREATED=1; \
 	  fi; \
 	  echo ""; \
 	  echo "🔍 Waiting for CI checks to register..."; \
@@ -644,10 +649,62 @@ open-pr: generate
 	    echo "💡 Checks might start later - monitor the PR manually."; \
 	  else \
 	    echo "⏳ Waiting for checks to complete on PR #$$PRNUM…"; \
-	    gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
-	    echo "✅ All checks passed!"; \
+	    echo "   (Press Ctrl+C to cancel)"; \
+	    echo ""; \
+	    if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echo -icanon min 0 time 0; fi; \
+	    cleanup_checks() { \
+	      [ -n "$$TIMER_PID" ] && kill $$TIMER_PID 2>/dev/null || true; \
+	      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
+	      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
+	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
+	      # restore scroll region and cursor; erase timer line \
+	      if command -v tput >/dev/null 2>&1; then \
+	        LINES=$$(tput lines 2>/dev/null || echo 0); \
+	        if [ "$$LINES" -gt 0 ]; then tput csr 0 $$((LINES-1)) 2>/dev/null || true; fi; \
+	        tput cnorm 2>/dev/null || true; \
+	        tput cup 0 0 2>/dev/null || true; \
+	        tput el 2>/dev/null || true; \
+	      fi; \
+	      [ -n "$$SAVED_STTY" ] && stty "$$SAVED_STTY" 2>/dev/null || true; \
+	    }; \
+	    trap 'cleanup_checks; exit 130' INT TERM; \
+	    START_TIME=$$(date +%s); \
+	    ( \
+	      START_TIME=$$START_TIME; \
+	      if command -v tput >/dev/null 2>&1; then \
+	        LINES=$$(tput lines 2>/dev/null || echo 0); \
+	        if [ "$$LINES" -gt 0 ]; then \
+	          # Reserve top line (row 0) outside the scroll region to prevent flicker \
+	          tput csr 1 $$((LINES-1)) 2>/dev/null || true; \
+	        fi; \
+	        tput civis 2>/dev/null || true; \
+	      fi; \
+	      while :; do \
+	        ELAPSED=$$(( $$(date +%s) - $$START_TIME )); \
+	        tput sc 2>/dev/null || true; \
+	        tput cup 0 0 2>/dev/null || true; \
+	        printf '⏱️  Elapsed: %02d:%02d - Checking status...' $$((ELAPSED/60)) $$((ELAPSED%60)); \
+	        tput el 2>/dev/null || true; \
+	        tput rc 2>/dev/null || true; \
+	        sleep 1; \
+	      done \
+	    ) & \
+	    TIMER_PID=$$!; \
+	    ( gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5 ) & \
+	    CHECK_PID=$$!; \
+	    wait $$CHECK_PID; \
+	    CHECK_STATUS=$$?; \
+	    cleanup_checks; \
+	    trap - INT TERM; \
+	    TOTAL_TIME=$$(( $$(date +%s) - $$START_TIME )); \
+	    if [ $$CHECK_STATUS -eq 0 ]; then \
+	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
+	    else \
+	      echo "❌ Checks failed or monitoring was interrupted"; \
+	    fi; \
 	  fi; \
 	  echo ""; \
+	  # Open PR page exactly once (after all the above) \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
@@ -676,6 +733,89 @@ merge-release:
 	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --delete-branch; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
+	  echo ""; \
+	  echo "🔍 Checking for release workflow..."; \
+	  sleep 3; \
+	  for i in 1 2 3 4 5; do \
+	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --branch=main --limit=1 --json databaseId,status,conclusion,name,createdAt,displayTitle --jq '.[0]' 2>/dev/null || echo '')"; \
+	    if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
+	      break; \
+	    fi; \
+	    if [ $$i -lt 5 ]; then \
+	      echo "  Waiting for workflow to start... (attempt $$i/5)"; \
+	      sleep 2; \
+	    fi; \
+	  done; \
+	  if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
+	    RUN_ID="$$(echo "$$WORKFLOW_RUN" | jq -r '.databaseId')"; \
+	    STATUS="$$(echo "$$WORKFLOW_RUN" | jq -r '.status')"; \
+	    CONCLUSION="$$(echo "$$WORKFLOW_RUN" | jq -r '.conclusion')"; \
+	    CREATED="$$(echo "$$WORKFLOW_RUN" | jq -r '.createdAt')"; \
+	    TITLE="$$(echo "$$WORKFLOW_RUN" | jq -r '.displayTitle // .name')"; \
+	    echo "📊 Release workflow found"; \
+	    echo "   Run ID: #$$RUN_ID"; \
+	    echo "   Title: $$TITLE"; \
+	    echo "   Status: $$STATUS"; \
+	    if [ "$$CONCLUSION" != "null" ]; then \
+	      echo "   Conclusion: $$CONCLUSION"; \
+	    fi; \
+	    echo "   Started: $$CREATED"; \
+	    if [ "$$STATUS" = "in_progress" ] || [ "$$STATUS" = "queued" ] || [ "$$STATUS" = "waiting" ]; then \
+	      echo ""; \
+	      echo "⏳ Watching release workflow..."; \
+	      echo "   (Press Ctrl+C to cancel)"; \
+	      echo ""; \
+	      if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echo -icanon min 0 time 0; fi; \
+	      cleanup_workflow() { \
+	        [ -n "$$TIMER_PID" ] && kill $$TIMER_PID 2>/dev/null || true; \
+	        [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
+	        [ -n "$$WATCH_PID" ] && kill $$WATCH_PID 2>/dev/null || true; \
+	        [ -n "$$WATCH_PID" ] && wait $$WATCH_PID 2>/dev/null || true; \
+	        stty "$$SAVED_STTY" 2>/dev/null || true; \
+	        printf "\r\033[K"; \
+	      }; \
+	      trap 'cleanup_workflow; exit 130' INT TERM; \
+	      START_TIME=$$(date +%s); \
+	      TIMER_PID=""; WATCH_PID=""; \
+	      ( \
+	        while true; do \
+	          ELAPSED=$$(($$(date +%s) - START_TIME)); \
+	          RUN_INFO="$$(gh run view $(call _repo_flag) "$$RUN_ID" --json status,conclusion 2>/dev/null || echo '')"; \
+	          if [ -n "$$RUN_INFO" ]; then \
+	            CURRENT_STATUS="$$(echo "$$RUN_INFO" | jq -r '.status // "unknown"')"; \
+	            printf "\r⏱️  Elapsed: %02d:%02d | Status: %-15s" $$((ELAPSED/60)) $$((ELAPSED%60)) "$$CURRENT_STATUS"; \
+	          else \
+	            printf "\r⏱️  Elapsed: %02d:%02d | Status: checking...      " $$((ELAPSED/60)) $$((ELAPSED%60)); \
+	          fi; \
+	          sleep 2; \
+	        done \
+	      ) & \
+	      TIMER_PID=$$!; \
+	      ( gh run watch $(call _repo_flag) "$$RUN_ID" ) & \
+	      WATCH_PID=$$!; \
+	      wait $$WATCH_PID; \
+	      WATCH_STATUS=$$?; \
+	      cleanup_workflow; \
+	      trap - INT TERM; \
+	      TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
+	      if [ $$WATCH_STATUS -eq 0 ]; then \
+	        echo "✅ Release workflow completed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
+	      else \
+	        echo "❌ Release workflow failed or was cancelled"; \
+	      fi; \
+	      echo ""; \
+	      gh run view $(call _repo_flag) "$$RUN_ID"; \
+	    else \
+	      echo "   Workflow already completed: $$CONCLUSION"; \
+	      gh run view $(call _repo_flag) "$$RUN_ID"; \
+	    fi; \
+	  else \
+	    echo "⚠️  No release workflow found. The workflow may:"; \
+	    echo "   • Not exist (no .github/workflows/release.yml)"; \
+	    echo "   • Not be triggered by this merge"; \
+	    echo "   • Take longer to start than expected"; \
+	    echo "💡 Check manually: gh run list --workflow=release.yml"; \
+	  fi; \
 	}
 
 version-debug:
