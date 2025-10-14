@@ -1,6 +1,7 @@
 import { Close, Download } from "@mui/icons-material";
 import { Alert, Button, IconButton, Link, Stack } from "@mui/material";
 import { useState } from "react";
+import axios from "@/utils/axios";
 
 interface UpdateInfo {
   available: boolean;
@@ -9,15 +10,18 @@ interface UpdateInfo {
   release_url?: string;
 }
 
+interface ApiEnvelope<T = any> {
+  status: "ok" | "error";
+  output?: T;
+  error?: string;
+}
+
 interface UpdateBannerProps {
   updateInfo: UpdateInfo;
   onDismiss: () => void;
 }
 
-const UpdateBanner: React.FC<UpdateBannerProps> = ({
-  updateInfo,
-  onDismiss,
-}) => {
+const UpdateBanner: React.FC<UpdateBannerProps> = ({ updateInfo, onDismiss }) => {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const handleUpdate = async () => {
@@ -32,32 +36,23 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
 
     setIsUpdating(true);
     try {
-      const response = await fetch("/control/update", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}), // Empty for latest version
-      });
+      const { data } = await axios.post<ApiEnvelope>("/control/update", {});
 
-      if (!response.ok) {
-        throw new Error("Update request failed");
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
+      if (data?.status === "ok") {
         alert("✅ Update complete! Please refresh the page.");
         sessionStorage.removeItem("update_info");
         window.location.reload();
       } else {
-        throw new Error(result.error || "Update failed");
+        throw new Error(data?.error || "Update failed");
       }
     } catch (error) {
       console.error("Update failed:", error);
+      const msg =
+        error instanceof Error ? error.message : "Unknown error";
       alert(
         "❌ Update failed. Please try manually:\n\n" +
         "sudo linuxio-update\n\n" +
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Error: ${msg}`,
       );
     } finally {
       setIsUpdating(false);
@@ -65,25 +60,44 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   };
 
   if (!updateInfo.available) {
-    console.log("No update available, not showing banner.");
     return null;
   }
 
   return (
     <Alert
       severity="info"
-      sx={{
-        mx: { xs: 6, md: 8 },
-        mt: 0,
-        mb: 0,
-        borderRadius: 2,
-      }}
+      sx={{ mx: { xs: 6, md: 8 }, mt: 0, mb: 0, borderRadius: 2 }}
+      slotProps={{ message: { sx: { width: "100%", p: 0 } } }}
       action={
+        <IconButton
+          aria-label="close"
+          color="inherit"
+          size="small"
+          onClick={onDismiss}
+          disabled={isUpdating}
+        >
+          <Close fontSize="small" />
+        </IconButton>
+      }
+    >
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={2}
+        sx={{ width: "100%", flexWrap: { xs: "wrap", sm: "nowrap" } }}
+      >
+        <Stack sx={{ minWidth: 0, flexGrow: 1 }}>
+          <strong>Update Available</strong>
+          <span>
+            LinuxIO {updateInfo.latest_version} is available. You are on {updateInfo.current_version}.
+          </span>
+        </Stack>
+
         <Stack direction="row" spacing={1} alignItems="center">
           <Button
             variant="contained"
             size="small"
-            startIcon={isUpdating ? null : <Download />}
+            startIcon={!isUpdating ? <Download /> : null}
             onClick={handleUpdate}
             disabled={isUpdating}
             sx={{ whiteSpace: "nowrap" }}
@@ -99,30 +113,13 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
               href={updateInfo.release_url}
               target="_blank"
               rel="noopener noreferrer"
+              disabled={isUpdating}
               sx={{ whiteSpace: "nowrap" }}
             >
               Release Notes
             </Button>
           )}
-
-          <IconButton
-            aria-label="close"
-            color="inherit"
-            size="small"
-            onClick={onDismiss}
-            disabled={isUpdating}
-          >
-            <Close fontSize="small" />
-          </IconButton>
         </Stack>
-      }
-    >
-      <Stack>
-        <strong>Update Available</strong>
-        <span>
-          LinuxIO {updateInfo.latest_version} is available. You are on{" "}
-          {updateInfo.current_version}.
-        </span>
       </Stack>
     </Alert>
   );
