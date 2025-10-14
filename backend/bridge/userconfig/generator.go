@@ -11,7 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/userconfig"
 )
 
 func main() {

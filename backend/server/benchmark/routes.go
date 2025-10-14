@@ -3,7 +3,7 @@ package benchmark
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // RegisterDebugRoutes wires the benchmark endpoint only in non-production envs.

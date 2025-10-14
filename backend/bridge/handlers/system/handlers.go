@@ -1,7 +1,7 @@
 package system
 
 import (
-	"github.com/mordilloSan/LinuxIO/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 func SystemHandlers() map[string]ipc.HandlerFunc {

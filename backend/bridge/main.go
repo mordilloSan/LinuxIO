@@ -18,17 +18,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/pflag"
 
-	"github.com/mordilloSan/LinuxIO/bridge/cleanup"
-	"github.com/mordilloSan/LinuxIO/bridge/filebrowser"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/system"
-	"github.com/mordilloSan/LinuxIO/bridge/terminal"
-	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
-	"github.com/mordilloSan/LinuxIO/common/ipc"
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/common/version"
-	"github.com/mordilloSan/LinuxIO/server/web"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/filebrowser"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/terminal"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 // envConfig holds all environment values we need, captured at startup

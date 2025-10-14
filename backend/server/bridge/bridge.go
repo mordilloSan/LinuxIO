@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/common/ipc"
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)

@@ -3,7 +3,7 @@ package drive
 import (
 	"fmt"
 
-	"github.com/mordilloSan/LinuxIO/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 func DriveHandlers() map[string]ipc.HandlerFunc {
