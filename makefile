@@ -533,6 +533,7 @@ changelog:
 	  while IFS='|' read -r message hash author; do \
 	    [ -z "$$message" ] && continue; \
 	    [[ "$$author" == "github-actions[bot]" ]] && continue; \
+	    [[ "$$message" =~ [Cc]hangelog ]] && continue; \
 	    ENTRY="* $$message ([$${hash:0:7}](https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/commit/$$hash)) by @$$author"; \
 	    if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
 	    elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
