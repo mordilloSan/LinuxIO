@@ -1,6 +1,7 @@
 import { Close, Download } from "@mui/icons-material";
 import { Alert, Button, IconButton, Link, Stack } from "@mui/material";
 import { useState } from "react";
+
 import axios from "@/utils/axios";
 
 interface UpdateInfo {
@@ -21,14 +22,17 @@ interface UpdateBannerProps {
   onDismiss: () => void;
 }
 
-const UpdateBanner: React.FC<UpdateBannerProps> = ({ updateInfo, onDismiss }) => {
+const UpdateBanner: React.FC<UpdateBannerProps> = ({
+  updateInfo,
+  onDismiss,
+}) => {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const handleUpdate = async () => {
     if (
       !confirm(
         `Update LinuxIO from ${updateInfo.current_version} to ${updateInfo.latest_version}?\n\n` +
-        "The service will restart. This may take a minute.",
+          "The service will restart. This may take a minute.",
       )
     ) {
       return;
@@ -47,12 +51,11 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({ updateInfo, onDismiss }) =>
       }
     } catch (error) {
       console.error("Update failed:", error);
-      const msg =
-        error instanceof Error ? error.message : "Unknown error";
+      const msg = error instanceof Error ? error.message : "Unknown error";
       alert(
         "❌ Update failed. Please try manually:\n\n" +
-        "sudo linuxio-update\n\n" +
-        `Error: ${msg}`,
+          "sudo linuxio-update\n\n" +
+          `Error: ${msg}`,
       );
     } finally {
       setIsUpdating(false);
@@ -89,7 +92,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({ updateInfo, onDismiss }) =>
         <Stack sx={{ minWidth: 0, flexGrow: 1 }}>
           <strong>Update Available</strong>
           <span>
-            LinuxIO {updateInfo.latest_version} is available. You are on {updateInfo.current_version}.
+            LinuxIO {updateInfo.latest_version} is available. You are on{" "}
+            {updateInfo.current_version}.
           </span>
         </Stack>
 
