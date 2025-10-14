@@ -1,14 +1,11 @@
 package control
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,10 +14,12 @@ import (
 )
 
 const (
-	RepoOwner = "mordilloSan"
-	RepoName  = "LinuxIO"
-	BinDir    = "/usr/local/bin"
-	BinPath   = BinDir + "/linuxio"
+	RepoOwner          = "mordilloSan"
+	RepoName           = "LinuxIO"
+	BinDir             = "/usr/local/bin"
+	BinPath            = BinDir + "/linuxio"
+	InstallScriptURL   = "https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/scripts/install-linuxio-binaries.sh"
+	InstallScriptCache = "/tmp/install-linuxio-binaries.sh"
 )
 
 func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
@@ -119,45 +118,32 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 
 	logger.Infof("[update] starting update: %s -> %s", currentVersion, targetVersion)
 
-	// Create temporary directory
-	tmpDir, err := os.MkdirTemp("", "linuxio-update-*")
-	if err != nil {
+	// Download the installation script
+	logger.Debugf("[update] downloading installation script")
+	if err := downloadInstallScript(); err != nil {
 		return UpdateResult{
 			Success:        false,
 			CurrentVersion: currentVersion,
-			Error:          fmt.Sprintf("failed to create temp directory: %v", err),
-		}, nil
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Download binaries and checksums
-	logger.Debugf("[update] downloading release %s", targetVersion)
-	if err := downloadRelease(targetVersion, tmpDir); err != nil {
-		return UpdateResult{
-			Success:        false,
-			CurrentVersion: currentVersion,
-			Error:          fmt.Sprintf("failed to download release: %v", err),
+			Error:          fmt.Sprintf("failed to download installation script: %v", err),
 		}, nil
 	}
 
-	// Verify checksums
-	logger.Debugf("[update] verifying checksums")
-	if err := verifyChecksums(tmpDir); err != nil {
+	// Make script executable
+	if err := os.Chmod(InstallScriptCache, 0755); err != nil {
 		return UpdateResult{
 			Success:        false,
 			CurrentVersion: currentVersion,
-			Error:          fmt.Sprintf("checksum verification failed: %v", err),
+			Error:          fmt.Sprintf("failed to make script executable: %v", err),
 		}, nil
 	}
 
-	// Install new binaries WHILE service is still running
-	// Linux allows replacing running binaries - the old file handle stays valid
-	logger.Debugf("[update] installing binaries")
-	if err := installBinaries(tmpDir); err != nil {
+	// Execute the installation script
+	logger.Infof("[update] running installation script for version %s", targetVersion)
+	if err := runInstallScript(targetVersion); err != nil {
 		return UpdateResult{
 			Success:        false,
 			CurrentVersion: currentVersion,
-			Error:          fmt.Sprintf("failed to install binaries: %v", err),
+			Error:          fmt.Sprintf("installation script failed: %v", err),
 		}, nil
 	}
 
@@ -178,6 +164,9 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 		}
 	}()
 
+	// Cleanup
+	os.Remove(InstallScriptCache)
+
 	// Return success immediately - service will restart momentarily
 	logger.Infof("[update] binaries updated, service restart initiated")
 	return UpdateResult{
@@ -186,6 +175,63 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 		NewVersion:     targetVersion,
 		Message:        fmt.Sprintf("successfully updated from %s to %s - service restarting", currentVersion, targetVersion),
 	}, nil
+}
+
+// downloadInstallScript downloads the installation script from GitHub
+func downloadInstallScript() error {
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	resp, err := client.Get(InstallScriptURL)
+	if err != nil {
+		return fmt.Errorf("failed to download script: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	}
+
+	// Write to temporary file
+	tmpFile := InstallScriptCache + ".tmp"
+	out, err := os.Create(tmpFile)
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to write script: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tmpFile, InstallScriptCache); err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to rename script: %w", err)
+	}
+
+	logger.Debugf("[update] installation script downloaded to %s", InstallScriptCache)
+	return nil
+}
+
+// runInstallScript executes the installation script
+func runInstallScript(version string) error {
+	args := []string{}
+	if version != "" {
+		args = append(args, version)
+	}
+
+	cmd := exec.Command(InstallScriptCache, args...)
+
+	// Capture output for logging
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logger.Errorf("[update] installation script output:\n%s", string(output))
+		return fmt.Errorf("script execution failed: %w\nOutput: %s", err, string(output))
+	}
+
+	logger.Infof("[update] installation script output:\n%s", string(output))
+	return nil
 }
 
 // getInstalledVersion runs 'linuxio --version' and parses the output
@@ -266,160 +312,6 @@ func fetchLatestVersion() (string, error) {
 	}
 
 	return string(body[tagStart : tagStart+tagEnd]), nil
-}
-
-func downloadRelease(version, destDir string) error {
-	baseURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s", RepoOwner, RepoName, version)
-
-	files := []string{
-		"linuxio",
-		"linuxio-bridge",
-		"linuxio-auth-helper",
-		"SHA256SUMS",
-	}
-
-	client := &http.Client{Timeout: 2 * time.Minute}
-
-	for _, file := range files {
-		url := fmt.Sprintf("%s/%s", baseURL, file)
-		destPath := filepath.Join(destDir, file)
-
-		logger.Debugf("[update] downloading %s", file)
-
-		resp, err := client.Get(url)
-		if err != nil {
-			return fmt.Errorf("failed to download %s: %w", file, err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("failed to download %s: status %d", file, resp.StatusCode)
-		}
-
-		out, err := os.Create(destPath)
-		if err != nil {
-			return fmt.Errorf("failed to create %s: %w", file, err)
-		}
-
-		_, err = io.Copy(out, resp.Body)
-		out.Close()
-		if err != nil {
-			return fmt.Errorf("failed to write %s: %w", file, err)
-		}
-
-		// Set execute permissions on binaries immediately after download
-		if file != "SHA256SUMS" {
-			if err := os.Chmod(destPath, 0o755); err != nil {
-				return fmt.Errorf("failed to chmod %s: %w", file, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-func verifyChecksums(dir string) error {
-	checksumFile := filepath.Join(dir, "SHA256SUMS")
-	data, err := os.ReadFile(checksumFile)
-	if err != nil {
-		return fmt.Errorf("failed to read checksums: %w", err)
-	}
-
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		parts := strings.Fields(line)
-		if len(parts) < 2 {
-			continue
-		}
-
-		expectedHash := parts[0]
-		filename := parts[1]
-
-		// Skip tarball in checksums
-		if strings.HasSuffix(filename, ".tar.gz") {
-			continue
-		}
-
-		filePath := filepath.Join(dir, filename)
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			continue // File not downloaded
-		}
-
-		actualHash, err := calculateSHA256(filePath)
-		if err != nil {
-			return fmt.Errorf("failed to hash %s: %w", filename, err)
-		}
-
-		if actualHash != expectedHash {
-			return fmt.Errorf("checksum mismatch for %s: expected %s, got %s", filename, expectedHash, actualHash)
-		}
-
-		logger.Debugf("[update] checksum verified for %s", filename)
-	}
-
-	return nil
-}
-
-func calculateSHA256(filePath string) (string, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func installBinaries(srcDir string) error {
-	binaries := map[string]os.FileMode{
-		"linuxio":             0o755,
-		"linuxio-bridge":      0o755,
-		"linuxio-auth-helper": 0o4755, // setuid
-	}
-
-	for binary, mode := range binaries {
-		src := filepath.Join(srcDir, binary)
-		dst := filepath.Join(BinDir, binary)
-
-		logger.Debugf("[update] installing %s", binary)
-
-		// Read source
-		data, err := os.ReadFile(src)
-		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", binary, err)
-		}
-
-		// Write to temporary file first (atomic)
-		tmpDst := dst + ".new"
-		if err := os.WriteFile(tmpDst, data, mode); err != nil {
-			return fmt.Errorf("failed to write %s: %w", binary, err)
-		}
-
-		// Atomic rename
-		if err := os.Rename(tmpDst, dst); err != nil {
-			os.Remove(tmpDst)
-			return fmt.Errorf("failed to install %s: %w", binary, err)
-		}
-
-		// CRITICAL: Explicitly set permissions after rename
-		if err := os.Chmod(dst, mode); err != nil {
-			return fmt.Errorf("failed to chmod %s: %w", binary, err)
-		}
-
-		logger.Debugf("[update] installed %s with mode %04o", binary, mode)
-	}
-
-	return nil
 }
 
 func restartService() error {
