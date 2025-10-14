@@ -1,3 +1,17 @@
+## v0.2.15 — 2025-10-14
+
+### 🔄 Other Changes
+
+* makefile merge workflow update ([7755ee9](https://github.com/owner/repo/commit/7755ee9)) by @MordilloSan
+* toast duration fix ([03ebea8](https://github.com/owner/repo/commit/03ebea8)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.14...v0.2.15
+
 ## v0.2.14 — 2025-10-14
 
 ### 🔄 Other Changes
