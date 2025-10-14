@@ -129,7 +129,7 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 	}
 
 	// Make script executable
-	if err := os.Chmod(InstallScriptCache, 0755); err != nil {
+	if err := os.Chmod(InstallScriptCache, 0o755); err != nil {
 		return UpdateResult{
 			Success:        false,
 			CurrentVersion: currentVersion,
