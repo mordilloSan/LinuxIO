@@ -150,7 +150,6 @@ func (m *Manager) Close() {
 		close(m.gcStop)
 	}
 	logger.Infof("Session manager stopped")
-
 }
 
 // -----------------------------------------------------------------------------

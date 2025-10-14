@@ -128,14 +128,17 @@ func Debugln(v ...interface{}) {
 	msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprint(v...))
 	Debug.Println(msg)
 }
+
 func Infoln(v ...interface{}) {
 	msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprint(v...))
 	Info.Println(msg)
 }
+
 func Warnln(v ...interface{}) {
 	msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprint(v...))
 	Warning.Println(msg)
 }
+
 func Errorln(v ...interface{}) {
 	msg := fmt.Sprintf("[%s] %s", getCallerFuncName(2), fmt.Sprint(v...))
 	Error.Println(msg)

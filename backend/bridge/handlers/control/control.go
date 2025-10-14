@@ -309,7 +309,7 @@ func downloadRelease(version, destDir string) error {
 
 		// Set execute permissions on binaries immediately after download
 		if file != "SHA256SUMS" {
-			if err := os.Chmod(destPath, 0755); err != nil {
+			if err := os.Chmod(destPath, 0o755); err != nil {
 				return fmt.Errorf("failed to chmod %s: %w", file, err)
 			}
 		}
@@ -382,9 +382,9 @@ func calculateSHA256(filePath string) (string, error) {
 
 func installBinaries(srcDir string) error {
 	binaries := map[string]os.FileMode{
-		"linuxio":             0755,
-		"linuxio-bridge":      0755,
-		"linuxio-auth-helper": 04755, // setuid
+		"linuxio":             0o755,
+		"linuxio-bridge":      0o755,
+		"linuxio-auth-helper": 0o4755, // setuid
 	}
 
 	for binary, mode := range binaries {

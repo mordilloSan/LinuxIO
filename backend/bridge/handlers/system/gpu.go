@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+
 	"github.com/jaypipes/ghw/pkg/gpu"
 )
 

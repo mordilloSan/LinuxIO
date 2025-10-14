@@ -508,7 +508,6 @@ func UpInterface(args []string) (any, error) {
 	cmd.Dir = "/"
 
 	out, err := cmd.CombinedOutput()
-
 	if err != nil {
 		logger.Errorf("UpInterface: failed to bring up %s: %v (%s)", name, err, string(out))
 		return nil, fmt.Errorf("bring up interface: %w", err)
@@ -540,7 +539,6 @@ func DownInterface(args []string) (any, error) {
 	cmd.Dir = "/"
 
 	out, err := cmd.CombinedOutput()
-
 	if err != nil {
 		logger.Errorf("DownInterface: failed to bring down %s: %v (%s)", name, err, string(out))
 		return nil, fmt.Errorf("bring down interface: %w", err)

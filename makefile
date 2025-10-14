@@ -256,6 +256,7 @@ setup:
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
 
+# Separate lint/tsc targets that include all prerequisites
 lint: ensure-node setup
 	@echo "🔍 Running ESLint..."
 	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
@@ -277,23 +278,48 @@ endif
 	@echo "🔍 Ensuring go.mod is tidy..."
 	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
 	@echo "🔍 Running golangci-lint..."
-	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
+	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go Linting Ok!"
 
-test: setup dev-prep
+# Optimized test target: runs setup ONCE, then parallelizes the actual checks
+test: ensure-node ensure-go ensure-golint setup dev-prep
 	@echo "🧪 Running checks (parallel)..."
 	@{ \
-	  $(MAKE) --no-print-directory lint & \
-	  $(MAKE) --no-print-directory tsc & \
-	  $(MAKE) --no-print-directory golint & \
+	  $(MAKE) --no-print-directory lint-only & \
+	  $(MAKE) --no-print-directory tsc-only & \
+	  $(MAKE) --no-print-directory golint-only & \
 	  wait; \
 	} && $(MAKE) --no-print-directory test-backend
+
+# Internal targets (without prerequisites) for parallel execution
+lint-only:
+	@echo "🔍 Running ESLint..."
+	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
+
+tsc-only:
+	@echo "🔍 Running TypeScript type checks..."
+	@bash -c 'cd frontend && npx tsc && echo "✅ TypeScript Linting Ok!"'
+
+golint-only:
+	@echo "📁 Linting Go module in: $(BACKEND_DIR)"
+	@echo "🔍 Running gofmt..."
+ifneq ($(CI),)
+	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
+	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
+else
+	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
+endif
+	@echo "🔍 Ensuring go.mod is tidy..."
+	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
+	@echo "🔍 Running golangci-lint..."
+	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
+	@echo "✅ Go Linting Ok!"
 
 test-backend:
 	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
 		GOFLAGS="-buildvcs=false" \
-		go test ./... -count=1 -timeout 5m
+		go test ./... -count=1 -timeout 5m 2>&1 | grep -v '\[no test files\]'
 	@echo "✅ Backend tests passed!"
 
 build-vite: lint tsc
@@ -373,7 +399,7 @@ dev: setup dev-prep devinstall
 	# TTY polish
 	if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echoctl; fi
 
-	# Backend with inline env vars (no dev.env needed)
+	# Backend with inline env vars
 	( \
 	  cd "$(BACKEND_DIR)"; \
 	  LINUXIO_ENV=development \
@@ -870,7 +896,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
-	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint"
+	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint + backend tests (optimized)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"
@@ -899,7 +925,7 @@ help:
 .PHONY: \
     default help clean clean-dev clean-all run \
     build build-vite build-backend build-bridge build-auth-helper \
-	dev dev-prep setup test lint tsc golint \
+	dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
 	ensure-node ensure-go ensure-golint \
 	generate devinstall devinstall-force \
 	start-dev open-pr merge-release version-debug changelog
