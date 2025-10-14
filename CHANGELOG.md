@@ -1,3 +1,16 @@
+## v0.2.14 — 2025-10-14
+
+### 🔄 Other Changes
+
+* app autoupdate ([55d7168](https://github.com/owner/repo/commit/55d7168)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.13...v0.2.14
+
 ## v0.2.13 — 2025-10-14
 
 ### 🔄 Other Changes
