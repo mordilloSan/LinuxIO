@@ -150,9 +150,6 @@ linters:
 issues:
   max-same-issues: 50
 formatters:
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
+  enable:
+    - gofmt
+    - gofumpt

@@ -27,8 +27,10 @@ type UpdateDetail struct {
 }
 
 // —— use type ALIASES, not new structs —— //
-type AutoUpdateOptions = updates.AutoUpdateOptions
-type AutoUpdateState = updates.AutoUpdateState
+type (
+	AutoUpdateOptions = updates.AutoUpdateOptions
+	AutoUpdateState   = updates.AutoUpdateState
+)
 
 func getAutoUpdates() (AutoUpdateState, error) {
 	var out AutoUpdateState

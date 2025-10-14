@@ -214,7 +214,7 @@ func newHTTPClient(baseURL string, serverCert string) *http.Client {
 
 	if after, ok := strings.CutPrefix(baseURL, "https://"); ok {
 		host := hostWithoutPort(after)
-		var pool = web.GetRootPool()
+		pool := web.GetRootPool()
 		if serverCert != "" {
 			if cp := x509.NewCertPool(); cp.AppendCertsFromPEM([]byte(serverCert)) {
 				pool = cp
