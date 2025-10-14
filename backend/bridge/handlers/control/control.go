@@ -306,6 +306,13 @@ func downloadRelease(version, destDir string) error {
 		if err != nil {
 			return fmt.Errorf("failed to write %s: %w", file, err)
 		}
+
+		// Set execute permissions on binaries immediately after download
+		if file != "SHA256SUMS" {
+			if err := os.Chmod(destPath, 0755); err != nil {
+				return fmt.Errorf("failed to chmod %s: %w", file, err)
+			}
+		}
 	}
 
 	return nil
@@ -380,43 +387,38 @@ func installBinaries(srcDir string) error {
 		"linuxio-auth-helper": 04755, // setuid
 	}
 
-	logger.Debugf("[update] installBinaries: starting installation from %s", srcDir)
-
 	for binary, mode := range binaries {
 		src := filepath.Join(srcDir, binary)
 		dst := filepath.Join(BinDir, binary)
 
-		logger.Debugf("[update] installBinaries: processing %s (src=%s, dst=%s)", binary, src, dst)
+		logger.Debugf("[update] installing %s", binary)
 
 		// Read source
 		data, err := os.ReadFile(src)
 		if err != nil {
-			logger.Errorf("[update] installBinaries: failed to read %s: %v", binary, err)
 			return fmt.Errorf("failed to read %s: %w", binary, err)
 		}
-		logger.Debugf("[update] installBinaries: read %d bytes from %s", len(data), binary)
 
 		// Write to temporary file first (atomic)
 		tmpDst := dst + ".new"
-		logger.Debugf("[update] installBinaries: writing to temp file %s", tmpDst)
 		if err := os.WriteFile(tmpDst, data, mode); err != nil {
-			logger.Errorf("[update] installBinaries: failed to write %s: %v", binary, err)
 			return fmt.Errorf("failed to write %s: %w", binary, err)
 		}
-		logger.Debugf("[update] installBinaries: wrote temp file %s", tmpDst)
 
 		// Atomic rename
-		logger.Debugf("[update] installBinaries: renaming %s to %s", tmpDst, dst)
 		if err := os.Rename(tmpDst, dst); err != nil {
-			logger.Errorf("[update] installBinaries: failed to rename %s: %v", binary, err)
 			os.Remove(tmpDst)
 			return fmt.Errorf("failed to install %s: %w", binary, err)
 		}
 
-		logger.Infof("[update] installed %s successfully", binary)
+		// CRITICAL: Explicitly set permissions after rename
+		if err := os.Chmod(dst, mode); err != nil {
+			return fmt.Errorf("failed to chmod %s: %w", binary, err)
+		}
+
+		logger.Debugf("[update] installed %s with mode %04o", binary, mode)
 	}
 
-	logger.Infof("[update] installBinaries: all binaries installed successfully")
 	return nil
 }
 
