@@ -306,6 +306,13 @@ func downloadRelease(version, destDir string) error {
 		if err != nil {
 			return fmt.Errorf("failed to write %s: %w", file, err)
 		}
+
+		// Set execute permissions on binaries immediately after download
+		if file != "SHA256SUMS" {
+			if err := os.Chmod(destPath, 0755); err != nil {
+				return fmt.Errorf("failed to chmod %s: %w", file, err)
+			}
+		}
 	}
 
 	return nil
@@ -384,6 +391,8 @@ func installBinaries(srcDir string) error {
 		src := filepath.Join(srcDir, binary)
 		dst := filepath.Join(BinDir, binary)
 
+		logger.Debugf("[update] installing %s", binary)
+
 		// Read source
 		data, err := os.ReadFile(src)
 		if err != nil {
@@ -402,13 +411,25 @@ func installBinaries(srcDir string) error {
 			return fmt.Errorf("failed to install %s: %w", binary, err)
 		}
 
-		logger.Debugf("[update] installed %s", binary)
+		// CRITICAL: Explicitly set permissions after rename
+		if err := os.Chmod(dst, mode); err != nil {
+			return fmt.Errorf("failed to chmod %s: %w", binary, err)
+		}
+
+		logger.Debugf("[update] installed %s with mode %04o", binary, mode)
 	}
 
 	return nil
 }
 
 func restartService() error {
-	cmd := exec.Command("systemctl", "restart", "linuxio.service")
-	return cmd.Run()
+	logger.Infof("[update] restarting linuxio service")
+	cmd := exec.Command("systemctl", "restart", "linuxio")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logger.Errorf("[update] restart failed: %v, output: %s", err, string(output))
+		return fmt.Errorf("restart failed: %w", err)
+	}
+	logger.Infof("[update] service restarted successfully")
+	return nil
 }
