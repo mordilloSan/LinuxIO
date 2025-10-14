@@ -1,15 +1,40 @@
-## v0.2.12 — 2025-10-13
+## v0.2.12 — 2025-10-14
 
 ### 🔄 Other Changes
 
 * Bump github.com/quic-go/quic-go from 0.54.0 to 0.54.1 in /backend ([c58abf4](https://github.com/owner/repo/commit/c58abf4)) by @dependabot[bot]
+* Merge branch 'main' into dependabot/go_modules/backend/github.com/quic-go/quic-go-0.54.1 ([93d0426](https://github.com/owner/repo/commit/93d0426)) by @mordillo
 * Merge remote-tracking branch 'origin/dependabot/go_modules/backend/github.com/quic-go/quic-go-0.54.1' into dev/v0.2.12 ([acf2e52](https://github.com/owner/repo/commit/acf2e52)) by @MordilloSan
+* Merge branch 'main' into dependabot/go_modules/backend/github.com/quic-go/quic-go-0.54.1 ([e33c26b](https://github.com/owner/repo/commit/e33c26b)) by @mordillo
+* Merge pull request #6 from mordilloSan/dependabot/go_modules/backend/github.com/quic-go/quic-go-0.54.1 ([ce141c8](https://github.com/owner/repo/commit/ce141c8)) by @mordillo
 * install process and makefile optimization ([b9cdf2d](https://github.com/owner/repo/commit/b9cdf2d)) by @MordilloSan
+* changelog ([a041eaa](https://github.com/owner/repo/commit/a041eaa)) by @MordilloSan
+* makefile update ([d226403](https://github.com/owner/repo/commit/d226403)) by @MordilloSan
+* makefile upgrade ([9c1f218](https://github.com/owner/repo/commit/9c1f218)) by @MordilloSan
+* makefile upgrade ([e484b97](https://github.com/owner/repo/commit/e484b97)) by @MordilloSan
+* makefile upgrade ([e91edb8](https://github.com/owner/repo/commit/e91edb8)) by @MordilloSan
+* makefile upgrade ([0ba88c0](https://github.com/owner/repo/commit/0ba88c0)) by @MordilloSan
+* up ([ed13d0b](https://github.com/owner/repo/commit/ed13d0b)) by @MordilloSan
+* update ([76e32ec](https://github.com/owner/repo/commit/76e32ec)) by @MordilloSan
+* make update ([5a22e8f](https://github.com/owner/repo/commit/5a22e8f)) by @MordilloSan
+* bug fix ([b69ceb9](https://github.com/owner/repo/commit/b69ceb9)) by @MordilloSan
+* bug fix ([cdadb91](https://github.com/owner/repo/commit/cdadb91)) by @MordilloSan
+* test ([fcec6db](https://github.com/owner/repo/commit/fcec6db)) by @MordilloSan
+* bug fix ([2bc290f](https://github.com/owner/repo/commit/2bc290f)) by @MordilloSan
+* up ([a87101d](https://github.com/owner/repo/commit/a87101d)) by @MordilloSan
+* up ([d76e08b](https://github.com/owner/repo/commit/d76e08b)) by @MordilloSan
+* bug fix ([9fc5a78](https://github.com/owner/repo/commit/9fc5a78)) by @MordilloSan
+* bug fix ([29bfb26](https://github.com/owner/repo/commit/29bfb26)) by @MordilloSan
+* bug fix ([981bacc](https://github.com/owner/repo/commit/981bacc)) by @MordilloSan
+* Merge pull request #12 from mordilloSan/dev/v0.2.12 ([2ec37b3](https://github.com/owner/repo/commit/2ec37b3)) by @mordillo
+* update banner ([65baf24](https://github.com/owner/repo/commit/65baf24)) by @MordilloSan
 
 ### 👥 Contributors
 
 * @MordilloSan
 * @dependabot[bot]
+* @mordillo
+
 
 **Full Changelog**: https://github.com/owner/repo/compare/v0.2.11...v0.2.12
 
