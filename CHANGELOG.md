@@ -6,6 +6,7 @@
 * testing workflow and general linting ([0456cce](https://github.com/owner/repo/commit/0456cce)) by @MordilloSan
 * app update fix attempt ([9c49eed](https://github.com/owner/repo/commit/9c49eed)) by @MordilloSan
 * readme update ([af60e75](https://github.com/owner/repo/commit/af60e75)) by @MordilloSan
+* linting ([d441960](https://github.com/owner/repo/commit/d441960)) by @MordilloSan
 
 ### 👥 Contributors
 
