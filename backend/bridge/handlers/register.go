@@ -1,16 +1,16 @@
 package handlers
 
 import (
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/config"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/control"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/dbus"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/docker"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/drive"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/system"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/terminal"
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/common/ipc"
-	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/drive"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // Map of type -> (command -> handler)

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
-	"github.com/mordilloSan/LinuxIO/common/ipc"
-	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 )
 
 type themePayload struct {

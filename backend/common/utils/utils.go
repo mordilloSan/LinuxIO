@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 )
 
 func GenerateSecretKey(n int) string {

@@ -13,10 +13,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
-	"github.com/mordilloSan/LinuxIO/common/ipc"
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/server/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
 
 var upgrader = websocket.Upgrader{

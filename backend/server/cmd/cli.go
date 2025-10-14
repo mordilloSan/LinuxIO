@@ -8,7 +8,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/mordilloSan/LinuxIO/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // ServerConfig is the minimal runtime config passed to the server.

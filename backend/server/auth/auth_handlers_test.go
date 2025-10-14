@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // --- helpers ---------------------------------------------------------------

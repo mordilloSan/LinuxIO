@@ -11,7 +11,7 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 	"github.com/shirou/gopsutil/v4/net"
 
-	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 )
 
 // NMInterfaceInfo contains comprehensive network interface information

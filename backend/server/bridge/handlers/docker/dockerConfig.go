@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 )
 
 // IsDockerInstalled returns true if 'docker' is available in PATH
