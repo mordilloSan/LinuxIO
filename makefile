@@ -605,7 +605,7 @@ changelog:
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  echo ""; \
 	}
-
+  
 open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
@@ -657,13 +657,14 @@ open-pr: generate
 	      [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && kill $$CHECK_PID 2>/dev/null || true; \
 	      [ -n "$$CHECK_PID" ] && wait $$CHECK_PID 2>/dev/null || true; \
-	      # restore scroll region and cursor; erase timer line \
 	      if command -v tput >/dev/null 2>&1; then \
 	        LINES=$$(tput lines 2>/dev/null || echo 0); \
-	        if [ "$$LINES" -gt 0 ]; then tput csr 0 $$((LINES-1)) 2>/dev/null || true; fi; \
-	        tput cnorm 2>/dev/null || true; \
+	        if [ "$$LINES" -gt 0 ]; then \
+	          tput csr 0 $$((LINES-1)) 2>/dev/null || true; \
+	        fi; \
 	        tput cup 0 0 2>/dev/null || true; \
 	        tput el 2>/dev/null || true; \
+	        tput cnorm 2>/dev/null || true; \
 	      fi; \
 	      [ -n "$$SAVED_STTY" ] && stty "$$SAVED_STTY" 2>/dev/null || true; \
 	    }; \
@@ -674,7 +675,6 @@ open-pr: generate
 	      if command -v tput >/dev/null 2>&1; then \
 	        LINES=$$(tput lines 2>/dev/null || echo 0); \
 	        if [ "$$LINES" -gt 0 ]; then \
-	          # Reserve top line (row 0) outside the scroll region to prevent flicker \
 	          tput csr 1 $$((LINES-1)) 2>/dev/null || true; \
 	        fi; \
 	        tput civis 2>/dev/null || true; \
@@ -694,8 +694,10 @@ open-pr: generate
 	    CHECK_PID=$$!; \
 	    wait $$CHECK_PID; \
 	    CHECK_STATUS=$$?; \
+	    sleep 0.2; \
 	    cleanup_checks; \
 	    trap - INT TERM; \
+	    echo ""; \
 	    TOTAL_TIME=$$(( $$(date +%s) - $$START_TIME )); \
 	    if [ $$CHECK_STATUS -eq 0 ]; then \
 	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
@@ -704,7 +706,6 @@ open-pr: generate
 	    fi; \
 	  fi; \
 	  echo ""; \
-	  # Open PR page exactly once (after all the above) \
 	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
 	}
 
