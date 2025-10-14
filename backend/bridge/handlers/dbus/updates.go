@@ -10,9 +10,9 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/dbus/internal/updates"
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/updates"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type UpdateDetail struct {

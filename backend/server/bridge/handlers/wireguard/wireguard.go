@@ -9,10 +9,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/common/ipc"
-	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/server/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
 
 func WireguardListInterfaces(c *gin.Context) {

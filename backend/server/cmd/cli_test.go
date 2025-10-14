@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 func withArgs(args []string, fn func()) {

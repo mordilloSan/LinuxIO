@@ -9,8 +9,8 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // StartContainerTerminal launches a shell inside a docker container.

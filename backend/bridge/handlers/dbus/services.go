@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/utils"
-
 	godbus "github.com/godbus/dbus/v5"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type ServiceStatus struct {

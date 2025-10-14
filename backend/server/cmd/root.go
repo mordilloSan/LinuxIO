@@ -20,13 +20,13 @@ import (
 	"github.com/coreos/go-systemd/activation"
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/common/utils"
-	"github.com/mordilloSan/LinuxIO/server/bridge"
-	"github.com/mordilloSan/LinuxIO/server/cleanup"
-	"github.com/mordilloSan/LinuxIO/server/filebrowser"
-	"github.com/mordilloSan/LinuxIO/server/web"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/server/cleanup"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser"
+	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 func RunServer(cfg ServerConfig) {

@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/bridge/userconfig"
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/session"
-	"github.com/mordilloSan/LinuxIO/server/web"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 // run-once guard (per user)

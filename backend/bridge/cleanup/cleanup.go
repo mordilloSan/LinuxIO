@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mordilloSan/LinuxIO/common/logger"
-	"github.com/mordilloSan/LinuxIO/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // FullCleanup does all bridge-side cleanup for a session.

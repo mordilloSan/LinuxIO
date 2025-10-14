@@ -3,9 +3,9 @@ package terminal
 import (
 	"strconv"
 
-	bridgeTerminal "github.com/mordilloSan/LinuxIO/bridge/terminal"
-	"github.com/mordilloSan/LinuxIO/common/ipc"
-	"github.com/mordilloSan/LinuxIO/common/session"
+	bridgeTerminal "github.com/mordilloSan/LinuxIO/backend/bridge/terminal"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // TerminalHandlers exposes terminal control to the bridge IPC.
