@@ -533,6 +533,7 @@ changelog:
 	  while IFS='|' read -r message hash author; do \
 	    [ -z "$$message" ] && continue; \
 	    [[ "$$author" == "github-actions[bot]" ]] && continue; \
+	    [[ "$$message" =~ [Cc]hangelog ]] && continue; \
 	    ENTRY="* $$message ([$${hash:0:7}](https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/commit/$$hash)) by @$$author"; \
 	    if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
 	    elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
@@ -738,19 +739,19 @@ merge-release:
 	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
 	  echo ""; \
-    echo "🔍 Checking for release workflow..."; \
-    MERGE_TIME=$$(date -u +%s); \
-    sleep 3; \
-    for i in 1 2 3 4 5 6 7 8 9 10; do \
-      WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --branch=main --limit=5 --json databaseId,status,conclusion,name,createdAt,displayTitle --jq '[.[] | select(.createdAt | fromdateiso8601 > '$$MERGE_TIME')] | .[0]' 2>/dev/null || echo '')"; \
-      if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
-      break; \
-      fi; \
-      if [ $$i -lt 10 ]; then \
-      echo "  Waiting for workflow to start... (attempt $$i/10)"; \
-      sleep 2; \
-      fi; \
-    done; \
+	  echo "🔍 Checking for release workflow..."; \
+	  MERGE_TIME=$$(date -u +%s); \
+	  sleep 3; \
+	  for i in 1 2 3 4 5 6 7 8 9 10; do \
+	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --limit=10 --json databaseId,status,conclusion,name,createdAt,displayTitle --jq '[.[] | select(.createdAt | fromdateiso8601 > '$$MERGE_TIME')] | .[0]' 2>/dev/null || echo '')"; \
+	    if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
+	      break; \
+	    fi; \
+	    if [ $$i -lt 10 ]; then \
+	      echo "  Waiting for workflow to start... (attempt $$i/10)"; \
+	      sleep 2; \
+	    fi; \
+	  done; \
 	  if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
 	    RUN_ID="$$(echo "$$WORKFLOW_RUN" | jq -r '.databaseId')"; \
 	    STATUS="$$(echo "$$WORKFLOW_RUN" | jq -r '.status')"; \
