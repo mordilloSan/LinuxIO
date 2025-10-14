@@ -14,7 +14,7 @@ function App() {
       <AuthProvider>
         <ReactQueryProvider>{content}</ReactQueryProvider>
       </AuthProvider>
-      <Toaster richColors position="top-right" />
+      <Toaster richColors position="top-right" toastOptions={{ duration: 1500 }} />
     </>
   );
 }

@@ -721,6 +721,7 @@ merge-release:
 	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
 	    echo "❌ Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
 	  fi; \
+	  VERSION="$${BRANCH#dev/}"; \
 	  PRNUM="$${PR:-$$(gh pr list $(call _repo_flag) --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
 	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo "❌ No open PR from $$BRANCH to main."; exit 1; fi; \
 	  echo "🔍 Checking status of PR #$$PRNUM…"; \
@@ -734,37 +735,49 @@ merge-release:
 	  else \
 	    echo "✅ All checks passed."; \
 	  fi; \
+	  # Record mark BEFORE merging (30s backoff to catch immediate runs) \
+	  TRIGGER_MARK=$$(( $$(date -u +%s) - 30 )); \
 	  echo "🔀 Merging PR #$$PRNUM…"; \
 	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --delete-branch; \
-	  VERSION="$${BRANCH#dev/}"; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
 	  echo ""; \
 	  echo "🔍 Checking for release workflow..."; \
-	  MERGE_TIME=$$(date -u +%s); \
-	  sleep 3; \
-	  for i in 1 2 3 4 5 6 7 8 9 10; do \
-	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --limit=10 --json databaseId,status,conclusion,name,createdAt,displayTitle --jq '[.[] | select(.createdAt | fromdateiso8601 > '$$MERGE_TIME')] | .[0]' 2>/dev/null || echo '')"; \
-	    if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
-	      break; \
-	    fi; \
-	    if [ $$i -lt 10 ]; then \
-	      echo "  Waiting for workflow to start... (attempt $$i/10)"; \
-	      sleep 2; \
-	    fi; \
+	  sleep 2; \
+	  WORKFLOW_RUN=""; \
+	  for i in $$(seq 1 10); do \
+	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --limit=20 \
+	      --json databaseId,status,conclusion,name,createdAt,displayTitle,headBranch,event \
+	      | jq -c --arg ver "$$VERSION" --arg main "main" --arg branch "$$BRANCH" --argjson t $$TRIGGER_MARK \
+	        '[ .[] \
+	           | select((.createdAt|fromdateiso8601) >= $$t) \
+	           | select((.headBranch == $$main) or (.headBranch == $$branch) or ((.displayTitle // .name) | test($$ver))) \
+	         ] \
+	         | .[0]')" ; \
+	    if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ]; then break; fi; \
+	    echo "  Waiting for workflow to start... (attempt $$i/10)"; \
+	    sleep 2; \
 	  done; \
-	  if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ] && [ "$$WORKFLOW_RUN" != "" ]; then \
+	  # Fallback: if nothing matched by branch/title, grab first run after TRIGGER_MARK \
+	  if [ -z "$$WORKFLOW_RUN" ] || [ "$$WORKFLOW_RUN" = "null" ]; then \
+	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --limit=20 \
+	      --json databaseId,status,conclusion,name,createdAt,displayTitle,headBranch,event \
+	      | jq -c --argjson t $$TRIGGER_MARK \
+	        '[ .[] | select((.createdAt|fromdateiso8601) >= $$t) ] | .[0]')" ; \
+	  fi; \
+	  if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ]; then \
 	    RUN_ID="$$(echo "$$WORKFLOW_RUN" | jq -r '.databaseId')"; \
 	    STATUS="$$(echo "$$WORKFLOW_RUN" | jq -r '.status')"; \
-	    CONCLUSION="$$(echo "$$WORKFLOW_RUN" | jq -r '.conclusion')"; \
+	    CONCLUSION="$$(echo "$$WORKFLOW_RUN" | jq -r '.conclusion // "n/a"')"; \
 	    CREATED="$$(echo "$$WORKFLOW_RUN" | jq -r '.createdAt')"; \
 	    TITLE="$$(echo "$$WORKFLOW_RUN" | jq -r '.displayTitle // .name')"; \
+	    HBRANCH="$$(echo "$$WORKFLOW_RUN" | jq -r '.headBranch // "n/a"')"; \
+	    EVENT="$$(echo "$$WORKFLOW_RUN" | jq -r '.event // "n/a"')"; \
 	    echo "📊 Release workflow found"; \
 	    echo "   Run ID: #$$RUN_ID"; \
 	    echo "   Title: $$TITLE"; \
+	    echo "   Event: $$EVENT"; \
+	    echo "   Branch: $$HBRANCH"; \
 	    echo "   Status: $$STATUS"; \
-	    if [ "$$CONCLUSION" != "null" ]; then \
-	      echo "   Conclusion: $$CONCLUSION"; \
-	    fi; \
 	    echo "   Started: $$CREATED"; \
 	    if [ "$$STATUS" = "in_progress" ] || [ "$$STATUS" = "queued" ] || [ "$$STATUS" = "waiting" ]; then \
 	      echo ""; \
