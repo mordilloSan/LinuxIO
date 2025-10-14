@@ -24,7 +24,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
     if (
       !confirm(
         `Update LinuxIO from ${updateInfo.current_version} to ${updateInfo.latest_version}?\n\n` +
-          "The service will restart. This may take a minute.",
+        "The service will restart. This may take a minute.",
       )
     ) {
       return;
@@ -56,8 +56,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       console.error("Update failed:", error);
       alert(
         "❌ Update failed. Please try manually:\n\n" +
-          "sudo linuxio-update\n\n" +
-          `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "sudo linuxio-update\n\n" +
+        `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     } finally {
       setIsUpdating(false);
@@ -79,26 +79,6 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
         borderRadius: 2,
       }}
       action={
-        <IconButton
-          aria-label="close"
-          color="inherit"
-          size="small"
-          onClick={onDismiss}
-          disabled={isUpdating}
-        >
-          <Close fontSize="small" />
-        </IconButton>
-      }
-    >
-      <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-        <Stack>
-          <strong>Update Available</strong>
-          <span>
-            LinuxIO {updateInfo.latest_version} is available. You are on{" "}
-            {updateInfo.current_version}.
-          </span>
-        </Stack>
-
         <Stack direction="row" spacing={1} alignItems="center">
           <Button
             variant="contained"
@@ -124,7 +104,25 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
               Release Notes
             </Button>
           )}
+
+          <IconButton
+            aria-label="close"
+            color="inherit"
+            size="small"
+            onClick={onDismiss}
+            disabled={isUpdating}
+          >
+            <Close fontSize="small" />
+          </IconButton>
         </Stack>
+      }
+    >
+      <Stack>
+        <strong>Update Available</strong>
+        <span>
+          LinuxIO {updateInfo.latest_version} is available. You are on{" "}
+          {updateInfo.current_version}.
+        </span>
       </Stack>
     </Alert>
   );
