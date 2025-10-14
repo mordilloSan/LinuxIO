@@ -44,5 +44,4 @@ func CleanupFilebrowserContainer() {
 		logger.Infof("Removed FileBrowser container")
 		logger.Debugf("Removed : %s", containerName)
 	}
-
 }

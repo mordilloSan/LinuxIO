@@ -79,7 +79,6 @@ func ListServices() ([]ServiceStatus, error) {
 			services = append(services, svc)
 		}
 		return nil
-
 	})
 	return services, err
 }

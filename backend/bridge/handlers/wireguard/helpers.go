@@ -328,10 +328,10 @@ func cleanBackticks(path string) error {
 	}
 
 	cleaned := strings.ReplaceAll(string(data), "`", "")
-	return os.WriteFile(path, []byte(cleaned), 0600)
+	return os.WriteFile(path, []byte(cleaned), 0o600)
 }
 
-//for wireguard stats
+// for wireguard stats
 
 // --- rate cache for bytes/sec ---
 type rateSample struct {

@@ -110,5 +110,4 @@ func EnsureConfigReady(username string) {
 		"config details: path=%q theme=%s primary=%s",
 		cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor,
 	)
-
 }

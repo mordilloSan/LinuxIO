@@ -85,7 +85,6 @@ func updatePackageHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 
 	output, err := bridge.CallWithSession(sess, "dbus", "InstallPackage", []string{req.PackageID})
-
 	if err != nil {
 		logger.Errorf(" Failed to update %s: %v", req.PackageID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
