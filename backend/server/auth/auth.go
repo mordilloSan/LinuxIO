@@ -111,9 +111,11 @@ func (h *Handlers) Login(c *gin.Context) {
 		"privileged": privileged,
 	}
 
-	// Always check for updates
-	if updateInfo := control.CheckForUpdate(); updateInfo != nil {
-		response["update"] = updateInfo
+	// Only check for updates if user is privileged
+	if privileged {
+		if updateInfo := control.CheckForUpdate(); updateInfo != nil {
+			response["update"] = updateInfo
+		}
 	}
 
 	c.JSON(http.StatusOK, response)
