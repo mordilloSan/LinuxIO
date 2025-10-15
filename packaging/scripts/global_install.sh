@@ -62,7 +62,7 @@ Start () {
   readonly PAM_LINUXIO="/etc/pam.d/linuxio"
   readonly LINUXIO_DIR="/etc/linuxio"
   readonly LINUXIO_DENY="$LINUXIO_DIR/disallowed-users"
-  readonly SCRIPT_LINK="hhttps://raw.githubusercontent.com/mordilloSan/LinuxIO/refs/heads/main/packaging/scripts/global_install.sh"
+  readonly SCRIPT_LINK="https://raw.githubusercontent.com/mordilloSan/LinuxIO/refs/heads/main/packaging/scripts/global_install.sh"
 
   # APT cosmetic progress (if apt exists)
   if command -v apt-get >/dev/null 2>&1; then
