@@ -63,18 +63,23 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
   // ---- actions (start/stop/restart/remove) ----
   const actionMutation = useMutation({
-    mutationFn: async (action: "start" | "stop" | "restart" | "remove" | "exec") => {
+    mutationFn: async (
+      action: "start" | "stop" | "restart" | "remove" | "exec",
+    ) => {
       await axios.post(`/docker/containers/${container.Id}/${action}`);
     },
     onSuccess: () => {
       // refresh list + logs
       queryClient.invalidateQueries({ queryKey: ["containers"] });
-      queryClient.invalidateQueries({ queryKey: ["containerLogs", container.Id] });
+      queryClient.invalidateQueries({
+        queryKey: ["containerLogs", container.Id],
+      });
     },
   });
 
-  const handleAction = (action: "start" | "stop" | "restart" | "remove" | "exec") =>
-    actionMutation.mutate(action);
+  const handleAction = (
+    action: "start" | "stop" | "restart" | "remove" | "exec",
+  ) => actionMutation.mutate(action);
 
   // ---- logs via react-query (fetch only when dialog is open) ----
   const fetchLogs = async (): Promise<string> => {
@@ -87,7 +92,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const logsQuery = useQuery({
     queryKey: ["containerLogs", container.Id],
     queryFn: fetchLogs,
-    enabled: logDialogOpen,                     // only when dialog is open
+    enabled: logDialogOpen, // only when dialog is open
     refetchInterval: logDialogOpen ? 4000 : false, // auto-refresh while open
     refetchOnWindowFocus: false,
     retry: 1,
@@ -106,7 +111,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
   const memUsage = container.metrics?.mem_usage ?? 0;
   const memLimit = container.metrics?.mem_limit ?? 0;
-  const memPercent = memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
+  const memPercent =
+    memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
   return (
     <Grid size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}>
@@ -244,10 +250,16 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           onClose={() => setLogDialogOpen(false)}
           logs={logsQuery.data ?? null}
           loading={logsQuery.isLoading}
-          error={logsQuery.isError ? "Failed to load logs. (Check backend logs for details.)" : null}
+          error={
+            logsQuery.isError
+              ? "Failed to load logs. (Check backend logs for details.)"
+              : null
+          }
           containerName={name}
           onRefresh={() =>
-            queryClient.invalidateQueries({ queryKey: ["containerLogs", container.Id] })
+            queryClient.invalidateQueries({
+              queryKey: ["containerLogs", container.Id],
+            })
           }
           autoRefreshDefault={true}
         />

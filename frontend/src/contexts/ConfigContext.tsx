@@ -1,6 +1,6 @@
 // src/contexts/ConfigContext.tsx
-import React, { createContext, useCallback, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import React, { createContext, useCallback, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 
 import {
@@ -56,8 +56,8 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
     }
   }, [isError, error]);
 
-  // Optimistic save
-  const saveMutation = useMutation({
+  // Optimistic save — destructure to avoid unstable deps warning
+  const { mutate: mutateConfig } = useMutation({
     mutationFn: saveConfig,
     onMutate: async (next: AppConfig) => {
       await queryClient.cancelQueries({ queryKey: CONFIG_KEY });
@@ -71,7 +71,6 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
         window.location.assign("/sign-in");
         return;
       }
-      // rollback if we had previous
       if (context?.previous) {
         queryClient.setQueryData<AppConfig>(CONFIG_KEY, context.previous);
       }
@@ -85,14 +84,15 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const save = useCallback(
     (cfg: AppConfig) => {
       if (!isSuccess) return; // mirror previous guard
-      saveMutation.mutate(cfg);
+      mutateConfig(cfg);
     },
-    [isSuccess, saveMutation],
+    [isSuccess, mutateConfig],
   );
 
   const setKey: ConfigContextType["setKey"] = useCallback(
     (key, value) => {
-      const current = queryClient.getQueryData<AppConfig>(CONFIG_KEY) ?? initialConfig;
+      const current =
+        queryClient.getQueryData<AppConfig>(CONFIG_KEY) ?? initialConfig;
       const nextVal =
         typeof value === "function" ? (value as any)(current[key]) : value;
 
@@ -106,7 +106,8 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
 
   const updateConfig: ConfigContextType["updateConfig"] = useCallback(
     (patch) => {
-      const current = queryClient.getQueryData<AppConfig>(CONFIG_KEY) ?? initialConfig;
+      const current =
+        queryClient.getQueryData<AppConfig>(CONFIG_KEY) ?? initialConfig;
       const partial = typeof patch === "function" ? patch(current) : patch;
       const next = { ...current, ...partial } as AppConfig;
       save(next);
