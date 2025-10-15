@@ -596,7 +596,7 @@ changelog:
 	  } > "$$BODY_FILE"; \
 	  HEADER="## $$VERSION — $$DATE"; \
 	  { \
-	  	echo ""; \
+	    echo ""; \
 	    echo "$$HEADER"; \
 	    echo ""; \
 	    cat "$$BODY_FILE"; \
@@ -632,9 +632,13 @@ changelog:
 	  head -n 30 CHANGELOG.md; \
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  echo ""; \
+	  echo "📦 Committing changes..."; \
+	  git add CHANGELOG.md; \
+	  git commit -m "changelog"; \
+	  echo "✅ Changes committed"; \
+	  echo ""; \
 	}
-
-open-pr: generate
+open-pr: generate changelog
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
