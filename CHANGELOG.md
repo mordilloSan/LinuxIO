@@ -1,4 +1,25 @@
 
+## v0.2.30 — 2025-10-15
+
+### 🐛 Bug Fixes
+
+* fix: app install bug ([692be78](https://github.com/owner/repo/commit/692be78)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* up ([3be5b3d](https://github.com/owner/repo/commit/3be5b3d)) by @MordilloSan
+* script update ([db190f6](https://github.com/owner/repo/commit/db190f6)) by @MordilloSan
+* update ([a4c1c9a](https://github.com/owner/repo/commit/a4c1c9a)) by @MordilloSan
+* update ([b6c1ce6](https://github.com/owner/repo/commit/b6c1ce6)) by @MordilloSan
+* update ([5456cb8](https://github.com/owner/repo/commit/5456cb8)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.29...v0.2.30
+
+
 ## v0.2.29 — 2025-10-15
 
 ### 🐛 Bug Fixes
