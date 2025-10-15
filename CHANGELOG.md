@@ -1,4 +1,21 @@
 
+## v0.2.25 — 2025-10-15
+
+### 🚀 Features
+
+* feat: Footer Versioning fix: coherence of axios and react query ([688e6a4](https://github.com/owner/repo/commit/688e6a4)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: linting ([51219db](https://github.com/owner/repo/commit/51219db)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.24...v0.2.25
+
+
 ## v0.2.24 — 2025-10-15
 
 ### 🐛 Bug Fixes
