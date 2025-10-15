@@ -5,6 +5,7 @@
 
 * feat: changelog workflow ([cd66905](https://github.com/owner/repo/commit/cd66905)) by @MordilloSan
 * feat: changelog improvement ([a6bf61e](https://github.com/owner/repo/commit/a6bf61e)) by @MordilloSan
+* feat: go mod tidy ([fd7e18c](https://github.com/owner/repo/commit/fd7e18c)) by @MordilloSan
 
 ### 🐛 Bug Fixes
 
@@ -24,8 +25,6 @@
 * @MordilloSan
 
 **Full Changelog**: https://github.com/owner/repo/compare/v0.2.21...v0.2.22
-
-# Changelog
 
 
 ## v0.2.21 — 2025-10-14
