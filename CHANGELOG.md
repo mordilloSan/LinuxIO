@@ -1,4 +1,17 @@
 
+## v0.2.29 — 2025-10-15
+
+### 🐛 Bug Fixes
+
+* fix: debug and test for app update ([409c297](https://github.com/owner/repo/commit/409c297)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.28...v0.2.29
+
+
 ## v0.2.28 — 2025-10-15
 
 ### 🐛 Bug Fixes
