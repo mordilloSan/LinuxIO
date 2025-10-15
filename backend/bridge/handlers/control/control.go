@@ -118,7 +118,7 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 
 	// Execute the installation script
 	logger.Infof("[update] running installation script for version %s", targetVersion)
-	if err := runInstallScript(targetVersion); err != nil {
+	if err := runInstallScript(); err != nil {
 		return UpdateResult{
 			Success:        false,
 			CurrentVersion: currentVersion,
@@ -153,7 +153,7 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 	}, nil
 }
 
-func runInstallScript(version string) error {
+func runInstallScript() error {
 	tmp := "/tmp/linuxio-install.sh"
 
 	// Download script
@@ -164,7 +164,7 @@ func runInstallScript(version string) error {
 	}
 
 	// Execute script
-	cmd := exec.Command("sudo", "bash", tmp, version)
+	cmd := exec.Command("sudo", "bash", tmp)
 	out, err := cmd.CombinedOutput()
 
 	// SANITIZE OUTPUT - strip binary data
