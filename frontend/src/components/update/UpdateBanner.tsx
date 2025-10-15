@@ -43,9 +43,24 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       const { data } = await axios.post<ApiEnvelope>("/control/update", {});
 
       if (data?.status === "ok") {
-        alert("✅ Update complete! Please refresh the page.");
         sessionStorage.removeItem("update_info");
-        window.location.reload();
+
+        // Function to retry reload until successful
+        const attemptReload = (attempts = 0) => {
+          if (attempts > 5) {
+            alert("✅ Update complete! Please refresh the page manually.");
+            return;
+          }
+
+          setTimeout(
+            () => {
+              window.location.reload();
+            },
+            Math.min(2000 * (attempts + 1), 10000),
+          ); // Exponential backoff
+        };
+
+        attemptReload();
       } else {
         throw new Error(data?.error || "Update failed");
       }
