@@ -716,7 +716,7 @@ rebuild-changelog:
 	  echo ""; \
 	}
 
-open-pr: generate changelog
+open-pr: generate
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
