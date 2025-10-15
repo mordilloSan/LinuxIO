@@ -1,4 +1,17 @@
 
+## v0.2.31 — 2025-10-15
+
+### 🔄 Other Changes
+
+* readme update ([d523487](https://github.com/owner/repo/commit/d523487)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.30...v0.2.31
+
+
 ## v0.2.30 — 2025-10-15
 
 ### 🐛 Bug Fixes
