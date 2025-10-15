@@ -1,4 +1,17 @@
 
+## v0.2.24 — 2025-10-15
+
+### 🐛 Bug Fixes
+
+* fix: update script ([375c008](https://github.com/owner/repo/commit/375c008)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.23...v0.2.24
+
+
 ## v0.2.23 — 2025-10-15
 
 ### 🔄 Other Changes
