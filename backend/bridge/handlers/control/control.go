@@ -204,10 +204,8 @@ func getInstalledVersion() string {
 
 // parseVersionOutput extracts version string from binary output
 // Handles formats like:
-//
-//	"linuxio version v0.2.4"
-//	"v0.2.4"
-//	"0.2.4"
+// "v0.2.4"
+// "0.2.4"
 func parseVersionOutput(output string) string {
 	output = strings.TrimSpace(output)
 
