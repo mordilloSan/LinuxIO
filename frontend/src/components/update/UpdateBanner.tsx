@@ -45,22 +45,10 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       if (data?.status === "ok") {
         sessionStorage.removeItem("update_info");
 
-        // Function to retry reload until successful
-        const attemptReload = (attempts = 0) => {
-          if (attempts > 5) {
-            alert("✅ Update complete! Please refresh the page manually.");
-            return;
-          }
-
-          setTimeout(
-            () => {
-              window.location.reload();
-            },
-            Math.min(2000 * (attempts + 1), 10000),
-          ); // Exponential backoff
-        };
-
-        attemptReload();
+        // Wait longer before attempting reload
+        setTimeout(() => {
+          window.location.reload();
+        }, 5000); // Wait 8 seconds before first reload attempt
       } else {
         throw new Error(data?.error || "Update failed");
       }
@@ -72,7 +60,6 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
           "sudo linuxio-update\n\n" +
           `Error: ${msg}`,
       );
-    } finally {
       setIsUpdating(false);
     }
   };

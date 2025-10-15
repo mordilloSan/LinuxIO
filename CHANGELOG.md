@@ -1,4 +1,19 @@
 
+## v0.3.1 — 2025-10-15
+
+### 🐛 Bug Fixes
+
+* fix: update timeout ([d794980](https://github.com/owner/repo/commit/d794980)) by @MordilloSan
+* fix: NIC now prefills values when setting manual option ([170f84b](https://github.com/owner/repo/commit/170f84b)) by @MordilloSan
+* fix: linting ([db80d24](https://github.com/owner/repo/commit/db80d24)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.3.0...v0.3.1
+
+
 ## v0.3.0 — 2025-10-15
 
 ### 🚀 Features
