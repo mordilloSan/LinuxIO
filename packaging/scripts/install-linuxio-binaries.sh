@@ -12,17 +12,11 @@ readonly REPO_NAME="LinuxIO"
 readonly BIN_DIR="/usr/local/bin"
 readonly STAGING="/tmp/linuxio-install-$$"
 
-# ---------- Colors ----------
-readonly COLOUR_RESET='\e[0m'
-readonly GREEN='\e[38;5;154m'
-readonly RED='\e[91m'
-readonly GREY='\e[90m'
-readonly YELLOW='\e[33m'
-
-log_info()  { echo -e "${GREY}[INFO]${COLOUR_RESET} $*"; }
-log_ok()    { echo -e "${GREEN}[OK]${COLOUR_RESET} $*"; }
-log_error() { echo -e "${RED}[ERROR]${COLOUR_RESET} $*" >&2; }
-log_warn()  { echo -e "${YELLOW}[WARN]${COLOUR_RESET} $*"; }
+# ---------- Logging Functions ----------
+log_info()  { echo "[INFO] $*"; }
+log_ok()    { echo "[OK] $*"; }
+log_error() { echo "[ERROR] $*" >&2; }
+log_warn()  { echo "[WARN] $*"; }
 
 cleanup() {
     if [[ -d "$STAGING" ]]; then
