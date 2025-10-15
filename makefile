@@ -640,6 +640,82 @@ changelog:
 	  echo ""; \
 	}
 
+rebuild-changelog:
+	@echo "⚠️  WARNING: This will OVERWRITE your entire CHANGELOG.md file!"
+	@echo "   Press Ctrl+C to cancel, or Enter to continue..."
+	@read -r _
+	@{ \
+	  set -euo pipefail; \
+	  echo "📝 Rebuilding entire changelog history..."; \
+	  echo ""; \
+	  TAGS="$$(git tag --list 'v*' --sort=-v:refname)"; \
+	  if [ -z "$$TAGS" ]; then \
+	    echo "❌ No version tags found."; exit 1; \
+	  fi; \
+	  echo "# Changelog" > CHANGELOG.md; \
+	  echo "" >> CHANGELOG.md; \
+	  echo "$$TAGS" | while IFS= read -r VERSION; do \
+	    [ -z "$$VERSION" ] && continue; \
+	    echo "Processing $$VERSION..."; \
+	    DATE="$$(git log -1 --format=%ai "$$VERSION" | cut -d' ' -f1)"; \
+	    PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -A1 "^$$VERSION$$" | tail -n1)"; \
+	    if [ "$$PREV_TAG" = "$$VERSION" ]; then PREV_TAG=""; fi; \
+	    if [ -n "$$PREV_TAG" ]; then \
+	      COMMITS="$$(git log $${PREV_TAG}..$$VERSION --pretty=format:'%s|%h|%an' --reverse)"; \
+	    else \
+	      COMMITS="$$(git log $$VERSION --pretty=format:'%s|%h|%an' --reverse)"; \
+	    fi; \
+	    FEATURES=""; FIXES=""; DOCS=""; STYLE=""; REFACTOR=""; PERF=""; \
+	    TEST=""; BUILD=""; CI=""; CHORE=""; OTHER=""; \
+	    while IFS='|' read -r message hash author; do \
+	      [ -z "$$message" ] && continue; \
+	      [[ "$$author" == "github-actions[bot]" ]] && continue; \
+	      [[ "$$message" =~ ^[Cc]hangelog$$ ]] && continue; \
+	      ENTRY="* $$message ([$${hash:0:7}](https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/commit/$$hash)) by @$$author"; \
+	      if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
+	      elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
+	      elif [[ "$$message" =~ ^docs(\(.*\))?: ]]; then DOCS="$$DOCS$$ENTRY"$$'\n'; \
+	      elif [[ "$$message" =~ ^style(\(.*\))?: ]]; then STYLE="$$STYLE$$ENTRY"$$'\n'; \
+	      elif [[ "$$message" =~ ^refactor(\(.*\))?: ]]; then REFACTOR="$$REFACTOR$$ENTRY"$$'\n'; \
+	      elif [[ "$$message" =~ ^perf(\(.*\))?: ]]; then PERF="$$PERF$$ENTRY"$$'\n'; \
+	      elif [[ "$$message" =~ ^test(\(.*\))?: ]]; then TEST="$$TEST$$ENTRY"$$'\n'; \
+	      elif [[ "$$message" =~ ^build(\(.*\))?: ]]; then BUILD="$$BUILD$$ENTRY"$$'\n'; \
+	      elif [[ "$$message" =~ ^ci(\(.*\))?: ]]; then CI="$$CI$$ENTRY"$$'\n'; \
+	      elif [[ "$$message" =~ ^chore(\(.*\))?: ]]; then CHORE="$$CHORE$$ENTRY"$$'\n'; \
+	      else OTHER="$$OTHER$$ENTRY"$$'\n'; fi; \
+	    done <<< "$$COMMITS"; \
+	    echo "" >> CHANGELOG.md; \
+	    echo "## $$VERSION — $$DATE" >> CHANGELOG.md; \
+	    echo "" >> CHANGELOG.md; \
+	    [ -n "$$FEATURES" ] && printf "### 🚀 Features\n\n%b\n" "$$FEATURES" >> CHANGELOG.md; \
+	    [ -n "$$FIXES" ] && printf "### 🐛 Bug Fixes\n\n%b\n" "$$FIXES" >> CHANGELOG.md; \
+	    [ -n "$$PERF" ] && printf "### ⚡ Performance\n\n%b\n" "$$PERF" >> CHANGELOG.md; \
+	    [ -n "$$REFACTOR" ] && printf "### ♻️ Refactoring\n\n%b\n" "$$REFACTOR" >> CHANGELOG.md; \
+	    [ -n "$$DOCS" ] && printf "### 📚 Documentation\n\n%b\n" "$$DOCS" >> CHANGELOG.md; \
+	    [ -n "$$STYLE" ] && printf "### 💄 Style\n\n%b\n" "$$STYLE" >> CHANGELOG.md; \
+	    [ -n "$$TEST" ] && printf "### 🧪 Tests\n\n%b\n" "$$TEST" >> CHANGELOG.md; \
+	    [ -n "$$BUILD" ] && printf "### 🏗️ Build\n\n%b\n" "$$BUILD" >> CHANGELOG.md; \
+	    [ -n "$$CI" ] && printf "### 🤖 CI/CD\n\n%b\n" "$$CI" >> CHANGELOG.md; \
+	    [ -n "$$CHORE" ] && printf "### 🔧 Chores\n\n%b\n" "$$CHORE" >> CHANGELOG.md; \
+	    [ -n "$$OTHER" ] && printf "### 🔄 Other Changes\n\n%b\n" "$$OTHER" >> CHANGELOG.md; \
+	    printf "### 👥 Contributors\n\n" >> CHANGELOG.md; \
+	    if [ -n "$$PREV_TAG" ]; then \
+	      git log $${PREV_TAG}..$$VERSION --pretty=format:'* @%an' | sort -u >> CHANGELOG.md; \
+	    else \
+	      git log $$VERSION --pretty=format:'* @%an' | sort -u >> CHANGELOG.md; \
+	    fi; \
+	    printf "\n\n**Full Changelog**: https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/compare/$$PREV_TAG...$$VERSION\n" >> CHANGELOG.md; \
+	  done; \
+	  echo ""; \
+	  echo "✅ Changelog rebuilt for all versions!"; \
+	  echo ""; \
+	  echo "📄 Preview:"; \
+	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+	  head -n 50 CHANGELOG.md; \
+	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+	  echo ""; \
+	}
+
 open-pr: generate changelog
 	@$(call _require_clean)
 	@$(call _require_gh)
@@ -930,9 +1006,9 @@ help:
 	@$(PRINTC) ""
 
 .PHONY: \
-    default help clean clean-dev clean-all run \
-    build build-vite build-backend build-bridge build-auth-helper \
+  default help clean clean-dev clean-all run \
+  build build-vite build-backend build-bridge build-auth-helper \
 	dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
 	ensure-node ensure-go ensure-golint \
-	generate devinstall devinstall-force \
+	generate devinstall devinstall-force rebuild-changelog \
 	start-dev open-pr merge-release version-debug changelog
