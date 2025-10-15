@@ -1,7 +1,7 @@
 import js from "@eslint/js";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
-import reactCompiler from "eslint-plugin-react-compiler"; // ← Add this
+import reactCompiler from "eslint-plugin-react-compiler";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 import prettier from "eslint-plugin-prettier";
@@ -60,7 +60,7 @@ export default [
     plugins: {
       react,
       "react-hooks": reactHooks,
-      "react-compiler": reactCompiler, // ← Add this
+      "react-compiler": reactCompiler,
       import: importPlugin,
       "unused-imports": unusedImports,
     },
