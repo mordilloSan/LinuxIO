@@ -19,6 +19,7 @@
 * dependencie updates ([7d7d499](https://github.com/owner/repo/commit/7d7d499)) by @MordilloSan
 * makefile update ([85077dd](https://github.com/owner/repo/commit/85077dd)) by @MordilloSan
 * changelog fix ([cc6e6a6](https://github.com/owner/repo/commit/cc6e6a6)) by @MordilloSan
+* fix makefile bug ([371d714](https://github.com/owner/repo/commit/371d714)) by @MordilloSan
 
 ### 👥 Contributors
 
