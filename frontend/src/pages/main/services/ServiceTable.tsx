@@ -3,6 +3,7 @@ import {
   StopCircle,
   Terminal,
   ExpandMore,
+  PlayArrow,
 } from "@mui/icons-material";
 import {
   Box,
@@ -33,14 +34,18 @@ interface ServiceTableProps {
   serviceList: Service[];
   onRestart: (service: Service) => void;
   onStop: (service: Service) => void;
+  onStart: (service: Service) => void;
   onViewLogs: (service: Service) => void;
+  isLoading?: boolean;
 }
 
 const ServiceTable: React.FC<ServiceTableProps> = ({
   serviceList,
   onRestart,
   onStop,
+  onStart,
   onViewLogs,
+  isLoading = false,
 }) => {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -109,16 +114,18 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                       <IconButton
                         size="small"
                         onClick={() => onViewLogs(service)}
+                        disabled={isLoading}
                       >
                         <Terminal fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    {service.active_state === "active" && (
+                    {service.active_state === "active" ? (
                       <>
                         <Tooltip title="Restart">
                           <IconButton
                             size="small"
                             onClick={() => onRestart(service)}
+                            disabled={isLoading}
                           >
                             <RestartAlt fontSize="small" />
                           </IconButton>
@@ -127,11 +134,22 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                           <IconButton
                             size="small"
                             onClick={() => onStop(service)}
+                            disabled={isLoading}
                           >
                             <StopCircle fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       </>
+                    ) : (
+                      <Tooltip title="Start">
+                        <IconButton
+                          size="small"
+                          onClick={() => onStart(service)}
+                          disabled={isLoading}
+                        >
+                          <PlayArrow fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     )}
                   </TableCell>
                   <TableCell>

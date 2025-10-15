@@ -33,6 +33,12 @@ func DbusHandlers() map[string]ipc.HandlerFunc {
 		// Service management
 		"ListServices":   func([]string) (any, error) { return ListServices() },
 		"GetServiceInfo": func(args []string) (any, error) { return GetServiceInfo(args[0]) },
+		"GetServiceLogs": func(args []string) (any, error) {
+			if len(args) < 2 {
+				return nil, fmt.Errorf("GetServiceLogs requires serviceName and lines")
+			}
+			return GetServiceLogs(args[0], args[1])
+		},
 		"StartService":   func(args []string) (any, error) { return nil, StartService(args[0]) },
 		"StopService":    func(args []string) (any, error) { return nil, StopService(args[0]) },
 		"RestartService": func(args []string) (any, error) { return nil, RestartService(args[0]) },

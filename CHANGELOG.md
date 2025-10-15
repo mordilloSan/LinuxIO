@@ -1,4 +1,22 @@
 
+## v0.3.0 — 2025-10-15
+
+### 🚀 Features
+
+* feat: big service page update with action functional ([977e717](https://github.com/owner/repo/commit/977e717)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: linting ([738d862](https://github.com/owner/repo/commit/738d862)) by @MordilloSan
+* fix:code cleaning ([47b9624](https://github.com/owner/repo/commit/47b9624)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.33...v0.3.0
+
+
 ## v0.2.31 — 2025-10-15
 
 ### 🔄 Other Changes
