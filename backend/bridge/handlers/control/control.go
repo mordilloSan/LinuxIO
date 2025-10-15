@@ -154,17 +154,19 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 }
 
 func runInstallScript(version string) error {
-	logger.Infof("[update] executing: curl -fsSL %s | sudo bash -s -- %s", InstallScriptURL, version)
-	cmdStr := fmt.Sprintf("curl -fsSL %s | sudo bash -s -- %s", InstallScriptURL, version)
-
-	cmd := exec.Command("bash", "-c", cmdStr)
-	output, err := cmd.CombinedOutput()
+	tmp := "/tmp/linuxio-install.sh"
+	if out, err := exec.Command("bash", "-c",
+		fmt.Sprintf("curl -fsSL %s -o %s", InstallScriptURL, tmp)).CombinedOutput(); err != nil {
+		logger.Errorf("[update] download failed:\n%s", string(out))
+		return fmt.Errorf("download failed: %w", err)
+	}
+	cmd := exec.Command("sudo", "bash", tmp, version)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Errorf("[update] installation failed:\n%s", string(output))
+		logger.Errorf("[update] installation failed:\n%s", string(out))
 		return fmt.Errorf("script execution failed: %w", err)
 	}
-
-	logger.Infof("[update] installation output:\n%s", string(output))
+	logger.Infof("[update] installation output:\n%s", string(out))
 	return nil
 }
 
