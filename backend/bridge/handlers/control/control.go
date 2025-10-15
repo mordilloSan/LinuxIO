@@ -153,29 +153,38 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 	}, nil
 }
 
+// control/runInstallScript.go (replace your current runInstallScript)
 func runInstallScript() error {
 	tmp := "/tmp/linuxio-install.sh"
 
-	// Download script
+	// Download + chmod
 	if out, err := exec.Command("bash", "-c",
-		fmt.Sprintf("curl -fsSL %s -o %s", InstallScriptURL, tmp)).CombinedOutput(); err != nil {
-		logger.Errorf("[update] download failed:\n%s", string(out))
+		fmt.Sprintf("curl -fsSL %s -o %s && chmod 700 %s", InstallScriptURL, tmp, tmp)).CombinedOutput(); err != nil {
+		logger.Errorf("[update] download failed:\n%s", strings.ToValidUTF8(string(out), "�"))
 		return fmt.Errorf("download failed: %w", err)
 	}
 
-	// Execute script
-	cmd := exec.Command("sudo", "bash", tmp)
-	out, err := cmd.CombinedOutput()
-
-	// SANITIZE OUTPUT - strip binary data
-	sanitized := strings.ToValidUTF8(string(out), "�")
-
-	if err != nil {
-		logger.Errorf("[update] installation failed:\n%s", sanitized)
-		return fmt.Errorf("script execution failed: %w", err)
+	// Execute via systemd-run to escape linuxio.service sandbox
+	args := []string{
+		"--unit=linuxio-updater",
+		"--quiet",
+		"--collect",
+		"-p", "Type=oneshot",
+		// Keep hardening but open the single path we need:
+		"-p", "ProtectSystem=full",
+		"-p", "ReadWritePaths=/usr/local/bin",
+		// setuid bit must stick; avoid implicit NoNewPrivileges:
+		"-p", "NoNewPrivileges=no",
+		"/bin/bash", tmp,
 	}
 
-	logger.Infof("[update] installation output:\n%s", sanitized)
+	out, err := exec.Command("systemd-run", args...).CombinedOutput()
+	sanitized := strings.ToValidUTF8(string(out), "�")
+	if err != nil {
+		logger.Errorf("[update] installation failed via systemd-run:\n%s", sanitized)
+		return fmt.Errorf("script execution failed: %w", err)
+	}
+	logger.Infof("[update] installation output via systemd-run:\n%s", sanitized)
 	return nil
 }
 
