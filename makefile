@@ -592,10 +592,11 @@ changelog:
 	    else \
 	      git log --pretty=format:'* @%an' | sort -u; \
 	    fi; \
-	    printf "\n\n**Full Changelog**: https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/compare/$$PREV_TAG...$$VERSION\n"; \
+	    printf "\n**Full Changelog**: https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/compare/$$PREV_TAG...$$VERSION\n"; \
 	  } > "$$BODY_FILE"; \
 	  HEADER="## $$VERSION — $$DATE"; \
 	  { \
+	  	echo ""; \
 	    echo "$$HEADER"; \
 	    echo ""; \
 	    cat "$$BODY_FILE"; \

@@ -158,7 +158,6 @@ func runInstallScript(version string) error {
 
 	cmd := exec.Command("bash", "-c", cmdStr)
 	output, err := cmd.CombinedOutput()
-
 	if err != nil {
 		logger.Errorf("[update] installation failed:\n%s", string(output))
 		return fmt.Errorf("script execution failed: %w", err)
