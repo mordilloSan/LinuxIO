@@ -1,4 +1,17 @@
 
+## v0.2.26 — 2025-10-15
+
+### 🐛 Bug Fixes
+
+* fix: app update bug ([ff05a09](https://github.com/owner/repo/commit/ff05a09)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.25...v0.2.26
+
+
 ## v0.2.25 — 2025-10-15
 
 ### 🚀 Features

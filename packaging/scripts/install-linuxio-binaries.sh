@@ -254,7 +254,7 @@ main() {
 
 # ---------- Usage ----------
 
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+if [[ -z "${BASH_SOURCE+x}" || "${BASH_SOURCE[0]-}" == "$0" ]]; then
     if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
         cat <<EOF
 Usage: $(basename "$0") [VERSION]
