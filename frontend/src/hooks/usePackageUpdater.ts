@@ -13,7 +13,7 @@ export const usePackageUpdater = (onComplete: () => void) => {
 
     try {
       await axios.post("/updates/update", { package: pkg });
-      await onComplete(); // refresh updates
+      onComplete(); // refresh updates
     } catch (err: any) {
       const errorMsg =
         err.response?.data?.error || err.message || "Update failed";
@@ -88,7 +88,7 @@ export const usePackageUpdater = (onComplete: () => void) => {
       );
     }
 
-    await onComplete();
+    onComplete();
   };
 
   const clearError = () => setError(null);
