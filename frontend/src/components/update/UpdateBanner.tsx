@@ -32,7 +32,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
     if (
       !confirm(
         `Update LinuxIO from ${updateInfo.current_version} to ${updateInfo.latest_version}?\n\n` +
-        "The service will restart. This may take a minute.",
+          "The service will restart. This may take a minute.",
       )
     ) {
       return;
@@ -57,8 +57,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       const msg = error instanceof Error ? error.message : "Unknown error";
       alert(
         "❌ Update failed. Please try manually:\n\n" +
-        "sudo linuxio-update\n\n" +
-        `Error: ${msg}`,
+          "sudo linuxio-update\n\n" +
+          `Error: ${msg}`,
       );
       setIsUpdating(false);
     }

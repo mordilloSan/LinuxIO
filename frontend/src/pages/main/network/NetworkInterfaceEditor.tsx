@@ -12,6 +12,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
+
 import axios from "@/utils/axios";
 
 /* ================= helpers ================= */
@@ -29,13 +30,22 @@ function getIPv4FromIface(i: any): string {
   if (typeof i?.ipv4_cidr === "string" && i.ipv4_cidr.includes("/")) {
     return i.ipv4_cidr;
   }
-  if (i?.ipv4?.address && (Number.isInteger(i?.ipv4?.prefix) || typeof i?.ipv4?.prefix === "string")) {
+  if (
+    i?.ipv4?.address &&
+    (Number.isInteger(i?.ipv4?.prefix) || typeof i?.ipv4?.prefix === "string")
+  ) {
     return toCIDR(i.ipv4.address, i.ipv4.prefix);
   }
   if (Array.isArray(i?.ipv4)) {
-    const obj = i.ipv4.find((x: any) => x?.address && (Number.isInteger(x?.prefix) || typeof x?.prefix === "string"));
+    const obj = i.ipv4.find(
+      (x: any) =>
+        x?.address &&
+        (Number.isInteger(x?.prefix) || typeof x?.prefix === "string"),
+    );
     if (obj) return toCIDR(obj.address, obj.prefix);
-    const str = i.ipv4.find((x: any) => typeof x === "string" && x.includes("/"));
+    const str = i.ipv4.find(
+      (x: any) => typeof x === "string" && x.includes("/"),
+    );
     if (str) return str;
   }
   if (typeof i?.ipv4?.cidr === "string") return i.ipv4.cidr;
@@ -164,7 +174,8 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     const parts = ip.split(".");
     if (parts.length !== 4) return false;
     const prefixNum = parseInt(prefix, 10);
-    if (!Number.isInteger(prefixNum) || prefixNum < 0 || prefixNum > 32) return false;
+    if (!Number.isInteger(prefixNum) || prefixNum < 0 || prefixNum > 32)
+      return false;
     return parts.every((part) => {
       const num = parseInt(part, 10);
       return Number.isInteger(num) && num >= 0 && num <= 255;
@@ -196,7 +207,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           return;
         }
         if (!validateIPv4CIDR(ipv4)) {
-          toast.error("Invalid IPv4 address. Use CIDR format (e.g., 192.168.1.10/24)");
+          toast.error(
+            "Invalid IPv4 address. Use CIDR format (e.g., 192.168.1.10/24)",
+          );
           return;
         }
         if (!gateway) {
@@ -245,7 +258,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       onSave(iface);
       onClose();
     } catch (e: any) {
-      toast.error(e?.response?.data?.error || "Failed to save network configuration");
+      toast.error(
+        e?.response?.data?.error || "Failed to save network configuration",
+      );
     } finally {
       setSaving(false);
     }
@@ -254,7 +269,12 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   return (
     <Collapse in={expanded} timeout="auto" unmountOnExit>
       <Box mt={2} p={2} borderRadius={1}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{ mb: 2 }}
+        >
           <Typography variant="subtitle2">Configuration Mode</Typography>
           <Chip
             size="small"
@@ -285,7 +305,8 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         {mode === "auto" ? (
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              The interface will automatically obtain IP address, gateway, and DNS from a DHCP server.
+              The interface will automatically obtain IP address, gateway, and
+              DNS from a DHCP server.
             </Typography>
           </Box>
         ) : (
