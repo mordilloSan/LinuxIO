@@ -1,10 +1,13 @@
 package control
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,15 +20,30 @@ const (
 	RepoName         = "LinuxIO"
 	BinDir           = "/usr/local/bin"
 	BinPath          = BinDir + "/linuxio"
-	InstallScriptURL = "https://raw.githubusercontent.com/mordilloSan/LinuxIO/refs/heads/main/packaging/scripts/install-linuxio-binaries.sh"
+	InstallScriptURL = "https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh"
 )
+
+// --- small helper for clean log lines (no ANSI) ---
+var ansiRE = regexp.MustCompile(`\x1B\[[0-9;]*[A-Za-z]`)
+
+func logStream(r io.Reader, prefix string, isInfo bool) {
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		line := ansiRE.ReplaceAllString(sc.Text(), "")
+		if isInfo {
+			logger.Infof("%s%s", prefix, line)
+		} else {
+			logger.Errorf("%s%s", prefix, line)
+		}
+	}
+}
 
 func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
 		"shutdown": func(args []string) (any, error) {
 			reason := "unknown"
 			if len(args) > 0 {
-				reason = args[0] // "logout" or "forced"
+				reason = args[0]
 			}
 			logger.Debugf("Received shutdown command: %s", reason)
 			select {
@@ -35,11 +53,11 @@ func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
 			return "Bridge shutting down", nil
 		},
 		"ping": func(args []string) (any, error) {
-			_ = args // Acknowledge we're not using this
+			_ = args
 			return map[string]string{"type": "pong"}, nil
 		},
 		"version": func(args []string) (any, error) {
-			_ = args // Acknowledge we're not using this
+			_ = args
 			return getVersionInfo()
 		},
 		"update": func(args []string) (any, error) {
@@ -76,7 +94,6 @@ func getVersionInfo() (VersionInfo, error) {
 		CheckedAt:       time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Optionally check for latest version (non-blocking)
 	latestVersion, err := fetchLatestVersion()
 	if err != nil {
 		logger.Debugf("[version] failed to fetch latest version: %v", err)
@@ -85,7 +102,6 @@ func getVersionInfo() (VersionInfo, error) {
 		info.LatestVersion = latestVersion
 		info.UpdateAvailable = currentVersion != latestVersion && currentVersion != "unknown"
 	}
-
 	return info, nil
 }
 
@@ -105,7 +121,6 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 		targetVersion = latest
 	}
 
-	// Check if already on target version
 	if currentVersion == targetVersion {
 		return UpdateResult{
 			Success:        true,
@@ -116,9 +131,8 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 
 	logger.Infof("[update] starting update: %s -> %s", currentVersion, targetVersion)
 
-	// Execute the installation script
 	logger.Infof("[update] running installation script for version %s", targetVersion)
-	if err := runInstallScript(); err != nil {
+	if err := runInstallScript(targetVersion); err != nil {
 		return UpdateResult{
 			Success:        false,
 			CurrentVersion: currentVersion,
@@ -126,24 +140,19 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 		}, nil
 	}
 
-	// Reload systemd daemon to pick up any service changes
 	logger.Debugf("[update] reloading systemd daemon")
 	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
 		logger.Warnf("[update] daemon-reload failed: %v (continuing anyway)", err)
 	}
 
-	// Restart service with new binaries
-	// Note: This will terminate the current process, so we spawn it in background
 	logger.Infof("[update] restarting service with new version %s", targetVersion)
 	go func() {
-		// Small delay to allow this function to return response first
 		time.Sleep(500 * time.Millisecond)
 		if err := restartService(); err != nil {
 			logger.Errorf("[update] failed to restart service: %v", err)
 		}
 	}()
 
-	// Return success immediately - service will restart momentarily
 	logger.Infof("[update] binaries updated, service restart initiated")
 	return UpdateResult{
 		Success:        true,
@@ -153,42 +162,63 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 	}, nil
 }
 
-// control/runInstallScript.go (replace your current runInstallScript)
-func runInstallScript() error {
+// runInstallScript downloads the installer and runs it in a transient unit
+// with stdout/stderr piped back to this process (so logs appear in-order).
+func runInstallScript(version string) error {
 	tmp := "/tmp/linuxio-install.sh"
 
-	// Download + chmod
-	if out, err := exec.Command("bash", "-c",
-		fmt.Sprintf("curl -fsSL %s -o %s && chmod 700 %s", InstallScriptURL, tmp, tmp)).CombinedOutput(); err != nil {
-		logger.Errorf("[update] download failed:\n%s", strings.ToValidUTF8(string(out), "�"))
+	// 1) Download + chmod (log cleanly on failure)
+	curlCmd := exec.Command("bash", "-lc",
+		fmt.Sprintf(`curl -fsSL %q -o %q && chmod 700 %q`, InstallScriptURL, tmp, tmp))
+	curlCmd.Env = append(os.Environ(), "LC_ALL=C.UTF-8", "TERM=dumb", "NO_COLOR=1", "CLICOLOR=0")
+
+	curlOut, err := curlCmd.CombinedOutput()
+	if err != nil {
+		out := ansiRE.ReplaceAllString(strings.ToValidUTF8(string(curlOut), ""), "")
+		logger.Errorf("[update] download failed:\n%s", out)
 		return fmt.Errorf("download failed: %w", err)
 	}
 
-	// Execute via systemd-run to escape linuxio.service sandbox
+	// 2) Execute via systemd-run with --wait --pipe so we capture the script logs.
 	args := []string{
 		"--unit=linuxio-updater",
 		"--quiet",
 		"--collect",
-		"-p", "Type=oneshot",
-		// Keep hardening but open the single path we need:
+		"--wait", // wait for completion and propagate exit code
+		"--pipe", // connect stdout/stderr to this process
+		"--setenv=TERM=dumb",
+		"--setenv=NO_COLOR=1",
+		"--setenv=CLICOLOR=0",
+		"--setenv=LC_ALL=C.UTF-8",
+		"-p", "Type=exec",
 		"-p", "ProtectSystem=full",
 		"-p", "ReadWritePaths=/usr/local/bin",
-		// setuid bit must stick; avoid implicit NoNewPrivileges:
 		"-p", "NoNewPrivileges=no",
 		"/bin/bash", tmp,
 	}
-
-	out, err := exec.Command("systemd-run", args...).CombinedOutput()
-	sanitized := strings.ToValidUTF8(string(out), "�")
-	if err != nil {
-		logger.Errorf("[update] installation failed via systemd-run:\n%s", sanitized)
-		return fmt.Errorf("script execution failed: %w", err)
+	if version != "" {
+		args = append(args, version)
 	}
-	logger.Infof("[update] installation output via systemd-run:\n%s", sanitized)
+
+	cmd := exec.Command("systemd-run", args...)
+
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start systemd-run: %w", err)
+	}
+
+	// stream logs in real-time
+	go logStream(stdout, "[update] ", true)
+	go logStream(stderr, "[update] ", false)
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("installer failed: %w", err)
+	}
 	return nil
 }
 
-// getInstalledVersion runs 'linuxio --version' and parses the output
 func getInstalledVersion() string {
 	cmd := exec.Command(BinPath, "--version")
 	output, err := cmd.Output()
@@ -196,40 +226,28 @@ func getInstalledVersion() string {
 		logger.Debugf("[update] failed to run linuxio --version: %v", err)
 		return "unknown"
 	}
-
 	version := parseVersionOutput(string(output))
 	logger.Debugf("[update] detected installed version: %s", version)
 	return version
 }
 
-// parseVersionOutput extracts version string from binary output
-// Handles formats like:
-// "v0.2.4"
-// "0.2.4"
 func parseVersionOutput(output string) string {
 	output = strings.TrimSpace(output)
-
-	// Split by whitespace and look for version-like string
 	parts := strings.Fields(output)
 	for _, part := range parts {
-		// Look for vX.Y.Z or X.Y.Z pattern
 		if strings.HasPrefix(part, "v") && strings.Contains(part, ".") {
 			return part
 		}
 		if strings.Count(part, ".") >= 2 {
-			// Assume it's a version without 'v' prefix
 			return "v" + part
 		}
 	}
-
-	// Fallback: return the whole output if it looks like a version
 	if strings.Contains(output, ".") {
 		if !strings.HasPrefix(output, "v") {
 			return "v" + output
 		}
 		return output
 	}
-
 	return "unknown"
 }
 
@@ -252,18 +270,16 @@ func fetchLatestVersion() (string, error) {
 		return "", err
 	}
 
-	// Simple parsing for tag_name (avoiding full JSON decode for minimal deps)
 	tagStart := strings.Index(string(body), `"tag_name":"`)
 	if tagStart == -1 {
 		return "", fmt.Errorf("tag_name not found in response")
 	}
 	tagStart += len(`"tag_name":"`)
-	tagEnd := strings.Index(string(body[tagStart:]), `"`)
+	tagEnd := strings.Index(string(body)[tagStart:], `"`)
 	if tagEnd == -1 {
 		return "", fmt.Errorf("malformed tag_name in response")
 	}
-
-	return string(body[tagStart : tagStart+tagEnd]), nil
+	return string(body)[tagStart : tagStart+tagEnd], nil
 }
 
 func restartService() error {
@@ -271,7 +287,7 @@ func restartService() error {
 	cmd := exec.Command("systemctl", "restart", "linuxio")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Errorf("[update] restart failed: %v, output: %s", err, string(output))
+		logger.Errorf("[update] restart failed: %v, output: %s", err, ansiRE.ReplaceAllString(string(output), ""))
 		return fmt.Errorf("restart failed: %w", err)
 	}
 	logger.Infof("[update] service restarted successfully")
