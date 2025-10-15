@@ -13,7 +13,7 @@ export const usePackageUpdater = (onComplete: () => void) => {
 
     try {
       await axios.post("/updates/update", { package: pkg });
-      await onComplete(); // refresh updates
+      onComplete(); // refresh updates
     } catch (err: any) {
       const errorMsg =
         err.response?.data?.error || err.message || "Update failed";
@@ -62,7 +62,7 @@ export const usePackageUpdater = (onComplete: () => void) => {
         remaining = fresh
           .map((u: any) => u.package_id)
           .filter(
-            (id: string) => !updated.has(id) && !failedPackages.includes(id),
+            (id: string) => !updated.has(id) && !failedPackages.includes(id)
           );
       } catch (err: any) {
         console.error(`Failed to update ${pkg}`, err);
@@ -84,11 +84,11 @@ export const usePackageUpdater = (onComplete: () => void) => {
     // Show summary if there were failures
     if (failedPackages.length > 0) {
       setError(
-        `Updated ${updated.size} packages. Failed: ${failedPackages.length} (${failedPackages.join(", ")})`,
+        `Updated ${updated.size} packages. Failed: ${failedPackages.length} (${failedPackages.join(", ")})`
       );
     }
 
-    await onComplete();
+    onComplete();
   };
 
   const clearError = () => setError(null);

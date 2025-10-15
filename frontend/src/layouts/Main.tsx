@@ -24,8 +24,6 @@ const Dashboard: React.FC = () => {
   const { updateInfo, dismissUpdate } = useUpdateInfo();
 
   useEffect(() => {
-    console.log("[Dashboard] Update info:", updateInfo);
-    console.log("[Dashboard] Update available:", updateInfo?.available);
   }, [updateInfo]);
 
   // Auto-close mobile drawer on route change (mobile only)

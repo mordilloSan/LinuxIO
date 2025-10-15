@@ -1,8 +1,31 @@
-import { Grid, Box, useTheme } from "@mui/material";
+import { Grid, Box, useTheme, Typography } from "@mui/material";
+import { useQuery } from "@tanstack/react-query";
 import React from "react";
+
+import axios from "@/utils/axios";
+
+interface VersionResponse {
+  output: {
+    checked_at: string;
+    current_version: string;
+    latest_version: string;
+    update_available: boolean;
+  };
+  status: string;
+}
 
 function Footer() {
   const theme = useTheme();
+
+  const { data } = useQuery<VersionResponse>({
+    queryKey: ["version"],
+    queryFn: async () => {
+      const res = await axios.get("/control/version");
+      return res.data;
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: false, // Don't retry on failure for footer
+  });
 
   return (
     <Box
@@ -29,7 +52,20 @@ function Footer() {
           }}
           container
           justifyContent="flex-end"
-        ></Grid>
+        >
+          {data?.output.current_version && (
+            <Typography
+              variant="caption"
+              sx={{
+                opacity: 0.6,
+                fontSize: "0.7rem",
+                padding: 1,
+              }}
+            >
+              {data.output.current_version}
+            </Typography>
+          )}
+        </Grid>
       </Grid>
     </Box>
   );
