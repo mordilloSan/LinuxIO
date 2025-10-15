@@ -1,4 +1,18 @@
 
+## v0.2.28 — 2025-10-15
+
+### 🐛 Bug Fixes
+
+* fix: readme typo ([35437dd](https://github.com/owner/repo/commit/35437dd)) by @MordilloSan
+* fix: update debug ([cfb8eca](https://github.com/owner/repo/commit/cfb8eca)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.27...v0.2.28
+
+
 ## v0.2.27 — 2025-10-15
 
 ### 🐛 Bug Fixes
