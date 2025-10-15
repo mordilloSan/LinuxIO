@@ -130,35 +130,35 @@ install_binaries() {
         
         log_info "Installing ${binary} with mode ${mode}..."
         
-        # Atomic installation: write to temp file, then rename
-        local tmp="${dst}.new"
-        
-        # Copy file
+        # Use /tmp for temp file instead of /usr/local/bin
+        local tmp="/tmp/${binary}.new.$$"
+
+        # Copy file to /tmp
         if ! cp "$src" "$tmp"; then
-            log_error "Failed to copy ${binary}"
+            log_error "Failed to copy ${binary} to temp location"
             return 1
         fi
-        
+
         # Set permissions
         if ! chmod "$mode" "$tmp"; then
             log_error "Failed to chmod ${binary}"
             rm -f "$tmp"
             return 1
         fi
-        
+
         # Set ownership to root
         if ! chown root:root "$tmp"; then
             log_error "Failed to chown ${binary}"
             rm -f "$tmp"
             return 1
         fi
-        
-        # Atomic rename
+
+        # Atomic move (works even if $dst is running)
         if ! mv "$tmp" "$dst"; then
             log_error "Failed to install ${binary}"
             rm -f "$tmp"
             return 1
-        fi
+        fi  
         
         # Double-check final permissions (important for setuid)
         chmod "$mode" "$dst" || log_warn "Failed to re-apply permissions to ${dst}"
