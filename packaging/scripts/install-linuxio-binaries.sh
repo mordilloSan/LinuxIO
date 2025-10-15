@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# LinuxIO Binary Installer (Debug Version)
+# LinuxIO Binary Installer
 # Downloads and installs LinuxIO binaries with proper permissions
 # © 2025 Miguel Mariz (mordilloSan)
 # =============================================================================
@@ -25,87 +25,6 @@ cleanup() {
 }
 
 trap cleanup EXIT INT TERM
-
-# ---------- Diagnostic Functions ----------
-
-check_environment() {
-    log_info "=== Environment Diagnostics ==="
-    log_info "Script: $0"
-    log_info "Running as: $(whoami) (UID: $(id -u))"
-    log_info "Effective UID: $EUID"
-    log_info "Real UID: $(id -ru)"
-    log_info "Groups: $(groups)"
-    log_info "Current directory: $(pwd)"
-    
-    if [[ $EUID -ne 0 ]]; then
-        log_error "Not running as root! Current EUID: $EUID"
-        log_info "Hint: Run with 'sudo bash $0' or ensure script has proper privileges"
-        return 1
-    fi
-    
-    log_ok "Running with root privileges"
-    
-    log_info "=== Filesystem Diagnostics ==="
-    log_info "Mount points involving /usr:"
-    mount | grep -E '(^/ | /usr)' || log_warn "No specific /usr mounts found"
-    
-    log_info "Filesystem for ${BIN_DIR}:"
-    df -h "$BIN_DIR" 2>&1 || log_error "df command failed"
-    
-    log_info "Directory info for ${BIN_DIR}:"
-    ls -ld "$BIN_DIR" 2>&1 || log_error "Cannot list ${BIN_DIR}"
-    
-    log_info "Parent directory info:"
-    ls -ld "$(dirname "$BIN_DIR")" 2>&1 || log_error "Cannot list parent"
-    
-    # Check if directory is writable
-    if [[ -w "$BIN_DIR" ]]; then
-        log_ok "${BIN_DIR} is writable by current user"
-    else
-        log_error "${BIN_DIR} is NOT writable!"
-    fi
-    
-    # Try a test write
-    log_info "Attempting test write to ${BIN_DIR}..."
-    local test_file="${BIN_DIR}/.linuxio-write-test-$$"
-    if touch "$test_file" 2>/dev/null; then
-        log_ok "Test file created successfully"
-        rm -f "$test_file"
-    else
-        log_error "Cannot create test file in ${BIN_DIR}"
-        log_info "Trying to see why..."
-        
-        # Check for immutable flag
-        if command -v lsattr >/dev/null 2>&1; then
-            log_info "Attributes: $(lsattr -d "$BIN_DIR" 2>&1)"
-        fi
-        
-        # Check mount options
-        log_info "Mount options: $(mount | grep "$(df "$BIN_DIR" | tail -1 | awk '{print $1}')")"
-    fi
-    
-    # Check for existing binaries
-    log_info "=== Existing LinuxIO binaries ==="
-    for binary in linuxio linuxio-bridge linuxio-auth-helper; do
-        local path="${BIN_DIR}/${binary}"
-        if [[ -f "$path" ]]; then
-            log_info "${binary}: $(ls -lh "$path")"
-            if lsof "$path" 2>/dev/null | grep -q "$path"; then
-                log_warn "${binary} is currently running:"
-                lsof "$path" 2>&1 | tail -n +2 || true
-            fi
-        else
-            log_info "${binary}: not found"
-        fi
-    done
-    
-    # Check /tmp filesystem
-    log_info "=== /tmp Filesystem ==="
-    log_info "/tmp mount: $(mount | grep ' /tmp ' || echo 'not separately mounted')"
-    df -h /tmp 2>&1 || log_error "Cannot check /tmp disk space"
-    
-    return 0
-}
 
 # ---------- Main Functions ----------
 
@@ -186,13 +105,10 @@ verify_checksums() {
 }
 
 install_binaries() {
-    log_info "=== Installing binaries to ${BIN_DIR} ==="
+    log_info "Installing binaries to ${BIN_DIR}..."
     
     # Ensure target directory exists
-    mkdir -p "$BIN_DIR" || {
-        log_error "Failed to create ${BIN_DIR}"
-        return 1
-    }
+    mkdir -p "$BIN_DIR"
     
     # Define binaries with their permissions
     # linuxio-auth-helper needs setuid (4755) to run as root
@@ -203,8 +119,6 @@ install_binaries() {
     )
     
     for binary in "${!binaries[@]}"; do
-        log_info "--- Processing ${binary} ---"
-        
         local src="${STAGING}/${binary}"
         local dst="${BIN_DIR}/${binary}"
         local mode="${binaries[$binary]}"
@@ -214,115 +128,52 @@ install_binaries() {
             return 1
         fi
         
-        local src_size
-        src_size=$(stat -c '%s' "$src" 2>/dev/null || stat -f '%z' "$src" 2>/dev/null || echo "unknown")
-        log_info "Source: ${src} (${src_size} bytes)"
-        log_info "Destination: ${dst}"
-        log_info "Mode: ${mode}"
+        log_info "Installing ${binary} with mode ${mode}..."
         
-        # Check if target exists and is in use
-        if [[ -f "$dst" ]]; then
-            log_info "Target exists: $(ls -lh "$dst")"
-            if lsof "$dst" >/dev/null 2>&1; then
-                log_warn "Binary is currently in use!"
-                lsof "$dst" 2>&1 | tail -n +2 || true
-            fi
-        else
-            log_info "Target does not exist (fresh install)"
-        fi
-        
-        # Use /tmp for staging
-        local tmp="/tmp/linuxio-stage-${binary}-$$"
-        log_info "Staging file: ${tmp}"
-        
-        # Copy to staging
-        log_info "Copying to staging..."
+        # Use /tmp for temp file instead of /usr/local/bin
+        local tmp="/tmp/${binary}.new.$$"
+
+        # Copy file to /tmp
         if ! cp "$src" "$tmp"; then
-            log_error "Failed to copy to staging area"
+            log_error "Failed to copy ${binary} to temp location"
             return 1
         fi
-        
+
         # Set permissions
-        log_info "Setting permissions (${mode})..."
         if ! chmod "$mode" "$tmp"; then
-            log_error "Failed to chmod"
+            log_error "Failed to chmod ${binary}"
             rm -f "$tmp"
             return 1
         fi
-        
-        # Set ownership
-        log_info "Setting ownership (root:root)..."
+
+        # Set ownership to root
         if ! chown root:root "$tmp"; then
-            log_error "Failed to chown"
+            log_error "Failed to chown ${binary}"
             rm -f "$tmp"
             return 1
         fi
-        
-        log_info "Staged file ready: $(ls -lh "$tmp")"
-        
-        # If target exists, try to remove it first
-        if [[ -f "$dst" ]]; then
-            log_info "Removing existing target..."
-            if rm -f "$dst" 2>/dev/null; then
-                log_ok "Existing file removed"
-            else
-                log_error "Cannot remove ${dst}"
-                log_info "Trying with explicit privileges..."
-                if ! sudo rm -f "$dst" 2>/dev/null; then
-                    log_error "Failed to remove even with sudo"
-                    log_info "File details: $(ls -l "$dst" 2>&1)"
-                    
-                    # Check for special attributes
-                    if command -v lsattr >/dev/null 2>&1; then
-                        log_info "Attributes: $(lsattr "$dst" 2>&1)"
-                    fi
-                    
-                    # Check what's locking it
-                    if command -v fuser >/dev/null 2>&1; then
-                        log_info "Processes using file: $(fuser "$dst" 2>&1 || echo 'none')"
-                    fi
-                    
-                    rm -f "$tmp"
-                    return 1
-                fi
-                log_ok "Removed with sudo"
-            fi
-        fi
-        
-        # Now move the staged file
-        log_info "Moving staged file to destination..."
-        if mv "$tmp" "$dst"; then
-            log_ok "File moved successfully"
-        else
-            local mv_exit=$?
-            log_error "Move failed with exit code: ${mv_exit}"
-            log_info "Destination directory state:"
-            ls -la "$BIN_DIR" | head -20
-            log_info "Staging file still exists: $(ls -lh "$tmp" 2>&1 || echo 'no')"
+
+        # Atomic move (works even if $dst is running)
+        if ! mv "$tmp" "$dst"; then
+            log_error "Failed to install ${binary}"
             rm -f "$tmp"
             return 1
-        fi
+        fi  
         
-        # Verify final state
-        log_info "Verifying installation..."
-        if [[ -f "$dst" ]]; then
-            log_ok "File exists: $(ls -lh "$dst")"
-            
-            # Re-apply permissions to be sure
-            chmod "$mode" "$dst" || log_warn "Failed to re-apply chmod"
-            
-            # Verify it's executable
-            if [[ -x "$dst" ]]; then
-                log_ok "${binary} is executable"
-            else
-                log_error "${binary} is NOT executable!"
-            fi
-        else
-            log_error "File does NOT exist after installation!"
+        # Double-check final permissions (important for setuid)
+        chmod "$mode" "$dst" || log_warn "Failed to re-apply permissions to ${dst}"
+        
+        log_ok "Installed ${binary} (mode: ${mode})"
+    done
+    
+    # Verify installations
+    log_info "Verifying installations..."
+    for binary in "${!binaries[@]}"; do
+        local dst="${BIN_DIR}/${binary}"
+        if [[ ! -x "$dst" ]]; then
+            log_error "${binary} is not executable"
             return 1
         fi
-        
-        log_ok "Successfully installed ${binary}"
     done
     
     log_ok "All binaries installed successfully"
@@ -330,7 +181,7 @@ install_binaries() {
 }
 
 verify_installation() {
-    log_info "=== Post-Installation Verification ==="
+    log_info "Running post-installation checks..."
     
     # Check that binaries can execute
     if "${BIN_DIR}/linuxio" --version >/dev/null 2>&1; then
@@ -365,21 +216,13 @@ verify_installation() {
 main() {
     local version="${1:-}"
     
-    log_info "========================================="
-    log_info "LinuxIO Binary Installer (Debug Mode)"
-    log_info "========================================="
-    
-    # Run diagnostics first
-    if ! check_environment; then
-        log_error "Environment check failed"
+    # Check we're running as root
+    if [[ $EUID -ne 0 ]]; then
+        log_error "This script must be run as root"
         exit 1
     fi
     
-    log_info ""
-    log_info "========================================="
-    log_info "Starting Installation Process"
-    log_info "========================================="
-    
+    log_info "Starting LinuxIO binary installation"
     [[ -n "$version" ]] && log_info "Target version: ${version}" || log_info "Target version: latest"
     
     if ! download_binaries "$version"; then
@@ -399,10 +242,7 @@ main() {
     
     verify_installation
     
-    log_info ""
-    log_ok "========================================="
-    log_ok "Installation Complete!"
-    log_ok "========================================="
+    log_ok "Installation complete!"
     exit 0
 }
 
