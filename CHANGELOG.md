@@ -1,4 +1,17 @@
 
+## v0.2.23 — 2025-10-15
+
+### 🔄 Other Changes
+
+* debug: app update script bug ([6ec2a6d](https://github.com/owner/repo/commit/6ec2a6d)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.22...v0.2.23
+
+
 ## v0.2.22 — 2025-10-15
 
 ### 🚀 Features
