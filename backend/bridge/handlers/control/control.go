@@ -17,7 +17,7 @@ const (
 	RepoName         = "LinuxIO"
 	BinDir           = "/usr/local/bin"
 	BinPath          = BinDir + "/linuxio"
-	InstallScriptURL = "https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/scripts/install-linuxio-binaries.sh"
+	InstallScriptURL = "https://raw.githubusercontent.com/mordilloSan/LinuxIO/refs/heads/main/packaging/scripts/install-linuxio-binaries.sh"
 )
 
 func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
