@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -14,12 +13,11 @@ import (
 )
 
 const (
-	RepoOwner          = "mordilloSan"
-	RepoName           = "LinuxIO"
-	BinDir             = "/usr/local/bin"
-	BinPath            = BinDir + "/linuxio"
-	InstallScriptURL   = "https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/scripts/install-linuxio-binaries.sh"
-	InstallScriptCache = "/tmp/install-linuxio-binaries.sh"
+	RepoOwner        = "mordilloSan"
+	RepoName         = "LinuxIO"
+	BinDir           = "/usr/local/bin"
+	BinPath          = BinDir + "/linuxio"
+	InstallScriptURL = "https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/scripts/install-linuxio-binaries.sh"
 )
 
 func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
@@ -118,25 +116,6 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 
 	logger.Infof("[update] starting update: %s -> %s", currentVersion, targetVersion)
 
-	// Download the installation script
-	logger.Debugf("[update] downloading installation script")
-	if err := downloadInstallScript(); err != nil {
-		return UpdateResult{
-			Success:        false,
-			CurrentVersion: currentVersion,
-			Error:          fmt.Sprintf("failed to download installation script: %v", err),
-		}, nil
-	}
-
-	// Make script executable
-	if err := os.Chmod(InstallScriptCache, 0o755); err != nil {
-		return UpdateResult{
-			Success:        false,
-			CurrentVersion: currentVersion,
-			Error:          fmt.Sprintf("failed to make script executable: %v", err),
-		}, nil
-	}
-
 	// Execute the installation script
 	logger.Infof("[update] running installation script for version %s", targetVersion)
 	if err := runInstallScript(targetVersion); err != nil {
@@ -164,9 +143,6 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 		}
 	}()
 
-	// Cleanup
-	os.Remove(InstallScriptCache)
-
 	// Return success immediately - service will restart momentarily
 	logger.Infof("[update] binaries updated, service restart initiated")
 	return UpdateResult{
@@ -177,60 +153,17 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 	}, nil
 }
 
-// downloadInstallScript downloads the installation script from GitHub
-func downloadInstallScript() error {
-	client := &http.Client{Timeout: 30 * time.Second}
-
-	resp, err := client.Get(InstallScriptURL)
-	if err != nil {
-		return fmt.Errorf("failed to download script: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status %d", resp.StatusCode)
-	}
-
-	// Write to temporary file
-	tmpFile := InstallScriptCache + ".tmp"
-	out, err := os.Create(tmpFile)
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		os.Remove(tmpFile)
-		return fmt.Errorf("failed to write script: %w", err)
-	}
-
-	// Atomic rename
-	if err := os.Rename(tmpFile, InstallScriptCache); err != nil {
-		os.Remove(tmpFile)
-		return fmt.Errorf("failed to rename script: %w", err)
-	}
-
-	logger.Debugf("[update] installation script downloaded to %s", InstallScriptCache)
-	return nil
-}
-
-// runInstallScript executes the installation script
 func runInstallScript(version string) error {
-	args := []string{}
-	if version != "" {
-		args = append(args, version)
-	}
+	cmdStr := fmt.Sprintf("curl -fsSL %s | sudo bash -s -- %s", InstallScriptURL, version)
 
-	cmd := exec.Command(InstallScriptCache, args...)
-
-	// Capture output for logging
+	cmd := exec.Command("bash", "-c", cmdStr)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Errorf("[update] installation script output:\n%s", string(output))
-		return fmt.Errorf("script execution failed: %w\nOutput: %s", err, string(output))
+		logger.Errorf("[update] installation failed:\n%s", string(output))
+		return fmt.Errorf("script execution failed: %w", err)
 	}
 
-	logger.Infof("[update] installation script output:\n%s", string(output))
+	logger.Infof("[update] installation output:\n%s", string(output))
 	return nil
 }
 
