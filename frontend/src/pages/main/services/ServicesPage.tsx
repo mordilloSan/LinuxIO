@@ -1,12 +1,17 @@
 import { Box, CircularProgress, Alert } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
-import React from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import React, { useState } from "react";
 
+import ServiceLogsDrawer from "./ServiceLogsDrawer";
 import ServiceTable, { Service } from "./ServiceTable";
 
 import axios from "@/utils/axios";
 
 const ServicesList: React.FC = () => {
+  const queryClient = useQueryClient();
+  const [logsDrawerOpen, setLogsDrawerOpen] = useState(false);
+  const [selectedService, setSelectedService] = useState<string>("");
+
   const { data, isLoading, isError, error } = useQuery<Service[]>({
     queryKey: ["services"],
     queryFn: async () => {
@@ -16,21 +21,61 @@ const ServicesList: React.FC = () => {
     refetchInterval: 2000,
   });
 
-  // Handlers - you would implement actual API calls here!
+  // Mutation for service actions
+  const serviceActionMutation = useMutation({
+    mutationFn: async ({
+      serviceName,
+      action,
+    }: {
+      serviceName: string;
+      action:
+        | "start"
+        | "stop"
+        | "restart"
+        | "reload"
+        | "enable"
+        | "disable"
+        | "mask"
+        | "unmask";
+    }) => {
+      const res = await axios.post(`/services/${serviceName}/${action}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      // Refetch services after successful action
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+    },
+    onError: (error: any) => {
+      console.error("Service action failed:", error);
+      // You might want to show a toast notification here
+      alert(`Action failed: ${error.response?.data?.message || error.message}`);
+    },
+  });
+
   const handleRestart = (service: Service) => {
-    // Example: await axios.post(`/services/restart`, { name: service.name })
-    alert(`Restarting service: ${service.displayName || service.name}`);
-    // After API: refetch();
+    serviceActionMutation.mutate({
+      serviceName: service.name,
+      action: "restart",
+    });
   };
 
   const handleStop = (service: Service) => {
-    alert(`Stopping service: ${service.displayName || service.name}`);
-    // After API: refetch();
+    serviceActionMutation.mutate({
+      serviceName: service.name,
+      action: "stop",
+    });
+  };
+
+  const handleStart = (service: Service) => {
+    serviceActionMutation.mutate({
+      serviceName: service.name,
+      action: "start",
+    });
   };
 
   const handleViewLogs = (service: Service) => {
-    alert(`Show logs for: ${service.displayName || service.name}`);
-    // You might open a drawer/modal with logs, etc.
+    setSelectedService(service.name);
+    setLogsDrawerOpen(true);
   };
 
   return (
@@ -45,14 +90,26 @@ const ServicesList: React.FC = () => {
           {error instanceof Error ? error.message : "Failed to load services"}
         </Alert>
       )}
+      {serviceActionMutation.isError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Action failed. Please try again.
+        </Alert>
+      )}
       {data && (
         <ServiceTable
           serviceList={data}
           onRestart={handleRestart}
           onStop={handleStop}
+          onStart={handleStart}
           onViewLogs={handleViewLogs}
+          isLoading={serviceActionMutation.isPending}
         />
       )}
+      <ServiceLogsDrawer
+        open={logsDrawerOpen}
+        onClose={() => setLogsDrawerOpen(false)}
+        serviceName={selectedService}
+      />
     </Box>
   );
 };

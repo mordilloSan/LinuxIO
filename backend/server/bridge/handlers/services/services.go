@@ -110,3 +110,42 @@ func getServiceDetail(c *gin.Context) {
 	logger.Debugf("Returned detail for %s to user %s", serviceName, sess.User.Username)
 	c.JSON(http.StatusOK, resp.Output) // Changed from c.Data()
 }
+
+func getServiceLogs(c *gin.Context) {
+	sess := session.SessionFromContext(c)
+	serviceName := c.Param("name")
+
+	if !validServiceName.MatchString(serviceName) {
+		logger.Warnf("Invalid service name for logs: %q by user: %s", serviceName, sess.User.Username)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service name"})
+		return
+	}
+
+	// Get optional query parameters
+	lines := c.DefaultQuery("lines", "100") // Default 100 lines
+
+	logger.Infof("User %s requested logs for %s (session: %s)", sess.User.Username, serviceName, sess.SessionID)
+
+	output, err := bridge.CallWithSession(sess, "dbus", "GetServiceLogs", []string{serviceName, lines})
+	if err != nil {
+		logger.Errorf("Failed to get logs for %s via bridge (user: %s, session: %s): %v", serviceName, sess.User.Username, sess.SessionID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal([]byte(output), &resp); err != nil {
+		logger.Errorf("Failed to decode bridge response for %s logs (user: %s): %v", serviceName, sess.User.Username, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode bridge response"})
+		return
+	}
+
+	if resp.Status != "ok" {
+		logger.Warnf("Bridge returned error for %s logs (user: %s): %v", serviceName, sess.User.Username, resp.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
+		return
+	}
+
+	logger.Debugf("Returned logs for %s to user %s", serviceName, sess.User.Username)
+	c.JSON(http.StatusOK, resp.Output)
+}
