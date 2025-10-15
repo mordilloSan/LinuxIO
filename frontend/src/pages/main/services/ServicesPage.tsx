@@ -2,8 +2,8 @@ import { Box, CircularProgress, Alert } from "@mui/material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
-import ServiceTable, { Service } from "./ServiceTable";
 import ServiceLogsDrawer from "./ServiceLogsDrawer";
+import ServiceTable, { Service } from "./ServiceTable";
 
 import axios from "@/utils/axios";
 
@@ -11,7 +11,6 @@ const ServicesList: React.FC = () => {
   const queryClient = useQueryClient();
   const [logsDrawerOpen, setLogsDrawerOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<string>("");
-
 
   const { data, isLoading, isError, error } = useQuery<Service[]>({
     queryKey: ["services"],
@@ -26,10 +25,18 @@ const ServicesList: React.FC = () => {
   const serviceActionMutation = useMutation({
     mutationFn: async ({
       serviceName,
-      action
+      action,
     }: {
       serviceName: string;
-      action: 'start' | 'stop' | 'restart' | 'reload' | 'enable' | 'disable' | 'mask' | 'unmask'
+      action:
+        | "start"
+        | "stop"
+        | "restart"
+        | "reload"
+        | "enable"
+        | "disable"
+        | "mask"
+        | "unmask";
     }) => {
       const res = await axios.post(`/services/${serviceName}/${action}`);
       return res.data;
@@ -48,21 +55,21 @@ const ServicesList: React.FC = () => {
   const handleRestart = (service: Service) => {
     serviceActionMutation.mutate({
       serviceName: service.name,
-      action: 'restart'
+      action: "restart",
     });
   };
 
   const handleStop = (service: Service) => {
     serviceActionMutation.mutate({
       serviceName: service.name,
-      action: 'stop'
+      action: "stop",
     });
   };
 
   const handleStart = (service: Service) => {
     serviceActionMutation.mutate({
       serviceName: service.name,
-      action: 'start'
+      action: "start",
     });
   };
 
