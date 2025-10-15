@@ -1,4 +1,17 @@
 
+## v0.2.27 — 2025-10-15
+
+### 🐛 Bug Fixes
+
+* fix: script path fix ([f894c2c](https://github.com/owner/repo/commit/f894c2c)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.26...v0.2.27
+
+
 ## v0.2.26 — 2025-10-15
 
 ### 🐛 Bug Fixes
