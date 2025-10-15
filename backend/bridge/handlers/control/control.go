@@ -154,6 +154,7 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 }
 
 func runInstallScript(version string) error {
+	logger.Infof("[update] executing: curl -fsSL %s | sudo bash -s -- %s", InstallScriptURL, version)
 	cmdStr := fmt.Sprintf("curl -fsSL %s | sudo bash -s -- %s", InstallScriptURL, version)
 
 	cmd := exec.Command("bash", "-c", cmdStr)
