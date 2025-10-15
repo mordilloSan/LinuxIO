@@ -1,3 +1,16 @@
+
+## v0.2.22 — 2025-10-15
+
+### 🔄 Other Changes
+
+* app update bug fix ([4cd0e2f](https://github.com/owner/repo/commit/4cd0e2f)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.2.21...v0.2.22
+
 ## v0.2.21 — 2025-10-14
 
 ### 🔄 Other Changes
