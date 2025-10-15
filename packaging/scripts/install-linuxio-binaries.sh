@@ -13,10 +13,10 @@ readonly BIN_DIR="/usr/local/bin"
 readonly STAGING="/tmp/linuxio-install-$$"
 
 # ---------- Logging Functions ----------
-log_info()  { echo "[INFO] $*"; }
-log_ok()    { echo "[OK] $*"; }
-log_error() { echo "[ERROR] $*" >&2; }
-log_warn()  { echo "[WARN] $*"; }
+log_info()  { printf "▸ %s\n" "$*"; }
+log_ok()    { printf "✓ %s\n" "$*"; }
+log_error() { printf "✗ %s\n" "$*" >&2; }
+log_warn()  { printf "⚠ %s\n" "$*"; }
 
 cleanup() {
     if [[ -d "$STAGING" ]]; then
