@@ -44,23 +44,13 @@ Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes furthe
 
 ### Quick Install (Recommended)
 
-Download the latest release:
-
 ```bash
-# Download latest release
-wget https://github.com/mordilloSan/LinuxIO/releases/latest/download/linuxio-v0.1.0-linux-amd64.tar.gz
 
-# Extract
-tar xzf linuxio-v0.1.0-linux-amd64.tar.gz
+curl https://raw.githubusercontent.com/mordilloSan/LinuxIO/refs/heads/main/packaging/scripts/global_install.sh | sudo bash
 
-# Install (creates systemd service)
-sudo ./linuxio install
-
-# Start the service
-sudo systemctl start linuxio
 ```
 
-Access the dashboard at: `http://localhost:18090`
+Access the dashboard at: `http://localhost:8090`
 
 ### System Requirements
 
