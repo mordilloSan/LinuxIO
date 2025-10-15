@@ -8,6 +8,7 @@
 ### 🐛 Bug Fixes
 
 * fix: linting ([738d862](https://github.com/owner/repo/commit/738d862)) by @MordilloSan
+* fix:code cleaning ([47b9624](https://github.com/owner/repo/commit/47b9624)) by @MordilloSan
 
 ### 👥 Contributors
 
