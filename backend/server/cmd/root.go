@@ -71,7 +71,7 @@ func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
 	filebrowserSecret := utils.GenerateSecretKey(32)
 	go func() {
-		filebrowser.StartServices(filebrowserSecret, verbose)
+		filebrowser.StartServices(filebrowserSecret, verbose, env == "development")
 	}()
 
 	// -------------------------------------------------------------------------
