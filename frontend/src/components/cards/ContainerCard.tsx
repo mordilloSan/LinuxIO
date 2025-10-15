@@ -1,7 +1,7 @@
 import { Box, Grid, Tooltip, Typography, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { useQueryClient } from "@tanstack/react-query";
-import React from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import React, { useMemo, useState } from "react";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
 import LogsDialog from "../../pages/main/docker/LogsDialog";
@@ -47,69 +47,66 @@ interface ContainerCardProps {
 }
 
 const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
-  const queryClient = useQueryClient();
-  const [loading, setLoading] = React.useState(false);
-  const [logDialogOpen, setLogDialogOpen] = React.useState(false);
-  const [terminalOpen, setTerminalOpen] = React.useState(false);
-  const [logs, setLogs] = React.useState<string | null>(null);
-  const [logsLoading, setLogsLoading] = React.useState(false);
-  const [logsError, setLogsError] = React.useState<string | null>(null);
-
   const theme = useTheme();
-  const name = container.Names?.[0]?.replace("/", "") || "Unnamed";
-  const iconUrl = getContainerIconUrl(name);
+  const queryClient = useQueryClient();
 
-  const logsRef = React.useRef<string | null>(logs);
-  React.useEffect(() => {
-    logsRef.current = logs;
-  }, [logs]);
-  const fetchLogs = async (id: string) => {
-    // Only show spinner if logs are not loaded yet
-    if (logs == null) setLogsLoading(true);
-    try {
-      const res = await axios.get(`/docker/containers/${id}/logs`);
-      const output =
-        typeof res.data === "string"
-          ? res.data
-          : (res.data?.output ?? JSON.stringify(res.data, null, 2));
-      if (output !== logsRef.current) {
-        setLogs(output);
-      }
-      setLogsError(null);
-    } catch (e: any) {
-      setLogsError(
-        e?.response?.data?.error ||
-          e?.message ||
-          "Failed to load logs. (Check backend logs for details.)",
-      );
-    }
-    setLogsLoading(false);
-  };
+  // dialogs
+  const [logDialogOpen, setLogDialogOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
 
-  const handleAction = async (
-    id: string,
-    action: "start" | "stop" | "restart" | "remove" | "exec",
-  ) => {
-    setLoading(true);
-    try {
-      await axios.post(`/docker/containers/${id}/${action}`);
+  // derived
+  const name = useMemo(
+    () => container.Names?.[0]?.replace("/", "") || "Unnamed",
+    [container.Names],
+  );
+  const iconUrl = useMemo(() => getContainerIconUrl(name), [name]);
+
+  // ---- actions (start/stop/restart/remove) ----
+  const actionMutation = useMutation({
+    mutationFn: async (action: "start" | "stop" | "restart" | "remove" | "exec") => {
+      await axios.post(`/docker/containers/${container.Id}/${action}`);
+    },
+    onSuccess: () => {
+      // refresh list + logs
       queryClient.invalidateQueries({ queryKey: ["containers"] });
-    } finally {
-      setLoading(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["containerLogs", container.Id] });
+    },
+  });
+
+  const handleAction = (action: "start" | "stop" | "restart" | "remove" | "exec") =>
+    actionMutation.mutate(action);
+
+  // ---- logs via react-query (fetch only when dialog is open) ----
+  const fetchLogs = async (): Promise<string> => {
+    const res = await axios.get(`/docker/containers/${container.Id}/logs`);
+    return typeof res.data === "string"
+      ? res.data
+      : (res.data?.output ?? JSON.stringify(res.data, null, 2));
   };
 
-  const handleLogsClick = () => {
-    setLogDialogOpen(true);
-    fetchLogs(container.Id);
-  };
+  const logsQuery = useQuery({
+    queryKey: ["containerLogs", container.Id],
+    queryFn: fetchLogs,
+    enabled: logDialogOpen,                     // only when dialog is open
+    refetchInterval: logDialogOpen ? 4000 : false, // auto-refresh while open
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
 
-  // Metrics
+  const prefetchLogs = () =>
+    queryClient.prefetchQuery({
+      queryKey: ["containerLogs", container.Id],
+      queryFn: fetchLogs,
+      staleTime: 10_000,
+    });
+
+  const handleLogsClick = () => setLogDialogOpen(true);
+
+  // ---- metrics ----
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
   const memUsage = container.metrics?.mem_usage ?? 0;
   const memLimit = container.metrics?.mem_limit ?? 0;
-  const memPercent =
-    memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
+  const memPercent = memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
   return (
     <Grid size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}>
@@ -191,7 +188,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                   <span>
                     <ActionButton
                       icon="mdi:play"
-                      onClick={() => handleAction(container.Id, "start")}
+                      onClick={() => handleAction("start")}
                     />
                   </span>
                 </Tooltip>
@@ -201,7 +198,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                   <span>
                     <ActionButton
                       icon="mdi:stop"
-                      onClick={() => handleAction(container.Id, "stop")}
+                      onClick={() => handleAction("stop")}
                     />
                   </span>
                 </Tooltip>
@@ -210,7 +207,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 <span>
                   <ActionButton
                     icon="mdi:restart"
-                    onClick={() => handleAction(container.Id, "restart")}
+                    onClick={() => handleAction("restart")}
                   />
                 </span>
               </Tooltip>
@@ -218,15 +215,15 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 <span>
                   <ActionButton
                     icon="mdi:delete"
-                    onClick={() => handleAction(container.Id, "remove")}
+                    onClick={() => handleAction("remove")}
                   />
                 </span>
               </Tooltip>
               <Tooltip title="View Logs" arrow>
-                <span>
+                <span onMouseEnter={prefetchLogs}>
                   <ActionButton
                     icon="mdi:file-document-outline"
-                    onClick={() => handleLogsClick()}
+                    onClick={handleLogsClick}
                   />
                 </span>
               </Tooltip>
@@ -241,25 +238,30 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             </Box>
           </Box>
         </Box>
+
         <LogsDialog
           open={logDialogOpen}
           onClose={() => setLogDialogOpen(false)}
-          logs={logs}
-          loading={logsLoading}
-          error={logsError}
+          logs={logsQuery.data ?? null}
+          loading={logsQuery.isLoading}
+          error={logsQuery.isError ? "Failed to load logs. (Check backend logs for details.)" : null}
           containerName={name}
-          onRefresh={() => fetchLogs(container.Id)}
+          onRefresh={() =>
+            queryClient.invalidateQueries({ queryKey: ["containerLogs", container.Id] })
+          }
           autoRefreshDefault={true}
         />
+
         <TerminalDialog
           open={terminalOpen}
           onClose={() => setTerminalOpen(false)}
           containerId={container.Id}
           containerName={name}
         />
+
         {/* Metrics area: full width */}
         <Box sx={{ mt: 2, width: "100%" }}>
-          {loading ? (
+          {actionMutation.isPending ? (
             <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
               <ComponentLoader />
             </Box>
