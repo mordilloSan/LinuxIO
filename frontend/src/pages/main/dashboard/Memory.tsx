@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
-import CircularProgressWithLabel from "@/components/gauge/CircularGauge";
+import { GradientCircularGauge } from "@/components/gauge/CirularGauge2";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 import { formatBytes } from "@/utils/formatBytes";
@@ -40,10 +40,12 @@ const MemoryUsage = () => {
     ) : isPending ? (
       <ComponentLoader />
     ) : (
-      <CircularProgressWithLabel
+      <GradientCircularGauge
         value={ramUsagePercentage}
-        size={110}
-        thickness={4}
+        gradientColors={["#82ca9d", "#eab308", "#ef4444"]}
+        size={108}
+        thickness={9.8}
+        showPercentage={true}
       />
     ),
     stats: (

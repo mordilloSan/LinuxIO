@@ -5,7 +5,7 @@ import React from "react";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
-import CircularProgressWithLabel from "@/components/gauge/CircularGauge";
+import { GradientCircularGauge } from "components/gauge/CirularGauge2";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 
@@ -64,10 +64,12 @@ const Processor: React.FC = () => {
     ) : isPending ? (
       <ComponentLoader />
     ) : (
-      <CircularProgressWithLabel
+      <GradientCircularGauge
         value={averageCpuUsage}
-        size={110}
-        thickness={4}
+        gradientColors={["#82ca9d", "#eab308", "#ef4444"]}
+        size={108}
+        thickness={9.8}
+        showPercentage={true}
       />
     ),
     stats: (
