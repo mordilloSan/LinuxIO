@@ -394,6 +394,21 @@ dev-prep:
 dev: setup dev-prep devinstall
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
+
+	# --- HARD STOP if current shell doesn't have the 'linuxio' group ---
+	@if ! id -nG | tr ' ' '\n' | grep -qx linuxio; then \
+		echo "🛑 Current shell does not have the 'linuxio' group."; \
+		echo "   Please log out/in or run:  newgrp linuxio"; \
+		exit 0; \
+	fi
+
+	# --- Optional: also honor a marker that dev_install.sh creates when it adds the group ---
+	@if [ -f /tmp/linuxio/dev/.just-added-linuxio-group-`id -un` ]; then \
+		echo "🛑 You were just added to 'linuxio'. Refresh your session first."; \
+		echo "   Run: newgrp linuxio"; \
+		rm -f /tmp/linuxio/dev/.just-added-linuxio-group-`id -un` || true; \
+		exit 1; \
+	fi
 	set -euo pipefail
 
 	# TTY polish
