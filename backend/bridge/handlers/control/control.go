@@ -2,10 +2,10 @@ package control
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -165,27 +165,37 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 // runInstallScript downloads the installer and runs it in a transient unit
 // with stdout/stderr piped back to this process (so logs appear in-order).
 func runInstallScript(version string) error {
-	tmp := "/tmp/linuxio-install.sh"
+	// 1) Fetch the script in-process
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
 
-	// 1) Download + chmod (log cleanly on failure)
-	curlCmd := exec.Command("bash", "-lc",
-		fmt.Sprintf(`curl -fsSL %q -o %q && chmod 700 %q`, InstallScriptURL, tmp, tmp))
-	curlCmd.Env = append(os.Environ(), "LC_ALL=C.UTF-8", "TERM=dumb", "NO_COLOR=1", "CLICOLOR=0")
-
-	curlOut, err := curlCmd.CombinedOutput()
+	req, err := http.NewRequestWithContext(ctx, "GET", InstallScriptURL, nil)
 	if err != nil {
-		out := ansiRE.ReplaceAllString(strings.ToValidUTF8(string(curlOut), ""), "")
-		logger.Errorf("[update] download failed:\n%s", out)
+		return fmt.Errorf("build request failed: %w", err)
+	}
+	req.Header.Set("Accept", "text/plain")
+
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
+	defer resp.Body.Close()
 
-	// 2) Execute via systemd-run with --wait --pipe so we capture the script logs.
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("download failed: status=%d body=%s", resp.StatusCode, string(b))
+	}
+
+	// 2) Run a transient unit with unique name and feed script on STDIN
+	unit := fmt.Sprintf("linuxio-updater-%d", time.Now().UnixNano())
 	args := []string{
-		"--unit=linuxio-updater",
+		"--unit=" + unit,
+		"--property=Description=LinuxIO updater",
 		"--quiet",
 		"--collect",
-		"--wait", // wait for completion and propagate exit code
-		"--pipe", // connect stdout/stderr to this process
+		"--wait",
+		"--pipe",
 		"--setenv=TERM=dumb",
 		"--setenv=NO_COLOR=1",
 		"--setenv=CLICOLOR=0",
@@ -193,33 +203,37 @@ func runInstallScript(version string) error {
 		"-p", "Type=exec",
 		"-p", "ProtectSystem=full",
 		"-p", "ReadWritePaths=/usr/local/bin",
-		"-p", "PrivateTmp=false", // ← ADD THIS LINE
+		"-p", "PrivateTmp=false",
 		"-p", "NoNewPrivileges=no",
-		"/bin/bash", tmp,
+		"/bin/bash", "-s", "--",
 	}
 	if version != "" {
 		args = append(args, version)
 	}
 
-	cmd := exec.Command("systemd-run", args...)
+	logger.Infof("[update] systemd-run unit: %s", unit)
 
+	cmd := exec.CommandContext(ctx, "systemd-run", args...)
+
+	// Connect streams BEFORE Start
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
+	cmd.Stdin = resp.Body // Stream GitHub response directly
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start systemd-run: %w", err)
 	}
 
-	// stream logs in real-time
+	// Stream logs in real-time
 	go logStream(stdout, "[update] ", true)
 	go logStream(stderr, "[update] ", false)
 
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("installer failed: %w", err)
 	}
+
 	return nil
 }
-
 func getInstalledVersion() string {
 	cmd := exec.Command(BinPath, "--version")
 	output, err := cmd.Output()
