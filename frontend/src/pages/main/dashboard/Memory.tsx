@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
-import { GradientCircularGauge } from "@/components/gauge/CirularGauge2";
+import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 import { formatBytes } from "@/utils/formatBytes";
