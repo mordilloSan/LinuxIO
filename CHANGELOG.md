@@ -4,6 +4,7 @@
 ### 🐛 Bug Fixes
 
 * fix: app update bug hunt ([20557b0](https://github.com/owner/repo/commit/20557b0)) by @MordilloSan
+* fix: linting ([ba5f810](https://github.com/owner/repo/commit/ba5f810)) by @MordilloSan
 
 ### 👥 Contributors
 
