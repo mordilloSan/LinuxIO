@@ -15,7 +15,7 @@ import axios from "@/utils/axios";
 import { formatBytes } from "@/utils/formatBytes";
 
 const getContainerIconUrl = (name: string) => {
-    if (name.toLowerCase().startsWith("filebrowser-linuxio")) {
+  if (name.toLowerCase().startsWith("filebrowser-linuxio")) {
     return "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/filebrowser-quantum.svg";
   }
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase();
