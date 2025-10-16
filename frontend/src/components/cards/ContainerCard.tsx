@@ -15,6 +15,9 @@ import axios from "@/utils/axios";
 import { formatBytes } from "@/utils/formatBytes";
 
 const getContainerIconUrl = (name: string) => {
+    if (name.toLowerCase().startsWith("filebrowser-linuxio")) {
+    return "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/filebrowser-quantum.svg";
+  }
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase();
   return `https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/${sanitized}.svg`;
 };
@@ -179,12 +182,12 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               (e.currentTarget as HTMLImageElement).src = fallbackDockerIcon;
             }}
           />
-          <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ flex: 0.95, minWidth: 0 }}>
             <Typography
               variant="subtitle1"
               fontWeight="600"
               noWrap
-              sx={{ ml: 1, mb: 0.5, fontSize: "1.05rem" }}
+              sx={{ ml: 1, mr: 0.1, mb: 0.5, fontSize: "1.05rem" }}
             >
               {name}
             </Typography>
