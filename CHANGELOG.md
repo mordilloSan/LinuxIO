@@ -1,4 +1,17 @@
 
+## v0.3.5 — 2025-10-16
+
+### 🐛 Bug Fixes
+
+* fix: app update bug hunt ([20557b0](https://github.com/owner/repo/commit/20557b0)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.3.4...v0.3.5
+
+
 ## v0.3.4 — 2025-10-16
 
 ### 🚀 Features
