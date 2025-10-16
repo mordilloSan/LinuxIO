@@ -89,8 +89,7 @@ const SystemHealth = () => {
 
   // --- Stats UI ---
   const stats2 = (
-    <Box
-    >
+    <Box>
       {!systemHealth && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
       ) : (
