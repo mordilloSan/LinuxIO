@@ -18,6 +18,7 @@
 ### 🔄 Other Changes
 
 * improv: card spacing tune ([062a462](https://github.com/owner/repo/commit/062a462)) by @MordilloSan
+* linting ([e48ec3c](https://github.com/owner/repo/commit/e48ec3c)) by @MordilloSan
 
 ### 👥 Contributors
 
