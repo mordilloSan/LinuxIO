@@ -36,7 +36,7 @@ var (
 	BaseURL string
 )
 
-func StartServices(secret string, debug bool) {
+func StartServices(secret string, debug bool, dev bool) {
 	logger.Debugf("Checking docker installation...")
 	if err := docker.EnsureDockerAvailable(); err != nil {
 		logger.Errorf(" Docker not available: %v", err)
@@ -61,18 +61,23 @@ func StartServices(secret string, debug bool) {
 		logger.Infof("Created Docker network 'bridge-linuxio'")
 	}
 
-	if err := startFileBrowserContainer(secret, debug); err != nil {
+	if err := startFileBrowserContainer(secret, debug, dev); err != nil {
 		logger.Errorf("FileBrowser setup failed: %v", err)
 	}
 }
 
-func startFileBrowserContainer(secret string, debug bool) error {
+func startFileBrowserContainer(secret string, debug bool, dev bool) error {
 	const (
-		containerName = "filebrowser-linuxio"
-		imageRef      = "docker.io/gtstef/filebrowser:latest"
-		ctrCfgPath    = "/home/filebrowser/config.yaml"
-		ctrCSSPath    = "/home/filebrowser/custom.css"
+		baseName   = "filebrowser-linuxio"
+		imageRef   = "docker.io/gtstef/filebrowser:latest"
+		ctrCfgPath = "/home/filebrowser/config.yaml"
+		ctrCSSPath = "/home/filebrowser/custom.css"
 	)
+
+	containerName := baseName
+	if dev {
+		containerName = baseName + "-dev"
+	}
 
 	// 0) Build config contents in-memory
 	apiLevels := []byte(`warning|error`)
@@ -114,6 +119,10 @@ func startFileBrowserContainer(secret string, debug bool) error {
 		dockerCtx,
 		&container.Config{
 			Image: "gtstef/filebrowser",
+			Labels: map[string]string{
+				"io.linuxio.component": "filebrowser",
+				"io.linuxio.mode":      map[bool]string{true: "development", false: "production"}[dev],
+			},
 		},
 		&container.HostConfig{
 			NetworkMode: container.NetworkMode("bridge-linuxio"),

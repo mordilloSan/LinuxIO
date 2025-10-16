@@ -13,11 +13,10 @@ import (
 	"github.com/docker/docker/client"
 )
 
-// ONE test to rule them all.
-func Test_Filebrowser_EndToEnd_ContainerAndEmbeddedFiles(t *testing.T) {
+func Test_Filebrowser_ProdAndDev_NamesAndFiles(t *testing.T) {
 	ctx := context.Background()
 
-	// 1) Docker availability (FAIL if not available)
+	// 0) Require Docker
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		t.Fatalf("Docker not available (client init failed): %v", err)
@@ -26,65 +25,74 @@ func Test_Filebrowser_EndToEnd_ContainerAndEmbeddedFiles(t *testing.T) {
 		t.Fatalf("Docker not available (ping failed): %v", err)
 	}
 
-	// 2) Start the service (this will create/replace the container)
-	secret := "TEST_SECRET_FOR_INTEGRATION"
-	StartServices(secret, true) // debug=true ⇒ API levels include "debug"
+	// Table: prod and dev
+	cases := []struct {
+		name       string
+		dev        bool
+		expectName string // container name searched in `docker ps` (with leading '/')
+	}{
+		{"production", false, "/filebrowser-linuxio"},
+		{"development", true, "/filebrowser-linuxio-dev"},
+	}
 
-	// 3) Find the container ID (wait up to ~30s)
-	const containerName = "/filebrowser-linuxio"
-	var cid string
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		list, err := cli.ContainerList(ctx, container.ListOptions{All: true})
-		if err != nil {
-			t.Fatalf("failed to list containers: %v", err)
-		}
-		for _, c := range list {
-			for _, n := range c.Names {
-				if n == containerName {
-					cid = c.ID
-					break
-				}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			// 1) Start/replace container in desired mode
+			secret := "TEST_SECRET_FOR_INTEGRATION_" + tc.name
+			StartServices(secret, true /*debug*/, tc.dev)
+
+			// 2) Find container ID (up to ~30s)
+			cid := waitForContainerByName(t, ctx, cli, tc.expectName, 30*time.Second)
+			t.Cleanup(func() {
+				_ = cli.ContainerRemove(ctx, cid, container.RemoveOptions{Force: true})
+			})
+
+			// 3) Validate rendered config.yaml
+			cfg := mustReadFromContainerTar(t, ctx, cli, cid, "/home/filebrowser/config.yaml")
+			cfgStr := string(cfg)
+			if !strings.Contains(cfgStr, secret) {
+				t.Fatalf("config.yaml does not contain secret; got:\n%s", cfgStr)
 			}
-			if cid != "" {
-				break
+			// debug=true ⇒ API levels include debug
+			if !strings.Contains(cfgStr, "info|warning|error|debug") {
+				t.Fatalf("config.yaml missing debug API levels; got:\n%s", cfgStr)
 			}
-		}
-		if cid != "" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("container %s not found in time", containerName)
-		}
-		time.Sleep(300 * time.Millisecond)
-	}
 
-	// Ensure cleanup
-	t.Cleanup(func() {
-		_ = cli.ContainerRemove(ctx, cid, container.RemoveOptions{Force: true})
-	})
-
-	// 4) Read config.yaml from the container and assert it has our rendered values
-	cfg := mustReadFromContainerTar(t, cid, "/home/filebrowser/config.yaml")
-	cfgStr := string(cfg)
-	if !strings.Contains(cfgStr, secret) {
-		t.Fatalf("config.yaml does not contain secret; got:\n%s", cfgStr)
-	}
-	if !strings.Contains(cfgStr, "info|warning|error|debug") {
-		t.Fatalf("config.yaml does not contain debug API levels; got:\n%s", cfgStr)
-	}
-
-	// 5) Read custom.css and assert it matches the embedded CSS bytes
-	css := mustReadFromContainerTar(t, cid, "/home/filebrowser/custom.css")
-	if !bytes.Equal(css, EmbeddedCSS) {
-		t.Fatalf("custom.css in container does not match embedded CSS (len got=%d want=%d)", len(css), len(EmbeddedCSS))
+			// 4) Validate custom.css bytes
+			css := mustReadFromContainerTar(t, ctx, cli, cid, "/home/filebrowser/custom.css")
+			if !bytes.Equal(css, EmbeddedCSS) {
+				t.Fatalf("custom.css mismatch (len got=%d want=%d)", len(css), len(EmbeddedCSS))
+			}
+		})
 	}
 }
 
-// Helper: CopyFromContainer returns a tar stream; extract the first file’s content.
-func mustReadFromContainerTar(t *testing.T, cid, path string) []byte {
+func waitForContainerByName(t *testing.T, ctx context.Context, cli *client.Client, wantName string, timeout time.Duration) string {
 	t.Helper()
-	rc, _, err := dockerCli.CopyFromContainer(context.Background(), cid, path)
+	deadline := time.Now().Add(timeout)
+	for {
+		list, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+		if err != nil {
+			t.Fatalf("list containers: %v", err)
+		}
+		for _, c := range list {
+			for _, n := range c.Names {
+				if n == wantName {
+					return c.ID
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("container %s not found within %v", wantName, timeout)
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+}
+
+func mustReadFromContainerTar(t *testing.T, ctx context.Context, cli *client.Client, cid, path string) []byte {
+	t.Helper()
+	rc, _, err := cli.CopyFromContainer(ctx, cid, path)
 	if err != nil {
 		t.Fatalf("CopyFromContainer(%s): %v", path, err)
 	}

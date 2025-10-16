@@ -86,7 +86,7 @@ func getTemperatureMap() map[string]float64 {
 			unit := strings.ToLower(r.Unit)
 			label := strings.ToLower(r.Label)
 
-			if unit != "°c" {
+			if unit != "c" && unit != "°c" {
 				continue
 			}
 
