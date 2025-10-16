@@ -193,6 +193,7 @@ func runInstallScript(version string) error {
 		"-p", "Type=exec",
 		"-p", "ProtectSystem=full",
 		"-p", "ReadWritePaths=/usr/local/bin",
+		"-p", "PrivateTmp=false", // ← ADD THIS LINE
 		"-p", "NoNewPrivileges=no",
 		"/bin/bash", tmp,
 	}
