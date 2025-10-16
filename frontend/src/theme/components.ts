@@ -127,26 +127,6 @@ const components = {
       root: { backgroundImage: "none" },
     },
   },
-  MuiTableContainer: {
-    styleOverrides: {
-      root: ({ theme }: { theme: Theme }) => ({
-        backgroundColor:
-          theme.palette.mode === "dark"
-            ? "rgba(255,255,255,0.08)"
-            : "rgba(0,0,0,0.05)",
-        borderRadius: "6px",
-        boxShadow: "none",
-      }),
-    },
-  },
-  MuiTableCell: {
-    styleOverrides: {
-      root: ({ theme }: { theme: Theme }) => ({
-        backgroundColor: "inherit",
-        borderBottom: `1px solid ${theme.palette.divider}`,
-      }),
-    },
-  },
   MuiChip: {
     styleOverrides: {
       root: { borderRadius: "6px" },

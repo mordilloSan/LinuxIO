@@ -72,7 +72,17 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
       <TableContainer>
         <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
           <TableHead>
-            <TableRow>
+            <TableRow
+              sx={(theme) => ({
+                "& .MuiTableCell-root": { borderBottom: "none" },
+                backgroundColor:
+                  theme.palette.mode === "dark"
+                    ? "rgba(255,255,255,0.08)"
+                    : "rgba(0,0,0,0.08)",
+                borderRadius: "6px",
+                boxShadow: "none",
+              })}
+            >
               <TableCell>Status</TableCell>
               <TableCell>Name</TableCell>
               <TableCell>Load State</TableCell>
@@ -83,9 +93,19 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
             </TableRow>
           </TableHead>
           <TableBody>
-            {filtered.map((service) => (
+            {filtered.map((service, index) => (
               <React.Fragment key={service.name}>
-                <TableRow hover>
+                <TableRow
+                  sx={(theme) => ({
+                    "& .MuiTableCell-root": { borderBottom: "none" },
+                    backgroundColor:
+                      index % 2 === 0
+                        ? "transparent"
+                        : theme.palette.mode === "dark"
+                          ? "rgba(255,255,255,0.04)"
+                          : "rgba(0,0,0,0.05)",
+                  })}
+                >
                   <TableCell>
                     <Box
                       component="span"
@@ -173,7 +193,17 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                     </IconButton>
                   </TableCell>
                 </TableRow>
-                <TableRow>
+                <TableRow
+                  sx={(theme) => ({
+                    "& .MuiTableCell-root": { borderBottom: "none" },
+                    backgroundColor:
+                      index % 2 === 0
+                        ? "transparent"
+                        : theme.palette.mode === "dark"
+                          ? "rgba(255,255,255,0.08)"
+                          : "rgba(0,0,0,0.05)",
+                  })}
+                >
                   <TableCell
                     style={{ paddingBottom: 0, paddingTop: 0 }}
                     colSpan={7}
