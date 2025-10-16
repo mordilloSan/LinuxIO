@@ -234,6 +234,7 @@ func runInstallScript(version string) error {
 
 	return nil
 }
+
 func getInstalledVersion() string {
 	cmd := exec.Command(BinPath, "--version")
 	output, err := cmd.Output()
