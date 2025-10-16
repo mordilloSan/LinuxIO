@@ -3,6 +3,7 @@ import React, { lazy } from "react";
 
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
+import Shares from "./pages/main/shares";
 
 // LAZY EVERYTHING that belongs to the protected app:
 const MainLayout = lazy(() => import("@/layouts/Main"));
@@ -35,6 +36,7 @@ const routes = [
       { path: "docker", element: <Docker /> },
       { path: "services", element: <Services /> },
       { path: "network", element: <Network /> },
+            { path: "shares", element: <Shares /> },
       { path: "hardware", element: <Hardware /> },
       { path: "filebrowser/*", element: <></> },
       { path: "terminal", element: <Terminal /> },
