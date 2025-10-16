@@ -1,4 +1,31 @@
 
+## v0.3.4 — 2025-10-16
+
+### 🚀 Features
+
+* feat: service table visual ([9722094](https://github.com/owner/repo/commit/9722094)) by @MordilloSan
+* feat: share page start ([4ef014b](https://github.com/owner/repo/commit/4ef014b)) by @MordilloSan
+* feat: circular gauge ([7928ed8](https://github.com/owner/repo/commit/7928ed8)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: obsolete circular gauge  deletion ([0469e9a](https://github.com/owner/repo/commit/0469e9a)) by @MordilloSan
+
+### 💄 Style
+
+* style: new circular gauge ([b8313bb](https://github.com/owner/repo/commit/b8313bb)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* improv: card spacing tune ([062a462](https://github.com/owner/repo/commit/062a462)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.3.3...v0.3.4
+
+
 ## v0.3.2 — 2025-10-16
 
 ### 🚀 Features
