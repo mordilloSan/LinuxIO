@@ -1,8 +1,44 @@
+import { useTheme } from "@mui/material";
+import { grey } from "@mui/material/colors";
 import React, { useMemo } from "react";
 
 // Utility functions
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
+}
+
+// Helper to interpolate between colors
+function interpolateColor(color1: string, color2: string, factor: number): string {
+  const c1 = parseInt(color1.slice(1), 16);
+  const c2 = parseInt(color2.slice(1), 16);
+  
+  const r1 = (c1 >> 16) & 255;
+  const g1 = (c1 >> 8) & 255;
+  const b1 = c1 & 255;
+  
+  const r2 = (c2 >> 16) & 255;
+  const g2 = (c2 >> 8) & 255;
+  const b2 = c2 & 255;
+  
+  const r = Math.round(r1 + (r2 - r1) * factor);
+  const g = Math.round(g1 + (g2 - g1) * factor);
+  const b = Math.round(b1 + (b2 - b1) * factor);
+  
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
+// Get color based on percentage value
+function getColorForPercentage(pct: number, colors: string[]): string {
+  if (colors.length === 0) return "#000000";
+  if (colors.length === 1) return colors[0];
+  
+  const segmentSize = 100 / (colors.length - 1);
+  const segmentIndex = Math.floor(pct / segmentSize);
+  
+  if (segmentIndex >= colors.length - 1) return colors[colors.length - 1];
+  
+  const localPercent = (pct % segmentSize) / segmentSize;
+  return interpolateColor(colors[segmentIndex], colors[segmentIndex + 1], localPercent);
 }
 
 // ============================================
@@ -12,7 +48,7 @@ interface MultiValueGaugeProps {
   values: Array<{ value: number; color: string; label?: string }>;
   size?: number;
   thickness?: number;
-  gap?: number; // gap between segments in degrees
+  gap?: number;
 }
 
 export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
@@ -24,14 +60,14 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
 
-  // Calculate total value for percentage calculation
   const total = useMemo(
     () => values.reduce((sum, item) => sum + Math.max(0, item.value), 0),
     [values]
   );
 
-  // Calculate segments with gaps
   const segments = useMemo(() => {
     let currentOffset = 0;
     const totalGapDegrees = gap * (values.length - 1);
@@ -41,7 +77,7 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
       const percentage = total > 0 ? (item.value / total) * 100 : 0;
       const degrees = (percentage / 100) * availableDegrees;
       const strokeDasharray = `${(degrees / 360) * circumference} ${circumference}`;
-      const rotation = currentOffset - 90; // Start from top
+      const rotation = currentOffset - 90;
 
       currentOffset += degrees + gap;
 
@@ -55,18 +91,16 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
   }, [values, total, circumference, gap]);
 
   return (
-    <div className="relative inline-flex">
+    <div style={{ position: 'relative', display: 'inline-flex', width: size, height: size }}>
       <svg width={size} height={size}>
-        {/* Background circle */}
         <circle
           cx={center}
           cy={center}
           r={radius}
           fill="none"
-          stroke="#e0e0e0"
+          stroke={isDark ? grey[700] : grey[300]}
           strokeWidth={thickness}
         />
-        {/* Value segments */}
         {segments.map((segment, index) => (
           <circle
             key={index}
@@ -83,21 +117,24 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
           />
         ))}
       </svg>
-      {/* Center label showing total */}
-      <div className="absolute inset-0 flex items-center justify-center flex-col">
-        <div className="text-2xl font-bold">{Math.round(total)}</div>
-        <div className="text-xs text-gray-500">Total</div>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: isDark ? grey[100] : grey[900] }}>
+          {Math.round(total)}
+        </div>
+        <div style={{ fontSize: '0.75rem', color: grey[500] }}>
+          Total
+        </div>
       </div>
     </div>
   );
 };
 
 // ============================================
-// 2. Gradient Circular Gauge
+// 2. Gradient Circular Gauge (Arc-based)
 // ============================================
 interface GradientGaugeProps {
-  value: number; // 0..100
-  gradientColors?: string[]; // array of color stops
+  value: number;
+  gradientColors?: string[];
   size?: number;
   thickness?: number;
   showPercentage?: boolean;
@@ -107,58 +144,65 @@ export const GradientCircularGauge: React.FC<GradientGaugeProps> = ({
   value,
   gradientColors = ["#82ca9d", "#f39c12", "#e74c3c"],
   size = 120,
-  thickness = 8,
+  thickness = 12,
   showPercentage = true,
 }) => {
   const pct = clamp(value, 0, 100);
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDasharray = `${(pct / 100) * circumference} ${circumference}`;
   const center = size / 2;
-  const gradientId = useMemo(() => `gradient-${Math.random().toString(36).substr(2, 9)}`, []);
+  
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+  const backgroundColor = isDark ? grey[700] : grey[300];
+
+  // Create multiple segments for smooth gradient effect
+  const segments = useMemo(() => {
+    const numSegments = 100;
+    const segmentAngle = 360 / numSegments;
+    const filledSegments = Math.ceil((pct / 100) * numSegments);
+    
+    return Array.from({ length: filledSegments }, (_, i) => {
+      const segmentPct = ((i + 1) / numSegments) * 100;
+      const color = getColorForPercentage(segmentPct, gradientColors);
+      const rotation = (i * segmentAngle) - 90;
+      const strokeDasharray = `${(segmentAngle / 360) * circumference * 0.99} ${circumference}`;
+      
+      return { color, rotation, strokeDasharray };
+    });
+  }, [pct, gradientColors, circumference]);
 
   return (
-    <div className="relative inline-flex">
+    <div style={{ position: 'relative', display: 'inline-flex', width: size, height: size }}>
       <svg width={size} height={size}>
-        {/* Define gradient */}
-        <defs>
-          <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-            {gradientColors.map((color, index) => (
-              <stop
-                key={index}
-                offset={`${(index / (gradientColors.length - 1)) * 100}%`}
-                stopColor={color}
-              />
-            ))}
-          </linearGradient>
-        </defs>
-        {/* Background circle */}
         <circle
           cx={center}
           cy={center}
           r={radius}
           fill="none"
-          stroke="#e0e0e0"
+          stroke={backgroundColor}
           strokeWidth={thickness}
         />
-        {/* Gradient progress circle */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke={`url(#${gradientId})`}
-          strokeWidth={thickness}
-          strokeDasharray={strokeDasharray}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${center} ${center})`}
-          style={{ transition: "stroke-dasharray 0.3s ease" }}
-        />
+        {segments.map((segment, index) => (
+          <circle
+            key={index}
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke={segment.color}
+            strokeWidth={thickness}
+            strokeDasharray={segment.strokeDasharray}
+            strokeLinecap="round"
+            transform={`rotate(${segment.rotation} ${center} ${center})`}
+          />
+        ))}
       </svg>
-      {/* Center label */}
       {showPercentage && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-2xl font-bold">{Math.round(pct)}%</div>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ fontSize: '1rem', fontWeight: 'bold', color: isDark ? grey[100] : grey[900] }}>
+            {Math.round(pct)}%
+          </div>
         </div>
       )}
     </div>
