@@ -71,7 +71,7 @@ func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
 	filebrowserSecret := utils.GenerateSecretKey(32)
 	go func() {
-		filebrowser.StartServices(filebrowserSecret, verbose)
+		filebrowser.StartServices(filebrowserSecret, verbose, env == "development")
 	}()
 
 	// -------------------------------------------------------------------------
@@ -245,7 +245,7 @@ func RunServer(cfg ServerConfig) {
 	}
 
 	// Stop background/attached services
-	cleanup.CleanupFilebrowserContainer()
+	cleanup.CleanupFilebrowserContainer(env == "development")
 
 	// Tell bridges to quit before sessions close
 	cleanup.ShutdownAllBridges(sm, "server_quit")

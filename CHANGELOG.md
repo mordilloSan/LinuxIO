@@ -1,4 +1,28 @@
 
+## v0.3.2 — 2025-10-16
+
+### 🚀 Features
+
+* feat: filebrowser in dev mode ([f8aead9](https://github.com/owner/repo/commit/f8aead9)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: temperature report on components bug ([09f173c](https://github.com/owner/repo/commit/09f173c)) by @MordilloSan
+* fix: dev mode non sudo login ([ddfb835](https://github.com/owner/repo/commit/ddfb835)) by @MordilloSan
+* fix: outdated script ([4b0c56c](https://github.com/owner/repo/commit/4b0c56c)) by @MordilloSan
+* fix: filebrowser docker container cleanup ([547de5d](https://github.com/owner/repo/commit/547de5d)) by @MordilloSan
+
+### ⚡ Performance
+
+* perf: theming update ([ab89e78](https://github.com/owner/repo/commit/ab89e78)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.3.1...v0.3.2
+
+
 ## v0.3.1 — 2025-10-15
 
 ### 🐛 Bug Fixes
