@@ -42,7 +42,7 @@ const MemoryUsage = () => {
     ) : (
       <CircularProgressWithLabel
         value={ramUsagePercentage}
-        size={120}
+        size={110}
         thickness={4}
       />
     ),

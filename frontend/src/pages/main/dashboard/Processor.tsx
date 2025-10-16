@@ -66,7 +66,7 @@ const Processor: React.FC = () => {
     ) : (
       <CircularProgressWithLabel
         value={averageCpuUsage}
-        size={120}
+        size={110}
         thickness={4}
       />
     ),

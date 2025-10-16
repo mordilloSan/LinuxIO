@@ -90,15 +90,6 @@ const SystemHealth = () => {
   // --- Stats UI ---
   const stats2 = (
     <Box
-      sx={{
-        position: "relative",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 120,
-        height: 120,
-        borderRadius: "50%",
-      }}
     >
       {!systemHealth && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
@@ -109,7 +100,7 @@ const SystemHealth = () => {
           underline="hover"
           color="inherit"
         >
-          <IconComponent sx={{ fontSize: 80, color: statusColor }} />
+          <IconComponent sx={{ fontSize: 100, color: statusColor }} />
         </Link>
       )}
     </Box>

@@ -220,7 +220,7 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
             sx={{
               mt: 3,
               display: "flex",
-              flexDirection: { xs: "column", sm: "row", xl: "row" },
+              flexDirection: { xs: "row", sm: "row", xl: "row" },
             }}
           >
             <Box
