@@ -12,4 +12,3 @@ backend/server/web/frontend/
 .DS_Store
 .vscode/
 *.swp
-frontend/src/components/gauge/CirularGauge2.tsx
