@@ -245,7 +245,7 @@ func RunServer(cfg ServerConfig) {
 	}
 
 	// Stop background/attached services
-	cleanup.CleanupFilebrowserContainer()
+	cleanup.CleanupFilebrowserContainer(env == "development")
 
 	// Tell bridges to quit before sessions close
 	cleanup.ShutdownAllBridges(sm, "server_quit")
