@@ -1,4 +1,17 @@
 
+## v0.3.6 — 2025-10-17
+
+### 🐛 Bug Fixes
+
+* fix: small dev bug ([d50c214](https://github.com/owner/repo/commit/d50c214)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.3.5...v0.3.6
+
+
 ## v0.3.5 — 2025-10-16
 
 ### 🐛 Bug Fixes
