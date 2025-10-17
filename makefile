@@ -26,7 +26,7 @@ COLOR_RED    := \033[1;31m
 
 PRINTC := printf '%b\n'
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
-
+027571
 # --- Go project root autodetection ---
 BACKEND_DIR := $(shell \
   if [ -f backend/go.mod ]; then echo backend; \
@@ -151,7 +151,6 @@ LDFLAGS := $(HARDEN_LDFLAGS) $(SIZELDFLAGS) $(LTOFLAGS)
 
 SHELL := /bin/bash
 .ONESHELL:
-.SHELLFLAGS := -eu -o pipefail -c
 
 default: help
 
