@@ -36,7 +36,7 @@ fi
 
 # ================= ensure 'linuxio' group and membership =================
 ACCOUNT_HAS_LINUXIO=0
-CURRENT_HAS_LINUXIO=0
+GROUP_JUST_ADDED=0
 
 # Create the group if it doesn't exist
 if ! getent group "$GROUP_NAME" >/dev/null; then
@@ -47,31 +47,11 @@ fi
 # Check if BUILD_USER is already in the group
 if id -nG "$BUILD_USER" | tr ' ' '\n' | grep -qx "$GROUP_NAME"; then
   ACCOUNT_HAS_LINUXIO=1
-fi
-
-if [[ "$ACCOUNT_HAS_LINUXIO" -eq 0 ]]; then
+else
   echo "==> Adding user '$BUILD_USER' to '$GROUP_NAME' group"
   $SUDO_CMD usermod -aG "$GROUP_NAME" "$BUILD_USER"
-  echo "   ✓ Added. NOTE: The current shell session hasn't picked up the new group yet."
-  # If the script is being run as the BUILD_USER (not root), detect if the *current* shell has it
-  if id -nG | tr ' ' '\n' | grep -qx "$GROUP_NAME"; then
-    CURRENT_HAS_LINUXIO=1
-  fi
-else
-  # User account has group; check current shell membership (useful when not running via sudo)
-  if id -nG | tr ' ' '\n' | grep -qx "$GROUP_NAME"; then
-    CURRENT_HAS_LINUXIO=1
-  fi
-fi
-
-# Friendly guidance if the current shell hasn't picked up the group yet
-if [[ "$ACCOUNT_HAS_LINUXIO" -eq 1 && "$CURRENT_HAS_LINUXIO" -eq 0 ]]; then
-  echo ""
-  echo "⚠️  Your current shell hasn’t picked up the '$GROUP_NAME' group yet."
-  echo "   Recommended: log out and back in."
-  echo "   Quick workaround (temporary, for this shell only):"
-  echo "     newgrp $GROUP_NAME"
-  echo ""
+  GROUP_JUST_ADDED=1
+  echo "   ✓ Added. NOTE: You'll need to log out/in or run 'newgrp $GROUP_NAME' to activate it."
 fi
 
 # ================= build as non-root with clean env =================
@@ -97,8 +77,6 @@ echo "==> Creating system-wide dev enclave: $SECURE_DEV_DIR"
 $SUDO_CMD mkdir -p "$SECURE_DEV_DIR"
 $SUDO_CMD chown root:root "$SECURE_DEV_DIR"
 $SUDO_CMD chmod 0755 "$SECURE_DEV_DIR"
-# (Optional) make the dir group-owned by linuxio if you want future group policies there:
-# $SUDO_CMD chgrp "$GROUP_NAME" "$SECURE_DEV_DIR"
 
 echo "==> Installing dev bridge + helper to system location"
 $SUDO_CMD install -o root -g root -m 0755 "$SRC_DIR/linuxio-bridge"      "$SECURE_DEV_DIR/linuxio-bridge"
@@ -171,12 +149,16 @@ fi
 
 echo ""
 echo "✅ Done. Dev binaries installed to: $SECURE_DEV_DIR"
-if [[ "$ACCOUNT_HAS_LINUXIO" -eq 0 ]]; then
-  echo "ℹ️  You were just added to the '$GROUP_NAME' group."
-  echo "   Please log out and back in, or run:  newgrp $GROUP_NAME"
-elif [[ "$CURRENT_HAS_LINUXIO" -eq 0 ]]; then
-  echo "ℹ️  Your current shell hasn’t picked up the '$GROUP_NAME' group."
-  echo "   Please log out and back in, or run:  newgrp $GROUP_NAME"
-  exit 20
+
+# Only warn if we JUST added the group this run
+if [[ "$GROUP_JUST_ADDED" -eq 1 ]]; then
+  echo ""
+  echo "⚠️  IMPORTANT: You were just added to the '$GROUP_NAME' group."
+  echo "   Your current shell won't see this change until you:"
+  echo "   • Log out and back in (recommended)"
+  echo "   • OR run: newgrp $GROUP_NAME"
+  echo ""
+  echo "   After refreshing your session, run 'make dev' again."
 fi
+
 echo "   The Makefile 'dev' target will automatically use these binaries."
