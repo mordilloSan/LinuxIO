@@ -1,19 +1,37 @@
 
 ## v0.3.8 — 2025-10-25
 
+### 🚀 Features
+
+* feat: add vite-plugin-compression for gzip support in build process ([04e345f](https://github.com/owner/repo/commit/04e345f)) by @MordilloSan
+* feat: add vite-plugin-compression2 for enhanced gzip support in build process ([f6b4bda](https://github.com/owner/repo/commit/f6b4bda)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: remove frontend/package-lock.json from .gitignore ([1a7d6b5](https://github.com/owner/repo/commit/1a7d6b5)) by @MordilloSan
+
 ### ♻️ Refactoring
 
 * refactor: update logger usage to structured logging across multiple files ([53bdd3f](https://github.com/owner/repo/commit/53bdd3f)) by @MordilloSan
 * refactor: remove redundant log prefixes for clarity in update process ([562a0e9](https://github.com/owner/repo/commit/562a0e9)) by @MordilloSan
 
+### 🏗️ Build
+
+* build(deps-dev): bump vite from 7.1.9 to 7.1.11 in /frontend ([cfcddea](https://github.com/owner/repo/commit/cfcddea)) by @dependabot[bot]
+
 ### 🔄 Other Changes
 
 * Refactor logging package usage across the backend ([31f28cb](https://github.com/owner/repo/commit/31f28cb)) by @MordilloSan
 * Refactor logging in bridge handlers and update go_logger dependency ([71c41ec](https://github.com/owner/repo/commit/71c41ec)) by @MordilloSan
+* Merge branch 'main' into dependabot/npm_and_yarn/frontend/vite-7.1.11 ([74fe917](https://github.com/owner/repo/commit/74fe917)) by @mordillo
+* Merge pull request #39 from mordilloSan/dependabot/npm_and_yarn/frontend/vite-7.1.11 ([517cebc](https://github.com/owner/repo/commit/517cebc)) by @mordillo
+* Merge branch 'main' into dev/v0.3.8 ([77f1d83](https://github.com/owner/repo/commit/77f1d83)) by @mordillo
 
 ### 👥 Contributors
 
 * @MordilloSan
+* @dependabot[bot]
+* @mordillo
 
 **Full Changelog**: https://github.com/owner/repo/compare/v0.3.7...v0.3.8
 
