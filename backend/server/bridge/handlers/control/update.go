@@ -32,18 +32,18 @@ func CheckForUpdate() *UpdateInfo {
 	current := getInstalledVersion()
 
 	if current == "" || current == "unknown" {
-		logger.Debugf("[update] cannot determine installed version, skipping check")
+		logger.Debugf("cannot determine installed version, skipping check")
 		return nil
 	}
 
 	latest, releaseURL := fetchLatestRelease()
 	if latest == "" {
-		logger.Debugf("[update] could not fetch latest release")
+		logger.Debugf("could not fetch latest release")
 		return nil
 	}
 
 	if current != latest {
-		logger.Infof("[update] update available: %s -> %s", current, latest)
+		logger.Infof("update available: %s -> %s", current, latest)
 		return &UpdateInfo{
 			Available:      true,
 			CurrentVersion: current,
@@ -52,7 +52,7 @@ func CheckForUpdate() *UpdateInfo {
 		}
 	}
 
-	logger.Debugf("[update] already on latest version: %s", current)
+	logger.Debugf("already on latest version: %s", current)
 	return &UpdateInfo{
 		Available:      false,
 		CurrentVersion: current,
@@ -64,12 +64,12 @@ func getInstalledVersion() string {
 	cmd := exec.Command(BinPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
-		logger.Debugf("[update] failed to run linuxio --version: %v", err)
+		logger.Debugf("failed to run linuxio --version: %v", err)
 		return "unknown"
 	}
 
 	version := parseVersionOutput(string(output))
-	logger.Debugf("[update] detected installed version: %s", version)
+	logger.Debugf("detected installed version: %s", version)
 	return version
 }
 
@@ -112,19 +112,19 @@ func fetchLatestRelease() (version string, releaseURL string) {
 	url := fmt.Sprintf(GitHubAPI, RepoOwner, RepoName)
 	resp, err := client.Get(url)
 	if err != nil {
-		logger.Debugf("[update] failed to fetch latest release: %v", err)
+		logger.Debugf("failed to fetch latest release: %v", err)
 		return "", ""
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Debugf("[update] GitHub API returned status %d", resp.StatusCode)
+		logger.Debugf("GitHub API returned status %d", resp.StatusCode)
 		return "", ""
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Debugf("[update] failed to read response body: %v", err)
+		logger.Debugf("failed to read response body: %v", err)
 		return "", ""
 	}
 
@@ -134,7 +134,7 @@ func fetchLatestRelease() (version string, releaseURL string) {
 	}
 
 	if err := json.Unmarshal(body, &release); err != nil {
-		logger.Debugf("[update] failed to parse JSON: %v", err)
+		logger.Debugf("failed to parse JSON: %v", err)
 		return "", ""
 	}
 
