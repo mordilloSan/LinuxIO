@@ -30,10 +30,7 @@ var EmbeddedCSS []byte
 var (
 	dockerCli *client.Client
 	dockerCtx context.Context
-
-	// BaseURL is the discovered http base (e.g. "http://127.0.0.1:49154")
-	// that the reverse proxy should forward to.
-	BaseURL string
+	BaseURL   string // BaseURL is the discovered http base (e.g. "http://127.0.0.1:port") that the reverse proxy should forward to.
 )
 
 func StartServices(secret string, debug bool, dev bool) {

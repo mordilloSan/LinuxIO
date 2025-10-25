@@ -1,4 +1,21 @@
 
+## v0.3.7 — 2025-10-25
+
+### 🐛 Bug Fixes
+
+* fix: update filebrowser ([670bf94](https://github.com/owner/repo/commit/670bf94)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* filebrowser update ([668071c](https://github.com/owner/repo/commit/668071c)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.3.6...v0.3.7
+
+
 ## v0.3.6 — 2025-10-17
 
 ### 🐛 Bug Fixes
