@@ -9,12 +9,10 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 func handleGetInfo(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	logger.Infof("%s requested Host info", sess.User.Username)
 	rawResp, err := bridge.CallWithSession(sess, "system", "get_host_info", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed", "detail": err.Error()})
@@ -40,7 +38,6 @@ func handleGetInfo(c *gin.Context) {
 
 func handleGetUptime(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	logger.Infof("%s requested uptime", sess.User.Username)
 	rawResp, err := bridge.CallWithSession(sess, "system", "get_uptime", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed", "detail": err.Error()})

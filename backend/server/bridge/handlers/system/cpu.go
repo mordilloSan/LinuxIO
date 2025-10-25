@@ -10,7 +10,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 type CPUInfoResponse struct {
@@ -34,23 +33,19 @@ type LoadInfoResponse struct {
 
 func handleGetCPU(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	logger.Infof("%s requested CPU info", sess.User.Username)
 
 	rawResp, err := bridge.CallWithSession(sess, "system", "get_cpu_info", nil)
 	if err != nil {
-		logger.Errorf("Bridge call failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed", "detail": err.Error()})
 		return
 	}
 
 	var resp ipc.Response
 	if err := json.Unmarshal([]byte(rawResp), &resp); err != nil {
-		logger.Errorf("Invalid bridge response: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response", "detail": err.Error()})
 		return
 	}
 	if resp.Status != "ok" {
-		logger.Warnf("Bridge returned error: %v", resp.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
 		return
 	}
@@ -65,23 +60,19 @@ func handleGetCPU(c *gin.Context) {
 
 func handleGetLoad(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	logger.Infof("%s requested load info", sess.User.Username)
 
 	rawResp, err := bridge.CallWithSession(sess, "system", "get_load_info", nil)
 	if err != nil {
-		logger.Errorf("Bridge call failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed", "detail": err.Error()})
 		return
 	}
 
 	var resp ipc.Response
 	if err := json.Unmarshal([]byte(rawResp), &resp); err != nil {
-		logger.Errorf("Invalid bridge response: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response", "detail": err.Error()})
 		return
 	}
 	if resp.Status != "ok" {
-		logger.Warnf("Bridge returned error: %v", resp.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
 		return
 	}

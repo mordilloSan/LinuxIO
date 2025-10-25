@@ -14,13 +14,10 @@ import (
 )
 
 func getUpdatesHandler(c *gin.Context) {
-	logger.Infof(" Checking for system updates (D-Bus)...")
-
 	sess := session.SessionFromContext(c)
 
 	output, err := bridge.CallWithSession(sess, "dbus", "GetUpdates", nil)
 	if err != nil {
-		logger.Errorf(" Failed to get updates: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "failed to get updates",
 			"details": err.Error(),
@@ -31,7 +28,6 @@ func getUpdatesHandler(c *gin.Context) {
 	// 1. Unmarshal bridge response object
 	var resp ipc.Response
 	if err := json.Unmarshal([]byte(output), &resp); err != nil {
-		logger.Errorf(" Failed to decode bridge response: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "failed to decode bridge response",
 			"details": err.Error(),
@@ -50,7 +46,6 @@ func getUpdatesHandler(c *gin.Context) {
 		// Re-marshal Output back to JSON, then unmarshal to target type
 		if outputBytes, err := json.Marshal(resp.Output); err == nil {
 			if err := json.Unmarshal(outputBytes, &updates); err != nil {
-				logger.Errorf(" Failed to decode updates JSON: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error":   "failed to decode updates JSON",
 					"details": err.Error(),
@@ -80,13 +75,10 @@ func updatePackageHandler(c *gin.Context) {
 		return
 	}
 
-	logger.Infof("Triggering update for package: %s", req.PackageID)
-
 	sess := session.SessionFromContext(c)
 
 	output, err := bridge.CallWithSession(sess, "dbus", "InstallPackage", []string{req.PackageID})
 	if err != nil {
-		logger.Errorf(" Failed to update %s: %v", req.PackageID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to update package",
 			"details": err.Error(),
@@ -94,7 +86,6 @@ func updatePackageHandler(c *gin.Context) {
 		return
 	}
 
-	logger.Infof("Package %s updated successfully.\nOutput:\n%s", req.PackageID, output)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "package updates triggered",
 		"output":  string(output), // Keep this - it's useful success output
