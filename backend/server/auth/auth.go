@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/control"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // Handlers bundles dependencies (no global state).
@@ -132,7 +132,7 @@ func (h *Handlers) Logout(c *gin.Context) {
 	if err := h.SM.DeleteSession(ck.Value, session.ReasonLogout); err != nil {
 		logger.Errorf("Failed to delete session %q: %v", ck.Value, err)
 	}
-	logger.Infof("Logged out session: %s", ck.Value)
+	logger.Infof("Logged out session %s", ck.Value)
 	c.Status(http.StatusOK)
 }
 

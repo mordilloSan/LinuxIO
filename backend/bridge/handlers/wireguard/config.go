@@ -6,7 +6,7 @@ import (
 
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // --- Config Parsing ---

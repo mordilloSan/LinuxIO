@@ -7,14 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 func getNetworkInfo(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	logger.Infof("%s requested network info (session: %s)", sess.User.Username, sess.SessionID)
+	logger.Infof("%s requested network info", sess.User.Username)
 
 	rawResp, err := bridge.CallWithSession(sess, "dbus", "GetNetworkInfo", nil)
 	if err != nil {
@@ -78,7 +78,7 @@ func postSetIPv4DHCP(c *gin.Context) {
 		return
 	}
 
-	logger.Infof("Set IPv4 DHCP on %s (user: %s, session: %s)", req.Interface, sess.User.Username, sess.SessionID)
+	logger.Infof("Set IPv4 DHCP on %s (user: %s,)", req.Interface, sess.User.Username)
 	c.JSON(200, gin.H{"status": "ok"})
 }
 
@@ -142,8 +142,8 @@ func postSetIPv4Manual(c *gin.Context) {
 		return
 	}
 
-	logger.Infof("Set manual IPv4 config on %s (user: %s, session: %s)",
-		req.Interface, sess.User.Username, sess.SessionID)
+	logger.Infof("Set manual IPv4 config on %s (user: %s,)",
+		req.Interface, sess.User.Username)
 	c.JSON(200, gin.H{"status": "ok"})
 }
 
@@ -181,7 +181,7 @@ func postSetIPv6DHCP(c *gin.Context) {
 		return
 	}
 
-	logger.Infof("Set IPv6 DHCP on %s (user: %s, session: %s)", req.Interface, sess.User.Username, sess.SessionID)
+	logger.Infof("Set IPv6 DHCP on %s (user: %s,)", req.Interface, sess.User.Username)
 	c.JSON(200, gin.H{"status": "ok"})
 }
 
@@ -220,6 +220,6 @@ func postSetIPv6Manual(c *gin.Context) {
 		return
 	}
 
-	logger.Infof("Set IPv6 static on %s to %s (user: %s, session: %s)", req.Interface, req.AddressCIDR, sess.User.Username, sess.SessionID)
+	logger.Infof("Set IPv6 static on %s to %s (user: %s,)", req.Interface, req.AddressCIDR, sess.User.Username)
 	c.JSON(200, gin.H{"status": "ok"})
 }
