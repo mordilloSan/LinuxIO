@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
@@ -29,7 +28,6 @@ func GetVersion(c *gin.Context) {
 	// Call bridge to get version info (no args needed)
 	resp, err := bridge.CallWithSession(sess, "control", "version", []string{})
 	if err != nil {
-		logger.Errorf("[control.version] failed to get version: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("version check failed: %v", err)})
 		return
 	}
@@ -71,7 +69,6 @@ func TriggerUpdate(c *gin.Context) {
 	// Call bridge control update handler
 	resp, err := bridge.CallWithSession(sess, "control", "update", args)
 	if err != nil {
-		logger.Errorf("[control.update] failed to trigger update: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("update failed: %v", err)})
 		return
 	}

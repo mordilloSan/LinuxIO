@@ -5,7 +5,7 @@ package userconfig
 import (
 	"path/filepath"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 const (

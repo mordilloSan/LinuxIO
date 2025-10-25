@@ -17,8 +17,8 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/docker"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 //go:embed filebrowserConfig.yaml

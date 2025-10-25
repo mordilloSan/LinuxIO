@@ -13,16 +13,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/go_logger/logger"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
+	// Log the incoming bridge call
+	logger.DebugKV("bridge call initiated",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"args", fmt.Sprintf("%v", args))
+
 	socketPath := sess.SocketPath // <-- field, not method
 	if socketPath == "" {
-		return nil, fmt.Errorf("empty session.SocketPath")
+		err := fmt.Errorf("empty session.SocketPath")
+		logger.ErrorKV("bridge call failed: invalid socket path",
+			"user", sess.User.Username,
+			"error", err)
+		return nil, err
 	}
 
 	req := ipc.Request{
@@ -47,13 +59,18 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 			break
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
+			err2 := fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
+			logger.ErrorKV("bridge call failed: connection timeout",
+				"user", sess.User.Username,
+				"socket_path", socketPath,
+				"error", err2)
+			return nil, err
 		}
 		time.Sleep(step)
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close connection: %v", cerr)
+			logger.WarnKV("bridge conn close failed", "socket_path", socketPath, "error", cerr)
 		}
 	}()
 
@@ -62,13 +79,33 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 	dec := json.NewDecoder(conn)
 
 	if err := enc.Encode(req); err != nil {
-		return nil, fmt.Errorf("failed to send request to bridge: %w", err)
+		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
+		logger.ErrorKV("bridge call failed: encoding error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err2)
+		return nil, err
 	}
 
 	var raw json.RawMessage
 	if err := dec.Decode(&raw); err != nil {
-		return nil, fmt.Errorf("failed to decode response from bridge: %w", err)
+		err2 := fmt.Errorf("failed to decode response from bridge: %w", err)
+		logger.ErrorKV("bridge call failed: decoding error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err2)
+		return nil, err
 	}
+
+	// Log successful response
+	logger.DebugKV("bridge call completed",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"response", string(raw))
+
 	return []byte(raw), nil
 }
 
@@ -228,11 +265,10 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 
 	// Reap the parent helper (nanny owns bridge)
 	if err := cmd.Wait(); err != nil {
-		logger.Warnf("auth helper exited non-zero after OK: %v", err)
+		logger.WarnKV("auth helper exited non-zero after OK", "error", err)
 	}
 
-	logger.Infof("Bridge launch acknowledged (session=%s, user=%s, privileged=%v)",
-		sess.SessionID, sess.User.Username, privileged)
+	logger.InfoKV("bridge launch acknowledged", "user", sess.User.Username, "privileged", privileged)
 	return privileged, nil
 }
 

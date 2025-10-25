@@ -9,8 +9,8 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // StartContainerTerminal launches a shell inside a docker container.
@@ -19,7 +19,7 @@ func StartContainerTerminal(sess *session.Session, containerID, shell string) er
 		return errors.New("no shell specified")
 	}
 	if ts := getContainer(sess.SessionID, containerID); ts != nil && ts.PTY != nil && ts.Open {
-		logger.Debugf("container terminal already running (session=%s, container=%s)", sess.SessionID, containerID)
+		logger.Debugf("container terminal already running (container=%s)", containerID)
 		return nil
 	}
 
@@ -42,7 +42,7 @@ func StartContainerTerminal(sess *session.Session, containerID, shell string) er
 	ts := &TerminalSession{PTY: ptmx, Cmd: cmd, Open: true, notify: make(chan struct{}, 1)}
 	setContainer(sess.SessionID, containerID, ts)
 	go pumpPTY(ts)
-	logger.Infof("Started container terminal (session=%s, container=%s, shell=%s)", sess.SessionID, containerID, shell)
+	logger.Infof("Started container terminal (container=%s, shell=%s)", containerID, shell)
 	return nil
 }
 

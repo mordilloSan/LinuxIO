@@ -25,10 +25,10 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/userconfig"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // envConfig holds all environment values we need, captured at startup
@@ -173,7 +173,8 @@ func main() {
 
 	listener, err := createAndOwnSocket(socketPath, Sess.User.UID)
 	if err != nil {
-		logger.Error.Fatalf("create socket: %v", err)
+		logger.Errorf("create socket: %v", err)
+		os.Exit(1)
 	}
 	logger.Infof("[bridge] LISTENING on %s", socketPath)
 
@@ -238,7 +239,7 @@ func main() {
 				case <-acceptDone:
 					return
 				default:
-					logger.Warnf("Accept failed: %v", err)
+					logger.WarnKV("accept failed", "error", err)
 					time.Sleep(50 * time.Millisecond) // avoid tight loop during teardown
 				}
 				continue
@@ -258,7 +259,7 @@ func main() {
 		// Stop accepting new connections and close listener
 		close(acceptDone)
 		if err := listener.Close(); err != nil {
-			logger.Warnf("failed to close listener: %v", err)
+			logger.WarnKV("listener close failed", "error", err)
 		}
 
 		// Bounded wait for in-flight requests; do not block forever
@@ -270,21 +271,21 @@ func main() {
 		const grace = 5 * time.Second
 		select {
 		case <-waitCh:
-			logger.Debugf("All in-flight requests finished before grace period.")
+			logger.DebugKV("in-flight handlers drained", "grace_period", grace)
 		case <-time.After(grace):
-			logger.Warnf("⏳ In-flight handlers still running after %s; proceeding with cleanup.", grace)
+			logger.WarnKV("in-flight handlers exceeded grace", "grace_period", grace)
 		}
 
 		// Cleanup artifacts regardless of handler state
 		if err := cleanup.FullCleanup(reason, Sess); err != nil {
-			logger.Warnf("FullCleanup failed (reason=%q): %v", reason, err)
+			logger.WarnKV("bridge cleanup failed", "reason", reason, "error", err)
 		}
 		cleanupDone <- struct{}{}
 	}()
 
 	// Wait for cleanup to complete; then exit
 	<-cleanupDone
-	logger.Infof("Bridge stopped.")
+	logger.InfoKV("bridge stopped")
 }
 
 func printBridgeVersion() {
@@ -297,7 +298,7 @@ func handleMainRequest(conn net.Conn, id string) {
 	defer wg.Done()
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close connection [%s]: %v", id, cerr)
+			logger.WarnKV("bridge conn close failed", "conn_id", id, "error", cerr)
 		}
 	}()
 
@@ -308,41 +309,41 @@ func handleMainRequest(conn net.Conn, id string) {
 	var req ipc.Request
 	if err := decoder.Decode(&req); err != nil {
 		if err == io.EOF {
-			logger.Debugf("🔁 [%s] connection closed without data", id)
+			logger.DebugKV("connection closed without data", "conn_id", id)
 		} else {
-			logger.Warnf("[%s] invalid JSON from client: %v", id, err)
+			logger.WarnKV("invalid JSON from client", "conn_id", id, "error", err)
 		}
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
 		return
 	}
 
 	if req.Secret != Sess.BridgeSecret {
-		logger.Warnf("[%s] invalid secret", id)
+		logger.WarnKV("invalid bridge secret", "conn_id", id)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
 		return
 	}
 	if req.SessionID != Sess.SessionID {
-		logger.Warnf("[%s] session mismatch: got %q want %q", id, req.SessionID, Sess.SessionID)
+		logger.WarnKV("session mismatch", "conn_id", id)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "session mismatch"})
 		return
 	}
 	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
-		logger.Warnf("[%s] Invalid characters in type/command: type=%q, command=%q", id, req.Type, req.Command)
+		logger.WarnKV("invalid characters in request", "conn_id", id, "req_type", req.Type, "command", req.Command)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})
 		return
 	}
 
-	logger.Debugf("Received request: type=%s, command=%s, args=%v", req.Type, req.Command, req.Args)
+	logger.DebugKV("bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
 
 	group, found := handlers.HandlersByType[req.Type]
 	if !found || group == nil {
-		logger.Warnf("Unknown type: %s", req.Type)
+		logger.WarnKV("unknown request type", "conn_id", id, "req_type", req.Type)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
 		return
 	}
 	handler, ok := group[req.Command]
 	if !ok {
-		logger.Warnf("Unknown command for type %s: %s", req.Type, req.Command)
+		logger.WarnKV("unknown request command", "conn_id", id, "req_type", req.Type, "command", req.Command)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
 		return
 	}
@@ -356,7 +357,7 @@ func handleMainRequest(conn net.Conn, id string) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logger.Errorf("🔥 Panic in %s command handler: %v", req.Type, r)
+				logger.ErrorKV("handler panic", "conn_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
 				done <- result{nil, fmt.Errorf("panic: %v", r)}
 			}
 		}()
@@ -367,7 +368,7 @@ func handleMainRequest(conn net.Conn, id string) {
 	select {
 	case r := <-done:
 		if r.err != nil {
-			logger.Errorf("%s %s failed: %v", req.Type, req.Command, r.err)
+			logger.ErrorKV("handler error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
 			_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
 			return
 		}
@@ -384,7 +385,7 @@ func handleMainRequest(conn net.Conn, id string) {
 		default:
 			b, err := json.Marshal(v)
 			if err != nil {
-				logger.Errorf("%s %s marshal output failed: %v", req.Type, req.Command, err)
+				logger.ErrorKV("handler marshal error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", err)
 				_ = encoder.Encode(ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
 				return
 			}
