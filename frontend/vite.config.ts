@@ -18,8 +18,7 @@ export default defineConfig(({ command }) => {
   if (isBuild) {
     plugins.push(
       compression({
-        algorithm: "gzip",
-        deleteOriginFile: false,
+        algorithms: ["gzip"],
       }),
     );
   }
