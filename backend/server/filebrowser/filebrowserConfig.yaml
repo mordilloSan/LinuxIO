@@ -20,7 +20,6 @@ server:
             - folderPath: "/dev"
             - folderPath: "/var/lib/docker"
   database: /home/filebrowser/data/database.db
-  disablePreviews: true
 frontend:
   disableDefaultLinks: true
   styling:
