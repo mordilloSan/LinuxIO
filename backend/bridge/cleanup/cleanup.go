@@ -21,18 +21,18 @@ func FullCleanup(shutdownReason string, sess *session.Session) error {
 func cleanupBridgeSocket(sess *session.Session) error {
 	sock := sess.SocketPath // <-- field, not method
 	if sock == "" {
-		logger.Warnf("No socket path set on session %s; nothing to remove", sess.SessionID)
+		logger.WarnKV("bridge socket missing", "reason", "empty path")
 		return nil
 	}
 
 	if err := os.Remove(sock); err == nil {
-		logger.Infof("Removed bridge socket %s for session %s", sock, sess.SessionID)
+		logger.InfoKV("bridge socket removed", "socket_path", sock)
 		return nil
 	} else if os.IsNotExist(err) {
-		logger.Debugf("Bridge socket %s not found (already removed) for session %s", sock, sess.SessionID)
+		logger.DebugKV("bridge socket already removed", "socket_path", sock)
 		return nil
-	} else {
-		logger.Warnf("Failed to remove bridge socket %s: %v", sock, err)
-		return err
 	}
+
+	logger.WarnKV("bridge socket remove failed", "socket_path", sock, "error", err)
+	return err
 }
