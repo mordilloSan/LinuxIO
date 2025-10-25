@@ -239,7 +239,7 @@ func main() {
 				case <-acceptDone:
 					return
 				default:
-					logger.Warnf("Accept failed: %v", err)
+					logger.WarnKV("accept failed", "error", err)
 					time.Sleep(50 * time.Millisecond) // avoid tight loop during teardown
 				}
 				continue
@@ -259,7 +259,7 @@ func main() {
 		// Stop accepting new connections and close listener
 		close(acceptDone)
 		if err := listener.Close(); err != nil {
-			logger.Warnf("failed to close listener: %v", err)
+			logger.WarnKV("listener close failed", "error", err)
 		}
 
 		// Bounded wait for in-flight requests; do not block forever
@@ -271,21 +271,21 @@ func main() {
 		const grace = 5 * time.Second
 		select {
 		case <-waitCh:
-			logger.Debugf("All in-flight requests finished before grace period.")
+			logger.DebugKV("in-flight handlers drained", "grace_period", grace)
 		case <-time.After(grace):
-			logger.Warnf("⏳ In-flight handlers still running after %s; proceeding with cleanup.", grace)
+			logger.WarnKV("in-flight handlers exceeded grace", "grace_period", grace)
 		}
 
 		// Cleanup artifacts regardless of handler state
 		if err := cleanup.FullCleanup(reason, Sess); err != nil {
-			logger.Warnf("FullCleanup failed (reason=%q): %v", reason, err)
+			logger.WarnKV("bridge cleanup failed", "reason", reason, "error", err)
 		}
 		cleanupDone <- struct{}{}
 	}()
 
 	// Wait for cleanup to complete; then exit
 	<-cleanupDone
-	logger.Infof("Bridge stopped.")
+	logger.InfoKV("bridge stopped")
 }
 
 func printBridgeVersion() {

@@ -54,7 +54,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close connection: %v", cerr)
+			logger.WarnKV("bridge conn close failed", "socket_path", socketPath, "error", cerr)
 		}
 	}()
 
@@ -229,11 +229,10 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 
 	// Reap the parent helper (nanny owns bridge)
 	if err := cmd.Wait(); err != nil {
-		logger.Warnf("auth helper exited non-zero after OK: %v", err)
+		logger.WarnKV("auth helper exited non-zero after OK", "error", err)
 	}
 
-	logger.Infof("Bridge launch acknowledged (session=%s, user=%s, privileged=%v)",
-		sess.SessionID, sess.User.Username, privileged)
+	logger.InfoKV("bridge launch acknowledged", "user", sess.User.Username, "privileged", privileged)
 	return privileged, nil
 }
 

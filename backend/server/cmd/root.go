@@ -39,7 +39,7 @@ func RunServer(cfg ServerConfig) {
 	if !(env == "development" && verbose) {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	logger.Infof("Starting Linux I/O server in %s mode...", env)
+	logger.InfoKV("server starting", "env", env, "verbose", verbose)
 
 	// -------------------------------------------------------------------------
 	// Sessions + cleanup hooks
@@ -53,7 +53,7 @@ func RunServer(cfg ServerConfig) {
 	sm.RegisterOnDelete(func(sess session.Session, reason session.DeleteReason) {
 		if sess.User.Username != "" {
 			if _, err := bridge.CallWithSession(&sess, "control", "shutdown", []string{string(reason)}); err != nil {
-				logger.Warnf("Bridge shutdown for %s failed: %v", sess.SessionID, err)
+				logger.WarnKV("bridge shutdown failed", "user", sess.User.Username, "reason", reason, "error", err)
 			}
 		}
 	})
