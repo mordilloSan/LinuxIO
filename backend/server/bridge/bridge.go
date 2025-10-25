@@ -21,9 +21,20 @@ import (
 
 // Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
+	// Log the incoming bridge call
+	logger.DebugKV("bridge call initiated",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"args", fmt.Sprintf("%v", args))
+
 	socketPath := sess.SocketPath // <-- field, not method
 	if socketPath == "" {
-		return nil, fmt.Errorf("empty session.SocketPath")
+		err := fmt.Errorf("empty session.SocketPath")
+		logger.ErrorKV("bridge call failed: invalid socket path",
+			"user", sess.User.Username,
+			"error", err)
+		return nil, err
 	}
 
 	req := ipc.Request{
@@ -48,7 +59,12 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 			break
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
+			err2 := fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
+			logger.ErrorKV("bridge call failed: connection timeout",
+				"user", sess.User.Username,
+				"socket_path", socketPath,
+				"error", err2)
+			return nil, err
 		}
 		time.Sleep(step)
 	}
@@ -63,13 +79,33 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 	dec := json.NewDecoder(conn)
 
 	if err := enc.Encode(req); err != nil {
-		return nil, fmt.Errorf("failed to send request to bridge: %w", err)
+		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
+		logger.ErrorKV("bridge call failed: encoding error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err2)
+		return nil, err
 	}
 
 	var raw json.RawMessage
 	if err := dec.Decode(&raw); err != nil {
-		return nil, fmt.Errorf("failed to decode response from bridge: %w", err)
+		err2 := fmt.Errorf("failed to decode response from bridge: %w", err)
+		logger.ErrorKV("bridge call failed: decoding error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err2)
+		return nil, err
 	}
+
+	// Log successful response
+	logger.DebugKV("bridge call completed",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"response", string(raw))
+
 	return []byte(raw), nil
 }
 

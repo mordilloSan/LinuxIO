@@ -5,7 +5,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +13,6 @@ func ListContainers(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	data, err := bridge.CallWithSession(sess, "docker", "list_containers", nil)
 	if err != nil {
-		logger.Errorf("Bridge ListContainers: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -26,7 +24,6 @@ func StartContainer(c *gin.Context) {
 	id := c.Param("id")
 	data, err := bridge.CallWithSession(sess, "docker", "start_container", []string{id})
 	if err != nil {
-		logger.Errorf("Bridge StartContainer: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -38,7 +35,6 @@ func StopContainer(c *gin.Context) {
 	id := c.Param("id")
 	data, err := bridge.CallWithSession(sess, "docker", "stop_container", []string{id})
 	if err != nil {
-		logger.Errorf("Bridge StopContainer: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -50,7 +46,6 @@ func RemoveContainer(c *gin.Context) {
 	id := c.Param("id")
 	data, err := bridge.CallWithSession(sess, "docker", "remove_container", []string{id})
 	if err != nil {
-		logger.Errorf("Bridge RemoveContainer: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -62,7 +57,6 @@ func RestartContainer(c *gin.Context) {
 	id := c.Param("id")
 	data, err := bridge.CallWithSession(sess, "docker", "restart_container", []string{id})
 	if err != nil {
-		logger.Errorf("Bridge RestartContainer: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -73,7 +67,6 @@ func ListImages(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	data, err := bridge.CallWithSession(sess, "docker", "list_images", nil)
 	if err != nil {
-		logger.Errorf("Bridge ListImages: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -84,7 +77,6 @@ func ListDockerNetworks(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	data, err := bridge.CallWithSession(sess, "docker", "list_networks", nil)
 	if err != nil {
-		logger.Errorf("Bridge ListNetworks: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -105,7 +97,6 @@ func CreateDockerNetwork(c *gin.Context) {
 
 	data, err := bridge.CallWithSession(sess, "docker", "create_network", []string{req.Name})
 	if err != nil {
-		logger.Errorf("Bridge CreateDockerNetwork: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -118,7 +109,6 @@ func DeleteDockerNetwork(c *gin.Context) {
 	name := c.Param("name")
 	data, err := bridge.CallWithSession(sess, "docker", "delete_network", []string{name})
 	if err != nil {
-		logger.Errorf("Bridge DeleteDockerNetwork: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -129,7 +119,6 @@ func ListDockerVolumes(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	data, err := bridge.CallWithSession(sess, "docker", "list_volumes", nil)
 	if err != nil {
-		logger.Errorf("Bridge ListVolumes: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -142,7 +131,6 @@ func DeleteDockerVolume(c *gin.Context) {
 	name := c.Param("name")
 	data, err := bridge.CallWithSession(sess, "docker", "delete_volume", []string{name})
 	if err != nil {
-		logger.Errorf("Bridge DeleteDockerVolume: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -163,7 +151,6 @@ func CreateDockerVolume(c *gin.Context) {
 
 	data, err := bridge.CallWithSession(sess, "docker", "create_volume", []string{req.Name})
 	if err != nil {
-		logger.Errorf("Bridge CreateDockerVolume: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -176,7 +163,6 @@ func LogContainer(c *gin.Context) {
 	args := []string{id}
 	data, err := bridge.CallWithSession(sess, "docker", "get_container_logs", args)
 	if err != nil {
-		logger.Errorf("Bridge LogContainer: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

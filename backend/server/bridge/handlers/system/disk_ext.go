@@ -9,12 +9,10 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 func handleGetDisk(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	logger.Infof("%s requested disk info", sess.User.Username)
 	rawResp, err := bridge.CallWithSession(sess, "system", "get_drive_info", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed", "detail": err.Error()})
