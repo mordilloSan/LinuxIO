@@ -12,4 +12,4 @@ backend/server/web/frontend/
 .DS_Store
 .vscode/
 *.swp
-frontend/package-lock.json
+
