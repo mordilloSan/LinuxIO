@@ -1,8 +1,9 @@
 // vite.config.ts
 import { defineConfig } from "vite";
-import tsconfigPaths from "vite-tsconfig-paths";
 import reactBabel from "@vitejs/plugin-react";
 import reactSwc from "@vitejs/plugin-react-swc";
+import tsconfigPaths from "vite-tsconfig-paths";
+import { compression } from 'vite-plugin-compression2'
 
 export default defineConfig(({ command }) => {
   const isBuild = command === "build";
@@ -10,13 +11,23 @@ export default defineConfig(({ command }) => {
     ? reactBabel({ babel: { plugins: ["babel-plugin-react-compiler"] } })
     : reactSwc();
 
-  const devApi  = process.env.VITE_API_URL;
-    const devPort = Number(process.env.VITE_DEV_PORT || 3000);
+  const devApi = process.env.VITE_API_URL;
+  const devPort = Number(process.env.VITE_DEV_PORT || 3000);
+
+  const plugins = [reactPlugin, tsconfigPaths()];
+  if (isBuild) {
+    plugins.push(
+      compression({
+        algorithm: "gzip",
+        deleteOriginFile: false,
+      }),
+    );
+  }
 
   return {
     base: "/",
     clearScreen: false,
-    plugins: [reactPlugin, tsconfigPaths()],
+    plugins,
     server: {
       port: devPort,
       strictPort: false,
