@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // RegisterPowerRoutes mounts power actions on a pre-authenticated group.
@@ -23,7 +23,7 @@ func RegisterPowerRoutes(group *gin.RouterGroup) {
 			})
 			return
 		}
-		logger.Infof("Reboot triggered successfully for user %s (session: %s)", sess.User.Username, sess.SessionID)
+		logger.Infof("Reboot triggered successfully for user %s", sess.User.Username)
 		c.JSON(http.StatusOK, gin.H{"message": "rebooting...", "output": output})
 	})
 
@@ -39,7 +39,7 @@ func RegisterPowerRoutes(group *gin.RouterGroup) {
 			})
 			return
 		}
-		logger.Infof("Shutdown triggered successfully for user %s (session: %s)", sess.User.Username, sess.SessionID)
+		logger.Infof("Shutdown triggered successfully for user %s", sess.User.Username)
 		c.JSON(http.StatusOK, gin.H{"message": "shutting down...", "output": output})
 	})
 }

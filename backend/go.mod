@@ -4,7 +4,6 @@ go 1.25
 
 require (
 	github.com/containerd/errdefs v1.0.0
-	github.com/coreos/go-systemd/v22 v22.6.0
 	github.com/creack/pty v1.1.24
 	github.com/docker/docker v28.5.1+incompatible
 	github.com/gin-gonic/gin v1.11.0
@@ -12,6 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jaypipes/ghw v0.19.1
+	github.com/mordilloSan/go_logger v1.0.0
 	github.com/shirou/gopsutil/v4 v4.25.9
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/pflag v1.0.10
@@ -22,6 +22,7 @@ require (
 )
 
 require (
+	github.com/coreos/go-systemd/v22 v22.6.0 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect

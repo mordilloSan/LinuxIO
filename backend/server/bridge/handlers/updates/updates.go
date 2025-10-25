@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 func getUpdatesHandler(c *gin.Context) {

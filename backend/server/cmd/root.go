@@ -20,13 +20,13 @@ import (
 	"github.com/coreos/go-systemd/activation"
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 func RunServer(cfg ServerConfig) {
@@ -63,7 +63,8 @@ func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
 	ui, err := web.UI()
 	if err != nil {
-		logger.Error.Fatalf("failed to mount embedded frontend: %v", err)
+		logger.Errorf("failed to mount embedded frontend: %v", err)
+		os.Exit(1)
 	}
 
 	// -------------------------------------------------------------------------
@@ -129,7 +130,7 @@ func RunServer(cfg ServerConfig) {
 			if strings.ToLower(cfg.Env) == "production" {
 				cert, cErr := web.GenerateSelfSignedCert()
 				if cErr != nil {
-					logger.Error.Fatalf("Failed to generate cert: %v", cErr)
+					logger.Errorf("Failed to generate cert: %v", cErr)
 				}
 				srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 				web.SetRootPoolFromServerCert(cert)
@@ -147,7 +148,8 @@ func RunServer(cfg ServerConfig) {
 					tlsLis := tls.NewListener(l, srv.TLSConfig)
 					go func(lis net.Listener) {
 						if e := srv.Serve(lis); e != nil && e != http.ErrServerClosed {
-							logger.Error.Fatalf("server error (TLS): %v", e)
+							logger.Errorf("server error (TLS): %v", e)
+							os.Exit(1)
 						}
 						stop()
 					}(tlsLis)
@@ -158,7 +160,8 @@ func RunServer(cfg ServerConfig) {
 				for _, l := range listeners {
 					go func(lis net.Listener) {
 						if e := srv.Serve(lis); e != nil && e != http.ErrServerClosed {
-							logger.Error.Fatalf("server error: %v", e)
+							logger.Errorf("server error: %v", e)
+							os.Exit(1)
 						}
 						stop()
 					}(l)
@@ -187,7 +190,8 @@ func RunServer(cfg ServerConfig) {
 		if strings.ToLower(cfg.Env) == "production" {
 			cert, cErr := web.GenerateSelfSignedCert()
 			if cErr != nil {
-				logger.Error.Fatalf("Failed to generate cert: %v", cErr)
+				logger.Errorf("Failed to generate cert: %v", cErr)
+				os.Exit(1)
 			}
 			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 			web.SetRootPoolFromServerCert(cert)
@@ -211,7 +215,8 @@ func RunServer(cfg ServerConfig) {
 		}
 
 		if err != nil && err != http.ErrServerClosed {
-			logger.Error.Fatalf("server error: %v", err)
+			logger.Errorf("server error: %v", err)
+			os.Exit(1)
 		}
 		close(done)
 	}()

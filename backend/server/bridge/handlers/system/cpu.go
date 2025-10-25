@@ -8,9 +8,9 @@ import (
 	"github.com/shirou/gopsutil/v4/load"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 type CPUInfoResponse struct {
@@ -34,7 +34,7 @@ type LoadInfoResponse struct {
 
 func handleGetCPU(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	logger.Infof("%s requested CPU info (session: %s)", sess.User.Username, sess.SessionID)
+	logger.Infof("%s requested CPU info", sess.User.Username)
 
 	rawResp, err := bridge.CallWithSession(sess, "system", "get_cpu_info", nil)
 	if err != nil {
@@ -65,7 +65,7 @@ func handleGetCPU(c *gin.Context) {
 
 func handleGetLoad(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	logger.Infof("%s requested load info (session: %s)", sess.User.Username, sess.SessionID)
+	logger.Infof("%s requested load info", sess.User.Username)
 
 	rawResp, err := bridge.CallWithSession(sess, "system", "get_load_info", nil)
 	if err != nil {
