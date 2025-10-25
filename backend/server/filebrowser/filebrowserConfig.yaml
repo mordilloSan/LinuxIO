@@ -11,11 +11,15 @@ server:
     - path: /server
       config:
         defaultEnabled: true
-        exclude:
+        conditionals:
           hidden: false
           ignoreZeroSizeFolders: false
+          rules:
+            - folderPath: "/proc"
+            - folderPath: "/sys"
+            - folderPath: "/dev"
+            - folderPath: "/var/lib/docker"
   database: /home/filebrowser/data/database.db
-  disablePreviews: true
 frontend:
   disableDefaultLinks: true
   styling:
