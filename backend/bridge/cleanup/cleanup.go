@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // FullCleanup does all bridge-side cleanup for a session.
@@ -31,8 +32,8 @@ func cleanupBridgeSocket(sess *session.Session) error {
 	} else if os.IsNotExist(err) {
 		logger.DebugKV("bridge socket already removed", "socket_path", sock)
 		return nil
+	} else {
+		logger.WarnKV("bridge socket remove failed", "socket_path", sock, "error", err)
+		return err
 	}
-
-	logger.WarnKV("bridge socket remove failed", "socket_path", sock, "error", err)
-	return err
 }
