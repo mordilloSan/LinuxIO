@@ -3,9 +3,9 @@ package cleanup
 import (
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // ShutdownAllBridges asks all active session bridges to exit.
@@ -29,13 +29,13 @@ func ShutdownAllBridges(sm *session.Manager, reason string) {
 		select {
 		case e := <-done:
 			if e != nil {
-				logger.Warnf("Bridge shutdown (session=%s) failed: %v", s.SessionID, e)
+				logger.Warnf("Bridge shutdown failed: %v", e)
 				// Best effort socket cleanup is typically handled by the bridge.
 				// If you still want to remove the socket path here, add a helper in bridge:
 				// _ = os.Remove(bridge.SocketPathForSession(s))
 			}
 		case <-time.After(2 * time.Second):
-			logger.Warnf("Bridge shutdown (session=%s) timed out", s.SessionID)
+			logger.Warnf("Bridge shutdown timed out")
 			// _ = os.Remove(bridge.SocketPathForSession(s)) // optional if you add that helper
 		}
 	}

@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
@@ -25,14 +24,12 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 
 		data, err := bridge.CallWithSession(sess, "config", "theme_get", []string{sess.User.Username})
 		if err != nil {
-			logger.Errorf("[theme.get] bridge call failed for user=%s: %v", sess.User.Username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load theme"})
 			return
 		}
 
 		var resp ipc.Response
 		if err := json.Unmarshal(data, &resp); err != nil {
-			logger.Errorf("[theme.get] invalid bridge response for user=%s: %v", sess.User.Username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 			return
 		}
@@ -68,14 +65,12 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 
 		data, err := bridge.CallWithSession(sess, "config", "theme_set", []string{sess.User.Username, string(body)})
 		if err != nil {
-			logger.Errorf("[theme.set] bridge call failed for user=%s: %v", sess.User.Username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save theme"})
 			return
 		}
 
 		var resp ipc.Response
 		if err := json.Unmarshal(data, &resp); err != nil {
-			logger.Errorf("[theme.set] invalid bridge response for user=%s: %v", sess.User.Username, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 			return
 		}

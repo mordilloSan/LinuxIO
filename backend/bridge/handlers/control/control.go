@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 const (
@@ -109,7 +109,7 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 	currentVersion := getInstalledVersion()
 
 	if targetVersion == "" {
-		logger.Debugf("[update] fetching latest version")
+		logger.Debugf("fetching latest version")
 		latest, err := fetchLatestVersion()
 		if err != nil {
 			return UpdateResult{
@@ -129,9 +129,9 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 		}, nil
 	}
 
-	logger.Infof("[update] starting update: %s -> %s", currentVersion, targetVersion)
+	logger.Infof("starting update: %s -> %s", currentVersion, targetVersion)
 
-	logger.Infof("[update] running installation script for version %s", targetVersion)
+	logger.Infof("running installation script for version %s", targetVersion)
 	if err := runInstallScript(targetVersion); err != nil {
 		return UpdateResult{
 			Success:        false,
@@ -140,20 +140,20 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 		}, nil
 	}
 
-	logger.Debugf("[update] reloading systemd daemon")
+	logger.Debugf("reloading systemd daemon")
 	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
-		logger.Warnf("[update] daemon-reload failed: %v (continuing anyway)", err)
+		logger.Warnf("daemon-reload failed: %v (continuing anyway)", err)
 	}
 
-	logger.Infof("[update] restarting service with new version %s", targetVersion)
+	logger.Infof("restarting service with new version %s", targetVersion)
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		if err := restartService(); err != nil {
-			logger.Errorf("[update] failed to restart service: %v", err)
+			logger.Errorf("failed to restart service: %v", err)
 		}
 	}()
 
-	logger.Infof("[update] binaries updated, service restart initiated")
+	logger.Infof("binaries updated, service restart initiated")
 	return UpdateResult{
 		Success:        true,
 		CurrentVersion: currentVersion,
@@ -211,7 +211,7 @@ func runInstallScript(version string) error {
 		args = append(args, version)
 	}
 
-	logger.Infof("[update] systemd-run unit: %s", unit)
+	logger.Infof("systemd-run unit: %s", unit)
 
 	cmd := exec.CommandContext(ctx, "systemd-run", args...)
 
@@ -225,8 +225,8 @@ func runInstallScript(version string) error {
 	}
 
 	// Stream logs in real-time
-	go logStream(stdout, "[update] ", true)
-	go logStream(stderr, "[update] ", false)
+	go logStream(stdout, "", true)
+	go logStream(stderr, "", false)
 
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("installer failed: %w", err)
@@ -239,11 +239,11 @@ func getInstalledVersion() string {
 	cmd := exec.Command(BinPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
-		logger.Debugf("[update] failed to run linuxio --version: %v", err)
+		logger.Debugf("failed to run linuxio --version: %v", err)
 		return "unknown"
 	}
 	version := parseVersionOutput(string(output))
-	logger.Debugf("[update] detected installed version: %s", version)
+	logger.Debugf("detected installed version: %s", version)
 	return version
 }
 
@@ -299,13 +299,13 @@ func fetchLatestVersion() (string, error) {
 }
 
 func restartService() error {
-	logger.Infof("[update] restarting linuxio service")
+	logger.Infof("restarting linuxio service")
 	cmd := exec.Command("systemctl", "restart", "linuxio")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Errorf("[update] restart failed: %v, output: %s", err, ansiRE.ReplaceAllString(string(output), ""))
+		logger.Errorf("restart failed: %v, output: %s", err, ansiRE.ReplaceAllString(string(output), ""))
 		return fmt.Errorf("restart failed: %w", err)
 	}
-	logger.Infof("[update] service restarted successfully")
+	logger.Infof("service restarted successfully")
 	return nil
 }

@@ -7,14 +7,12 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
 
 func handleGetFastUpdates(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	logger.Infof("%s requested fast updates (session: %s)", sess.User.Username, sess.SessionID)
 	rawResp, err := bridge.CallWithSession(sess, "system", "get_updates_fast", nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed", "detail": err.Error()})

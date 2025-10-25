@@ -7,8 +7,8 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 type ServiceStatus struct {

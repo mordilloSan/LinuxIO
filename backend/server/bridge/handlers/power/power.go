@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
@@ -15,7 +14,6 @@ func RegisterPowerRoutes(group *gin.RouterGroup) {
 		sess := session.SessionFromContext(c)
 		output, err := bridge.CallWithSession(sess, "dbus", "Reboot", nil)
 		if err != nil {
-			logger.Errorf("Reboot failed: %+v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":  "reboot failed",
 				"detail": err.Error(),
@@ -23,7 +21,6 @@ func RegisterPowerRoutes(group *gin.RouterGroup) {
 			})
 			return
 		}
-		logger.Infof("Reboot triggered successfully for user %s (session: %s)", sess.User.Username, sess.SessionID)
 		c.JSON(http.StatusOK, gin.H{"message": "rebooting...", "output": output})
 	})
 
@@ -31,7 +28,6 @@ func RegisterPowerRoutes(group *gin.RouterGroup) {
 		sess := session.SessionFromContext(c)
 		output, err := bridge.CallWithSession(sess, "dbus", "PowerOff", nil)
 		if err != nil {
-			logger.Errorf("Shutdown failed: %+v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":  "shutdown failed",
 				"detail": err.Error(),
@@ -39,7 +35,6 @@ func RegisterPowerRoutes(group *gin.RouterGroup) {
 			})
 			return
 		}
-		logger.Infof("Shutdown triggered successfully for user %s (session: %s)", sess.User.Username, sess.SessionID)
 		c.JSON(http.StatusOK, gin.H{"message": "shutting down...", "output": output})
 	})
 }

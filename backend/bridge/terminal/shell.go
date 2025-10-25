@@ -14,15 +14,15 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // StartTerminal starts an interactive login shell for the session's user.
 func StartTerminal(sess *session.Session) error {
 	if ts := getOrNil(sess.SessionID); ts != nil && ts.PTY != nil && ts.Open {
 		// already started
-		logger.Debugf("terminal already running for session=%s", sess.SessionID)
+		logger.Debugf("terminal already running for")
 		return nil
 	}
 
@@ -94,7 +94,7 @@ func StartTerminal(sess *session.Session) error {
 	setMain(sess.SessionID, ts)
 
 	go pumpPTY(ts)
-	logger.Infof("Started terminal for session=%s user=%s uid=%s", sess.SessionID, sess.User.Username, sess.User.UID)
+	logger.Infof("Started terminal for user=%s uid=%s", sess.User.Username, sess.User.UID)
 	return nil
 }
 

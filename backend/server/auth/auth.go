@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/control"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // Handlers bundles dependencies (no global state).
@@ -95,7 +95,7 @@ func (h *Handlers) Login(c *gin.Context) {
 		return
 	}
 
-	logger.Debugf("[auth.login] bridge confirmed ready (session=%s, pong received)", sess.SessionID)
+	logger.Debugf("[auth.login] bridge confirmed ready (pong received)")
 
 	// Persist actual mode (informational)
 	_ = h.SM.SetPrivileged(sess.SessionID, privileged)
@@ -130,9 +130,9 @@ func (h *Handlers) Logout(c *gin.Context) {
 
 	h.SM.DeleteCookie(c.Writer)
 	if err := h.SM.DeleteSession(ck.Value, session.ReasonLogout); err != nil {
-		logger.Errorf("Failed to delete session %q: %v", ck.Value, err)
+		logger.ErrorKV("session delete failed", "error", err)
 	}
-	logger.Infof("Logged out session: %s", ck.Value)
+	logger.InfoKV("session logout", "cookie_cleared", true)
 	c.Status(http.StatusOK)
 }
 

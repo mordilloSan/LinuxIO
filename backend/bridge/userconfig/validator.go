@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/logger"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // repairConfig loads cfgPath, validates keys/values, and rewrites only if needed.
