@@ -1,4 +1,23 @@
 
+## v0.3.8 — 2025-10-25
+
+### ♻️ Refactoring
+
+* refactor: update logger usage to structured logging across multiple files ([53bdd3f](https://github.com/owner/repo/commit/53bdd3f)) by @MordilloSan
+* refactor: remove redundant log prefixes for clarity in update process ([562a0e9](https://github.com/owner/repo/commit/562a0e9)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* Refactor logging package usage across the backend ([31f28cb](https://github.com/owner/repo/commit/31f28cb)) by @MordilloSan
+* Refactor logging in bridge handlers and update go_logger dependency ([71c41ec](https://github.com/owner/repo/commit/71c41ec)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.3.7...v0.3.8
+
+
 ## v0.3.7 — 2025-10-25
 
 ### 🐛 Bug Fixes
