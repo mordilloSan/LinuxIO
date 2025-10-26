@@ -158,7 +158,7 @@ func main() {
 	var logFile string
 	if env == "development" {
 		logDir := "/tmp/linuxio"
-		_ = os.MkdirAll(logDir, 0755)
+		_ = os.MkdirAll(logDir, 0o755)
 		logFile = filepath.Join(logDir, fmt.Sprintf("bridge-%s.log", Sess.SessionID))
 	}
 	logger.InitWithFile(env, verbose, logFile)
