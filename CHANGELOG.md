@@ -1,4 +1,22 @@
 
+## v0.3.9 — 2025-10-26
+
+### 🚀 Features
+
+* feat: enhance logging in development mode and update go_logger dependency ([362be53](https://github.com/owner/repo/commit/362be53)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: package-lock.json ([6143300](https://github.com/owner/repo/commit/6143300)) by @MordilloSan
+* fix: update log directory permissions to use octal notation ([ec398e3](https://github.com/owner/repo/commit/ec398e3)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.3.8...v0.3.9
+
+
 ## v0.3.8 — 2025-10-25
 
 ### 🚀 Features
