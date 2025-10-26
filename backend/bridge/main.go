@@ -154,7 +154,14 @@ func main() {
 	}
 
 	// Initialize logger ASAP
-	logger.Init(env, verbose)
+	// In development mode, log to file since stdout/stderr are redirected by auth-helper
+	var logFile string
+	if env == "development" {
+		logDir := "/tmp/linuxio"
+		_ = os.MkdirAll(logDir, 0755)
+		logFile = filepath.Join(logDir, fmt.Sprintf("bridge-%s.log", Sess.SessionID))
+	}
+	logger.InitWithFile(env, verbose, logFile)
 
 	logger.Infof("[bridge] boot: euid=%d uid=%s gid=%s socket=%s (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
