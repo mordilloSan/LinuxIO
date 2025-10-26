@@ -104,7 +104,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		"user", sess.User.Username,
 		"type", reqType,
 		"command", command,
-		"response", string(raw))
+		"response_bytes", len(raw))
 
 	return []byte(raw), nil
 }
