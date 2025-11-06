@@ -107,7 +107,7 @@ func EnsureConfigReady(username string) {
 
 	logger.Infof("Config ready for %s", username)
 	logger.Debugf(
-		"config details: path=%q theme=%s primary=%s",
-		cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor,
+		"config details: path=%q theme=%s primary=%s showHidden=%v",
+		cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor, cfg.AppSettings.ShowHiddenFiles,
 	)
 }

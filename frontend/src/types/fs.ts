@@ -8,3 +8,16 @@ export interface FilesystemInfo {
   free: number;
   usedPercent: number;
 }
+
+export interface ResourceStatData {
+  mode: string;
+  owner: string;
+  group: string;
+  size: number;
+  modified: string;
+  raw: string;
+  permissions: string;
+  path: string;
+  realPath: string;
+  name: string;
+}

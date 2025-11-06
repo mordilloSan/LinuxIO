@@ -6,6 +6,7 @@ func DefaultAppSettings() AppSettings {
 		Theme:            "DARK",
 		PrimaryColor:     "#2196f3",
 		SidebarCollapsed: false,
+		ShowHiddenFiles:  false,
 	}
 }
 
@@ -32,6 +33,7 @@ func ExampleDefaults() Settings {
 			Theme:            "DARK",
 			PrimaryColor:     "#2196f3",
 			SidebarCollapsed: false,
+			ShowHiddenFiles:  false,
 		},
 		Docker: Docker{
 			// Use a neutral path that makes sense in docs. Avoid per-user paths.

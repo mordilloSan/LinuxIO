@@ -10,6 +10,7 @@ type AppSettings struct {
 	Theme            string `json:"theme" yaml:"theme"`
 	PrimaryColor     string `json:"primaryColor" yaml:"primaryColor"`
 	SidebarCollapsed bool   `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
+	ShowHiddenFiles  bool   `json:"showHiddenFiles" yaml:"showHiddenFiles"`
 }
 
 type Docker struct {

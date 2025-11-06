@@ -13,7 +13,6 @@ import UpdateBanner from "@/components/update/UpdateBanner";
 import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
 import { useUpdateInfo } from "@/hooks/useUpdateInfo";
-import FilebrowserIframe from "@/pages/main/filebrowser/FilebrowserIframe";
 
 const Dashboard: React.FC = () => {
   const location = useLocation();
@@ -23,7 +22,7 @@ const Dashboard: React.FC = () => {
     useSidebar();
   const { updateInfo, dismissUpdate } = useUpdateInfo();
 
-  useEffect(() => {}, [updateInfo]);
+  useEffect(() => { }, [updateInfo]);
 
   // Auto-close mobile drawer on route change (mobile only)
   useEffect(() => {
@@ -65,7 +64,6 @@ const Dashboard: React.FC = () => {
             position: "relative",
           }}
         >
-          <FilebrowserIframe />
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
               <Outlet />

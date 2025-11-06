@@ -1,0 +1,255 @@
+package iteminfo
+
+import (
+	"mime"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/mordilloSan/filebrowser/backend/common/settings"
+)
+
+var AllFiletypeOptions = []string{
+	"image",
+	"archive",
+	"doc",
+	"text",
+}
+
+var MuPdfConvertable = map[string]bool{
+	".pdf":  true, // PDF
+	".xps":  true, // XPS
+	".epub": true, // EPUB
+	".mobi": true, // MOBI
+	".fb2":  true, // FB2
+	".cbz":  true, // CBZ
+	".svg":  true, // SVG
+	".txt":  true, // TXT
+	".docx": true, // DOCX
+	".pptx": true, // PPTX
+	".xlsx": true, // XLSX
+	".hwp":  true, // HWP
+	".hwpx": true, // HWPX
+	".md":   true, // Markdown
+}
+
+var ResizableImageTypes = map[string]bool{
+	".jpg":   true,
+	".jpeg":  true,
+	".png":   true,
+	".gif":   true,
+	".bmp":   true,
+	".other": false,
+}
+
+// Known bundle-style extensions that are technically directories but treated as files
+var BundleExtensions = map[string]bool{
+	".app":       true, // macOS application bundle
+	".bundle":    true, // macOS plugin bundle
+	".framework": true, // macOS framework
+	".plugin":    true, // macOS plugin
+	".kext":      true, // macOS kernel extension
+	".pkg":       true, // macOS installer package
+	".mpkg":      true, // macOS multi-package
+	".apk":       true, // Android package
+	".aab":       true, // Android App Bundle
+	".appx":      true, // Windows application package
+	".msix":      true, // Windows modern app package
+	".deb":       true, // Debian package
+	".snap":      true, // Snap package
+	".flatpak":   true, // Flatpak application
+	".dmg":       true, // macOS disk image
+	".iso":       true, // ISO disk image
+}
+
+// Document file extensions
+var documentTypes = map[string]bool{
+	// Common Document Formats
+	".doc":          true, // Microsoft Word
+	".docx":         true, // Microsoft Word
+	".pdf":          true, // Portable Document Format
+	".odt":          true, // OpenDocument Text
+	".rtf":          true, // Rich Text Format
+	".conf":         true,
+	".bash_history": true,
+	".gitignore":    true,
+	".htpasswd":     true,
+	".profile":      true,
+	".dockerignore": true,
+	".editorconfig": true,
+	".ppt":          true, // Microsoft PowerPoint
+	".pptx":         true, // Microsoft PowerPoint
+	".odp":          true, // OpenDocument Presentation
+	".gdoc":         true, // google docs
+	".gsheet":       true, // google sheet
+	".xls":          true, // Microsoft Excel
+	".xlsx":         true, // Microsoft Excel
+	".ods":          true, // OpenDocument Spreadsheet
+	".epub":         true, // Electronic Publication
+	".mobi":         true, // Amazon Kindle
+	".fb2":          true, // FictionBook
+}
+
+// Text-based file extensions
+var textTypes = map[string]bool{
+	// Common Text Formats
+	".txt":   true,
+	".md":    true, // Markdown
+	".sh":    true, // Bash script
+	".py":    true, // Python
+	".js":    true, // JavaScript
+	".ts":    true, // TypeScript
+	".php":   true, // PHP
+	".rb":    true, // Ruby
+	".go":    true, // Go
+	".java":  true, // Java
+	".c":     true, // C
+	".cpp":   true, // C++
+	".cs":    true, // C#
+	".swift": true, // Swift
+	".yaml":  true, // YAML
+	".yml":   true, // YAML
+	".json":  true, // JSON
+	".xml":   true, // XML
+	".ini":   true, // INI
+	".toml":  true, // TOML
+	".cfg":   true, // Configuration file
+	".css":   true, // Cascading Style Sheets
+	".html":  true, // HyperText Markup Language
+	".htm":   true, // HyperText Markup Language
+	".sql":   true, // SQL
+	".csv":   true, // Comma-Separated Values
+	".tsv":   true, // Tab-Separated Values
+	".log":   true, // Log file
+	".bat":   true, // Batch file
+	".ps1":   true, // PowerShell script
+	".tex":   true, // LaTeX
+	".bib":   true, // BibTeX
+}
+
+// Compressed file extensions
+var compressedFile = map[string]bool{
+	".7z":   true,
+	".rar":  true,
+	".zip":  true,
+	".tar":  true,
+	".gz":   true,
+	".xz":   true,
+	".bz2":  true,
+	".tgz":  true, // tar.gz
+	".tbz2": true, // tar.bz2
+	".lzma": true,
+	".lz4":  true,
+	".zstd": true,
+}
+
+func ExtendedMimeTypeCheck(extension string) string {
+	if IsDoc(extension) {
+		return "application/document"
+	}
+	if IsText(extension) {
+		return "text/plain"
+	}
+	return "blob"
+}
+
+func ToInt(str string) int {
+	val, err := strconv.Atoi(str)
+	if err != nil {
+		return 0
+	}
+	return val
+}
+
+func UpdateSize(given string) int {
+	size := ToInt(given)
+	if size == 0 {
+		return 100
+	} else {
+		return size
+	}
+}
+
+func IsText(extension string) bool {
+	return textTypes[extension]
+}
+
+func IsDoc(extension string) bool {
+	return documentTypes[extension]
+}
+
+func IsArchive(extension string) bool {
+	return compressedFile[extension]
+}
+
+func IsMatchingType(extension string, matchType string) bool {
+	mimetype := mime.TypeByExtension(extension)
+	if strings.HasPrefix(mimetype, matchType) {
+		return true
+	}
+	switch matchType {
+	case "doc":
+		return IsDoc(extension)
+	case "text":
+		return IsText(extension)
+	case "archive":
+		return IsArchive(extension)
+	}
+	return false
+}
+
+// DetectType detects the MIME type of a file and updates the ItemInfo struct.
+func (i *ItemInfo) DetectType(realPath string, saveContent bool) {
+	name := i.Name
+	ext := strings.ToLower(filepath.Ext(name))
+
+	// Attempt MIME detection by file extension
+	switch ext {
+	case ".md":
+		i.Type = "text/markdown"
+		return
+	case ".heic", ".heif":
+		i.Type = "image/heic"
+		return
+	}
+	i.Type = strings.Split(mime.TypeByExtension(ext), ";")[0]
+
+	if i.Type == "" {
+		i.Type = ExtendedMimeTypeCheck(ext)
+	}
+	// do header detection for certain files to ensure the type is correct for undetected or ambiguous files
+
+	switch ext {
+	case ".ts", ".xcf":
+		i.Type = DetectTypeByHeader(realPath)
+		return
+	}
+	if i.Type == "blob" || i.Type == "" {
+		i.Type = DetectTypeByHeader(realPath)
+	}
+
+	if i.Type == "" || i.Type == "application/octet-stream" {
+		i.Type = "blob"
+	}
+}
+
+// hasBundleExtension checks if a file has a known bundle-style extension.
+func hasBundleExtension(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return BundleExtensions[ext]
+}
+
+func HasDocConvertableExtension(name, mimetype string) bool {
+	if !settings.Config.Server.MuPdfAvailable {
+		return false
+	}
+	if strings.HasPrefix(mimetype, "text") {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	val, ok := MuPdfConvertable[ext]
+	if ok {
+		return val
+	}
+	return false
+}

@@ -162,8 +162,8 @@ const TerminalXTerm: React.FC = () => {
           minHeight: 64,
           backgroundColor:
             theme.palette.mode === "light"
-              ? darken(theme.sidebar.background, 0.07)
-              : lighten(theme.sidebar.background, 0.07),
+              ? darken(theme.sidebar.background, 0.13)
+              : lighten(theme.sidebar.background, 0.06),
           boxShadow: theme.shadows[2],
         })}
       >

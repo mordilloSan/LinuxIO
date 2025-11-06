@@ -19,14 +19,12 @@ import (
 
 	"github.com/coreos/go-systemd/activation"
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/server/cleanup"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 func RunServer(cfg ServerConfig) {
@@ -68,22 +66,13 @@ func RunServer(cfg ServerConfig) {
 	}
 
 	// -------------------------------------------------------------------------
-	// Start required services
-	// -------------------------------------------------------------------------
-	filebrowserSecret := utils.GenerateSecretKey(32)
-	go func() {
-		filebrowser.StartServices(filebrowserSecret, verbose, env == "development")
-	}()
-
-	// -------------------------------------------------------------------------
 	// Router
 	// -------------------------------------------------------------------------
 	router := BuildRouter(Config{
-		Env:               env,
-		Verbose:           verbose,
-		VitePort:          cfg.ViteDevPort,
-		FilebrowserSecret: filebrowserSecret,
-		UI:                ui,
+		Env:      env,
+		Verbose:  verbose,
+		VitePort: cfg.ViteDevPort,
+		UI:       ui,
 	}, sm)
 
 	// -------------------------------------------------------------------------asdasd
@@ -248,9 +237,6 @@ func RunServer(cfg ServerConfig) {
 	} else {
 		logger.Infof("HTTP server closed")
 	}
-
-	// Stop background/attached services
-	cleanup.CleanupFilebrowserContainer(env == "development")
 
 	// Tell bridges to quit before sessions close
 	cleanup.ShutdownAllBridges(sm, "server_quit")
