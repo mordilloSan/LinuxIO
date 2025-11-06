@@ -5,9 +5,10 @@ import {
   ViewStream as ViewStreamIcon,
 } from "@mui/icons-material";
 import { Box } from "@mui/material";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import React, { ReactNode, useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 import { useConfigValue } from "@/hooks/useConfig";
 import axios from "@/utils/axios";
@@ -17,6 +18,9 @@ import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import ErrorState from "@/components/filebrowser/ErrorState";
+import ContextMenu from "@/components/filebrowser/ContextMenu";
+import InputDialog from "@/components/filebrowser/InputDialog";
+import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import { normalizeResource, buildDownloadUrl } from "@/components/filebrowser/utils";
 import { ViewMode, ApiResource, FileResource, FileItem } from "@/types/filebrowser";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -39,11 +43,72 @@ const FileBrowser: React.FC = () => {
   const [gallerySize, setGallerySize] = useState<number>(4);
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [createFileDialog, setCreateFileDialog] = useState(false);
+  const [createFolderDialog, setCreateFolderDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [pendingDeletePaths, setPendingDeletePaths] = useState<string[]>([]);
   const showQuickSave = false;
+
+  const queryClient = useQueryClient();
 
   // Extract path from URL: /filebrowser/path/to/dir -> /path/to/dir
   const urlPath = location.pathname.replace(/^\/filebrowser\/?/, "");
   const normalizedPath = urlPath ? `/${urlPath}` : "/";
+
+  // Mutations
+  const createFileMutation = useMutation({
+    mutationFn: async (fileName: string) => {
+      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
+      await axios.post("/navigator/api/resources", null, {
+        params: { path, source: "/" },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fileResource", normalizedPath] });
+      toast.success("File created successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Failed to create file");
+    },
+  });
+
+  const createFolderMutation = useMutation({
+    mutationFn: async (folderName: string) => {
+      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
+      await axios.post("/navigator/api/resources", null, {
+        params: { path, source: "/" },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fileResource", normalizedPath] });
+      toast.success("Folder created successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Failed to create folder");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (paths: string[]) => {
+      await Promise.all(
+        paths.map((path) =>
+          axios.delete("/navigator/api/resources", {
+            params: { path, source: "/" },
+          })
+        )
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fileResource", normalizedPath] });
+      setSelectedPaths(new Set());
+      toast.success("Items deleted successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Failed to delete items");
+    },
+  });
 
   const {
     data: resource,
@@ -134,60 +199,212 @@ const FileBrowser: React.FC = () => {
     [resource?.source],
   );
 
+  const handleContextMenu = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    setContextMenuPosition({
+      top: event.clientY,
+      left: event.clientX,
+    });
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenuPosition(null);
+  }, []);
+
+  // Context menu action handlers
+  const handleCreateFile = useCallback(() => {
+    handleCloseContextMenu();
+    setCreateFileDialog(true);
+  }, [handleCloseContextMenu]);
+
+  const handleCreateFolder = useCallback(() => {
+    handleCloseContextMenu();
+    setCreateFolderDialog(true);
+  }, [handleCloseContextMenu]);
+
+  const handleConfirmCreateFile = useCallback(
+    (fileName: string) => {
+      createFileMutation.mutate(fileName);
+    },
+    [createFileMutation]
+  );
+
+  const handleConfirmCreateFolder = useCallback(
+    (folderName: string) => {
+      createFolderMutation.mutate(folderName);
+    },
+    [createFolderMutation]
+  );
+
+  const handleChangePermissions = useCallback(() => {
+    handleCloseContextMenu();
+    // TODO: Implement permissions dialog
+    console.log("Change permissions clicked for:", Array.from(selectedPaths));
+  }, [handleCloseContextMenu, selectedPaths]);
+
+  const handleCopy = useCallback(() => {
+    handleCloseContextMenu();
+    // TODO: Implement copy functionality
+    console.log("Copy clicked for:", Array.from(selectedPaths));
+  }, [handleCloseContextMenu, selectedPaths]);
+
+  const handleMove = useCallback(() => {
+    handleCloseContextMenu();
+    // TODO: Implement move functionality
+    console.log("Move clicked for:", Array.from(selectedPaths));
+  }, [handleCloseContextMenu, selectedPaths]);
+
+  const handleDelete = useCallback(() => {
+    handleCloseContextMenu();
+    const paths = Array.from(selectedPaths);
+    console.log("Delete clicked, selectedPaths:", paths);
+    if (paths.length > 0) {
+      setPendingDeletePaths(paths);
+      setDeleteDialog(true);
+    } else {
+      toast.error("No items selected");
+    }
+  }, [handleCloseContextMenu, selectedPaths]);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!pendingDeletePaths.length) {
+      return;
+    }
+    console.log("Confirming delete for paths:", pendingDeletePaths);
+    deleteMutation.mutate(pendingDeletePaths);
+    setPendingDeletePaths([]);
+  }, [deleteMutation, pendingDeletePaths]);
+
+  const handleCloseDeleteDialog = useCallback(() => {
+    setDeleteDialog(false);
+    setPendingDeletePaths([]);
+  }, []);
+
+  const handleDownloadSelected = useCallback(() => {
+    handleCloseContextMenu();
+    const paths = Array.from(selectedPaths);
+    if (paths.length === 0) return;
+
+    // Build download URLs for each selected item
+    const filesParam = paths.map((path) => `${encodeURIComponent("/")}::${encodeURIComponent(path)}`).join("||");
+    const url = `/navigator/api/raw?files=${filesParam}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [handleCloseContextMenu, selectedPaths]);
+
+  const handleUpload = useCallback(() => {
+    handleCloseContextMenu();
+    // TODO: Implement upload dialog
+    console.log("Upload clicked");
+  }, [handleCloseContextMenu]);
+
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      <FileBrowserHeader
-        viewMode={viewMode}
-        showHiddenFiles={showHiddenFiles}
-        showQuickSave={showQuickSave}
-        onSwitchView={handleSwitchView}
-        onToggleHiddenFiles={handleToggleHiddenFiles}
-        viewIcon={viewIcon}
-      />
-      <Box sx={{ px: 2 }}>
-        <BreadcrumbsNav
-          path={normalizedPath}
-          onNavigate={handleOpenDirectory}
-          showGallerySize={
-            viewMode === "gallery" && (resource?.items?.length ?? 0) > 0
-          }
-          gallerySize={gallerySize}
-          onGallerySizeChange={setGallerySize}
+    <>
+      <Box
+        data-allow-context-menu="true"
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+          minHeight: "100vh",
+          height: "100%"
+        }}
+        onContextMenu={handleContextMenu}
+      >
+        <FileBrowserHeader
+          viewMode={viewMode}
+          showHiddenFiles={showHiddenFiles}
+          showQuickSave={showQuickSave}
+          onSwitchView={handleSwitchView}
+          onToggleHiddenFiles={handleToggleHiddenFiles}
+          viewIcon={viewIcon}
         />
-
-        {!isPending && !errorMessage && resource && resource.type === "directory" && (
-          <SortBar
-            sortField={sortField}
-            sortOrder={sortOrder}
-            onSortChange={handleSortChange}
-          />
-        )}
         <Box sx={{ px: 2 }}>
-          {isPending && <PageLoader />}
-
-          {!isPending && errorMessage && (
-            <ErrorState message={errorMessage} onReset={() => handleOpenDirectory("/")} />
-          )}
+          <BreadcrumbsNav
+            path={normalizedPath}
+            onNavigate={handleOpenDirectory}
+            showGallerySize={
+              viewMode === "gallery" && (resource?.items?.length ?? 0) > 0
+            }
+            gallerySize={gallerySize}
+            onGallerySizeChange={setGallerySize}
+          />
 
           {!isPending && !errorMessage && resource && resource.type === "directory" && (
-            <DirectoryListing
-              key={normalizedPath}
-              resource={resource}
-              showHiddenFiles={showHiddenFiles}
-              viewMode={viewMode}
+            <SortBar
               sortField={sortField}
               sortOrder={sortOrder}
-              onOpenDirectory={handleOpenDirectory}
-              onDownloadFile={handleDownloadFile}
+              onSortChange={handleSortChange}
             />
           )}
+          <Box sx={{ px: 2 }}>
+            {isPending && <PageLoader />}
 
-          {!isPending && !errorMessage && resource && resource.type !== "directory" && (
-            <FileDetail resource={resource} onDownload={handleDownloadCurrent} />
-          )}
+            {!isPending && errorMessage && (
+              <ErrorState message={errorMessage} onReset={() => handleOpenDirectory("/")} />
+            )}
+
+            {!isPending && !errorMessage && resource && resource.type === "directory" && (
+              <DirectoryListing
+                key={normalizedPath}
+                resource={resource}
+                showHiddenFiles={showHiddenFiles}
+                viewMode={viewMode}
+                sortField={sortField}
+                sortOrder={sortOrder}
+                onOpenDirectory={handleOpenDirectory}
+                onDownloadFile={handleDownloadFile}
+                selectedPaths={selectedPaths}
+                onSelectedPathsChange={setSelectedPaths}
+                isContextMenuOpen={Boolean(contextMenuPosition)}
+              />
+            )}
+
+            {!isPending && !errorMessage && resource && resource.type !== "directory" && (
+              <FileDetail resource={resource} onDownload={handleDownloadCurrent} />
+            )}
+          </Box>
         </Box>
       </Box>
-    </Box>
+
+      <ContextMenu
+        anchorPosition={contextMenuPosition}
+        hasSelection={selectedPaths.size > 0}
+        onClose={handleCloseContextMenu}
+        onCreateFile={handleCreateFile}
+        onCreateFolder={handleCreateFolder}
+        onChangePermissions={handleChangePermissions}
+        onCopy={handleCopy}
+        onMove={handleMove}
+        onDelete={handleDelete}
+        onDownload={handleDownloadSelected}
+        onUpload={handleUpload}
+      />
+
+      <InputDialog
+        open={createFileDialog}
+        title="Create File"
+        label="File Name"
+        onClose={() => setCreateFileDialog(false)}
+        onConfirm={handleConfirmCreateFile}
+      />
+
+      <InputDialog
+        open={createFolderDialog}
+        title="Create Folder"
+        label="Folder Name"
+        onClose={() => setCreateFolderDialog(false)}
+        onConfirm={handleConfirmCreateFolder}
+      />
+
+      <ConfirmDialog
+        open={deleteDialog}
+        title="Delete Items"
+        message={`Are you sure you want to delete ${pendingDeletePaths.length} item${pendingDeletePaths.length !== 1 ? "s" : ""}?`}
+        confirmText="Delete"
+        onClose={handleCloseDeleteDialog}
+        onConfirm={handleConfirmDelete}
+      />
+    </>
   );
 };
 

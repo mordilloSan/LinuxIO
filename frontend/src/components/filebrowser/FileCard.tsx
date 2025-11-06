@@ -12,6 +12,7 @@ export interface FileCardProps {
   hidden?: boolean;
   onClick: (event: React.MouseEvent) => void;
   onDoubleClick?: () => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
 }
 
 const formatBytes = (bytes?: number) => {
@@ -38,6 +39,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(({
   hidden = false,
   onClick,
   onDoubleClick,
+  onContextMenu,
 }) => {
   // Memoize expensive date formatting to prevent recalculation on every render
   const formattedDate = useMemo(() => {
@@ -58,11 +60,18 @@ const FileCard: React.FC<FileCardProps> = React.memo(({
     }
   };
 
+  const handleContextMenu = (event: React.MouseEvent) => {
+    if (onContextMenu) {
+      onContextMenu(event);
+    }
+  };
+
   return (
     <Box
       data-file-card="true"
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
+      onContextMenu={handleContextMenu}
       sx={{
         display: "flex",
         alignItems: "center",

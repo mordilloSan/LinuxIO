@@ -7,6 +7,7 @@ interface FoldersListProps {
   selectedPaths: Set<string>;
   onFolderClick: (event: React.MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
+  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
 }
 
 const FoldersList: React.FC<FoldersListProps> = React.memo(({
@@ -14,6 +15,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(({
   selectedPaths,
   onFolderClick,
   onOpenDirectory,
+  onFolderContextMenu,
 }) => {
   if (folders.length === 0) {
     return null;
@@ -52,6 +54,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(({
             selected={selectedPaths.has(folder.path)}
             onClick={(event) => onFolderClick(event, folder.path)}
             onDoubleClick={() => onOpenDirectory(folder.path)}
+            onContextMenu={(event) => onFolderContextMenu(event, folder.path)}
           />
         ))}
       </div>
