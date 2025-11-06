@@ -218,7 +218,6 @@ func processContent(info *iteminfo.ExtendedFileInfo, opts utils.FileOptions) {
 }
 
 func DeleteFiles(absPath string, absDirPath string) error {
-
 	err := os.RemoveAll(absPath)
 	if err != nil {
 		return err
@@ -254,7 +253,6 @@ func validateMoveDestination(src, dst string, isSrcDir bool) error {
 }
 
 func MoveResource(isSrcDir bool, realsrc, realdst string) error {
-
 	// Validate the move operation before executing
 	if err := validateMoveDestination(realsrc, realdst, isSrcDir); err != nil {
 		return err
@@ -283,7 +281,6 @@ func CopyResource(isSrcDir bool, realsrc, realdst string) error {
 }
 
 func WriteDirectory(opts utils.FileOptions) error {
-
 	realPath := filepath.Join(opts.Path)
 
 	var stat os.FileInfo

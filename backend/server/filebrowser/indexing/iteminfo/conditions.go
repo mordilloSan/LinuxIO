@@ -238,7 +238,6 @@ func hasBundleExtension(name string) bool {
 }
 
 func HasDocConvertableExtension(name, mimetype string) bool {
-
 	if strings.HasPrefix(mimetype, "text") {
 		return true
 	}

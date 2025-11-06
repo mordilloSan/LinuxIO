@@ -9,16 +9,11 @@ export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
 
 export interface SortBarProps {
-  sortField: SortField;
   sortOrder: SortOrder;
   onSortChange: (field: SortField) => void;
 }
 
-const SortBar: React.FC<SortBarProps> = ({
-  sortField,
-  sortOrder,
-  onSortChange,
-}) => {
+const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
   const theme = useTheme();
   const [hoveredField, setHoveredField] = React.useState<SortField | null>(
     null,
