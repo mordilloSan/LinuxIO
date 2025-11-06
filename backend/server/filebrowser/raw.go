@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mordilloSan/filebrowser/backend/adapters/fs/files"
-	"github.com/mordilloSan/filebrowser/backend/adapters/fs/fileutils"
-	"github.com/mordilloSan/filebrowser/backend/common/settings"
-	"github.com/mordilloSan/filebrowser/backend/common/utils"
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/files"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/fileutils"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
 )
 
 func setContentDisposition(w http.ResponseWriter, r *http.Request, fileName string) {
@@ -60,14 +60,12 @@ func addFile(path string, d *requestContext, tarWriter *tar.Writer, zipWriter *z
 			return fmt.Errorf("invalid source encoding: %v", err)
 		}
 	}
-	source = settings.RootPath
 	path = splitFile[1]
 
 	// Direct filesystem access
 	_, err := files.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
-		Source:   source,
 		Expand:   false,
 	})
 	if err != nil {
@@ -197,7 +195,6 @@ func rawFilesHandler(w http.ResponseWriter, r *http.Request, d *requestContext, 
 			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
 		}
 	}
-	firstFileSource = settings.RootPath
 	firstFilePath := splitFile[1]
 	// decode url encoded source name
 	var err error
@@ -265,7 +262,7 @@ func rawFilesHandler(w http.ResponseWriter, r *http.Request, d *requestContext, 
 	}
 	fileName = url.PathEscape(baseDirName + extension)
 
-	archiveData := filepath.Join(settings.Config.Server.CacheDir, utils.InsecureRandomIdentifier(10))
+	archiveData := filepath.Join("tmp", utils.InsecureRandomIdentifier(10))
 	if extension == ".zip" {
 		archiveData = archiveData + ".zip"
 		err = createZip(d, archiveData, fileList...)
@@ -325,7 +322,6 @@ func computeArchiveSize(fileList []string, d *requestContext) (int64, error) {
 				return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
 			}
 		}
-		source = settings.RootPath
 		path := splitFile[1]
 		var err error
 		// Direct filesystem access

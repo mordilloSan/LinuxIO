@@ -9,23 +9,22 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/mordilloSan/filebrowser/backend/adapters/fs/fileutils"
-	"github.com/mordilloSan/filebrowser/backend/common/settings"
-	"github.com/mordilloSan/filebrowser/backend/common/utils"
-	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/fileutils"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/indexing/iteminfo"
 )
 
 func FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) {
 	response := &iteminfo.ExtendedFileInfo{}
-	sourceName := opts.Source
 
 	if !strings.HasPrefix(opts.Path, "/") {
 		opts.Path = "/" + opts.Path
 	}
 
 	// Build real path directly
-	realPath := filepath.Join(sourceName, opts.Path)
+	realPath := filepath.Join(opts.Path)
 
 	// Resolve symlinks
 	resolvedPath, isDir, err := iteminfo.ResolveSymlinks(realPath)
@@ -75,8 +74,6 @@ func FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) 
 
 	response.FileInfo = *info
 	response.RealPath = resolvedPath
-	response.Source = sourceName
-	opts.Source = sourceName
 
 	if opts.Content || opts.Metadata {
 		processContent(response, opts)
@@ -220,19 +217,12 @@ func processContent(info *iteminfo.ExtendedFileInfo, opts utils.FileOptions) {
 	}
 }
 
-func DeleteFiles(source, absPath string, absDirPath string) error {
-	if source == "" {
-		source = settings.RootPath
-	}
+func DeleteFiles(absPath string, absDirPath string) error {
+
 	err := os.RemoveAll(absPath)
 	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func RefreshIndex(source string, path string, isDir bool, recursive bool) error {
-	// No indexing - this is a no-op
 	return nil
 }
 
@@ -263,13 +253,7 @@ func validateMoveDestination(src, dst string, isSrcDir bool) error {
 	return nil
 }
 
-func MoveResource(isSrcDir bool, sourceIndex, destIndex, realsrc, realdst string) error {
-	if sourceIndex == "" {
-		sourceIndex = settings.RootPath
-	}
-	if destIndex == "" {
-		destIndex = settings.RootPath
-	}
+func MoveResource(isSrcDir bool, realsrc, realdst string) error {
 
 	// Validate the move operation before executing
 	if err := validateMoveDestination(realsrc, realdst, isSrcDir); err != nil {
@@ -299,11 +283,8 @@ func CopyResource(isSrcDir bool, realsrc, realdst string) error {
 }
 
 func WriteDirectory(opts utils.FileOptions) error {
-	if opts.Source == "" {
-		opts.Source = settings.RootPath
-	}
 
-	realPath := filepath.Join(opts.Source, opts.Path)
+	realPath := filepath.Join(opts.Path)
 
 	var stat os.FileInfo
 	var err error
@@ -332,11 +313,7 @@ func WriteDirectory(opts utils.FileOptions) error {
 }
 
 func WriteFile(opts utils.FileOptions, in io.Reader) error {
-	if opts.Source == "" {
-		opts.Source = settings.RootPath
-	}
-
-	realPath := filepath.Join(opts.Source, opts.Path)
+	realPath := filepath.Join(opts.Path)
 	// Strip trailing slash from realPath if it's meant to be a file
 	realPath = strings.TrimRight(realPath, "/")
 

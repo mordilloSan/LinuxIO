@@ -13,7 +13,8 @@ import (
 	"strings"
 
 	"github.com/gen2brain/go-fitz"
-	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
+
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/indexing/iteminfo"
 )
 
 func docEnabled() bool {

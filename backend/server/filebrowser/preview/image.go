@@ -250,13 +250,3 @@ func getEmbeddedThumbnail(in io.Reader) ([]byte, io.Reader, error) {
 	thm, err := ifd.Thumbnail()
 	return thm, wrappedReader, err
 }
-
-// CreateThumbnail decodes an image and creates a fixed-size thumbnail.
-func CreateThumbnail(rawData io.Reader, width, height int) (image.Image, error) {
-	img, _, err := image.Decode(rawData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode image: %w", err)
-	}
-	thumb := imaging.Fit(img, width, height, imaging.Lanczos)
-	return thumb, nil
-}
