@@ -19,9 +19,6 @@ import (
 func FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) {
 	response := &iteminfo.ExtendedFileInfo{}
 	sourceName := opts.Source
-	if sourceName == "" {
-		sourceName = settings.RootPath
-	}
 
 	if !strings.HasPrefix(opts.Path, "/") {
 		opts.Path = "/" + opts.Path

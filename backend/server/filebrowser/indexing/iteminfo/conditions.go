@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/mordilloSan/filebrowser/backend/common/settings"
 )
 
 var AllFiletypeOptions = []string{
@@ -240,9 +238,7 @@ func hasBundleExtension(name string) bool {
 }
 
 func HasDocConvertableExtension(name, mimetype string) bool {
-	if !settings.Config.Server.MuPdfAvailable {
-		return false
-	}
+
 	if strings.HasPrefix(mimetype, "text") {
 		return true
 	}
