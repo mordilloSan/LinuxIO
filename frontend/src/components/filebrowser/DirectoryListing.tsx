@@ -3,7 +3,7 @@ import { Box } from "@mui/material";
 import FoldersList from "./FoldersList";
 import FilesList from "./FilesList";
 import EmptyState from "./EmptyState";
-import { FileResource, FileItem, SortField, SortOrder, ViewMode } from "./types";
+import { FileResource, FileItem, SortField, SortOrder, ViewMode } from "../../types/filebrowser";
 import { useFileListKeyboardNavigation } from "@/hooks/useFileListKeyboardNavigation";
 
 interface DirectoryListingProps {
@@ -165,7 +165,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     <Box
       ref={containerRef}
       onMouseDownCapture={handleContainerMouseDown}
-      sx={{ display: "flex", flexDirection: "column", gap: 3, outline: "none" }}
+      sx={{ display: "flex", flexDirection: "column", gap: 2, outline: "none" }}
     >
       <FoldersList
         folders={folders}

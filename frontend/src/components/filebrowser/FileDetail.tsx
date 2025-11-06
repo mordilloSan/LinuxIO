@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Button, Paper, Typography, alpha } from "@mui/material";
 import { Download as DownloadIcon } from "@mui/icons-material";
-import { FileResource } from "./types";
+import { FileResource } from "../../types/filebrowser";
 
 interface FileDetailProps {
   resource: FileResource;

@@ -1,4 +1,4 @@
-import { ApiResource, FileItem, FileResource } from "./types";
+import { ApiResource, FileItem, FileResource } from "../../types/filebrowser";
 
 export const normalizeResource = (data: ApiResource): FileResource => {
   if (data.type !== "directory") {

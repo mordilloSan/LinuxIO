@@ -18,7 +18,7 @@ import DirectoryListing from "@/components/filebrowser/DirectoryListing";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import ErrorState from "@/components/filebrowser/ErrorState";
 import { normalizeResource, buildDownloadUrl } from "@/components/filebrowser/utils";
-import { ViewMode, ApiResource, FileResource, FileItem } from "@/components/filebrowser/types";
+import { ViewMode, ApiResource, FileResource, FileItem } from "@/types/filebrowser";
 import PageLoader from "@/components/loaders/PageLoader";
 
 const viewModes: ViewMode[] = ["list", "compact", "normal", "gallery"];
@@ -67,16 +67,16 @@ const FileBrowser: React.FC = () => {
   const errorMessage = isError
     ? error instanceof Error
       ? (() => {
-          // Check if it's an axios error with a status code
-          const axiosError = error as any;
-          if (axiosError.response?.status === 403) {
-            return `Permission denied: You don't have access to "${normalizedPath}". This may require elevated permissions.`;
-          }
-          if (axiosError.response?.status === 404) {
-            return `Path not found: "${normalizedPath}" does not exist.`;
-          }
-          return error.message;
-        })()
+        // Check if it's an axios error with a status code
+        const axiosError = error as any;
+        if (axiosError.response?.status === 403) {
+          return `Permission denied: You don't have access to "${normalizedPath}".`;
+        }
+        if (axiosError.response?.status === 404 || axiosError.response?.status === 500) {
+          return `Path not found: "${normalizedPath}" does not exist.`;
+        }
+        return error.message;
+      })()
       : "Failed to load file information."
     : null;
 
