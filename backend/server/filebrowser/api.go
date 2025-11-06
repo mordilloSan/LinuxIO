@@ -10,11 +10,10 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/filebrowser/backend/common/settings"
 	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
-	"github.com/mordilloSan/filebrowser/backend/preview"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/preview"
 )
 
 type requestContext struct {
@@ -50,13 +49,7 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 
 func ensureInitialized() error {
 	initOnce.Do(func() {
-		settings.Initialize("")
-
-		// Ensure CacheDir is absolute so temp files stay predictable.
-		cacheDir := settings.Config.Server.CacheDir
-		if cacheDir == "" {
-			cacheDir = "tmp"
-		}
+		cacheDir := "tmp"
 		if !filepath.IsAbs(cacheDir) {
 			cacheDir = filepath.Join(os.TempDir(), "linuxio-filebrowser", cacheDir)
 		}
@@ -64,7 +57,6 @@ func ensureInitialized() error {
 			initErr = err
 			return
 		}
-		settings.Config.Server.CacheDir = cacheDir
 
 		if err := preview.StartPreviewGenerator(2, cacheDir); err != nil {
 			initErr = err

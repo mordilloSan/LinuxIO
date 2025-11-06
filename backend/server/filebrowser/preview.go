@@ -13,11 +13,11 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/files"
-	"github.com/mordilloSan/filebrowser/backend/common/settings"
 	"github.com/mordilloSan/filebrowser/backend/common/utils"
 	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
-	"github.com/mordilloSan/filebrowser/backend/preview"
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/preview"
 )
 
 type FileCache interface {
@@ -62,14 +62,12 @@ func previewHandler(w http.ResponseWriter, r *http.Request, d *requestContext) (
 			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
 		}
 	}
-	source := settings.RootPath
 	if path == "" {
 		return http.StatusBadRequest, fmt.Errorf("invalid request path")
 	}
 	fileInfo, err := files.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
-		Source:   source,
 		Metadata: true,
 	})
 	if err != nil {

@@ -16,12 +16,13 @@ import (
 
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/files"
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/fileutils"
-	"github.com/mordilloSan/filebrowser/backend/common/errors"
 	"github.com/mordilloSan/filebrowser/backend/common/settings"
 	"github.com/mordilloSan/filebrowser/backend/common/utils"
 	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
 	"github.com/mordilloSan/filebrowser/backend/preview"
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/errors"
 )
 
 // validateMoveOperation checks if a move/rename operation is valid at the HTTP level
