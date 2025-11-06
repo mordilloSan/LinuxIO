@@ -1,4 +1,3 @@
-import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -7,6 +6,7 @@ import {
   TextField,
   Button,
 } from "@mui/material";
+import React, { useState, useEffect } from "react";
 
 interface InputDialogProps {
   open: boolean;
@@ -59,12 +59,16 @@ const InputDialog: React.FC<InputDialogProps> = ({
           variant="outlined"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onKeyPress={handleKeyPress}
+          onKeyDown={handleKeyPress}
         />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={handleConfirm} disabled={!value.trim()} variant="contained">
+        <Button
+          onClick={handleConfirm}
+          disabled={!value.trim()}
+          variant="contained"
+        >
           Create
         </Button>
       </DialogActions>

@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gtsteffaniak/go-logger/logger"
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/files"
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/fileutils"
 	"github.com/mordilloSan/filebrowser/backend/common/errors"
@@ -22,6 +21,7 @@ import (
 	"github.com/mordilloSan/filebrowser/backend/common/utils"
 	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
 	"github.com/mordilloSan/filebrowser/backend/preview"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // validateMoveOperation checks if a move/rename operation is valid at the HTTP level
@@ -108,7 +108,6 @@ func resourceGetHandler(w http.ResponseWriter, r *http.Request, d *requestContex
 		return renderJSON(w, r, fileInfo)
 	}
 	return renderJSON(w, r, fileInfo)
-
 }
 
 // resourceStatHandler returns extended metadata.
@@ -211,7 +210,6 @@ func resourceDeleteHandler(w http.ResponseWriter, r *http.Request, d *requestCon
 		return errToStatus(err), err
 	}
 	return http.StatusOK, nil
-
 }
 
 // resourcePostHandler creates or uploads a new resource.
@@ -582,7 +580,6 @@ func patchAction(ctx context.Context, params patchActionParams) error {
 			Source:   params.srcIndex,
 			IsDir:    params.isSrcDir,
 		})
-
 		if err != nil {
 			return err
 		}
@@ -593,14 +590,4 @@ func patchAction(ctx context.Context, params patchActionParams) error {
 	default:
 		return fmt.Errorf("unsupported action %s: %w", params.action, errors.ErrInvalidRequestParams)
 	}
-}
-
-func inspectIndex(w http.ResponseWriter, r *http.Request) {
-	// Indexing disabled
-	http.Error(w, "indexing feature removed", http.StatusNotImplemented)
-}
-
-func mockData(w http.ResponseWriter, r *http.Request) {
-	// Indexing disabled
-	http.Error(w, "mock data feature removed", http.StatusNotImplemented)
 }

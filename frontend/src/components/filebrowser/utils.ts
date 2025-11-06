@@ -31,7 +31,11 @@ export const normalizeResource = (data: ApiResource): FileResource => {
   };
 };
 
-export const buildDownloadUrl = (source: string, path: string, inline = false) => {
+export const buildDownloadUrl = (
+  source: string,
+  path: string,
+  inline = false,
+) => {
   const filesParam = `${encodeURIComponent(source)}::${encodeURIComponent(path)}`;
   const search = new URLSearchParams({ files: filesParam });
   if (inline) search.set("inline", "true");

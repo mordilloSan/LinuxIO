@@ -146,13 +146,9 @@ const BreadcrumbContainer = styled("div")(({ theme }) => ({
 
 const BreadcrumbButton = styled("button")(({ theme }) => {
   const isDark = theme.palette.mode === "dark";
-  const breadcrumbBackground = isDark
-    ? "#283136"
-    : "#d0d4d8";
+  const breadcrumbBackground = isDark ? "#283136" : "#d0d4d8";
   const breadcrumbHover = theme.palette.primary.main;
-  const breadcrumbForeground = isDark
-    ? theme.palette.text.primary
-    : "#5a5a5a";
+  const breadcrumbForeground = isDark ? theme.palette.text.primary : "#5a5a5a";
   const backgroundBehind = theme.palette.background.default;
 
   return {

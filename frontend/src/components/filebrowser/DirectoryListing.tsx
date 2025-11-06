@@ -1,9 +1,23 @@
-import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Box } from "@mui/material";
-import FoldersList from "./FoldersList";
-import FilesList from "./FilesList";
+import React, {
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+  useEffect,
+} from "react";
+
 import EmptyState from "./EmptyState";
-import { FileResource, FileItem, SortField, SortOrder, ViewMode } from "../../types/filebrowser";
+import FilesList from "./FilesList";
+import FoldersList from "./FoldersList";
+import {
+  FileResource,
+  FileItem,
+  SortField,
+  SortOrder,
+  ViewMode,
+} from "../../types/filebrowser";
+
 import { useFileListKeyboardNavigation } from "@/hooks/useFileListKeyboardNavigation";
 
 interface DirectoryListingProps {
@@ -124,11 +138,14 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     setFocusedIndex(0);
   }, [resource.path, onSelectedPathsChange]);
 
-  const focusItemByPath = useCallback((path: string) => {
-    const index = allItems.findIndex((item) => item.path === path);
-    if (index === -1) return;
-    setFocusedIndex(index);
-  }, [allItems]);
+  const focusItemByPath = useCallback(
+    (path: string) => {
+      const index = allItems.findIndex((item) => item.path === path);
+      if (index === -1) return;
+      setFocusedIndex(index);
+    },
+    [allItems],
+  );
 
   const handleItemSelection = useCallback(
     (event: React.MouseEvent, path: string) => {
@@ -148,13 +165,16 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     [focusItemByPath, selectedPaths, onSelectedPathsChange],
   );
 
-  const handleItemContextMenu = useCallback((event: React.MouseEvent, path: string) => {
-    event.preventDefault();
-    focusItemByPath(path);
-    if (!selectedPaths.has(path)) {
-      onSelectedPathsChange(new Set([path]));
-    }
-  }, [focusItemByPath, selectedPaths, onSelectedPathsChange]);
+  const handleItemContextMenu = useCallback(
+    (event: React.MouseEvent, path: string) => {
+      event.preventDefault();
+      focusItemByPath(path);
+      if (!selectedPaths.has(path)) {
+        onSelectedPathsChange(new Set([path]));
+      }
+    },
+    [focusItemByPath, selectedPaths, onSelectedPathsChange],
+  );
 
   const handleContainerMouseDown = useCallback(
     (event: React.MouseEvent) => {

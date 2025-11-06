@@ -6,11 +6,13 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/gtsteffaniak/go-logger/logger"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
-var PermFile os.FileMode
-var PermDir os.FileMode
+var (
+	PermFile os.FileMode
+	PermDir  os.FileMode
+)
 
 func SetFsPermissions(PermFileOctal os.FileMode, PermDirOctal os.FileMode) {
 	PermFile = PermFileOctal
@@ -90,7 +92,6 @@ func copySingleFile(source, dest string) error {
 
 	// Set the configured file permissions instead of copying from source
 	err = os.Chmod(dest, PermFile)
-
 	if err != nil {
 		return err
 	}
@@ -193,5 +194,4 @@ func ClearCacheDir(cacheDir string) {
 			logger.Errorf("failed clear cache dir: %v", err)
 		}
 	}
-
 }

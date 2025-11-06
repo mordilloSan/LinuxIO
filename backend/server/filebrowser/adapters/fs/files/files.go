@@ -9,12 +9,11 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/gtsteffaniak/go-logger/logger"
-
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/fileutils"
 	"github.com/mordilloSan/filebrowser/backend/common/settings"
 	"github.com/mordilloSan/filebrowser/backend/common/utils"
 	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 func FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) {
@@ -44,7 +43,7 @@ func FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) 
 
 	var info *iteminfo.FileInfo
 	if isDir {
-		info, err = getDirInfo(sourceName, opts.Path, resolvedPath)
+		info, err = getDirInfo(opts.Path, resolvedPath)
 		if err != nil {
 			return response, err
 		}
@@ -56,7 +55,7 @@ func FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) 
 		}
 		parentRealPath := filepath.Dir(resolvedPath)
 
-		dirInfo, err := getDirInfo(sourceName, parentPath, parentRealPath)
+		dirInfo, err := getDirInfo(parentPath, parentRealPath)
 		if err != nil {
 			return response, err
 		}
@@ -88,7 +87,7 @@ func FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) 
 	return response, nil
 }
 
-func getDirInfo(sourceName, adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
+func getDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 	dir, err := os.Open(realPath)
 	if err != nil {
 		return nil, err
@@ -220,7 +219,7 @@ func processContent(info *iteminfo.ExtendedFileInfo, opts utils.FileOptions) {
 		}
 		info.Content = content
 	} else {
-		logger.Debug("skipping large text file contents (20MB limit): "+info.Path, info.Name, info.Type)
+		logger.Debugf("skipping large text file contents (20MB limit): "+info.Path, info.Name, info.Type)
 	}
 }
 
@@ -288,7 +287,7 @@ func MoveResource(isSrcDir bool, sourceIndex, destIndex, realsrc, realdst string
 	return nil
 }
 
-func CopyResource(isSrcDir bool, sourceIndex, destIndex, realsrc, realdst string) error {
+func CopyResource(isSrcDir bool, realsrc, realdst string) error {
 	// Validate the copy operation before executing
 	if err := validateMoveDestination(realsrc, realdst, isSrcDir); err != nil {
 		return err
