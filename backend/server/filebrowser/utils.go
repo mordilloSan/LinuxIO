@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	libErrors "github.com/mordilloSan/filebrowser/backend/common/errors"
+	libErrors "github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/errors"
 )
 
 func errToStatus(err error) int {

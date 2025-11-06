@@ -5,35 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
-	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/preview"
 )
 
 type requestContext struct {
-	ctx      context.Context
-	user     session.User
-	fileInfo iteminfo.ExtendedFileInfo
+	ctx  context.Context
+	user session.User
 }
-
-var (
-	initOnce sync.Once
-	initErr  error
-)
 
 // RegisterRoutes wires the Filebrowser HTTP handlers into the provided router group.
 // The caller should wrap the group with session middleware before invoking this.
 func RegisterRoutes(r *gin.RouterGroup) error {
-	if err := ensureInitialized(); err != nil {
-		return err
-	}
-
 	r.GET("/api/resources", adapt(resourceGetHandler))
 	r.GET("/api/resources/stat", adapt(resourceStatHandler))
 	r.DELETE("/api/resources", adapt(resourceDeleteHandler))
@@ -41,29 +26,9 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 	r.PUT("/api/resources", adapt(resourcePutHandler))
 	r.PATCH("/api/resources", adapt(resourcePatchHandler))
 
-	r.GET("/api/preview", adapt(previewHandler))
 	r.GET("/api/raw", adapt(rawHandler))
 
 	return nil
-}
-
-func ensureInitialized() error {
-	initOnce.Do(func() {
-		cacheDir := "tmp"
-		if !filepath.IsAbs(cacheDir) {
-			cacheDir = filepath.Join(os.TempDir(), "linuxio-filebrowser", cacheDir)
-		}
-		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-			initErr = err
-			return
-		}
-
-		if err := preview.StartPreviewGenerator(2, cacheDir); err != nil {
-			initErr = err
-			return
-		}
-	})
-	return initErr
 }
 
 func adapt(fn func(http.ResponseWriter, *http.Request, *requestContext) (int, error)) gin.HandlerFunc {

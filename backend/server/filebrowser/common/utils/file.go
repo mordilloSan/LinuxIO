@@ -4,7 +4,6 @@ package utils
 type FileOptions struct {
 	Username   string // username for access control
 	Path       string // realpath
-	Source     string
 	IsDir      bool
 	Expand     bool
 	ReadHeader bool

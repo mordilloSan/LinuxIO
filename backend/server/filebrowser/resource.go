@@ -14,15 +14,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mordilloSan/filebrowser/backend/adapters/fs/files"
-	"github.com/mordilloSan/filebrowser/backend/adapters/fs/fileutils"
-	"github.com/mordilloSan/filebrowser/backend/common/settings"
-	"github.com/mordilloSan/filebrowser/backend/common/utils"
-	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
-	"github.com/mordilloSan/filebrowser/backend/preview"
 	"github.com/mordilloSan/go_logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/files"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/fileutils"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/errors"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/indexing/iteminfo"
 )
 
 // validateMoveOperation checks if a move/rename operation is valid at the HTTP level
@@ -93,12 +91,10 @@ func resourceGetHandler(w http.ResponseWriter, r *http.Request, d *requestContex
 			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
 		}
 	}
-	source := settings.RootPath
 	getContent := r.URL.Query().Get("content") == "true"
 	fileInfo, err := files.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
-		Source:   source,
 		Expand:   true,
 		Content:  getContent,
 	})
@@ -136,12 +132,10 @@ func resourceStatHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
 		}
 	}
-	source := settings.RootPath
 
 	fileInfo, err := files.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
-		Source:   source,
 		Expand:   false,
 	})
 	if err != nil {
@@ -184,7 +178,6 @@ func resourceDeleteHandler(w http.ResponseWriter, r *http.Request, d *requestCon
 			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
 		}
 	}
-	source := settings.RootPath
 	// Decode the URL-encoded path
 	path, err := url.QueryUnescape(encodedPath)
 	if err != nil {
@@ -196,17 +189,13 @@ func resourceDeleteHandler(w http.ResponseWriter, r *http.Request, d *requestCon
 	fileInfo, err := files.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
-		Source:   source,
 		Expand:   false,
 	})
 	if err != nil {
 		return errToStatus(err), err
 	}
 
-	// delete thumbnails
-	preview.DelThumbs(r.Context(), *fileInfo)
-
-	err = files.DeleteFiles(source, fileInfo.RealPath, filepath.Dir(fileInfo.RealPath))
+	err = files.DeleteFiles(fileInfo.RealPath, filepath.Dir(fileInfo.RealPath))
 	if err != nil {
 		return errToStatus(err), err
 	}
@@ -238,7 +227,6 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
 		}
 	}
-	source := settings.RootPath
 	path, err = url.QueryUnescape(path)
 	if err != nil {
 		logger.Debugf("invalid path encoding: %v", err)
@@ -250,11 +238,10 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 	fileOpts := utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
-		Source:   source,
 		Expand:   false,
 	}
 	// Direct filesystem access
-	realPath := filepath.Join(source, path)
+	realPath := filepath.Join(path)
 
 	// Check for file/folder conflicts before creation
 	if stat, statErr := os.Stat(realPath); statErr == nil {
@@ -317,8 +304,6 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 					logger.Debugf("Resource already exists: %v", fileInfo.RealPath)
 					return http.StatusConflict, nil
 				}
-				// If overriding, delete existing thumbnails
-				preview.DelThumbs(r.Context(), *fileInfo)
 			}
 		}
 
@@ -327,7 +312,7 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 		hasher := md5.New()
 		hasher.Write([]byte(realPath))
 		uploadID := hex.EncodeToString(hasher.Sum(nil))
-		tempFilePath := filepath.Join(settings.Config.Server.CacheDir, "uploads", uploadID)
+		tempFilePath := filepath.Join("tmp", "uploads", uploadID)
 
 		if err = os.MkdirAll(filepath.Dir(tempFilePath), fileutils.PermDir); err != nil {
 			logger.Debugf("could not create temp dir: %v", err)
@@ -366,7 +351,6 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 				logger.Debugf("could not move temp file to destination: %v", err)
 				return http.StatusInternalServerError, fmt.Errorf("could not move temp file to destination: %v", err)
 			}
-			go files.RefreshIndex(source, realPath, false, false) //nolint:errcheck
 		}
 
 		return http.StatusOK, nil
@@ -383,14 +367,10 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 		}
 	}
 
-	fileInfo, err := files.FileInfoFaster(fileOpts)
-	if err == nil {
-		if r.URL.Query().Get("override") != "true" {
-			return http.StatusConflict, nil
-		}
-
-		preview.DelThumbs(r.Context(), *fileInfo)
+	if r.URL.Query().Get("override") != "true" {
+		return http.StatusConflict, nil
 	}
+
 	err = files.WriteFile(fileOpts, r.Body)
 	if err != nil {
 		logger.Debugf("error writing file: %v", err)
@@ -422,7 +402,6 @@ func resourcePutHandler(w http.ResponseWriter, r *http.Request, d *requestContex
 			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
 		}
 	}
-	source := settings.RootPath
 
 	encodedPath := r.URL.Query().Get("path")
 
@@ -439,7 +418,6 @@ func resourcePutHandler(w http.ResponseWriter, r *http.Request, d *requestContex
 	fileOpts := utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
-		Source:   source,
 		Expand:   false,
 	}
 
@@ -484,14 +462,12 @@ func resourcePatchHandler(w http.ResponseWriter, r *http.Request, d *requestCont
 	if len(splitSrc) <= 1 {
 		return http.StatusBadRequest, fmt.Errorf("invalid source path: %v", src)
 	}
-	srcIndex := settings.RootPath
 	src = splitSrc[1]
 
 	splitDst := strings.Split(dst, "::")
 	if len(splitDst) <= 1 {
 		return http.StatusBadRequest, fmt.Errorf("invalid destination path: %v", dst)
 	}
-	dstIndex := settings.RootPath
 	dst = splitDst[1]
 
 	if dst == "/" || src == "/" {
@@ -499,7 +475,7 @@ func resourcePatchHandler(w http.ResponseWriter, r *http.Request, d *requestCont
 	}
 
 	// Direct filesystem access - check target dir exists
-	parentDir := filepath.Join(dstIndex, filepath.Dir(dst))
+	parentDir := filepath.Join(filepath.Dir(dst))
 	_, statErr := os.Stat(parentDir)
 	if statErr != nil {
 		logger.Debugf("Could not get real path for parent dir: %v %v", filepath.Dir(dst), statErr)
@@ -507,7 +483,7 @@ func resourcePatchHandler(w http.ResponseWriter, r *http.Request, d *requestCont
 	}
 	realDest := filepath.Join(parentDir, filepath.Base(dst))
 
-	realSrc := filepath.Join(srcIndex, src)
+	realSrc := filepath.Join(src)
 	stat, err := os.Stat(realSrc)
 	if err != nil {
 		return http.StatusNotFound, err
@@ -529,8 +505,6 @@ func resourcePatchHandler(w http.ResponseWriter, r *http.Request, d *requestCont
 
 	err = patchAction(r.Context(), patchActionParams{
 		action:   action,
-		srcIndex: srcIndex,
-		dstIndex: dstIndex,
 		src:      realSrc,
 		dst:      realDest,
 		d:        d,
@@ -560,8 +534,6 @@ func addVersionSuffix(source string) string {
 
 type patchActionParams struct {
 	action   string
-	srcIndex string
-	dstIndex string
 	src      string
 	dst      string
 	d        *requestContext
@@ -571,23 +543,10 @@ type patchActionParams struct {
 func patchAction(ctx context.Context, params patchActionParams) error {
 	switch params.action {
 	case "copy":
-		err := files.CopyResource(params.isSrcDir, params.srcIndex, params.dstIndex, params.src, params.dst)
+		err := files.CopyResource(params.isSrcDir, params.src, params.dst)
 		return err
 	case "rename", "move":
-		// Direct filesystem access
-		fileInfo, err := files.FileInfoFaster(utils.FileOptions{
-			Username: params.d.user.Username,
-			Path:     params.src,
-			Source:   params.srcIndex,
-			IsDir:    params.isSrcDir,
-		})
-		if err != nil {
-			return err
-		}
-
-		// delete thumbnails
-		preview.DelThumbs(ctx, *fileInfo)
-		return files.MoveResource(params.isSrcDir, params.srcIndex, params.dstIndex, params.src, params.dst)
+		return files.MoveResource(params.isSrcDir, params.src, params.dst)
 	default:
 		return fmt.Errorf("unsupported action %s: %w", params.action, errors.ErrInvalidRequestParams)
 	}
