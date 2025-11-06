@@ -10,11 +10,11 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/filebrowser/backend/common/settings"
 	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
 	"github.com/mordilloSan/filebrowser/backend/preview"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type requestContext struct {
@@ -44,10 +44,6 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 
 	r.GET("/api/preview", adapt(previewHandler))
 	r.GET("/api/raw", adapt(rawHandler))
-
-	// Deprecated/disabled endpoints kept for compatibility
-	r.GET("/api/resources/inspect", adaptNoop(inspectIndex))
-	r.GET("/api/mockdata", adaptNoop(mockData))
 
 	return nil
 }
@@ -105,15 +101,6 @@ func adapt(fn func(http.ResponseWriter, *http.Request, *requestContext) (int, er
 
 		if status > 0 && !c.Writer.Written() {
 			c.Status(status)
-		}
-	}
-}
-
-func adaptNoop(fn func(http.ResponseWriter, *http.Request)) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		fn(c.Writer, c.Request)
-		if !c.Writer.Written() {
-			c.Status(http.StatusNotImplemented)
 		}
 	}
 }
