@@ -19,7 +19,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/terminal"
@@ -188,29 +187,6 @@ func main() {
 	// Ensure per-user config exists and is valid
 	userconfig.EnsureConfigReady(Sess.User.Username)
 	logger.Debugf("[bridge] userconfig ready")
-
-	// Kick off Navigator defaults application in the background
-	// Use saved base URL from environment config
-	if base := envCfg.ServerBaseURL; base != "" {
-		go func(baseURL string) {
-			// Try a few times with small backoff to ride out races.
-			var err error
-			for i := range 8 {
-				err = filebrowser.ApplyNavigatorDefaults(baseURL, Sess, envCfg.ServerCert)
-				if err == nil {
-					return
-				}
-				select {
-				case <-bridgeClosing:
-					return
-				case <-time.After(time.Duration(250+100*i) * time.Millisecond):
-				}
-			}
-			logger.Debugf("Gave up applying Navigator defaults for user=%s: %v", Sess.User.Username, err)
-		}(base)
-	} else {
-		logger.Debugf("No LINUXIO_SERVER_BASE_URL; skipping Navigator defaults")
-	}
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)

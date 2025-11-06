@@ -15,6 +15,7 @@ const Hardware = lazy(() => import("@/pages/main/hardware"));
 const Wireguard = lazy(() => import("@/pages/main/wireguard"));
 const Terminal = lazy(() => import("@/pages/main/terminal"));
 const Shares = lazy(() => import("@/pages/main/shares"));
+const FileBrowser = lazy(() => import("@/pages/main/filebrowser"));
 
 // LAZY auth pages too (keeps base bundle small)
 const AuthLayout = lazy(() => import("@/layouts/Auth"));
@@ -38,7 +39,7 @@ const routes = [
       { path: "network", element: <Network /> },
       { path: "shares", element: <Shares /> },
       { path: "hardware", element: <Hardware /> },
-      { path: "filebrowser/*", element: <></> },
+      { path: "filebrowser/*", element: <FileBrowser /> },
       { path: "terminal", element: <Terminal /> },
       { path: "wireguard", element: <Wireguard /> },
     ],

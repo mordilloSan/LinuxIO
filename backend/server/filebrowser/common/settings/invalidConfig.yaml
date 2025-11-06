@@ -1,0 +1,25 @@
+server:
+  indexingInterval: 5
+  tlsKey: ""
+  tlsCert: ""
+  enableThumbnails: false
+  resizePreview: true
+  port: 80
+  root: "."
+auth:
+  header: ""
+  command: ""
+  shell: ""
+frontend:
+  name: ""
+  disableExternal: true
+  files: ""
+  color: ""
+userDefaults:
+  scope: ""
+  locale: ""
+  viewMode: ""
+  darkMode: true
+  sorting:
+    by: ""
+    asc: true

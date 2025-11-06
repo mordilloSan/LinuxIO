@@ -2,5 +2,6 @@ appSettings:
     theme: DARK
     primaryColor: '#2196f3'
     sidebarCollapsed: false
+    showHiddenFiles: false
 docker:
     folder: /var/lib/linuxio/docker

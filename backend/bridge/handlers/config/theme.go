@@ -15,6 +15,7 @@ type themePayload struct {
 	PrimaryColor        *string `json:"primaryColor"`
 	SidebarCollapsed    *bool   `json:"sidebarCollapsed"`
 	SidebarCollapsedAlt *bool   `json:"SidebarCollapsed"`
+	ShowHiddenFiles     *bool   `json:"showHiddenFiles"`
 }
 
 func ThemeHandlers() map[string]ipc.HandlerFunc {
@@ -33,8 +34,8 @@ func themeGet(args []string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-	logger.Debugf("[theme.get] user=%q path=%s theme=%s primary=%s collapsed=%v",
-		username, cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor, cfg.AppSettings.SidebarCollapsed)
+	logger.Debugf("[theme.get] user=%q path=%s theme=%s primary=%s collapsed=%v showHidden=%v",
+		username, cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor, cfg.AppSettings.SidebarCollapsed, cfg.AppSettings.ShowHiddenFiles)
 	return cfg.AppSettings, nil
 }
 
@@ -73,6 +74,9 @@ func themeSet(args []string) (any, error) {
 	} else if payload.SidebarCollapsedAlt != nil {
 		next.SidebarCollapsed = *payload.SidebarCollapsedAlt
 	}
+	if payload.ShowHiddenFiles != nil {
+		next.ShowHiddenFiles = *payload.ShowHiddenFiles
+	}
 
 	cfg.AppSettings = next
 	cfgPath, err := userconfig.Save(username, cfg)
@@ -80,8 +84,8 @@ func themeSet(args []string) (any, error) {
 		return nil, fmt.Errorf("save config: %w", err)
 	}
 
-	logger.Debugf("[theme.set] user=%q updated theme: theme=%s primary=%s collapsed=%v path=%s",
-		username, next.Theme, next.PrimaryColor, next.SidebarCollapsed, cfgPath)
+	logger.Debugf("[theme.set] user=%q updated theme: theme=%s primary=%s collapsed=%v showHidden=%v path=%s",
+		username, next.Theme, next.PrimaryColor, next.SidebarCollapsed, next.ShowHiddenFiles, cfgPath)
 
 	return map[string]any{
 		"message":          "theme updated",
@@ -89,5 +93,6 @@ func themeSet(args []string) (any, error) {
 		"appliedTheme":     next.Theme,
 		"appliedPrimary":   next.PrimaryColor,
 		"sidebarCollapsed": next.SidebarCollapsed,
+		"showHiddenFiles":  next.ShowHiddenFiles,
 	}, nil
 }

@@ -68,22 +68,3 @@ var colorTokens = map[string]string{
 func ResolveColorToken(s string) string {
 	return colorTokens[strings.ToLower(strings.TrimSpace(s))]
 }
-
-// NormalizeForFB returns a hex color suitable for FileBrowser's themeColor.
-// - If input is a known token, returns its hex.
-// - If input is already a valid hex (#RGB/#RRGGBB/#RRGGBBAA), returns it as‑is.
-// - Otherwise returns "" (skip pushing themeColor).
-func NormalizeForFB(color string) string {
-	c := strings.TrimSpace(color)
-	if c == "" {
-		return ""
-	}
-	if hexColorRE.MatchString(c) {
-		return c
-	}
-	if h := ResolveColorToken(c); h != "" {
-		return h
-	}
-	// Optional: named colors → skip, or convert later if desired.
-	return ""
-}

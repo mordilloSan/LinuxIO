@@ -18,7 +18,6 @@ import {
   AuthUser,
 } from "@/types/auth";
 import axios from "@/utils/axios";
-import { resetFilebrowserUserCache } from "@/utils/filebrowser";
 
 const initialState: AuthState = {
   isAuthenticated: false,
@@ -80,11 +79,6 @@ function AuthProvider({ children }: AuthProviderProps) {
   // One place to clear local state and redirect.
   // `broadcast` writes to localStorage so other tabs receive it.
   const doLocalSignOut = useCallback((broadcast: boolean) => {
-    try {
-      resetFilebrowserUserCache();
-    } catch {
-      /* ignore */
-    }
     // Clear update info on logout
     try {
       sessionStorage.removeItem("update_info");
