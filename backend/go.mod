@@ -1,26 +1,20 @@
 module github.com/mordilloSan/LinuxIO/backend
 
-go 1.25.0
+go 1.25.4
 
 require (
 	github.com/creack/pty v1.1.24
-	github.com/docker/docker v28.5.1+incompatible
-	github.com/dsoprea/go-exif/v3 v3.0.1
-	github.com/gen2brain/go-fitz v1.24.15
+	github.com/docker/docker v28.5.2+incompatible
 	github.com/gin-gonic/gin v1.11.0
 	github.com/godbus/dbus/v5 v5.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jaypipes/ghw v0.19.1
-	github.com/kovidgoyal/imaging v1.7.2
-	github.com/mordilloSan/filebrowser/backend v0.0.0-20251104122959-2080a7e1405f
+	github.com/jaypipes/ghw v0.20.0
 	github.com/mordilloSan/go_logger v1.4.0
-	github.com/shirou/gopsutil/v4 v4.25.9
+	github.com/shirou/gopsutil/v4 v4.25.10
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	github.com/spf13/afero v1.15.0
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/image v0.32.0
 	golang.org/x/sys v0.37.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	gopkg.in/ini.v1 v1.67.0
@@ -32,41 +26,31 @@ require (
 	github.com/coreos/go-systemd/v22 v22.6.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
-	github.com/dsoprea/go-logging v0.0.0-20200710184922-b02d349568dd // indirect
-	github.com/dsoprea/go-utility/v2 v2.0.0-20221003172846-a3e1774ef349 // indirect
-	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
-	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
-	github.com/golang/geo v0.0.0-20251008113719-ccf458c07da6 // indirect
-	github.com/gtsteffaniak/go-logger v0.2.3 // indirect
-	github.com/jupiterrider/ffi v0.5.1 // indirect
-	github.com/kovidgoyal/go-parallel v1.0.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/quic-go/quic-go v0.55.0 // indirect
-	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/grpc v1.75.1 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
-	github.com/bytedance/sonic v1.14.1 // indirect
-	github.com/bytedance/sonic/loader v0.3.0 // indirect
+	github.com/bytedance/sonic v1.14.2 // indirect
+	github.com/bytedance/sonic/loader v0.4.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/ebitengine/purego v0.9.0 // indirect
+	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.10 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.11 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -99,7 +83,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
-	github.com/ugorji/go/codec v1.3.0 // indirect
+	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 // indirect

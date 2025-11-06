@@ -4,7 +4,7 @@ SERVER_PORT   = 18090
 VERBOSE      ?= true
 
 # Go and Node.js versions
-GO_VERSION   = 1.25.0
+GO_VERSION   = 1.25.4
 NODE_VERSION = 24
 CC ?= cc
 

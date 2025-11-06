@@ -78,7 +78,7 @@ const FileBrowser: React.FC = () => {
   const normalizedPath = urlPath ? `/${urlPath}` : "/";
 
   // Mutations
-  const createFileMutation = useMutation({
+  const { mutate: createFile } = useMutation({
     mutationFn: async (fileName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
       await axios.post("/navigator/api/resources", null, {
@@ -96,7 +96,7 @@ const FileBrowser: React.FC = () => {
     },
   });
 
-  const createFolderMutation = useMutation({
+  const { mutate: createFolder } = useMutation({
     mutationFn: async (folderName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
       await axios.post("/navigator/api/resources", null, {
@@ -114,7 +114,7 @@ const FileBrowser: React.FC = () => {
     },
   });
 
-  const deleteMutation = useMutation({
+  const { mutate: deleteItems } = useMutation({
     mutationFn: async (paths: string[]) => {
       await Promise.all(
         paths.map((path) =>
@@ -258,16 +258,16 @@ const FileBrowser: React.FC = () => {
 
   const handleConfirmCreateFile = useCallback(
     (fileName: string) => {
-      createFileMutation.mutate(fileName);
+      createFile(fileName);
     },
-    [createFileMutation],
+    [createFile],
   );
 
   const handleConfirmCreateFolder = useCallback(
     (folderName: string) => {
-      createFolderMutation.mutate(folderName);
+      createFolder(folderName);
     },
-    [createFolderMutation],
+    [createFolder],
   );
 
   const handleChangePermissions = useCallback(() => {
@@ -305,9 +305,9 @@ const FileBrowser: React.FC = () => {
       return;
     }
     console.log("Confirming delete for paths:", pendingDeletePaths);
-    deleteMutation.mutate(pendingDeletePaths);
+    deleteItems(pendingDeletePaths);
     setPendingDeletePaths([]);
-  }, [deleteMutation, pendingDeletePaths]);
+  }, [deleteItems, pendingDeletePaths]);
 
   const handleCloseDeleteDialog = useCallback(() => {
     setDeleteDialog(false);
@@ -369,11 +369,7 @@ const FileBrowser: React.FC = () => {
             !errorMessage &&
             resource &&
             resource.type === "directory" && (
-              <SortBar
-                sortField={sortField}
-                sortOrder={sortOrder}
-                onSortChange={handleSortChange}
-              />
+              <SortBar sortOrder={sortOrder} onSortChange={handleSortChange} />
             )}
           <Box sx={{ px: 2 }}>
             {isPending && <PageLoader />}
