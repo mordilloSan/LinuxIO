@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gtsteffaniak/go-logger/logger"
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/files"
 	"github.com/mordilloSan/filebrowser/backend/common/settings"
 	"github.com/mordilloSan/filebrowser/backend/common/utils"
 	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
 	"github.com/mordilloSan/filebrowser/backend/preview"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 type FileCache interface {

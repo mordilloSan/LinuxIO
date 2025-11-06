@@ -40,11 +40,11 @@ func (f *FileCache) Store(ctx context.Context, key string, value []byte) error {
 	defer mu.Unlock()
 
 	fileName := f.getFileName(key)
-	if err := os.MkdirAll(filepath.Dir(fileName), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(fileName), 0o700); err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(fileName, value, 0600); err != nil {
+	if err := os.WriteFile(fileName, value, 0o600); err != nil {
 		return err
 	}
 

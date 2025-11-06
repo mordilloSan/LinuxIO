@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gtsteffaniak/go-logger/logger"
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/files"
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/fileutils"
 	"github.com/mordilloSan/filebrowser/backend/common/settings"
 	"github.com/mordilloSan/filebrowser/backend/common/utils"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 func setContentDisposition(w http.ResponseWriter, r *http.Request, fileName string) {

@@ -1,14 +1,31 @@
-import React, { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   Add as AddIcon,
   Save as SaveIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from "@mui/icons-material";
-import { Box, IconButton, Stack, useMediaQuery, useTheme, darken, lighten, Tooltip } from "@mui/material";
-import { useConfigValue } from "@/hooks/useConfig";
+import {
+  Box,
+  IconButton,
+  Stack,
+  useMediaQuery,
+  useTheme,
+  darken,
+  lighten,
+  Tooltip,
+} from "@mui/material";
+import React, {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import QuickActionButton from "./QuickActionButton";
 import { ViewMode } from "../../types/filebrowser";
+
+import { useConfigValue } from "@/hooks/useConfig";
 
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
@@ -88,8 +105,9 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
       })}
     >
       <Box
-        className={`header-right quick-actions${isMobile ? " is-mobile" : ""}${showMobileQuickActions ? " open" : ""
-          }`}
+        className={`header-right quick-actions${isMobile ? " is-mobile" : ""}${
+          showMobileQuickActions ? " open" : ""
+        }`}
         ref={quickActionsRef}
         sx={{
           display: "flex",
@@ -141,9 +159,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                 ? "rgba(32, 44, 50, 0.96)"
                 : "rgba(25, 35, 41, 0.96)"
               : "transparent",
-            boxShadow: isMobile
-              ? "0 12px 24px rgba(17, 24, 28, 0.25)"
-              : "none",
+            boxShadow: isMobile ? "0 12px 24px rgba(17, 24, 28, 0.25)" : "none",
             zIndex: 6,
             minWidth: isMobile ? "unset" : undefined,
           }}
@@ -164,10 +180,14 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
             </IconButton>
           </Tooltip>
 
-          <Tooltip title={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}>
+          <Tooltip
+            title={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
+          >
             <IconButton
               onClick={onToggleHiddenFiles}
-              aria-label={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
+              aria-label={
+                showHiddenFiles ? "Hide hidden files" : "Show hidden files"
+              }
             >
               {showHiddenFiles ? <VisibilityIcon /> : <VisibilityOffIcon />}
             </IconButton>

@@ -1,4 +1,7 @@
-import { ArrowDownward as ArrowDownwardIcon, ArrowUpward as ArrowUpwardIcon } from "@mui/icons-material";
+import {
+  ArrowDownward as ArrowDownwardIcon,
+  ArrowUpward as ArrowUpwardIcon,
+} from "@mui/icons-material";
 import { Box, Typography, alpha, useTheme } from "@mui/material";
 import React from "react";
 
@@ -11,9 +14,15 @@ export interface SortBarProps {
   onSortChange: (field: SortField) => void;
 }
 
-const SortBar: React.FC<SortBarProps> = ({ sortField, sortOrder, onSortChange }) => {
+const SortBar: React.FC<SortBarProps> = ({
+  sortField,
+  sortOrder,
+  onSortChange,
+}) => {
   const theme = useTheme();
-  const [hoveredField, setHoveredField] = React.useState<SortField | null>(null);
+  const [hoveredField, setHoveredField] = React.useState<SortField | null>(
+    null,
+  );
 
   const renderSortIcon = (field: SortField) => {
     const isHovered = hoveredField === field;
@@ -51,9 +60,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortField, sortOrder, onSortChange })
       sx={{
         display: "grid",
         gridTemplateColumns: "1fr 150px 200px",
-        backgroundColor: theme.palette.mode === "dark"
-          ? "#20292f"
-          : "#ffffff",
+        backgroundColor: theme.palette.mode === "dark" ? "#20292f" : "#ffffff",
         border: `0.1px solid ${alpha(theme.palette.divider, theme.palette.mode === "dark" ? 0.2 : 0.1)}`,
         borderRadius: 2,
       }}

@@ -14,12 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gtsteffaniak/go-logger/logger"
-
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/diskcache"
 	"github.com/mordilloSan/filebrowser/backend/adapters/fs/fileutils"
 	"github.com/mordilloSan/filebrowser/backend/common/settings"
 	"github.com/mordilloSan/filebrowser/backend/indexing/iteminfo"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 var (
@@ -55,7 +54,7 @@ func NewPreviewGenerator(concurrencyLimit int, cacheDir string) *Service {
 	// Create directories recursively
 	err := os.MkdirAll(filepath.Join(settings.Config.Server.CacheDir, "thumbnails", "docs"), fileutils.PermDir)
 	if err != nil {
-		logger.Error(err)
+		logger.Errorf("Error %v", err)
 	}
 	settings.Config.Server.MuPdfAvailable = docEnabled()
 	logger.Debugf("MuPDF Enabled            : %v", settings.Config.Server.MuPdfAvailable)
@@ -186,7 +185,6 @@ func GeneratePreviewWithMD5(ctx context.Context, file iteminfo.ExtendedFileInfo,
 		}
 		return imageBytes, nil
 	}
-
 }
 
 func GeneratePreview(ctx context.Context, file iteminfo.ExtendedFileInfo, previewSize string, seekPercentage int) ([]byte, error) {
@@ -250,7 +248,6 @@ func CheckValidFFprobe(path string) (string, error) {
 // checkExecutable is an internal helper function to find and validate an executable.
 // It checks a specific path if provided, otherwise falls back to searching the system PATH.
 func checkExecutable(providedPath, execName string) (string, error) {
-
 	var finalPath string
 	var err error
 

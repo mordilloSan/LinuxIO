@@ -15,7 +15,6 @@ export const useFileListKeyboardNavigation = ({
   containerRef,
   allItems,
   focusedIndex,
-  selectedPaths,
   onFocusChange,
   onSelectionChange,
   global = false,
@@ -42,13 +41,19 @@ export const useFileListKeyboardNavigation = ({
       // CTRL+A to select all
       if (e.ctrlKey && e.key === "a") {
         e.preventDefault();
-        const allPaths = new Set(allItems.map(item => item.path));
+        const allPaths = new Set(allItems.map((item) => item.path));
         onSelectionChange(allPaths);
         return;
       }
 
       // Letter key navigation
-      if (e.key.length === 1 && e.key.match(/[a-z]/i) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (
+        e.key.length === 1 &&
+        e.key.match(/[a-z]/i) &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.metaKey
+      ) {
         e.preventDefault();
         const letter = e.key.toLowerCase();
 

@@ -1,6 +1,7 @@
-import React from "react";
-import { Box, Button, Paper, Typography, alpha } from "@mui/material";
 import { Download as DownloadIcon } from "@mui/icons-material";
+import { Box, Button, Paper, Typography, alpha } from "@mui/material";
+import React from "react";
+
 import { FileResource } from "../../types/filebrowser";
 
 interface FileDetailProps {
@@ -34,8 +35,7 @@ const FileDetail: React.FC<FileDetailProps> = ({ resource, onDownload }) => {
             overflowY: "auto",
             p: 2,
             borderRadius: 1,
-            backgroundColor: (theme) =>
-              alpha(theme.palette.text.primary, 0.04),
+            backgroundColor: (theme) => alpha(theme.palette.text.primary, 0.04),
             fontFamily: "monospace",
             fontSize: "0.875rem",
           }}

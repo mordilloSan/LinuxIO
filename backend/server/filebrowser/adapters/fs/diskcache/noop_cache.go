@@ -4,8 +4,7 @@ import (
 	"context"
 )
 
-type NoOp struct {
-}
+type NoOp struct{}
 
 func NewNoOp() *NoOp {
 	return &NoOp{}

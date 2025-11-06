@@ -22,7 +22,9 @@ const defaultConfig: AppConfig = {
   showHiddenFiles: false,
 };
 
-const applyDefaults = (cfg: Partial<AppConfig> | undefined | null): AppConfig => ({
+const applyDefaults = (
+  cfg: Partial<AppConfig> | undefined | null,
+): AppConfig => ({
   theme: cfg?.theme ?? defaultConfig.theme,
   primaryColor: cfg?.primaryColor ?? defaultConfig.primaryColor,
   sidebarCollapsed: cfg?.sidebarCollapsed ?? defaultConfig.sidebarCollapsed,

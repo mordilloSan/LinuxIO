@@ -1,11 +1,3 @@
-import React, { useEffect, useRef } from "react";
-import {
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Divider,
-} from "@mui/material";
 import {
   CreateNewFolder as CreateNewFolderIcon,
   NoteAdd as NoteAddIcon,
@@ -16,6 +8,14 @@ import {
   Download as DownloadIcon,
   Upload as UploadIcon,
 } from "@mui/icons-material";
+import {
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+} from "@mui/material";
+import React, { useEffect, useRef } from "react";
 
 interface ContextMenuProps {
   anchorPosition: { top: number; left: number } | null;

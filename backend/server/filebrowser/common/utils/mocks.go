@@ -1,9 +1,8 @@
 package utils
 
 import (
-	"time"
-
 	"math/rand"
+	"time"
 )
 
 func GenerateRandomPath(levels int) string {
