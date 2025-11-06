@@ -7,6 +7,7 @@ interface FilesListProps {
   selectedPaths: Set<string>;
   onFileClick: (event: React.MouseEvent, path: string) => void;
   onDownloadFile: (item: FileItem) => void;
+  onFileContextMenu: (event: React.MouseEvent, path: string) => void;
 }
 
 const FilesList: React.FC<FilesListProps> = React.memo(({
@@ -14,6 +15,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(({
   selectedPaths,
   onFileClick,
   onDownloadFile,
+  onFileContextMenu,
 }) => {
   if (files.length === 0) {
     return null;
@@ -52,6 +54,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(({
             selected={selectedPaths.has(file.path)}
             onClick={(event) => onFileClick(event, file.path)}
             onDoubleClick={() => onDownloadFile(file)}
+            onContextMenu={(event) => onFileContextMenu(event, file.path)}
           />
         ))}
       </div>

@@ -14,6 +14,9 @@ interface DirectoryListingProps {
   sortOrder: SortOrder;
   onOpenDirectory: (path: string) => void;
   onDownloadFile: (item: FileItem) => void;
+  selectedPaths: Set<string>;
+  onSelectedPathsChange: (paths: Set<string>) => void;
+  isContextMenuOpen: boolean;
 }
 
 const DirectoryListing: React.FC<DirectoryListingProps> = ({
@@ -24,15 +27,17 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   sortOrder,
   onOpenDirectory,
   onDownloadFile,
+  selectedPaths,
+  onSelectedPathsChange,
+  isContextMenuOpen,
 }) => {
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const clearSelection = useCallback(() => {
-    setSelectedPaths(new Set());
+    onSelectedPathsChange(new Set());
     setFocusedIndex(-1);
-  }, []);
+  }, [onSelectedPathsChange]);
 
   const { folders, files } = useMemo(() => {
     const filtered = (resource.items ?? []).filter((item) =>
@@ -90,13 +95,16 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     focusedIndex,
     selectedPaths,
     onFocusChange: setFocusedIndex,
-    onSelectionChange: setSelectedPaths,
+    onSelectionChange: onSelectedPathsChange,
     global: true, // Enable global keyboard navigation
   });
 
   // Handle document click to clear selection
   useEffect(() => {
     const handleDocumentMouseDown = (event: MouseEvent) => {
+      if (isContextMenuOpen) {
+        return;
+      }
       if (!containerRef.current) return;
       if (containerRef.current.contains(event.target as Node)) {
         return;
@@ -108,35 +116,45 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     return () => {
       document.removeEventListener("mousedown", handleDocumentMouseDown);
     };
-  }, [clearSelection]);
+  }, [clearSelection, isContextMenuOpen]);
 
   // Clear selection when changing directories
   useEffect(() => {
-    setSelectedPaths(new Set());
+    onSelectedPathsChange(new Set());
     setFocusedIndex(0);
-  }, [resource.path]);
+  }, [resource.path, onSelectedPathsChange]);
+
+  const focusItemByPath = useCallback((path: string) => {
+    const index = allItems.findIndex((item) => item.path === path);
+    if (index === -1) return;
+    setFocusedIndex(index);
+  }, [allItems]);
 
   const handleItemSelection = useCallback(
     (event: React.MouseEvent, path: string) => {
-      const index = allItems.findIndex((item) => item.path === path);
-      if (index === -1) return;
-
-      setFocusedIndex(index);
-      setSelectedPaths((prev) => {
-        if (event.ctrlKey || event.metaKey) {
-          const next = new Set(prev);
-          if (next.has(path)) {
-            next.delete(path);
-          } else {
-            next.add(path);
-          }
-          return next;
+      focusItemByPath(path);
+      if (event.ctrlKey || event.metaKey) {
+        const next = new Set(selectedPaths);
+        if (next.has(path)) {
+          next.delete(path);
+        } else {
+          next.add(path);
         }
-        return new Set([path]);
-      });
+        onSelectedPathsChange(next);
+      } else {
+        onSelectedPathsChange(new Set([path]));
+      }
     },
-    [allItems],
+    [focusItemByPath, selectedPaths, onSelectedPathsChange],
   );
+
+  const handleItemContextMenu = useCallback((event: React.MouseEvent, path: string) => {
+    event.preventDefault();
+    focusItemByPath(path);
+    if (!selectedPaths.has(path)) {
+      onSelectedPathsChange(new Set([path]));
+    }
+  }, [focusItemByPath, selectedPaths, onSelectedPathsChange]);
 
   const handleContainerMouseDown = useCallback(
     (event: React.MouseEvent) => {
@@ -172,6 +190,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
         selectedPaths={selectedPaths}
         onFolderClick={handleFolderClick}
         onOpenDirectory={onOpenDirectory}
+        onFolderContextMenu={handleItemContextMenu}
       />
 
       <FilesList
@@ -179,6 +198,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
         selectedPaths={selectedPaths}
         onFileClick={handleFileClick}
         onDownloadFile={onDownloadFile}
+        onFileContextMenu={handleItemContextMenu}
       />
     </Box>
   );
