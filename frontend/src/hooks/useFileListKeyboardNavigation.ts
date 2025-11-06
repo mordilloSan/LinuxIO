@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from "react";
-import { FileItem } from "@/components/filebrowser/types";
+import { FileItem } from "@/types/filebrowser";
 
 interface UseFileListKeyboardNavigationProps {
   containerRef: React.RefObject<HTMLDivElement>;

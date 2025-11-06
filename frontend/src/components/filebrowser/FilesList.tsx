@@ -1,6 +1,6 @@
 import React from "react";
 import FileCard from "@/components/filebrowser/FileCard";
-import { FileItem } from "./types";
+import { FileItem } from "../../types/filebrowser";
 
 interface FilesListProps {
   files: FileItem[];

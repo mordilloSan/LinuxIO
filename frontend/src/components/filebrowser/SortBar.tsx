@@ -17,20 +17,18 @@ const SortBar: React.FC<SortBarProps> = ({ sortField, sortOrder, onSortChange })
 
   const renderSortIcon = (field: SortField) => {
     const isHovered = hoveredField === field;
-    const isActive = sortField === field;
-    if (!isHovered && !isActive) return null;
+
+    // Only show icons on hover
+    if (!isHovered) return null;
 
     const iconStyles = {
-      fontSize: "1.5rem",
+      fontSize: "1.15rem",
       ml: 1,
       transition: "opacity 0.2s ease",
-      opacity: isHovered ? 0.8 : 1,
+      opacity: 0.8,
     };
 
-    if (isHovered && !isActive) {
-      return <ArrowUpwardIcon sx={iconStyles} />;
-    }
-
+    // If hovering show current sort direction
     return sortOrder === "asc" ? (
       <ArrowUpwardIcon sx={iconStyles} />
     ) : (
@@ -75,7 +73,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortField, sortOrder, onSortChange })
       >
         <Typography
           variant="h6"
-          sx={{ display: "flex", alignItems: "center", fontSize: "1.0rem" }}
+          sx={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
         >
           Name
           {renderSortIcon("name")}
@@ -97,7 +95,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortField, sortOrder, onSortChange })
       >
         <Typography
           variant="h6"
-          sx={{ display: "flex", alignItems: "center", fontSize: "1.0rem" }}
+          sx={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
         >
           Size
           {renderSortIcon("size")}
@@ -119,7 +117,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortField, sortOrder, onSortChange })
       >
         <Typography
           variant="h6"
-          sx={{ display: "flex", alignItems: "center", fontSize: "1.0rem" }}
+          sx={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
         >
           Last modified
           {renderSortIcon("modTime")}

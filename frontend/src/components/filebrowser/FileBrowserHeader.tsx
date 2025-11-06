@@ -8,7 +8,7 @@ import {
 import { Box, IconButton, Stack, useMediaQuery, useTheme, darken, lighten, Tooltip } from "@mui/material";
 import { useConfigValue } from "@/hooks/useConfig";
 import QuickActionButton from "./QuickActionButton";
-import { ViewMode } from "./types";
+import { ViewMode } from "../../types/filebrowser";
 
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
