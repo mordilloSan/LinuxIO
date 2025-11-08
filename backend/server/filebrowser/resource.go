@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -21,35 +20,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/indexing/iteminfo"
 )
-
-// validateMoveOperation checks if a move/rename operation is valid at the HTTP level
-// It prevents moving a directory into itself or its subdirectories
-func validateMoveOperation(src, dst string, isSrcDir bool) error {
-	// Clean and normalize paths
-	src = filepath.Clean(src)
-	dst = filepath.Clean(dst)
-
-	// If source is a directory, check if destination is within source
-	if isSrcDir {
-		// Get the parent directory of the destination
-		dstParent := filepath.Dir(dst)
-
-		// Check if destination parent is the source directory or a subdirectory of it
-		if strings.HasPrefix(dstParent+string(filepath.Separator), src+string(filepath.Separator)) || dstParent == src {
-			return fmt.Errorf("cannot move directory '%s' to a location within itself: '%s'", src, dst)
-		}
-	}
-
-	// Check if destination parent directory exists
-	dstParent := filepath.Dir(dst)
-	if dstParent != "." && dstParent != "/" {
-		if _, err := os.Stat(dstParent); os.IsNotExist(err) {
-			return fmt.Errorf("destination directory does not exist: '%s'", dstParent)
-		}
-	}
-
-	return nil
-}
 
 type resourceStatData struct {
 	Mode        string `json:"mode"`
@@ -259,14 +229,6 @@ func resourcePostHandler(c *gin.Context) {
 	}
 
 	path := c.Query("path")
-	rawSource := c.Query("source")
-	if rawSource != "" {
-		if _, err = url.QueryUnescape(rawSource); err != nil {
-			logger.Debugf("invalid source encoding: %v", err)
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
-			return
-		}
-	}
 	path, err = url.QueryUnescape(path)
 	if err != nil {
 		logger.Debugf("invalid path encoding: %v", err)
@@ -420,11 +382,12 @@ func resourcePostHandler(c *gin.Context) {
 			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists with different type"})
 			return
 		}
-	}
 
-	if c.Query("override") != "true" {
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists"})
-		return
+		// File exists with same type (both are files), check override
+		if !existingIsDir && c.Query("override") != "true" {
+			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists"})
+			return
+		}
 	}
 
 	err = files.WriteFile(fileOpts, c.Request.Body)
@@ -443,8 +406,7 @@ func resourcePostHandler(c *gin.Context) {
 // @Tags Resources
 // @Accept json
 // @Produce json
-// @Param path query string true "Destination path where to place the files inside the destination source"
-// @Param source query string true "Source name for the desired source, default is used if not provided"
+// @Param path query string true "Destination path where to place the files"
 // @Success 200 "Resource updated successfully"
 // @Failure 403 {object} map[string]string "Forbidden"
 // @Failure 404 {object} map[string]string "Resource not found"
@@ -456,14 +418,6 @@ func resourcePutHandler(c *gin.Context) {
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
-	}
-
-	rawSource := c.Query("source")
-	if rawSource != "" {
-		if _, err = url.QueryUnescape(rawSource); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
-			return
-		}
 	}
 
 	encodedPath := c.Query("path")
@@ -503,9 +457,9 @@ func resourcePutHandler(c *gin.Context) {
 // @Tags Resources
 // @Accept json
 // @Produce json
-// @Param from query string true "Path from resource in <source_name>::<index_path> format"
+// @Param from query string true "Source path to move/rename from"
 // @Param destination query string true "Destination path for the resource"
-// @Param action query string true "Action to perform (copy, rename)"
+// @Param action query string true "Action to perform (copy, rename, move)"
 // @Param overwrite query bool false "Overwrite if destination exists"
 // @Param rename query bool false "Rename if destination exists"
 // @Success 200 "Resource moved/renamed successfully"
@@ -515,7 +469,6 @@ func resourcePutHandler(c *gin.Context) {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [patch]
 func resourcePatchHandler(c *gin.Context) {
-
 	action := c.Query("action")
 
 	encodedFrom := c.Query("from")
@@ -533,20 +486,6 @@ func resourcePatchHandler(c *gin.Context) {
 		c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
 		return
 	}
-
-	splitSrc := strings.Split(src, "::")
-	if len(splitSrc) <= 1 {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source path: %v", src)})
-		return
-	}
-	src = splitSrc[1]
-
-	splitDst := strings.Split(dst, "::")
-	if len(splitDst) <= 1 {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid destination path: %v", dst)})
-		return
-	}
-	dst = splitDst[1]
 
 	if dst == "/" || src == "/" {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "cannot modify root directory"})
@@ -572,21 +511,6 @@ func resourcePatchHandler(c *gin.Context) {
 	}
 	isSrcDir := stat.IsDir()
 
-	// Check access control for both source and destination paths
-	rename := c.Query("rename") == "true"
-	if rename {
-		realDest = addVersionSuffix(realDest)
-	}
-
-	// Validate move/rename operation to prevent circular references
-	if action == "rename" || action == "move" {
-		if err = validateMoveOperation(realSrc, realDest, isSrcDir); err != nil {
-			logger.Debugf("invalid move operation: %v", err)
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-	}
-
 	err = patchAction(patchActionParams{
 		action:   action,
 		src:      realSrc,
@@ -600,22 +524,6 @@ func resourcePatchHandler(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusOK)
-}
-
-func addVersionSuffix(source string) string {
-	counter := 1
-	dir, name := path.Split(source)
-	ext := filepath.Ext(name)
-	base := strings.TrimSuffix(name, ext)
-	for {
-		if _, err := os.Stat(source); err != nil {
-			break
-		}
-		renamed := fmt.Sprintf("%s(%d)%s", base, counter, ext)
-		source = path.Join(dir, renamed)
-		counter++
-	}
-	return source
 }
 
 type patchActionParams struct {
