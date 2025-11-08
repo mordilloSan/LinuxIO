@@ -10,14 +10,9 @@ import (
 )
 
 var (
-	PermFile os.FileMode
-	PermDir  os.FileMode
+	PermFile os.FileMode = 0o664 // rw-rw-r-- (owner read+write, group read+write, rest read)
+	PermDir  os.FileMode = 0o775 // rwxrwxr-x (owner read+write+execute, group read+write+execute, rest read+execute)
 )
-
-func SetFsPermissions(PermFileOctal os.FileMode, PermDirOctal os.FileMode) {
-	PermFile = PermFileOctal
-	PermDir = PermDirOctal
-}
 
 // MoveFile moves a file from src to dst.
 // By default, the rename system call is used. If src and dst point to different volumes,
@@ -179,19 +174,4 @@ func CommonPrefix(sep byte, paths ...string) string {
 	}
 
 	return string(c)
-}
-
-func ClearCacheDir(cacheDir string) {
-	entries, err := os.ReadDir(cacheDir)
-	if err != nil {
-		logger.Errorf("failed clear cache dir: %v", err)
-	}
-
-	for _, entry := range entries {
-		path := filepath.Join(cacheDir, entry.Name())
-		err = os.RemoveAll(path)
-		if err != nil {
-			logger.Errorf("failed clear cache dir: %v", err)
-		}
-	}
 }

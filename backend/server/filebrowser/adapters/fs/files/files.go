@@ -102,8 +102,8 @@ func getDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 				ModTime: dirStat.ModTime(),
 			},
 		}
-		fileInfo.DetectType(realPath, false)
-		setFilePreviewFlags(&fileInfo.ItemInfo, realPath)
+		fileInfo.DetectType(realPath)
+		setFilePreviewFlags(&fileInfo.ItemInfo)
 		return fileInfo, nil
 	}
 
@@ -148,8 +148,8 @@ func getDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 			itemInfo.Type = "directory"
 			dirInfos = append(dirInfos, *itemInfo)
 		} else {
-			itemInfo.DetectType(fileRealPath, false)
-			setFilePreviewFlags(itemInfo, fileRealPath)
+			itemInfo.DetectType(fileRealPath)
+			setFilePreviewFlags(itemInfo)
 			itemInfo.Size = entry.Size()
 			fileInfos = append(fileInfos, *itemInfo)
 			totalSize += itemInfo.Size
@@ -173,7 +173,7 @@ func getDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 	return dirFileInfo, nil
 }
 
-func setFilePreviewFlags(fileInfo *iteminfo.ItemInfo, realPath string) {
+func setFilePreviewFlags(fileInfo *iteminfo.ItemInfo) {
 	simpleType := strings.Split(fileInfo.Type, "/")[0]
 
 	// Check if it's an image
@@ -466,23 +466,4 @@ func getContent(realPath string) (string, error) {
 
 	// The file has passed all checks and is considered editable text.
 	return stringContent, nil
-}
-
-func IsNamedPipe(mode os.FileMode) bool {
-	return mode&os.ModeNamedPipe != 0
-}
-
-func IsSymlink(mode os.FileMode) bool {
-	return mode&os.ModeSymlink != 0
-}
-
-func Exists(path string) bool {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true
-	}
-	if os.IsNotExist(err) {
-		return false
-	}
-	return false
 }

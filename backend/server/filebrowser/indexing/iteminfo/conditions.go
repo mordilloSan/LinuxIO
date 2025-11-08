@@ -197,7 +197,7 @@ func IsMatchingType(extension string, matchType string) bool {
 }
 
 // DetectType detects the MIME type of a file and updates the ItemInfo struct.
-func (i *ItemInfo) DetectType(realPath string, saveContent bool) {
+func (i *ItemInfo) DetectType(realPath string) {
 	name := i.Name
 	ext := strings.ToLower(filepath.Ext(name))
 

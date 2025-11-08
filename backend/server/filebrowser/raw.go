@@ -35,7 +35,7 @@ func setContentDisposition(c *gin.Context, fileName string) {
 // @Tags Resources
 // @Accept json
 // @Produce json
-// @Param files query string true "a list of files in the following format 'source::filename' and separated by '||' with additional items in the list. (required)"
+// @Param files query string true "a list of file paths separated by '||' (required)"
 // @Param inline query bool false "If true, sets 'Content-Disposition' to 'inline'. Otherwise, defaults to 'attachment'."
 // @Param algo query string false "Compression algorithm for archiving multiple files or directories. Options: 'zip' and 'tar.gz'. Default is 'zip'."
 // @Success 200 {file} file "Raw file or directory content, or archive for multiple files"
@@ -56,18 +56,6 @@ func rawHandler(c *gin.Context) {
 }
 
 func addFile(path string, d *requestContext, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool) error {
-	splitFile := strings.Split(path, "::")
-	if len(splitFile) != 2 {
-		return fmt.Errorf("invalid file in files requested: %v", splitFile)
-	}
-	source := splitFile[0]
-	if source != "" {
-		if _, err := url.PathUnescape(source); err != nil {
-			return fmt.Errorf("invalid source encoding: %v", err)
-		}
-	}
-	path = splitFile[1]
-
 	// Direct filesystem access
 	_, err := files.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
@@ -77,7 +65,7 @@ func addFile(path string, d *requestContext, tarWriter *tar.Writer, zipWriter *z
 	if err != nil {
 		return err
 	}
-	realPath := filepath.Join(source, path)
+	realPath := filepath.Join(path)
 	info, err := os.Stat(realPath)
 	if err != nil {
 		return err
@@ -190,25 +178,11 @@ func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWrite
 }
 
 func rawFilesHandler(c *gin.Context, d *requestContext, fileList []string) {
-	splitFile := strings.Split(fileList[0], "::")
-	if len(splitFile) != 2 {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid file in files request: %v", fileList[0])})
-		return
-	}
-
-	firstFileSource := splitFile[0]
-	if firstFileSource != "" {
-		if _, err := url.PathUnescape(firstFileSource); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
-			return
-		}
-	}
-	firstFilePath := splitFile[1]
-	// decode url encoded source name
 	var err error
+	firstFilePath := fileList[0]
 	fileName := filepath.Base(firstFilePath)
 	// Direct filesystem access
-	realPath := filepath.Join(firstFileSource, firstFilePath)
+	realPath := filepath.Join(firstFilePath)
 	stat, err := os.Stat(realPath)
 	if err != nil {
 		logger.Debugf("error stating file: %v", err)
@@ -355,8 +329,8 @@ func computeArchiveSize(fileList []string) (int64, error) {
 		if stat.IsDir() {
 			// For directories, recursively calculate size
 			var dirSize int64
-			filepath.Walk(realPath, func(_ string, info os.FileInfo, err error) error {
-				if err != nil {
+			err := filepath.Walk(realPath, func(path string, info os.FileInfo, walkErr error) error {
+				if walkErr != nil {
 					return nil // Skip errors
 				}
 				if !info.IsDir() {
@@ -364,6 +338,9 @@ func computeArchiveSize(fileList []string) (int64, error) {
 				}
 				return nil
 			})
+			if err != nil {
+				return 0, err
+			}
 			estimatedSize += dirSize
 		} else {
 			estimatedSize += stat.Size()
@@ -373,7 +350,7 @@ func computeArchiveSize(fileList []string) (int64, error) {
 }
 
 func createZip(d *requestContext, tmpDirPath string, filenames ...string) error {
-	file, err := os.Create(tmpDirPath)
+	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileutils.PermFile)
 	if err != nil {
 		return err
 	}
@@ -383,18 +360,23 @@ func createZip(d *requestContext, tmpDirPath string, filenames ...string) error 
 	defer zipWriter.Close()
 
 	for _, fname := range filenames {
-		err := addFile(fname, d, nil, zipWriter, false)
-		if err != nil {
-			logger.Errorf("Failed to add %s to ZIP: %v", fname, err)
-			return err
+		if addErr := addFile(fname, d, nil, zipWriter, false); addErr != nil {
+			logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
+			return addErr
 		}
+	}
+
+	// Explicitly set file permissions to bypass umask
+	err = os.Chmod(tmpDirPath, fileutils.PermFile)
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
 func createTarGz(d *requestContext, tmpDirPath string, filenames ...string) error {
-	file, err := os.Create(tmpDirPath)
+	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileutils.PermFile)
 	if err != nil {
 		return err
 	}
@@ -406,11 +388,16 @@ func createTarGz(d *requestContext, tmpDirPath string, filenames ...string) erro
 	defer tarWriter.Close()
 
 	for _, fname := range filenames {
-		err := addFile(fname, d, tarWriter, nil, false)
-		if err != nil {
-			logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, err)
-			return err
+		if addErr := addFile(fname, d, tarWriter, nil, false); addErr != nil {
+			logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
+			return addErr
 		}
+	}
+
+	// Explicitly set file permissions to bypass umask
+	err = os.Chmod(tmpDirPath, fileutils.PermFile)
+	if err != nil {
+		return err
 	}
 
 	return nil
