@@ -6,6 +6,7 @@ import (
 
 // RegisterRoutes wires the Filebrowser HTTP handlers into the provided router group.
 // The caller should wrap the group with session middleware before invoking this.
+// All handlers are thin HTTP→IPC translators that call bridge handlers.
 func RegisterRoutes(r *gin.RouterGroup) error {
 	r.GET("/api/resources", resourceGetHandler)
 	r.GET("/api/resources/stat", resourceStatHandler)

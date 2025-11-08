@@ -18,13 +18,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/drives"
+	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/network"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/power"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/services"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/wireguard"
-	serverfilebrowser "github.com/mordilloSan/LinuxIO/backend/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
@@ -74,7 +74,7 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	control.RegisterControlRoutes(r.Group("/control", sm.RequireSession()))
 
 	navigator := r.Group("/navigator", sm.RequireSession())
-	if err := serverfilebrowser.RegisterRoutes(navigator); err != nil {
+	if err := filebrowser.RegisterRoutes(navigator); err != nil {
 		logger.Errorf("failed to register filebrowser routes: %v", err)
 		navigator.Any("/*path", func(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "file browser unavailable"})
