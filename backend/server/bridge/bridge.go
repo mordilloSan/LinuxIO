@@ -45,53 +45,62 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		SessionID: sess.SessionID,
 	}
 
-	var conn net.Conn
-	var err error
-	const (
-		totalWait   = 2 * time.Second
-		step        = 100 * time.Millisecond
-		dialTimeout = 500 * time.Millisecond
-	)
-	deadline := time.Now().Add(totalWait)
-	for {
-		conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
-		if err == nil {
-			break
+	// Try to get persistent connection from session
+	conn := sess.GetBridgeConn()
+
+	// If no persistent connection or it's broken, create a new one and store it
+	if conn == nil {
+		var err error
+		const (
+			totalWait   = 2 * time.Second
+			step        = 100 * time.Millisecond
+			dialTimeout = 500 * time.Millisecond
+		)
+		deadline := time.Now().Add(totalWait)
+		for {
+			conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
+			if err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				err2 := fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
+				logger.ErrorKV("bridge call failed: connection timeout",
+					"user", sess.User.Username,
+					"socket_path", socketPath,
+					"error", err2)
+				return nil, err
+			}
+			time.Sleep(step)
 		}
-		if time.Now().After(deadline) {
-			err2 := fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
-			logger.ErrorKV("bridge call failed: connection timeout",
-				"user", sess.User.Username,
-				"socket_path", socketPath,
-				"error", err2)
-			return nil, err
-		}
-		time.Sleep(step)
+		// Store the new connection in the session
+		sess.SetBridgeConn(conn)
+		logger.DebugKV("bridge persistent connection established",
+			"user", sess.User.Username,
+			"socket_path", socketPath)
 	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			logger.WarnKV("bridge conn close failed", "socket_path", socketPath, "error", cerr)
-		}
-	}()
 
 	enc := json.NewEncoder(conn)
 	enc.SetEscapeHTML(false)
 	dec := json.NewDecoder(conn)
 
 	if err := enc.Encode(req); err != nil {
+		// Connection is broken, clear it and retry
+		sess.CloseBridgeConn()
 		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
-		logger.ErrorKV("bridge call failed: encoding error",
+		logger.ErrorKV("bridge call failed: encoding error (clearing connection)",
 			"user", sess.User.Username,
 			"type", reqType,
 			"command", command,
 			"error", err2)
-		return nil, err
+		return CallWithSession(sess, reqType, command, args) // Retry with fresh connection
 	}
 
 	var raw json.RawMessage
 	if err := dec.Decode(&raw); err != nil {
+		// Connection is broken, clear it
+		sess.CloseBridgeConn()
 		err2 := fmt.Errorf("failed to decode response from bridge: %w", err)
-		logger.ErrorKV("bridge call failed: decoding error",
+		logger.ErrorKV("bridge call failed: decoding error (clearing connection)",
 			"user", sess.User.Username,
 			"type", reqType,
 			"command", command,
@@ -107,6 +116,123 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		"response_bytes", len(raw))
 
 	return []byte(raw), nil
+}
+
+// CallWithSessionStream sends a request and reads multiple streaming responses.
+// Each response chunk is passed to the onChunk callback until the stream ends.
+func CallWithSessionStream(sess *session.Session, reqType, command string, args []string,
+	onChunk func([]byte) error) error {
+
+	logger.DebugKV("bridge streaming call initiated",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"args", fmt.Sprintf("%v", args))
+
+	socketPath := sess.SocketPath
+	if socketPath == "" {
+		err := fmt.Errorf("empty session.SocketPath")
+		logger.ErrorKV("bridge call failed: invalid socket path",
+			"user", sess.User.Username,
+			"error", err)
+		return err
+	}
+
+	req := ipc.Request{
+		Type:      reqType,
+		Command:   command,
+		Secret:    sess.BridgeSecret,
+		Args:      args,
+		SessionID: sess.SessionID,
+	}
+
+	// Get or create persistent connection
+	conn := sess.GetBridgeConn()
+	if conn == nil {
+		var err error
+		const (
+			totalWait   = 2 * time.Second
+			step        = 100 * time.Millisecond
+			dialTimeout = 500 * time.Millisecond
+		)
+		deadline := time.Now().Add(totalWait)
+		for {
+			conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
+			if err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				err2 := fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
+				logger.ErrorKV("bridge call failed: connection timeout",
+					"user", sess.User.Username,
+					"socket_path", socketPath,
+					"error", err2)
+				return err
+			}
+			time.Sleep(step)
+		}
+		sess.SetBridgeConn(conn)
+		logger.DebugKV("bridge persistent connection established",
+			"user", sess.User.Username,
+			"socket_path", socketPath)
+	}
+
+	enc := json.NewEncoder(conn)
+	enc.SetEscapeHTML(false)
+	dec := json.NewDecoder(conn)
+
+	if err := enc.Encode(req); err != nil {
+		sess.CloseBridgeConn()
+		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
+		logger.ErrorKV("bridge call failed: encoding error (clearing connection)",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err2)
+		return err2
+	}
+
+	// Read responses until stream ends
+	chunkCount := 0
+	for {
+		var resp ipc.Response
+		if err := dec.Decode(&resp); err != nil {
+			if err == io.EOF {
+				// Normal stream end
+				logger.DebugKV("bridge stream completed",
+					"user", sess.User.Username,
+					"type", reqType,
+					"command", command,
+					"chunks", chunkCount)
+				return nil
+			}
+			sess.CloseBridgeConn()
+			err2 := fmt.Errorf("failed to decode stream response: %w", err)
+			logger.ErrorKV("bridge stream failed: decoding error (clearing connection)",
+				"user", sess.User.Username,
+				"type", reqType,
+				"command", command,
+				"error", err2)
+			return err2
+		}
+
+		// Check for error in response
+		if resp.Status == "error" {
+			return fmt.Errorf(resp.Error)
+		}
+
+		// Convert output to JSON bytes and pass to callback
+		outBytes, err := json.Marshal(resp.Output)
+		if err != nil {
+			return fmt.Errorf("failed to marshal chunk: %w", err)
+		}
+
+		if err := onChunk(outBytes); err != nil {
+			return err
+		}
+
+		chunkCount++
+	}
 }
 
 // StartBridge launches linuxio-bridge via the setuid helper.

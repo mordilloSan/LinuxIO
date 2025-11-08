@@ -21,7 +21,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
 
-// resourceGetHandler retrieves information about a resource via bridge
+// resourceGetHandler retrieves information about a resource via bridge with streaming
 func resourceGetHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
@@ -44,35 +44,30 @@ func resourceGetHandler(c *gin.Context) {
 		args = append(args, "", "true")
 	}
 
-	data, err := bridge.CallWithSession(sess, "filebrowser", "resource_get", args)
+	// Set NDJSON streaming headers
+	c.Header("Content-Type", "application/x-ndjson")
+	c.Header("Transfer-Encoding", "chunked")
+
+	// Stream responses from bridge
+	err = bridge.CallWithSessionStream(sess, "filebrowser", "resource_get", args,
+		func(chunk []byte) error {
+			// Send chunk as NDJSON (one JSON object per line)
+			_, err := c.Writer.Write(chunk)
+			if err != nil {
+				return err
+			}
+			_, err = c.Writer.WriteString("\n")
+			if err != nil {
+				return err
+			}
+			c.Writer.Flush()
+			return nil
+		})
+
 	if err != nil {
-		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
+		logger.Debugf("bridge streaming error: %v", err)
+		// Headers already sent, can't send error response
 	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
-		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
-			status = http.StatusBadRequest
-		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
-		c.JSON(status, gin.H{"error": errMsg})
-		return
-	}
-
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp.Output)
 }
 
 // resourceStatHandler returns extended metadata via bridge
