@@ -148,9 +148,13 @@ const FileBrowser: React.FC = () => {
 
   const {
     data: rawResource,
-    isLoading: isPending,
+    isLoading,
+    isRefetching,
     error,
   } = useStreamingFetch<ApiResource>("/navigator/api/resources", fetchOptions);
+
+  // Show loading only on initial load, not during refetches (folder navigation)
+  const isPending = isLoading;
 
   // Normalize the streamed resource data
   const resource = useMemo(
