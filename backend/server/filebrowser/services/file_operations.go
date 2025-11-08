@@ -4,24 +4,151 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/iteminfo"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
-// FileService handles file I/O operations
-type FileService struct{}
+var (
+	PermFile os.FileMode = 0o664 // rw-rw-r-- (owner read+write, group read+write, rest read)
+	PermDir  os.FileMode = 0o775 // rwxrwxr-x (owner read+write+execute, group read+write+execute, rest read+execute)
+)
 
-// NewFileService creates a new file service
-func NewFileService() *FileService {
-	return &FileService{}
+// MoveFile moves a file from src to dst.
+// By default, the rename system call is used. If src and dst point to different volumes,
+// the file copy is used as a fallback.
+func MoveFile(src, dst string) error {
+	// Validate the move operation before executing
+	if err := validateMoveDestination(src, dst); err != nil {
+		return err
+	}
+
+	err := os.Rename(src, dst)
+	if err == nil {
+		return nil
+	}
+
+	// fallback
+	err = CopyFile(src, dst)
+	if err != nil {
+		logger.Errorf("CopyFile failed %v %v %v ", src, dst, err)
+		return err
+	}
+
+	go func() {
+		err = os.RemoveAll(src)
+		if err != nil {
+			logger.Errorf("os.Remove failed %v %v ", src, err)
+		}
+	}()
+
+	return nil
+}
+
+// CopyFile copies a file or directory from source to dest and returns an error if any.
+// It handles both files and directories, copying recursively as needed.
+func CopyFile(source, dest string) error {
+	// Validate the copy operation before executing
+	if err := validateMoveDestination(source, dest); err != nil {
+		return err
+	}
+
+	// Check if the source exists and whether it's a file or directory.
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		// If the source is a directory, copy it recursively.
+		return copyDirectory(source, dest)
+	}
+
+	// If the source is a file, copy the file.
+	return copySingleFile(source, dest)
+}
+
+// copySingleFile handles copying a single file.
+func copySingleFile(source, dest string) error {
+	// Open the source file.
+	src, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	// Create the destination directory if needed.
+	err = os.MkdirAll(filepath.Dir(dest), PermDir)
+	if err != nil {
+		return err
+	}
+
+	// Create the destination file.
+	dst, err := os.OpenFile(dest, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	// Copy the contents of the file.
+	_, err = io.Copy(dst, src)
+	if err != nil {
+		return err
+	}
+
+	// Set the configured file permissions instead of copying from source
+	err = os.Chmod(dest, PermFile)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// copyDirectory handles copying directories recursively.
+func copyDirectory(source, dest string) error {
+	// Create the destination directory.
+	err := os.MkdirAll(dest, PermDir)
+	if err != nil {
+		return err
+	}
+
+	// Read the contents of the source directory.
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+
+	// Iterate over each entry in the directory.
+	for _, entry := range entries {
+		srcPath := filepath.Join(source, entry.Name())
+		destPath := filepath.Join(dest, entry.Name())
+
+		if entry.IsDir() {
+			// Recursively copy subdirectories.
+			err = copyDirectory(srcPath, destPath)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Copy files.
+			err = copySingleFile(srcPath, destPath)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // DeleteFiles removes a file or directory
-func (s *FileService) DeleteFiles(absPath string) error {
+func DeleteFiles(absPath string) error {
 	err := os.RemoveAll(absPath)
 	if err != nil {
 		return err
@@ -29,8 +156,8 @@ func (s *FileService) DeleteFiles(absPath string) error {
 	return nil
 }
 
-// WriteDirectory creates a directory with proper permissions
-func (s *FileService) WriteDirectory(opts utils.FileOptions) error {
+// CreateDirectory creates a directory with proper permissions
+func CreateDirectory(opts iteminfo.FileOptions) error {
 	realPath := filepath.Join(opts.Path)
 
 	var stat os.FileInfo
@@ -59,8 +186,8 @@ func (s *FileService) WriteDirectory(opts utils.FileOptions) error {
 	return nil
 }
 
-// WriteFile writes content to a file with proper permissions
-func (s *FileService) WriteFile(opts utils.FileOptions, in io.Reader) error {
+// WriteContentInFile writes content to a file with proper permissions
+func WriteContentInFile(opts iteminfo.FileOptions, in io.Reader) error {
 	realPath := filepath.Join(opts.Path)
 	// Strip trailing slash from realPath if it's meant to be a file
 	realPath = strings.TrimRight(realPath, "/")
@@ -105,7 +232,7 @@ func (s *FileService) WriteFile(opts utils.FileOptions, in io.Reader) error {
 }
 
 // GetContent reads and returns the file content if it's considered an editable text file.
-func (s *FileService) GetContent(realPath string) (string, error) {
+func GetContent(realPath string) (string, error) {
 	const headerSize = 4096
 	// Thresholds for detecting binary-like content (these can be tuned)
 	const maxNullBytesInHeaderAbs = 10    // Max absolute null bytes in header
@@ -218,4 +345,85 @@ func (s *FileService) GetContent(realPath string) (string, error) {
 
 	// The file has passed all checks and is considered editable text.
 	return stringContent, nil
+}
+
+// CommonPrefix returns the common directory path of provided files.
+func CommonPrefix(sep byte, paths ...string) string {
+	// Handle special cases.
+	switch len(paths) {
+	case 0:
+		return ""
+	case 1:
+		return path.Clean(paths[0])
+	}
+
+	// Treat string as []byte, not []rune as is often done in Go.
+	c := []byte(path.Clean(paths[0]))
+
+	// Add a trailing sep to handle the case where the common prefix directory
+	// is included in the path list.
+	c = append(c, sep)
+
+	// Ignore the first path since it's already in c.
+	for _, v := range paths[1:] {
+		// Clean up each path before testing it.
+		v = path.Clean(v) + string(sep)
+
+		// Find the first non-common byte and truncate c.
+		if len(v) < len(c) {
+			c = c[:len(v)]
+		}
+		for i := 0; i < len(c); i++ {
+			if v[i] != c[i] {
+				c = c[:i]
+				break
+			}
+		}
+	}
+
+	// Remove trailing non-separator characters and the final separator.
+	for i := len(c) - 1; i >= 0; i-- {
+		if c[i] == sep {
+			c = c[:i]
+			break
+		}
+	}
+
+	return string(c)
+}
+
+// validateMoveDestination validates that a move operation is safe
+func validateMoveDestination(src, dst string) error {
+	// Clean and normalize paths
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
+
+	// Check if source is a directory
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	isSrcDir := srcInfo.IsDir()
+
+	// If source is a directory, check if destination is within source
+	if isSrcDir {
+		// Get the parent directory of the destination
+		dstParent := filepath.Dir(dst)
+
+		// Check if destination parent is the source directory or a subdirectory of it
+		if strings.HasPrefix(dstParent+string(filepath.Separator), src+string(filepath.Separator)) || dstParent == src {
+			return fmt.Errorf("cannot move directory '%s' to a location within itself: '%s'", src, dst)
+		}
+	}
+
+	// Check if destination parent directory exists
+	dstParent := filepath.Dir(dst)
+	if dstParent != "." && dstParent != "/" {
+		if _, err := os.Stat(dstParent); os.IsNotExist(err) {
+			return fmt.Errorf("destination directory does not exist: '%s'", dstParent)
+		}
+	}
+
+	return nil
 }

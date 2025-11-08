@@ -15,16 +15,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/services"
 )
 
 var (
-	metadataService = services.NewMetadataService()
-	fileService     = services.NewFileService()
-	moveCopyService = services.NewMoveCopyService()
-
 	// Use constants from services package
 	permDir  = services.PermDir
 	permFile = services.PermFile
@@ -57,12 +52,6 @@ type resourceStatData struct {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [get]
 func resourceGetHandler(c *gin.Context) {
-	d, err := newRequestContext(c)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-
 	encodedPath := c.Query("path")
 	rawSource := c.Query("source")
 	// Decode the URL-encoded path
@@ -78,11 +67,10 @@ func resourceGetHandler(c *gin.Context) {
 		}
 	}
 	getContent := c.Query("content") == "true"
-	fileInfo, err := metadataService.FileInfoFaster(utils.FileOptions{
-		Username: d.user.Username,
-		Path:     path,
-		Expand:   true,
-		Content:  getContent,
+	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
+		Path:    path,
+		Expand:  true,
+		Content: getContent,
 	})
 	if err != nil {
 		logger.Debugf("error getting file info: %v", err)
@@ -106,12 +94,6 @@ func resourceGetHandler(c *gin.Context) {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources/stat [get]
 func resourceStatHandler(c *gin.Context) {
-	d, err := newRequestContext(c)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-
 	encodedPath := c.Query("path")
 	rawSource := c.Query("source")
 
@@ -127,10 +109,9 @@ func resourceStatHandler(c *gin.Context) {
 		}
 	}
 
-	fileInfo, err := metadataService.FileInfoFaster(utils.FileOptions{
-		Username: d.user.Username,
-		Path:     path,
-		Expand:   false,
+	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
+		Path:   path,
+		Expand: false,
 	})
 	if err != nil {
 		status := statusFromError(err)
@@ -169,16 +150,10 @@ func resourceStatHandler(c *gin.Context) {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [delete]
 func resourceDeleteHandler(c *gin.Context) {
-	d, err := newRequestContext(c)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-
 	encodedPath := c.Query("path")
 	rawSource := c.Query("source")
 	if rawSource != "" {
-		if _, err = url.QueryUnescape(rawSource); err != nil {
+		if _, err := url.QueryUnescape(rawSource); err != nil {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
 			return
 		}
@@ -193,10 +168,9 @@ func resourceDeleteHandler(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "cannot delete root"})
 		return
 	}
-	fileInfo, err := metadataService.FileInfoFaster(utils.FileOptions{
-		Username: d.user.Username,
-		Path:     path,
-		Expand:   false,
+	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
+		Path:   path,
+		Expand: false,
 	})
 	if err != nil {
 		status := statusFromError(err)
@@ -205,7 +179,7 @@ func resourceDeleteHandler(c *gin.Context) {
 		return
 	}
 
-	err = fileService.DeleteFiles(fileInfo.RealPath)
+	err = services.DeleteFiles(fileInfo.RealPath)
 	if err != nil {
 		status := statusFromError(err)
 		logger.Debugf("error deleting file: %v", err)
@@ -231,14 +205,8 @@ func resourceDeleteHandler(c *gin.Context) {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [post]
 func resourcePostHandler(c *gin.Context) {
-	d, err := newRequestContext(c)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-
 	path := c.Query("path")
-	path, err = url.QueryUnescape(path)
+	path, err := url.QueryUnescape(path)
 	if err != nil {
 		logger.Debugf("invalid path encoding: %v", err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid path encoding: %v", err)})
@@ -247,10 +215,9 @@ func resourcePostHandler(c *gin.Context) {
 	// Determine if this is a directory or file based on trailing slash
 	isDir := strings.HasSuffix(path, "/")
 
-	fileOpts := utils.FileOptions{
-		Username: d.user.Username,
-		Path:     path,
-		Expand:   false,
+	fileOpts := iteminfo.FileOptions{
+		Path:   path,
+		Expand: false,
 	}
 	// Direct filesystem access
 	realPath := filepath.Join(path)
@@ -270,7 +237,7 @@ func resourcePostHandler(c *gin.Context) {
 
 	// Directories creation on POST.
 	if isDir {
-		err = fileService.WriteDirectory(fileOpts)
+		err = services.CreateDirectory(fileOpts)
 		if err != nil {
 			logger.Debugf("error writing directory: %v", err)
 			status := statusFromError(err)
@@ -316,7 +283,7 @@ func resourcePostHandler(c *gin.Context) {
 			}
 
 			var fileInfo *iteminfo.ExtendedFileInfo
-			fileInfo, err = metadataService.FileInfoFaster(fileOpts)
+			fileInfo, err = services.FileInfoFaster(fileOpts)
 			if err == nil { // File exists
 				if c.Query("override") != "true" {
 					logger.Debugf("resource already exists: %v", fileInfo.RealPath)
@@ -399,7 +366,7 @@ func resourcePostHandler(c *gin.Context) {
 		}
 	}
 
-	err = fileService.WriteFile(fileOpts, c.Request.Body)
+	err = services.WriteContentInFile(fileOpts, c.Request.Body)
 	if err != nil {
 		logger.Debugf("error writing file: %v", err)
 		status := statusFromError(err)
@@ -423,12 +390,6 @@ func resourcePostHandler(c *gin.Context) {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [put]
 func resourcePutHandler(c *gin.Context) {
-	d, err := newRequestContext(c)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-
 	encodedPath := c.Query("path")
 
 	// Decode the URL-encoded path
@@ -443,14 +404,13 @@ func resourcePutHandler(c *gin.Context) {
 		return
 	}
 
-	fileOpts := utils.FileOptions{
-		Username: d.user.Username,
-		Path:     path,
-		Expand:   false,
+	fileOpts := iteminfo.FileOptions{
+		Path:   path,
+		Expand: false,
 	}
 
 	// Check access control for the target path
-	err = fileService.WriteFile(fileOpts, c.Request.Body)
+	err = services.WriteContentInFile(fileOpts, c.Request.Body)
 	status := statusFromError(err)
 	if err != nil {
 		logger.Debugf("error writing file: %v", err)
@@ -512,19 +472,11 @@ func resourcePatchHandler(c *gin.Context) {
 	realDest := filepath.Join(parentDir, filepath.Base(dst))
 
 	realSrc := filepath.Join(src)
-	stat, err := os.Stat(realSrc)
-	if err != nil {
-		logger.Debugf("could not stat source: %v", err)
-		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "source not found"})
-		return
-	}
-	isSrcDir := stat.IsDir()
 
 	err = patchAction(patchActionParams{
-		action:   action,
-		src:      realSrc,
-		dst:      realDest,
-		isSrcDir: isSrcDir,
+		action: action,
+		src:    realSrc,
+		dst:    realDest,
 	})
 	if err != nil {
 		logger.Debugf("could not run patch action. src=%v dst=%v err=%v", realSrc, realDest, err)
@@ -536,22 +488,21 @@ func resourcePatchHandler(c *gin.Context) {
 }
 
 type patchActionParams struct {
-	action   string
-	src      string
-	dst      string
-	isSrcDir bool
+	action string
+	src    string
+	dst    string
 }
 
 func patchAction(params patchActionParams) error {
 	switch params.action {
 	case "copy":
-		err := moveCopyService.CopyResource(params.isSrcDir, params.src, params.dst)
+		err := services.CopyFile(params.src, params.dst)
 		if err != nil {
 			logger.Debugf("error copying resource: %v", err)
 		}
 		return err
 	case "rename", "move":
-		err := moveCopyService.MoveResource(params.isSrcDir, params.src, params.dst)
+		err := services.MoveFile(params.src, params.dst)
 		if err != nil {
 			logger.Debugf("error moving/renaming resource: %v", err)
 		}

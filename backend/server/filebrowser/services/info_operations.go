@@ -6,20 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/iteminfo"
 )
 
-// MetadataService handles file and directory metadata operations
-type MetadataService struct{}
-
-// NewMetadataService creates a new metadata service
-func NewMetadataService() *MetadataService {
-	return &MetadataService{}
-}
-
 // FileInfoFaster retrieves file/directory information quickly
-func (s *MetadataService) FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) {
+func FileInfoFaster(opts iteminfo.FileOptions) (*iteminfo.ExtendedFileInfo, error) {
 	response := &iteminfo.ExtendedFileInfo{}
 
 	if !strings.HasPrefix(opts.Path, "/") {
@@ -41,7 +32,7 @@ func (s *MetadataService) FileInfoFaster(opts utils.FileOptions) (*iteminfo.Exte
 
 	var info *iteminfo.FileInfo
 	if isDir {
-		info, err = s.GetDirInfo(opts.Path, resolvedPath)
+		info, err = GetDirInfo(opts.Path, resolvedPath)
 		if err != nil {
 			return response, err
 		}
@@ -53,7 +44,7 @@ func (s *MetadataService) FileInfoFaster(opts utils.FileOptions) (*iteminfo.Exte
 		}
 		parentRealPath := filepath.Dir(resolvedPath)
 
-		dirInfo, err := s.GetDirInfo(parentPath, parentRealPath)
+		dirInfo, err := GetDirInfo(parentPath, parentRealPath)
 		if err != nil {
 			return response, err
 		}
@@ -84,7 +75,7 @@ func (s *MetadataService) FileInfoFaster(opts utils.FileOptions) (*iteminfo.Exte
 }
 
 // GetDirInfo retrieves information about a directory and its contents
-func (s *MetadataService) GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
+func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 	dir, err := os.Open(realPath)
 	if err != nil {
 		return nil, err
@@ -211,8 +202,7 @@ func processContent(info *iteminfo.ExtendedFileInfo) {
 
 	// Process text content for non-video, non-audio files
 	if info.Size < 20*1024*1024 { // 20 megabytes in bytes
-		fileService := NewFileService()
-		content, err := fileService.GetContent(info.RealPath)
+		content, err := GetContent(info.RealPath)
 		if err != nil {
 			return
 		}

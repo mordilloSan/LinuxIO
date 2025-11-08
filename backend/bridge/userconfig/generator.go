@@ -1,6 +1,5 @@
 //go:build ignore
 
-// compiled and run only by `go generate`. It does NOT ship.
 package main
 
 import (
