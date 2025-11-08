@@ -135,16 +135,22 @@ const FileBrowser: React.FC = () => {
     },
   });
 
+  // Memoize fetch options to avoid unnecessary re-renders
+  const fetchOptions = useMemo(
+    () => ({
+      params: {
+        path: normalizedPath,
+        source: "/",
+      },
+    }),
+    [normalizedPath],
+  );
+
   const {
     data: rawResource,
     isLoading: isPending,
     error,
-  } = useStreamingFetch<ApiResource>("/navigator/api/resources", {
-    params: {
-      path: normalizedPath,
-      source: "/",
-    },
-  });
+  } = useStreamingFetch<ApiResource>("/navigator/api/resources", fetchOptions);
 
   // Normalize the streamed resource data
   const resource = useMemo(
