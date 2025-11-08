@@ -10,8 +10,6 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/go_logger/logger"
-
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/fileops"
 )
 
 // ArchiveService handles archive creation and extraction operations
@@ -63,7 +61,7 @@ func (s *ArchiveService) ComputeArchiveSize(fileList []string) (int64, error) {
 
 // CreateZip creates a zip archive from the provided file list
 func (s *ArchiveService) CreateZip(tmpDirPath string, filenames ...string) error {
-	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileops.PermFile)
+	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
 	}
@@ -80,7 +78,7 @@ func (s *ArchiveService) CreateZip(tmpDirPath string, filenames ...string) error
 	}
 
 	// Explicitly set file permissions to bypass umask
-	err = os.Chmod(tmpDirPath, fileops.PermFile)
+	err = os.Chmod(tmpDirPath, PermFile)
 	if err != nil {
 		return err
 	}
@@ -90,7 +88,7 @@ func (s *ArchiveService) CreateZip(tmpDirPath string, filenames ...string) error
 
 // CreateTarGz creates a tar.gz archive from the provided file list
 func (s *ArchiveService) CreateTarGz(tmpDirPath string, filenames ...string) error {
-	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileops.PermFile)
+	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
 	}
@@ -109,7 +107,7 @@ func (s *ArchiveService) CreateTarGz(tmpDirPath string, filenames ...string) err
 	}
 
 	// Explicitly set file permissions to bypass umask
-	err = os.Chmod(tmpDirPath, fileops.PermFile)
+	err = os.Chmod(tmpDirPath, PermFile)
 	if err != nil {
 		return err
 	}
@@ -160,7 +158,7 @@ func (s *ArchiveService) addFile(path string, tarWriter *tar.Writer, zipWriter *
 				if tarWriter != nil {
 					header := &tar.Header{
 						Name:     relPath + "/",
-						Mode:     int64(fileops.PermDir),
+						Mode:     int64(PermDir),
 						Typeflag: tar.TypeDir,
 						ModTime:  fileInfo.ModTime(),
 					}

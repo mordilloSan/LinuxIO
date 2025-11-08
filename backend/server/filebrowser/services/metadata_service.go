@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/indexing/iteminfo"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/iteminfo"
 )
 
 // MetadataService handles file and directory metadata operations

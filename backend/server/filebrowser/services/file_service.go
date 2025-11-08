@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/fileops"
 )
 
 // FileService handles file I/O operations
@@ -46,13 +45,13 @@ func (s *FileService) WriteDirectory(opts utils.FileOptions) error {
 	}
 
 	// Ensure the parent directories exist
-	err = os.MkdirAll(realPath, fileops.PermDir)
+	err = os.MkdirAll(realPath, PermDir)
 	if err != nil {
 		return err
 	}
 
 	// Explicitly set directory permissions to bypass umask
-	err = os.Chmod(realPath, fileops.PermDir)
+	err = os.Chmod(realPath, PermDir)
 	if err != nil {
 		return err
 	}
@@ -68,7 +67,7 @@ func (s *FileService) WriteFile(opts utils.FileOptions, in io.Reader) error {
 
 	// Ensure the parent directories exist
 	parentDir := filepath.Dir(realPath)
-	err := os.MkdirAll(parentDir, fileops.PermDir)
+	err := os.MkdirAll(parentDir, PermDir)
 	if err != nil {
 		return err
 	}
@@ -84,7 +83,7 @@ func (s *FileService) WriteFile(opts utils.FileOptions, in io.Reader) error {
 	}
 
 	// Open the file for writing (create if it doesn't exist, truncate if it does)
-	file, err := os.OpenFile(realPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileops.PermFile)
+	file, err := os.OpenFile(realPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
 	}
@@ -97,7 +96,7 @@ func (s *FileService) WriteFile(opts utils.FileOptions, in io.Reader) error {
 	}
 
 	// Explicitly set file permissions to bypass umask
-	err = os.Chmod(realPath, fileops.PermFile)
+	err = os.Chmod(realPath, PermFile)
 	if err != nil {
 		return err
 	}

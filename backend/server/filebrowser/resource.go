@@ -16,15 +16,18 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/fileops"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/services"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/indexing/iteminfo"
 )
 
 var (
 	metadataService = services.NewMetadataService()
 	fileService     = services.NewFileService()
 	moveCopyService = services.NewMoveCopyService()
+
+	// Use constants from services package
+	permDir  = services.PermDir
+	permFile = services.PermFile
 )
 
 type resourceStatData struct {
@@ -330,14 +333,14 @@ func resourcePostHandler(c *gin.Context) {
 		uploadID := hex.EncodeToString(hasher.Sum(nil))
 		tempFilePath := filepath.Join("tmp", "uploads", uploadID)
 
-		if err = os.MkdirAll(filepath.Dir(tempFilePath), fileops.PermDir); err != nil {
+		if err = os.MkdirAll(filepath.Dir(tempFilePath), permDir); err != nil {
 			logger.Debugf("could not create temp dir: %v", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not create temp dir: %v", err)})
 			return
 		}
 		// Create or open the temporary file
 		var outFile *os.File
-		outFile, err = os.OpenFile(tempFilePath, os.O_CREATE|os.O_WRONLY, fileops.PermFile)
+		outFile, err = os.OpenFile(tempFilePath, os.O_CREATE|os.O_WRONLY, permFile)
 		if err != nil {
 			logger.Debugf("could not open temp file: %v", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not open temp file: %v", err)})
@@ -366,7 +369,7 @@ func resourcePostHandler(c *gin.Context) {
 			// close file before moving
 			outFile.Close()
 			// Move the completed file from the temp location to the final destination
-			err = fileops.MoveFile(tempFilePath, realPath)
+			err = services.MoveFile(tempFilePath, realPath)
 			if err != nil {
 				logger.Debugf("could not move temp file to destination: %v", err)
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not move temp file to destination: %v", err)})

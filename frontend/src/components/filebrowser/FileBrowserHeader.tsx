@@ -1,5 +1,4 @@
 import {
-  Add as AddIcon,
   Save as SaveIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
@@ -14,18 +13,10 @@ import {
   lighten,
   Tooltip,
 } from "@mui/material";
-import React, {
-  ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { ReactNode } from "react";
 
 import QuickActionButton from "./QuickActionButton";
 import { ViewMode } from "../../types/filebrowser";
-
-import { useConfigValue } from "@/hooks/useConfig";
 
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
@@ -44,51 +35,8 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   onToggleHiddenFiles,
   viewIcon,
 }) => {
-  const [themePreference] = useConfigValue("theme");
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-
-  const [showMobileQuickActions, setShowMobileQuickActions] = useState(false);
-  const quickActionsRef = useRef<HTMLDivElement | null>(null);
-
-  const isDarkMode =
-    typeof themePreference === "string" &&
-    themePreference.toUpperCase() === "DARK";
-
-  const toggleMobileQuickActions = useCallback(() => {
-    if (!isMobile) return;
-    setShowMobileQuickActions((open) => !open);
-  }, [isMobile]);
-
-  useEffect(() => {
-    if (!isMobile) {
-      setShowMobileQuickActions(false);
-    }
-  }, [isMobile]);
-
-  useEffect(() => {
-    if (!showMobileQuickActions) return;
-
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!quickActionsRef.current?.contains(target)) {
-        setShowMobileQuickActions(false);
-      }
-    };
-
-    const handleKeydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setShowMobileQuickActions(false);
-      }
-    };
-
-    document.addEventListener("click", handleClick, true);
-    document.addEventListener("keydown", handleKeydown);
-    return () => {
-      document.removeEventListener("click", handleClick, true);
-      document.removeEventListener("keydown", handleKeydown);
-    };
-  }, [showMobileQuickActions]);
 
   return (
     <Box
@@ -105,63 +53,19 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
       })}
     >
       <Box
-        className={`header-right quick-actions${isMobile ? " is-mobile" : ""}${
-          showMobileQuickActions ? " open" : ""
-        }`}
-        ref={quickActionsRef}
+        className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}
         sx={{
           display: "flex",
           ml: "auto",
-          position: isMobile ? "relative" : "static",
         }}
       >
-        {isMobile && (
-          <IconButton
-            className="quick-toggle action mobile-toggle"
-            onClick={toggleMobileQuickActions}
-            aria-haspopup="true"
-            aria-expanded={showMobileQuickActions ? "true" : "false"}
-            aria-label="More actions"
-            size="small"
-            sx={{
-              width: { xs: "3em", sm: "2.6em" },
-              height: { xs: "3em", sm: "2.6em" },
-              borderRadius: "50%",
-              backgroundColor: isDarkMode
-                ? "rgba(37, 49, 55, 0.33)"
-                : "rgba(37, 49, 55, 0.12)",
-            }}
-          >
-            <AddIcon fontSize="small" />
-          </IconButton>
-        )}
-
         <Stack
-          direction={isMobile ? "column" : "row"}
+          direction={"row"}
           spacing={0.4}
           className="quick-actions-group"
           sx={{
-            display: isMobile
-              ? showMobileQuickActions
-                ? "flex"
-                : "none"
-              : "flex",
-            position: isMobile ? "absolute" : "static",
-            top: isMobile ? "calc(100% + 0.5em)" : undefined,
-            right: 0,
-            flexDirection: isMobile ? "column" : "row",
             alignItems: "center",
-            gap: isMobile ? "0.25em" : "0.4em",
-            p: isMobile ? "0.4em" : 0,
-            borderRadius: isMobile ? "0.75em" : 0,
-            background: isMobile
-              ? isDarkMode
-                ? "rgba(32, 44, 50, 0.96)"
-                : "rgba(25, 35, 41, 0.96)"
-              : "transparent",
-            boxShadow: isMobile ? "0 12px 24px rgba(17, 24, 28, 0.25)" : "none",
-            zIndex: 6,
-            minWidth: isMobile ? "unset" : undefined,
+            gap: "0.4em",
           }}
         >
           {showQuickSave && (
