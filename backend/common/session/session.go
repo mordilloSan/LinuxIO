@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-
 	"github.com/mordilloSan/go_logger/logger"
 )
 
@@ -50,7 +50,7 @@ type CookieConfig struct {
 }
 
 var DefaultConfig = SessionConfig{
-	IdleTimeout:          30 * time.Minute,
+	IdleTimeout:          5 * time.Minute,
 	AbsoluteTimeout:      12 * time.Hour,
 	RefreshThrottle:      60 * time.Second,
 	SingleSessionPerUser: false,
@@ -86,6 +86,10 @@ type Session struct {
 	BridgeSecret string `json:"bridge_secret"`
 	SocketPath   string `json:"socket_path"`
 	Timing       Timing `json:"timing"`
+
+	// Persistent bridge connection (not serialized)
+	bridgeConn   net.Conn
+	bridgeConnMu sync.Mutex
 }
 
 // -----------------------------------------------------------------------------
@@ -164,6 +168,32 @@ func (m *Manager) CookieConfig() CookieConfig { return m.cfg.Cookie }
 
 // Config returns a copy of the effective session config.
 func (m *Manager) Config() SessionConfig { return m.cfg }
+
+// SetBridgeConn stores the persistent bridge connection in the session.
+func (s *Session) SetBridgeConn(conn net.Conn) {
+	s.bridgeConnMu.Lock()
+	defer s.bridgeConnMu.Unlock()
+	s.bridgeConn = conn
+}
+
+// GetBridgeConn retrieves the persistent bridge connection, if any.
+func (s *Session) GetBridgeConn() net.Conn {
+	s.bridgeConnMu.Lock()
+	defer s.bridgeConnMu.Unlock()
+	return s.bridgeConn
+}
+
+// CloseBridgeConn closes and clears the persistent bridge connection.
+func (s *Session) CloseBridgeConn() error {
+	s.bridgeConnMu.Lock()
+	defer s.bridgeConnMu.Unlock()
+	if s.bridgeConn != nil {
+		err := s.bridgeConn.Close()
+		s.bridgeConn = nil
+		return err
+	}
+	return nil
+}
 
 // -----------------------------------------------------------------------------
 // Hooks
@@ -311,6 +341,12 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 	_ = m.st.Delete(id)
 	if s, err := m.decode(b); err == nil {
 		logger.Infof("Deleted session for user '%s' (reason=%s)", s.User.Username, r)
+		// Close persistent bridge connection
+		if closeErr := s.CloseBridgeConn(); closeErr != nil {
+			logger.WarnKV("failed to close bridge connection on session delete",
+				"user", s.User.Username,
+				"error", closeErr)
+		}
 		m.broadcastOnDelete(*s, r)
 	}
 	return nil

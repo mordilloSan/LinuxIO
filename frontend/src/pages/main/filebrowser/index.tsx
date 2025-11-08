@@ -6,8 +6,6 @@ import {
 } from "@mui/icons-material";
 import { Box } from "@mui/material";
 import {
-  keepPreviousData,
-  useQuery,
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -33,13 +31,14 @@ import {
 } from "@/components/filebrowser/utils";
 import PageLoader from "@/components/loaders/PageLoader";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useStreamingFetch } from "@/hooks/useStreamingFetch";
 import {
   ViewMode,
   ApiResource,
   FileResource,
   FileItem,
 } from "@/types/filebrowser";
-import axios from "@/utils/axios";
+import axios from "@/utils/axios"; // Still used for mutations (create, delete)
 
 const viewModes: ViewMode[] = ["list", "compact", "normal", "gallery"];
 
@@ -137,26 +136,23 @@ const FileBrowser: React.FC = () => {
   });
 
   const {
-    data: resource,
-    isPending,
-    isError,
+    data: rawResource,
+    isLoading: isPending,
     error,
-  } = useQuery<FileResource>({
-    queryKey: ["fileResource", normalizedPath],
-    placeholderData: keepPreviousData,
-    queryFn: async () => {
-      const { data } = await axios.get<ApiResource>(
-        "/navigator/api/resources",
-        {
-          params: {
-            path: normalizedPath,
-            source: "/",
-          },
-        },
-      );
-      return normalizeResource(data);
+  } = useStreamingFetch<ApiResource>("/navigator/api/resources", {
+    params: {
+      path: normalizedPath,
+      source: "/",
     },
   });
+
+  // Normalize the streamed resource data
+  const resource = useMemo(
+    () => (rawResource ? normalizeResource(rawResource) : null),
+    [rawResource],
+  );
+
+  const isError = error !== null;
 
   const errorMessage = isError
     ? error instanceof Error
