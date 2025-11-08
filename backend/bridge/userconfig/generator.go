@@ -1,7 +1,6 @@
 //go:build ignore
-// +build ignore
 
-// This file is compiled and run only by `go generate`. It does NOT ship.
+// compiled and run only by `go generate`. It does NOT ship.
 package main
 
 import (

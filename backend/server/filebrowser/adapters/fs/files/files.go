@@ -35,7 +35,6 @@ func FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) 
 	if !strings.HasSuffix(opts.Path, "/") && isDir {
 		opts.Path = opts.Path + "/"
 	}
-	opts.IsDir = isDir
 
 	var info *iteminfo.FileInfo
 	if isDir {
@@ -76,7 +75,7 @@ func FileInfoFaster(opts utils.FileOptions) (*iteminfo.ExtendedFileInfo, error) 
 	response.RealPath = resolvedPath
 
 	if opts.Content || opts.Metadata {
-		processContent(response, opts)
+		processContent(response)
 	}
 	return response, nil
 }
@@ -187,7 +186,7 @@ func setFilePreviewFlags(fileInfo *iteminfo.ItemInfo, realPath string) {
 	}
 }
 
-func processContent(info *iteminfo.ExtendedFileInfo, opts utils.FileOptions) {
+func processContent(info *iteminfo.ExtendedFileInfo) {
 	isVideo := strings.HasPrefix(info.Type, "video")
 	isAudio := strings.HasPrefix(info.Type, "audio")
 	isFolder := info.Type == "directory"
@@ -217,7 +216,7 @@ func processContent(info *iteminfo.ExtendedFileInfo, opts utils.FileOptions) {
 	}
 }
 
-func DeleteFiles(absPath string, absDirPath string) error {
+func DeleteFiles(absPath string) error {
 	err := os.RemoveAll(absPath)
 	if err != nil {
 		return err

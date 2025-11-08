@@ -17,11 +17,6 @@ func CopyHelper(src, dst string) error {
 		return os.ErrNotExist
 	}
 
-	if src == "/" || dst == "/" {
-		// Prohibit copying from or to the root directory.
-		return os.ErrInvalid
-	}
-
 	if dst == src {
 		return os.ErrInvalid
 	}

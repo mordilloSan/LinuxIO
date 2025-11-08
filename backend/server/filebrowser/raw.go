@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/files"
@@ -20,12 +20,12 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
 )
 
-func setContentDisposition(w http.ResponseWriter, r *http.Request, fileName string) {
-	if r.URL.Query().Get("inline") == "true" {
-		w.Header().Set("Content-Disposition", "inline; filename*=utf-8''"+url.PathEscape(fileName))
+func setContentDisposition(c *gin.Context, fileName string) {
+	if c.Query("inline") == "true" {
+		c.Header("Content-Disposition", "inline; filename*=utf-8''"+url.PathEscape(fileName))
 	} else {
 		// As per RFC6266 section 4.3
-		w.Header().Set("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(fileName))
+		c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(fileName))
 	}
 }
 
@@ -43,10 +43,16 @@ func setContentDisposition(w http.ResponseWriter, r *http.Request, fileName stri
 // @Failure 404 {object} map[string]string "File or directory not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/raw [get]
-func rawHandler(w http.ResponseWriter, r *http.Request, d *requestContext) (int, error) {
-	files := r.URL.Query().Get("files")
+func rawHandler(c *gin.Context) {
+	d, err := newRequestContext(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	files := c.Query("files")
 	fileList := strings.Split(files, "||")
-	return rawFilesHandler(w, r, d, fileList)
+	rawFilesHandler(c, d, fileList)
 }
 
 func addFile(path string, d *requestContext, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool) error {
@@ -183,16 +189,18 @@ func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWrite
 	return nil
 }
 
-func rawFilesHandler(w http.ResponseWriter, r *http.Request, d *requestContext, fileList []string) (int, error) {
+func rawFilesHandler(c *gin.Context, d *requestContext, fileList []string) {
 	splitFile := strings.Split(fileList[0], "::")
 	if len(splitFile) != 2 {
-		return http.StatusBadRequest, fmt.Errorf("invalid file in files request: %v", fileList[0])
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid file in files request: %v", fileList[0])})
+		return
 	}
 
 	firstFileSource := splitFile[0]
 	if firstFileSource != "" {
 		if _, err := url.PathUnescape(firstFileSource); err != nil {
-			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
+			return
 		}
 	}
 	firstFilePath := splitFile[1]
@@ -203,46 +211,54 @@ func rawFilesHandler(w http.ResponseWriter, r *http.Request, d *requestContext, 
 	realPath := filepath.Join(firstFileSource, firstFilePath)
 	stat, err := os.Stat(realPath)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		logger.Debugf("error stating file: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 	isDir := stat.IsDir()
 	// Compute estimated download size
-	estimatedSize, err := computeArchiveSize(fileList, d)
+	estimatedSize, err := computeArchiveSize(fileList)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		logger.Debugf("error computing archive size: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 	// ** Single file download with Content-Length **
 	if len(fileList) == 1 && !isDir {
 		fd, err2 := os.Open(realPath)
 		if err2 != nil {
-			return http.StatusInternalServerError, err2
+			logger.Debugf("error opening file: %v", err2)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err2.Error()})
+			return
 		}
 		defer fd.Close()
 
 		// Get file size
 		fileInfo, err2 := fd.Stat()
 		if err2 != nil {
-			return http.StatusInternalServerError, err2
+			logger.Debugf("error stating opened file: %v", err2)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err2.Error()})
+			return
 		}
 
 		// Set headers
-		setContentDisposition(w, r, fileName)
-		w.Header().Set("Cache-Control", "private")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
+		setContentDisposition(c, fileName)
+		c.Header("Cache-Control", "private")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
 		sizeInMB := estimatedSize / 1024 / 1024
 		// if larger than 500 MB, log it
 		if sizeInMB > 500 {
-			logger.Debugf("User %v is downloading large (%d MB) file: %v", d.user.Username, sizeInMB, fileName)
+			logger.Debugf("user %v is downloading large (%d MB) file: %v", d.user.Username, sizeInMB, fileName)
 		}
 		// serve content allows for range requests.
 		// video scrubbing, etc.
-		http.ServeContent(w, r, fileName, fileInfo.ModTime(), fd)
-		return 200, nil
+		c.DataFromReader(http.StatusOK, fileInfo.Size(), "application/octet-stream", fd, map[string]string{})
+		return
 	}
 
 	// ** Archive (ZIP/TAR.GZ) handling **
-	algo := r.URL.Query().Get("algo")
+	algo := c.Query("algo")
 	var extension string
 	switch algo {
 	case "zip", "true", "":
@@ -250,7 +266,8 @@ func rawFilesHandler(w http.ResponseWriter, r *http.Request, d *requestContext, 
 	case "tar.gz":
 		extension = ".tar.gz"
 	default:
-		return http.StatusInternalServerError, errors.New("format not implemented")
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "format not implemented"})
+		return
 	}
 
 	baseDirName := filepath.Base(filepath.Dir(firstFilePath))
@@ -271,13 +288,17 @@ func rawFilesHandler(w http.ResponseWriter, r *http.Request, d *requestContext, 
 		err = createTarGz(d, archiveData, fileList...)
 	}
 	if err != nil {
-		return http.StatusInternalServerError, err
+		logger.Debugf("error creating archive: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	// stream archive to response
 	fd, err := os.Open(archiveData)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		logger.Debugf("error opening archive: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 	defer fd.Close()
 
@@ -285,31 +306,32 @@ func rawFilesHandler(w http.ResponseWriter, r *http.Request, d *requestContext, 
 	fileInfo, err := fd.Stat()
 	if err != nil {
 		os.Remove(archiveData) // Remove the file if stat fails
-		return http.StatusInternalServerError, err
+		logger.Debugf("error stating archive: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	sizeInMB := fileInfo.Size() / 1024 / 1024
 	if sizeInMB > 500 {
-		logger.Debugf("User %v is downloading large (%d MB) file: %v", d.user.Username, sizeInMB, fileName)
+		logger.Debugf("user %v is downloading large (%d MB) file: %v", d.user.Username, sizeInMB, fileName)
 	}
 
 	// Set headers AFTER computing actual archive size
-	w.Header().Set("Content-Disposition", "attachment; filename*=utf-8''"+fileName)
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
-	w.Header().Set("Content-Type", "application/octet-stream")
+	c.Header("Content-Disposition", "attachment; filename*=utf-8''"+fileName)
+	c.Header("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
+	c.Header("Content-Type", "application/octet-stream")
 
 	// Stream the file
-	_, err = io.Copy(w, fd)
+	_, err = io.Copy(c.Writer, fd)
 	os.Remove(archiveData) // Remove the file after streaming
 	if err != nil {
-		logger.Errorf("Failed to copy archive data to response: %v", err)
-		return http.StatusInternalServerError, err
+		logger.Errorf("failed to copy archive data to response: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
-
-	return 0, nil
 }
 
-func computeArchiveSize(fileList []string, d *requestContext) (int64, error) {
+func computeArchiveSize(fileList []string) (int64, error) {
 	var estimatedSize int64
 	for _, fname := range fileList {
 		splitFile := strings.Split(fname, "::")
