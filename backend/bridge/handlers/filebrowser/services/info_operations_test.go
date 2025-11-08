@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/iteminfo"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 )
 
 func TestFileInfoFaster(t *testing.T) {
@@ -48,7 +48,7 @@ func TestFileInfoFaster(t *testing.T) {
 		assert.NotNil(t, info)
 		assert.Equal(t, "testdir", info.Name)
 		// Should have expanded directory with files/folders
-		assert.True(t, len(info.Files) > 0 || len(info.Folders) > 0 || len(info.ItemInfo.Type) > 0)
+		assert.True(t, len(info.Files) > 0 || len(info.Folders) > 0 || len(info.Type) > 0)
 	})
 
 	t.Run("get_info_with_content", func(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/iteminfo"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 )
 
 func TestMoveFile(t *testing.T) {
@@ -149,9 +149,18 @@ func TestDeleteFiles(t *testing.T) {
 	})
 
 	t.Run("delete_nonexistent", func(t *testing.T) {
-		// DeleteFiles may or may not error on nonexistent file
-		_ = DeleteFiles(filepath.Join(tmpDir, "nonexistent.txt"))
-		// Just verify it handles the case without crashing
+		safeDir := createTestDir(t, tmpDir, "safe")
+		missingPath := filepath.Join(tmpDir, "nonexistent.txt")
+
+		err := DeleteFiles(missingPath)
+		assert.NoError(t, err, "deleting a nonexistent path should be a no-op")
+
+		_, err = os.Stat(missingPath)
+		assert.Error(t, err, "missing path should still not exist")
+
+		// Ensure other directories are untouched
+		_, err = os.Stat(safeDir)
+		assert.NoError(t, err, "existing directories must remain intact")
 	})
 
 	t.Run("delete_directory_with_nested_files", func(t *testing.T) {

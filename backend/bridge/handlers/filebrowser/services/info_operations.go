@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/iteminfo"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 )
 
 // FileInfoFaster retrieves file/directory information quickly
