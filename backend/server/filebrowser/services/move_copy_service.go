@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/fileops"
 )
 
 // MoveCopyService handles move, copy, and delete operations with validation
@@ -52,7 +50,7 @@ func (s *MoveCopyService) MoveResource(isSrcDir bool, realsrc, realdst string) e
 		return err
 	}
 
-	err := fileops.MoveFile(realsrc, realdst)
+	err := MoveFile(realsrc, realdst)
 	if err != nil {
 		return err
 	}
@@ -67,7 +65,7 @@ func (s *MoveCopyService) CopyResource(isSrcDir bool, realsrc, realdst string) e
 		return err
 	}
 
-	err := fileops.CopyFile(realsrc, realdst)
+	err := CopyFile(realsrc, realdst)
 	if err != nil {
 		return err
 	}

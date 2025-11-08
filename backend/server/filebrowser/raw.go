@@ -17,8 +17,7 @@ import (
 )
 
 var (
-	metadataSvc = services.NewMetadataService()
-	archiveSvc  = services.NewArchiveService()
+	archiveSvc = services.NewArchiveService()
 )
 
 func setContentDisposition(c *gin.Context, fileName string) {
@@ -183,4 +182,3 @@ func rawFilesHandler(c *gin.Context, d *requestContext, fileList []string) {
 		return
 	}
 }
-
