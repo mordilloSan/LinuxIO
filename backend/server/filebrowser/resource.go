@@ -1,7 +1,6 @@
 package filebrowser
 
 import (
-	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -14,11 +13,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/files"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/fileutils"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/errors"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/indexing/iteminfo"
 )
@@ -78,20 +77,28 @@ type resourceStatData struct {
 // @Failure 404 {object} map[string]string "Resource not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [get]
-func resourceGetHandler(w http.ResponseWriter, r *http.Request, d *requestContext) (int, error) {
-	encodedPath := r.URL.Query().Get("path")
-	rawSource := r.URL.Query().Get("source")
+func resourceGetHandler(c *gin.Context) {
+	d, err := newRequestContext(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	encodedPath := c.Query("path")
+	rawSource := c.Query("source")
 	// Decode the URL-encoded path
 	path, err := url.QueryUnescape(encodedPath)
 	if err != nil {
-		return http.StatusBadRequest, fmt.Errorf("invalid path encoding: %v", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid path encoding: %v", err)})
+		return
 	}
 	if rawSource != "" {
 		if _, err = url.QueryUnescape(rawSource); err != nil {
-			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
+			return
 		}
 	}
-	getContent := r.URL.Query().Get("content") == "true"
+	getContent := c.Query("content") == "true"
 	fileInfo, err := files.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
@@ -99,12 +106,12 @@ func resourceGetHandler(w http.ResponseWriter, r *http.Request, d *requestContex
 		Content:  getContent,
 	})
 	if err != nil {
-		return errToStatus(err), err
+		logger.Debugf("error getting file info: %v", err)
+		status := statusFromError(err)
+		c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
+		return
 	}
-	if fileInfo.Type == "directory" {
-		return renderJSON(w, r, fileInfo)
-	}
-	return renderJSON(w, r, fileInfo)
+	c.JSON(http.StatusOK, fileInfo)
 }
 
 // resourceStatHandler returns extended metadata.
@@ -119,17 +126,25 @@ func resourceGetHandler(w http.ResponseWriter, r *http.Request, d *requestContex
 // @Failure 404 {object} map[string]string "Resource not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources/stat [get]
-func resourceStatHandler(w http.ResponseWriter, r *http.Request, d *requestContext) (int, error) {
-	encodedPath := r.URL.Query().Get("path")
-	rawSource := r.URL.Query().Get("source")
+func resourceStatHandler(c *gin.Context) {
+	d, err := newRequestContext(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	encodedPath := c.Query("path")
+	rawSource := c.Query("source")
 
 	path, err := url.QueryUnescape(encodedPath)
 	if err != nil {
-		return http.StatusBadRequest, fmt.Errorf("invalid path encoding: %v", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid path encoding: %v", err)})
+		return
 	}
 	if rawSource != "" {
 		if _, err = url.QueryUnescape(rawSource); err != nil {
-			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
+			return
 		}
 	}
 
@@ -139,12 +154,17 @@ func resourceStatHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 		Expand:   false,
 	})
 	if err != nil {
-		return errToStatus(err), err
+		status := statusFromError(err)
+		logger.Debugf("error getting file stat info: %v", err)
+		c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
+		return
 	}
 
 	statData, err := collectStatInfo(fileInfo.RealPath)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		logger.Debugf("error collecting stat info: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	statData.Path = path
@@ -153,7 +173,7 @@ func resourceStatHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 		statData.Size = fileInfo.Size
 	}
 
-	return renderJSON(w, r, statData)
+	c.JSON(http.StatusOK, statData)
 }
 
 // resourceDeleteHandler deletes a resource at a specified path.
@@ -169,22 +189,30 @@ func resourceStatHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 // @Failure 404 {object} map[string]string "Resource not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [delete]
-func resourceDeleteHandler(w http.ResponseWriter, r *http.Request, d *requestContext) (int, error) {
-	encodedPath := r.URL.Query().Get("path")
-	rawSource := r.URL.Query().Get("source")
-	var err error
+func resourceDeleteHandler(c *gin.Context) {
+	d, err := newRequestContext(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	encodedPath := c.Query("path")
+	rawSource := c.Query("source")
 	if rawSource != "" {
 		if _, err = url.QueryUnescape(rawSource); err != nil {
-			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
+			return
 		}
 	}
 	// Decode the URL-encoded path
 	path, err := url.QueryUnescape(encodedPath)
 	if err != nil {
-		return http.StatusBadRequest, fmt.Errorf("invalid path encoding: %v", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid path encoding: %v", err)})
+		return
 	}
 	if path == "/" {
-		return http.StatusForbidden, nil
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "cannot delete root"})
+		return
 	}
 	fileInfo, err := files.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
@@ -192,14 +220,20 @@ func resourceDeleteHandler(w http.ResponseWriter, r *http.Request, d *requestCon
 		Expand:   false,
 	})
 	if err != nil {
-		return errToStatus(err), err
+		status := statusFromError(err)
+		logger.Debugf("error getting file info: %v", err)
+		c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
+		return
 	}
 
-	err = files.DeleteFiles(fileInfo.RealPath, filepath.Dir(fileInfo.RealPath))
+	err = files.DeleteFiles(fileInfo.RealPath)
 	if err != nil {
-		return errToStatus(err), err
+		status := statusFromError(err)
+		logger.Debugf("error deleting file: %v", err)
+		c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
+		return
 	}
-	return http.StatusOK, nil
+	c.Status(http.StatusOK)
 }
 
 // resourcePostHandler creates or uploads a new resource.
@@ -217,20 +251,27 @@ func resourceDeleteHandler(w http.ResponseWriter, r *http.Request, d *requestCon
 // @Failure 409 {object} map[string]string "Conflict - Resource already exists"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [post]
-func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestContext) (int, error) {
-	path := r.URL.Query().Get("path")
-	rawSource := r.URL.Query().Get("source")
-	var err error
+func resourcePostHandler(c *gin.Context) {
+	d, err := newRequestContext(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	path := c.Query("path")
+	rawSource := c.Query("source")
 	if rawSource != "" {
 		if _, err = url.QueryUnescape(rawSource); err != nil {
 			logger.Debugf("invalid source encoding: %v", err)
-			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
+			return
 		}
 	}
 	path, err = url.QueryUnescape(path)
 	if err != nil {
 		logger.Debugf("invalid path encoding: %v", err)
-		return http.StatusBadRequest, fmt.Errorf("invalid path encoding: %v", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid path encoding: %v", err)})
+		return
 	}
 	// Determine if this is a directory or file based on trailing slash
 	isDir := strings.HasSuffix(path, "/")
@@ -250,8 +291,9 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 		requestingDir := isDir
 
 		// If type mismatch (file vs folder or folder vs file) and not overriding
-		if existingIsDir != requestingDir && r.URL.Query().Get("override") != "true" {
-			return http.StatusConflict, nil
+		if existingIsDir != requestingDir && c.Query("override") != "true" {
+			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists with different type"})
+			return
 		}
 	}
 
@@ -260,27 +302,32 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 		err = files.WriteDirectory(fileOpts)
 		if err != nil {
 			logger.Debugf("error writing directory: %v", err)
-			return errToStatus(err), err
+			status := statusFromError(err)
+			c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
+			return
 		}
-		return http.StatusOK, nil
+		c.Status(http.StatusOK)
+		return
 	}
 
 	// Handle Chunked Uploads
-	chunkOffsetStr := r.Header.Get("X-File-Chunk-Offset")
+	chunkOffsetStr := c.GetHeader("X-File-Chunk-Offset")
 	if chunkOffsetStr != "" {
 		var offset int64
 		offset, err = strconv.ParseInt(chunkOffsetStr, 10, 64)
 		if err != nil {
 			logger.Debugf("invalid chunk offset: %v", err)
-			return http.StatusBadRequest, fmt.Errorf("invalid chunk offset: %v", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid chunk offset: %v", err)})
+			return
 		}
 
 		var totalSize int64
-		totalSizeStr := r.Header.Get("X-File-Total-Size")
+		totalSizeStr := c.GetHeader("X-File-Total-Size")
 		totalSize, err = strconv.ParseInt(totalSizeStr, 10, 64)
 		if err != nil {
 			logger.Debugf("invalid total size: %v", err)
-			return http.StatusBadRequest, fmt.Errorf("invalid total size: %v", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid total size: %v", err)})
+			return
 		}
 		// On the first chunk, check for conflicts or handle override
 		if offset == 0 {
@@ -290,19 +337,20 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 				requestingDir := false // Files are never directories
 
 				// If type mismatch (existing dir vs requesting file) and not overriding
-				if existingIsDir != requestingDir && r.URL.Query().Get("override") != "true" {
+				if existingIsDir != requestingDir && c.Query("override") != "true" {
 					logger.Debugf("Type conflict detected in chunked: existing is dir=%v, requesting dir=%v at path=%v", existingIsDir, requestingDir, realPath)
-					return http.StatusConflict, nil
+					c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists with different type"})
+					return
 				}
 			}
 
 			var fileInfo *iteminfo.ExtendedFileInfo
 			fileInfo, err = files.FileInfoFaster(fileOpts)
 			if err == nil { // File exists
-				if r.URL.Query().Get("override") != "true" {
+				if c.Query("override") != "true" {
 					logger.Debugf("resource already exists: %v", fileInfo.RealPath)
-					logger.Debugf("Resource already exists: %v", fileInfo.RealPath)
-					return http.StatusConflict, nil
+					c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists"})
+					return
 				}
 			}
 		}
@@ -316,14 +364,16 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 
 		if err = os.MkdirAll(filepath.Dir(tempFilePath), fileutils.PermDir); err != nil {
 			logger.Debugf("could not create temp dir: %v", err)
-			return http.StatusInternalServerError, fmt.Errorf("could not create temp dir: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not create temp dir: %v", err)})
+			return
 		}
 		// Create or open the temporary file
 		var outFile *os.File
 		outFile, err = os.OpenFile(tempFilePath, os.O_CREATE|os.O_WRONLY, fileutils.PermFile)
 		if err != nil {
 			logger.Debugf("could not open temp file: %v", err)
-			return http.StatusInternalServerError, fmt.Errorf("could not open temp file: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not open temp file: %v", err)})
+			return
 		}
 		defer outFile.Close()
 
@@ -331,15 +381,17 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 		_, err = outFile.Seek(offset, 0)
 		if err != nil {
 			logger.Debugf("could not seek in temp file: %v", err)
-			return http.StatusInternalServerError, fmt.Errorf("could not seek in temp file: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not seek in temp file: %v", err)})
+			return
 		}
 
 		// Write the request body (the chunk) to the file
 		var chunkSize int64
-		chunkSize, err = io.Copy(outFile, r.Body)
+		chunkSize, err = io.Copy(outFile, c.Request.Body)
 		if err != nil {
 			logger.Debugf("could not write chunk to temp file: %v", err)
-			return http.StatusInternalServerError, fmt.Errorf("could not write chunk to temp file: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not write chunk to temp file: %v", err)})
+			return
 		}
 		// check if the file is complete
 		if (offset + chunkSize) >= totalSize {
@@ -349,11 +401,13 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 			err = fileutils.MoveFile(tempFilePath, realPath)
 			if err != nil {
 				logger.Debugf("could not move temp file to destination: %v", err)
-				return http.StatusInternalServerError, fmt.Errorf("could not move temp file to destination: %v", err)
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not move temp file to destination: %v", err)})
+				return
 			}
 		}
 
-		return http.StatusOK, nil
+		c.Status(http.StatusOK)
+		return
 	}
 
 	// Check for file/folder conflicts for non-chunked uploads
@@ -362,22 +416,25 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 		requestingDir := false // Files are never directories
 
 		// If type mismatch (existing dir vs requesting file) and not overriding
-		if existingIsDir != requestingDir && r.URL.Query().Get("override") != "true" {
-			return http.StatusConflict, nil
+		if existingIsDir != requestingDir && c.Query("override") != "true" {
+			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists with different type"})
+			return
 		}
 	}
 
-	if r.URL.Query().Get("override") != "true" {
-		return http.StatusConflict, nil
+	if c.Query("override") != "true" {
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists"})
+		return
 	}
 
-	err = files.WriteFile(fileOpts, r.Body)
+	err = files.WriteFile(fileOpts, c.Request.Body)
 	if err != nil {
 		logger.Debugf("error writing file: %v", err)
-		return errToStatus(err), err
-
+		status := statusFromError(err)
+		c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
+		return
 	}
-	return http.StatusOK, nil
+	c.Status(http.StatusOK)
 }
 
 // resourcePutHandler updates an existing file resource.
@@ -394,25 +451,33 @@ func resourcePostHandler(w http.ResponseWriter, r *http.Request, d *requestConte
 // @Failure 405 {object} map[string]string "Method not allowed"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [put]
-func resourcePutHandler(w http.ResponseWriter, r *http.Request, d *requestContext) (int, error) {
-	rawSource := r.URL.Query().Get("source")
-	var err error
+func resourcePutHandler(c *gin.Context) {
+	d, err := newRequestContext(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	rawSource := c.Query("source")
 	if rawSource != "" {
 		if _, err = url.QueryUnescape(rawSource); err != nil {
-			return http.StatusBadRequest, fmt.Errorf("invalid source encoding: %v", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source encoding: %v", err)})
+			return
 		}
 	}
 
-	encodedPath := r.URL.Query().Get("path")
+	encodedPath := c.Query("path")
 
 	// Decode the URL-encoded path
 	path, err := url.QueryUnescape(encodedPath)
 	if err != nil {
-		return http.StatusBadRequest, fmt.Errorf("invalid path encoding: %v", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid path encoding: %v", err)})
+		return
 	}
 	// Only allow PUT for files.
 	if strings.HasSuffix(path, "/") {
-		return http.StatusMethodNotAllowed, nil
+		c.AbortWithStatusJSON(http.StatusMethodNotAllowed, gin.H{"error": "PUT is not allowed for directories"})
+		return
 	}
 
 	fileOpts := utils.FileOptions{
@@ -422,8 +487,14 @@ func resourcePutHandler(w http.ResponseWriter, r *http.Request, d *requestContex
 	}
 
 	// Check access control for the target path
-	err = files.WriteFile(fileOpts, r.Body)
-	return errToStatus(err), err
+	err = files.WriteFile(fileOpts, c.Request.Body)
+	status := statusFromError(err)
+	if err != nil {
+		logger.Debugf("error writing file: %v", err)
+		c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(status)
 }
 
 // resourcePatchHandler performs a patch operation (e.g., move, rename) on a resource.
@@ -443,55 +514,66 @@ func resourcePutHandler(w http.ResponseWriter, r *http.Request, d *requestContex
 // @Failure 409 {object} map[string]string "Conflict - Destination exists"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/resources [patch]
-func resourcePatchHandler(w http.ResponseWriter, r *http.Request, d *requestContext) (int, error) {
-	action := r.URL.Query().Get("action")
+func resourcePatchHandler(c *gin.Context) {
 
-	encodedFrom := r.URL.Query().Get("from")
+	action := c.Query("action")
+
+	encodedFrom := c.Query("from")
 	// Decode the URL-encoded path
 	src, err := url.QueryUnescape(encodedFrom)
 	if err != nil {
-		return http.StatusBadRequest, fmt.Errorf("invalid path encoding: %v", err)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid path encoding: %v", err)})
+		return
 	}
-	dst := r.URL.Query().Get("destination")
+	dst := c.Query("destination")
 	dst, err = url.QueryUnescape(dst)
 	if err != nil {
-		return errToStatus(err), err
+		status := statusFromError(err)
+		logger.Debugf("error unescaping destination: %v", err)
+		c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
+		return
 	}
 
 	splitSrc := strings.Split(src, "::")
 	if len(splitSrc) <= 1 {
-		return http.StatusBadRequest, fmt.Errorf("invalid source path: %v", src)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid source path: %v", src)})
+		return
 	}
 	src = splitSrc[1]
 
 	splitDst := strings.Split(dst, "::")
 	if len(splitDst) <= 1 {
-		return http.StatusBadRequest, fmt.Errorf("invalid destination path: %v", dst)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid destination path: %v", dst)})
+		return
 	}
 	dst = splitDst[1]
 
 	if dst == "/" || src == "/" {
-		return http.StatusForbidden, fmt.Errorf("forbidden: source or destination is attempting to modify root")
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "cannot modify root directory"})
+		return
 	}
 
 	// Direct filesystem access - check target dir exists
 	parentDir := filepath.Join(filepath.Dir(dst))
 	_, statErr := os.Stat(parentDir)
 	if statErr != nil {
-		logger.Debugf("Could not get real path for parent dir: %v %v", filepath.Dir(dst), statErr)
-		return http.StatusNotFound, statErr
+		logger.Debugf("could not get real path for parent dir: %v %v", filepath.Dir(dst), statErr)
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "parent directory not found"})
+		return
 	}
 	realDest := filepath.Join(parentDir, filepath.Base(dst))
 
 	realSrc := filepath.Join(src)
 	stat, err := os.Stat(realSrc)
 	if err != nil {
-		return http.StatusNotFound, err
+		logger.Debugf("could not stat source: %v", err)
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "source not found"})
+		return
 	}
 	isSrcDir := stat.IsDir()
 
 	// Check access control for both source and destination paths
-	rename := r.URL.Query().Get("rename") == "true"
+	rename := c.Query("rename") == "true"
 	if rename {
 		realDest = addVersionSuffix(realDest)
 	}
@@ -499,21 +581,25 @@ func resourcePatchHandler(w http.ResponseWriter, r *http.Request, d *requestCont
 	// Validate move/rename operation to prevent circular references
 	if action == "rename" || action == "move" {
 		if err = validateMoveOperation(realSrc, realDest, isSrcDir); err != nil {
-			return http.StatusBadRequest, err
+			logger.Debugf("invalid move operation: %v", err)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
 	}
 
-	err = patchAction(r.Context(), patchActionParams{
+	err = patchAction(patchActionParams{
 		action:   action,
 		src:      realSrc,
 		dst:      realDest,
-		d:        d,
 		isSrcDir: isSrcDir,
 	})
 	if err != nil {
-		logger.Debugf("Could not run patch action. src=%v dst=%v err=%v", realSrc, realDest, err)
+		logger.Debugf("could not run patch action. src=%v dst=%v err=%v", realSrc, realDest, err)
+		status := statusFromError(err)
+		c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
+		return
 	}
-	return errToStatus(err), err
+	c.Status(http.StatusOK)
 }
 
 func addVersionSuffix(source string) string {
@@ -536,18 +622,47 @@ type patchActionParams struct {
 	action   string
 	src      string
 	dst      string
-	d        *requestContext
 	isSrcDir bool
 }
 
-func patchAction(ctx context.Context, params patchActionParams) error {
+func patchAction(params patchActionParams) error {
 	switch params.action {
 	case "copy":
 		err := files.CopyResource(params.isSrcDir, params.src, params.dst)
+		if err != nil {
+			logger.Debugf("error copying resource: %v", err)
+		}
 		return err
 	case "rename", "move":
-		return files.MoveResource(params.isSrcDir, params.src, params.dst)
+		err := files.MoveResource(params.isSrcDir, params.src, params.dst)
+		if err != nil {
+			logger.Debugf("error moving/renaming resource: %v", err)
+		}
+		return err
 	default:
-		return fmt.Errorf("unsupported action %s: %w", params.action, errors.ErrInvalidRequestParams)
+		err := fmt.Errorf("unsupported action: %s", params.action)
+		logger.Debugf("unsupported patch action: %v", err)
+		return err
 	}
+}
+
+// statusFromError maps an error to an appropriate HTTP status code
+func statusFromError(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+
+	// Check for OS-level errors
+	if os.IsPermission(err) {
+		return http.StatusForbidden
+	}
+	if os.IsNotExist(err) {
+		return http.StatusNotFound
+	}
+	if os.IsExist(err) {
+		return http.StatusConflict
+	}
+
+	// Default to internal server error for unknown errors
+	return http.StatusInternalServerError
 }
