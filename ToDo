@@ -21,3 +21,11 @@ Bridge upon receiving exit command should cancel ongoing works - DONE
 Wireguard Testing and lasthandshake - DONE
 If session is garbage colected the bridge must exist as well - DONE
 Test Multiple Users - DONE
+
+
+Multiplex over Single Connection (Future)
+If you need bidirectional streaming (real-time updates FROM bridge TO server):
+Add RequestID to IPC protocol
+Multiplexer pattern (like HTTP/2 streams)
+Server can receive unsolicited messages from bridge
+Trade-off: Requires protocol changes + more complexity

@@ -18,7 +18,7 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 	priv.GET("/get", func(c *gin.Context) {
 		sess := session.SessionFromContext(c)
 		if sess == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
 			return
 		}
 
@@ -53,7 +53,7 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 	priv.POST("/set", func(c *gin.Context) {
 		sess := session.SessionFromContext(c)
 		if sess == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
 			return
 		}
 

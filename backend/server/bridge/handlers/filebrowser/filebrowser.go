@@ -25,14 +25,15 @@ import (
 func resourceGetHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
 		return
 	}
 
 	encodedPath := c.Query("path")
 	path, err := url.QueryUnescape(encodedPath)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
+		logger.Debugf("invalid path encoding: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
 		return
 	}
 
@@ -78,14 +79,15 @@ func resourceGetHandler(c *gin.Context) {
 func resourceStatHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
 		return
 	}
 
 	encodedPath := c.Query("path")
 	path, err := url.QueryUnescape(encodedPath)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
+		logger.Debugf("invalid path encoding: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
 		return
 	}
 
@@ -124,14 +126,15 @@ func resourceStatHandler(c *gin.Context) {
 func resourceDeleteHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
 		return
 	}
 
 	encodedPath := c.Query("path")
 	path, err := url.QueryUnescape(encodedPath)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
+		logger.Debugf("invalid path encoding: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
 		return
 	}
 
@@ -166,14 +169,15 @@ func resourceDeleteHandler(c *gin.Context) {
 func resourcePostHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
 		return
 	}
 
 	path := c.Query("path")
 	path, err := url.QueryUnescape(path)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
+		logger.Debugf("invalid path encoding: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
 		return
 	}
 
@@ -228,7 +232,7 @@ func resourcePutHandler(c *gin.Context) {
 func resourcePatchHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
 		return
 	}
 
@@ -236,14 +240,16 @@ func resourcePatchHandler(c *gin.Context) {
 	encodedFrom := c.Query("from")
 	src, err := url.QueryUnescape(encodedFrom)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
+		logger.Debugf("invalid path encoding: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
 		return
 	}
 
 	dst := c.Query("destination")
 	dst, err = url.QueryUnescape(dst)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid destination path encoding"})
+		logger.Debugf("invalid destination path encoding: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid destination path encoding"})
 		return
 	}
 
@@ -291,7 +297,7 @@ func resourcePostDirectHandler(c *gin.Context) {
 	path, err := url.QueryUnescape(path)
 	if err != nil {
 		logger.Debugf("invalid path encoding: %v", err)
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid path encoding: %v", err)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
 		return
 	}
 
@@ -304,12 +310,12 @@ func resourcePostDirectHandler(c *gin.Context) {
 		requestingDir := false // POST for files
 
 		if existingIsDir != requestingDir && !override {
-			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists with different type"})
+			c.JSON(http.StatusConflict, gin.H{"error": "resource already exists with different type"})
 			return
 		}
 
 		if !existingIsDir && !override {
-			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists"})
+			c.JSON(http.StatusConflict, gin.H{"error": "resource already exists"})
 			return
 		}
 	}
@@ -321,7 +327,7 @@ func resourcePostDirectHandler(c *gin.Context) {
 		offset, err = strconv.ParseInt(chunkOffsetStr, 10, 64)
 		if err != nil {
 			logger.Debugf("invalid chunk offset: %v", err)
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid chunk offset: %v", err)})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chunk offset"})
 			return
 		}
 
@@ -330,7 +336,7 @@ func resourcePostDirectHandler(c *gin.Context) {
 		totalSize, err = strconv.ParseInt(totalSizeStr, 10, 64)
 		if err != nil {
 			logger.Debugf("invalid total size: %v", err)
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid total size: %v", err)})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid total size"})
 			return
 		}
 
@@ -339,7 +345,7 @@ func resourcePostDirectHandler(c *gin.Context) {
 			if stat, statErr := os.Stat(realPath); statErr == nil {
 				existingIsDir := stat.IsDir()
 				if existingIsDir && !override {
-					c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "resource already exists with different type"})
+					c.JSON(http.StatusConflict, gin.H{"error": "resource already exists with different type"})
 					return
 				}
 			}
@@ -353,7 +359,7 @@ func resourcePostDirectHandler(c *gin.Context) {
 
 		if err = os.MkdirAll(filepath.Dir(tempFilePath), 0755); err != nil {
 			logger.Debugf("could not create temp dir: %v", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not create temp dir: %v", err)})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create temp directory"})
 			return
 		}
 
@@ -361,7 +367,7 @@ func resourcePostDirectHandler(c *gin.Context) {
 		outFile, err = os.OpenFile(tempFilePath, os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			logger.Debugf("could not open temp file: %v", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not open temp file: %v", err)})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not open temp file"})
 			return
 		}
 		defer outFile.Close()
@@ -369,7 +375,7 @@ func resourcePostDirectHandler(c *gin.Context) {
 		_, err = outFile.Seek(offset, 0)
 		if err != nil {
 			logger.Debugf("could not seek in temp file: %v", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not seek in temp file: %v", err)})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not seek in temp file"})
 			return
 		}
 
@@ -377,7 +383,7 @@ func resourcePostDirectHandler(c *gin.Context) {
 		chunkSize, err = io.Copy(outFile, c.Request.Body)
 		if err != nil {
 			logger.Debugf("could not write chunk to temp file: %v", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not write chunk to temp file: %v", err)})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write chunk to temp file"})
 			return
 		}
 
@@ -399,12 +405,13 @@ func resourcePutDirectHandler(c *gin.Context) {
 	encodedPath := c.Query("path")
 	path, err := url.QueryUnescape(encodedPath)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid path encoding: %v", err)})
+		logger.Debugf("invalid path encoding: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
 		return
 	}
 
 	if strings.HasSuffix(path, "/") {
-		c.AbortWithStatusJSON(http.StatusMethodNotAllowed, gin.H{"error": "PUT is not allowed for directories"})
+		c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "PUT is not allowed for directories"})
 		return
 	}
 
@@ -414,7 +421,7 @@ func resourcePutDirectHandler(c *gin.Context) {
 // rawFilesHandler serves raw file content or archives
 func rawFilesHandler(c *gin.Context, fileList []string) {
 	if len(fileList) == 0 || fileList[0] == "" {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid files list"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid files list"})
 		return
 	}
 
@@ -424,7 +431,7 @@ func rawFilesHandler(c *gin.Context, fileList []string) {
 	stat, err := os.Stat(realPath)
 	if err != nil {
 		logger.Debugf("error stating file: %v", err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "file not found"})
 		return
 	}
 
@@ -435,7 +442,7 @@ func rawFilesHandler(c *gin.Context, fileList []string) {
 		fd, err := os.Open(realPath)
 		if err != nil {
 			logger.Debugf("error opening file: %v", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not open file"})
 			return
 		}
 		defer fd.Close()
@@ -443,7 +450,7 @@ func rawFilesHandler(c *gin.Context, fileList []string) {
 		fileInfo, err := fd.Stat()
 		if err != nil {
 			logger.Debugf("error stating opened file: %v", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not read file info"})
 			return
 		}
 
