@@ -4,6 +4,25 @@ import (
 	"time"
 )
 
+// ============================================================================
+// REQUEST AND RESOURCE CONTEXT - Consolidated structures
+// ============================================================================
+
+// ResourceStatData contains extended metadata for a file/directory resource.
+// It includes Linux-specific stat information like owner, group, and permissions.
+type ResourceStatData struct {
+	Mode        string `json:"mode"`
+	Owner       string `json:"owner"`
+	Group       string `json:"group"`
+	Size        int64  `json:"size"`
+	Modified    string `json:"modified"`
+	Raw         string `json:"raw"`
+	Permissions string `json:"permissions"`
+	Path        string `json:"path"`
+	RealPath    string `json:"realPath"`
+	Name        string `json:"name"`
+}
+
 // FileOptions are the options when getting or manipulating file info.
 type FileOptions struct {
 	Path       string // realpath

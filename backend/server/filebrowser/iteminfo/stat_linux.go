@@ -1,4 +1,5 @@
-package filebrowser
+// Package iteminfo provides file and resource information structures and utilities
+package iteminfo
 
 import (
 	"fmt"
@@ -11,7 +12,9 @@ import (
 	"time"
 )
 
-func collectStatInfo(realPath string) (*resourceStatData, error) {
+// CollectStatInfo gathers extended Linux-specific file metadata including owner, group, and permissions.
+// This function collects detailed stat information for a file or directory.
+func CollectStatInfo(realPath string) (*ResourceStatData, error) {
 	info, err := os.Lstat(realPath)
 	if err != nil {
 		return nil, err
@@ -22,7 +25,7 @@ func collectStatInfo(realPath string) (*resourceStatData, error) {
 		return nil, fmt.Errorf("unsupported stat type for path: %s", realPath)
 	}
 
-	data := &resourceStatData{
+	data := &ResourceStatData{
 		Mode:     info.Mode().String(),
 		Size:     info.Size(),
 		Modified: info.ModTime().Format(time.RFC3339),

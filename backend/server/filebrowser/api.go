@@ -8,10 +8,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-type requestContext struct {
-	user session.User
-}
-
 // RegisterRoutes wires the Filebrowser HTTP handlers into the provided router group.
 // The caller should wrap the group with session middleware before invoking this.
 func RegisterRoutes(r *gin.RouterGroup) error {
@@ -27,12 +23,21 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 	return nil
 }
 
-func newRequestContext(c *gin.Context) (*requestContext, error) {
+// newSessionUser extracts the user session from the Gin context and wraps it
+func newSessionUser(c *gin.Context) (*sessionUser, error) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
 		return nil, errors.New("session not found")
 	}
-	return &requestContext{
-		user: sess.User,
-	}, nil
+	return &sessionUser{user: sess.User}, nil
+}
+
+// sessionUser wraps the session.User to implement User interface
+type sessionUser struct {
+	user session.User
+}
+
+// GetUsername returns the username from the session user
+func (su *sessionUser) GetUsername() string {
+	return su.user.Username
 }
