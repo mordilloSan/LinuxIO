@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 
 interface UseStreamingFetchOptions {
   params?: Record<string, string | number>;
@@ -58,6 +58,21 @@ export function useStreamingFetch<T>(
     },
     [],
   );
+
+  // Create a cache key that includes both URL and params
+  const cacheKey = useMemo(() => {
+    let key = url;
+    if (options?.params) {
+      const params = new URLSearchParams();
+      Object.entries(options.params)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([k, v]) => {
+          params.append(k, String(v));
+        });
+      key = `${url}?${params.toString()}`;
+    }
+    return key;
+  }, [url, options?.params]);
 
   useEffect(() => {
     urlRef.current = url;
@@ -183,7 +198,7 @@ export function useStreamingFetch<T>(
     return () => {
       controller.abort();
     };
-  }, [url]);
+  }, [cacheKey]);
 
   return { data, isLoading, error, progress };
 }
