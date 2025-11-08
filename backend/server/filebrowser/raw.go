@@ -15,9 +15,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/files"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/fileutils"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/fileops"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/services"
+)
+
+var (
+	metadataSvc = services.NewMetadataService()
 )
 
 func setContentDisposition(c *gin.Context, fileName string) {
@@ -57,7 +61,7 @@ func rawHandler(c *gin.Context) {
 
 func addFile(path string, d *requestContext, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool) error {
 	// Direct filesystem access
-	_, err := files.FileInfoFaster(utils.FileOptions{
+	_, err := metadataSvc.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
 		Expand:   false,
@@ -105,7 +109,7 @@ func addFile(path string, d *requestContext, tarWriter *tar.Writer, zipWriter *z
 				if tarWriter != nil {
 					header := &tar.Header{
 						Name:     relPath + "/",
-						Mode:     int64(fileutils.PermDir),
+						Mode:     int64(fileops.PermDir),
 						Typeflag: tar.TypeDir,
 						ModTime:  fileInfo.ModTime(),
 					}
@@ -350,7 +354,7 @@ func computeArchiveSize(fileList []string) (int64, error) {
 }
 
 func createZip(d *requestContext, tmpDirPath string, filenames ...string) error {
-	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileutils.PermFile)
+	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileops.PermFile)
 	if err != nil {
 		return err
 	}
@@ -367,7 +371,7 @@ func createZip(d *requestContext, tmpDirPath string, filenames ...string) error 
 	}
 
 	// Explicitly set file permissions to bypass umask
-	err = os.Chmod(tmpDirPath, fileutils.PermFile)
+	err = os.Chmod(tmpDirPath, fileops.PermFile)
 	if err != nil {
 		return err
 	}
@@ -376,7 +380,7 @@ func createZip(d *requestContext, tmpDirPath string, filenames ...string) error 
 }
 
 func createTarGz(d *requestContext, tmpDirPath string, filenames ...string) error {
-	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileutils.PermFile)
+	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileops.PermFile)
 	if err != nil {
 		return err
 	}
@@ -395,7 +399,7 @@ func createTarGz(d *requestContext, tmpDirPath string, filenames ...string) erro
 	}
 
 	// Explicitly set file permissions to bypass umask
-	err = os.Chmod(tmpDirPath, fileutils.PermFile)
+	err = os.Chmod(tmpDirPath, fileops.PermFile)
 	if err != nil {
 		return err
 	}

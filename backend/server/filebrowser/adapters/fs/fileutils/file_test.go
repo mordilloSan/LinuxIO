@@ -1,6 +1,10 @@
 package fileutils
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/fileops"
+)
 
 func TestCommonPrefix(t *testing.T) {
 	testCases := map[string]struct {
@@ -38,7 +42,7 @@ func TestCommonPrefix(t *testing.T) {
 	}
 	for name, tt := range testCases {
 		t.Run(name, func(t *testing.T) {
-			if got := CommonPrefix('/', tt.paths...); got != tt.want {
+			if got := fileops.CommonPrefix('/', tt.paths...); got != tt.want {
 				t.Errorf("CommonPrefix() = %v, want %v", got, tt.want)
 			}
 		})

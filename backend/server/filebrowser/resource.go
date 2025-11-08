@@ -15,10 +15,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/files"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/adapters/fs/fileutils"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/fileops"
+	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/indexing/iteminfo"
+)
+
+var (
+	metadataService = services.NewMetadataService()
+	fileService     = services.NewFileService()
+	moveCopyService = services.NewMoveCopyService()
 )
 
 type resourceStatData struct {
@@ -69,7 +75,7 @@ func resourceGetHandler(c *gin.Context) {
 		}
 	}
 	getContent := c.Query("content") == "true"
-	fileInfo, err := files.FileInfoFaster(utils.FileOptions{
+	fileInfo, err := metadataService.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
 		Expand:   true,
@@ -118,7 +124,7 @@ func resourceStatHandler(c *gin.Context) {
 		}
 	}
 
-	fileInfo, err := files.FileInfoFaster(utils.FileOptions{
+	fileInfo, err := metadataService.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
 		Expand:   false,
@@ -184,7 +190,7 @@ func resourceDeleteHandler(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "cannot delete root"})
 		return
 	}
-	fileInfo, err := files.FileInfoFaster(utils.FileOptions{
+	fileInfo, err := metadataService.FileInfoFaster(utils.FileOptions{
 		Username: d.user.Username,
 		Path:     path,
 		Expand:   false,
@@ -196,7 +202,7 @@ func resourceDeleteHandler(c *gin.Context) {
 		return
 	}
 
-	err = files.DeleteFiles(fileInfo.RealPath)
+	err = fileService.DeleteFiles(fileInfo.RealPath)
 	if err != nil {
 		status := statusFromError(err)
 		logger.Debugf("error deleting file: %v", err)
@@ -261,7 +267,7 @@ func resourcePostHandler(c *gin.Context) {
 
 	// Directories creation on POST.
 	if isDir {
-		err = files.WriteDirectory(fileOpts)
+		err = fileService.WriteDirectory(fileOpts)
 		if err != nil {
 			logger.Debugf("error writing directory: %v", err)
 			status := statusFromError(err)
@@ -307,7 +313,7 @@ func resourcePostHandler(c *gin.Context) {
 			}
 
 			var fileInfo *iteminfo.ExtendedFileInfo
-			fileInfo, err = files.FileInfoFaster(fileOpts)
+			fileInfo, err = metadataService.FileInfoFaster(fileOpts)
 			if err == nil { // File exists
 				if c.Query("override") != "true" {
 					logger.Debugf("resource already exists: %v", fileInfo.RealPath)
@@ -324,14 +330,14 @@ func resourcePostHandler(c *gin.Context) {
 		uploadID := hex.EncodeToString(hasher.Sum(nil))
 		tempFilePath := filepath.Join("tmp", "uploads", uploadID)
 
-		if err = os.MkdirAll(filepath.Dir(tempFilePath), fileutils.PermDir); err != nil {
+		if err = os.MkdirAll(filepath.Dir(tempFilePath), fileops.PermDir); err != nil {
 			logger.Debugf("could not create temp dir: %v", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not create temp dir: %v", err)})
 			return
 		}
 		// Create or open the temporary file
 		var outFile *os.File
-		outFile, err = os.OpenFile(tempFilePath, os.O_CREATE|os.O_WRONLY, fileutils.PermFile)
+		outFile, err = os.OpenFile(tempFilePath, os.O_CREATE|os.O_WRONLY, fileops.PermFile)
 		if err != nil {
 			logger.Debugf("could not open temp file: %v", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not open temp file: %v", err)})
@@ -360,7 +366,7 @@ func resourcePostHandler(c *gin.Context) {
 			// close file before moving
 			outFile.Close()
 			// Move the completed file from the temp location to the final destination
-			err = fileutils.MoveFile(tempFilePath, realPath)
+			err = fileops.MoveFile(tempFilePath, realPath)
 			if err != nil {
 				logger.Debugf("could not move temp file to destination: %v", err)
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not move temp file to destination: %v", err)})
@@ -390,7 +396,7 @@ func resourcePostHandler(c *gin.Context) {
 		}
 	}
 
-	err = files.WriteFile(fileOpts, c.Request.Body)
+	err = fileService.WriteFile(fileOpts, c.Request.Body)
 	if err != nil {
 		logger.Debugf("error writing file: %v", err)
 		status := statusFromError(err)
@@ -441,7 +447,7 @@ func resourcePutHandler(c *gin.Context) {
 	}
 
 	// Check access control for the target path
-	err = files.WriteFile(fileOpts, c.Request.Body)
+	err = fileService.WriteFile(fileOpts, c.Request.Body)
 	status := statusFromError(err)
 	if err != nil {
 		logger.Debugf("error writing file: %v", err)
@@ -536,13 +542,13 @@ type patchActionParams struct {
 func patchAction(params patchActionParams) error {
 	switch params.action {
 	case "copy":
-		err := files.CopyResource(params.isSrcDir, params.src, params.dst)
+		err := moveCopyService.CopyResource(params.isSrcDir, params.src, params.dst)
 		if err != nil {
 			logger.Debugf("error copying resource: %v", err)
 		}
 		return err
 	case "rename", "move":
-		err := files.MoveResource(params.isSrcDir, params.src, params.dst)
+		err := moveCopyService.MoveResource(params.isSrcDir, params.src, params.dst)
 		if err != nil {
 			logger.Debugf("error moving/renaming resource: %v", err)
 		}
