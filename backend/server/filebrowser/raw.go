@@ -12,12 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser/services"
-)
-
-var (
-	archiveSvc = services.NewArchiveService()
 )
 
 func setContentDisposition(c *gin.Context, fileName string) {
@@ -69,7 +64,7 @@ func rawFilesHandler(c *gin.Context, d *requestContext, fileList []string) {
 	}
 	isDir := stat.IsDir()
 	// Compute estimated download size
-	estimatedSize, err := archiveSvc.ComputeArchiveSize(fileList)
+	estimatedSize, err := services.ComputeArchiveSize(fileList)
 	if err != nil {
 		logger.Debugf("error computing archive size: %v", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -131,13 +126,23 @@ func rawFilesHandler(c *gin.Context, d *requestContext, fileList []string) {
 	}
 	fileName = url.PathEscape(baseDirName + extension)
 
-	archiveData := filepath.Join("tmp", utils.InsecureRandomIdentifier(10))
+	tempFile, err := os.CreateTemp("tmp", "archive-*")
+	if err != nil {
+		logger.Debugf("error creating temporary archive file: %v", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	tempName := tempFile.Name()
+	tempFile.Close()
+	_ = os.Remove(tempName)
+
+	archiveData := tempName
 	if extension == ".zip" {
 		archiveData = archiveData + ".zip"
-		err = archiveSvc.CreateZip(archiveData, fileList...)
+		err = services.CreateZip(archiveData, fileList...)
 	} else {
 		archiveData = archiveData + ".tar.gz"
-		err = archiveSvc.CreateTarGz(archiveData, fileList...)
+		err = services.CreateTarGz(archiveData, fileList...)
 	}
 	if err != nil {
 		logger.Debugf("error creating archive: %v", err)

@@ -12,20 +12,8 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 )
 
-// ArchiveService handles archive creation and extraction operations
-type ArchiveService struct {
-	metadataService *MetadataService
-}
-
-// NewArchiveService creates a new archive service
-func NewArchiveService() *ArchiveService {
-	return &ArchiveService{
-		metadataService: NewMetadataService(),
-	}
-}
-
 // ComputeArchiveSize calculates the estimated size of files/directories for archiving
-func (s *ArchiveService) ComputeArchiveSize(fileList []string) (int64, error) {
+func ComputeArchiveSize(fileList []string) (int64, error) {
 	var estimatedSize int64
 	for _, fname := range fileList {
 		path := fname
@@ -60,7 +48,7 @@ func (s *ArchiveService) ComputeArchiveSize(fileList []string) (int64, error) {
 }
 
 // CreateZip creates a zip archive from the provided file list
-func (s *ArchiveService) CreateZip(tmpDirPath string, filenames ...string) error {
+func CreateZip(tmpDirPath string, filenames ...string) error {
 	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
@@ -71,7 +59,7 @@ func (s *ArchiveService) CreateZip(tmpDirPath string, filenames ...string) error
 	defer zipWriter.Close()
 
 	for _, fname := range filenames {
-		if addErr := s.addFile(fname, nil, zipWriter, false); addErr != nil {
+		if addErr := addFile(fname, nil, zipWriter, false); addErr != nil {
 			logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
 			return addErr
 		}
@@ -87,7 +75,7 @@ func (s *ArchiveService) CreateZip(tmpDirPath string, filenames ...string) error
 }
 
 // CreateTarGz creates a tar.gz archive from the provided file list
-func (s *ArchiveService) CreateTarGz(tmpDirPath string, filenames ...string) error {
+func CreateTarGz(tmpDirPath string, filenames ...string) error {
 	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
@@ -100,7 +88,7 @@ func (s *ArchiveService) CreateTarGz(tmpDirPath string, filenames ...string) err
 	defer tarWriter.Close()
 
 	for _, fname := range filenames {
-		if addErr := s.addFile(fname, tarWriter, nil, false); addErr != nil {
+		if addErr := addFile(fname, tarWriter, nil, false); addErr != nil {
 			logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
 			return addErr
 		}
@@ -116,7 +104,7 @@ func (s *ArchiveService) CreateTarGz(tmpDirPath string, filenames ...string) err
 }
 
 // addFile adds a file or directory to an archive (zip or tar.gz)
-func (s *ArchiveService) addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool) error {
+func addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool) error {
 	// Direct filesystem access
 	realPath := filepath.Join(path)
 	info, err := os.Stat(realPath)
@@ -170,16 +158,16 @@ func (s *ArchiveService) addFile(path string, tarWriter *tar.Writer, zipWriter *
 				}
 				return nil
 			}
-			return s.addSingleFile(filePath, relPath, zipWriter, tarWriter)
+			return addSingleFile(filePath, relPath, zipWriter, tarWriter)
 		})
 	} else {
 		// For a single file, use the base name as the archive path
-		return s.addSingleFile(realPath, baseName, zipWriter, tarWriter)
+		return addSingleFile(realPath, baseName, zipWriter, tarWriter)
 	}
 }
 
 // addSingleFile adds a single file to an archive
-func (s *ArchiveService) addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer) error {
+func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer) error {
 	file, err := os.Open(realPath)
 	if err != nil {
 		// If we get "is a directory" error, this is likely a symlink to a directory

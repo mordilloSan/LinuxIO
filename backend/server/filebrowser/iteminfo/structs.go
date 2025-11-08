@@ -4,6 +4,16 @@ import (
 	"time"
 )
 
+// FileOptions are the options when getting or manipulating file info.
+type FileOptions struct {
+	Path       string // realpath
+	IsDir      bool
+	Expand     bool
+	ReadHeader bool
+	Content    bool
+	Metadata   bool // whether to get metadata
+}
+
 type ItemInfo struct {
 	Name       string    `json:"name"`       // name of the file
 	Size       int64     `json:"size"`       // length in bytes for regular files
@@ -28,6 +38,5 @@ type FileInfo struct {
 type ExtendedFileInfo struct {
 	FileInfo
 	Content  string `json:"content,omitempty"` // text content of a file, if requested
-	Source   string `json:"source,omitempty"`  // associated index source for the file
 	RealPath string `json:"-"`
 }
