@@ -487,18 +487,12 @@ func resourcePatchHandler(c *gin.Context) {
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /api/raw [get]
 func rawHandler(c *gin.Context) {
-	user, err := newSessionUser(c)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-
 	files := c.Query("files")
 	fileList := strings.Split(files, "||")
-	rawFilesHandler(c, user, fileList)
+	rawFilesHandler(c, fileList)
 }
 
-func rawFilesHandler(c *gin.Context, user User, fileList []string) {
+func rawFilesHandler(c *gin.Context, fileList []string) {
 	var err error
 	firstFilePath := fileList[0]
 	fileName := filepath.Base(firstFilePath)
@@ -544,7 +538,7 @@ func rawFilesHandler(c *gin.Context, user User, fileList []string) {
 		sizeInMB := estimatedSize / 1024 / 1024
 		// if larger than 500 MB, log it
 		if sizeInMB > 500 {
-			logger.Debugf("user %v is downloading large (%d MB) file: %v", user.GetUsername(), sizeInMB, fileName)
+			logger.Debugf("Downloading large (%d MB) file: %v", sizeInMB, fileName)
 		}
 		// serve content allows for range requests.
 		// video scrubbing, etc.
@@ -618,7 +612,7 @@ func rawFilesHandler(c *gin.Context, user User, fileList []string) {
 
 	sizeInMB := fileInfo.Size() / 1024 / 1024
 	if sizeInMB > 500 {
-		logger.Debugf("user %v is downloading large (%d MB) file: %v", user.GetUsername(), sizeInMB, fileName)
+		logger.Debugf("Downloading large (%d MB) file: %v", sizeInMB, fileName)
 	}
 
 	// Set headers AFTER computing actual archive size
