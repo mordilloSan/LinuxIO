@@ -9,6 +9,7 @@ interface UseStreamingFetchOptions {
 interface UseStreamingFetchState<T> {
   data: T | null;
   isLoading: boolean;
+  isRefetching: boolean;
   error: Error | null;
   progress: number;
 }
@@ -19,10 +20,12 @@ interface UseStreamingFetchState<T> {
  * Parses newline-delimited JSON and progressively updates state as chunks arrive.
  * Perfect for large directory listings or streaming data.
  *
+ * Maintains previous data during refetches (folder navigation) to avoid flickering.
+ *
  * @template T - The expected data type
  * @param url - The API endpoint URL
  * @param options - Fetch options with params support
- * @returns Object with data, isLoading, error, and progress state
+ * @returns Object with data, isLoading, isRefetching, error, and progress state
  *
  * @example
  * const { data, isLoading, error } = useStreamingFetch<FileResource>(
@@ -36,8 +39,10 @@ export function useStreamingFetch<T>(
 ): UseStreamingFetchState<T> {
   const [data, setData] = useState<T | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefetching, setIsRefetching] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [progress, setProgress] = useState(0);
+  const [hasData, setHasData] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const urlRef = useRef(url);
@@ -86,7 +91,13 @@ export function useStreamingFetch<T>(
 
     const fetchStream = async () => {
       try {
-        setIsLoading(true);
+        // If we already have data, this is a refetch (e.g., folder navigation)
+        // Otherwise, this is initial load
+        if (hasData) {
+          setIsRefetching(true);
+        } else {
+          setIsLoading(true);
+        }
         setError(null);
         setProgress(0);
 
@@ -130,6 +141,7 @@ export function useStreamingFetch<T>(
               const chunk = parseChunk(buffer);
               if (chunk) {
                 setData(chunk as T);
+                setHasData(true);
                 chunkCount++;
               }
             }
@@ -147,28 +159,37 @@ export function useStreamingFetch<T>(
               // If this is a partial update (item), merge it with existing data
               // Otherwise, replace data entirely
               setData((prevData) => {
-                if (!prevData) {
+                const newData = (() => {
+                  if (!prevData) {
+                    return chunk as T;
+                  }
+
+                  // If chunk has an "items" array, merge files/folders
+                  if (
+                    typeof chunk === "object" &&
+                    chunk.items &&
+                    Array.isArray(chunk.items)
+                  ) {
+                    return {
+                      ...prevData,
+                      ...chunk,
+                      items: [
+                        ...(prevData as any)?.items || [],
+                        ...chunk.items,
+                      ],
+                    };
+                  }
+
+                  // Otherwise just replace
                   return chunk as T;
+                })();
+
+                // Mark that we have data on first chunk
+                if (!hasData) {
+                  setHasData(true);
                 }
 
-                // If chunk has an "items" array, merge files/folders
-                if (
-                  typeof chunk === "object" &&
-                  chunk.items &&
-                  Array.isArray(chunk.items)
-                ) {
-                  return {
-                    ...prevData,
-                    ...chunk,
-                    items: [
-                      ...(prevData as any)?.items || [],
-                      ...chunk.items,
-                    ],
-                  };
-                }
-
-                // Otherwise just replace
-                return chunk as T;
+                return newData;
               });
 
               chunkCount++;
@@ -184,12 +205,15 @@ export function useStreamingFetch<T>(
           buffer = lines[lines.length - 1];
         }
 
+        // Clear loading/refetching states
         setIsLoading(false);
+        setIsRefetching(false);
       } catch (err) {
         if (err instanceof Error && err.name !== "AbortError") {
           setError(err);
-          setIsLoading(false);
         }
+        setIsLoading(false);
+        setIsRefetching(false);
       }
     };
 
@@ -198,7 +222,7 @@ export function useStreamingFetch<T>(
     return () => {
       controller.abort();
     };
-  }, [cacheKey]);
+  }, [cacheKey, hasData]);
 
-  return { data, isLoading, error, progress };
+  return { data, isLoading, isRefetching, error, progress };
 }
