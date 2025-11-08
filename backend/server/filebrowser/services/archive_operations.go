@@ -28,6 +28,7 @@ func ComputeArchiveSize(fileList []string) (int64, error) {
 			// For directories, recursively calculate size
 			var dirSize int64
 			err := filepath.Walk(realPath, func(path string, info os.FileInfo, walkErr error) error {
+				_ = path // path not needed for size calculation
 				if walkErr != nil {
 					return nil // Skip errors
 				}
