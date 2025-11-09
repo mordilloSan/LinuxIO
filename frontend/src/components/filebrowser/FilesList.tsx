@@ -54,6 +54,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(
               size={file.size}
               modTime={file.modTime}
               isDirectory={false}
+              isSymlink={file.symlink}
               hidden={file.hidden}
               selected={selectedPaths.has(file.path)}
               onClick={(event) => onFileClick(event, file.path)}

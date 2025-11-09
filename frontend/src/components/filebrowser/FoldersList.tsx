@@ -54,6 +54,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
               size={folder.size}
               modTime={folder.modTime}
               isDirectory={true}
+              isSymlink={folder.symlink}
               hidden={folder.hidden}
               selected={selectedPaths.has(folder.path)}
               onClick={(event) => onFolderClick(event, folder.path)}
