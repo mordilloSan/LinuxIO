@@ -6,6 +6,7 @@ import {
 } from "@mui/icons-material";
 import { Box } from "@mui/material";
 import {
+  useQuery,
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -29,9 +30,8 @@ import {
   normalizeResource,
   buildDownloadUrl,
 } from "@/components/filebrowser/utils";
-import DirectoryListingLoader from "@/components/loaders/DirectoryListingLoader";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useStreamingFetch } from "@/hooks/useStreamingFetch";
 import {
   ViewMode,
   ApiResource,
@@ -135,34 +135,26 @@ const FileBrowser: React.FC = () => {
     },
   });
 
-  // Memoize fetch options to avoid unnecessary re-renders
-  const fetchOptions = useMemo(
-    () => ({
-      params: {
-        path: normalizedPath,
-        source: "/",
-      },
-    }),
-    [normalizedPath],
-  );
-
   const {
-    data: rawResource,
-    isLoading,
-    isRefetching,
+    data: resource,
+    isPending,
+    isError,
     error,
-  } = useStreamingFetch<ApiResource>("/navigator/api/resources", fetchOptions);
-
-  // Show loading only on initial load, not during refetches (folder navigation)
-  const isPending = isLoading;
-
-  // Normalize the streamed resource data
-  const resource = useMemo(
-    () => (rawResource ? normalizeResource(rawResource) : null),
-    [rawResource],
-  );
-
-  const isError = error !== null;
+  } = useQuery<FileResource>({
+    queryKey: ["fileResource", normalizedPath],
+    queryFn: async () => {
+      const { data } = await axios.get<ApiResource>(
+        "/navigator/api/resources",
+        {
+          params: {
+            path: normalizedPath,
+            source: "/",
+          },
+        },
+      );
+      return normalizeResource(data);
+    },
+  });
 
   const errorMessage = isError
     ? error instanceof Error
@@ -378,11 +370,7 @@ const FileBrowser: React.FC = () => {
               <SortBar sortOrder={sortOrder} onSortChange={handleSortChange} />
             )}
           <Box sx={{ px: 2 }}>
-            {isPending && (
-              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                <DirectoryListingLoader />
-              </Box>
-            )}
+            {isPending && <ComponentLoader />}
 
             {!isPending && errorMessage && (
               <ErrorState
