@@ -43,7 +43,6 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
       sx={(theme) => ({
         display: "flex",
         px: 3,
-        py: 1,
         minHeight: 64,
         backgroundColor:
           theme.palette.mode === "light"

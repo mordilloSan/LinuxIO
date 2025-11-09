@@ -1,6 +1,6 @@
-import { Folder, InsertDriveFile } from "@mui/icons-material";
-import { Box } from "@mui/material";
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useCallback } from "react";
+import { alpha, useTheme } from "@mui/material/styles";
+import FileIcon from "@/components/filebrowser/FileIcon";
 
 export interface FileCardProps {
   name: string;
@@ -42,131 +42,127 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     onDoubleClick,
     onContextMenu,
   }) => {
-    // Memoize expensive date formatting to prevent recalculation on every render
+    const theme = useTheme();
+    const [hovered, setHovered] = useState(false);
+
     const formattedDate = useMemo(() => {
       if (!modTime) return "";
       const date = new Date(modTime);
       return date.toLocaleDateString("en-GB");
     }, [modTime]);
 
-    const handleClick = (event: React.MouseEvent) => {
-      event.stopPropagation();
-      onClick(event);
-    };
+    const baseBg = useMemo(
+      () => {
+        if (selected) {
+          return alpha(theme.palette.primary.main, 0.4);
+        }
+        return theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
+      },
+      [selected, theme],
+    );
 
-    const handleDoubleClick = (event: React.MouseEvent) => {
-      event.stopPropagation();
-      if (onDoubleClick) {
-        onDoubleClick();
-      }
-    };
+    const hoverBg = useMemo(
+      () => {
+        if (selected) {
+          return alpha(theme.palette.primary.main, 0.4);
+        }
+        return theme.palette.mode === "dark" ? "#2a3540" : "#f5f5f5";
+      },
+      [selected, theme],
+    );
 
-    const handleContextMenu = (event: React.MouseEvent) => {
-      if (onContextMenu) {
-        onContextMenu(event);
-      }
-    };
+    const baseBorderColor = alpha(theme.palette.divider, theme.palette.mode === "dark" ? 0.15 : 0.1);
+
+    const borderColor = useMemo(
+      () => {
+        if (selected) {
+          return alpha(theme.palette.primary.main, 0.7);
+        }
+        return isDirectory ? baseBorderColor : "transparent";
+      },
+      [selected, isDirectory, theme, baseBorderColor],
+    );
+
+    const handleClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onClick(e);
+      },
+      [onClick],
+    );
+
+    const handleDoubleClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onDoubleClick?.();
+      },
+      [onDoubleClick],
+    );
 
     return (
-      <Box
+      <div
         data-file-card="true"
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
-        onContextMenu={handleContextMenu}
-        sx={{
+        onContextMenu={onContextMenu}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
           display: "flex",
           alignItems: "center",
-          gap: 1.5,
-          p: 1.5,
-          border: selected ? 2 : 1,
-          borderColor: selected ? "primary.main" : "divider",
-          borderRadius: 2,
-          bgcolor: selected
-            ? "rgba(25, 118, 210, 0.40)"
-            : isDirectory
-              ? "action.hover"
-              : "background.paper",
+          gap: theme.spacing(1.5),
+          padding: theme.spacing(1.5),
+          border: selected ? "2px solid" : "3px solid",
+          borderColor: borderColor,
+          borderRadius: `${(theme.shape.borderRadius as number) * 2}px`,
+          backgroundColor: hovered ? hoverBg : baseBg,
           cursor: "pointer",
           minHeight: "60px",
-          "&:hover": {
-            borderColor: "primary.main",
-            bgcolor: selected
-              ? "rgba(25, 118, 210, 0.12)"
-              : isDirectory
-                ? "action.selected"
-                : "action.hover",
-            transform: "translateY(-2px) scale(1.01)",
-          },
+          transition: "all 120ms ease",
+          transform: hovered ? "translateY(-2px) scale(1.01)" : "none",
         }}
       >
-        {/* Icon with background */}
+        <FileIcon isDirectory={isDirectory} filename={name} hidden={hidden} />
 
-        {isDirectory ? (
-          <Folder
-            sx={{
-              fontSize: 40,
-              color: "primary.main",
-              flexShrink: 0,
-            }}
-          />
-        ) : (
-          <InsertDriveFile
-            sx={{
-              fontSize: 40,
-              color: hidden
-                ? (theme) =>
-                    theme.palette.mode === "dark"
-                      ? "text.secondary"
-                      : "rgba(0, 0, 0, 0.26)"
-                : (theme) =>
-                    theme.palette.mode === "dark"
-                      ? "#ffffff"
-                      : "rgba(0, 0, 0, 0.6)",
-              flexShrink: 0,
-            }}
-          />
-        )}
-
-        {/* Text Content */}
-        <Box
-          sx={{
+        <div
+          style={{
             flex: 1,
             minWidth: 0,
             display: "flex",
             flexDirection: "column",
-            gap: 0.25,
+            gap: 0,
           }}
         >
-          {/* Name */}
-          <Box
-            sx={{
-              fontWeight: isDirectory ? 600 : 500,
-              fontSize: "0.875rem",
+          <div
+            style={{
+              fontWeight:  450,
+              fontSize: "0.95rem",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              color: "text.primary",
+              color: theme.palette.text.primary,
             }}
           >
             {name}
-          </Box>
+          </div>
 
-          {/* Size and Date */}
-          <Box
-            sx={{
+          <div
+            style={{
               display: "flex",
-              gap: 1.5,
-              fontSize: "0.75rem",
-              color: "text.secondary",
+              flexDirection: "column",
+              fontSize: "0.95rem",
+              color: theme.palette.text.secondary,
+              gap: 0,
+              lineHeight: 1.2,
             }}
           >
             {!isDirectory && size !== undefined && (
               <span>{formatBytes(size)}</span>
             )}
             {formattedDate && <span>{formattedDate}</span>}
-          </Box>
-        </Box>
-      </Box>
+          </div>
+        </div>
+      </div>
     );
   },
 );

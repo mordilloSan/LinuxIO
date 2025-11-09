@@ -336,10 +336,6 @@ const FileBrowser: React.FC = () => {
       <Box
         data-allow-context-menu="true"
         sx={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
-          minHeight: "100vh",
           height: "100%",
         }}
         onContextMenu={handleContextMenu}

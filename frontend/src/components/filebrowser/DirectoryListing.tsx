@@ -203,7 +203,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     <Box
       ref={containerRef}
       onMouseDownCapture={handleContainerMouseDown}
-      sx={{ display: "flex", flexDirection: "column", gap: 2, outline: "none" }}
+      sx={{ display: "flex", flexDirection: "column", gap: 2 }}
     >
       <FoldersList
         folders={folders}
