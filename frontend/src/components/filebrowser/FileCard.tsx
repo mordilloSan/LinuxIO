@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { alpha, useTheme } from "@mui/material/styles";
+import { Link as LinkIcon } from "@mui/icons-material";
 import FileIcon from "@/components/filebrowser/FileIcon";
 
 export interface FileCardProps {
@@ -8,6 +9,7 @@ export interface FileCardProps {
   size?: number;
   modTime?: string;
   isDirectory: boolean;
+  isSymlink?: boolean;
   selected?: boolean;
   hidden?: boolean;
   onClick: (event: React.MouseEvent) => void;
@@ -36,6 +38,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     size,
     modTime,
     isDirectory,
+    isSymlink = false,
     selected = false,
     hidden = false,
     onClick,
@@ -82,6 +85,8 @@ const FileCard: React.FC<FileCardProps> = React.memo(
       },
       [selected, isDirectory, theme, baseBorderColor],
     );
+
+    const textOpacity = isDirectory ? 1 : 0.5;
 
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -141,6 +146,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
               color: theme.palette.text.primary,
+              opacity: textOpacity,
             }}
           >
             {name}
@@ -154,6 +160,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
               color: theme.palette.text.secondary,
               gap: 0,
               lineHeight: 1.2,
+              opacity: textOpacity,
             }}
           >
             {!isDirectory && size !== undefined && (
@@ -162,6 +169,15 @@ const FileCard: React.FC<FileCardProps> = React.memo(
             {formattedDate && <span>{formattedDate}</span>}
           </div>
         </div>
+        {isSymlink && (
+          <LinkIcon
+            sx={{
+              fontSize: 24,
+              color: theme.palette.primary.main,
+              flexShrink: 0,
+            }}
+          />
+        )}
       </div>
     );
   },
