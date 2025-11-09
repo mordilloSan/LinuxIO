@@ -29,7 +29,7 @@ import {
   normalizeResource,
   buildDownloadUrl,
 } from "@/components/filebrowser/utils";
-import PageLoader from "@/components/loaders/PageLoader";
+import DirectoryListingLoader from "@/components/loaders/DirectoryListingLoader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useStreamingFetch } from "@/hooks/useStreamingFetch";
 import {
@@ -378,7 +378,11 @@ const FileBrowser: React.FC = () => {
               <SortBar sortOrder={sortOrder} onSortChange={handleSortChange} />
             )}
           <Box sx={{ px: 2 }}>
-            {isPending && <PageLoader />}
+            {isPending && (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                <DirectoryListingLoader />
+              </Box>
+            )}
 
             {!isPending && errorMessage && (
               <ErrorState
