@@ -11,11 +11,12 @@ import {
   Box,
   Tooltip,
   Typography,
-  CircularProgress,
   Switch,
   FormControlLabel,
 } from "@mui/material";
 import React, { useState, useMemo, useEffect, useRef } from "react";
+
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface LogsDialogProps {
   open: boolean;
@@ -188,14 +189,11 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
                 right: 0,
                 bottom: 0,
                 background: "rgba(25,25,29,0.85)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
                 zIndex: 10,
                 borderRadius: 2,
               }}
             >
-              <CircularProgress />
+              <ComponentLoader />
             </Box>
           )}
         </Box>

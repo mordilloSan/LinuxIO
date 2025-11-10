@@ -16,6 +16,7 @@ export interface FileListRowProps {
   onClick: (event: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
+  borderRadius?: number | string;
 }
 
 const COLUMN_TEMPLATE =
@@ -47,6 +48,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     onClick,
     onDoubleClick,
     onContextMenu,
+    borderRadius,
   }) => {
     const theme = useTheme();
     const [hovered, setHovered] = useState(false);
@@ -90,6 +92,8 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
 
     const bgColor = hovered ? hoverBg : baseBg;
 
+    const resolvedBorderRadius = borderRadius ?? theme.shape.borderRadius;
+
     return (
       <div
         data-file-card="true"
@@ -106,7 +110,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           backgroundColor: bgColor,
           cursor: "pointer",
           transition: "background-color 0.15s ease",
-          borderRadius: theme.shape.borderRadius,
+          borderRadius: resolvedBorderRadius,
         }}
       >
         {/* Name and Icon */}

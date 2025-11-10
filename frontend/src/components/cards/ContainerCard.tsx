@@ -274,9 +274,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         {/* Metrics area: full width */}
         <Box sx={{ mt: 2, width: "100%" }}>
           {actionMutation.isPending ? (
-            <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
-              <ComponentLoader />
-            </Box>
+            <ComponentLoader />
           ) : (
             <>
               <MetricBar

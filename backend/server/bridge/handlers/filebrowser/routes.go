@@ -16,6 +16,8 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 	r.PATCH("/api/resources", resourcePatchHandler)
 
 	r.GET("/api/raw", rawHandler)
+	r.GET("/api/dir-size", dirSizeHandler)
+	r.GET("/api/multi-stats", multiStatsHandler)
 
 	return nil
 }

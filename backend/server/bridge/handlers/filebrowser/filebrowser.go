@@ -123,6 +123,100 @@ func resourceStatHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, resp.Output)
 }
 
+// dirSizeHandler calculates directory size via bridge
+func dirSizeHandler(c *gin.Context) {
+	sess := session.SessionFromContext(c)
+	if sess == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		return
+	}
+
+	encodedPath := c.Query("path")
+	path, err := url.QueryUnescape(encodedPath)
+	if err != nil {
+		logger.Debugf("invalid path encoding: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path encoding"})
+		return
+	}
+
+	data, err := bridge.CallWithSession(sess, "filebrowser", "dir_size", []string{path})
+	if err != nil {
+		logger.Debugf("bridge error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
+		return
+	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+
+	if resp.Status != "ok" {
+		status := http.StatusInternalServerError
+		if strings.HasPrefix(resp.Error, "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	if resp.Output == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp.Output)
+}
+
+// multiStatsHandler calculates aggregated statistics for multiple paths via bridge
+func multiStatsHandler(c *gin.Context) {
+	sess := session.SessionFromContext(c)
+	if sess == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		return
+	}
+
+	encodedPaths := c.Query("paths")
+	paths, err := url.QueryUnescape(encodedPaths)
+	if err != nil {
+		logger.Debugf("invalid paths encoding: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid paths encoding"})
+		return
+	}
+
+	data, err := bridge.CallWithSession(sess, "filebrowser", "multi_stats", []string{paths})
+	if err != nil {
+		logger.Debugf("bridge error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
+		return
+	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+
+	if resp.Status != "ok" {
+		status := http.StatusInternalServerError
+		if strings.HasPrefix(resp.Error, "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	if resp.Output == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp.Output)
+}
+
 // resourceDeleteHandler deletes a resource via bridge
 func resourceDeleteHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)

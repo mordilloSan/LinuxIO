@@ -37,3 +37,20 @@ export type FileResource = Omit<ApiResource, "files" | "folders"> & {
 
 export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
+
+export type MultiStatsItem = {
+  path: string;
+  name: string;
+  type: string;
+  size?: number;
+  fileCount?: number;
+  folderCount?: number;
+};
+
+export type MultiStatsResponse = {
+  totalSize: number;
+  totalFiles: number;
+  totalFolders: number;
+  items: MultiStatsItem[];
+  count: number;
+};

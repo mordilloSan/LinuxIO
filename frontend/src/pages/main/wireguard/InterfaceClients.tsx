@@ -8,7 +8,6 @@ import {
   Typography,
   Box,
   IconButton,
-  CircularProgress,
   Dialog,
   DialogContent,
   Chip,
@@ -18,6 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 
 type Peer = {
@@ -157,7 +157,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     }
   };
 
-  if (isLoading) return <CircularProgress />;
+  if (isLoading) return <ComponentLoader />;
   if (isError)
     return <Typography color="error">Failed to load peer details</Typography>;
 

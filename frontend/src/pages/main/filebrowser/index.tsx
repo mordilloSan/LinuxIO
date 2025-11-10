@@ -37,6 +37,7 @@ import {
   ApiResource,
   FileResource,
   FileItem,
+  MultiStatsResponse,
 } from "@/types/filebrowser";
 import axios from "@/utils/axios"; // Still used for mutations (create, delete)
 
@@ -65,7 +66,7 @@ const FileBrowser: React.FC = () => {
   const [createFolderDialog, setCreateFolderDialog] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [pendingDeletePaths, setPendingDeletePaths] = useState<string[]>([]);
-  const [detailTarget, setDetailTarget] = useState<string | null>(null);
+  const [detailTarget, setDetailTarget] = useState<string[] | null>(null);
   const showQuickSave = false;
 
   const queryClient = useQueryClient();
@@ -190,6 +191,11 @@ const FileBrowser: React.FC = () => {
 
   const canShowDetails = selectedPaths.size > 0;
 
+  // For single item detail
+  const detailTargetCount = detailTarget?.length ?? 0;
+  const hasSingleDetailTarget = detailTargetCount === 1;
+  const hasMultipleDetailTargets = detailTargetCount > 1;
+
   const {
     data: detailResource,
     isPending: isDetailPending,
@@ -197,16 +203,60 @@ const FileBrowser: React.FC = () => {
   } = useQuery<FileResource>({
     queryKey: ["fileDetail", detailTarget],
     queryFn: async () => {
-      if (!detailTarget) throw new Error("No file selected");
+      const currentDetailTarget = detailTarget;
+      if (!currentDetailTarget || currentDetailTarget.length !== 1) {
+        throw new Error("Invalid selection");
+      }
       const { data } = await axios.get<ApiResource>(
         "/navigator/api/resources",
         {
-          params: { path: detailTarget },
+          params: { path: currentDetailTarget[0] },
         },
       );
       return data as FileResource;
     },
-    enabled: Boolean(detailTarget),
+    enabled: hasSingleDetailTarget,
+  });
+
+  const {
+    data: directorySizeData,
+    isPending: isDirectorySizePending,
+  } = useQuery<{ path: string; size: number; fileCount: number; folderCount: number }>({
+    queryKey: ["directorySize", detailTarget],
+    queryFn: async () => {
+      const currentDetailTarget = detailTarget;
+      if (!currentDetailTarget || currentDetailTarget.length !== 1) {
+        throw new Error("Invalid selection");
+      }
+      const { data } = await axios.get<{ path: string; size: number; fileCount: number; folderCount: number }>(
+        "/navigator/api/dir-size",
+        {
+          params: { path: currentDetailTarget[0] },
+        },
+      );
+      return data;
+    },
+    enabled: hasSingleDetailTarget && detailResource?.type === "directory",
+  });
+
+  // For multiple items
+  const {
+    data: multiStatsData,
+    isPending: isMultiStatsPending,
+  } = useQuery<MultiStatsResponse>({
+    queryKey: ["multiStats", detailTarget],
+    queryFn: async () => {
+      const currentDetailTarget = detailTarget;
+      if (!currentDetailTarget || currentDetailTarget.length === 0) {
+        throw new Error("No items selected");
+      }
+      const paths = currentDetailTarget.join(",");
+      const { data } = await axios.get("/navigator/api/multi-stats", {
+        params: { paths },
+      });
+      return data;
+    },
+    enabled: hasMultipleDetailTargets,
   });
 
   const handleCloseDetailDialog = useCallback(() => {
@@ -270,9 +320,9 @@ const FileBrowser: React.FC = () => {
 
   const handleShowDetails = useCallback(() => {
     handleCloseContextMenu();
-    if (!selectedPath) return;
-    setDetailTarget(selectedPath);
-  }, [handleCloseContextMenu, selectedPath]);
+    if (selectedPaths.size === 0) return;
+    setDetailTarget(Array.from(selectedPaths));
+  }, [handleCloseContextMenu, selectedPaths]);
 
   const handleDownloadDetail = useCallback((path: string) => {
     const url = buildDownloadUrl(path);
@@ -481,23 +531,36 @@ const FileBrowser: React.FC = () => {
             pr: 2,
           }}
         >
-          File Details
+          {detailTarget && detailTarget.length > 1 ? "Multiple Items Details" : "File Details"}
           <IconButton onClick={handleCloseDetailDialog} size="small">
             <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
         <DialogContent dividers sx={{ minHeight: 200 }}>
-          {isDetailPending && <ComponentLoader />}
-          {!isDetailPending && detailError && (
+          {(isDetailPending || isMultiStatsPending) && <ComponentLoader />}
+          {!isDetailPending && !isMultiStatsPending && detailError && (
             <Typography color="error">
               {detailError instanceof Error
                 ? detailError.message
-                : "Failed to load file"}
+                : "Failed to load details"}
             </Typography>
           )}
           {detailResource && (
             <FileDetail
               resource={detailResource}
+              onDownload={handleDownloadDetail}
+              directorySize={directorySizeData?.size}
+              fileCount={directorySizeData?.fileCount}
+              folderCount={directorySizeData?.folderCount}
+              isLoadingDirectorySize={isDirectorySizePending}
+            />
+          )}
+          {multiStatsData && (
+            <FileDetail
+              multiItems={multiStatsData.items}
+              totalSize={multiStatsData.totalSize}
+              totalFiles={multiStatsData.totalFiles}
+              totalFolders={multiStatsData.totalFolders}
               onDownload={handleDownloadDetail}
             />
           )}
