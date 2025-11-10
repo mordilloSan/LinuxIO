@@ -19,7 +19,6 @@ export const normalizeResource = (data: ApiResource): FileResource => {
     return {
       ...item,
       path: nextPath.replace(/\/{2,}/g, "/"),
-      source: data.source,
       modTime,
     };
   });
@@ -31,12 +30,8 @@ export const normalizeResource = (data: ApiResource): FileResource => {
   };
 };
 
-export const buildDownloadUrl = (
-  source: string,
-  path: string,
-  inline = false,
-) => {
-  const filesParam = `${encodeURIComponent(source)}::${encodeURIComponent(path)}`;
+export const buildDownloadUrl = (path: string, inline = false) => {
+  const filesParam = encodeURIComponent(path);
   const search = new URLSearchParams({ files: filesParam });
   if (inline) search.set("inline", "true");
   return `/navigator/api/raw?${search.toString()}`;

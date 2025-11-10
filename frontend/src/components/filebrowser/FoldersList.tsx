@@ -57,6 +57,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
           {folders.map((folder) => (
             <ItemComponent
               key={`${folder.path}-${folder.name}`}
+              path={folder.path}
               name={folder.name}
               type={folder.type}
               size={folder.size}

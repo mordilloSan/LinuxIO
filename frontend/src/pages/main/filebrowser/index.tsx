@@ -1,6 +1,14 @@
+import CloseIcon from "@mui/icons-material/Close";
 import GridViewIcon from "@mui/icons-material/GridView";
 import ViewListIcon from "@mui/icons-material/ViewList";
-import { Box } from "@mui/material";
+import {
+  Box,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Typography,
+} from "@mui/material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import React, { ReactNode, useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -57,6 +65,7 @@ const FileBrowser: React.FC = () => {
   const [createFolderDialog, setCreateFolderDialog] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [pendingDeletePaths, setPendingDeletePaths] = useState<string[]>([]);
+  const [detailTarget, setDetailTarget] = useState<string | null>(null);
   const showQuickSave = false;
 
   const queryClient = useQueryClient();
@@ -174,6 +183,36 @@ const FileBrowser: React.FC = () => {
     });
   }, []);
 
+  const selectedPath = useMemo(() => {
+    if (selectedPaths.size === 0) return null;
+    return Array.from(selectedPaths)[0];
+  }, [selectedPaths]);
+
+  const canShowDetails = selectedPaths.size > 0;
+
+  const {
+    data: detailResource,
+    isPending: isDetailPending,
+    error: detailError,
+  } = useQuery<FileResource>({
+    queryKey: ["fileDetail", detailTarget],
+    queryFn: async () => {
+      if (!detailTarget) throw new Error("No file selected");
+      const { data } = await axios.get<ApiResource>(
+        "/navigator/api/resources",
+        {
+          params: { path: detailTarget },
+        },
+      );
+      return data as FileResource;
+    },
+    enabled: Boolean(detailTarget),
+  });
+
+  const handleCloseDetailDialog = useCallback(() => {
+    setDetailTarget(null);
+  }, []);
+
   const handleToggleHiddenFiles = useCallback(() => {
     setShowHiddenFilesConfig((prev) => !prev);
   }, [setShowHiddenFilesConfig]);
@@ -208,17 +247,14 @@ const FileBrowser: React.FC = () => {
   );
 
   const handleDownloadFile = useCallback((item: FileItem) => {
-    const url = buildDownloadUrl(item.source, item.path);
+    const url = buildDownloadUrl(item.path);
     window.open(url, "_blank", "noopener,noreferrer");
   }, []);
 
-  const handleDownloadCurrent = useCallback(
-    (path: string) => {
-      const url = buildDownloadUrl(resource?.source ?? "/", path);
-      window.open(url, "_blank", "noopener,noreferrer");
-    },
-    [resource?.source],
-  );
+  const handleDownloadCurrent = useCallback((path: string) => {
+    const url = buildDownloadUrl(path);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
 
   const handleContextMenu = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -230,6 +266,17 @@ const FileBrowser: React.FC = () => {
 
   const handleCloseContextMenu = useCallback(() => {
     setContextMenuPosition(null);
+  }, []);
+
+  const handleShowDetails = useCallback(() => {
+    handleCloseContextMenu();
+    if (!selectedPath) return;
+    setDetailTarget(selectedPath);
+  }, [handleCloseContextMenu, selectedPath]);
+
+  const handleDownloadDetail = useCallback((path: string) => {
+    const url = buildDownloadUrl(path);
+    window.open(url, "_blank", "noopener,noreferrer");
   }, []);
 
   // Context menu action handlers
@@ -416,7 +463,46 @@ const FileBrowser: React.FC = () => {
         onDelete={handleDelete}
         onDownload={handleDownloadSelected}
         onUpload={handleUpload}
+        onShowDetails={handleShowDetails}
+        canShowDetails={canShowDetails}
       />
+
+      <Dialog
+        open={Boolean(detailTarget)}
+        onClose={handleCloseDetailDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            pr: 2,
+          }}
+        >
+          File Details
+          <IconButton onClick={handleCloseDetailDialog} size="small">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ minHeight: 200 }}>
+          {isDetailPending && <ComponentLoader />}
+          {!isDetailPending && detailError && (
+            <Typography color="error">
+              {detailError instanceof Error
+                ? detailError.message
+                : "Failed to load file"}
+            </Typography>
+          )}
+          {detailResource && (
+            <FileDetail
+              resource={detailResource}
+              onDownload={handleDownloadDetail}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <InputDialog
         open={createFileDialog}

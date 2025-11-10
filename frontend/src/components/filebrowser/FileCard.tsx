@@ -6,6 +6,7 @@ import FileIcon from "@/components/filebrowser/FileIcon";
 export interface FileCardProps {
   name: string;
   type: string;
+  path?: string;
   size?: number;
   modTime?: string;
   isDirectory: boolean;

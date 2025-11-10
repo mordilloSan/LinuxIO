@@ -6,6 +6,7 @@ import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import SecurityIcon from "@mui/icons-material/Security";
 import UploadIcon from "@mui/icons-material/Upload";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import {
   Menu,
   MenuItem,
@@ -18,6 +19,7 @@ import React, { useEffect, useRef } from "react";
 interface ContextMenuProps {
   anchorPosition: { top: number; left: number } | null;
   hasSelection: boolean;
+  canShowDetails?: boolean;
   onClose: () => void;
   onCreateFile: () => void;
   onCreateFolder: () => void;
@@ -27,11 +29,13 @@ interface ContextMenuProps {
   onDelete: () => void;
   onDownload: () => void;
   onUpload: () => void;
+  onShowDetails?: () => void;
 }
 
 const ContextMenu: React.FC<ContextMenuProps> = ({
   anchorPosition,
   hasSelection,
+  canShowDetails,
   onClose,
   onCreateFile,
   onCreateFolder,
@@ -41,8 +45,11 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   onDelete,
   onDownload,
   onUpload,
+  onShowDetails = () => {},
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const detailsDisabled =
+    canShowDetails === undefined ? !hasSelection : !canShowDetails;
 
   // Close menu on Escape key
   useEffect(() => {
@@ -130,6 +137,13 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
           <DownloadIcon fontSize="small" />
         </ListItemIcon>
         <ListItemText>Download</ListItemText>
+      </MenuItem>
+
+      <MenuItem onClick={onShowDetails} disabled={detailsDisabled}>
+        <ListItemIcon>
+          <VisibilityIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText>Show Details</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onDelete} disabled={!hasSelection}>
