@@ -119,7 +119,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           padding: theme.spacing(1.5),
           border: selected ? "2px solid" : "3px solid",
           borderColor: borderColor,
-          borderRadius: `${(theme.shape.borderRadius as number) * 4}px`,
+          borderRadius: 20,
           backgroundColor: hovered ? hoverBg : baseBg,
           cursor: "pointer",
           minHeight: "60px",
@@ -140,17 +140,17 @@ const FileCard: React.FC<FileCardProps> = React.memo(
             minWidth: 0,
             display: "flex",
             flexDirection: "column",
-            gap: 0,
           }}
         >
           <div
             style={{
               fontWeight: 400,
-              fontSize: "0.95rem",
+              fontSize: "0.90rem",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
               color: theme.palette.text.primary,
+              lineHeight: 1.2,
               opacity: 1,
             }}
           >
@@ -159,20 +159,29 @@ const FileCard: React.FC<FileCardProps> = React.memo(
 
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
               fontSize: "0.90rem",
               color: theme.palette.text.secondary,
-              gap: 0,
+              gap: theme.spacing(0.5),
               lineHeight: 1.2,
               opacity: metadataOpacity,
             }}
           >
-            {!isDirectory && size !== undefined && (
-              <span>{formatBytes(size)}</span>
-            )}
-            {formattedDate && <span>{formattedDate}</span>}
+            {formattedDate}
           </div>
+
+          {!isDirectory && size !== undefined && (
+            <div
+              style={{
+                fontSize: "0.90rem",
+                color: theme.palette.text.secondary,
+                gap: theme.spacing(0.5),
+                lineHeight: 1.2,
+                opacity: metadataOpacity,
+              }}
+            >
+              {formatBytes(size)}
+            </div>
+          )}
         </div>
       </div>
     );

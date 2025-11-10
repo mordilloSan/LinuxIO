@@ -209,3 +209,42 @@ func processContent(info *iteminfo.ExtendedFileInfo) {
 		info.Content = content
 	}
 }
+
+// DirectoryStats contains statistics about a directory
+type DirectoryStats struct {
+	TotalSize   int64
+	FileCount   int64
+	FolderCount int64
+}
+
+// CalculateDirectorySize recursively calculates the total size of a directory
+// and counts files and folders
+func CalculateDirectorySize(path string) (*DirectoryStats, error) {
+	stats := &DirectoryStats{}
+
+	err := filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
+		if err != nil {
+			// Skip files/directories we can't access
+			return nil
+		}
+
+		// Skip the root directory itself
+		if filePath == path {
+			return nil
+		}
+
+		if info.IsDir() {
+			stats.FolderCount++
+		} else {
+			stats.FileCount++
+			stats.TotalSize += info.Size()
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}

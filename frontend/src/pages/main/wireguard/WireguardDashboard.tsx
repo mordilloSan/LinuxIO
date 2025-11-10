@@ -1,4 +1,4 @@
-import { Grid, Typography, CircularProgress, Box } from "@mui/material";
+import { Grid, Typography, Box } from "@mui/material";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect } from "react";
@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import InterfaceDetails from "./InterfaceClients";
 
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { WireGuardInterface } from "@/types/wireguard";
 import axios from "@/utils/axios";
 
@@ -118,7 +119,7 @@ const WireGuardDashboard: React.FC = () => {
   return (
     <>
       {isLoading ? (
-        <CircularProgress />
+        <ComponentLoader />
       ) : isError ? (
         <Typography color="error">Failed to fetch interfaces</Typography>
       ) : WGinterfaces.length > 0 ? (

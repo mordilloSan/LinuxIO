@@ -5,7 +5,6 @@ import {
   FormControlLabel,
   Select,
   MenuItem,
-  CircularProgress,
   SelectChangeEvent,
   TextField,
   Button,
@@ -14,6 +13,7 @@ import {
 } from "@mui/material";
 import React, { useEffect, useMemo, useState } from "react";
 
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 
 type Frequency = "hourly" | "daily" | "weekly";
@@ -140,11 +140,7 @@ const UpdateSettings: React.FC = () => {
   };
 
   if (loading || !serverState || !draft) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <ComponentLoader />;
   }
 
   return (
