@@ -4,7 +4,7 @@ import CodeIcon from "@mui/icons-material/Code";
 import DescriptionIcon from "@mui/icons-material/Description";
 import FolderIcon from "@mui/icons-material/Folder";
 import ImageIcon from "@mui/icons-material/Image";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import LinkIcon from "@mui/icons-material/Link";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import TableChartIcon from "@mui/icons-material/TableChart";
 import TerminalIcon from "@mui/icons-material/Terminal";
@@ -17,14 +17,16 @@ interface FileIconProps {
   isDirectory: boolean;
   filename?: string;
   hidden?: boolean;
+  size?: number;
+  isSymlink?: boolean;
 }
 
 const getIconForType = (filename?: string) => {
-  if (!filename) return InsertDriveFileIcon;
+  if (!filename) return DescriptionIcon;
 
   // Extract extension from filename
   const lastDotIndex = filename.lastIndexOf(".");
-  if (lastDotIndex === -1) return InsertDriveFileIcon;
+  if (lastDotIndex === -1) return DescriptionIcon;
 
   const ext = filename.slice(lastDotIndex + 1).toLowerCase();
 
@@ -83,42 +85,109 @@ const getIconForType = (filename?: string) => {
   // Executables
   if (["exe", "bin", "sh", "app", "dmg"].includes(ext)) return TerminalIcon;
 
-  return InsertDriveFileIcon;
+  return DescriptionIcon;
+};
+
+const getIconColor = (filename: string | undefined, hidden: boolean, isDark: boolean): string => {
+  if (!filename) return isDark ? "#ffffff" : "rgba(0, 0, 0, 0.6)";
+
+  const lastDotIndex = filename.lastIndexOf(".");
+  if (lastDotIndex === -1) return isDark ? "#ffffff" : "rgba(0, 0, 0, 0.6)";
+
+  const ext = filename.slice(lastDotIndex + 1).toLowerCase();
+
+  // Code files - yellow/gold
+  if (["js", "ts", "tsx", "jsx", "py", "go", "cpp", "c", "java", "rs", "php", "rb", "sh", "bash", "json", "html", "css"].includes(ext)) {
+    return "#f9a825";
+  }
+
+  // PDF - red
+  if (ext === "pdf") return "#d32f2f";
+
+  // Images - purple
+  if (["png", "jpg", "jpeg", "gif", "svg", "bmp", "ico", "webp"].includes(ext)) {
+    return "#7b1fa2";
+  }
+
+  // Video - pink
+  if (["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"].includes(ext)) {
+    return "#c2185b";
+  }
+
+  // Audio - teal
+  if (["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma"].includes(ext)) {
+    return "#00897b";
+  }
+
+  // Archives - orange
+  if (["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].includes(ext)) {
+    return "#f57c00";
+  }
+
+  // Spreadsheets - green
+  if (["xls", "xlsx", "csv", "ods"].includes(ext)) {
+    return "#388e3c";
+  }
+
+  // Documents - blue
+  if (["doc", "docx", "odt", "rtf", "txt", "md", "markdown", "log"].includes(ext)) {
+    return "#1976d2";
+  }
+
+  // Executables - red/dark
+  if (["exe", "bin", "app", "dmg"].includes(ext)) {
+    return "#b71c1c";
+  }
+
+  // Default
+  return isDark ? "#ffffff" : "rgba(0, 0, 0, 0.6)";
 };
 
 const FileIcon = React.memo(
-  ({ isDirectory, filename, hidden }: FileIconProps) => {
+  ({ isDirectory, filename, hidden, size = 70, isSymlink = false }: FileIconProps) => {
     const theme = useTheme();
 
-    if (isDirectory) {
+    const IconComponent = isDirectory ? FolderIcon : getIconForType(filename);
+    const iconColor = isDirectory
+      ? theme.palette.primary.main
+      : getIconColor(filename, hidden || false, theme.palette.mode === "dark");
+
+    if (!isSymlink) {
       return (
-        <FolderIcon
+        <IconComponent
           sx={{
-            fontSize: 70,
-            color: theme.palette.primary.main,
+            fontSize: size,
+            color: iconColor,
             flexShrink: 0,
+            opacity: hidden ? 0.5 : undefined,
           }}
         />
       );
     }
 
-    const IconComponent = getIconForType(filename);
-    const fileColor = hidden
-      ? theme.palette.mode === "dark"
-        ? theme.palette.text.secondary
-        : "rgba(0, 0, 0, 0.26)"
-      : theme.palette.mode === "dark"
-        ? "#ffffff"
-        : "rgba(0, 0, 0, 0.6)";
-
+    // Render with symlink overlay
     return (
-      <IconComponent
-        sx={{
-          fontSize: 70,
-          color: fileColor,
-          flexShrink: 0,
-        }}
-      />
+      <div style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+        <IconComponent
+          sx={{
+            fontSize: size,
+            color: iconColor,
+            flexShrink: 0,
+            opacity: hidden ? 0.5 : undefined,
+          }}
+        />
+        <LinkIcon
+          sx={{
+            position: "absolute",
+            fontSize: size * 0.35,
+            color: "#b0b0b0",
+            bottom: isDirectory ? "20%" : "10%",
+            right: isDirectory ? "10%" : "15%",
+            transform: "rotate(-45deg)",
+            filter: "drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.5))",
+          }}
+        />
+      </div>
     );
   },
 );
