@@ -15,41 +15,18 @@ import {
 } from "@mui/material";
 import React from "react";
 
-import { FileResource, MultiStatsItem } from "../../types/filebrowser";
+import { FileResource } from "../../types/filebrowser";
+
+import { formatDate, formatFileSize } from "@/utils/formatBytes";
 
 interface FileDetailProps {
   resource?: FileResource;
-  multiItems?: MultiStatsItem[];
   onDownload: (path: string) => void;
   directorySize?: number | null;
   fileCount?: number | null;
   folderCount?: number | null;
   isLoadingDirectorySize?: boolean;
-  totalSize?: number | null;
-  totalFiles?: number | null;
-  totalFolders?: number | null;
 }
-
-const formatFileSize = (bytes?: number): string => {
-  if (bytes === undefined) return "Unknown";
-  if (bytes === 0) return "0 Bytes";
-
-  const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-};
-
-const formatDate = (dateString?: string): string => {
-  if (!dateString) return "Unknown";
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleString();
-  } catch {
-    return dateString;
-  }
-};
 
 const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
   label,
@@ -72,142 +49,12 @@ const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
 
 const FileDetail: React.FC<FileDetailProps> = ({
   resource,
-  multiItems,
   onDownload,
   directorySize,
   fileCount,
   folderCount,
   isLoadingDirectorySize,
-  totalSize,
-  totalFiles,
-  totalFolders,
 }) => {
-  const isMultiSelection = Boolean(multiItems?.length);
-
-  if (isMultiSelection && multiItems) {
-    return (
-      <Paper
-        variant="outlined"
-        sx={{
-          borderRadius: 2,
-          display: "flex",
-          flexDirection: "column",
-          p: 3,
-          gap: 2,
-        }}
-      >
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 2,
-          }}
-        >
-          <Box>
-            <Typography variant="h6" fontWeight={600}>
-              {multiItems.length} Selected Item
-              {multiItems.length === 1 ? "" : "s"}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Combined statistics for the selected files and folders
-            </Typography>
-          </Box>
-        </Box>
-
-        <Divider />
-
-        <Stack spacing={1.5}>
-          <DetailRow
-            label="Selected Items"
-            value={multiItems.length.toLocaleString()}
-          />
-          <DetailRow
-            label="Aggregate Size"
-            value={
-              totalSize !== undefined && totalSize !== null
-                ? formatFileSize(totalSize)
-                : "Unknown"
-            }
-          />
-          <DetailRow
-            label="Files (including nested)"
-            value={
-              totalFiles !== undefined && totalFiles !== null
-                ? totalFiles.toLocaleString()
-                : "Unknown"
-            }
-          />
-          <DetailRow
-            label="Folders (including nested)"
-            value={
-              totalFolders !== undefined && totalFolders !== null
-                ? totalFolders.toLocaleString()
-                : "Unknown"
-            }
-          />
-        </Stack>
-
-        <Divider />
-
-        <Stack spacing={1}>
-          {multiItems.map((item) => {
-            const isDir = item.type === "directory";
-            return (
-              <Box
-                key={item.path}
-                sx={{
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: 1.5,
-                  p: 1.5,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 0.5,
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 2,
-                  }}
-                >
-                  <Box>
-                    <Typography variant="subtitle1" fontWeight={600}>
-                      {item.name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {isDir ? "Directory" : "File"}
-                    </Typography>
-                  </Box>
-                  {!isDir && (
-                    <Button
-                      size="small"
-                      startIcon={<DownloadIcon fontSize="small" />}
-                      onClick={() => onDownload(item.path)}
-                    >
-                      Download
-                    </Button>
-                  )}
-                </Box>
-                <Typography variant="body2" color="text.secondary">
-                  Size: {formatFileSize(item.size)}
-                </Typography>
-                {isDir && (
-                  <Typography variant="body2" color="text.secondary">
-                    {`${item.fileCount ?? 0} file${item.fileCount === 1 ? "" : "s"}, ${item.folderCount ?? 0} folder${item.folderCount === 1 ? "" : "s"}`}
-                  </Typography>
-                )}
-              </Box>
-            );
-          })}
-        </Stack>
-      </Paper>
-    );
-  }
-
   if (!resource) {
     return (
       <Paper

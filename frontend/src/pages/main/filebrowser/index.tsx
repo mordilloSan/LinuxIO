@@ -22,6 +22,7 @@ import ErrorState from "@/components/filebrowser/ErrorState";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import InputDialog from "@/components/filebrowser/InputDialog";
+import MultiFileDetail from "@/components/filebrowser/MultiFileDetail";
 import SortBar, {
   SortField,
   SortOrder,
@@ -545,15 +546,13 @@ const FileBrowser: React.FC = () => {
         </DialogTitle>
         <DialogContent dividers sx={{ minHeight: 200 }}>
           {shouldShowDetailLoader && <ComponentLoader />}
-          {!shouldShowDetailLoader &&
-            hasSingleDetailTarget &&
-            detailError && (
-              <Typography color="error">
-                {detailError instanceof Error
-                  ? detailError.message
-                  : "Failed to load details"}
-              </Typography>
-            )}
+          {!shouldShowDetailLoader && hasSingleDetailTarget && detailError && (
+            <Typography color="error">
+              {detailError instanceof Error
+                ? detailError.message
+                : "Failed to load details"}
+            </Typography>
+          )}
           {!shouldShowDetailLoader &&
             hasMultipleDetailTargets &&
             multiStatsError && (
@@ -574,7 +573,7 @@ const FileBrowser: React.FC = () => {
             />
           )}
           {multiStatsData && (
-            <FileDetail
+            <MultiFileDetail
               multiItems={multiStatsData.items}
               totalSize={multiStatsData.totalSize}
               totalFiles={multiStatsData.totalFiles}

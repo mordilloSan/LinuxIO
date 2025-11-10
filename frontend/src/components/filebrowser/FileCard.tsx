@@ -2,6 +2,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
+import { formatFileSize } from "@/utils/formatBytes";
 
 export interface FileCardProps {
   name: string;
@@ -17,20 +18,6 @@ export interface FileCardProps {
   onDoubleClick?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
 }
-
-const formatBytes = (bytes?: number) => {
-  if (bytes === undefined || bytes === null) return "";
-  const thresh = 1024;
-  if (Math.abs(bytes) < thresh) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let u = -1;
-  let value = bytes;
-  do {
-    value /= thresh;
-    ++u;
-  } while (Math.abs(value) >= thresh && u < units.length - 1);
-  return `${value.toFixed(1)} ${units[u]}`;
-};
 
 const FileCard: React.FC<FileCardProps> = React.memo(
   ({
@@ -179,7 +166,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
                 opacity: metadataOpacity,
               }}
             >
-              {formatBytes(size)}
+              {formatFileSize(size, 1, "")}
             </div>
           )}
         </div>
