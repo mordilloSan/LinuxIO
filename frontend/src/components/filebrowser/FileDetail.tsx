@@ -17,7 +17,7 @@ import React from "react";
 
 import { FileResource } from "../../types/filebrowser";
 
-import { formatDate, formatFileSize } from "@/utils/formatBytes";
+import { formatDate, formatFileSize } from "@/utils/formaters";
 
 interface FileDetailProps {
   resource?: FileResource;

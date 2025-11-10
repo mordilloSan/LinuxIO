@@ -14,9 +14,6 @@ export const formatFileSize = (
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 };
 
-// Alias for backwards compatibility with Memory.tsx which uses formatBytes
-export const formatBytes = formatFileSize;
-
 export const formatDate = (dateString?: string): string => {
   if (!dateString) return "Unknown";
   try {
