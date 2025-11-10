@@ -1,4 +1,3 @@
-import LinkIcon from "@mui/icons-material/Link";
 import { alpha, useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 
@@ -59,15 +58,17 @@ const FileCard: React.FC<FileCardProps> = React.memo(
       if (selected) {
         return alpha(theme.palette.primary.main, 0.4);
       }
-      return theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
-    }, [selected, theme]);
+      const bg = theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
+      return hidden ? alpha(bg, 0.5) : bg;
+    }, [selected, theme, hidden]);
 
     const hoverBg = useMemo(() => {
       if (selected) {
         return alpha(theme.palette.primary.main, 0.4);
       }
-      return theme.palette.mode === "dark" ? "#2a3540" : "#f5f5f5";
-    }, [selected, theme]);
+      const bg = theme.palette.mode === "dark" ? "#2a3540" : "#f5f5f5";
+      return hidden ? alpha(bg, 0.5) : bg;
+    }, [selected, theme, hidden]);
 
     const baseBorderColor = alpha(
       theme.palette.divider,
@@ -78,10 +79,14 @@ const FileCard: React.FC<FileCardProps> = React.memo(
       if (selected) {
         return alpha(theme.palette.primary.main, 0.7);
       }
-      return isDirectory ? baseBorderColor : "transparent";
-    }, [selected, isDirectory, theme, baseBorderColor]);
+      if (!isDirectory) {
+        return "transparent";
+      }
+      return hidden ? alpha(baseBorderColor, 0.05) : baseBorderColor;
+    }, [selected, isDirectory, baseBorderColor, hidden]);
 
-    const textOpacity = isDirectory ? 1 : 0.5;
+    // Keep file and folder titles consistent while still dimming supporting text
+    const metadataOpacity = isDirectory ? 0.85 : 0.65;
 
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -122,7 +127,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           transform: hovered ? "translateY(-2px) scale(1.01)" : "none",
         }}
       >
-        <FileIcon isDirectory={isDirectory} filename={name} hidden={hidden} />
+        <FileIcon isDirectory={isDirectory} filename={name} hidden={hidden} isSymlink={isSymlink} />
 
         <div
           style={{
@@ -135,13 +140,13 @@ const FileCard: React.FC<FileCardProps> = React.memo(
         >
           <div
             style={{
-              fontWeight: 450,
+              fontWeight: 400,
               fontSize: "0.95rem",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
               color: theme.palette.text.primary,
-              opacity: textOpacity,
+              opacity: 1,
             }}
           >
             {name}
@@ -151,11 +156,11 @@ const FileCard: React.FC<FileCardProps> = React.memo(
             style={{
               display: "flex",
               flexDirection: "column",
-              fontSize: "0.95rem",
+              fontSize: "0.90rem",
               color: theme.palette.text.secondary,
               gap: 0,
               lineHeight: 1.2,
-              opacity: textOpacity,
+              opacity: metadataOpacity,
             }}
           >
             {!isDirectory && size !== undefined && (
@@ -164,15 +169,6 @@ const FileCard: React.FC<FileCardProps> = React.memo(
             {formattedDate && <span>{formattedDate}</span>}
           </div>
         </div>
-        {isSymlink && (
-          <LinkIcon
-            sx={{
-              fontSize: 24,
-              color: theme.palette.primary.main,
-              flexShrink: 0,
-            }}
-          />
-        )}
       </div>
     );
   },

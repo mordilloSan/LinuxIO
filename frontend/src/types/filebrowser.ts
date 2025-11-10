@@ -1,4 +1,4 @@
-export type ViewMode = "list" | "compact" | "normal" | "gallery";
+export type ViewMode = "card" | "list";
 
 export type ApiItem = {
   name: string;

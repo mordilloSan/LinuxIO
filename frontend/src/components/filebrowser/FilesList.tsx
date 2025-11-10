@@ -1,12 +1,14 @@
 import React from "react";
 
-import { FileItem } from "../../types/filebrowser";
+import { FileItem, ViewMode } from "../../types/filebrowser";
 
 import FileCard from "@/components/filebrowser/FileCard";
+import FileListRow from "@/components/filebrowser/FileListRow";
 
 interface FilesListProps {
   files: FileItem[];
   selectedPaths: Set<string>;
+  viewMode: ViewMode;
   onFileClick: (event: React.MouseEvent, path: string) => void;
   onDownloadFile: (item: FileItem) => void;
   onFileContextMenu: (event: React.MouseEvent, path: string) => void;
@@ -16,6 +18,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(
   ({
     files,
     selectedPaths,
+    viewMode,
     onFileClick,
     onDownloadFile,
     onFileContextMenu,
@@ -23,6 +26,8 @@ const FilesList: React.FC<FilesListProps> = React.memo(
     if (files.length === 0) {
       return null;
     }
+
+    const ItemComponent = viewMode === "list" ? FileListRow : FileCard;
 
     return (
       <div>
@@ -40,14 +45,17 @@ const FilesList: React.FC<FilesListProps> = React.memo(
         </h6>
         <div
           style={{
-            display: "grid",
+            display: viewMode === "list" ? "flex" : "grid",
+            flexDirection: viewMode === "list" ? "column" : undefined,
             gridTemplateColumns:
-              "repeat(auto-fill, minmax(min(260px, 100%), 1fr))",
-            gap: "12px",
+              viewMode === "card"
+                ? "repeat(auto-fill, minmax(min(260px, 100%), 1fr))"
+                : undefined,
+            gap: viewMode === "list" ? "2px" : "12px",
           }}
         >
           {files.map((file) => (
-            <FileCard
+            <ItemComponent
               key={`${file.path}-${file.name}`}
               name={file.name}
               type={file.type}

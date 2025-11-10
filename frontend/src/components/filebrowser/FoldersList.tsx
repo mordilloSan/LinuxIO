@@ -1,12 +1,14 @@
 import React from "react";
 
-import { FileItem } from "../../types/filebrowser";
+import { FileItem, ViewMode } from "../../types/filebrowser";
 
 import FileCard from "@/components/filebrowser/FileCard";
+import FileListRow from "@/components/filebrowser/FileListRow";
 
 interface FoldersListProps {
   folders: FileItem[];
   selectedPaths: Set<string>;
+  viewMode: ViewMode;
   onFolderClick: (event: React.MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
   onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
@@ -16,6 +18,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
   ({
     folders,
     selectedPaths,
+    viewMode,
     onFolderClick,
     onOpenDirectory,
     onFolderContextMenu,
@@ -23,6 +26,8 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
     if (folders.length === 0) {
       return null;
     }
+
+    const ItemComponent = viewMode === "list" ? FileListRow : FileCard;
 
     return (
       <div>
@@ -40,14 +45,17 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
         </h6>
         <div
           style={{
-            display: "grid",
+            display: viewMode === "list" ? "flex" : "grid",
+            flexDirection: viewMode === "list" ? "column" : undefined,
             gridTemplateColumns:
-              "repeat(auto-fill, minmax(min(260px, 100%), 1fr))",
-            gap: "12px",
+              viewMode === "card"
+                ? "repeat(auto-fill, minmax(min(260px, 100%), 1fr))"
+                : undefined,
+            gap: viewMode === "list" ? "2px" : "12px",
           }}
         >
           {folders.map((folder) => (
-            <FileCard
+            <ItemComponent
               key={`${folder.path}-${folder.name}`}
               name={folder.name}
               type={folder.type}

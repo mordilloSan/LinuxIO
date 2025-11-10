@@ -1,7 +1,5 @@
 import GridViewIcon from "@mui/icons-material/GridView";
 import ViewListIcon from "@mui/icons-material/ViewList";
-import ViewModuleIcon from "@mui/icons-material/ViewModule";
-import ViewStreamIcon from "@mui/icons-material/ViewStream";
 import { Box } from "@mui/material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import React, { ReactNode, useCallback, useMemo, useState } from "react";
@@ -34,23 +32,20 @@ import {
 } from "@/types/filebrowser";
 import axios from "@/utils/axios"; // Still used for mutations (create, delete)
 
-const viewModes: ViewMode[] = ["list", "compact", "normal", "gallery"];
+const viewModes: ViewMode[] = ["card", "list"];
 
 const viewIconMap: Record<ViewMode, ReactNode> = {
+  card: <GridViewIcon fontSize="small" />,
   list: <ViewListIcon fontSize="small" />,
-  compact: <ViewStreamIcon fontSize="small" />,
-  normal: <ViewModuleIcon fontSize="small" />,
-  gallery: <GridViewIcon fontSize="small" />,
 };
 
 const FileBrowser: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [showHiddenFiles, setShowHiddenFilesConfig] =
     useConfigValue("showHiddenFiles");
-  const [gallerySize, setGallerySize] = useState<number>(4);
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [contextMenuPosition, setContextMenuPosition] = useState<{
@@ -153,19 +148,19 @@ const FileBrowser: React.FC = () => {
   const errorMessage = isError
     ? error instanceof Error
       ? (() => {
-          // Check if it's an axios error with a status code
-          const axiosError = error as any;
-          if (axiosError.response?.status === 403) {
-            return `Permission denied: You don't have access to "${normalizedPath}".`;
-          }
-          if (
-            axiosError.response?.status === 404 ||
-            axiosError.response?.status === 500
-          ) {
-            return `Path not found: "${normalizedPath}" does not exist.`;
-          }
-          return error.message;
-        })()
+        // Check if it's an axios error with a status code
+        const axiosError = error as any;
+        if (axiosError.response?.status === 403) {
+          return `Permission denied: You don't have access to "${normalizedPath}".`;
+        }
+        if (
+          axiosError.response?.status === 404 ||
+          axiosError.response?.status === 500
+        ) {
+          return `Path not found: "${normalizedPath}" does not exist.`;
+        }
+        return error.message;
+      })()
       : "Failed to load file information."
     : null;
 
@@ -331,6 +326,9 @@ const FileBrowser: React.FC = () => {
         data-allow-context-menu="true"
         sx={{
           height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
         }}
         onContextMenu={handleContextMenu}
       >
@@ -342,15 +340,10 @@ const FileBrowser: React.FC = () => {
           onToggleHiddenFiles={handleToggleHiddenFiles}
           viewIcon={viewIcon}
         />
-        <Box sx={{ px: 2 }}>
+        <Box sx={{ px: 2, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <BreadcrumbsNav
             path={normalizedPath}
             onNavigate={handleOpenDirectory}
-            showGallerySize={
-              viewMode === "gallery" && (resource?.items?.length ?? 0) > 0
-            }
-            gallerySize={gallerySize}
-            onGallerySizeChange={setGallerySize}
           />
 
           {!isPending &&
@@ -359,7 +352,7 @@ const FileBrowser: React.FC = () => {
             resource.type === "directory" && (
               <SortBar sortOrder={sortOrder} onSortChange={handleSortChange} />
             )}
-          <Box sx={{ px: 2 }}>
+          <Box sx={{ px: 2, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             {isPending && <ComponentLoader />}
 
             {!isPending && errorMessage && (

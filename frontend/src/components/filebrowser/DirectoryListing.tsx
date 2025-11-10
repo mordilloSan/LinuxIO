@@ -203,11 +203,38 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     <Box
       ref={containerRef}
       onMouseDownCapture={handleContainerMouseDown}
-      sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        overflowY: "auto",
+        height: "100%",
+        // Custom scrollbar styling
+        "&::-webkit-scrollbar": {
+          width: "6px",
+        },
+        "&::-webkit-scrollbar-track": {
+          background: "transparent",
+        },
+        "&::-webkit-scrollbar-thumb": {
+          background: (theme) =>
+            theme.palette.mode === "dark"
+              ? "rgba(255, 255, 255, 0.2)"
+              : "rgba(0, 0, 0, 0.2)",
+          borderRadius: "4px",
+        },
+        "&::-webkit-scrollbar-thumb:hover": {
+          background: (theme) =>
+            theme.palette.mode === "dark"
+              ? "rgba(255, 255, 255, 0.3)"
+              : "rgba(0, 0, 0, 0.3)",
+        },
+      }}
     >
       <FoldersList
         folders={folders}
         selectedPaths={selectedPaths}
+        viewMode={viewMode}
         onFolderClick={handleFolderClick}
         onOpenDirectory={onOpenDirectory}
         onFolderContextMenu={handleItemContextMenu}
@@ -216,6 +243,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
       <FilesList
         files={files}
         selectedPaths={selectedPaths}
+        viewMode={viewMode}
         onFileClick={handleFileClick}
         onDownloadFile={onDownloadFile}
         onFileContextMenu={handleItemContextMenu}
