@@ -1,9 +1,7 @@
-import {
-  GridView as GridViewIcon,
-  ViewList as ViewListIcon,
-  ViewModule as ViewModuleIcon,
-  ViewStream as ViewStreamIcon,
-} from "@mui/icons-material";
+import GridViewIcon from "@mui/icons-material/GridView";
+import ViewListIcon from "@mui/icons-material/ViewList";
+import ViewModuleIcon from "@mui/icons-material/ViewModule";
+import ViewStreamIcon from "@mui/icons-material/ViewStream";
 import { Box } from "@mui/material";
 import {
   useQuery,

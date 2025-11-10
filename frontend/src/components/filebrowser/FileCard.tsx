@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { alpha, useTheme } from "@mui/material/styles";
-import { Link as LinkIcon } from "@mui/icons-material";
+import LinkIcon from "@mui/icons-material/Link";
 import FileIcon from "@/components/filebrowser/FileIcon";
 
 export interface FileCardProps {

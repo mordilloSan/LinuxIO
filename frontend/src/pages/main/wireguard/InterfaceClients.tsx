@@ -1,4 +1,6 @@
-import { Delete, GetApp, QrCode } from "@mui/icons-material";
+import DeleteIcon from "@mui/icons-material/Delete";
+import GetAppIcon from "@mui/icons-material/GetApp";
+import QrCodeIcon from "@mui/icons-material/QrCode";
 import {
   Grid,
   Card,
@@ -208,19 +210,19 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                           onClick={() => handleDeletePeer(peer.name)}
                           sx={{ color: "red" }}
                         >
-                          <Delete />
+                          <DeleteIcon />
                         </IconButton>
                         <IconButton
                           aria-label="Download Config"
                           onClick={() => handleDownloadConfig(peer.name)}
                         >
-                          <GetApp />
+                          <GetAppIcon />
                         </IconButton>
                         <IconButton
                           aria-label="View QR Code"
                           onClick={() => handleViewQrCode(peer.name)}
                         >
-                          <QrCode />
+                          <QrCodeIcon />
                         </IconButton>
                       </Box>
                     </Box>

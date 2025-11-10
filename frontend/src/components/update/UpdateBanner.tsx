@@ -1,4 +1,5 @@
-import { Close, Download } from "@mui/icons-material";
+import CloseIcon from "@mui/icons-material/Close";
+import DownloadIcon from "@mui/icons-material/Download";
 import { Alert, Button, IconButton, Link, Stack } from "@mui/material";
 import { useState } from "react";
 
@@ -81,7 +82,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
           onClick={onDismiss}
           disabled={isUpdating}
         >
-          <Close fontSize="small" />
+          <CloseIcon fontSize="small" />
         </IconButton>
       }
     >
@@ -103,7 +104,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
           <Button
             variant="contained"
             size="small"
-            startIcon={!isUpdating ? <Download /> : null}
+            startIcon={!isUpdating ? <DownloadIcon /> : null}
             onClick={handleUpdate}
             disabled={isUpdating}
             sx={{ whiteSpace: "nowrap" }}

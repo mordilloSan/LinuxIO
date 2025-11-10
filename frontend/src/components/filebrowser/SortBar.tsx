@@ -1,7 +1,5 @@
-import {
-  ArrowDownward as ArrowDownwardIcon,
-  ArrowUpward as ArrowUpwardIcon,
-} from "@mui/icons-material";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import { Box, Typography, alpha, useTheme } from "@mui/material";
 import React from "react";
 

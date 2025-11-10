@@ -1,18 +1,16 @@
 import React from "react";
-import {
-  Folder,
-  InsertDriveFile,
-  PictureAsPdf,
-  Description,
-  Image,
-  Code,
-  TextFields,
-  Videocam,
-  AudioFile,
-  Archive,
-  TableChart,
-  Terminal,
-} from "@mui/icons-material";
+import FolderIcon from "@mui/icons-material/Folder";
+import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import DescriptionIcon from "@mui/icons-material/Description";
+import ImageIcon from "@mui/icons-material/Image";
+import CodeIcon from "@mui/icons-material/Code";
+import TextFieldsIcon from "@mui/icons-material/TextFields";
+import VideocamIcon from "@mui/icons-material/Videocam";
+import AudioFileIcon from "@mui/icons-material/AudioFile";
+import ArchiveIcon from "@mui/icons-material/Archive";
+import TableChartIcon from "@mui/icons-material/TableChart";
+import TerminalIcon from "@mui/icons-material/Terminal";
 import { useTheme } from "@mui/material/styles";
 
 interface FileIconProps {
@@ -22,52 +20,52 @@ interface FileIconProps {
 }
 
 const getIconForType = (filename?: string) => {
-  if (!filename) return InsertDriveFile;
+  if (!filename) return InsertDriveFileIcon;
 
   // Extract extension from filename
   const lastDotIndex = filename.lastIndexOf(".");
-  if (lastDotIndex === -1) return InsertDriveFile;
+  if (lastDotIndex === -1) return InsertDriveFileIcon;
 
   const ext = filename.slice(lastDotIndex + 1).toLowerCase();
 
   // PDF
-  if (ext === "pdf") return PictureAsPdf;
+  if (ext === "pdf") return PictureAsPdfIcon;
 
   // Documents
-  if (["doc", "docx", "odt", "rtf"].includes(ext)) return Description;
+  if (["doc", "docx", "odt", "rtf"].includes(ext)) return DescriptionIcon;
 
   // Spreadsheets
-  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return TableChart;
+  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return TableChartIcon;
 
   // Images
   if (["png", "jpg", "jpeg", "gif", "svg", "bmp", "ico", "webp"].includes(ext))
-    return Image;
+    return ImageIcon;
 
   // Code
   if (
     ["js", "ts", "tsx", "jsx", "py", "go", "cpp", "c", "java", "rs", "php", "rb", "sh", "bash", "json", "html", "css"].includes(ext)
   )
-    return Code;
+    return CodeIcon;
 
   // Text
-  if (["txt", "md", "markdown", "log"].includes(ext)) return TextFields;
+  if (["txt", "md", "markdown", "log"].includes(ext)) return TextFieldsIcon;
 
   // Video
   if (["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"].includes(ext))
-    return Videocam;
+    return VideocamIcon;
 
   // Audio
   if (["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma"].includes(ext))
-    return AudioFile;
+    return AudioFileIcon;
 
   // Archives
   if (["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].includes(ext))
-    return Archive;
+    return ArchiveIcon;
 
   // Executables
-  if (["exe", "bin", "sh", "app", "dmg"].includes(ext)) return Terminal;
+  if (["exe", "bin", "sh", "app", "dmg"].includes(ext)) return TerminalIcon;
 
-  return InsertDriveFile;
+  return InsertDriveFileIcon;
 };
 
 const FileIcon = React.memo(({ isDirectory, filename, hidden }: FileIconProps) => {
@@ -75,7 +73,7 @@ const FileIcon = React.memo(({ isDirectory, filename, hidden }: FileIconProps) =
 
   if (isDirectory) {
     return (
-      <Folder
+      <FolderIcon
         sx={{
           fontSize: 70,
           color: theme.palette.primary.main,

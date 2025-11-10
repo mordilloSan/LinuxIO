@@ -1,4 +1,5 @@
-import { Delete, Add } from "@mui/icons-material";
+import DeleteIcon from "@mui/icons-material/Delete";
+import AddIcon from "@mui/icons-material/Add";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
 import {
   Card,
@@ -108,7 +109,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   }}
                   sx={{ color: "red" }}
                 >
-                  <Delete />
+                  <DeleteIcon />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Add Peer">
@@ -118,7 +119,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     handleAddPeer(iface.name, {});
                   }}
                 >
-                  <Add />
+                  <AddIcon />
                 </IconButton>
               </Tooltip>
             </Box>

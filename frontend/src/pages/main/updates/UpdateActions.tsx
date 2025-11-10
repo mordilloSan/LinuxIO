@@ -1,4 +1,4 @@
-import { Close as CloseIcon } from "@mui/icons-material";
+import CloseIcon from "@mui/icons-material/Close";
 import {
   Box,
   LinearProgress,

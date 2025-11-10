@@ -1,8 +1,6 @@
-import {
-  Save as SaveIcon,
-  Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon,
-} from "@mui/icons-material";
+import SaveIcon from "@mui/icons-material/Save";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   Box,
   IconButton,

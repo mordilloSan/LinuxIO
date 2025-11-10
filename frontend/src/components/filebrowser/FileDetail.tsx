@@ -1,4 +1,4 @@
-import { Download as DownloadIcon } from "@mui/icons-material";
+import DownloadIcon from "@mui/icons-material/Download";
 import { Box, Button, Paper, Typography, alpha } from "@mui/material";
 import React from "react";
 

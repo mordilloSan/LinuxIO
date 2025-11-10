@@ -1,4 +1,7 @@
-import { FileCopy, Download, Close, Search } from "@mui/icons-material";
+import FileCopyIcon from "@mui/icons-material/FileCopy";
+import DownloadIcon from "@mui/icons-material/Download";
+import CloseIcon from "@mui/icons-material/Close";
+import SearchIcon from "@mui/icons-material/Search";
 import {
   Dialog,
   DialogTitle,
@@ -108,7 +111,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       }}
     >
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <Search fontSize="small" />
+        <SearchIcon fontSize="small" />
         <TextField
           variant="standard"
           placeholder="Search logs…"
@@ -119,12 +122,12 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
         />
         <Tooltip title="Copy logs">
           <IconButton onClick={handleCopy} size="small">
-            <FileCopy fontSize="small" />
+            <FileCopyIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Download logs">
           <IconButton onClick={handleDownload} size="small">
-            <Download fontSize="small" />
+            <DownloadIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         {onRefresh && (
@@ -144,7 +147,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
           </Tooltip>
         )}
         <IconButton onClick={onClose} size="small">
-          <Close fontSize="small" />
+          <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
       <DialogContent
