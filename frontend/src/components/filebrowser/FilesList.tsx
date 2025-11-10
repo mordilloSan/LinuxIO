@@ -57,6 +57,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(
           {files.map((file) => (
             <ItemComponent
               key={`${file.path}-${file.name}`}
+              path={file.path}
               name={file.name}
               type={file.type}
               size={file.size}

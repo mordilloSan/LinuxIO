@@ -15,7 +15,7 @@ export type ApiResource = {
   name: string;
   path: string;
   type: string;
-  source: string;
+  size?: number;
   files?: ApiItem[];
   folders?: ApiItem[];
   content?: string;
@@ -29,7 +29,6 @@ export type ApiResource = {
 
 export type FileItem = ApiItem & {
   path: string;
-  source: string;
 };
 
 export type FileResource = Omit<ApiResource, "files" | "folders"> & {

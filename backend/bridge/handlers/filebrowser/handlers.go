@@ -27,14 +27,14 @@ func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 }
 
 // resourceGet retrieves information about a resource
-// Args: [path, source?, getContent?]
+// Args: [path, getContent?]
 func resourceGet(args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing path")
 	}
 
 	path := args[0]
-	getContent := len(args) > 2 && args[2] == "true"
+	getContent := len(args) > 1 && args[1] == "true"
 
 	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
 		Path:    path,
@@ -45,11 +45,12 @@ func resourceGet(args []string) (any, error) {
 		logger.Debugf("error getting file info: %v", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
+
 	return fileInfo, nil
 }
 
 // resourceStat returns extended metadata
-// Args: [path, source?]
+// Args: [path]
 func resourceStat(args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing path")
@@ -82,7 +83,7 @@ func resourceStat(args []string) (any, error) {
 }
 
 // resourceDelete deletes a resource
-// Args: [path, source?]
+// Args: [path]
 func resourceDelete(args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing path")
@@ -113,7 +114,7 @@ func resourceDelete(args []string) (any, error) {
 }
 
 // resourcePost creates or uploads a new resource
-// Args: [path, source?, override?, chunkOffset?, totalSize?, body]
+// Args: [path, override?, chunkOffset?, totalSize?, body]
 func resourcePost(args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing path")
@@ -125,7 +126,7 @@ func resourcePost(args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:invalid path encoding")
 	}
 
-	override := len(args) > 2 && args[2] == "true"
+	override := len(args) > 1 && args[1] == "true"
 
 	isDir := strings.HasSuffix(path, "/")
 	realPath := filepath.Join(path)
@@ -160,7 +161,7 @@ func resourcePost(args []string) (any, error) {
 }
 
 // resourcePut updates an existing file resource
-// Args: [path, source?]
+// Args: [path]
 func resourcePut(args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing path")
