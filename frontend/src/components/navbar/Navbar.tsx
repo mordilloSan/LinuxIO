@@ -8,7 +8,7 @@ import {
   Box,
   useTheme,
 } from "@mui/material";
-import { Search as SearchIcon } from "lucide-react";
+import SearchIcon from "lucide-react/dist/esm/icons/search";
 import React from "react";
 
 import Customizer from "./NavbarCustomizer";

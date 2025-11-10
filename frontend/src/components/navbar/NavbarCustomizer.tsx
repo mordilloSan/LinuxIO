@@ -7,7 +7,7 @@ import {
   useTheme as useMuiTheme,
   Box,
 } from "@mui/material";
-import { Paintbrush } from "lucide-react";
+import Paintbrush from "lucide-react/dist/esm/icons/paintbrush";
 import { useMemo, useState } from "react";
 
 import { useConfigValue } from "@/hooks/useConfig";

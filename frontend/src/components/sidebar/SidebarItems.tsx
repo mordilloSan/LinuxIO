@@ -1,16 +1,14 @@
 import { Icon } from "@iconify/react";
-import {
-  Home,
-  RefreshCcw,
-  ServerCog,
-  HardDrive,
-  Users,
-  Share2,
-  Cpu,
-  Folder,
-  Network,
-  Terminal,
-} from "lucide-react";
+import Cpu from "lucide-react/dist/esm/icons/cpu";
+import Folder from "lucide-react/dist/esm/icons/folder";
+import HardDrive from "lucide-react/dist/esm/icons/hard-drive";
+import Home from "lucide-react/dist/esm/icons/home";
+import Network from "lucide-react/dist/esm/icons/network";
+import RefreshCcw from "lucide-react/dist/esm/icons/refresh-ccw";
+import ServerCog from "lucide-react/dist/esm/icons/server-cog";
+import Share2 from "lucide-react/dist/esm/icons/share-2";
+import Terminal from "lucide-react/dist/esm/icons/terminal";
+import Users from "lucide-react/dist/esm/icons/users";
 
 import { SidebarItemsType } from "@/types/sidebar";
 
