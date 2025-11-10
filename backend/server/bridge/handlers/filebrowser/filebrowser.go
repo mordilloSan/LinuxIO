@@ -52,13 +52,11 @@ func resourceGetHandler(c *gin.Context) {
 	err = bridge.CallWithSessionStream(sess, "filebrowser", "resource_get", args,
 		func(chunk []byte) error {
 			// Send chunk as NDJSON (one JSON object per line)
-			_, err := c.Writer.Write(chunk)
-			if err != nil {
-				return err
+			if _, writeErr := c.Writer.Write(chunk); writeErr != nil {
+				return writeErr
 			}
-			_, err = c.Writer.WriteString("\n")
-			if err != nil {
-				return err
+			if _, writeErr := c.Writer.WriteString("\n"); writeErr != nil {
+				return writeErr
 			}
 			c.Writer.Flush()
 			return nil

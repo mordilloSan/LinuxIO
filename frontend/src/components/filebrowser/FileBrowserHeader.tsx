@@ -26,7 +26,6 @@ interface FileBrowserHeaderProps {
 }
 
 const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
-  viewMode,
   showHiddenFiles,
   showQuickSave = false,
   onSwitchView,

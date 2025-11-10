@@ -85,7 +85,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 
 	if err := enc.Encode(req); err != nil {
 		// Connection is broken, clear it and retry
-		sess.CloseBridgeConn()
+		closeBridgeConnWithLog(sess, "CallWithSession encode")
 		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
 		logger.ErrorKV("bridge call failed: encoding error (clearing connection)",
 			"user", sess.User.Username,
@@ -98,7 +98,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 	var raw json.RawMessage
 	if err := dec.Decode(&raw); err != nil {
 		// Connection is broken, clear it
-		sess.CloseBridgeConn()
+		closeBridgeConnWithLog(sess, "CallWithSession decode")
 		err2 := fmt.Errorf("failed to decode response from bridge: %w", err)
 		logger.ErrorKV("bridge call failed: decoding error (clearing connection)",
 			"user", sess.User.Username,
@@ -116,6 +116,15 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		"response_bytes", len(raw))
 
 	return []byte(raw), nil
+}
+
+func closeBridgeConnWithLog(sess *session.Session, context string) {
+	if err := sess.CloseBridgeConn(); err != nil {
+		logger.WarnKV("bridge connection close failed",
+			"user", sess.User.Username,
+			"context", context,
+			"error", err)
+	}
 }
 
 // CallWithSessionStream sends a request and reads multiple streaming responses.
@@ -182,7 +191,7 @@ func CallWithSessionStream(sess *session.Session, reqType, command string, args 
 	dec := json.NewDecoder(conn)
 
 	if err := enc.Encode(req); err != nil {
-		sess.CloseBridgeConn()
+		closeBridgeConnWithLog(sess, "CallWithSessionStream encode")
 		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
 		logger.ErrorKV("bridge call failed: encoding error (clearing connection)",
 			"user", sess.User.Username,
@@ -206,7 +215,7 @@ func CallWithSessionStream(sess *session.Session, reqType, command string, args 
 					"chunks", chunkCount)
 				return nil
 			}
-			sess.CloseBridgeConn()
+			closeBridgeConnWithLog(sess, "CallWithSessionStream decode")
 			err2 := fmt.Errorf("failed to decode stream response: %w", err)
 			logger.ErrorKV("bridge stream failed: decoding error (clearing connection)",
 				"user", sess.User.Username,
@@ -218,7 +227,7 @@ func CallWithSessionStream(sess *session.Session, reqType, command string, args 
 
 		// Check for error in response
 		if resp.Status == "error" {
-			return fmt.Errorf(resp.Error)
+			return fmt.Errorf("%s", resp.Error)
 		}
 
 		// Convert output to JSON bytes and pass to callback

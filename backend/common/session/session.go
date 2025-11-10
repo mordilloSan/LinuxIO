@@ -112,7 +112,7 @@ type Manager struct {
 	st  Store
 
 	onDeleteMu sync.RWMutex
-	onDelete   []func(Session, DeleteReason)
+	onDelete   []func(*Session, DeleteReason)
 
 	gcStop chan struct{}
 }
@@ -199,18 +199,18 @@ func (s *Session) CloseBridgeConn() error {
 // Hooks
 // -----------------------------------------------------------------------------
 
-func (m *Manager) RegisterOnDelete(fn func(Session, DeleteReason)) {
+func (m *Manager) RegisterOnDelete(fn func(*Session, DeleteReason)) {
 	m.onDeleteMu.Lock()
 	m.onDelete = append(m.onDelete, fn)
 	m.onDeleteMu.Unlock()
 }
 
-func (m *Manager) broadcastOnDelete(s Session, r DeleteReason) {
+func (m *Manager) broadcastOnDelete(s *Session, r DeleteReason) {
 	m.onDeleteMu.RLock()
-	subs := append([]func(Session, DeleteReason){}, m.onDelete...)
+	subs := append([]func(*Session, DeleteReason){}, m.onDelete...)
 	m.onDeleteMu.RUnlock()
 	for _, f := range subs {
-		go func(ff func(Session, DeleteReason)) {
+		go func(ff func(*Session, DeleteReason)) {
 			defer func() { _ = recover() }()
 			ff(s, r)
 		}(f)
@@ -301,7 +301,7 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 				}
 				if os.User.Username == user.Username {
 					_ = m.st.Delete(tok)
-					m.broadcastOnDelete(*os, ReasonManual)
+					m.broadcastOnDelete(os, ReasonManual)
 				}
 			}
 		}
@@ -347,7 +347,7 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 				"user", s.User.Username,
 				"error", closeErr)
 		}
-		m.broadcastOnDelete(*s, r)
+		m.broadcastOnDelete(s, r)
 	}
 	return nil
 }
@@ -496,7 +496,7 @@ func (m *Manager) gcLoop() {
 				// here we enforce idle expiry.
 				if expiredIdle(s, now) {
 					_ = m.st.Delete(tok)
-					m.broadcastOnDelete(*s, ReasonGCIdle)
+					m.broadcastOnDelete(s, ReasonGCIdle)
 					collected++
 				}
 			}

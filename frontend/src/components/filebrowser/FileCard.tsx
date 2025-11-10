@@ -34,7 +34,6 @@ const formatBytes = (bytes?: number) => {
 const FileCard: React.FC<FileCardProps> = React.memo(
   ({
     name,
-    type,
     size,
     modTime,
     isDirectory,
@@ -127,7 +126,12 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           transform: hovered ? "translateY(-2px) scale(1.01)" : "none",
         }}
       >
-        <FileIcon isDirectory={isDirectory} filename={name} hidden={hidden} isSymlink={isSymlink} />
+        <FileIcon
+          isDirectory={isDirectory}
+          filename={name}
+          hidden={hidden}
+          isSymlink={isSymlink}
+        />
 
         <div
           style={{
