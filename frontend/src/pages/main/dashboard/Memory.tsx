@@ -6,7 +6,7 @@ import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
-import { formatBytes } from "@/utils/formatBytes";
+import { formatFileSize } from "@/utils/formaters";
 
 // Utility functions
 
@@ -52,19 +52,19 @@ const MemoryUsage = () => {
       <Box sx={{ display: "flex", gap: 1, flexDirection: "column" }}>
         <Typography variant="body1">
           <strong>Total Memory:</strong>{" "}
-          {formatBytes(memoryData?.system.total || 0, 2)}
+          {formatFileSize(memoryData?.system.total || 0, 2)}
         </Typography>
         <Typography variant="body1">
           <strong>Used Memory:</strong>{" "}
-          {formatBytes(memoryData?.system.active || 0, 2)}
+          {formatFileSize(memoryData?.system.active || 0, 2)}
         </Typography>
         <Typography variant="body1">
           <strong>Swap:</strong>{" "}
-          {formatBytes(
+          {formatFileSize(
             memoryData?.system.swapTotal - memoryData?.system.swapFree || 0,
             2,
           )}{" "}
-          of {formatBytes(memoryData?.system.swapTotal || 0, 2)}
+          of {formatFileSize(memoryData?.system.swapTotal || 0, 2)}
         </Typography>
       </Box>
     ),

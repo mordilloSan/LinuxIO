@@ -44,7 +44,7 @@ interface InterfaceDetailsProps {
 }
 
 // --- small format helpers ---
-const formatBytes = (n?: number) => {
+const formatFileSize = (n?: number) => {
   if (n == null) return "-";
   const abs = Math.abs(n);
   if (abs < 1024) return `${n} B`;
@@ -232,14 +232,14 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                     </Typography>
 
                     <Typography variant="body2">
-                      Rx: {formatBytes(peer.rx_bytes)}{" "}
+                      Rx: {formatFileSize(peer.rx_bytes)}{" "}
                       <span style={{ opacity: 0.7 }}>
                         ({formatBps(peer.rx_bps)})
                       </span>
                     </Typography>
 
                     <Typography variant="body2">
-                      Tx: {formatBytes(peer.tx_bytes)}{" "}
+                      Tx: {formatFileSize(peer.tx_bytes)}{" "}
                       <span style={{ opacity: 0.7 }}>
                         ({formatBps(peer.tx_bps)})
                       </span>

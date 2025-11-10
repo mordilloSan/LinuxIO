@@ -5,7 +5,7 @@ import React, { useState, useEffect } from "react";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
-import { formatBytes } from "@/utils/formatBytes";
+import { formatFileSize } from "@/utils/formaters";
 
 // --- API shape from /system/disk ---
 interface ApiDisk {
@@ -133,7 +133,7 @@ const Drive: React.FC = () => {
       </Typography>
       <Typography variant="body2">
         <strong>Size:</strong>{" "}
-        {formatBytes(selectedDrive.sizeBytes) || "Unknown"}
+        {formatFileSize(selectedDrive.sizeBytes) || "Unknown"}
       </Typography>
       {selectedDrive.vendor && (
         <Typography variant="body2">

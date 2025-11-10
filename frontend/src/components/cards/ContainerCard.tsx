@@ -12,7 +12,7 @@ import MetricBar from "@/components/gauge/MetricBar";
 import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { ContainerInfo } from "@/types/container";
 import axios from "@/utils/axios";
-import { formatBytes } from "@/utils/formatBytes";
+import { formatFileSize } from "@/utils/formaters";
 
 const getContainerIconUrl = (name: string) => {
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase();
@@ -288,8 +288,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 label="MEM"
                 percent={memPercent}
                 color={theme.palette.primary.main}
-                tooltip={`Memory Usage: ${formatBytes(memUsage)} / ${formatBytes(memLimit)}`}
-                rightLabel={formatBytes(memUsage)}
+                tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+                rightLabel={formatFileSize(memUsage)}
               />
             </>
           )}

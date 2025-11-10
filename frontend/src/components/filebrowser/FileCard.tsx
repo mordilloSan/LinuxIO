@@ -2,7 +2,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
-import { formatFileSize } from "@/utils/formatBytes";
+import { formatFileSize } from "@/utils/formaters";
 
 export interface FileCardProps {
   name: string;

@@ -4,7 +4,7 @@ import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
 
-import { formatFileSize } from "@/utils/formatBytes";
+import { formatFileSize } from "@/utils/formaters";
 
 interface MultiFileDetailProps {
   multiItems: MultiStatsItem[];

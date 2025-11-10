@@ -8,7 +8,7 @@ import MetricBar from "@/components/gauge/MetricBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { FilesystemInfo } from "@/types/fs";
 import axios from "@/utils/axios";
-import { formatBytes } from "@/utils/formatBytes";
+import { formatFileSize } from "@/utils/formaters";
 
 const FsInfoCard: React.FC = () => {
   const { data: fsInfo, isPending } = useQuery<FilesystemInfo[]>({
@@ -51,10 +51,10 @@ const FsInfoCard: React.FC = () => {
               label={fs.mountpoint}
               percent={usedPercent}
               color={theme.palette.primary.main}
-              tooltip={`Free: ${formatBytes(fs.free)} / Total: ${formatBytes(fs.total)}`}
+              tooltip={`Free: ${formatFileSize(fs.free)} / Total: ${formatFileSize(fs.total)}`}
               rightLabel={
                 <>
-                  {formatBytes(fs.used)}&nbsp;/&nbsp;{formatBytes(fs.total)}
+                  {formatFileSize(fs.used)}&nbsp;/&nbsp;{formatFileSize(fs.total)}
                 </>
               }
             />
