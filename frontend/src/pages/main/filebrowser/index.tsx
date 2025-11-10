@@ -184,11 +184,6 @@ const FileBrowser: React.FC = () => {
     });
   }, []);
 
-  const selectedPath = useMemo(() => {
-    if (selectedPaths.size === 0) return null;
-    return Array.from(selectedPaths)[0];
-  }, [selectedPaths]);
-
   const canShowDetails = selectedPaths.size > 0;
 
   // For single item detail
@@ -218,31 +213,37 @@ const FileBrowser: React.FC = () => {
     enabled: hasSingleDetailTarget,
   });
 
-  const {
-    data: directorySizeData,
-    isPending: isDirectorySizePending,
-  } = useQuery<{ path: string; size: number; fileCount: number; folderCount: number }>({
-    queryKey: ["directorySize", detailTarget],
-    queryFn: async () => {
-      const currentDetailTarget = detailTarget;
-      if (!currentDetailTarget || currentDetailTarget.length !== 1) {
-        throw new Error("Invalid selection");
-      }
-      const { data } = await axios.get<{ path: string; size: number; fileCount: number; folderCount: number }>(
-        "/navigator/api/dir-size",
-        {
+  const { data: directorySizeData, isPending: isDirectorySizePending } =
+    useQuery<{
+      path: string;
+      size: number;
+      fileCount: number;
+      folderCount: number;
+    }>({
+      queryKey: ["directorySize", detailTarget],
+      queryFn: async () => {
+        const currentDetailTarget = detailTarget;
+        if (!currentDetailTarget || currentDetailTarget.length !== 1) {
+          throw new Error("Invalid selection");
+        }
+        const { data } = await axios.get<{
+          path: string;
+          size: number;
+          fileCount: number;
+          folderCount: number;
+        }>("/navigator/api/dir-size", {
           params: { path: currentDetailTarget[0] },
-        },
-      );
-      return data;
-    },
-    enabled: hasSingleDetailTarget && detailResource?.type === "directory",
-  });
+        });
+        return data;
+      },
+      enabled: hasSingleDetailTarget && detailResource?.type === "directory",
+    });
 
   // For multiple items
   const {
     data: multiStatsData,
     isPending: isMultiStatsPending,
+    error: multiStatsError,
   } = useQuery<MultiStatsResponse>({
     queryKey: ["multiStats", detailTarget],
     queryFn: async () => {
@@ -417,6 +418,10 @@ const FileBrowser: React.FC = () => {
     console.log("Upload clicked");
   }, [handleCloseContextMenu]);
 
+  const shouldShowDetailLoader =
+    (hasSingleDetailTarget && isDetailPending) ||
+    (hasMultipleDetailTargets && isMultiStatsPending);
+
   return (
     <>
       <Box
@@ -531,20 +536,33 @@ const FileBrowser: React.FC = () => {
             pr: 2,
           }}
         >
-          {detailTarget && detailTarget.length > 1 ? "Multiple Items Details" : "File Details"}
+          {detailTarget && detailTarget.length > 1
+            ? "Multiple Items Details"
+            : "File Details"}
           <IconButton onClick={handleCloseDetailDialog} size="small">
             <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
         <DialogContent dividers sx={{ minHeight: 200 }}>
-          {(isDetailPending || isMultiStatsPending) && <ComponentLoader />}
-          {!isDetailPending && !isMultiStatsPending && detailError && (
-            <Typography color="error">
-              {detailError instanceof Error
-                ? detailError.message
-                : "Failed to load details"}
-            </Typography>
-          )}
+          {shouldShowDetailLoader && <ComponentLoader />}
+          {!shouldShowDetailLoader &&
+            hasSingleDetailTarget &&
+            detailError && (
+              <Typography color="error">
+                {detailError instanceof Error
+                  ? detailError.message
+                  : "Failed to load details"}
+              </Typography>
+            )}
+          {!shouldShowDetailLoader &&
+            hasMultipleDetailTargets &&
+            multiStatsError && (
+              <Typography color="error">
+                {multiStatsError instanceof Error
+                  ? multiStatsError.message
+                  : "Failed to load details"}
+              </Typography>
+            )}
           {detailResource && (
             <FileDetail
               resource={detailResource}
