@@ -2,6 +2,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import React, { useState, useCallback, useMemo } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
+import { formatFileSize } from "@/utils/formatBytes";
 
 export interface FileListRowProps {
   name: string;
@@ -21,20 +22,6 @@ export interface FileListRowProps {
 
 const COLUMN_TEMPLATE =
   "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
-
-const formatBytes = (bytes?: number) => {
-  if (bytes === undefined || bytes === null) return "";
-  const thresh = 1024;
-  if (Math.abs(bytes) < thresh) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let u = -1;
-  let value = bytes;
-  do {
-    value /= thresh;
-    ++u;
-  } while (Math.abs(value) >= thresh && u < units.length - 1);
-  return `${value.toFixed(1)} ${units[u]}`;
-};
 
 const FileListRow: React.FC<FileListRowProps> = React.memo(
   ({
@@ -56,7 +43,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     const formattedDate = modTime
       ? new Date(modTime).toLocaleDateString("en-GB")
       : "";
-    const formattedSize = !isDirectory ? formatBytes(size) : "";
+    const formattedSize = !isDirectory ? formatFileSize(size, 1, "") : "";
 
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
