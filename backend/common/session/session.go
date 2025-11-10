@@ -50,7 +50,7 @@ type CookieConfig struct {
 }
 
 var DefaultConfig = SessionConfig{
-	IdleTimeout:          5 * time.Minute,
+	IdleTimeout:          15 * time.Minute,
 	AbsoluteTimeout:      12 * time.Hour,
 	RefreshThrottle:      60 * time.Second,
 	SingleSessionPerUser: false,

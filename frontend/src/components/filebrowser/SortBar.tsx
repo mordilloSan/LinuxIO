@@ -16,6 +16,9 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
   const [hoveredField, setHoveredField] = React.useState<SortField | null>(
     null,
   );
+  // Allow numeric columns to shrink on smaller widths while keeping alignment in sync with rows
+  const columnTemplate =
+    "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
 
   const renderSortIcon = (field: SortField) => {
     const isHovered = hoveredField === field;
@@ -44,7 +47,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
     cursor: "pointer",
     userSelect: "none" as const,
     py: 3,
-    px: 4,
+    px: 2,
     transition: "background-color 0.2s ease",
   };
 
@@ -52,7 +55,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
     <Box
       sx={{
         display: "grid",
-        gridTemplateColumns: "1fr 150px 200px",
+        gridTemplateColumns: columnTemplate,
         backgroundColor: theme.palette.mode === "dark" ? "#20292f" : "#ffffff",
         border: `0.1px solid ${alpha(theme.palette.divider, theme.palette.mode === "dark" ? 0.15 : 0.1)}`,
         borderRadius: 2,
@@ -103,7 +106,6 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
       </Box>
 
       <Box
-        sx={columnStyle}
         onClick={() => onSortChange("modTime")}
         role="button"
         tabIndex={0}
@@ -114,10 +116,17 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         }}
         onMouseEnter={() => setHoveredField("modTime")}
         onMouseLeave={() => setHoveredField(null)}
+        sx={{ ...columnStyle, justifyContent: "center", textAlign: "center" }}
       >
         <Typography
           variant="h6"
-          sx={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "0.9rem",
+            width: "100%",
+          }}
         >
           Last modified
           {renderSortIcon("modTime")}

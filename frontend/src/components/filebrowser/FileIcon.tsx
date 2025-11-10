@@ -151,29 +151,45 @@ const FileIcon = React.memo(
     const iconColor = isDirectory
       ? theme.palette.primary.main
       : getIconColor(filename, hidden || false, theme.palette.mode === "dark");
+    const wrapperOpacity = hidden ? 0.25 : 1;
 
     if (!isSymlink) {
       return (
-        <IconComponent
-          sx={{
-            fontSize: size,
-            color: iconColor,
+        <span
+          style={{
+            display: "inline-flex",
             flexShrink: 0,
-            opacity: hidden ? 0.5 : undefined,
+            opacity: wrapperOpacity,
+            transition: "opacity 120ms ease",
           }}
-        />
+        >
+          <IconComponent
+            sx={{
+              fontSize: size,
+              color: iconColor,
+              flexShrink: 0,
+            }}
+          />
+        </span>
       );
     }
 
     // Render with symlink overlay
     return (
-      <div style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+      <div
+        style={{
+          position: "relative",
+          display: "inline-flex",
+          flexShrink: 0,
+          opacity: wrapperOpacity,
+          transition: "opacity 120ms ease",
+        }}
+      >
         <IconComponent
           sx={{
             fontSize: size,
             color: iconColor,
             flexShrink: 0,
-            opacity: hidden ? 0.5 : undefined,
           }}
         />
         <LinkIcon
