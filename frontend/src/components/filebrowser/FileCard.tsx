@@ -119,7 +119,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           padding: theme.spacing(1.5),
           border: selected ? "2px solid" : "3px solid",
           borderColor: borderColor,
-          borderRadius: `${(theme.shape.borderRadius as number) * 2}px`,
+          borderRadius: `${(theme.shape.borderRadius as number) * 4}px`,
           backgroundColor: hovered ? hoverBg : baseBg,
           cursor: "pointer",
           minHeight: "60px",
