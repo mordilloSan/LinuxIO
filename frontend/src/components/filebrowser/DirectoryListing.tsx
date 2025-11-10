@@ -82,11 +82,12 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
           case "size":
             comparison = (a.size ?? 0) - (b.size ?? 0);
             break;
-          case "modTime":
+          case "modTime": {
             const aTime = a.modTime ? new Date(a.modTime).getTime() : 0;
             const bTime = b.modTime ? new Date(b.modTime).getTime() : 0;
             comparison = aTime - bTime;
             break;
+          }
         }
 
         return sortOrder === "asc" ? comparison : -comparison;

@@ -148,19 +148,19 @@ const FileBrowser: React.FC = () => {
   const errorMessage = isError
     ? error instanceof Error
       ? (() => {
-        // Check if it's an axios error with a status code
-        const axiosError = error as any;
-        if (axiosError.response?.status === 403) {
-          return `Permission denied: You don't have access to "${normalizedPath}".`;
-        }
-        if (
-          axiosError.response?.status === 404 ||
-          axiosError.response?.status === 500
-        ) {
-          return `Path not found: "${normalizedPath}" does not exist.`;
-        }
-        return error.message;
-      })()
+          // Check if it's an axios error with a status code
+          const axiosError = error as any;
+          if (axiosError.response?.status === 403) {
+            return `Permission denied: You don't have access to "${normalizedPath}".`;
+          }
+          if (
+            axiosError.response?.status === 404 ||
+            axiosError.response?.status === 500
+          ) {
+            return `Path not found: "${normalizedPath}" does not exist.`;
+          }
+          return error.message;
+        })()
       : "Failed to load file information."
     : null;
 
@@ -340,7 +340,9 @@ const FileBrowser: React.FC = () => {
           onToggleHiddenFiles={handleToggleHiddenFiles}
           viewIcon={viewIcon}
         />
-        <Box sx={{ px: 2, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <Box
+          sx={{ px: 2, display: "flex", flexDirection: "column", minHeight: 0 }}
+        >
           <BreadcrumbsNav
             path={normalizedPath}
             onNavigate={handleOpenDirectory}
@@ -352,7 +354,15 @@ const FileBrowser: React.FC = () => {
             resource.type === "directory" && (
               <SortBar sortOrder={sortOrder} onSortChange={handleSortChange} />
             )}
-          <Box sx={{ px: 2, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <Box
+            sx={{
+              px: 2,
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
             {isPending && <ComponentLoader />}
 
             {!isPending && errorMessage && (

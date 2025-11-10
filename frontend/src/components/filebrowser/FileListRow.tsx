@@ -37,7 +37,6 @@ const formatBytes = (bytes?: number) => {
 const FileListRow: React.FC<FileListRowProps> = React.memo(
   ({
     name,
-    type,
     size,
     modTime,
     isDirectory,
@@ -51,7 +50,9 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     const theme = useTheme();
     const [hovered, setHovered] = useState(false);
 
-    const formattedDate = modTime ? new Date(modTime).toLocaleDateString("en-GB") : "";
+    const formattedDate = modTime
+      ? new Date(modTime).toLocaleDateString("en-GB")
+      : "";
     const formattedSize = !isDirectory ? formatBytes(size) : "";
 
     const handleClick = useCallback(

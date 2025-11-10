@@ -88,7 +88,11 @@ const getIconForType = (filename?: string) => {
   return DescriptionIcon;
 };
 
-const getIconColor = (filename: string | undefined, hidden: boolean, isDark: boolean): string => {
+const getIconColor = (
+  filename: string | undefined,
+  hidden: boolean,
+  isDark: boolean,
+): string => {
   if (!filename) return isDark ? "#ffffff" : "rgba(0, 0, 0, 0.6)";
 
   const lastDotIndex = filename.lastIndexOf(".");
@@ -97,7 +101,27 @@ const getIconColor = (filename: string | undefined, hidden: boolean, isDark: boo
   const ext = filename.slice(lastDotIndex + 1).toLowerCase();
 
   // Code files - yellow/gold
-  if (["js", "ts", "tsx", "jsx", "py", "go", "cpp", "c", "java", "rs", "php", "rb", "sh", "bash", "json", "html", "css"].includes(ext)) {
+  if (
+    [
+      "js",
+      "ts",
+      "tsx",
+      "jsx",
+      "py",
+      "go",
+      "cpp",
+      "c",
+      "java",
+      "rs",
+      "php",
+      "rb",
+      "sh",
+      "bash",
+      "json",
+      "html",
+      "css",
+    ].includes(ext)
+  ) {
     return "#f9a825";
   }
 
@@ -105,7 +129,9 @@ const getIconColor = (filename: string | undefined, hidden: boolean, isDark: boo
   if (ext === "pdf") return "#d32f2f";
 
   // Images - purple
-  if (["png", "jpg", "jpeg", "gif", "svg", "bmp", "ico", "webp"].includes(ext)) {
+  if (
+    ["png", "jpg", "jpeg", "gif", "svg", "bmp", "ico", "webp"].includes(ext)
+  ) {
     return "#7b1fa2";
   }
 
@@ -130,7 +156,9 @@ const getIconColor = (filename: string | undefined, hidden: boolean, isDark: boo
   }
 
   // Documents - blue
-  if (["doc", "docx", "odt", "rtf", "txt", "md", "markdown", "log"].includes(ext)) {
+  if (
+    ["doc", "docx", "odt", "rtf", "txt", "md", "markdown", "log"].includes(ext)
+  ) {
     return "#1976d2";
   }
 
@@ -144,7 +172,13 @@ const getIconColor = (filename: string | undefined, hidden: boolean, isDark: boo
 };
 
 const FileIcon = React.memo(
-  ({ isDirectory, filename, hidden, size = 70, isSymlink = false }: FileIconProps) => {
+  ({
+    isDirectory,
+    filename,
+    hidden,
+    size = 70,
+    isSymlink = false,
+  }: FileIconProps) => {
     const theme = useTheme();
 
     const IconComponent = isDirectory ? FolderIcon : getIconForType(filename);
