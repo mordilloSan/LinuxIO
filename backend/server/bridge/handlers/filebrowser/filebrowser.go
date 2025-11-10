@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,28 +45,35 @@ func resourceGetHandler(c *gin.Context) {
 		args = append(args, "", "true")
 	}
 
-	// Set NDJSON streaming headers
-	c.Header("Content-Type", "application/x-ndjson")
-	c.Header("Transfer-Encoding", "chunked")
-
-	// Stream responses from bridge
-	err = bridge.CallWithSessionStream(sess, "filebrowser", "resource_get", args,
-		func(chunk []byte) error {
-			// Send chunk as NDJSON (one JSON object per line)
-			if _, writeErr := c.Writer.Write(chunk); writeErr != nil {
-				return writeErr
-			}
-			if _, writeErr := c.Writer.WriteString("\n"); writeErr != nil {
-				return writeErr
-			}
-			c.Writer.Flush()
-			return nil
-		})
-
+	data, err := bridge.CallWithSession(sess, "filebrowser", "resource_get", args)
 	if err != nil {
-		logger.Debugf("bridge streaming error: %v", err)
-		// Headers already sent, can't send error response
+		logger.Debugf("bridge error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
+		return
 	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+
+	if resp.Status != "ok" {
+		status := http.StatusInternalServerError
+		if strings.HasPrefix(resp.Error, "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	if resp.Output == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp.Output)
 }
 
 // resourceStatHandler returns extended metadata via bridge
@@ -383,14 +391,73 @@ func resourcePostDirectHandler(c *gin.Context) {
 		// Check if the file is complete
 		if (offset + chunkSize) >= totalSize {
 			outFile.Close()
-			// TODO: Move the completed file from temp location to final destination
+			if err := finalizeUpload(tempFilePath, realPath, override); err != nil {
+				logger.Debugf("could not finalize chunked upload: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to finalize upload"})
+				return
+			}
 		}
 
 		c.Status(http.StatusOK)
 		return
 	}
 
-	c.Status(http.StatusOK)
+	if err := writeFileFromBody(realPath, c.Request.Body, override); err != nil {
+		logger.Debugf("could not create file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create file"})
+		return
+	}
+
+	c.Status(http.StatusCreated)
+}
+
+func writeFileFromBody(path string, body io.ReadCloser, override bool) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
+	flags := os.O_CREATE | os.O_WRONLY
+	if override {
+		flags |= os.O_TRUNC
+	} else {
+		flags |= os.O_EXCL
+	}
+
+	file, err := os.OpenFile(path, flags, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if body == nil {
+		return nil
+	}
+
+	if _, err := io.Copy(file, body); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func finalizeUpload(tempFilePath, realPath string, override bool) error {
+	if err := os.MkdirAll(filepath.Dir(realPath), 0755); err != nil {
+		return err
+	}
+
+	if !override {
+		if _, err := os.Stat(realPath); err == nil {
+			return fmt.Errorf("destination already exists")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+
+	if err := os.Rename(tempFilePath, realPath); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // resourcePutDirectHandler handles direct file updates (streaming)

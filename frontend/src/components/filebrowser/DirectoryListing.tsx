@@ -204,32 +204,14 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     <Box
       ref={containerRef}
       onMouseDownCapture={handleContainerMouseDown}
+      className="custom-scrollbar"
       sx={{
         display: "flex",
         flexDirection: "column",
         gap: 2,
         overflowY: "auto",
+        overflowX: "hidden",
         height: "100%",
-        // Custom scrollbar styling
-        "&::-webkit-scrollbar": {
-          width: "6px",
-        },
-        "&::-webkit-scrollbar-track": {
-          background: "transparent",
-        },
-        "&::-webkit-scrollbar-thumb": {
-          background: (theme) =>
-            theme.palette.mode === "dark"
-              ? "rgba(255, 255, 255, 0.2)"
-              : "rgba(0, 0, 0, 0.2)",
-          borderRadius: "4px",
-        },
-        "&::-webkit-scrollbar-thumb:hover": {
-          background: (theme) =>
-            theme.palette.mode === "dark"
-              ? "rgba(255, 255, 255, 0.3)"
-              : "rgba(0, 0, 0, 0.3)",
-        },
       }}
     >
       <FoldersList
