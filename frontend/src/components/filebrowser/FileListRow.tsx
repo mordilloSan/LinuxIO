@@ -17,6 +17,9 @@ export interface FileListRowProps {
   onContextMenu?: (event: React.MouseEvent) => void;
 }
 
+const COLUMN_TEMPLATE =
+  "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
+
 const formatBytes = (bytes?: number) => {
   if (bytes === undefined || bytes === null) return "";
   const thresh = 1024;
@@ -95,30 +98,22 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
         onMouseLeave={() => setHovered(false)}
         style={{
           display: "grid",
-          gridTemplateColumns: "auto 1fr 150px 200px",
+          gridTemplateColumns: COLUMN_TEMPLATE,
           alignItems: "center",
-          gap: theme.spacing(2),
-          padding: theme.spacing(1.5, 2),
+
           backgroundColor: bgColor,
           cursor: "pointer",
           transition: "background-color 0.15s ease",
           borderRadius: theme.shape.borderRadius,
         }}
       >
-        {/* Icon */}
-        <div style={{ display: "flex", alignItems: "center", width: 24 }}>
-          <FileIcon
-            isDirectory={isDirectory}
-            filename={name}
-            hidden={hidden}
-            size={24}
-            isSymlink={isSymlink}
-          />
-        </div>
-
-        {/* Name */}
+        {/* Name and Icon */}
         <div
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.spacing(1.5),
+            padding: theme.spacing(1.5, 2),
             fontWeight: 500,
             fontSize: "0.9375rem",
             overflow: "hidden",
@@ -126,18 +121,36 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
             whiteSpace: "nowrap",
             color: theme.palette.text.primary,
             opacity: hidden ? 0.5 : undefined,
+            minWidth: 0,
           }}
         >
-          {name}
+          <div style={{ flexShrink: 0 }}>
+            <FileIcon
+              isDirectory={isDirectory}
+              filename={name}
+              hidden={hidden}
+              size={24}
+              isSymlink={isSymlink}
+            />
+          </div>
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {name}
+          </span>
         </div>
 
         {/* Size */}
         <div
           style={{
+            padding: theme.spacing(1.5, 2),
             fontSize: "0.875rem",
             color: theme.palette.text.secondary,
             opacity: hidden ? 0.5 : undefined,
-            textAlign: "right",
           }}
         >
           {formattedSize}
@@ -146,9 +159,13 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
         {/* Modified Date */}
         <div
           style={{
+            padding: theme.spacing(1.5, 2),
             fontSize: "0.875rem",
             color: theme.palette.text.secondary,
             opacity: hidden ? 0.5 : undefined,
+            display: "flex",
+            justifyContent: "center",
+            textAlign: "center",
           }}
         >
           {formattedDate}
