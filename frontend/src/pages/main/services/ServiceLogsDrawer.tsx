@@ -1,4 +1,4 @@
-import { Close } from "@mui/icons-material";
+import CloseIcon from "@mui/icons-material/Close";
 import {
   Drawer,
   Box,
@@ -52,7 +52,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
         >
           <Typography variant="h6">Logs: {serviceName}</Typography>
           <IconButton onClick={onClose}>
-            <Close />
+            <CloseIcon />
           </IconButton>
         </Box>
 

@@ -1,13 +1,11 @@
-import {
-  CreateNewFolder as CreateNewFolderIcon,
-  NoteAdd as NoteAddIcon,
-  Security as SecurityIcon,
-  ContentCopy as ContentCopyIcon,
-  DriveFileMove as DriveFileMoveIcon,
-  Delete as DeleteIcon,
-  Download as DownloadIcon,
-  Upload as UploadIcon,
-} from "@mui/icons-material";
+import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
+import NoteAddIcon from "@mui/icons-material/NoteAdd";
+import SecurityIcon from "@mui/icons-material/Security";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
+import DeleteIcon from "@mui/icons-material/Delete";
+import DownloadIcon from "@mui/icons-material/Download";
+import UploadIcon from "@mui/icons-material/Upload";
 import {
   Menu,
   MenuItem,

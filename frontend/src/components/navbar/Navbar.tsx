@@ -1,4 +1,4 @@
-import { Menu as MenuIcon } from "@mui/icons-material";
+import MenuIcon from "@mui/icons-material/Menu";
 import {
   Grid,
   InputBase,
