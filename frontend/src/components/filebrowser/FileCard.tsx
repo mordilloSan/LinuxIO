@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useCallback } from "react";
-import { alpha, useTheme } from "@mui/material/styles";
 import LinkIcon from "@mui/icons-material/Link";
+import { alpha, useTheme } from "@mui/material/styles";
+import React, { useMemo, useState, useCallback } from "react";
+
 import FileIcon from "@/components/filebrowser/FileIcon";
 
 export interface FileCardProps {
@@ -54,37 +55,31 @@ const FileCard: React.FC<FileCardProps> = React.memo(
       return date.toLocaleDateString("en-GB");
     }, [modTime]);
 
-    const baseBg = useMemo(
-      () => {
-        if (selected) {
-          return alpha(theme.palette.primary.main, 0.4);
-        }
-        return theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
-      },
-      [selected, theme],
+    const baseBg = useMemo(() => {
+      if (selected) {
+        return alpha(theme.palette.primary.main, 0.4);
+      }
+      return theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
+    }, [selected, theme]);
+
+    const hoverBg = useMemo(() => {
+      if (selected) {
+        return alpha(theme.palette.primary.main, 0.4);
+      }
+      return theme.palette.mode === "dark" ? "#2a3540" : "#f5f5f5";
+    }, [selected, theme]);
+
+    const baseBorderColor = alpha(
+      theme.palette.divider,
+      theme.palette.mode === "dark" ? 0.15 : 0.1,
     );
 
-    const hoverBg = useMemo(
-      () => {
-        if (selected) {
-          return alpha(theme.palette.primary.main, 0.4);
-        }
-        return theme.palette.mode === "dark" ? "#2a3540" : "#f5f5f5";
-      },
-      [selected, theme],
-    );
-
-    const baseBorderColor = alpha(theme.palette.divider, theme.palette.mode === "dark" ? 0.15 : 0.1);
-
-    const borderColor = useMemo(
-      () => {
-        if (selected) {
-          return alpha(theme.palette.primary.main, 0.7);
-        }
-        return isDirectory ? baseBorderColor : "transparent";
-      },
-      [selected, isDirectory, theme, baseBorderColor],
-    );
+    const borderColor = useMemo(() => {
+      if (selected) {
+        return alpha(theme.palette.primary.main, 0.7);
+      }
+      return isDirectory ? baseBorderColor : "transparent";
+    }, [selected, isDirectory, theme, baseBorderColor]);
 
     const textOpacity = isDirectory ? 1 : 0.5;
 
@@ -140,7 +135,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
         >
           <div
             style={{
-              fontWeight:  450,
+              fontWeight: 450,
               fontSize: "0.95rem",
               overflow: "hidden",
               textOverflow: "ellipsis",

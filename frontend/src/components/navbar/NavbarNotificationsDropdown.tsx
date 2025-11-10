@@ -11,7 +11,10 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import { Bell, Home, UserPlus, Server } from "lucide-react";
+import Bell from "lucide-react/dist/esm/icons/bell";
+import Home from "lucide-react/dist/esm/icons/home";
+import Server from "lucide-react/dist/esm/icons/server";
+import UserPlus from "lucide-react/dist/esm/icons/user-plus";
 import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
