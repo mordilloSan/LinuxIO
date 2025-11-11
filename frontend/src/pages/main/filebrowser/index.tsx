@@ -326,6 +326,10 @@ const FileBrowser: React.FC = () => {
     window.open(url, "_blank", "noopener,noreferrer");
   }, []);
 
+  const handleDoubleClickFile = useCallback((item: FileItem) => {
+    setDetailTarget([item.path]);
+  }, []);
+
   const handleDownloadCurrent = useCallback((path: string) => {
     const url = buildDownloadUrl(path);
     window.open(url, "_blank", "noopener,noreferrer");
@@ -510,7 +514,7 @@ const FileBrowser: React.FC = () => {
                   sortField={sortField}
                   sortOrder={sortOrder}
                   onOpenDirectory={handleOpenDirectory}
-                  onDownloadFile={handleDownloadFile}
+                  onDownloadFile={handleDoubleClickFile}
                   selectedPaths={selectedPaths}
                   onSelectedPathsChange={setSelectedPaths}
                   isContextMenuOpen={Boolean(contextMenuPosition)}
