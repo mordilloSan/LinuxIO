@@ -1,4 +1,5 @@
 import { alpha, useTheme } from "@mui/material/styles";
+import { CircularProgress } from "@mui/material";
 import React, { useMemo, useState, useCallback } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
@@ -14,6 +15,9 @@ export interface FileCardProps {
   isSymlink?: boolean;
   selected?: boolean;
   hidden?: boolean;
+  directorySizeLoading?: boolean;
+  directorySizeError?: Error | null;
+  directorySizeUnavailable?: boolean;
   onClick: (event: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
@@ -28,6 +32,9 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     isSymlink = false,
     selected = false,
     hidden = false,
+    directorySizeLoading = false,
+    directorySizeError = null,
+    directorySizeUnavailable = false,
     onClick,
     onDoubleClick,
     onContextMenu,
@@ -112,6 +119,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           minHeight: "60px",
           transition: "all 120ms ease",
           transform: hovered ? "translateY(-2px) scale(1.01)" : "none",
+          userSelect: "none",
         }}
       >
         <FileIcon
@@ -144,6 +152,33 @@ const FileCard: React.FC<FileCardProps> = React.memo(
             {name}
           </div>
 
+          {/* Size line (middle) */}
+          <div
+            style={{
+              fontSize: "0.90rem",
+              color: directorySizeUnavailable
+                ? theme.palette.error.main
+                : theme.palette.text.secondary,
+              gap: theme.spacing(0.5),
+              lineHeight: 1.2,
+              opacity: metadataOpacity,
+              display: "flex",
+              alignItems: "center",
+              height: "1.2em",
+            }}
+            title={directorySizeError?.message}
+          >
+            {directorySizeLoading ? (
+              <CircularProgress size={14} thickness={3} />
+            ) : directorySizeUnavailable ? (
+              <span style={{ fontSize: "0.85rem" }}>⚠</span>
+            ) : size !== undefined ? (
+              formatFileSize(size, 1, "")
+            ) : (
+              "—"
+            )}
+          </div>
+
           <div
             style={{
               fontSize: "0.90rem",
@@ -155,20 +190,6 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           >
             {formattedDate}
           </div>
-
-          {!isDirectory && size !== undefined && (
-            <div
-              style={{
-                fontSize: "0.90rem",
-                color: theme.palette.text.secondary,
-                gap: theme.spacing(0.5),
-                lineHeight: 1.2,
-                opacity: metadataOpacity,
-              }}
-            >
-              {formatFileSize(size, 1, "")}
-            </div>
-          )}
         </div>
       </div>
     );

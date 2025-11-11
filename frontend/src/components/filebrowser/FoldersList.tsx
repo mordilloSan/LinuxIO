@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 import { FileItem, ViewMode } from "../../types/filebrowser";
 
 import FileCard from "@/components/filebrowser/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
+import { useDirectorySize } from "@/hooks/useDirectorySize";
 
 interface FoldersListProps {
   folders: FileItem[];
@@ -13,6 +14,55 @@ interface FoldersListProps {
   onOpenDirectory: (path: string) => void;
   onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
 }
+
+interface FolderItemProps {
+  folder: FileItem;
+  selected: boolean;
+  viewMode: ViewMode;
+  onFolderClick: (event: React.MouseEvent, path: string) => void;
+  onOpenDirectory: (path: string) => void;
+  onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+}
+
+const FolderItem: React.FC<FolderItemProps> = React.memo(
+  ({
+    folder,
+    selected,
+    viewMode,
+    onFolderClick,
+    onOpenDirectory,
+    onFolderContextMenu,
+  }) => {
+    // Skip size calculation for symlinks
+    const { size, isLoading, error, isUnavailable } = useDirectorySize(
+    folder.symlink ? "" : (folder.path || ""),
+  );
+    const ItemComponent = viewMode === "list" ? FileListRow : FileCard;
+
+    return (
+      <ItemComponent
+        key={`${folder.path}-${folder.name}`}
+        path={folder.path}
+        name={folder.name}
+        type={folder.type}
+        size={folder.symlink ? undefined : (size ?? folder.size)}
+        modTime={folder.modTime}
+        isDirectory={true}
+        isSymlink={folder.symlink}
+        hidden={folder.hidden}
+        selected={selected}
+        directorySizeLoading={isLoading}
+        directorySizeError={error}
+        directorySizeUnavailable={isUnavailable}
+        onClick={(event) => onFolderClick(event, folder.path)}
+        onDoubleClick={() => onOpenDirectory(folder.path)}
+        onContextMenu={(event) => onFolderContextMenu(event, folder.path)}
+      />
+    );
+  },
+);
+
+FolderItem.displayName = "FolderItem";
 
 const FoldersList: React.FC<FoldersListProps> = React.memo(
   ({
@@ -26,8 +76,6 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
     if (folders.length === 0) {
       return null;
     }
-
-    const ItemComponent = viewMode === "list" ? FileListRow : FileCard;
 
     return (
       <div>
@@ -55,20 +103,14 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
           }}
         >
           {folders.map((folder) => (
-            <ItemComponent
+            <FolderItem
               key={`${folder.path}-${folder.name}`}
-              path={folder.path}
-              name={folder.name}
-              type={folder.type}
-              size={folder.size}
-              modTime={folder.modTime}
-              isDirectory={true}
-              isSymlink={folder.symlink}
-              hidden={folder.hidden}
+              folder={folder}
               selected={selectedPaths.has(folder.path)}
-              onClick={(event) => onFolderClick(event, folder.path)}
-              onDoubleClick={() => onOpenDirectory(folder.path)}
-              onContextMenu={(event) => onFolderContextMenu(event, folder.path)}
+              viewMode={viewMode}
+              onFolderClick={onFolderClick}
+              onOpenDirectory={onOpenDirectory}
+              onFolderContextMenu={onFolderContextMenu}
             />
           ))}
         </div>

@@ -235,25 +235,32 @@ func CalculateDirectorySize(root string) (*DirectoryStats, error) {
 	// count root
 	stats.FolderCount.Add(1)
 
-	// bump channel to 8k
-	dirCh := make(chan string, 8192)
+	// bump workers a bit
+	workerCount := runtime.NumCPU() * 6
+
+	// Very large channel buffer to avoid blocking on sends
+	// Most filesystems won't have more directories than this at once
+	dirCh := make(chan string, 65536)
 
 	// hardlink dedupe
 	visited := make(map[uint64]bool)
 	var visitedMu sync.Mutex
 
-	// how many dirs are “in flight”
+	// how many dirs are "in flight"
 	var pending sync.WaitGroup
 	pending.Add(1) // root
 
-	// bump workers a bit
-	workerCount := runtime.NumCPU() * 6
 	var workers sync.WaitGroup
 	workers.Add(workerCount)
 
 	for i := 0; i < workerCount; i++ {
 		go func() {
 			defer workers.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					// Log panic but don't crash the process
+				}
+			}()
 			for dir := range dirCh {
 				processDir(dir, stats, dirCh, &pending, visited, &visitedMu)
 				// finished this dir
@@ -285,14 +292,19 @@ func processDir(
 	visited map[uint64]bool,
 	visitedMu *sync.Mutex,
 ) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Prevent panics from crashing the worker goroutines
+		}
+	}()
+
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
-		// already counted when enqueued
+		// Silently continue on permission denied or other read errors
 		return
 	}
 
 	for _, entry := range entries {
-		// keep: skip symlinks
 		if entry.Type()&os.ModeSymlink != 0 {
 			continue
 		}
@@ -300,22 +312,21 @@ func processDir(
 		if entry.IsDir() {
 			stats.FolderCount.Add(1)
 			sub := filepath.Join(dirPath, entry.Name())
-
-			// announce new work
 			pending.Add(1)
 
-			// non-blocking enqueue; if full, offload send
+			// Non-blocking send with fallback: either send directly or spawn helper
 			select {
 			case dirCh <- sub:
+				// Successfully sent to channel
 			default:
-				go func(p string) {
-					dirCh <- p
+				// Channel full, spawn helper goroutine to avoid blocking
+				go func(path string) {
+					dirCh <- path
 				}(sub)
 			}
 			continue
 		}
 
-		// file branch
 		info, err := entry.Info()
 		if err != nil {
 			stats.FileCount.Add(1)
@@ -324,26 +335,30 @@ func processDir(
 
 		stats.FileCount.Add(1)
 
-		// Nlink fast-path: only dedupe when Nlink > 1
+		// get stat_t to read Blocks
 		st, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || st.Nlink <= 1 {
-			// most files will hit this path
+		if !ok {
+			// fallback to logical size
 			stats.TotalSize.Add(info.Size())
 			continue
 		}
 
-		// slow path: dedupe by inode
-		inode := st.Ino
-		if inode != 0 {
+		// hardlink fast-path – this part can stay
+		if st.Nlink > 1 {
+			inode := st.Ino
 			visitedMu.Lock()
 			if !visited[inode] {
 				visited[inode] = true
-				stats.TotalSize.Add(info.Size())
+				// use on-disk size, not logical size
+				diskBytes := st.Blocks * 512
+				stats.TotalSize.Add(diskBytes)
 			}
 			visitedMu.Unlock()
-		} else {
-			// fallback
-			stats.TotalSize.Add(info.Size())
+			continue
 		}
+
+		// normal file: use on-disk size
+		diskBytes := st.Blocks * 512
+		stats.TotalSize.Add(diskBytes)
 	}
 }

@@ -31,6 +31,7 @@ interface DirectoryListingProps {
   selectedPaths: Set<string>;
   onSelectedPathsChange: (paths: Set<string>) => void;
   isContextMenuOpen: boolean;
+  onDelete?: () => void;
 }
 
 const DirectoryListing: React.FC<DirectoryListingProps> = ({
@@ -44,8 +45,10 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   selectedPaths,
   onSelectedPathsChange,
   isContextMenuOpen,
+  onDelete,
 }) => {
   const [focusedIndex, setFocusedIndex] = useState<number>(0);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number>(-1);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const clearSelection = useCallback(() => {
@@ -111,6 +114,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     selectedPaths,
     onFocusChange: setFocusedIndex,
     onSelectionChange: onSelectedPathsChange,
+    onDelete: onDelete,
     global: true, // Enable global keyboard navigation
   });
 
@@ -150,8 +154,24 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
 
   const handleItemSelection = useCallback(
     (event: React.MouseEvent, path: string) => {
+      const currentIndex = allItems.findIndex((item) => item.path === path);
+      if (currentIndex === -1) return;
+
       focusItemByPath(path);
-      if (event.ctrlKey || event.metaKey) {
+
+      if (event.shiftKey && lastSelectedIndex !== -1) {
+        // Shift+click: select range from lastSelectedIndex to currentIndex
+        const start = Math.min(lastSelectedIndex, currentIndex);
+        const end = Math.max(lastSelectedIndex, currentIndex);
+        const next = new Set(selectedPaths);
+
+        for (let i = start; i <= end; i++) {
+          next.add(allItems[i].path);
+        }
+        onSelectedPathsChange(next);
+        setLastSelectedIndex(currentIndex);
+      } else if (event.ctrlKey || event.metaKey) {
+        // Ctrl/Cmd+click: toggle selection
         const next = new Set(selectedPaths);
         if (next.has(path)) {
           next.delete(path);
@@ -159,22 +179,29 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
           next.add(path);
         }
         onSelectedPathsChange(next);
+        setLastSelectedIndex(currentIndex);
       } else {
+        // Regular click: single selection
         onSelectedPathsChange(new Set([path]));
+        setLastSelectedIndex(currentIndex);
       }
     },
-    [focusItemByPath, selectedPaths, onSelectedPathsChange],
+    [focusItemByPath, selectedPaths, onSelectedPathsChange, allItems, lastSelectedIndex],
   );
 
   const handleItemContextMenu = useCallback(
     (event: React.MouseEvent, path: string) => {
       event.preventDefault();
+      const currentIndex = allItems.findIndex((item) => item.path === path);
+      if (currentIndex === -1) return;
+
       focusItemByPath(path);
       if (!selectedPaths.has(path)) {
         onSelectedPathsChange(new Set([path]));
       }
+      setLastSelectedIndex(currentIndex);
     },
-    [focusItemByPath, selectedPaths, onSelectedPathsChange],
+    [focusItemByPath, selectedPaths, onSelectedPathsChange, allItems],
   );
 
   const handleContainerMouseDown = useCallback(

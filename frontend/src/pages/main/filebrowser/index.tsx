@@ -514,6 +514,7 @@ const FileBrowser: React.FC = () => {
                   selectedPaths={selectedPaths}
                   onSelectedPathsChange={setSelectedPaths}
                   isContextMenuOpen={Boolean(contextMenuPosition)}
+                  onDelete={handleDelete}
                 />
               )}
 
