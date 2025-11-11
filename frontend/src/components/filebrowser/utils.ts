@@ -31,8 +31,7 @@ export const normalizeResource = (data: ApiResource): FileResource => {
 };
 
 export const buildDownloadUrl = (path: string, inline = false) => {
-  const filesParam = encodeURIComponent(path);
-  const search = new URLSearchParams({ files: filesParam });
+  const search = new URLSearchParams({ files: path });
   if (inline) search.set("inline", "true");
   return `/navigator/api/raw?${search.toString()}`;
 };
