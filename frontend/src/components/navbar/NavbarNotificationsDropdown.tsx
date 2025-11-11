@@ -45,10 +45,11 @@ function Notification({
 function NavbarNotificationsDropdown() {
   const theme = useTheme();
   const ref = useRef<HTMLButtonElement>(null);
-  const [isOpen, setOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
+  const isOpen = Boolean(anchorEl);
 
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+  const handleOpen = () => setAnchorEl(ref.current);
+  const handleClose = () => setAnchorEl(null);
 
   return (
     <>
@@ -70,7 +71,7 @@ function NavbarNotificationsDropdown() {
 
       <Popover
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        anchorEl={ref.current}
+        anchorEl={anchorEl}
         onClose={handleClose}
         open={isOpen}
         slotProps={{

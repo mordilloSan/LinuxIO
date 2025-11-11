@@ -279,7 +279,6 @@ const FileBrowser: React.FC = () => {
       queryKey: ["fileEdit", editingPath],
       queryFn: async () => {
         if (!editingPath) throw new Error("No editing path");
-        console.log("Loading file for editing:", editingPath);
         const { data } = await axios.get<ApiResource>(
           "/navigator/api/resources",
           {
@@ -349,11 +348,6 @@ const FileBrowser: React.FC = () => {
     },
     [navigate],
   );
-
-  const handleDownloadFile = useCallback((item: FileItem) => {
-    const url = buildDownloadUrl(item.path);
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, []);
 
   const handleDoubleClickFile = useCallback((item: FileItem) => {
     setDetailTarget([item.path]);

@@ -77,7 +77,13 @@ const FileCard: React.FC<FileCardProps> = React.memo(
         return "transparent";
       }
       return hidden ? alpha(baseBorderColor, 0.05) : baseBorderColor;
-    }, [selected, isDirectory, baseBorderColor, hidden]);
+    }, [
+      selected,
+      isDirectory,
+      baseBorderColor,
+      hidden,
+      theme.palette.primary.main,
+    ]);
 
     // Keep file and folder titles consistent while still dimming supporting text
     const metadataOpacity = isDirectory ? 0.85 : 0.65;

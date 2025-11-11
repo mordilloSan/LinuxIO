@@ -87,12 +87,15 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     }
   }, [autoRefresh, onRefresh, open]);
 
-  // Reset search/autorefresh when closed
+  // Reset form when dialog closes
+  const prevOpen = useRef(open);
   useEffect(() => {
-    if (!open) {
+    if (prevOpen.current && !open) {
+      // Dialog just closed - reset form
       setSearch("");
       setAutoRefresh(autoRefreshDefault);
     }
+    prevOpen.current = open;
   }, [open, autoRefreshDefault]);
 
   return (

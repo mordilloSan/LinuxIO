@@ -137,10 +137,13 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     };
   }, [clearSelection, isContextMenuOpen]);
 
-  // Clear selection when changing directories
+  // Clear selection and reset focus when changing directories
+  useEffect(() => {
+    setFocusedIndex(0);
+  }, [resource.path]);
+
   useEffect(() => {
     onSelectedPathsChange(new Set());
-    setFocusedIndex(0);
   }, [resource.path, onSelectedPathsChange]);
 
   const focusItemByPath = useCallback(
