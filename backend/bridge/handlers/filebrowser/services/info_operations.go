@@ -9,9 +9,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
+
+	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 // FileInfoFaster retrieves file/directory information quickly
@@ -218,10 +220,95 @@ type DirectoryStats struct {
 	FolderCount atomic.Int64
 }
 
-// CalculateDirectorySize recursively calculates the total size of a directory
+// IMPORTANT!
+// we do this to prevent multiple calls that would just blow up and kill the bridge.
+
+// CachedDirectoryStats holds cached size info with timestamp
+type CachedDirectoryStats struct {
+	stats     *DirectoryStats
+	timestamp time.Time
+}
+
+// DirectorySizeCache manages caching of directory size calculations with deduplication
+type DirectorySizeCache struct {
+	mu       sync.Mutex
+	cache    map[string]*CachedDirectoryStats
+	inFlight map[string]chan struct{} // path -> "done" signal
+	cacheTTL time.Duration
+}
+
+var dirSizeCache = &DirectorySizeCache{
+	cache:    make(map[string]*CachedDirectoryStats),
+	inFlight: make(map[string]chan struct{}),
+	cacheTTL: 10 * time.Second,
+}
+
+func getOrCalculateDirectorySize(root string) (*DirectoryStats, error) {
+	dirSizeCache.mu.Lock()
+
+	// 1) check fresh cache
+	if cached, exists := dirSizeCache.cache[root]; exists {
+		if time.Since(cached.timestamp) < dirSizeCache.cacheTTL {
+			dirSizeCache.mu.Unlock()
+			logger.Debugf("cache hit for %s", root)
+			return cached.stats, nil
+		}
+		// expired
+		delete(dirSizeCache.cache, root)
+	}
+
+	// 2) is someone already computing this?
+	if ch, inFlight := dirSizeCache.inFlight[root]; inFlight {
+		// wait for them to finish
+		dirSizeCache.mu.Unlock()
+		logger.Debugf("waiting for in-flight scan of %s", root)
+		<-ch // will unblock when the channel is closed
+
+		// after it’s done, read from cache
+		dirSizeCache.mu.Lock()
+		cached := dirSizeCache.cache[root]
+		dirSizeCache.mu.Unlock()
+
+		if cached != nil {
+			return cached.stats, nil
+		}
+		// if we get here, the first computation failed and didn’t cache
+		return nil, fmt.Errorf("directory scan for %s finished without cached result", root)
+	}
+
+	// 3) we are the first -> create signal channel
+	doneCh := make(chan struct{})
+	dirSizeCache.inFlight[root] = doneCh
+	dirSizeCache.mu.Unlock()
+
+	// ---- do the heavy work outside the lock ----
+	stats, err := calculateDirectorySizeImpl(root)
+
+	// ---- now publish result ----
+	dirSizeCache.mu.Lock()
+	if err == nil && stats != nil {
+		dirSizeCache.cache[root] = &CachedDirectoryStats{
+			stats:     stats,
+			timestamp: time.Now(),
+		}
+	}
+	// remove from inFlight and close to wake ALL waiters
+	delete(dirSizeCache.inFlight, root)
+	close(doneCh)
+	dirSizeCache.mu.Unlock()
+
+	return stats, err
+}
+
+// CalculateDirectorySize is the public entry point that uses caching
+func CalculateDirectorySize(root string) (*DirectoryStats, error) {
+	return getOrCalculateDirectorySize(root)
+}
+
+// calculateDirectorySizeImpl recursively calculates the total size of a directory
 // and counts files and folders using faster os.ReadDir instead of filepath.Walk
 // Resolves symlinks in the input path so users can explicitly request symlinked directories
-func CalculateDirectorySize(root string) (*DirectoryStats, error) {
+func calculateDirectorySizeImpl(root string) (*DirectoryStats, error) {
 	stats := &DirectoryStats{}
 
 	realRoot, err := filepath.EvalSymlinks(root)
