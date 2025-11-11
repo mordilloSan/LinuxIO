@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
+	"github.com/mordilloSan/go_logger/logger"
 )
 
 // FileInfoFaster retrieves file/directory information quickly
@@ -254,7 +255,7 @@ func CalculateDirectorySize(root string) (*DirectoryStats, error) {
 			defer workers.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					// Log panic but don't crash the process
+					logger.Warnf("recovered from panic in directory size worker: %v", r)
 				}
 			}()
 			for dir := range dirCh {
@@ -290,7 +291,7 @@ func processDir(
 ) {
 	defer func() {
 		if r := recover(); r != nil {
-			// Prevent panics from crashing the worker goroutines
+			logger.Warnf("recovered from panic in processDir(%s): %v", dirPath, r)
 		}
 	}()
 
