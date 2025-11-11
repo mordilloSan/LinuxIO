@@ -403,9 +403,9 @@ func dirSize(args []string) (any, error) {
 
 	return map[string]any{
 		"path":        path,
-		"size":        stats.TotalSize,
-		"fileCount":   stats.FileCount,
-		"folderCount": stats.FolderCount,
+		"size":        stats.TotalSize.Load(),
+		"fileCount":   stats.FileCount.Load(),
+		"folderCount": stats.FolderCount.Load(),
 	}, nil
 }
 
@@ -456,12 +456,12 @@ func multiStats(args []string) (any, error) {
 				itemInfo["fileCount"] = int64(0)
 				itemInfo["folderCount"] = int64(0)
 			} else {
-				itemInfo["size"] = stats.TotalSize
-				itemInfo["fileCount"] = stats.FileCount
-				itemInfo["folderCount"] = stats.FolderCount
-				totalSize += stats.TotalSize
-				totalFiles += stats.FileCount
-				totalFolders += stats.FolderCount
+				itemInfo["size"] = stats.TotalSize.Load()
+				itemInfo["fileCount"] = stats.FileCount.Load()
+				itemInfo["folderCount"] = stats.FolderCount.Load()
+				totalSize += stats.TotalSize.Load()
+				totalFiles += stats.FileCount.Load()
+				totalFolders += stats.FolderCount.Load()
 			}
 		} else {
 			itemInfo["size"] = stat.Size()
