@@ -1,13 +1,13 @@
-package config
+package userconfig
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/userconfig"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 type themePayload struct {
@@ -30,7 +30,7 @@ func themeGet(args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:missing username")
 	}
 	username := args[0]
-	cfg, cfgPath, err := userconfig.Load(username)
+	cfg, cfgPath, err := Load(username)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
@@ -49,7 +49,7 @@ func themeSet(args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:invalid request body")
 	}
 
-	cfg, _, err := userconfig.Load(username)
+	cfg, _, err := Load(username)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
@@ -64,7 +64,7 @@ func themeSet(args []string) (any, error) {
 		next.Theme = t
 	}
 	if payload.PrimaryColor != nil {
-		if !userconfig.IsValidCSSColor(*payload.PrimaryColor) {
+		if !IsValidCSSColor(*payload.PrimaryColor) {
 			return nil, fmt.Errorf("bad_request:invalid primaryColor")
 		}
 		next.PrimaryColor = *payload.PrimaryColor
@@ -79,7 +79,7 @@ func themeSet(args []string) (any, error) {
 	}
 
 	cfg.AppSettings = next
-	cfgPath, err := userconfig.Save(username, cfg)
+	cfgPath, err := Save(username, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("save config: %w", err)
 	}
