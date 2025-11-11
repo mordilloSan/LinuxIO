@@ -9,17 +9,17 @@ import (
 
 // RouteChannel represents a subscription to a specific route
 type RouteChannel struct {
-	Route      string
-	ctx        context.Context
-	cancel     context.CancelFunc
+	Route  string
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // ChannelManager manages route subscriptions for a WebSocket connection
 type ChannelManager struct {
-	mu             sync.Mutex
-	activeRoute    string
-	routes         map[string]*RouteChannel
-	parentCtx      context.Context
+	mu          sync.Mutex
+	activeRoute string
+	routes      map[string]*RouteChannel
+	parentCtx   context.Context
 }
 
 // NewChannelManager creates a new channel manager
