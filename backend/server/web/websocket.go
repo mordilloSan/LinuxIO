@@ -267,6 +267,21 @@ func WebSocketHandler(c *gin.Context) {
 				}
 				shells := extractStringSlice(resp.Output)
 				_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: shells})
+			} else {
+				// List shells for main terminal
+				raw, err := bridge.CallWithSession(sess, "terminal", "list_shells_main", nil)
+				if err != nil {
+					_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", Data: []string{""}, Error: err.Error()})
+					continue
+				}
+				var resp ipc.Response
+				_ = json.Unmarshal(raw, &resp)
+				if strings.ToLower(resp.Status) != "ok" {
+					_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", Data: []string{""}, Error: resp.Error})
+					continue
+				}
+				shells := extractStringSlice(resp.Output)
+				_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", Data: shells})
 			}
 
 		case "terminal_close":
