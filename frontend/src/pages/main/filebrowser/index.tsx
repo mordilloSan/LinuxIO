@@ -39,6 +39,7 @@ import {
   FileResource,
   FileItem,
   MultiStatsResponse,
+  ResourceStatData,
 } from "@/types/filebrowser";
 import axios from "@/utils/axios"; // Still used for mutations (create, delete)
 
@@ -239,6 +240,28 @@ const FileBrowser: React.FC = () => {
       },
       enabled: hasSingleDetailTarget && detailResource?.type === "directory",
     });
+
+  // For stat data (permissions and ownership) on single item
+  const {
+    data: statData,
+    isPending: isStatPending,
+  } = useQuery<ResourceStatData>({
+    queryKey: ["fileStat", detailTarget],
+    queryFn: async () => {
+      const currentDetailTarget = detailTarget;
+      if (!currentDetailTarget || currentDetailTarget.length !== 1) {
+        throw new Error("Invalid selection");
+      }
+      const { data } = await axios.get<ResourceStatData>(
+        "/navigator/api/resources/stat",
+        {
+          params: { path: currentDetailTarget[0] },
+        },
+      );
+      return data;
+    },
+    enabled: hasSingleDetailTarget,
+  });
 
   // For multiple items
   const {
@@ -570,6 +593,8 @@ const FileBrowser: React.FC = () => {
               fileCount={directorySizeData?.fileCount}
               folderCount={directorySizeData?.folderCount}
               isLoadingDirectorySize={isDirectorySizePending}
+              statData={statData}
+              isLoadingStat={isStatPending}
             />
           )}
           {multiStatsData && (

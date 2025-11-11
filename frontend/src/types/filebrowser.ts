@@ -1,6 +1,6 @@
 export type ViewMode = "card" | "list";
 
-export type ApiItem = {
+type ItemMetadata = {
   name: string;
   type: string;
   size?: number;
@@ -11,25 +11,24 @@ export type ApiItem = {
   symlink?: boolean;
 };
 
-export type ApiResource = {
-  name: string;
+type ItemWithPath = ItemMetadata & {
   path: string;
-  type: string;
-  size?: number;
+};
+
+export type ApiItem = ItemMetadata;
+
+type DirectoryListing = {
   files?: ApiItem[];
   folders?: ApiItem[];
-  content?: string;
   parentDirItems?: ApiItem[];
-  modTime?: string;
-  modified?: string;
-  hidden?: boolean;
-  hasPreview?: boolean;
-  symlink?: boolean;
 };
 
-export type FileItem = ApiItem & {
-  path: string;
-};
+export type ApiResource = ItemWithPath &
+  DirectoryListing & {
+    content?: string;
+  };
+
+export type FileItem = ItemWithPath;
 
 export type FileResource = Omit<ApiResource, "files" | "folders"> & {
   items?: FileItem[];
@@ -38,11 +37,20 @@ export type FileResource = Omit<ApiResource, "files" | "folders"> & {
 export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
 
-export type MultiStatsItem = {
+export type ResourceStatData = {
+  mode: string;
+  owner: string;
+  group: string;
+  size: number;
+  modified: string;
+  raw: string;
+  permissions: string;
   path: string;
+  realPath: string;
   name: string;
-  type: string;
-  size?: number;
+};
+
+export type MultiStatsItem = Pick<FileItem, "path" | "name" | "type" | "size"> & {
   fileCount?: number;
   folderCount?: number;
 };

@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import React from "react";
 
-import { FileResource } from "../../types/filebrowser";
+import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
@@ -26,6 +26,8 @@ interface FileDetailProps {
   fileCount?: number | null;
   folderCount?: number | null;
   isLoadingDirectorySize?: boolean;
+  statData?: ResourceStatData | null;
+  isLoadingStat?: boolean;
 }
 
 const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
@@ -54,6 +56,8 @@ const FileDetail: React.FC<FileDetailProps> = ({
   fileCount,
   folderCount,
   isLoadingDirectorySize,
+  statData,
+  isLoadingStat,
 }) => {
   if (!resource) {
     return (
@@ -171,6 +175,31 @@ const FileDetail: React.FC<FileDetailProps> = ({
           value={formatDate(resource.modified || resource.modTime)}
         />
       </Stack>
+
+      {/* Permissions and Ownership Section */}
+      {statData && (
+        <>
+          <Divider />
+          <Typography variant="subtitle2" fontWeight={600}>
+            Permissions & Ownership
+          </Typography>
+          <Stack spacing={1.5}>
+            <DetailRow label="Mode" value={statData.mode} />
+            <DetailRow label="Owner" value={statData.owner} />
+            <DetailRow label="Group" value={statData.group} />
+            <DetailRow label="Permissions" value={statData.permissions} />
+          </Stack>
+        </>
+      )}
+      {isLoadingStat && (
+        <>
+          <Divider />
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <CircularProgress size={16} />
+            <Typography variant="body2">Loading permissions...</Typography>
+          </Box>
+        </>
+      )}
 
       {/* Content preview for text files */}
       {resource.content && (

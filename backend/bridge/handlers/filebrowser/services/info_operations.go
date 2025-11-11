@@ -5,6 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 )
@@ -212,39 +215,101 @@ func processContent(info *iteminfo.ExtendedFileInfo) {
 
 // DirectoryStats contains statistics about a directory
 type DirectoryStats struct {
-	TotalSize   int64
-	FileCount   int64
-	FolderCount int64
+	TotalSize   atomic.Int64
+	FileCount   atomic.Int64
+	FolderCount atomic.Int64
 }
 
 // CalculateDirectorySize recursively calculates the total size of a directory
-// and counts files and folders
+// and counts files and folders using faster os.ReadDir instead of filepath.Walk
+// Resolves symlinks in the input path so users can explicitly request symlinked directories
 func CalculateDirectorySize(path string) (*DirectoryStats, error) {
 	stats := &DirectoryStats{}
+	var wg sync.WaitGroup
+	visitedInodes := make(map[uint64]bool)
+	var inodeMu sync.Mutex
 
-	err := filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
-		if err != nil {
-			// Skip files/directories we can't access
-			return nil
-		}
-
-		// Skip the root directory itself
-		if filePath == path {
-			return nil
-		}
-
-		if info.IsDir() {
-			stats.FolderCount++
-		} else {
-			stats.FileCount++
-			stats.TotalSize += info.Size()
-		}
-		return nil
-	})
-
+	// Resolve symlinks in the input path (allows users to explicitly traverse symlinked dirs)
+	realPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return nil, err
+		// If EvalSymlinks fails, use the original path
+		realPath = path
 	}
 
+	calculateDirSizeRecursive(realPath, stats, &wg, visitedInodes, &inodeMu)
+	wg.Wait()
 	return stats, nil
+}
+
+// calculateDirSizeRecursive is a helper function that recursively calculates directory stats
+// Uses os.ReadDir which is faster than filepath.Walk
+// IMPORTANT: Only calls entry.Info() for files, not directories (huge performance improvement)
+// Also skips symlinks to avoid loops and double-counting
+// Uses goroutines to parallelize subdirectory traversal for maximum performance
+// Uses atomic operations for lock-free counting (much faster than mutexes)
+// Gracefully handles permission errors - counts inaccessible files/folders anyway (like `find` does)
+// Tracks inodes to avoid double-counting hardlinks
+func calculateDirSizeRecursive(path string, stats *DirectoryStats, wg *sync.WaitGroup, visitedInodes map[uint64]bool, inodeMu *sync.Mutex) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		// Permission denied or other error reading directory
+		// Still try to stat the directory itself to count it
+		if _, err := os.Stat(path); err == nil {
+			stats.FolderCount.Add(1)
+		}
+		return
+	}
+
+	for _, entry := range entries {
+		// Skip symlinks to avoid infinite loops and double-counting
+		if entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+
+		if entry.IsDir() {
+			// For directories, count it (atomic - no lock needed)
+			stats.FolderCount.Add(1)
+
+			// Recursively process subdirectories in parallel
+			subPath := filepath.Join(path, entry.Name())
+			wg.Add(1)
+			go func(p string) {
+				defer wg.Done()
+				calculateDirSizeRecursive(p, stats, wg, visitedInodes, inodeMu)
+			}(subPath)
+		} else {
+			// For files, we need the size - only call entry.Info() here
+			info, err := entry.Info()
+			if err != nil {
+				// Permission denied on file - count it with 0 size (atomic - no lock needed)
+				stats.FileCount.Add(1)
+				continue
+			}
+
+			// Count the file (atomic - no lock needed)
+			stats.FileCount.Add(1)
+
+			// Track by inode to avoid double-counting size (for hardlinks and deduplication)
+			var inode uint64
+			if sys := info.Sys(); sys != nil {
+				if stat, ok := sys.(*syscall.Stat_t); ok {
+					inode = stat.Ino
+				}
+			}
+
+			if inode > 0 {
+				inodeMu.Lock()
+				alreadyCounted := visitedInodes[inode]
+				if !alreadyCounted {
+					visitedInodes[inode] = true
+					// Only count size for first occurrence of this inode
+					stats.TotalSize.Add(info.Size())
+				}
+				inodeMu.Unlock()
+			} else {
+				// If we can't get inode, count the size (safer fallback)
+				stats.TotalSize.Add(info.Size())
+			}
+		}
+	}
 }
