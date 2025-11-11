@@ -206,38 +206,6 @@ const FileDetail: React.FC<FileDetailProps> = ({
         </>
       )}
 
-      {/* Content preview for text files */}
-      {resource.content && (
-        <>
-          <Divider />
-          <Typography variant="subtitle2" fontWeight={600}>
-            Preview
-          </Typography>
-          <Box
-            sx={{
-              maxHeight: 320,
-              overflowY: "auto",
-              p: 2,
-              borderRadius: 1,
-              backgroundColor: (theme) =>
-                alpha(theme.palette.text.primary, 0.04),
-              fontFamily: "monospace",
-              fontSize: "0.875rem",
-            }}
-          >
-            <pre
-              style={{
-                margin: 0,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
-            >
-              {resource.content}
-            </pre>
-          </Box>
-        </>
-      )}
-
       {/* Download and Edit buttons - only for files */}
       {!isDirectory && (
         <>

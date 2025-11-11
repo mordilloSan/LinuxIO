@@ -31,6 +31,7 @@ import FileEditor from "@/components/filebrowser/FileEditor";
 import { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import InputDialog from "@/components/filebrowser/InputDialog";
 import MultiFileDetail from "@/components/filebrowser/MultiFileDetail";
+import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import SortBar, {
   SortField,
   SortOrder,
@@ -79,6 +80,8 @@ const FileBrowser: React.FC = () => {
   const [detailTarget, setDetailTarget] = useState<string[] | null>(null);
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [isSavingFile, setIsSavingFile] = useState(false);
+  const [isEditorDirty, setIsEditorDirty] = useState(false);
+  const [closeEditorDialog, setCloseEditorDialog] = useState(false);
   const editorRef = useRef<FileEditorHandle>(null);
 
   const queryClient = useQueryClient();
@@ -495,6 +498,7 @@ const FileBrowser: React.FC = () => {
 
       console.log("Save response:", response);
       toast.success("File saved successfully!");
+      setIsEditorDirty(false);
 
       // Invalidate the file cache so it reloads with new content
       queryClient.invalidateQueries({
@@ -509,8 +513,50 @@ const FileBrowser: React.FC = () => {
   }, [editingPath, queryClient]);
 
   const handleCloseEditor = useCallback(() => {
-    setEditingPath(null);
+    if (isEditorDirty) {
+      setCloseEditorDialog(true);
+    } else {
+      setEditingPath(null);
+      setIsEditorDirty(false);
+    }
+  }, [isEditorDirty]);
+
+  const handleKeepEditing = useCallback(() => {
+    setCloseEditorDialog(false);
   }, []);
+
+  const handleDiscardAndExit = useCallback(() => {
+    setEditingPath(null);
+    setIsEditorDirty(false);
+    setCloseEditorDialog(false);
+  }, []);
+
+  const handleSaveAndExit = useCallback(async () => {
+    if (!editorRef.current || !editingPath) return;
+
+    try {
+      setIsSavingFile(true);
+      const content = editorRef.current.getContent();
+
+      await axios.put("/navigator/api/resources", content, {
+        params: { path: editingPath },
+        headers: { "Content-Type": "text/plain" },
+      });
+
+      toast.success("File saved successfully!");
+      setIsEditorDirty(false);
+      setEditingPath(null);
+      setCloseEditorDialog(false);
+
+      queryClient.invalidateQueries({
+        queryKey: ["fileEdit", editingPath],
+      });
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || "Failed to save file");
+    } finally {
+      setIsSavingFile(false);
+    }
+  }, [editingPath, queryClient]);
 
   const shouldShowDetailLoader =
     (hasSingleDetailTarget && isDetailPending) ||
@@ -522,6 +568,7 @@ const FileBrowser: React.FC = () => {
         data-allow-context-menu="true"
         sx={{
           height: "100%",
+          width: "100%",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -538,9 +585,18 @@ const FileBrowser: React.FC = () => {
           onCloseEditor={handleCloseEditor}
           isSaving={isSavingFile}
           viewIcon={viewIcon}
+          editingFileName={editingFileResource?.name}
+          editingFilePath={editingPath || undefined}
+          isDirty={isEditorDirty}
         />
         <Box
-          sx={{ px: 2, display: "flex", flexDirection: "column", minHeight: 0 }}
+          sx={{
+            px: editingPath ? 0 : 2,
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
         >
           {!editingPath && (
             <>
@@ -562,7 +618,7 @@ const FileBrowser: React.FC = () => {
           )}
           <Box
             sx={{
-              px: 2,
+              px: editingPath ? 0 : 2,
               flex: 1,
               minHeight: 0,
               display: "flex",
@@ -613,6 +669,7 @@ const FileBrowser: React.FC = () => {
                   initialContent={editingFileResource.content || ""}
                   onSave={handleSaveFile}
                   isSaving={isSavingFile}
+                  onDirtyChange={setIsEditorDirty}
                 />
               )}
 
@@ -734,6 +791,14 @@ const FileBrowser: React.FC = () => {
         confirmText="Delete"
         onClose={handleCloseDeleteDialog}
         onConfirm={handleConfirmDelete}
+      />
+
+      <UnsavedChangesDialog
+        open={closeEditorDialog}
+        onKeepEditing={handleKeepEditing}
+        onDiscardAndExit={handleDiscardAndExit}
+        onSaveAndExit={handleSaveAndExit}
+        isSaving={isSavingFile}
       />
     </>
   );

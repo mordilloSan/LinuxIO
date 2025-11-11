@@ -1,10 +1,25 @@
-import { Box, Paper, Typography } from "@mui/material";
-import React, {
+import { useTheme } from "@mui/material";
+import {
   useState,
   useEffect,
   useImperativeHandle,
   forwardRef,
+  useRef,
 } from "react";
+import AceEditor from "react-ace";
+import "ace-builds/src-noconflict/mode-javascript";
+import "ace-builds/src-noconflict/mode-python";
+import "ace-builds/src-noconflict/mode-java";
+import "ace-builds/src-noconflict/mode-c_cpp";
+import "ace-builds/src-noconflict/mode-html";
+import "ace-builds/src-noconflict/mode-css";
+import "ace-builds/src-noconflict/mode-sql";
+import "ace-builds/src-noconflict/mode-json";
+import "ace-builds/src-noconflict/mode-xml";
+import "ace-builds/src-noconflict/mode-yaml";
+import "ace-builds/src-noconflict/mode-sh";
+import "ace-builds/src-noconflict/theme-github";
+import "ace-builds/src-noconflict/theme-monokai";
 
 interface FileEditorProps {
   filePath: string;
@@ -12,26 +27,61 @@ interface FileEditorProps {
   initialContent: string;
   onSave: (content: string) => Promise<void>;
   isSaving?: boolean;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 export interface FileEditorHandle {
   save: () => Promise<void>;
   getContent: () => string;
+  isDirty: () => boolean;
 }
 
+const getLanguageMode = (fileName: string): string => {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const modeMap: Record<string, string> = {
+    js: "javascript",
+    ts: "javascript",
+    tsx: "javascript",
+    jsx: "javascript",
+    py: "python",
+    java: "java",
+    c: "c_cpp",
+    cpp: "c_cpp",
+    h: "c_cpp",
+    hpp: "c_cpp",
+    html: "html",
+    htm: "html",
+    css: "css",
+    sql: "sql",
+    json: "json",
+    xml: "xml",
+    yml: "yaml",
+    yaml: "yaml",
+    sh: "sh",
+  };
+  return modeMap[ext] || "text";
+};
+
 const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
-  ({ filePath, fileName, initialContent, onSave, isSaving = false }, ref) => {
+  ({ filePath, fileName, initialContent, onSave, isSaving = false, onDirtyChange }, ref) => {
     const [content, setContent] = useState(initialContent);
     const [isDirty, setIsDirty] = useState(false);
+    const editorRef = useRef<AceEditor>(null);
+    const theme= useTheme();
+  const isDarkMode = theme.palette.mode === "dark";
 
     useEffect(() => {
       setContent(initialContent);
       setIsDirty(false);
     }, [filePath, initialContent]);
 
-    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setContent(e.target.value);
-      setIsDirty(e.target.value !== initialContent);
+    useEffect(() => {
+      onDirtyChange?.(isDirty);
+    }, [isDirty, onDirtyChange]);
+
+    const handleContentChange = (newValue: string) => {
+      setContent(newValue);
+      setIsDirty(newValue !== initialContent);
     };
 
     const handleSave = async () => {
@@ -46,78 +96,36 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     useImperativeHandle(ref, () => ({
       save: handleSave,
       getContent: () => content,
+      isDirty: () => isDirty,
     }));
 
+    const language = getLanguageMode(fileName);
+    const aceTheme = isDarkMode ? "monokai" : "github";
+
     return (
-      <Paper
-        variant="outlined"
-        sx={{
-          borderRadius: 2,
-          display: "flex",
-          flexDirection: "column",
-          p: 2,
-          gap: 2,
-          height: "100%",
+      <AceEditor
+        ref={editorRef}
+        mode={language}
+        theme={aceTheme}
+        onChange={handleContentChange}
+        value={content}
+        name="file-editor"
+        readOnly={isSaving}
+        style={{ width: "100%", height: "100%" }}
+        fontSize={14}
+        showPrintMargin={false}
+        setOptions={{
+          useWorker: true,
+          enableBasicAutocompletion: true,
+          enableLiveAutocompletion: true,
+          enableSnippets: true,
+          showLineNumbers: true,
+          tabSize: 2,
         }}
-      >
-        {/* Header with file name */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" fontWeight={600}>
-              {fileName}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {filePath}
-            </Typography>
-            {isDirty && (
-              <Typography
-                variant="caption"
-                color="warning.main"
-                sx={{ mt: 0.5 }}
-              >
-                • Unsaved changes
-              </Typography>
-            )}
-          </Box>
-        </Box>
-
-        {/* Editor area */}
-        <Box
-          component="textarea"
-          value={content}
-          onChange={handleContentChange}
-          disabled={isSaving}
-          sx={{
-            flex: 1,
-            fontFamily: "monospace",
-            fontSize: "0.875rem",
-            padding: 2,
-            borderRadius: 1,
-            border: "1px solid",
-            borderColor: "divider",
-            backgroundColor: (theme) =>
-              theme.palette.mode === "light" ? "#f5f5f5" : "#1e1e1e",
-            color: "text.primary",
-            resize: "none",
-            "&:focus": {
-              outline: "none",
-              borderColor: "primary.main",
-              boxShadow: (theme) => `0 0 0 2px ${theme.palette.primary.main}22`,
-            },
-            "&:disabled": {
-              opacity: 0.6,
-              cursor: "not-allowed",
-            },
-          }}
-        />
-
-        {/* Status message */}
-        {isSaving && (
-          <Typography variant="body2" color="info.main">
-            Saving...
-          </Typography>
-        )}
-      </Paper>
+        editorProps={{
+          $blockScrolling: true,
+        }}
+      />
     );
   },
 );
