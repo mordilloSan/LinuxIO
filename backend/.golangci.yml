@@ -149,7 +149,7 @@ linters:
       - linters:
           - gofumpt
           - gofmt
-        path: bridge/userconfig/generator\.go
+        path: bridge/handlers/config/generator\.go
     paths:
       - third_party$
       - builtin$
