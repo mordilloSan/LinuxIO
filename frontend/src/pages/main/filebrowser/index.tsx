@@ -10,7 +10,13 @@ import {
   Typography,
 } from "@mui/material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import React, { ReactNode, useCallback, useMemo, useState } from "react";
+import React, {
+  ReactNode,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -21,6 +27,8 @@ import DirectoryListing from "@/components/filebrowser/DirectoryListing";
 import ErrorState from "@/components/filebrowser/ErrorState";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
+import FileEditor from "@/components/filebrowser/FileEditor";
+import { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import InputDialog from "@/components/filebrowser/InputDialog";
 import MultiFileDetail from "@/components/filebrowser/MultiFileDetail";
 import SortBar, {
@@ -69,9 +77,13 @@ const FileBrowser: React.FC = () => {
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [pendingDeletePaths, setPendingDeletePaths] = useState<string[]>([]);
   const [detailTarget, setDetailTarget] = useState<string[] | null>(null);
-  const showQuickSave = false;
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [isSavingFile, setIsSavingFile] = useState(false);
+  const editorRef = useRef<FileEditorHandle>(null);
 
   const queryClient = useQueryClient();
+
+  const showQuickSave = editingPath !== null;
 
   // Extract path from URL: /filebrowser/path/to/dir -> /path/to/dir
   const urlPath = location.pathname.replace(/^\/filebrowser\/?/, "");
@@ -207,7 +219,7 @@ const FileBrowser: React.FC = () => {
       const { data } = await axios.get<ApiResource>(
         "/navigator/api/resources",
         {
-          params: { path: currentDetailTarget[0] },
+          params: { path: currentDetailTarget[0], content: "true" },
         },
       );
       return data as FileResource;
@@ -242,26 +254,43 @@ const FileBrowser: React.FC = () => {
     });
 
   // For stat data (permissions and ownership) on single item
-  const {
-    data: statData,
-    isPending: isStatPending,
-  } = useQuery<ResourceStatData>({
-    queryKey: ["fileStat", detailTarget],
-    queryFn: async () => {
-      const currentDetailTarget = detailTarget;
-      if (!currentDetailTarget || currentDetailTarget.length !== 1) {
-        throw new Error("Invalid selection");
-      }
-      const { data } = await axios.get<ResourceStatData>(
-        "/navigator/api/resources/stat",
-        {
-          params: { path: currentDetailTarget[0] },
-        },
-      );
-      return data;
-    },
-    enabled: hasSingleDetailTarget,
-  });
+  const { data: statData, isPending: isStatPending } =
+    useQuery<ResourceStatData>({
+      queryKey: ["fileStat", detailTarget],
+      queryFn: async () => {
+        const currentDetailTarget = detailTarget;
+        if (!currentDetailTarget || currentDetailTarget.length !== 1) {
+          throw new Error("Invalid selection");
+        }
+        const { data } = await axios.get<ResourceStatData>(
+          "/navigator/api/resources/stat",
+          {
+            params: { path: currentDetailTarget[0] },
+          },
+        );
+        return data;
+      },
+      enabled: hasSingleDetailTarget,
+    });
+
+  // For file content when editing
+  const { data: editingFileResource, isPending: isEditingFileLoading } =
+    useQuery<FileResource>({
+      queryKey: ["fileEdit", editingPath],
+      queryFn: async () => {
+        if (!editingPath) throw new Error("No editing path");
+        console.log("Loading file for editing:", editingPath);
+        const { data } = await axios.get<ApiResource>(
+          "/navigator/api/resources",
+          {
+            params: { path: editingPath, content: "true" },
+          },
+        );
+        console.log("Loaded file resource:", data);
+        return data as FileResource;
+      },
+      enabled: !!editingPath,
+    });
 
   // For multiple items
   const {
@@ -446,6 +475,49 @@ const FileBrowser: React.FC = () => {
     console.log("Upload clicked");
   }, [handleCloseContextMenu]);
 
+  const handleEditFile = useCallback((filePath: string) => {
+    setEditingPath(filePath);
+    setDetailTarget(null); // Close the detail dialog
+  }, []);
+
+  const handleSaveFile = useCallback(async () => {
+    if (!editorRef.current || !editingPath) return;
+
+    try {
+      setIsSavingFile(true);
+      const content = editorRef.current.getContent();
+
+      console.log(
+        "Saving file:",
+        editingPath,
+        "Content length:",
+        content.length,
+      );
+
+      const response = await axios.put("/navigator/api/resources", content, {
+        params: { path: editingPath },
+        headers: { "Content-Type": "text/plain" },
+      });
+
+      console.log("Save response:", response);
+      toast.success("File saved successfully!");
+
+      // Invalidate the file cache so it reloads with new content
+      queryClient.invalidateQueries({
+        queryKey: ["fileEdit", editingPath],
+      });
+    } catch (error: any) {
+      console.error("Save error:", error);
+      toast.error(error.response?.data?.error || "Failed to save file");
+    } finally {
+      setIsSavingFile(false);
+    }
+  }, [editingPath, queryClient]);
+
+  const handleCloseEditor = useCallback(() => {
+    setEditingPath(null);
+  }, []);
+
   const shouldShowDetailLoader =
     (hasSingleDetailTarget && isDetailPending) ||
     (hasMultipleDetailTargets && isMultiStatsPending);
@@ -468,22 +540,32 @@ const FileBrowser: React.FC = () => {
           showQuickSave={showQuickSave}
           onSwitchView={handleSwitchView}
           onToggleHiddenFiles={handleToggleHiddenFiles}
+          onSaveFile={handleSaveFile}
+          onCloseEditor={handleCloseEditor}
+          isSaving={isSavingFile}
           viewIcon={viewIcon}
         />
         <Box
           sx={{ px: 2, display: "flex", flexDirection: "column", minHeight: 0 }}
         >
-          <BreadcrumbsNav
-            path={normalizedPath}
-            onNavigate={handleOpenDirectory}
-          />
+          {!editingPath && (
+            <>
+              <BreadcrumbsNav
+                path={normalizedPath}
+                onNavigate={handleOpenDirectory}
+              />
 
-          {!isPending &&
-            !errorMessage &&
-            resource &&
-            resource.type === "directory" && (
-              <SortBar sortOrder={sortOrder} onSortChange={handleSortChange} />
-            )}
+              {!isPending &&
+                !errorMessage &&
+                resource &&
+                resource.type === "directory" && (
+                  <SortBar
+                    sortOrder={sortOrder}
+                    onSortChange={handleSortChange}
+                  />
+                )}
+            </>
+          )}
           <Box
             sx={{
               px: 2,
@@ -502,7 +584,8 @@ const FileBrowser: React.FC = () => {
               />
             )}
 
-            {!isPending &&
+            {!editingPath &&
+              !isPending &&
               !errorMessage &&
               resource &&
               resource.type === "directory" && (
@@ -522,13 +605,32 @@ const FileBrowser: React.FC = () => {
                 />
               )}
 
+            {editingPath && isEditingFileLoading && <ComponentLoader />}
+
             {!isPending &&
+              !errorMessage &&
+              editingPath &&
+              !isEditingFileLoading &&
+              editingFileResource && (
+                <FileEditor
+                  ref={editorRef}
+                  filePath={editingPath}
+                  fileName={editingFileResource.name}
+                  initialContent={editingFileResource.content || ""}
+                  onSave={handleSaveFile}
+                  isSaving={isSavingFile}
+                />
+              )}
+
+            {!editingPath &&
+              !isPending &&
               !errorMessage &&
               resource &&
               resource.type !== "directory" && (
                 <FileDetail
                   resource={resource}
                   onDownload={handleDownloadCurrent}
+                  onEdit={handleEditFile}
                 />
               )}
           </Box>
@@ -594,6 +696,7 @@ const FileBrowser: React.FC = () => {
             <FileDetail
               resource={detailResource}
               onDownload={handleDownloadDetail}
+              onEdit={handleEditFile}
               directorySize={directorySizeData?.size}
               fileCount={directorySizeData?.fileCount}
               folderCount={directorySizeData?.folderCount}

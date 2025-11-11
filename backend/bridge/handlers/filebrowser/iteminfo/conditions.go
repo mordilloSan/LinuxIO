@@ -219,4 +219,3 @@ func hasBundleExtension(name string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
 	return BundleExtensions[ext]
 }
-

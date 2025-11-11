@@ -100,8 +100,7 @@ export const useDirectorySize = (
       setSize(result.size);
       setError(null);
     } catch (err) {
-      const errorMsg =
-        err instanceof Error ? err.message : String(err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
       const error = new Error(`Unable to calculate size: ${errorMsg}`);
       setError(error);
       setSize(null);
