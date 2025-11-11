@@ -6,6 +6,7 @@ import {
   Box,
   IconButton,
   Stack,
+  Typography,
   useMediaQuery,
   useTheme,
   darken,
@@ -14,7 +15,6 @@ import {
 } from "@mui/material";
 import React, { ReactNode } from "react";
 
-import QuickActionButton from "./QuickActionButton";
 import { ViewMode } from "../../types/filebrowser";
 
 interface FileBrowserHeaderProps {
@@ -27,6 +27,9 @@ interface FileBrowserHeaderProps {
   onCloseEditor?: () => void;
   isSaving?: boolean;
   viewIcon: ReactNode;
+  editingFileName?: string;
+  editingFilePath?: string;
+  isDirty?: boolean;
 }
 
 const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
@@ -38,6 +41,9 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   onCloseEditor,
   isSaving = false,
   viewIcon,
+  editingFileName,
+  editingFilePath,
+  isDirty = false,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -46,6 +52,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
     <Box
       sx={(theme) => ({
         display: "flex",
+        alignItems: "center",
         px: 3,
         minHeight: 64,
         backgroundColor:
@@ -55,6 +62,39 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
         boxShadow: theme.shadows[2],
       })}
     >
+      {/* Left section - Status indicator when editing */}
+      {showQuickSave && (
+        <Box sx={{ minWidth: 150, display: "flex", alignItems: "center", gap: 1 }}>
+          {isDirty && (
+            <Typography
+              variant="caption"
+              sx={{
+                color: theme.palette.primary.main,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: 0.5,
+              }}
+            >
+              • Unsaved changes
+            </Typography>
+          )}
+        </Box>
+      )}
+
+      {/* Center section - File info when editing */}
+      {showQuickSave && editingFileName && (
+        <Box sx={{ flex: 1, textAlign: "center", mx: 2 }}>
+          <Typography variant="h6" fontWeight={600}>
+            {editingFileName}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {editingFilePath}
+          </Typography>
+        </Box>
+      )}
+
+      {/* Right section - Action buttons */}
       <Box
         className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}
         sx={{
@@ -73,21 +113,21 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
         >
           {showQuickSave && (
             <>
-              <QuickActionButton
-                icon={<SaveIcon fontSize="small" />}
-                label="Save"
-                onClick={onSaveFile || (() => {})}
-                disabled={isSaving}
-                ariaLabel="Save changes"
-              />
               <Tooltip title="Close editor">
                 <IconButton
                   onClick={onCloseEditor || (() => {})}
                   disabled={isSaving}
-                  size="small"
-                  aria-label="Close editor"
                 >
-                  <CloseIcon fontSize="small" />
+                  <CloseIcon fontSize="medium" />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Save changes">
+                <IconButton
+                  onClick={onSaveFile || (() => {})}
+                  disabled={isSaving}
+                >
+                  <SaveIcon fontSize="medium" />
                 </IconButton>
               </Tooltip>
             </>
