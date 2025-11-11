@@ -45,62 +45,53 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		SessionID: sess.SessionID,
 	}
 
-	// Try to get persistent connection from session
-	conn := sess.GetBridgeConn()
-
-	// If no persistent connection or it's broken, create a new one and store it
-	if conn == nil {
-		var err error
-		const (
-			totalWait   = 2 * time.Second
-			step        = 100 * time.Millisecond
-			dialTimeout = 500 * time.Millisecond
-		)
-		deadline := time.Now().Add(totalWait)
-		for {
-			conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
-			if err == nil {
-				break
-			}
-			if time.Now().After(deadline) {
-				err2 := fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
-				logger.ErrorKV("bridge call failed: connection timeout",
-					"user", sess.User.Username,
-					"socket_path", socketPath,
-					"error", err2)
-				return nil, err
-			}
-			time.Sleep(step)
+	var conn net.Conn
+	var err error
+	const (
+		totalWait   = 2 * time.Second
+		step        = 100 * time.Millisecond
+		dialTimeout = 500 * time.Millisecond
+	)
+	deadline := time.Now().Add(totalWait)
+	for {
+		conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
+		if err == nil {
+			break
 		}
-		// Store the new connection in the session
-		sess.SetBridgeConn(conn)
-		logger.DebugKV("bridge persistent connection established",
-			"user", sess.User.Username,
-			"socket_path", socketPath)
+		if time.Now().After(deadline) {
+			err2 := fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
+			logger.ErrorKV("bridge call failed: connection timeout",
+				"user", sess.User.Username,
+				"socket_path", socketPath,
+				"error", err2)
+			return nil, err
+		}
+		time.Sleep(step)
 	}
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.WarnKV("bridge conn close failed", "socket_path", socketPath, "error", cerr)
+		}
+	}()
 
 	enc := json.NewEncoder(conn)
 	enc.SetEscapeHTML(false)
 	dec := json.NewDecoder(conn)
 
 	if err := enc.Encode(req); err != nil {
-		// Connection is broken, clear it and retry
-		closeBridgeConnWithLog(sess, "CallWithSession encode")
 		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
-		logger.ErrorKV("bridge call failed: encoding error (clearing connection)",
+		logger.ErrorKV("bridge call failed: encoding error",
 			"user", sess.User.Username,
 			"type", reqType,
 			"command", command,
 			"error", err2)
-		return CallWithSession(sess, reqType, command, args) // Retry with fresh connection
+		return nil, err
 	}
 
 	var raw json.RawMessage
 	if err := dec.Decode(&raw); err != nil {
-		// Connection is broken, clear it
-		closeBridgeConnWithLog(sess, "CallWithSession decode")
 		err2 := fmt.Errorf("failed to decode response from bridge: %w", err)
-		logger.ErrorKV("bridge call failed: decoding error (clearing connection)",
+		logger.ErrorKV("bridge call failed: decoding error",
 			"user", sess.User.Username,
 			"type", reqType,
 			"command", command,
@@ -116,15 +107,6 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		"response_bytes", len(raw))
 
 	return []byte(raw), nil
-}
-
-func closeBridgeConnWithLog(sess *session.Session, context string) {
-	if err := sess.CloseBridgeConn(); err != nil {
-		logger.WarnKV("bridge connection close failed",
-			"user", sess.User.Username,
-			"context", context,
-			"error", err)
-	}
 }
 
 // StartBridge launches linuxio-bridge via the setuid helper.
