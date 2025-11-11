@@ -186,7 +186,13 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
         setLastSelectedIndex(currentIndex);
       }
     },
-    [focusItemByPath, selectedPaths, onSelectedPathsChange, allItems, lastSelectedIndex],
+    [
+      focusItemByPath,
+      selectedPaths,
+      onSelectedPathsChange,
+      allItems,
+      lastSelectedIndex,
+    ],
   );
 
   const handleItemContextMenu = useCallback(

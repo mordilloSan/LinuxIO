@@ -29,14 +29,14 @@ func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 }
 
 // resourceGet retrieves information about a resource
-// Args: [path, getContent?]
+// Args: [path, "", getContent?] or [path]
 func resourceGet(args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing path")
 	}
 
 	path := args[0]
-	getContent := len(args) > 1 && args[1] == "true"
+	getContent := len(args) > 2 && args[2] == "true"
 
 	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
 		Path:    path,

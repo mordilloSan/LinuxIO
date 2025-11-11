@@ -1,5 +1,5 @@
-import { alpha, useTheme } from "@mui/material/styles";
 import { CircularProgress } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";

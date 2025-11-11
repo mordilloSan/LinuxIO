@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React from "react";
 
 import { FileItem, ViewMode } from "../../types/filebrowser";
 
@@ -35,8 +35,8 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
   }) => {
     // Skip size calculation for symlinks
     const { size, isLoading, error, isUnavailable } = useDirectorySize(
-    folder.symlink ? "" : (folder.path || ""),
-  );
+      folder.symlink ? "" : folder.path || "",
+    );
     const ItemComponent = viewMode === "list" ? FileListRow : FileCard;
 
     return (

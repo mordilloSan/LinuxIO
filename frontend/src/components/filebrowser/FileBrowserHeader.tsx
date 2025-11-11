@@ -1,3 +1,4 @@
+import CloseIcon from "@mui/icons-material/Close";
 import SaveIcon from "@mui/icons-material/Save";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
@@ -22,6 +23,9 @@ interface FileBrowserHeaderProps {
   showQuickSave?: boolean;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
+  onSaveFile?: () => Promise<void>;
+  onCloseEditor?: () => void;
+  isSaving?: boolean;
   viewIcon: ReactNode;
 }
 
@@ -30,6 +34,9 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   showQuickSave = false,
   onSwitchView,
   onToggleHiddenFiles,
+  onSaveFile,
+  onCloseEditor,
+  isSaving = false,
   viewIcon,
 }) => {
   const theme = useTheme();
@@ -65,33 +72,51 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
           }}
         >
           {showQuickSave && (
-            <QuickActionButton
-              icon={<SaveIcon fontSize="small" />}
-              label="Save"
-              onClick={() => {
-                // TODO: integrate editor save handler when available.
-              }}
-              ariaLabel="Save changes"
-            />
+            <>
+              <QuickActionButton
+                icon={<SaveIcon fontSize="small" />}
+                label="Save"
+                onClick={onSaveFile || (() => {})}
+                disabled={isSaving}
+                ariaLabel="Save changes"
+              />
+              <Tooltip title="Close editor">
+                <IconButton
+                  onClick={onCloseEditor || (() => {})}
+                  disabled={isSaving}
+                  size="small"
+                  aria-label="Close editor"
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </>
           )}
-          <Tooltip title="Switch view">
-            <IconButton onClick={onSwitchView} aria-label="Switch view">
-              {viewIcon}
-            </IconButton>
-          </Tooltip>
 
-          <Tooltip
-            title={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
-          >
-            <IconButton
-              onClick={onToggleHiddenFiles}
-              aria-label={
-                showHiddenFiles ? "Hide hidden files" : "Show hidden files"
-              }
-            >
-              {showHiddenFiles ? <VisibilityIcon /> : <VisibilityOffIcon />}
-            </IconButton>
-          </Tooltip>
+          {!showQuickSave && (
+            <>
+              <Tooltip title="Switch view">
+                <IconButton onClick={onSwitchView} aria-label="Switch view">
+                  {viewIcon}
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip
+                title={
+                  showHiddenFiles ? "Hide hidden files" : "Show hidden files"
+                }
+              >
+                <IconButton
+                  onClick={onToggleHiddenFiles}
+                  aria-label={
+                    showHiddenFiles ? "Hide hidden files" : "Show hidden files"
+                  }
+                >
+                  {showHiddenFiles ? <VisibilityIcon /> : <VisibilityOffIcon />}
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
         </Stack>
       </Box>
     </Box>

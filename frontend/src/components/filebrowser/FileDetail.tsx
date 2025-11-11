@@ -1,4 +1,5 @@
 import DownloadIcon from "@mui/icons-material/Download";
+import EditIcon from "@mui/icons-material/Edit";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import LinkIcon from "@mui/icons-material/Link";
@@ -22,6 +23,7 @@ import { formatDate, formatFileSize } from "@/utils/formaters";
 interface FileDetailProps {
   resource?: FileResource;
   onDownload: (path: string) => void;
+  onEdit?: (path: string) => void;
   directorySize?: number | null;
   fileCount?: number | null;
   folderCount?: number | null;
@@ -52,6 +54,7 @@ const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
 const FileDetail: React.FC<FileDetailProps> = ({
   resource,
   onDownload,
+  onEdit,
   directorySize,
   fileCount,
   folderCount,
@@ -77,6 +80,8 @@ const FileDetail: React.FC<FileDetailProps> = ({
 
   const isDirectory = resource.type === "directory";
   const isSymlink = resource.symlink;
+  // Show edit button for all non-directory files (backend determines if truly editable)
+  const isEditableFile = !isDirectory;
 
   const getTypeIcon = () => {
     if (isSymlink) return <LinkIcon fontSize="large" />;
@@ -233,18 +238,28 @@ const FileDetail: React.FC<FileDetailProps> = ({
         </>
       )}
 
-      {/* Download button - only for files */}
+      {/* Download and Edit buttons - only for files */}
       {!isDirectory && (
         <>
           <Divider />
-          <Button
-            variant="contained"
-            startIcon={<DownloadIcon />}
-            onClick={() => onDownload(resource.path)}
-            sx={{ alignSelf: "flex-start" }}
-          >
-            Download
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="contained"
+              startIcon={<DownloadIcon />}
+              onClick={() => onDownload(resource.path)}
+            >
+              Download
+            </Button>
+            {isEditableFile && onEdit && (
+              <Button
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={() => onEdit(resource.path)}
+              >
+                Edit
+              </Button>
+            )}
+          </Stack>
         </>
       )}
     </Paper>

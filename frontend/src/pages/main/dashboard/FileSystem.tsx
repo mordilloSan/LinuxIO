@@ -54,7 +54,8 @@ const FsInfoCard: React.FC = () => {
               tooltip={`Free: ${formatFileSize(fs.free)} / Total: ${formatFileSize(fs.total)}`}
               rightLabel={
                 <>
-                  {formatFileSize(fs.used)}&nbsp;/&nbsp;{formatFileSize(fs.total)}
+                  {formatFileSize(fs.used)}&nbsp;/&nbsp;
+                  {formatFileSize(fs.total)}
                 </>
               }
             />

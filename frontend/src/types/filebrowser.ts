@@ -50,7 +50,10 @@ export type ResourceStatData = {
   name: string;
 };
 
-export type MultiStatsItem = Pick<FileItem, "path" | "name" | "type" | "size"> & {
+export type MultiStatsItem = Pick<
+  FileItem,
+  "path" | "name" | "type" | "size"
+> & {
   fileCount?: number;
   folderCount?: number;
 };

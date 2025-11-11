@@ -569,7 +569,22 @@ func resourcePutDirectHandler(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusOK)
+	// Read the entire request body
+	content, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		logger.Debugf("error reading request body: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "error reading request body"})
+		return
+	}
+
+	// Write content to file
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		logger.Debugf("error writing file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error writing file"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 // rawFilesHandler serves raw file content or archives
