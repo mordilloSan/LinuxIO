@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -223,93 +224,126 @@ type DirectoryStats struct {
 // CalculateDirectorySize recursively calculates the total size of a directory
 // and counts files and folders using faster os.ReadDir instead of filepath.Walk
 // Resolves symlinks in the input path so users can explicitly request symlinked directories
-func CalculateDirectorySize(path string) (*DirectoryStats, error) {
+func CalculateDirectorySize(root string) (*DirectoryStats, error) {
 	stats := &DirectoryStats{}
-	var wg sync.WaitGroup
-	visitedInodes := make(map[uint64]bool)
-	var inodeMu sync.Mutex
 
-	// Resolve symlinks in the input path (allows users to explicitly traverse symlinked dirs)
-	realPath, err := filepath.EvalSymlinks(path)
+	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
-		// If EvalSymlinks fails, use the original path
-		realPath = path
+		realRoot = root
 	}
 
-	calculateDirSizeRecursive(realPath, stats, &wg, visitedInodes, &inodeMu)
-	wg.Wait()
+	// count root
+	stats.FolderCount.Add(1)
+
+	// bump channel to 8k
+	dirCh := make(chan string, 8192)
+
+	// hardlink dedupe
+	visited := make(map[uint64]bool)
+	var visitedMu sync.Mutex
+
+	// how many dirs are “in flight”
+	var pending sync.WaitGroup
+	pending.Add(1) // root
+
+	// bump workers a bit
+	workerCount := runtime.NumCPU() * 6
+	var workers sync.WaitGroup
+	workers.Add(workerCount)
+
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			defer workers.Done()
+			for dir := range dirCh {
+				processDir(dir, stats, dirCh, &pending, visited, &visitedMu)
+				// finished this dir
+				pending.Done()
+			}
+		}()
+	}
+
+	// seed
+	dirCh <- realRoot
+
+	// closer: when pending hits 0, we can close channel
+	go func() {
+		pending.Wait()
+		close(dirCh)
+	}()
+
+	// wait all workers
+	workers.Wait()
+
 	return stats, nil
 }
 
-// calculateDirSizeRecursive is a helper function that recursively calculates directory stats
-// Uses os.ReadDir which is faster than filepath.Walk
-// IMPORTANT: Only calls entry.Info() for files, not directories (huge performance improvement)
-// Also skips symlinks to avoid loops and double-counting
-// Uses goroutines to parallelize subdirectory traversal for maximum performance
-// Uses atomic operations for lock-free counting (much faster than mutexes)
-// Gracefully handles permission errors - counts inaccessible files/folders anyway (like `find` does)
-// Tracks inodes to avoid double-counting hardlinks
-func calculateDirSizeRecursive(path string, stats *DirectoryStats, wg *sync.WaitGroup, visitedInodes map[uint64]bool, inodeMu *sync.Mutex) {
-	entries, err := os.ReadDir(path)
+func processDir(
+	dirPath string,
+	stats *DirectoryStats,
+	dirCh chan<- string,
+	pending *sync.WaitGroup,
+	visited map[uint64]bool,
+	visitedMu *sync.Mutex,
+) {
+	entries, err := os.ReadDir(dirPath)
 	if err != nil {
-		// Permission denied or other error reading directory
-		// Still try to stat the directory itself to count it
-		if _, err := os.Stat(path); err == nil {
-			stats.FolderCount.Add(1)
-		}
+		// already counted when enqueued
 		return
 	}
 
 	for _, entry := range entries {
-		// Skip symlinks to avoid infinite loops and double-counting
+		// keep: skip symlinks
 		if entry.Type()&os.ModeSymlink != 0 {
 			continue
 		}
 
 		if entry.IsDir() {
-			// For directories, count it (atomic - no lock needed)
 			stats.FolderCount.Add(1)
+			sub := filepath.Join(dirPath, entry.Name())
 
-			// Recursively process subdirectories in parallel
-			subPath := filepath.Join(path, entry.Name())
-			wg.Add(1)
-			go func(p string) {
-				defer wg.Done()
-				calculateDirSizeRecursive(p, stats, wg, visitedInodes, inodeMu)
-			}(subPath)
-		} else {
-			// For files, we need the size - only call entry.Info() here
-			info, err := entry.Info()
-			if err != nil {
-				// Permission denied on file - count it with 0 size (atomic - no lock needed)
-				stats.FileCount.Add(1)
-				continue
+			// announce new work
+			pending.Add(1)
+
+			// non-blocking enqueue; if full, offload send
+			select {
+			case dirCh <- sub:
+			default:
+				go func(p string) {
+					dirCh <- p
+				}(sub)
 			}
+			continue
+		}
 
-			// Count the file (atomic - no lock needed)
+		// file branch
+		info, err := entry.Info()
+		if err != nil {
 			stats.FileCount.Add(1)
+			continue
+		}
 
-			// Track by inode to avoid double-counting size (for hardlinks and deduplication)
-			var inode uint64
-			if sys := info.Sys(); sys != nil {
-				if stat, ok := sys.(*syscall.Stat_t); ok {
-					inode = stat.Ino
-				}
-			}
+		stats.FileCount.Add(1)
 
-			if inode > 0 {
-				inodeMu.Lock()
-				alreadyCounted := visitedInodes[inode]
-				if !alreadyCounted {
-					visitedInodes[inode] = true
-					// Only count size for first occurrence of this inode
-					stats.TotalSize.Add(info.Size())
-				}
-				inodeMu.Unlock()
-			} else {
-				// If we can't get inode, count the size (safer fallback)
+		// Nlink fast-path: only dedupe when Nlink > 1
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || st.Nlink <= 1 {
+			// most files will hit this path
+			stats.TotalSize.Add(info.Size())
+			continue
+		}
+
+		// slow path: dedupe by inode
+		inode := st.Ino
+		if inode != 0 {
+			visitedMu.Lock()
+			if !visited[inode] {
+				visited[inode] = true
 				stats.TotalSize.Add(info.Size())
 			}
+			visitedMu.Unlock()
+		} else {
+			// fallback
+			stats.TotalSize.Add(info.Size())
 		}
 	}
 }
