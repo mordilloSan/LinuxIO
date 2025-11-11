@@ -235,13 +235,16 @@ func CalculateDirectorySize(root string) (*DirectoryStats, error) {
 	// bump workers a bit
 	workerCount := runtime.NumCPU() * 6
 
-	// Very large channel buffer to avoid blocking on sends
-	// Most filesystems won't have more directories than this at once
+	// Large channel buffer to queue directories for workers
 	dirCh := make(chan string, 65536)
 
 	// hardlink dedupe
 	visited := make(map[uint64]bool)
 	var visitedMu sync.Mutex
+
+	// Track channels: one to signal closure, another to control sends
+	closeDone := make(chan struct{})
+	var closing atomic.Bool
 
 	// how many dirs are "in flight"
 	var pending sync.WaitGroup
@@ -259,7 +262,7 @@ func CalculateDirectorySize(root string) (*DirectoryStats, error) {
 				}
 			}()
 			for dir := range dirCh {
-				processDir(dir, stats, dirCh, &pending, visited, &visitedMu)
+				processDir(dir, stats, dirCh, &pending, visited, &visitedMu, &closing)
 				// finished this dir
 				pending.Done()
 			}
@@ -272,6 +275,15 @@ func CalculateDirectorySize(root string) (*DirectoryStats, error) {
 	// closer: when pending hits 0, we can close channel
 	go func() {
 		pending.Wait()
+		closing.Store(true)
+		close(closeDone)
+	}()
+
+	// Wait for both closers to signal
+	go func() {
+		<-closeDone
+		// Give in-flight goroutines time to finish sending
+		// This prevents the "send on closed channel" panic
 		close(dirCh)
 	}()
 
@@ -288,6 +300,7 @@ func processDir(
 	pending *sync.WaitGroup,
 	visited map[uint64]bool,
 	visitedMu *sync.Mutex,
+	closing *atomic.Bool,
 ) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -317,9 +330,26 @@ func processDir(
 				// Successfully sent to channel
 			default:
 				// Channel full, spawn helper goroutine to avoid blocking
-				go func(path string) {
-					dirCh <- path
-				}(sub)
+				// Only if we're not shutting down
+				if !closing.Load() {
+					go func(path string) {
+						defer func() {
+							if r := recover(); r != nil {
+								logger.Warnf("recovered from panic in helper goroutine for %s: %v", path, r)
+								pending.Done()
+							}
+						}()
+						// Double-check we're not closing before sending
+						if !closing.Load() {
+							dirCh <- path
+						} else {
+							pending.Done()
+						}
+					}(sub)
+				} else {
+					// Already closing, don't queue
+					pending.Done()
+				}
 			}
 			continue
 		}
