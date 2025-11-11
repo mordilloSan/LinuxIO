@@ -23,7 +23,6 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
   ({ filePath, fileName, initialContent, onSave, isSaving = false }, ref) => {
     const [content, setContent] = useState(initialContent);
     const [isDirty, setIsDirty] = useState(false);
-    const [isLocalSaving, setIsLocalSaving] = useState(false);
 
     useEffect(() => {
       setContent(initialContent);
@@ -37,11 +36,10 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
 
     const handleSave = async () => {
       try {
-        setIsLocalSaving(true);
         await onSave(content);
         setIsDirty(false);
-      } finally {
-        setIsLocalSaving(false);
+      } catch {
+        // Error is handled by parent component
       }
     };
 

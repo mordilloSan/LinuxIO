@@ -49,9 +49,11 @@ const TerminalDialog: React.FC<Props> = ({
 
   const theme = useTheme();
 
-  // --- 1. On open: fetch available shells, set initial shell, and cleanup on close ---
+  // --- 1. On open/close: manage shell loading and cleanup ---
+  const prevOpen = useRef(open);
   useEffect(() => {
-    if (open && isOpen && containerId) {
+    if (!prevOpen.current && open && isOpen && containerId) {
+      // Dialog just opened - fetch shells
       setLoadingShells(true);
       setHasLoadedShells(false);
       send({
@@ -59,8 +61,8 @@ const TerminalDialog: React.FC<Props> = ({
         target: "container",
         containerId,
       });
-    }
-    if (!open) {
+    } else if (prevOpen.current && !open) {
+      // Dialog just closed - cleanup
       setShell("");
       setAvailableShells([]);
       setLoadingShells(false);
@@ -69,6 +71,7 @@ const TerminalDialog: React.FC<Props> = ({
       xterm.current = null;
       fitAddon.current = null;
     }
+    prevOpen.current = open;
   }, [open, isOpen, containerId, send]);
 
   // --- 2. Listen for shell_list and set availableShells and initial shell ---

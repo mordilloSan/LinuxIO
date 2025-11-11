@@ -82,15 +82,17 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, []);
 
-  // Respond to breakpoint (and optionally collapsed changes) responsively
-  useEffect(() => {
-    if (isDesktop) {
+  // Sync mobile state with breakpoint - when isDesktop changes, close mobile menu
+  const prevIsDesktop = React.useRef(isDesktop);
+  React.useEffect(() => {
+    if (prevIsDesktop.current !== isDesktop) {
       setMobileOpen(false);
-    } else {
-      _setHovered(false);
-      setMobileOpen(false);
+      if (!isDesktop && collapsed) {
+        _setHovered(false);
+      }
+      prevIsDesktop.current = isDesktop;
     }
-  }, [isDesktop, collapsed]); // remove `collapsed` if you don't want mobile to close on collapse
+  }, [isDesktop, collapsed]);
 
   const sidebarWidth = useMemo(
     () =>

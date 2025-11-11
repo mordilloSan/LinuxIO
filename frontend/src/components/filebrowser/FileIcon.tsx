@@ -11,7 +11,7 @@ import TerminalIcon from "@mui/icons-material/Terminal";
 import TextFieldsIcon from "@mui/icons-material/TextFields";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import { useTheme } from "@mui/material/styles";
-import React from "react";
+import React, { useMemo } from "react";
 
 interface FileIconProps {
   isDirectory: boolean;
@@ -181,7 +181,10 @@ const FileIcon = React.memo(
   }: FileIconProps) => {
     const theme = useTheme();
 
-    const IconComponent = isDirectory ? FolderIcon : getIconForType(filename);
+    const IconComponent = useMemo(
+      () => (isDirectory ? FolderIcon : getIconForType(filename)),
+      [isDirectory, filename],
+    );
     const iconColor = isDirectory
       ? theme.palette.primary.main
       : getIconColor(filename, hidden || false, theme.palette.mode === "dark");

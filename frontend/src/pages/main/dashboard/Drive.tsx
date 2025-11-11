@@ -1,6 +1,6 @@
 import { Box, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -86,13 +86,16 @@ const Drive: React.FC = () => {
   });
 
   const [selected, setSelected] = useState("");
+  const drivesInitialized = useRef(false);
 
   useEffect(() => {
-    if (drives.length && !selected) {
+    // Initialize selected drive only once when drives first load
+    if (drives.length && !drivesInitialized.current) {
       const online = drives.find((d) => d.sizeBytes > 0);
       setSelected(online?.name || drives[0].name);
+      drivesInitialized.current = true;
     }
-  }, [drives, selected]);
+  }, [drives]);
 
   if (isLoading) {
     return (

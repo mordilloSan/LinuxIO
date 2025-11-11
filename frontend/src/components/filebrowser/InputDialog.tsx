@@ -6,7 +6,7 @@ import {
   TextField,
   Button,
 } from "@mui/material";
-import React, { useState, useEffect } from "react";
+import React, { useState, useLayoutEffect } from "react";
 
 interface InputDialogProps {
   open: boolean;
@@ -27,7 +27,7 @@ const InputDialog: React.FC<InputDialogProps> = ({
 }) => {
   const [value, setValue] = useState(defaultValue);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (open) {
       setValue(defaultValue);
     }
