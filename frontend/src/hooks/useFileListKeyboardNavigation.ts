@@ -8,6 +8,7 @@ interface UseFileListKeyboardNavigationProps {
   selectedPaths: Set<string>;
   onFocusChange: (index: number) => void;
   onSelectionChange: (paths: Set<string>) => void;
+  onDelete?: () => void;
   global?: boolean; // Listen to document events instead of container events
 }
 
@@ -17,6 +18,7 @@ export const useFileListKeyboardNavigation = ({
   focusedIndex,
   onFocusChange,
   onSelectionChange,
+  onDelete,
   global = false,
 }: UseFileListKeyboardNavigationProps) => {
   const handleKeyDown = useCallback(
@@ -35,6 +37,15 @@ export const useFileListKeyboardNavigation = ({
         e.preventDefault();
         onSelectionChange(new Set());
         onFocusChange(-1);
+        return;
+      }
+
+      // Delete key to delete selected items
+      if (e.key === "Delete") {
+        e.preventDefault();
+        if (onDelete) {
+          onDelete();
+        }
         return;
       }
 
@@ -86,7 +97,7 @@ export const useFileListKeyboardNavigation = ({
         }
       }
     },
-    [allItems, focusedIndex, onFocusChange, onSelectionChange],
+    [allItems, focusedIndex, onFocusChange, onSelectionChange, onDelete],
   );
 
   useEffect(() => {

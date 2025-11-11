@@ -1,4 +1,5 @@
 import { alpha, useTheme } from "@mui/material/styles";
+import { CircularProgress } from "@mui/material";
 import React, { useState, useCallback, useMemo } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
@@ -14,6 +15,9 @@ export interface FileListRowProps {
   isSymlink?: boolean;
   selected?: boolean;
   hidden?: boolean;
+  directorySizeLoading?: boolean;
+  directorySizeError?: Error | null;
+  directorySizeUnavailable?: boolean;
   onClick: (event: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
@@ -32,6 +36,9 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     isSymlink = false,
     selected = false,
     hidden = false,
+    directorySizeLoading = false,
+    directorySizeError = null,
+    directorySizeUnavailable = false,
     onClick,
     onDoubleClick,
     onContextMenu,
@@ -43,7 +50,19 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     const formattedDate = modTime
       ? new Date(modTime).toLocaleDateString("en-GB")
       : "";
-    const formattedSize = !isDirectory ? formatFileSize(size, 1, "") : "";
+
+    const formattedSize = useMemo(() => {
+      if (directorySizeLoading) {
+        return ""; // Will render spinner instead
+      }
+      if (directorySizeUnavailable) {
+        return ""; // Will render warning icon instead
+      }
+      if (size !== undefined) {
+        return formatFileSize(size, 1, "");
+      }
+      return "—";
+    }, [size, directorySizeLoading, directorySizeUnavailable]);
 
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -98,6 +117,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           cursor: "pointer",
           transition: "background-color 0.15s ease",
           borderRadius: resolvedBorderRadius,
+          userSelect: "none",
         }}
       >
         {/* Name and Icon */}
@@ -142,11 +162,23 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           style={{
             padding: theme.spacing(1.5, 2),
             fontSize: "0.875rem",
-            color: theme.palette.text.secondary,
+            color: directorySizeUnavailable
+              ? theme.palette.error.main
+              : theme.palette.text.secondary,
             opacity: hidden ? 0.5 : undefined,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
           }}
+          title={directorySizeError?.message}
         >
-          {formattedSize}
+          {directorySizeLoading ? (
+            <CircularProgress size={14} thickness={3} />
+          ) : directorySizeUnavailable ? (
+            <span>⚠</span>
+          ) : (
+            formattedSize
+          )}
         </div>
 
         {/* Modified Date */}
