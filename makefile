@@ -494,7 +494,7 @@ devinstall-force:
 	@sudo ./packaging/scripts/dev_install.sh
 
 generate:
-	@cd "$(BACKEND_DIR)" && go generate ./bridge/userconfig/init.go
+	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
 
 run:
 	@./linuxio run \

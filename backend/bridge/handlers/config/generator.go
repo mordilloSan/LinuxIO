@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/userconfig"
+	userconfig "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 )
 
 func main() {

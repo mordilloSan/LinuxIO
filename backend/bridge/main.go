@@ -16,18 +16,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mordilloSan/go_logger/logger"
 	"github.com/spf13/pflag"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
+	userconfig "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/terminal"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 // envConfig holds all environment values we need, captured at startup
