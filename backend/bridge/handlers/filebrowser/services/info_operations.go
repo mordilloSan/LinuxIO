@@ -180,10 +180,6 @@ func setFilePreviewFlags(fileInfo *iteminfo.ItemInfo) {
 	if simpleType == "image" {
 		fileInfo.HasPreview = true
 	}
-
-	if iteminfo.HasDocConvertableExtension(fileInfo.Name, fileInfo.Type) {
-		fileInfo.HasPreview = true
-	}
 }
 
 // processContent determines what content to include in the response
