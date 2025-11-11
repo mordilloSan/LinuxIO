@@ -14,23 +14,6 @@ var AllFiletypeOptions = []string{
 	"text",
 }
 
-var MuPdfConvertable = map[string]bool{
-	".pdf":  true, // PDF
-	".xps":  true, // XPS
-	".epub": true, // EPUB
-	".mobi": true, // MOBI
-	".fb2":  true, // FB2
-	".cbz":  true, // CBZ
-	".svg":  true, // SVG
-	".txt":  true, // TXT
-	".docx": true, // DOCX
-	".pptx": true, // PPTX
-	".xlsx": true, // XLSX
-	".hwp":  true, // HWP
-	".hwpx": true, // HWPX
-	".md":   true, // Markdown
-}
-
 var ResizableImageTypes = map[string]bool{
 	".jpg":   true,
 	".jpeg":  true,
@@ -237,14 +220,3 @@ func hasBundleExtension(name string) bool {
 	return BundleExtensions[ext]
 }
 
-func HasDocConvertableExtension(name, mimetype string) bool {
-	if strings.HasPrefix(mimetype, "text") {
-		return true
-	}
-	ext := strings.ToLower(filepath.Ext(name))
-	val, ok := MuPdfConvertable[ext]
-	if ok {
-		return val
-	}
-	return false
-}
