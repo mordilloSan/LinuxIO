@@ -232,17 +232,28 @@ func CalculateDirectorySize(root string) (*DirectoryStats, error) {
 	// count root
 	stats.FolderCount.Add(1)
 
-	// bump workers a bit
-	workerCount := runtime.NumCPU() * 6
+	// Limit concurrent workers to avoid file descriptor exhaustion
+	// and memory pressure from too many goroutines
+	workerCount := runtime.NumCPU()
+	if workerCount < 4 {
+		workerCount = 4
+	}
+	if workerCount > 16 {
+		workerCount = 16
+	}
 
 	// Large channel buffer to queue directories for workers
-	dirCh := make(chan string, 65536)
+	dirCh := make(chan string, 8192)
+
+	// Semaphore to limit concurrent os.ReadDir calls
+	// Prevents file descriptor exhaustion
+	semaphore := make(chan struct{}, workerCount*2)
 
 	// hardlink dedupe
 	visited := make(map[uint64]bool)
 	var visitedMu sync.Mutex
 
-	// Track channels: one to signal closure, another to control sends
+	// Track closure: when pending hits 0, we can close channel
 	closeDone := make(chan struct{})
 	var closing atomic.Bool
 
@@ -262,7 +273,7 @@ func CalculateDirectorySize(root string) (*DirectoryStats, error) {
 				}
 			}()
 			for dir := range dirCh {
-				processDir(dir, stats, dirCh, &pending, visited, &visitedMu, &closing)
+				processDir(dir, stats, dirCh, &pending, visited, &visitedMu, &closing, semaphore)
 				// finished this dir
 				pending.Done()
 			}
@@ -279,11 +290,9 @@ func CalculateDirectorySize(root string) (*DirectoryStats, error) {
 		close(closeDone)
 	}()
 
-	// Wait for both closers to signal
+	// Wait for closer to signal, then close channel
 	go func() {
 		<-closeDone
-		// Give in-flight goroutines time to finish sending
-		// This prevents the "send on closed channel" panic
 		close(dirCh)
 	}()
 
@@ -301,12 +310,17 @@ func processDir(
 	visited map[uint64]bool,
 	visitedMu *sync.Mutex,
 	closing *atomic.Bool,
+	semaphore chan struct{},
 ) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Warnf("recovered from panic in processDir(%s): %v", dirPath, r)
 		}
 	}()
+
+	// Acquire semaphore slot to limit concurrent directory reads
+	semaphore <- struct{}{}
+	defer func() { <-semaphore }()
 
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
