@@ -14,7 +14,7 @@ import {
 import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -49,30 +49,40 @@ const TerminalDialog: React.FC<Props> = ({
 
   const theme = useTheme();
 
-  // --- 1. On open/close: manage shell loading and cleanup ---
-  const prevOpen = useRef(open);
-  useEffect(() => {
-    if (!prevOpen.current && open && isOpen && containerId) {
-      // Dialog just opened - fetch shells
-      setLoadingShells(true);
-      setHasLoadedShells(false);
+  const handleDialogEntered = useCallback(() => {
+    setShell("");
+    setAvailableShells([]);
+    setHasLoadedShells(false);
+    setLoadingShells(true);
+    if (containerId) {
       send({
         type: "list_shells",
         target: "container",
         containerId,
       });
-    } else if (prevOpen.current && !open) {
-      // Dialog just closed - cleanup
-      setShell("");
-      setAvailableShells([]);
-      setLoadingShells(false);
-      setHasLoadedShells(false);
-      xterm.current?.dispose();
-      xterm.current = null;
-      fitAddon.current = null;
     }
-    prevOpen.current = open;
-  }, [open, isOpen, containerId, send]);
+  }, [containerId, send]);
+
+  const handleDialogExited = useCallback(() => {
+    setShell("");
+    setAvailableShells([]);
+    setHasLoadedShells(false);
+    setLoadingShells(false);
+    xterm.current?.dispose();
+    xterm.current = null;
+    fitAddon.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (!open || !isOpen || !containerId || hasLoadedShells) {
+      return;
+    }
+    send({
+      type: "list_shells",
+      target: "container",
+      containerId,
+    });
+  }, [open, isOpen, containerId, send, hasLoadedShells]);
 
   // --- 2. Listen for shell_list and set availableShells and initial shell ---
   useEffect(() => {
@@ -213,7 +223,18 @@ const TerminalDialog: React.FC<Props> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleDialogClose} maxWidth="md" fullWidth>
+    <Dialog
+      open={open}
+      onClose={handleDialogClose}
+      maxWidth="md"
+      fullWidth
+      slotProps={{
+        transition: {
+          onEntered: handleDialogEntered,
+          onExited: handleDialogExited,
+        },
+      }}
+    >
       <DialogTitle>
         {containerName ? `Shell for ${containerName}` : "Container Shell"}
         <Box sx={{ float: "right" }}>

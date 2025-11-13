@@ -87,17 +87,6 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     }
   }, [autoRefresh, onRefresh, open]);
 
-  // Reset form when dialog closes
-  const prevOpen = useRef(open);
-  useEffect(() => {
-    if (prevOpen.current && !open) {
-      // Dialog just closed - reset form
-      setSearch("");
-      setAutoRefresh(autoRefreshDefault);
-    }
-    prevOpen.current = open;
-  }, [open, autoRefreshDefault]);
-
   return (
     <Dialog
       open={open}
@@ -110,6 +99,10 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
             if (logsBoxRef.current) {
               logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
             }
+          },
+          onExited: () => {
+            setSearch("");
+            setAutoRefresh(autoRefreshDefault);
           },
         },
       }}
@@ -140,7 +133,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
               control={
                 <Switch
                   checked={autoRefresh}
-                  onChange={() => setAutoRefresh((v) => !v)}
+                  onChange={(_, checked) => setAutoRefresh(checked)}
                   color="primary"
                   size="small"
                 />

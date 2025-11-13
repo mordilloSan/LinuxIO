@@ -3,7 +3,6 @@ import React, {
   createContext,
   useRef,
   useCallback,
-  useLayoutEffect,
   useState,
   useEffect,
 } from "react";
@@ -34,22 +33,24 @@ function getRouteFromPathname(pathname: string): string {
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [status, setStatus] = useState<WSStatus>("idle");
+  const [status, setStatus] = useState<WSStatus>(() =>
+    typeof window === "undefined" ? "idle" : "connecting",
+  );
   const wsRef = useRef<WebSocket | null>(null);
   const handlers = useRef<Set<MessageHandler>>(new Set());
   const location = useLocation();
-  const currentRouteRef = useRef<string>(
-    getRouteFromPathname(location.pathname),
-  );
+  const initialRoute = getRouteFromPathname(location.pathname);
+  const currentRouteRef = useRef<string>(initialRoute);
 
   // Initial WebSocket connection
-  useLayoutEffect(() => {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const route = getRouteFromPathname(location.pathname);
-    currentRouteRef.current = route;
+    const route = currentRouteRef.current;
     const wsUrl = `${proto}://${window.location.host}/ws?route=${encodeURIComponent(route)}`;
 
-    setStatus("connecting");
     const ws = new window.WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -74,7 +75,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
         /* ignore */
       }
       wsRef.current = null;
-      setStatus("closed");
     };
   }, []);
 

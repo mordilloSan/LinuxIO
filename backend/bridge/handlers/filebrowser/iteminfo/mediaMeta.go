@@ -3,6 +3,7 @@ package iteminfo
 import (
 	"net/http"
 	"os"
+	"strings"
 )
 
 // DetectTypeByHeader detects the MIME type of a file based on its header.
@@ -38,6 +39,17 @@ func IsDirectory(fileInfo os.FileInfo) bool {
 		return false
 	}
 
-	// For bundle-type dirs, treat them as files
-	return false
+	name := strings.ToLower(fileInfo.Name())
+	bundleSuffixes := []string{
+		".app",
+		".bundle",
+		".pkg",
+		".framework",
+	}
+	for _, suffix := range bundleSuffixes {
+		if strings.HasSuffix(name, suffix) {
+			return false
+		}
+	}
+	return true
 }

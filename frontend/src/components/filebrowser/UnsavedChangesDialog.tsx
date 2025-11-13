@@ -24,19 +24,21 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
       onClose={onKeepEditing}
       maxWidth="sm"
       fullWidth
-      PaperProps={{
-        sx: {
-          backgroundColor: theme.palette.background.paper,
-          borderRadius: 4,
-          border: `1px solid rgba(255, 255, 255, 0.2)`,
-          boxShadow: `0 0 10px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 255, 255, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.1)`,
-          backdropFilter: "blur(10px)",
+      slotProps={{
+        paper: {
+          sx: {
+            backgroundColor: theme.palette.background.paper,
+            borderRadius: 4,
+            border: `1px solid rgba(255, 255, 255, 0.2)`,
+            boxShadow: `0 0 10px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 255, 255, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.1)`,
+            backdropFilter: "blur(10px)",
+          },
         },
-      }}
-      BackdropProps={{
-        sx: {
-          backdropFilter: "blur(4px)",
-          backgroundColor: "rgba(0, 0, 0, 0.7)",
+        backdrop: {
+          sx: {
+            backdropFilter: "blur(4px)",
+            backgroundColor: "rgba(0, 0, 0, 0.7)",
+          },
         },
       }}
     >
