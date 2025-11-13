@@ -64,7 +64,9 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
     >
       {/* Left section - Status indicator when editing */}
       {showQuickSave && (
-        <Box sx={{ minWidth: 150, display: "flex", alignItems: "center", gap: 1 }}>
+        <Box
+          sx={{ minWidth: 150, display: "flex", alignItems: "center", gap: 1 }}
+        >
           {isDirty && (
             <Typography
               variant="caption"

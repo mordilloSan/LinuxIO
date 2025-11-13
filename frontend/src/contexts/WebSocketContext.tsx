@@ -38,7 +38,9 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
   const wsRef = useRef<WebSocket | null>(null);
   const handlers = useRef<Set<MessageHandler>>(new Set());
   const location = useLocation();
-  const currentRouteRef = useRef<string>(getRouteFromPathname(location.pathname));
+  const currentRouteRef = useRef<string>(
+    getRouteFromPathname(location.pathname),
+  );
 
   // Initial WebSocket connection
   useLayoutEffect(() => {
@@ -81,12 +83,17 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
     const newRoute = getRouteFromPathname(location.pathname);
 
     // Only send if route actually changed and WebSocket is open
-    if (newRoute !== currentRouteRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+    if (
+      newRoute !== currentRouteRef.current &&
+      wsRef.current?.readyState === WebSocket.OPEN
+    ) {
       currentRouteRef.current = newRoute;
-      wsRef.current.send(JSON.stringify({
-        type: "route_change",
-        data: newRoute,
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          type: "route_change",
+          data: newRoute,
+        }),
+      );
     }
   }, [location.pathname]);
 

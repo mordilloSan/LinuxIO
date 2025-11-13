@@ -1,44 +1,86 @@
 import DownloadIcon from "@mui/icons-material/Download";
 import { Box, Button, Divider, Paper, Stack, Typography } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
 
 import { formatFileSize } from "@/utils/formaters";
 
-interface MultiFileDetailProps {
-  multiItems: MultiStatsItem[];
-  onDownload: (path: string) => void;
-  totalSize?: number | null;
-  totalFiles?: number | null;
-  totalFolders?: number | null;
+// Glow animation for loading states
+const glowAnimation = `
+  @keyframes detailGlow {
+    0% { opacity: 0.5; }
+    25% { opacity: 0.7; }
+    50% { opacity: 1; }
+    75% { opacity: 0.7; }
+    100% { opacity: 0.5; }
+  }
+`;
+
+// Inject glow animation styles once
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("detailGlowStyles")
+) {
+  const style = document.createElement("style");
+  style.id = "detailGlowStyles";
+  style.textContent = glowAnimation;
+  document.head.appendChild(style);
 }
 
-const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
-  label,
-  value,
-}) => (
-  <Box sx={{ display: "flex", gap: 2 }}>
-    <Typography
-      variant="body2"
-      fontWeight={600}
-      color="text.secondary"
-      sx={{ minWidth: 140 }}
-    >
-      {label}:
-    </Typography>
-    <Typography variant="body2" sx={{ flex: 1, wordBreak: "break-all" }}>
-      {value}
-    </Typography>
-  </Box>
-);
+interface MultiFileDetailItem extends MultiStatsItem {
+  isLoading?: boolean;
+  error?: Error | null;
+}
+
+interface MultiFileDetailProps {
+  multiItems: MultiFileDetailItem[];
+  onDownload: (path: string) => void;
+  totalSize?: number | null;
+  isLoadingDetails?: boolean;
+}
+
+const DetailRow: React.FC<{
+  label: string;
+  value: React.ReactNode;
+  isLoading?: boolean;
+}> = ({ label, value, isLoading = false }) => {
+  return (
+    <Box sx={{ display: "flex", gap: 2 }}>
+      <Typography
+        variant="body2"
+        fontWeight={600}
+        color="text.secondary"
+        sx={{ minWidth: 140 }}
+      >
+        {label}:
+      </Typography>
+      {isLoading ? (
+        <Typography
+          variant="body2"
+          sx={{
+            flex: 1,
+            wordBreak: "break-all",
+            animation: "detailGlow 2.5s infinite",
+          }}
+        >
+          —
+        </Typography>
+      ) : (
+        <Typography variant="body2" sx={{ flex: 1, wordBreak: "break-all" }}>
+          {value}
+        </Typography>
+      )}
+    </Box>
+  );
+};
 
 const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
   multiItems,
   onDownload,
   totalSize,
-  totalFiles,
-  totalFolders,
+  isLoadingDetails,
 }) => {
   if (!multiItems?.length) {
     return null;
@@ -81,22 +123,10 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
           label="Selected Items"
           value={multiItems.length.toLocaleString()}
         />
-        <DetailRow label="Aggregate Size" value={formatFileSize(totalSize)} />
         <DetailRow
-          label="Files (including nested)"
-          value={
-            totalFiles !== undefined && totalFiles !== null
-              ? totalFiles.toLocaleString()
-              : "Unknown"
-          }
-        />
-        <DetailRow
-          label="Folders (including nested)"
-          value={
-            totalFolders !== undefined && totalFolders !== null
-              ? totalFolders.toLocaleString()
-              : "Unknown"
-          }
+          label="Total Size"
+          value={formatFileSize(totalSize)}
+          isLoading={isLoadingDetails}
         />
       </Stack>
 
@@ -113,17 +143,30 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         <Stack spacing={1}>
           {multiItems.map((item) => {
             const isDir = item.type === "directory";
+            const isLoading = item.isLoading ?? false;
+            const theme = useTheme();
+            const [hovered, setHovered] = React.useState(false);
+
             return (
               <Box
                 key={item.path}
+                onMouseEnter={() => setHovered(true)}
+                onMouseLeave={() => setHovered(false)}
                 sx={{
                   border: "1px solid",
-                  borderColor: "divider",
+                  borderColor: hovered
+                    ? alpha(theme.palette.primary.main, 0.4)
+                    : "divider",
                   borderRadius: 1.5,
                   p: 1.5,
                   display: "flex",
                   flexDirection: "column",
                   gap: 0.5,
+                  backgroundColor: hovered
+                    ? alpha(theme.palette.primary.main, 0.05)
+                    : "transparent",
+                  transition: "all 120ms ease",
+                  transform: hovered ? "translateY(-1px)" : "none",
                 }}
               >
                 <Box
@@ -153,13 +196,27 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
                   )}
                 </Box>
                 <Typography variant="body2" color="text.secondary">
-                  Size: {formatFileSize(item.size)}
+                  Size:{" "}
+                  {isLoading ? (
+                    <span style={{ animation: "detailGlow 2.5s infinite" }}>
+                      —
+                    </span>
+                  ) : isDir && (item as any).aggregateSize !== undefined ? (
+                    formatFileSize((item as any).aggregateSize)
+                  ) : (
+                    formatFileSize(item.size)
+                  )}
+                  {isDir && item.error && (
+                    <Typography
+                      component="span"
+                      variant="body2"
+                      color="error"
+                      sx={{ ml: 1, fontSize: "0.85rem" }}
+                    >
+                      ⚠ Failed to load size
+                    </Typography>
+                  )}
                 </Typography>
-                {isDir && (
-                  <Typography variant="body2" color="text.secondary">
-                    {`${item.fileCount ?? 0} file${item.fileCount === 1 ? "" : "s"}, ${item.folderCount ?? 0} folder${item.folderCount === 1 ? "" : "s"}`}
-                  </Typography>
-                )}
               </Box>
             );
           })}

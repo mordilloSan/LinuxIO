@@ -24,7 +24,6 @@ func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 		"resource_patch":  resourcePatch,
 		"raw_files":       rawFiles,
 		"dir_size":        dirSize,
-		"multi_stats":     multiStats,
 	}
 }
 
@@ -394,89 +393,15 @@ func dirSize(args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:path is not a directory")
 	}
 
-	// Calculate directory statistics
-	stats, err := services.CalculateDirectorySize(realPath)
+	// Calculate directory size
+	size, err := services.CalculateDirectorySize(realPath)
 	if err != nil {
 		logger.Debugf("error calculating directory size: %v", err)
 		return nil, fmt.Errorf("error calculating directory size: %w", err)
 	}
 
 	return map[string]any{
-		"path":        path,
-		"size":        stats.TotalSize.Load(),
-		"fileCount":   stats.FileCount.Load(),
-		"folderCount": stats.FolderCount.Load(),
-	}, nil
-}
-
-// multiStats calculates aggregated statistics for multiple files/folders
-// Args: [paths] (comma-separated paths)
-func multiStats(args []string) (any, error) {
-	if len(args) < 1 {
-		return nil, fmt.Errorf("bad_request:missing paths")
-	}
-
-	// Parse comma-separated paths
-	paths := strings.Split(args[0], ",")
-	if len(paths) == 0 {
-		return nil, fmt.Errorf("bad_request:no paths provided")
-	}
-
-	var totalSize int64
-	var totalFiles int64
-	var totalFolders int64
-	items := make([]map[string]any, 0, len(paths))
-
-	for _, path := range paths {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			continue
-		}
-
-		realPath := filepath.Join(path)
-		stat, err := os.Stat(realPath)
-		if err != nil {
-			logger.Debugf("error stating path %s: %v", path, err)
-			continue
-		}
-
-		itemInfo := map[string]any{
-			"path": path,
-			"name": filepath.Base(realPath),
-			"type": "file",
-		}
-
-		if stat.IsDir() {
-			itemInfo["type"] = "directory"
-			// Calculate directory size
-			stats, err := services.CalculateDirectorySize(realPath)
-			if err != nil {
-				logger.Debugf("error calculating directory size for %s: %v", path, err)
-				itemInfo["size"] = int64(0)
-				itemInfo["fileCount"] = int64(0)
-				itemInfo["folderCount"] = int64(0)
-			} else {
-				itemInfo["size"] = stats.TotalSize.Load()
-				itemInfo["fileCount"] = stats.FileCount.Load()
-				itemInfo["folderCount"] = stats.FolderCount.Load()
-				totalSize += stats.TotalSize.Load()
-				totalFiles += stats.FileCount.Load()
-				totalFolders += stats.FolderCount.Load()
-			}
-		} else {
-			itemInfo["size"] = stat.Size()
-			totalSize += stat.Size()
-			totalFiles++
-		}
-
-		items = append(items, itemInfo)
-	}
-
-	return map[string]any{
-		"totalSize":    totalSize,
-		"totalFiles":   totalFiles,
-		"totalFolders": totalFolders,
-		"items":        items,
-		"count":        len(items),
+		"path": path,
+		"size": size,
 	}, nil
 }

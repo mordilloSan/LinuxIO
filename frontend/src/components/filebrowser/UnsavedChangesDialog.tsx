@@ -55,7 +55,7 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
           variant="h5"
           fontWeight={600}
           sx={{
-           color: theme.palette.text.primary,
+            color: theme.palette.text.primary,
           }}
         >
           Unsaved Changes
@@ -65,7 +65,7 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
         <Typography
           variant="body1"
           sx={{
-            mt:2,
+            mt: 2,
             color: theme.palette.text.secondary,
           }}
         >
