@@ -15,7 +15,8 @@ interface UseDirectorySizeResult {
   isUnavailable: boolean;
 }
 
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (staleTime)
+const CACHE_PERSISTENCE = 24 * 60 * 60 * 1000; // 24 hours (gcTime - keep in cache)
 const FAILED_RETRY_DELAY = 30 * 1000; // 30 seconds before retrying failed paths
 const MAX_RETRIES = 2;
 
@@ -36,7 +37,10 @@ export const useDirectorySize = (
       return response.data;
     },
     enabled: enabled && !!path,
-    staleTime: CACHE_DURATION,
+    staleTime: CACHE_DURATION, // Data stays fresh for 5 minutes - no refetch during this time
+    gcTime: CACHE_PERSISTENCE, // Keep data in cache for 24 hours even if unused
+    refetchOnWindowFocus: false, // Don't refetch when window regains focus
+    refetchOnMount: false, // Don't refetch when component mounts if data is fresh
     retry: (failureCount) => failureCount < MAX_RETRIES,
     retryDelay: () => FAILED_RETRY_DELAY,
   });
@@ -52,7 +56,9 @@ export const useDirectorySize = (
 };
 
 // Function to clear the entire directory size cache
-export const clearDirectorySizeCache = (queryClient?: ReturnType<typeof useQueryClient>) => {
+export const clearDirectorySizeCache = (
+  queryClient?: ReturnType<typeof useQueryClient>,
+) => {
   if (queryClient) {
     queryClient.removeQueries({ queryKey: ["directorySize"] });
   }

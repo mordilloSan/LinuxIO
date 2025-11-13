@@ -38,10 +38,6 @@ func IsDirectory(fileInfo os.FileInfo) bool {
 		return false
 	}
 
-	if !hasBundleExtension(fileInfo.Name()) {
-		return true
-	}
-
 	// For bundle-type dirs, treat them as files
 	return false
 }

@@ -63,12 +63,22 @@ const getLanguageMode = (fileName: string): string => {
 };
 
 const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
-  ({ filePath, fileName, initialContent, onSave, isSaving = false, onDirtyChange }, ref) => {
+  (
+    {
+      filePath,
+      fileName,
+      initialContent,
+      onSave,
+      isSaving = false,
+      onDirtyChange,
+    },
+    ref,
+  ) => {
     const [content, setContent] = useState(initialContent);
     const [isDirty, setIsDirty] = useState(false);
     const editorRef = useRef<AceEditor>(null);
-    const theme= useTheme();
-  const isDarkMode = theme.palette.mode === "dark";
+    const theme = useTheme();
+    const isDarkMode = theme.palette.mode === "dark";
 
     useEffect(() => {
       setContent(initialContent);

@@ -31,23 +31,23 @@ import FileEditor from "@/components/filebrowser/FileEditor";
 import { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import InputDialog from "@/components/filebrowser/InputDialog";
 import MultiFileDetail from "@/components/filebrowser/MultiFileDetail";
-import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import SortBar, {
   SortField,
   SortOrder,
 } from "@/components/filebrowser/SortBar";
+import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import {
   normalizeResource,
   buildDownloadUrl,
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useMultipleDirectoryDetails } from "@/hooks/useMultipleDirectoryDetails";
 import {
   ViewMode,
   ApiResource,
   FileResource,
   FileItem,
-  MultiStatsResponse,
   ResourceStatData,
 } from "@/types/filebrowser";
 import axios from "@/utils/axios"; // Still used for mutations (create, delete)
@@ -131,6 +131,7 @@ const FileBrowser: React.FC = () => {
 
   const { mutate: deleteItems } = useMutation({
     mutationFn: async (paths: string[]) => {
+      // DEBUG: Using Promise.all to test goroutine leak in backend
       await Promise.all(
         paths.map((path) =>
           axios.delete("/navigator/api/resources", {
@@ -230,31 +231,7 @@ const FileBrowser: React.FC = () => {
     enabled: hasSingleDetailTarget,
   });
 
-  const { data: directorySizeData, isPending: isDirectorySizePending } =
-    useQuery<{
-      path: string;
-      size: number;
-      fileCount: number;
-      folderCount: number;
-    }>({
-      queryKey: ["directorySize", detailTarget],
-      queryFn: async () => {
-        const currentDetailTarget = detailTarget;
-        if (!currentDetailTarget || currentDetailTarget.length !== 1) {
-          throw new Error("Invalid selection");
-        }
-        const { data } = await axios.get<{
-          path: string;
-          size: number;
-          fileCount: number;
-          folderCount: number;
-        }>("/navigator/api/dir-size", {
-          params: { path: currentDetailTarget[0] },
-        });
-        return data;
-      },
-      enabled: hasSingleDetailTarget && detailResource?.type === "directory",
-    });
+  // Directory details are now fetched by the FileDetail component using useDirectoryDetails hook
 
   // For stat data (permissions and ownership) on single item
   const { data: statData, isPending: isStatPending } =
@@ -276,6 +253,54 @@ const FileBrowser: React.FC = () => {
       enabled: hasSingleDetailTarget,
     });
 
+  // For multiple file details
+  // DEBUG: Using Promise.all to test goroutine leak in backend
+  const { data: multipleFileResources, isPending: isMultipleFilesPending } =
+    useQuery<Record<string, FileResource>>({
+      queryKey: ["multipleFileDetails", detailTarget],
+      queryFn: async () => {
+        const currentDetailTarget = detailTarget;
+        if (!currentDetailTarget || currentDetailTarget.length <= 1) {
+          throw new Error("Invalid selection");
+        }
+        const results: Record<string, FileResource> = {};
+        await Promise.all(
+          currentDetailTarget.map(async (path) => {
+            const { data } = await axios.get<ApiResource>(
+              "/navigator/api/resources",
+              {
+                params: { path },
+              },
+            );
+            results[path] = normalizeResource(data);
+          }),
+        );
+        return results;
+      },
+      enabled: hasMultipleDetailTargets,
+    });
+
+  // Use the hook to fetch directory details for multiple items
+  const fileResourceMap = useMemo(() => {
+    if (!multipleFileResources) return {};
+    return Object.entries(multipleFileResources).reduce(
+      (acc, [path, resource]) => {
+        acc[path] = {
+          name: resource.name,
+          type: resource.type,
+          size: resource.size || 0,
+        };
+        return acc;
+      },
+      {} as Record<string, { name: string; type: string; size: number }>,
+    );
+  }, [multipleFileResources]);
+
+  const multiItemsStats = useMultipleDirectoryDetails(
+    detailTarget || [],
+    fileResourceMap,
+  );
+
   // For file content when editing
   const { data: editingFileResource, isPending: isEditingFileLoading } =
     useQuery<FileResource>({
@@ -293,27 +318,6 @@ const FileBrowser: React.FC = () => {
       },
       enabled: !!editingPath,
     });
-
-  // For multiple items
-  const {
-    data: multiStatsData,
-    isPending: isMultiStatsPending,
-    error: multiStatsError,
-  } = useQuery<MultiStatsResponse>({
-    queryKey: ["multiStats", detailTarget],
-    queryFn: async () => {
-      const currentDetailTarget = detailTarget;
-      if (!currentDetailTarget || currentDetailTarget.length === 0) {
-        throw new Error("No items selected");
-      }
-      const paths = currentDetailTarget.join(",");
-      const { data } = await axios.get("/navigator/api/multi-stats", {
-        params: { paths },
-      });
-      return data;
-    },
-    enabled: hasMultipleDetailTargets,
-  });
 
   const handleCloseDetailDialog = useCallback(() => {
     setDetailTarget(null);
@@ -560,7 +564,7 @@ const FileBrowser: React.FC = () => {
 
   const shouldShowDetailLoader =
     (hasSingleDetailTarget && isDetailPending) ||
-    (hasMultipleDetailTargets && isMultiStatsPending);
+    (hasMultipleDetailTargets && isMultipleFilesPending);
 
   return (
     <>
@@ -734,35 +738,21 @@ const FileBrowser: React.FC = () => {
                 : "Failed to load details"}
             </Typography>
           )}
-          {!shouldShowDetailLoader &&
-            hasMultipleDetailTargets &&
-            multiStatsError && (
-              <Typography color="error">
-                {multiStatsError instanceof Error
-                  ? multiStatsError.message
-                  : "Failed to load details"}
-              </Typography>
-            )}
           {detailResource && (
             <FileDetail
               resource={detailResource}
               onDownload={handleDownloadDetail}
               onEdit={handleEditFile}
-              directorySize={directorySizeData?.size}
-              fileCount={directorySizeData?.fileCount}
-              folderCount={directorySizeData?.folderCount}
-              isLoadingDirectorySize={isDirectorySizePending}
               statData={statData}
               isLoadingStat={isStatPending}
             />
           )}
-          {multiStatsData && (
+          {hasMultipleDetailTargets && multiItemsStats.items.length > 0 && (
             <MultiFileDetail
-              multiItems={multiStatsData.items}
-              totalSize={multiStatsData.totalSize}
-              totalFiles={multiStatsData.totalFiles}
-              totalFolders={multiStatsData.totalFolders}
+              multiItems={multiItemsStats.items}
+              totalSize={multiItemsStats.totalSize}
               onDownload={handleDownloadDetail}
+              isLoadingDetails={multiItemsStats.isAnyLoading}
             />
           )}
         </DialogContent>

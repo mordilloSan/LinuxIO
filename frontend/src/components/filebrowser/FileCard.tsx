@@ -1,9 +1,39 @@
-import { CircularProgress } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { formatFileSize } from "@/utils/formaters";
+
+const glowAnimation = `
+  @keyframes sizeGlow {
+    0% {
+      opacity: 0.5;
+    }
+    25% {
+      opacity: 0.7;
+    }
+    50% {
+      opacity: 1;
+    }
+    75% {
+      opacity: 0.7;
+    }
+    100% {
+      opacity: 0.5;
+    }
+  }
+`;
+
+// Inject styles
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("sizeGlowStyles")
+) {
+  const style = document.createElement("style");
+  style.id = "sizeGlowStyles";
+  style.textContent = glowAnimation;
+  document.head.appendChild(style);
+}
 
 export interface FileCardProps {
   name: string;
@@ -175,10 +205,16 @@ const FileCard: React.FC<FileCardProps> = React.memo(
             title={directorySizeError?.message}
           >
             {directorySizeLoading ? (
-              <CircularProgress size={14} thickness={3} />
+              <span
+                style={{
+                  animation: "sizeGlow 2.5s infinite",
+                }}
+              >
+                —
+              </span>
             ) : directorySizeUnavailable ? (
               <span style={{ fontSize: "0.85rem" }}>⚠</span>
-            ) : size !== undefined ? (
+            ) : size !== undefined && size !== 0 ? (
               formatFileSize(size, 1, "")
             ) : (
               "—"

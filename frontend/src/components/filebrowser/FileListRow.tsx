@@ -1,9 +1,39 @@
-import { CircularProgress } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import React, { useState, useCallback, useMemo } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { formatFileSize } from "@/utils/formaters";
+
+const glowAnimation = `
+  @keyframes sizeGlow {
+    0% {
+      opacity: 0.5;
+    }
+    25% {
+      opacity: 0.7;
+    }
+    50% {
+      opacity: 1;
+    }
+    75% {
+      opacity: 0.7;
+    }
+    100% {
+      opacity: 0.5;
+    }
+  }
+`;
+
+// Inject styles
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("sizeGlowStyles")
+) {
+  const style = document.createElement("style");
+  style.id = "sizeGlowStyles";
+  style.textContent = glowAnimation;
+  document.head.appendChild(style);
+}
 
 export interface FileListRowProps {
   name: string;
@@ -53,12 +83,12 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
 
     const formattedSize = useMemo(() => {
       if (directorySizeLoading) {
-        return ""; // Will render spinner instead
+        return ""; // Will render glow effect instead
       }
       if (directorySizeUnavailable) {
         return ""; // Will render warning icon instead
       }
-      if (size !== undefined) {
+      if (size !== undefined && size !== 0) {
         return formatFileSize(size, 1, "");
       }
       return "—";
@@ -173,7 +203,13 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           title={directorySizeError?.message}
         >
           {directorySizeLoading ? (
-            <CircularProgress size={14} thickness={3} />
+            <span
+              style={{
+                animation: "sizeGlow 2.5s infinite",
+              }}
+            >
+              —
+            </span>
           ) : directorySizeUnavailable ? (
             <span>⚠</span>
           ) : (

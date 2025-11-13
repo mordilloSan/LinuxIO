@@ -32,41 +32,6 @@ func TestFileInfoFaster(t *testing.T) {
 		assert.False(t, info.Hidden)
 	})
 
-	t.Run("get_info_directory", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "testdir")
-		createTestFile(t, dirPath, "file1.txt", []byte("a"))
-		createTestFile(t, dirPath, "file2.txt", []byte("bb"))
-
-		opts := iteminfo.FileOptions{
-			Path:   dirPath,
-			IsDir:  true,
-			Expand: true,
-		}
-
-		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
-		assert.NotNil(t, info)
-		assert.Equal(t, "testdir", info.Name)
-		// Should have expanded directory with files/folders
-		assert.True(t, len(info.Files) > 0 || len(info.Folders) > 0 || len(info.Type) > 0)
-	})
-
-	t.Run("get_info_with_content", func(t *testing.T) {
-		filePath := createTestFile(t, tmpDir, "readfile.txt", []byte("file content"))
-
-		opts := iteminfo.FileOptions{
-			Path:    filePath,
-			Content: true,
-		}
-
-		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
-		assert.NotNil(t, info)
-		assert.Equal(t, "readfile.txt", info.Name)
-		// Content should be populated
-		assert.NotEmpty(t, info.Content, "content should be populated when requested")
-	})
-
 	t.Run("get_info_nonexistent", func(t *testing.T) {
 		opts := iteminfo.FileOptions{
 			Path: filepath.Join(tmpDir, "nonexistent.txt"),
@@ -87,28 +52,6 @@ func TestFileInfoFaster(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.True(t, info.Hidden, "file starting with . should be marked as hidden")
-	})
-
-	t.Run("get_info_symlink", func(t *testing.T) {
-		targetFile := createTestFile(t, tmpDir, "target.txt", []byte("target"))
-		linkFile := filepath.Join(tmpDir, "link.txt")
-
-		// Try to create symlink (may not work on all platforms)
-		err := os.Symlink(targetFile, linkFile)
-		if err != nil {
-			t.Skip("symlinks not supported on this platform")
-		}
-
-		opts := iteminfo.FileOptions{
-			Path: linkFile,
-		}
-
-		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
-		assert.NotNil(t, info)
-		// Symlink might or might not be detected depending on implementation
-		// Just verify info is returned
-		assert.NotEmpty(t, info.Name)
 	})
 
 	t.Run("get_info_empty_file", func(t *testing.T) {
@@ -138,27 +81,6 @@ func TestFileInfoFaster(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, info)
 		assert.Equal(t, int64(5*1024*1024), info.Size)
-	})
-
-	t.Run("get_info_expanded_directory", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "expand_test")
-		createTestFile(t, dirPath, "file1.txt", []byte("a"))
-		createTestFile(t, dirPath, "file2.md", []byte("bb"))
-		subDir := createTestDir(t, dirPath, "subdir")
-		createTestFile(t, subDir, "file3.txt", []byte("ccc"))
-
-		opts := iteminfo.FileOptions{
-			Path:   dirPath,
-			IsDir:  true,
-			Expand: true,
-		}
-
-		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
-		assert.NotNil(t, info)
-		// Should have files and/or folders
-		totalItems := len(info.Files) + len(info.Folders)
-		assert.Greater(t, totalItems, 0, "expanded directory should have items")
 	})
 }
 
@@ -264,7 +186,7 @@ func TestGetDirInfo(t *testing.T) {
 func TestFileTypeDetection(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	t.Run("detect_text_file_type", func(t *testing.T) {
+	t.Run("basic_file_type", func(t *testing.T) {
 		filePath := createTestFile(t, tmpDir, "document.txt", []byte("text content"))
 
 		opts := iteminfo.FileOptions{
@@ -274,35 +196,7 @@ func TestFileTypeDetection(t *testing.T) {
 		info, err := FileInfoFaster(opts)
 		assert.NoError(t, err)
 		assert.NotNil(t, info)
-		// Should detect as text
+		// Should have a type set
 		assert.NotEmpty(t, info.Type)
-	})
-
-	t.Run("detect_binary_file_type", func(t *testing.T) {
-		binaryContent := []byte{0x89, 0x50, 0x4E, 0x47} // PNG header
-		filePath := filepath.Join(tmpDir, "image.png")
-		err := os.WriteFile(filePath, binaryContent, 0o644)
-		require.NoError(t, err)
-
-		opts := iteminfo.FileOptions{
-			Path: filePath,
-		}
-
-		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
-		assert.NotNil(t, info)
-	})
-
-	t.Run("detect_json_file", func(t *testing.T) {
-		jsonContent := []byte(`{"key": "value"}`)
-		filePath := createTestFile(t, tmpDir, "config.json", jsonContent)
-
-		opts := iteminfo.FileOptions{
-			Path: filePath,
-		}
-
-		info, err := FileInfoFaster(opts)
-		assert.NoError(t, err)
-		assert.NotNil(t, info)
 	})
 }

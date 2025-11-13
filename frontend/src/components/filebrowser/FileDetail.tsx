@@ -12,22 +12,18 @@ import {
   Paper,
   Stack,
   Typography,
-  alpha,
 } from "@mui/material";
 import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
+import { useDirectoryDetails } from "@/hooks/useDirectoryDetails";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
 interface FileDetailProps {
   resource?: FileResource;
   onDownload: (path: string) => void;
   onEdit?: (path: string) => void;
-  directorySize?: number | null;
-  fileCount?: number | null;
-  folderCount?: number | null;
-  isLoadingDirectorySize?: boolean;
   statData?: ResourceStatData | null;
   isLoadingStat?: boolean;
 }
@@ -55,13 +51,16 @@ const FileDetail: React.FC<FileDetailProps> = ({
   resource,
   onDownload,
   onEdit,
-  directorySize,
-  fileCount,
-  folderCount,
-  isLoadingDirectorySize,
   statData,
   isLoadingStat,
 }) => {
+  // Fetch directory details only for directories
+  const isDirectory = resource?.type === "directory";
+  const { size, isLoading: isLoadingDirectoryDetails } = useDirectoryDetails(
+    resource?.path || "",
+    isDirectory,
+  );
+
   if (!resource) {
     return (
       <Paper
@@ -78,7 +77,6 @@ const FileDetail: React.FC<FileDetailProps> = ({
     );
   }
 
-  const isDirectory = resource.type === "directory";
   const isSymlink = resource.symlink;
   // Show edit button for all non-directory files (backend determines if truly editable)
   const isEditableFile = !isDirectory;
@@ -139,42 +137,23 @@ const FileDetail: React.FC<FileDetailProps> = ({
       {/* Details section */}
       <Stack spacing={1.5}>
         <DetailRow label="Path" value={resource.path} />
-        {!isDirectory ? (
-          <DetailRow label="Size" value={formatFileSize(resource.size)} />
-        ) : (
-          <>
-            <DetailRow
-              label="Size"
-              value={
-                isLoadingDirectorySize ? (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <CircularProgress size={16} />
-                    <Typography variant="body2">Calculating...</Typography>
-                  </Box>
-                ) : directorySize !== undefined && directorySize !== null ? (
-                  formatFileSize(directorySize)
-                ) : (
-                  "Unknown"
-                )
-              }
-            />
-            <DetailRow
-              label="Contents"
-              value={
-                isLoadingDirectorySize ? (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <CircularProgress size={16} />
-                    <Typography variant="body2">Counting...</Typography>
-                  </Box>
-                ) : fileCount !== undefined && folderCount !== undefined ? (
-                  `${fileCount} file${fileCount !== 1 ? "s" : ""}, ${folderCount} folder${folderCount !== 1 ? "s" : ""}`
-                ) : (
-                  "Unknown"
-                )
-              }
-            />
-          </>
-        )}
+        <DetailRow
+          label="Size"
+          value={
+            !isDirectory ? (
+              formatFileSize(resource.size)
+            ) : isLoadingDirectoryDetails ? (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <CircularProgress size={16} />
+                <Typography variant="body2">Calculating...</Typography>
+              </Box>
+            ) : size !== undefined && size !== null && size !== 0 ? (
+              formatFileSize(size)
+            ) : (
+              "—"
+            )
+          }
+        />
         <DetailRow
           label="Modified"
           value={formatDate(resource.modified || resource.modTime)}

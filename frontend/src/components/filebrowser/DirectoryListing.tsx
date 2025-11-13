@@ -219,6 +219,10 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
       if (element && element.closest("[data-file-card='true']")) {
         return;
       }
+      // Don't clear selection on right-click (context menu)
+      if (event.button === 2) {
+        return;
+      }
       clearSelection();
     },
     [clearSelection],
