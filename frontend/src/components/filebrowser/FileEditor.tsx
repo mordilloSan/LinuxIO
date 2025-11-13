@@ -5,6 +5,7 @@ import {
   useImperativeHandle,
   forwardRef,
   useRef,
+  useCallback,
 } from "react";
 import AceEditor from "react-ace";
 import "ace-builds/src-noconflict/mode-javascript";
@@ -62,6 +63,23 @@ const getLanguageMode = (fileName: string): string => {
   return modeMap[ext] || "text";
 };
 
+type EditorState = {
+  filePath: string;
+  baseContent: string;
+  content: string;
+  isDirty: boolean;
+};
+
+const createEditorState = (
+  filePath: string,
+  baseContent: string,
+): EditorState => ({
+  filePath,
+  baseContent,
+  content: baseContent,
+  isDirty: false,
+});
+
 const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
   (
     {
@@ -74,30 +92,52 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     },
     ref,
   ) => {
-    const [content, setContent] = useState(initialContent);
-    const [isDirty, setIsDirty] = useState(false);
+    const [editorState, setEditorState] = useState<EditorState>(() =>
+      createEditorState(filePath, initialContent),
+    );
+    const normalizedState =
+      editorState.filePath === filePath &&
+      editorState.baseContent === initialContent
+        ? editorState
+        : createEditorState(filePath, initialContent);
+    const { content, isDirty } = normalizedState;
     const editorRef = useRef<AceEditor>(null);
     const theme = useTheme();
     const isDarkMode = theme.palette.mode === "dark";
 
-    useEffect(() => {
-      setContent(initialContent);
-      setIsDirty(false);
-    }, [filePath, initialContent]);
+    const updateEditorState = useCallback(
+      (updater: (state: EditorState) => EditorState) => {
+        setEditorState((prev) => {
+          const current =
+            prev.filePath === filePath && prev.baseContent === initialContent
+              ? prev
+              : createEditorState(filePath, initialContent);
+          return updater(current);
+        });
+      },
+      [filePath, initialContent],
+    );
 
     useEffect(() => {
       onDirtyChange?.(isDirty);
     }, [isDirty, onDirtyChange]);
 
     const handleContentChange = (newValue: string) => {
-      setContent(newValue);
-      setIsDirty(newValue !== initialContent);
+      updateEditorState((state) => ({
+        ...state,
+        content: newValue,
+        isDirty: newValue !== state.baseContent,
+      }));
     };
 
     const handleSave = async () => {
       try {
         await onSave(content);
-        setIsDirty(false);
+        updateEditorState((state) => ({
+          ...state,
+          baseContent: state.content,
+          isDirty: false,
+        }));
       } catch {
         // Error is handled by parent component
       }

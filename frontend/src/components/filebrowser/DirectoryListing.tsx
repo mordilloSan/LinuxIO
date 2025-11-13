@@ -47,14 +47,30 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   isContextMenuOpen,
   onDelete,
 }) => {
-  const [focusedIndex, setFocusedIndex] = useState<number>(0);
+  const [focusState, setFocusState] = useState<{
+    path: string;
+    index: number;
+  }>({
+    path: resource.path,
+    index: 0,
+  });
+  const focusedIndex = focusState.path === resource.path ? focusState.index : 0;
+  const setFocusedIndex = useCallback(
+    (nextIndex: number) => {
+      setFocusState({
+        path: resource.path,
+        index: nextIndex,
+      });
+    },
+    [resource.path],
+  );
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number>(-1);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const clearSelection = useCallback(() => {
     onSelectedPathsChange(new Set());
     setFocusedIndex(-1);
-  }, [onSelectedPathsChange]);
+  }, [onSelectedPathsChange, setFocusedIndex]);
 
   const { folders, files } = useMemo(() => {
     const filtered = (resource.items ?? []).filter((item) =>
@@ -137,11 +153,6 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     };
   }, [clearSelection, isContextMenuOpen]);
 
-  // Clear selection and reset focus when changing directories
-  useEffect(() => {
-    setFocusedIndex(0);
-  }, [resource.path]);
-
   useEffect(() => {
     onSelectedPathsChange(new Set());
   }, [resource.path, onSelectedPathsChange]);
@@ -152,7 +163,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
       if (index === -1) return;
       setFocusedIndex(index);
     },
-    [allItems],
+    [allItems, setFocusedIndex],
   );
 
   const handleItemSelection = useCallback(

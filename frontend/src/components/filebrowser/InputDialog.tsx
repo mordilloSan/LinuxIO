@@ -6,7 +6,7 @@ import {
   TextField,
   Button,
 } from "@mui/material";
-import React, { useState, useLayoutEffect } from "react";
+import React, { useState, useCallback } from "react";
 
 interface InputDialogProps {
   open: boolean;
@@ -25,13 +25,32 @@ const InputDialog: React.FC<InputDialogProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const [value, setValue] = useState(defaultValue);
-
-  useLayoutEffect(() => {
-    if (open) {
-      setValue(defaultValue);
-    }
-  }, [open, defaultValue]);
+  const [dialogState, setDialogState] = useState({
+    open,
+    defaultValue,
+    value: defaultValue,
+  });
+  const normalizedState =
+    dialogState.open === open && dialogState.defaultValue === defaultValue
+      ? dialogState
+      : open
+        ? { open, defaultValue, value: defaultValue }
+        : { open, defaultValue, value: dialogState.value };
+  const { value } = normalizedState;
+  const setValue = useCallback(
+    (nextValue: string) => {
+      setDialogState((prev) => {
+        const current =
+          prev.open === open && prev.defaultValue === defaultValue
+            ? prev
+            : open
+              ? { open, defaultValue, value: defaultValue }
+              : { open, defaultValue, value: prev.value };
+        return { ...current, value: nextValue };
+      });
+    },
+    [open, defaultValue],
+  );
 
   const handleConfirm = () => {
     if (value.trim()) {

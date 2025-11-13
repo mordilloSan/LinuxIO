@@ -11,7 +11,7 @@ import TerminalIcon from "@mui/icons-material/Terminal";
 import TextFieldsIcon from "@mui/icons-material/TextFields";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import { useTheme } from "@mui/material/styles";
-import React, { useMemo } from "react";
+import React from "react";
 
 interface FileIconProps {
   isDirectory: boolean;
@@ -180,15 +180,18 @@ const FileIcon = React.memo(
     isSymlink = false,
   }: FileIconProps) => {
     const theme = useTheme();
-
-    const IconComponent = useMemo(
-      () => (isDirectory ? FolderIcon : getIconForType(filename)),
-      [isDirectory, filename],
-    );
+    const IconComponent = isDirectory ? FolderIcon : getIconForType(filename);
     const iconColor = isDirectory
       ? theme.palette.primary.main
       : getIconColor(filename, hidden || false, theme.palette.mode === "dark");
     const wrapperOpacity = hidden ? 0.25 : 1;
+    const iconProps = {
+      sx: {
+        fontSize: size,
+        color: iconColor,
+        flexShrink: 0,
+      },
+    };
 
     if (!isSymlink) {
       return (
@@ -200,13 +203,7 @@ const FileIcon = React.memo(
             transition: "opacity 120ms ease",
           }}
         >
-          <IconComponent
-            sx={{
-              fontSize: size,
-              color: iconColor,
-              flexShrink: 0,
-            }}
-          />
+          {React.createElement(IconComponent, iconProps)}
         </span>
       );
     }
@@ -222,13 +219,7 @@ const FileIcon = React.memo(
           transition: "opacity 120ms ease",
         }}
       >
-        <IconComponent
-          sx={{
-            fontSize: size,
-            color: iconColor,
-            flexShrink: 0,
-          }}
-        />
+        {React.createElement(IconComponent, iconProps)}
         <LinkIcon
           sx={{
             position: "absolute",

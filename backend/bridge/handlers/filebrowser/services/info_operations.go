@@ -123,11 +123,8 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 
 		// Handle symlinks
 		if !isDir && isSymlink {
-			if resolvedPath, resolvedIsDir, simErr := iteminfo.ResolveSymlinks(fileRealPath); simErr == nil {
+			if _, resolvedIsDir, simErr := iteminfo.ResolveSymlinks(fileRealPath); simErr == nil {
 				isDir = resolvedIsDir
-				if resolvedIsDir {
-					fileRealPath = resolvedPath
-				}
 			}
 		}
 
@@ -165,7 +162,6 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 
 	return dirFileInfo, nil
 }
-
 
 // processContent loads text content for small files only
 func processContent(info *iteminfo.ExtendedFileInfo) {
