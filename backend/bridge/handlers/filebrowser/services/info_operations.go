@@ -3,9 +3,7 @@ package services
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
@@ -175,30 +173,4 @@ func processContent(info *iteminfo.ExtendedFileInfo) {
 		return
 	}
 	info.Content = content
-}
-
-// CalculateDirectorySize calculates the total size of a directory using du
-// Skips filesystem boundaries to avoid system directories like /proc, /sys, /dev
-func CalculateDirectorySize(path string) (int64, error) {
-	// Use du to calculate directory size
-	// -sb = summarize in bytes
-	// -x = don't cross filesystem boundaries (skips /proc, /sys, /dev, mounted filesystems)
-	cmd := exec.Command("du", "-sbx", path)
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, fmt.Errorf("failed to calculate directory size: %w", err)
-	}
-
-	// Parse output: "12345\t/path/to/dir"
-	parts := strings.Fields(string(output))
-	if len(parts) < 1 {
-		return 0, fmt.Errorf("unexpected du output format")
-	}
-
-	size, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse size: %w", err)
-	}
-
-	return size, nil
 }

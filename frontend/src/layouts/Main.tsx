@@ -22,7 +22,7 @@ const Dashboard: React.FC = () => {
     useSidebar();
   const { updateInfo, dismissUpdate } = useUpdateInfo();
 
-  useEffect(() => {}, [updateInfo]);
+  useEffect(() => { }, [updateInfo]);
 
   // Auto-close mobile drawer on route change (mobile only)
   useEffect(() => {
@@ -60,7 +60,7 @@ const Dashboard: React.FC = () => {
             flex: 1,
             overflow: "auto",
             background: theme.palette.background.default,
-            p: { xs: 5, lg: 7 },
+            p: location.pathname.includes('/filebrowser') ? 0 : { xs: 5, lg: 7 },
             position: "relative",
           }}
         >
