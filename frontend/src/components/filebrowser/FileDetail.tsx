@@ -17,7 +17,7 @@ import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
-import { useDirectoryDetails } from "@/hooks/useDirectoryDetails";
+import { useDirectorySize } from "@/hooks/useDirectorySize";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
 interface FileDetailProps {
@@ -56,7 +56,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
 }) => {
   // Fetch directory details only for directories
   const isDirectory = resource?.type === "directory";
-  const { size, isLoading: isLoadingDirectoryDetails } = useDirectoryDetails(
+  const { size, isLoading: isLoadingDirectoryDetails } = useDirectorySize(
     resource?.path || "",
     isDirectory,
   );

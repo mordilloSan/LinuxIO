@@ -1,11 +1,16 @@
 package filebrowser
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mordilloSan/go_logger/logger"
 
@@ -372,6 +377,68 @@ func rawFiles(args []string) (any, error) {
 	}, nil
 }
 
+type indexerDirSizeResponse struct {
+	Path  string `json:"path"`
+	Size  int64  `json:"size"`
+	Bytes int64  `json:"bytes"`
+}
+
+func normalizeIndexerPath(path string) string {
+	if path == "" || path == "/" {
+		return "/"
+	}
+	return "/" + strings.Trim(path, "/")
+}
+
+// fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
+func fetchDirSizeFromIndexer(path string) (int64, error) {
+	normPath := normalizeIndexerPath(path)
+
+	transport := &http.Transport{
+		// Dial over the unix domain socket exposed by the indexer systemd service.
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{
+				Timeout:   2 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}
+			return dialer.DialContext(ctx, "unix", "/var/run/indexer.sock")
+		},
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   10 * time.Second,
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/dirsize", nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build indexer request: %w", err)
+	}
+	q := req.URL.Query()
+	q.Set("path", normPath)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("indexer dirsize request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("indexer dirsize returned status %s", resp.Status)
+	}
+
+	var payload indexerDirSizeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return 0, fmt.Errorf("decode indexer dirsize response: %w", err)
+	}
+
+	if payload.Size != 0 {
+		return payload.Size, nil
+	}
+	return payload.Bytes, nil
+}
+
 // dirSize calculates the total size of a directory recursively
 // Args: [path]
 func dirSize(args []string) (any, error) {
@@ -393,11 +460,11 @@ func dirSize(args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:path is not a directory")
 	}
 
-	// Calculate directory size
-	size, err := services.CalculateDirectorySize(realPath)
+	// Get directory size from the indexer daemon (precomputed)
+	size, err := fetchDirSizeFromIndexer(path)
 	if err != nil {
-		logger.Debugf("error calculating directory size: %v", err)
-		return nil, fmt.Errorf("error calculating directory size: %w", err)
+		logger.Debugf("error fetching directory size from indexer: %v", err)
+		return nil, fmt.Errorf("error fetching directory size: %w", err)
 	}
 
 	return map[string]any{

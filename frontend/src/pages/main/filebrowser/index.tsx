@@ -231,7 +231,7 @@ const FileBrowser: React.FC = () => {
     enabled: hasSingleDetailTarget,
   });
 
-  // Directory details are now fetched by the FileDetail component using useDirectoryDetails hook
+  // Directory details are now fetched by the FileDetail component using useDirectorySize hook
 
   // For stat data (permissions and ownership) on single item
   const { data: statData, isPending: isStatPending } =

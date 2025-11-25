@@ -501,7 +501,7 @@ func (m *Manager) gcLoop() {
 				}
 			}
 			if collected > 0 {
-				logger.Infof("🧽 Session GC: collected %d idle-expired session(s)", collected)
+				logger.Infof("Session GC: collected %d idle-expired session(s)", collected)
 			}
 		case <-m.gcStop:
 			return

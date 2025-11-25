@@ -100,6 +100,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
                 ? "repeat(auto-fill, minmax(min(260px, 100%), 1fr))"
                 : undefined,
             gap: viewMode === "list" ? "2px" : "12px",
+            padding: viewMode === "card" ? "4px" : undefined,
           }}
         >
           {folders.map((folder) => (
