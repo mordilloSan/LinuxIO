@@ -8,6 +8,7 @@ import UpdateSettings from "./UpdateSettings";
 import UpdateStatus from "./UpdateStatus";
 
 import TabSelector from "@/components/tabbar/TabSelector";
+import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 import { Update } from "@/types/update";
 import axios from "@/utils/axios";
 
@@ -21,7 +22,7 @@ const Updates: React.FC = () => {
   const [tab, setTab] = useState("updates");
 
   // Query updates for the button
-  const { data } = useQuery<{ updates: Update[] }>({
+  const { data, isLoading, refetch } = useQuery<{ updates: Update[] }>({
     queryKey: ["updateInfo"],
     queryFn: () => axios.get("/updates/packages").then((res) => res.data),
     enabled: tab === "updates", // Only fetch when on updates tab
@@ -29,6 +30,14 @@ const Updates: React.FC = () => {
   });
 
   const updates = useMemo(() => data?.updates || [], [data]);
+  const {
+    updateOne,
+    updateAll,
+    updatingPackage,
+    progress,
+    error,
+    clearError,
+  } = usePackageUpdater(refetch);
 
   // Determine what button to show based on active tab
   const getRightContent = () => {
@@ -38,10 +47,8 @@ const Updates: React.FC = () => {
           variant="contained"
           size="small"
           startIcon={<RefreshIcon />}
-          onClick={() => {
-            // We'll pass this function down to UpdateStatus
-            // or trigger it via a ref/callback
-          }}
+          disabled={!!updatingPackage || isLoading}
+          onClick={() => updateAll(updates.map((u) => u.package_id))}
         >
           Update All ({updates.length})
         </Button>
@@ -69,7 +76,16 @@ const Updates: React.FC = () => {
               width: "100%",
             }}
           >
-            <UpdateStatus />
+            <UpdateStatus
+              updates={updates}
+              isLoading={isLoading}
+              onUpdateOne={updateOne}
+              updatingPackage={updatingPackage}
+              progress={progress}
+              error={error}
+              onClearError={clearError}
+              onComplete={refetch}
+            />
           </Box>
         </Fade>
 

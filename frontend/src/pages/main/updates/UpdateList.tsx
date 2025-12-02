@@ -18,7 +18,7 @@ interface Props {
   onUpdateClick: (pkg: string) => Promise<void>;
   isUpdating?: boolean;
   currentPackage?: string | null;
-  onComplete: () => void;
+  onComplete: () => void | Promise<any>;
   isLoading?: boolean;
 }
 
@@ -153,7 +153,7 @@ const UpdateList: React.FC<Props> = ({
                   disabled={!!isUpdating}
                   onClick={async () => {
                     await onUpdateClick(update.package_id);
-                    onComplete();
+                    await onComplete();
                   }}
                   sx={{ cursor: "pointer" }}
                 />
