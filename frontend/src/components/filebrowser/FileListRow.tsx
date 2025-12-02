@@ -52,6 +52,7 @@ export interface FileListRowProps {
   onDoubleClick?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
   borderRadius?: number | string;
+  disableHover?: boolean;
 }
 
 const COLUMN_TEMPLATE =
@@ -60,6 +61,7 @@ const COLUMN_TEMPLATE =
 const FileListRow: React.FC<FileListRowProps> = React.memo(
   ({
     name,
+    path,
     size,
     modTime,
     isDirectory,
@@ -73,6 +75,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     onDoubleClick,
     onContextMenu,
     borderRadius,
+    disableHover = false,
   }) => {
     const theme = useTheme();
     const [hovered, setHovered] = useState(false);
@@ -133,11 +136,12 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     return (
       <div
         data-file-card="true"
+        data-file-path={path}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={onContextMenu}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseEnter={() => !disableHover && setHovered(true)}
+        onMouseLeave={() => !disableHover && setHovered(false)}
         style={{
           display: "grid",
           gridTemplateColumns: COLUMN_TEMPLATE,
