@@ -13,6 +13,7 @@ interface FoldersListProps {
   onFolderClick: (event: React.MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
   onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+  isMarqueeSelecting?: boolean;
 }
 
 interface FolderItemProps {
@@ -22,6 +23,7 @@ interface FolderItemProps {
   onFolderClick: (event: React.MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
   onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+  disableHover?: boolean;
 }
 
 const FolderItem: React.FC<FolderItemProps> = React.memo(
@@ -32,6 +34,7 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
     onFolderClick,
     onOpenDirectory,
     onFolderContextMenu,
+    disableHover = false,
   }) => {
     // Skip size calculation for symlinks
     const { size, isLoading, error, isUnavailable } = useDirectorySize(
@@ -57,6 +60,7 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
         onClick={(event) => onFolderClick(event, folder.path)}
         onDoubleClick={() => onOpenDirectory(folder.path)}
         onContextMenu={(event) => onFolderContextMenu(event, folder.path)}
+        disableHover={disableHover}
       />
     );
   },
@@ -72,6 +76,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
     onFolderClick,
     onOpenDirectory,
     onFolderContextMenu,
+    isMarqueeSelecting = false,
   }) => {
     if (folders.length === 0) {
       return null;
@@ -112,6 +117,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
               onFolderClick={onFolderClick}
               onOpenDirectory={onOpenDirectory}
               onFolderContextMenu={onFolderContextMenu}
+              disableHover={isMarqueeSelecting}
             />
           ))}
         </div>

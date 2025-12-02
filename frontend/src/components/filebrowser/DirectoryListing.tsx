@@ -10,6 +10,7 @@ import React, {
 import EmptyState from "./EmptyState";
 import FilesList from "./FilesList";
 import FoldersList from "./FoldersList";
+import SelectionBox from "./SelectionBox";
 import {
   FileResource,
   FileItem,
@@ -19,6 +20,7 @@ import {
 } from "../../types/filebrowser";
 
 import { useFileListKeyboardNavigation } from "@/hooks/useFileListKeyboardNavigation";
+import { useMarqueeSelection } from "@/hooks/useMarqueeSelection";
 
 interface DirectoryListingProps {
   resource: FileResource;
@@ -133,6 +135,13 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     onDelete: onDelete,
     global: true, // Enable global keyboard navigation
   });
+
+  // Use marquee selection hook
+  const { isSelecting, selectionBox, handleMouseDown } = useMarqueeSelection(
+    containerRef,
+    allItems,
+    onSelectedPathsChange,
+  );
 
   // Handle document click to clear selection
   useEffect(() => {
@@ -255,6 +264,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     <Box
       ref={containerRef}
       onMouseDownCapture={handleContainerMouseDown}
+      onMouseDown={handleMouseDown}
       className="custom-scrollbar"
       sx={{
         display: "flex",
@@ -263,6 +273,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
         overflowY: "auto",
         overflowX: "hidden",
         height: "100%",
+        position: "relative",
       }}
     >
       <FoldersList
@@ -272,6 +283,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
         onFolderClick={handleFolderClick}
         onOpenDirectory={onOpenDirectory}
         onFolderContextMenu={handleItemContextMenu}
+        isMarqueeSelecting={isSelecting}
       />
 
       <FilesList
@@ -281,7 +293,17 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
         onFileClick={handleFileClick}
         onDownloadFile={onDownloadFile}
         onFileContextMenu={handleItemContextMenu}
+        isMarqueeSelecting={isSelecting}
       />
+
+      {isSelecting && selectionBox && (
+        <SelectionBox
+          left={selectionBox.left}
+          top={selectionBox.top}
+          width={selectionBox.width}
+          height={selectionBox.height}
+        />
+      )}
     </Box>
   );
 };

@@ -12,6 +12,7 @@ interface FilesListProps {
   onFileClick: (event: React.MouseEvent, path: string) => void;
   onDownloadFile: (item: FileItem) => void;
   onFileContextMenu: (event: React.MouseEvent, path: string) => void;
+  isMarqueeSelecting?: boolean;
 }
 
 const FilesList: React.FC<FilesListProps> = React.memo(
@@ -22,6 +23,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(
     onFileClick,
     onDownloadFile,
     onFileContextMenu,
+    isMarqueeSelecting = false,
   }) => {
     if (files.length === 0) {
       return null;
@@ -70,6 +72,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(
               onClick={(event) => onFileClick(event, file.path)}
               onDoubleClick={() => onDownloadFile(file)}
               onContextMenu={(event) => onFileContextMenu(event, file.path)}
+              disableHover={isMarqueeSelecting}
             />
           ))}
         </div>

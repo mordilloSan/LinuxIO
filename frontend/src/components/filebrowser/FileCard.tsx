@@ -51,11 +51,13 @@ export interface FileCardProps {
   onClick: (event: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
+  disableHover?: boolean;
 }
 
 const FileCard: React.FC<FileCardProps> = React.memo(
   ({
     name,
+    path,
     size,
     modTime,
     isDirectory,
@@ -68,6 +70,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     onClick,
     onDoubleClick,
     onContextMenu,
+    disableHover = false,
   }) => {
     const theme = useTheme();
     const [hovered, setHovered] = useState(false);
@@ -137,11 +140,12 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     return (
       <div
         data-file-card="true"
+        data-file-path={path}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={onContextMenu}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseEnter={() => !disableHover && setHovered(true)}
+        onMouseLeave={() => !disableHover && setHovered(false)}
         style={{
           display: "flex",
           alignItems: "center",
