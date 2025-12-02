@@ -2,7 +2,7 @@
 import axios from "@/utils/axios";
 import { useState } from "react";
 
-export const usePackageUpdater = (onComplete: () => void) => {
+export const usePackageUpdater = (onComplete: () => void | Promise<any>) => {
   const [updatingPackage, setUpdatingPackage] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -13,7 +13,7 @@ export const usePackageUpdater = (onComplete: () => void) => {
 
     try {
       await axios.post("/updates/update", { package: pkg });
-      onComplete(); // refresh updates
+      await onComplete(); // refresh updates
     } catch (err: any) {
       const errorMsg =
         err.response?.data?.error || err.message || "Update failed";
@@ -88,7 +88,7 @@ export const usePackageUpdater = (onComplete: () => void) => {
       );
     }
 
-    onComplete();
+    await onComplete();
   };
 
   const clearError = () => setError(null);
