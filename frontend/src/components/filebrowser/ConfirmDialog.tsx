@@ -27,23 +27,36 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const handleConfirm = () => {
+  const handleConfirm = (
+    event?: React.FormEvent<HTMLFormElement> | React.MouseEvent,
+  ) => {
+    event?.preventDefault();
     onConfirm();
     onClose();
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        <DialogContentText>{message}</DialogContentText>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{cancelText}</Button>
-        <Button onClick={handleConfirm} variant="contained" color="error">
-          {confirmText}
-        </Button>
-      </DialogActions>
+      <form onSubmit={handleConfirm}>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{message}</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose} type="button">
+            {cancelText}
+          </Button>
+          <Button
+            type="submit"
+            onClick={handleConfirm}
+            variant="contained"
+            color="error"
+            autoFocus
+          >
+            {confirmText}
+          </Button>
+        </DialogActions>
+      </form>
     </Dialog>
   );
 };

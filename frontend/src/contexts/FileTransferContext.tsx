@@ -30,14 +30,32 @@ interface Upload {
   abortController: AbortController;
 }
 
-type Transfer = Download | Upload;
+interface Compression {
+  id: string;
+  type: "compression";
+  archiveName: string;
+  destination: string;
+  paths: string[];
+  progress: number;
+  label: string;
+  abortController: AbortController;
+}
+
+type Transfer = Download | Upload | Compression;
 
 export interface FileTransferContextValue {
   downloads: Download[];
   uploads: Upload[];
+  compressions: Compression[];
   transfers: Transfer[];
   startDownload: (paths: string[]) => Promise<void>;
   cancelDownload: (id: string) => void;
+  startCompression: (options: {
+    paths: string[];
+    archiveName: string;
+    destination: string;
+  }) => Promise<void>;
+  cancelCompression: (id: string) => void;
   startUpload: (
     entries: Array<{ file?: File; relativePath: string; isDirectory: boolean }>,
     targetPath: string,
@@ -62,10 +80,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [downloads, setDownloads] = useState<Download[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const [compressions, setCompressions] = useState<Compression[]>([]);
   const ws = useWebSocket();
   const cleanupTimersRef = useRef<Map<string, any>>(new Map());
 
-  const transfers: Transfer[] = [...downloads, ...uploads];
+  const transfers: Transfer[] = [...downloads, ...uploads, ...compressions];
 
   const updateDownload = useCallback(
     (
@@ -222,7 +241,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         toast.success("Download started");
         setTimeout(() => removeDownload(reqId), 1000);
       } catch (err: any) {
-        if (err?.name === "AbortError") {
+        if (err?.name === "AbortError" || err?.name === "CanceledError") {
           console.log("Download cancelled by user");
         } else {
           console.error("Download failed", err);
@@ -249,6 +268,165 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     },
     [downloads, removeDownload],
+  );
+
+  const updateCompression = useCallback(
+    (
+      id: string,
+      updates: Partial<Omit<Compression, "id" | "type" | "abortController">>,
+    ) => {
+      setCompressions((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+      );
+    },
+    [],
+  );
+
+  const removeCompression = useCallback((id: string) => {
+    setCompressions((prev) => prev.filter((c) => c.id !== id));
+    const timers = cleanupTimersRef.current.get(id);
+    if (timers) {
+      if (timers.fallback) clearTimeout(timers.fallback);
+      if (timers.unsubscribe) timers.unsubscribe();
+      cleanupTimersRef.current.delete(id);
+    }
+  }, []);
+
+  const startCompression = useCallback(
+    async ({
+      paths,
+      archiveName,
+      destination,
+    }: {
+      paths: string[];
+      archiveName: string;
+      destination: string;
+    }) => {
+      if (!paths.length) return;
+
+      const id = crypto.randomUUID();
+      const requestId = id;
+      const abortController = new AbortController();
+      const labelBase = archiveName || "archive.zip";
+
+      const compression: Compression = {
+        id,
+        type: "compression",
+        archiveName: labelBase,
+        destination,
+        paths,
+        progress: 0,
+        label: `Compressing ${labelBase} (0%)`,
+        abortController,
+      };
+
+      setCompressions((prev) => [...prev, compression]);
+
+      let hasProgress = false;
+      let fallbackTimer:
+        | ReturnType<typeof setTimeout>
+        | ReturnType<typeof setInterval>
+        | null = null;
+
+      const unsubscribe = ws.subscribe((msg: any) => {
+        if (msg.requestId !== requestId) return;
+
+        if (msg.type === "compression_progress" && msg.data) {
+          hasProgress = true;
+          const percent = Math.min(99, Math.round(msg.data.percent));
+          updateCompression(id, {
+            progress: percent,
+            label: `Compressing ${labelBase} (${percent}%)`,
+          });
+        } else if (msg.type === "compression_complete") {
+          hasProgress = true;
+          updateCompression(id, {
+            progress: 100,
+            label: `Created ${labelBase}`,
+          });
+          setTimeout(() => removeCompression(id), 800);
+        }
+      });
+
+      ws.send({ type: "subscribe_compression_progress", data: requestId });
+
+      fallbackTimer = setTimeout(() => {
+        if (hasProgress) return;
+        fallbackTimer = setInterval(() => {
+          setCompressions((prev) =>
+            prev.map((c) => {
+              if (c.id !== id) return c;
+              const next = Math.min((c.progress || 0) + 4, 90);
+              return {
+                ...c,
+                progress: next,
+                label: `Compressing ${labelBase} (${next}%)`,
+              };
+            }),
+          );
+        }, 450);
+        cleanupTimersRef.current.set(id, {
+          fallback: fallbackTimer,
+          unsubscribe,
+        });
+      }, 1500);
+
+      cleanupTimersRef.current.set(id, {
+        fallback: fallbackTimer,
+        unsubscribe,
+      });
+
+      try {
+        await axios.post(
+          "/navigator/api/archive/compress",
+          {
+            paths,
+            archiveName,
+            destination,
+            format: "zip",
+            requestId,
+          },
+          { signal: abortController.signal },
+        );
+
+        updateCompression(id, {
+          progress: 100,
+          label: `Created ${labelBase}`,
+        });
+        setTimeout(() => removeCompression(id), 800);
+      } catch (err: any) {
+        if (err?.name === "CanceledError" || err?.name === "AbortError") {
+          toast.info("Compression cancelled");
+        } else {
+          const message =
+            err?.response?.data?.error || err?.message || "Compression failed";
+          updateCompression(id, { label: message });
+        }
+        setTimeout(() => removeCompression(id), 800);
+        throw err;
+      } finally {
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer as any);
+        }
+        const timers = cleanupTimersRef.current.get(id);
+        if (timers?.unsubscribe) {
+          timers.unsubscribe();
+        }
+        cleanupTimersRef.current.delete(id);
+      }
+    },
+    [removeCompression, updateCompression, ws],
+  );
+
+  const cancelCompression = useCallback(
+    (id: string) => {
+      const compression = compressions.find((c) => c.id === id);
+      if (compression) {
+        compression.abortController.abort();
+        updateCompression(id, { label: "Cancelling..." });
+      }
+    },
+    [compressions, updateCompression],
   );
 
   const updateUpload = useCallback(
@@ -466,9 +644,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         downloads,
         uploads,
+        compressions,
         transfers,
         startDownload,
         cancelDownload,
+        startCompression,
+        cancelCompression,
         startUpload,
         cancelUpload,
       }}

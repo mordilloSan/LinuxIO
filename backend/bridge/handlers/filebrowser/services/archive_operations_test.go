@@ -95,7 +95,7 @@ func TestCreateZip(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "source.txt", []byte("test content"))
 		zipPath := filepath.Join(tmpDir, "test.zip")
 
-		err := CreateZip(zipPath, srcFile)
+		err := CreateZip(zipPath, nil, zipPath, srcFile)
 		assert.NoError(t, err, "CreateZip should not error")
 
 		// Verify zip file exists and has content
@@ -109,7 +109,7 @@ func TestCreateZip(t *testing.T) {
 		file2 := createTestFile(t, tmpDir, "file2.txt", []byte("content2"))
 		zipPath := filepath.Join(tmpDir, "multi.zip")
 
-		err := CreateZip(zipPath, file1, file2)
+		err := CreateZip(zipPath, nil, zipPath, file1, file2)
 		assert.NoError(t, err, "CreateZip should handle multiple files")
 
 		stat, err := os.Stat(zipPath)
@@ -122,7 +122,7 @@ func TestCreateZip(t *testing.T) {
 		createTestFile(t, subDir, "file.txt", []byte("data"))
 		zipPath := filepath.Join(tmpDir, "dir.zip")
 
-		err := CreateZip(zipPath, subDir)
+		err := CreateZip(zipPath, nil, zipPath, subDir)
 		assert.NoError(t, err, "CreateZip should handle directories")
 
 		stat, err := os.Stat(zipPath)
@@ -135,7 +135,7 @@ func TestCreateZip(t *testing.T) {
 		zipPath := filepath.Join(tmpDir, "overwrite.zip")
 
 		// Create first zip
-		err := CreateZip(zipPath, srcFile)
+		err := CreateZip(zipPath, nil, zipPath, srcFile)
 		assert.NoError(t, err)
 		firstStat, _ := os.Stat(zipPath)
 		firstSize := firstStat.Size()
@@ -145,7 +145,7 @@ func TestCreateZip(t *testing.T) {
 
 		// Overwrite with different file
 		modifiedFile := createTestFile(t, tmpDir, "modified.txt", []byte("much longer content here"))
-		err = CreateZip(zipPath, modifiedFile)
+		err = CreateZip(zipPath, nil, zipPath, modifiedFile)
 		assert.NoError(t, err)
 		secondStat, _ := os.Stat(zipPath)
 
@@ -164,7 +164,7 @@ func TestCreateTarGz(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "source.txt", []byte("test content"))
 		targzPath := filepath.Join(tmpDir, "test.tar.gz")
 
-		err := CreateTarGz(targzPath, srcFile)
+		err := CreateTarGz(targzPath, nil, targzPath, srcFile)
 		assert.NoError(t, err, "CreateTarGz should not error")
 
 		// Verify tar.gz file exists and has content
@@ -178,7 +178,7 @@ func TestCreateTarGz(t *testing.T) {
 		file2 := createTestFile(t, tmpDir, "file2.txt", []byte("content2"))
 		targzPath := filepath.Join(tmpDir, "multi.tar.gz")
 
-		err := CreateTarGz(targzPath, file1, file2)
+		err := CreateTarGz(targzPath, nil, targzPath, file1, file2)
 		assert.NoError(t, err, "CreateTarGz should handle multiple files")
 
 		stat, err := os.Stat(targzPath)
@@ -191,7 +191,7 @@ func TestCreateTarGz(t *testing.T) {
 		createTestFile(t, subDir, "file.txt", []byte("data"))
 		targzPath := filepath.Join(tmpDir, "dir.tar.gz")
 
-		err := CreateTarGz(targzPath, subDir)
+		err := CreateTarGz(targzPath, nil, targzPath, subDir)
 		assert.NoError(t, err, "CreateTarGz should handle directories")
 
 		stat, err := os.Stat(targzPath)
@@ -208,7 +208,7 @@ func TestExtractArchive(t *testing.T) {
 		createTestFile(t, srcDir, "file.txt", []byte("zip data"))
 		zipPath := filepath.Join(tmpDir, "archive.zip")
 
-		err := CreateZip(zipPath, srcDir)
+		err := CreateZip(zipPath, nil, zipPath, srcDir)
 		require.NoError(t, err, "CreateZip should succeed before extraction")
 
 		destDir := filepath.Join(tmpDir, "zip-dest")
@@ -225,7 +225,7 @@ func TestExtractArchive(t *testing.T) {
 		createTestFile(t, srcDir, "nested.txt", []byte("tar data"))
 		tarPath := filepath.Join(tmpDir, "archive.tar.gz")
 
-		err := CreateTarGz(tarPath, srcDir)
+		err := CreateTarGz(tarPath, nil, tarPath, srcDir)
 		require.NoError(t, err, "CreateTarGz should succeed before extraction")
 
 		destDir := filepath.Join(tmpDir, "tar-dest")
