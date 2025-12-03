@@ -49,6 +49,11 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { ViewMode, FileItem } from "@/types/filebrowser";
+import {
+  ensureZipExtension,
+  isArchiveFile,
+  stripArchiveExtension,
+} from "@/components/filebrowser/utils";
 import axios from "@/utils/axios";
 
 const viewModes: ViewMode[] = ["card", "list"];
@@ -92,7 +97,15 @@ const FileBrowser: React.FC = () => {
   const urlPath = location.pathname.replace(/^\/filebrowser\/?/, "");
   const normalizedPath = urlPath ? `/${urlPath}` : "/";
 
-  const { createFile, createFolder, deleteItems } = useFileMutations({
+  const {
+    createFile,
+    createFolder,
+    deleteItems,
+    compressItems,
+    extractArchive,
+    isCompressing,
+    isExtracting,
+  } = useFileMutations({
     normalizedPath,
     queryClient,
     onDeleteSuccess: () => setSelectedPaths(new Set()),
@@ -123,6 +136,33 @@ const FileBrowser: React.FC = () => {
   });
 
   const viewIcon = useMemo(() => viewIconMap[viewMode], [viewMode]);
+
+  const selectedItems = useMemo(() => {
+    if (!resource || resource.type !== "directory" || !resource.items) {
+      return [];
+    }
+    const itemMap = new Map(resource.items.map((item) => [item.path, item]));
+    return Array.from(selectedPaths)
+      .map((path) => itemMap.get(path))
+      .filter(Boolean) as FileItem[];
+  }, [resource, selectedPaths]);
+
+  const existingNames = useMemo(
+    () => new Set(resource?.items?.map((item) => item.name) ?? []),
+    [resource],
+  );
+
+  const archiveSelection = useMemo(
+    () =>
+      selectedItems.length === 1 && isArchiveFile(selectedItems[0].name)
+        ? selectedItems[0]
+        : null,
+    [selectedItems],
+  );
+
+  const isArchiveBusy = isCompressing || isExtracting;
+  const canExtractSelection = Boolean(archiveSelection) && !isArchiveBusy;
+  const canCompressSelection = selectedPaths.size > 0 && !isArchiveBusy;
 
   const handleSwitchView = useCallback(() => {
     setViewMode((current) => {
@@ -181,6 +221,29 @@ const FileBrowser: React.FC = () => {
     },
     [startDownload],
   );
+
+  const getUniqueName = useCallback(
+    (baseName: string) => {
+      if (!existingNames.size) return baseName;
+      let candidate = baseName;
+      let counter = 1;
+
+      while (existingNames.has(candidate)) {
+        candidate = `${baseName} (${counter})`;
+        counter += 1;
+      }
+
+      return candidate;
+    },
+    [existingNames],
+  );
+
+  const joinPath = useCallback((base: string, name: string) => {
+    if (base.endsWith("/")) {
+      return `${base}${name}`;
+    }
+    return `${base}/${name}`;
+  }, []);
 
   const handleDownloadCurrent = useCallback(
     (path: string) => {
@@ -295,6 +358,63 @@ const FileBrowser: React.FC = () => {
     // TODO: Implement upload dialog
     console.log("Upload clicked");
   }, [handleCloseContextMenu]);
+
+  const handleCompressSelection = useCallback(async () => {
+    handleCloseContextMenu();
+    const paths = Array.from(selectedPaths);
+    if (!paths.length || isArchiveBusy) return;
+
+    const baseName =
+      selectedItems.length === 1
+        ? stripArchiveExtension(selectedItems[0].name)
+        : "archive";
+    const archiveName = getUniqueName(ensureZipExtension(baseName || "archive"));
+
+    try {
+      await compressItems({
+        paths,
+        archiveName,
+        destination: normalizedPath,
+      });
+    } catch (error) {
+      // Errors are surfaced via toast in the mutation
+    }
+  }, [
+    compressItems,
+    getUniqueName,
+    handleCloseContextMenu,
+    isArchiveBusy,
+    normalizedPath,
+    selectedItems,
+    selectedPaths,
+  ]);
+
+  const handleExtractSelection = useCallback(async () => {
+    handleCloseContextMenu();
+    if (!archiveSelection || isArchiveBusy) return;
+
+    const targetFolder = getUniqueName(
+      stripArchiveExtension(archiveSelection.name) || "extracted",
+    );
+    const destination = joinPath(normalizedPath, targetFolder);
+
+    try {
+      await extractArchive({
+        archivePath: archiveSelection.path,
+        destination,
+      });
+    } catch (error) {
+      // Errors are surfaced via toast in the mutation
+    }
+  }, [
+    archiveSelection,
+    extractArchive,
+    getUniqueName,
+    handleCloseContextMenu,
+    isArchiveBusy,
+    joinPath,
+    normalizedPath,
+  ]);
 
   const handleEditFile = useCallback((filePath: string) => {
     setEditingPath(filePath);
@@ -573,7 +693,11 @@ const FileBrowser: React.FC = () => {
         onDownload={handleDownloadSelected}
         onUpload={handleUpload}
         onShowDetails={handleShowDetails}
+        onCompress={handleCompressSelection}
+        onExtract={handleExtractSelection}
         canShowDetails={canShowDetails}
+        canCompress={canCompressSelection}
+        canExtract={canExtractSelection}
       />
 
       <Dialog

@@ -13,6 +13,17 @@ type UseFileMutationsParams = {
   onDeleteSuccess?: () => void;
 };
 
+type CompressPayload = {
+  paths: string[];
+  archiveName?: string;
+  destination?: string;
+};
+
+type ExtractPayload = {
+  archivePath: string;
+  destination?: string;
+};
+
 export const useFileMutations = ({
   normalizedPath,
   queryClient: providedQueryClient,
@@ -77,5 +88,63 @@ export const useFileMutations = ({
     },
   });
 
-  return { createFile, createFolder, deleteItems };
+  const {
+    mutateAsync: compressItems,
+    isPending: isCompressing,
+  } = useMutation({
+    mutationFn: async ({
+      paths,
+      archiveName,
+      destination,
+    }: CompressPayload) => {
+      if (!paths.length) {
+        throw new Error("No paths provided for compression");
+      }
+      await axios.post("/navigator/api/archive/compress", {
+        paths,
+        archiveName,
+        destination: destination || normalizedPath,
+        format: "zip",
+      });
+    },
+    onSuccess: () => {
+      invalidateListing();
+      toast.success("Archive created successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Failed to create archive");
+    },
+  });
+
+  const {
+    mutateAsync: extractArchive,
+    isPending: isExtracting,
+  } = useMutation({
+    mutationFn: async ({ archivePath, destination }: ExtractPayload) => {
+      if (!archivePath) {
+        throw new Error("No archive selected");
+      }
+      await axios.post("/navigator/api/archive/extract", {
+        archivePath,
+        destination,
+      });
+    },
+    onSuccess: () => {
+      invalidateListing();
+      toast.success("Archive extracted successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Failed to extract archive");
+    },
+  });
+
+  return {
+    createFile,
+    createFolder,
+    deleteItems,
+    compressItems,
+    extractArchive,
+    isCompressing,
+    isExtracting,
+  };
 };
