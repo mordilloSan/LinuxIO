@@ -1,5 +1,11 @@
 import CloseIcon from "@mui/icons-material/Close";
-import { Box, LinearProgress, Typography, Alert, IconButton } from "@mui/material";
+import {
+  Box,
+  LinearProgress,
+  Typography,
+  Alert,
+  IconButton,
+} from "@mui/material";
 import React from "react";
 
 interface UpdateActionsProps {

@@ -84,17 +84,22 @@ export const useMarqueeSelection = (
       const bottom = Math.max(box.startY, box.currentY);
 
       const selectedPaths = new Set<string>();
-      const cardElements = container.querySelectorAll("[data-file-card='true']");
+      const cardElements = container.querySelectorAll(
+        "[data-file-card='true']",
+      );
 
       cardElements.forEach((element) => {
         const cardRect = element.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
 
         // Convert card position to container-relative coordinates
-        const cardLeft = cardRect.left - containerRect.left + container.scrollLeft;
-        const cardRight = cardRect.right - containerRect.left + container.scrollLeft;
+        const cardLeft =
+          cardRect.left - containerRect.left + container.scrollLeft;
+        const cardRight =
+          cardRect.right - containerRect.left + container.scrollLeft;
         const cardTop = cardRect.top - containerRect.top + container.scrollTop;
-        const cardBottom = cardRect.bottom - containerRect.top + container.scrollTop;
+        const cardBottom =
+          cardRect.bottom - containerRect.top + container.scrollTop;
 
         // Check if the card intersects with the selection box
         const intersects =

@@ -3,13 +3,18 @@ import GridViewIcon from "@mui/icons-material/GridView";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import {
   Box,
+  Button,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogTitle,
   IconButton,
+  List,
+  ListItem,
+  ListItemText,
   Typography,
 } from "@mui/material";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import React, {
   ReactNode,
   useCallback,
@@ -19,6 +24,10 @@ import React, {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+
+import { useDragAndDropUpload } from "../../../hooks/useDragAndDropUpload";
+import { useFileBrowserQueries } from "../../../hooks/useFileBrowserQueries";
+import { useFileMutations } from "../../../hooks/useFileMutations";
 
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
@@ -36,21 +45,11 @@ import SortBar, {
   SortOrder,
 } from "@/components/filebrowser/SortBar";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
-import {
-  normalizeResource,
-  buildDownloadUrl,
-} from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useMultipleDirectoryDetails } from "@/hooks/useMultipleDirectoryDetails";
-import {
-  ViewMode,
-  ApiResource,
-  FileResource,
-  FileItem,
-  ResourceStatData,
-} from "@/types/filebrowser";
-import axios from "@/utils/axios"; // Still used for mutations (create, delete)
+import { useFileTransfers } from "@/hooks/useFileTransfers";
+import { ViewMode, FileItem } from "@/types/filebrowser";
+import axios from "@/utils/axios";
 
 const viewModes: ViewMode[] = ["card", "list"];
 
@@ -85,6 +84,7 @@ const FileBrowser: React.FC = () => {
   const editorRef = useRef<FileEditorHandle>(null);
 
   const queryClient = useQueryClient();
+  const { startDownload, startUpload } = useFileTransfers();
 
   const showQuickSave = editingPath !== null;
 
@@ -92,105 +92,35 @@ const FileBrowser: React.FC = () => {
   const urlPath = location.pathname.replace(/^\/filebrowser\/?/, "");
   const normalizedPath = urlPath ? `/${urlPath}` : "/";
 
-  // Mutations
-  const { mutate: createFile } = useMutation({
-    mutationFn: async (fileName: string) => {
-      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
-      await axios.post("/navigator/api/resources", null, {
-        params: { path, source: "/" },
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["fileResource", normalizedPath],
-      });
-      toast.success("File created successfully");
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || "Failed to create file");
-    },
+  const { createFile, createFolder, deleteItems } = useFileMutations({
+    normalizedPath,
+    queryClient,
+    onDeleteSuccess: () => setSelectedPaths(new Set()),
   });
 
-  const { mutate: createFolder } = useMutation({
-    mutationFn: async (folderName: string) => {
-      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
-      await axios.post("/navigator/api/resources", null, {
-        params: { path, source: "/" },
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["fileResource", normalizedPath],
-      });
-      toast.success("Folder created successfully");
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || "Failed to create folder");
-    },
-  });
-
-  const { mutate: deleteItems } = useMutation({
-    mutationFn: async (paths: string[]) => {
-      // DEBUG: Using Promise.all to test goroutine leak in backend
-      await Promise.all(
-        paths.map((path) =>
-          axios.delete("/navigator/api/resources", {
-            params: { path, source: "/" },
-          }),
-        ),
-      );
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["fileResource", normalizedPath],
-      });
-      setSelectedPaths(new Set());
-      toast.success("Items deleted successfully");
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || "Failed to delete items");
-    },
-  });
+  const detailTargetCount = detailTarget?.length ?? 0;
+  const hasSingleDetailTarget = detailTargetCount === 1;
+  const hasMultipleDetailTargets = detailTargetCount > 1;
 
   const {
-    data: resource,
+    resource,
     isPending,
-    isError,
-    error,
-  } = useQuery<FileResource>({
-    queryKey: ["fileResource", normalizedPath],
-    queryFn: async () => {
-      const { data } = await axios.get<ApiResource>(
-        "/navigator/api/resources",
-        {
-          params: {
-            path: normalizedPath,
-            source: "/",
-          },
-        },
-      );
-      return normalizeResource(data);
-    },
+    errorMessage,
+    detailResource,
+    detailError,
+    statData,
+    isStatPending,
+    multiItemsStats,
+    editingFileResource,
+    isEditingFileLoading,
+    shouldShowDetailLoader,
+  } = useFileBrowserQueries({
+    normalizedPath,
+    detailTarget,
+    editingPath,
+    hasSingleDetailTarget,
+    hasMultipleDetailTargets,
   });
-
-  const errorMessage = isError
-    ? error instanceof Error
-      ? (() => {
-          // Check if it's an axios error with a status code
-          const axiosError = error as any;
-          if (axiosError.response?.status === 403) {
-            return `Permission denied: You don't have access to "${normalizedPath}".`;
-          }
-          if (
-            axiosError.response?.status === 404 ||
-            axiosError.response?.status === 500
-          ) {
-            return `Path not found: "${normalizedPath}" does not exist.`;
-          }
-          return error.message;
-        })()
-      : "Failed to load file information."
-    : null;
 
   const viewIcon = useMemo(() => viewIconMap[viewMode], [viewMode]);
 
@@ -203,121 +133,6 @@ const FileBrowser: React.FC = () => {
   }, []);
 
   const canShowDetails = selectedPaths.size > 0;
-
-  // For single item detail
-  const detailTargetCount = detailTarget?.length ?? 0;
-  const hasSingleDetailTarget = detailTargetCount === 1;
-  const hasMultipleDetailTargets = detailTargetCount > 1;
-
-  const {
-    data: detailResource,
-    isPending: isDetailPending,
-    error: detailError,
-  } = useQuery<FileResource>({
-    queryKey: ["fileDetail", detailTarget],
-    queryFn: async () => {
-      const currentDetailTarget = detailTarget;
-      if (!currentDetailTarget || currentDetailTarget.length !== 1) {
-        throw new Error("Invalid selection");
-      }
-      const { data } = await axios.get<ApiResource>(
-        "/navigator/api/resources",
-        {
-          params: { path: currentDetailTarget[0], content: "true" },
-        },
-      );
-      return data as FileResource;
-    },
-    enabled: hasSingleDetailTarget,
-  });
-
-  // Directory details are now fetched by the FileDetail component using useDirectorySize hook
-
-  // For stat data (permissions and ownership) on single item
-  const { data: statData, isPending: isStatPending } =
-    useQuery<ResourceStatData>({
-      queryKey: ["fileStat", detailTarget],
-      queryFn: async () => {
-        const currentDetailTarget = detailTarget;
-        if (!currentDetailTarget || currentDetailTarget.length !== 1) {
-          throw new Error("Invalid selection");
-        }
-        const { data } = await axios.get<ResourceStatData>(
-          "/navigator/api/resources/stat",
-          {
-            params: { path: currentDetailTarget[0] },
-          },
-        );
-        return data;
-      },
-      enabled: hasSingleDetailTarget,
-    });
-
-  // For multiple file details
-  // DEBUG: Using Promise.all to test goroutine leak in backend
-  const { data: multipleFileResources, isPending: isMultipleFilesPending } =
-    useQuery<Record<string, FileResource>>({
-      queryKey: ["multipleFileDetails", detailTarget],
-      queryFn: async () => {
-        const currentDetailTarget = detailTarget;
-        if (!currentDetailTarget || currentDetailTarget.length <= 1) {
-          throw new Error("Invalid selection");
-        }
-        const results: Record<string, FileResource> = {};
-        await Promise.all(
-          currentDetailTarget.map(async (path) => {
-            const { data } = await axios.get<ApiResource>(
-              "/navigator/api/resources",
-              {
-                params: { path },
-              },
-            );
-            results[path] = normalizeResource(data);
-          }),
-        );
-        return results;
-      },
-      enabled: hasMultipleDetailTargets,
-    });
-
-  // Use the hook to fetch directory details for multiple items
-  const fileResourceMap = useMemo(() => {
-    if (!multipleFileResources) return {};
-    return Object.entries(multipleFileResources).reduce(
-      (acc, [path, resource]) => {
-        acc[path] = {
-          name: resource.name,
-          type: resource.type,
-          size: resource.size || 0,
-        };
-        return acc;
-      },
-      {} as Record<string, { name: string; type: string; size: number }>,
-    );
-  }, [multipleFileResources]);
-
-  const multiItemsStats = useMultipleDirectoryDetails(
-    detailTarget || [],
-    fileResourceMap,
-  );
-
-  // For file content when editing
-  const { data: editingFileResource, isPending: isEditingFileLoading } =
-    useQuery<FileResource>({
-      queryKey: ["fileEdit", editingPath],
-      queryFn: async () => {
-        if (!editingPath) throw new Error("No editing path");
-        const { data } = await axios.get<ApiResource>(
-          "/navigator/api/resources",
-          {
-            params: { path: editingPath, content: "true" },
-          },
-        );
-        console.log("Loaded file resource:", data);
-        return data as FileResource;
-      },
-      enabled: !!editingPath,
-    });
 
   const handleCloseDetailDialog = useCallback(() => {
     setDetailTarget(null);
@@ -360,10 +175,19 @@ const FileBrowser: React.FC = () => {
     setDetailTarget([item.path]);
   }, []);
 
-  const handleDownloadCurrent = useCallback((path: string) => {
-    const url = buildDownloadUrl(path);
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, []);
+  const downloadPaths = useCallback(
+    async (paths: string[]) => {
+      await startDownload(paths);
+    },
+    [startDownload],
+  );
+
+  const handleDownloadCurrent = useCallback(
+    (path: string) => {
+      downloadPaths([path]);
+    },
+    [downloadPaths],
+  );
 
   const handleContextMenu = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -383,10 +207,12 @@ const FileBrowser: React.FC = () => {
     setDetailTarget(Array.from(selectedPaths));
   }, [handleCloseContextMenu, selectedPaths]);
 
-  const handleDownloadDetail = useCallback((path: string) => {
-    const url = buildDownloadUrl(path);
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, []);
+  const handleDownloadDetail = useCallback(
+    (path: string) => {
+      downloadPaths([path]);
+    },
+    [downloadPaths],
+  );
 
   // Context menu action handlers
   const handleCreateFile = useCallback(() => {
@@ -461,14 +287,8 @@ const FileBrowser: React.FC = () => {
     handleCloseContextMenu();
     const paths = Array.from(selectedPaths);
     if (paths.length === 0) return;
-
-    // Build download URLs for each selected item
-    const filesParam = paths
-      .map((path) => `${encodeURIComponent("/")}::${encodeURIComponent(path)}`)
-      .join("||");
-    const url = `/navigator/api/raw?files=${filesParam}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, [handleCloseContextMenu, selectedPaths]);
+    downloadPaths(paths);
+  }, [handleCloseContextMenu, selectedPaths, downloadPaths]);
 
   const handleUpload = useCallback(() => {
     handleCloseContextMenu();
@@ -562,9 +382,28 @@ const FileBrowser: React.FC = () => {
     }
   }, [editingPath, queryClient]);
 
-  const shouldShowDetailLoader =
-    (hasSingleDetailTarget && isDetailPending) ||
-    (hasMultipleDetailTargets && isMultipleFilesPending);
+  const invalidateListing = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: ["fileResource", normalizedPath],
+    });
+  }, [normalizedPath, queryClient]);
+
+  const {
+    isDragOver,
+    overwriteTargets,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    handleConfirmOverwrite,
+    handleCancelOverwrite,
+  } = useDragAndDropUpload({
+    normalizedPath,
+    resource,
+    editingPath,
+    startUpload,
+    onUploadComplete: invalidateListing,
+  });
 
   return (
     <>
@@ -576,8 +415,13 @@ const FileBrowser: React.FC = () => {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          position: "relative",
         }}
         onContextMenu={handleContextMenu}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
         <FileBrowserHeader
           viewMode={viewMode}
@@ -690,6 +534,30 @@ const FileBrowser: React.FC = () => {
               )}
           </Box>
         </Box>
+
+        {isDragOver && !editingPath && resource?.type === "directory" && (
+          <Box
+            sx={{
+              position: "absolute",
+              inset: 0,
+              border: "2px dashed",
+              borderColor: "primary.main",
+              bgcolor: "rgba(25,118,210,0.08)",
+              zIndex: 5,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              pointerEvents: "none",
+              gap: 1,
+            }}
+          >
+            <Typography variant="h6">Drop to upload</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Files and folders will be copied to {normalizedPath}
+            </Typography>
+          </Box>
+        )}
       </Box>
 
       <ContextMenu
@@ -782,6 +650,38 @@ const FileBrowser: React.FC = () => {
         onClose={handleCloseDeleteDialog}
         onConfirm={handleConfirmDelete}
       />
+
+      <Dialog
+        open={Boolean(overwriteTargets?.length)}
+        onClose={handleCancelOverwrite}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Overwrite existing items?</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            These items already exist in {normalizedPath}. Do you want to
+            overwrite them?
+          </Typography>
+          <List dense disablePadding>
+            {overwriteTargets?.map(({ relativePath }) => (
+              <ListItem key={relativePath} disableGutters>
+                <ListItemText primary={relativePath} />
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelOverwrite}>Skip</Button>
+          <Button
+            onClick={handleConfirmOverwrite}
+            variant="contained"
+            color="warning"
+          >
+            Overwrite
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <UnsavedChangesDialog
         open={closeEditorDialog}
