@@ -1,18 +1,21 @@
 package filebrowser
 
 import (
+	"archive/zip"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
@@ -20,6 +23,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 // resourceGetHandler retrieves information about a resource via bridge with streaming
@@ -547,48 +551,326 @@ func rawFilesHandler(c *gin.Context, fileList []string) {
 		return
 	}
 
-	firstFilePath := fileList[0]
-	realPath := filepath.Join(firstFilePath)
-
-	stat, err := os.Stat(realPath)
-	if err != nil {
-		logger.Debugf("error stating file: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "file not found"})
+	paths := parseFileList(fileList)
+	if len(paths) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid files list"})
 		return
 	}
-
-	isDir := stat.IsDir()
 
 	// Single file download
-	if len(fileList) == 1 && !isDir {
-		fd, err := os.Open(realPath)
+	if len(paths) == 1 {
+		first := paths[0]
+		stat, err := os.Stat(first)
 		if err != nil {
-			logger.Debugf("error opening file: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not open file"})
-			return
-		}
-		defer fd.Close()
-
-		fileInfo, err := fd.Stat()
-		if err != nil {
-			logger.Debugf("error stating opened file: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not read file info"})
+			status := http.StatusInternalServerError
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			logger.Debugf("error stating file: %v", err)
+			c.JSON(status, gin.H{"error": "file not found"})
 			return
 		}
 
-		fileName := filepath.Base(firstFilePath)
-		setContentDisposition(c, fileName)
-		c.Header("Cache-Control", "private")
-		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
+		if !stat.IsDir() {
+			fd, err := os.Open(first)
+			if err != nil {
+				logger.Debugf("error opening file: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "could not open file"})
+				return
+			}
+			defer fd.Close()
 
-		c.DataFromReader(http.StatusOK, fileInfo.Size(), "application/octet-stream", fd, map[string]string{})
+			fileInfo, err := fd.Stat()
+			if err != nil {
+				logger.Debugf("error stating opened file: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "could not read file info"})
+				return
+			}
+
+			fileName := filepath.Base(first)
+			setContentDisposition(c, fileName)
+			c.Header("Cache-Control", "private")
+			c.Header("X-Content-Type-Options", "nosniff")
+			c.Header("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
+
+			c.DataFromReader(http.StatusOK, fileInfo.Size(), "application/octet-stream", fd, map[string]string{})
+			return
+		}
+	}
+
+	// Build a zip archive for directories or multiple files
+	sess := session.SessionFromContext(c)
+	reqId := c.Query("reqId")
+
+	var archivePath, archiveName string
+	var err error
+
+	// If we have a session and reqId, use progress tracking
+	if sess != nil && reqId != "" {
+		key := sess.SessionID + ":" + reqId
+		logger.Debugf("[FileBrowser] Building archive with progress tracking: %s", key)
+
+		archivePath, archiveName, err = buildArchiveWithProgress(paths, func(bytesProcessed, totalBytes int64) {
+			if totalBytes == 0 {
+				return
+			}
+			percent := float64(bytesProcessed) / float64(totalBytes) * 100.0
+
+			web.GlobalProgressBroadcaster.Send(key, web.ProgressUpdate{
+				Type:           "download_progress",
+				Percent:        percent,
+				BytesProcessed: bytesProcessed,
+				TotalBytes:     totalBytes,
+			})
+		})
+
+		if err == nil {
+			// Send ready event
+			web.GlobalProgressBroadcaster.Send(key, web.ProgressUpdate{
+				Type:    "download_ready",
+				Percent: 100.0,
+			})
+		}
+	} else {
+		// No progress tracking
+		archivePath, archiveName, err = buildArchive(paths)
+	}
+
+	if err != nil {
+		logger.Debugf("failed to build archive: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare download"})
+		return
+	}
+	defer os.Remove(archivePath)
+
+	archiveFile, err := os.Open(archivePath)
+	if err != nil {
+		logger.Debugf("error opening archive: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not open archive"})
+		return
+	}
+	defer archiveFile.Close()
+
+	info, err := archiveFile.Stat()
+	if err != nil {
+		logger.Debugf("error stating archive: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not read archive info"})
 		return
 	}
 
-	// For archives, create temp file and stream
-	// This is a simplified version - in production you'd want proper error handling
-	c.JSON(http.StatusOK, map[string]any{"message": "archive download not yet implemented"})
+	setContentDisposition(c, archiveName)
+	c.Header("Cache-Control", "private")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Length", fmt.Sprintf("%d", info.Size()))
+
+	c.DataFromReader(http.StatusOK, info.Size(), "application/zip", archiveFile, map[string]string{})
+}
+
+func parseFileList(entries []string) []string {
+	var paths []string
+	for _, raw := range entries {
+		if raw == "" {
+			continue
+		}
+		parts := strings.SplitN(raw, "::", 2)
+		path := parts[len(parts)-1]
+		if path == "" {
+			continue
+		}
+		paths = append(paths, filepath.Clean(path))
+	}
+	return paths
+}
+
+// ProgressCallback is called during archive building with bytes processed and total bytes
+type ProgressCallback func(bytesProcessed, totalBytes int64)
+
+// calculatePathSize calculates the total size of a file or directory
+func calculatePathSize(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+
+	if !info.IsDir() {
+		return info.Size(), nil
+	}
+
+	total := int64(0)
+	err = filepath.WalkDir(path, func(_ string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		fileInfo, err2 := d.Info()
+		if err2 != nil {
+			return err2
+		}
+		total += fileInfo.Size()
+		return nil
+	})
+	return total, err
+}
+
+// progressTrackingWriter wraps a zip.Writer and tracks bytes written
+type progressTrackingWriter struct {
+	writer         *zip.Writer
+	bytesProcessed int64
+	totalBytes     int64
+	onProgress     ProgressCallback
+	mu             sync.Mutex
+}
+
+func (ptw *progressTrackingWriter) addBytes(n int64) {
+	ptw.mu.Lock()
+	defer ptw.mu.Unlock()
+	ptw.bytesProcessed += n
+	if ptw.onProgress != nil && ptw.totalBytes > 0 {
+		ptw.onProgress(ptw.bytesProcessed, ptw.totalBytes)
+	}
+}
+
+// buildArchiveWithProgress builds a zip archive and reports progress
+func buildArchiveWithProgress(paths []string, onProgress ProgressCallback) (string, string, error) {
+	archiveFile, err := os.CreateTemp("", "linuxio-download-*.zip")
+	if err != nil {
+		return "", "", err
+	}
+
+	// Calculate total size first
+	totalBytes := int64(0)
+	for _, path := range paths {
+		size, err := calculatePathSize(path)
+		if err != nil {
+			logger.Warnf("Failed to calculate size for %s: %v", path, err)
+		}
+		totalBytes += size
+	}
+
+	zipWriter := zip.NewWriter(archiveFile)
+	tracker := &progressTrackingWriter{
+		writer:     zipWriter,
+		totalBytes: totalBytes,
+		onProgress: onProgress,
+	}
+
+	for _, path := range paths {
+		if err := addPathToArchiveWithProgress(tracker, path); err != nil {
+			zipWriter.Close()
+			archiveFile.Close()
+			return "", "", err
+		}
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		archiveFile.Close()
+		return "", "", err
+	}
+	if err := archiveFile.Close(); err != nil {
+		return "", "", err
+	}
+
+	zipName := "download.zip"
+	if len(paths) == 1 {
+		base := filepath.Base(strings.TrimSuffix(paths[0], string(os.PathSeparator)))
+		if base != "" {
+			zipName = fmt.Sprintf("%s.zip", base)
+		}
+	}
+
+	return archiveFile.Name(), zipName, nil
+}
+
+func buildArchive(paths []string) (string, string, error) {
+	return buildArchiveWithProgress(paths, nil)
+}
+
+func addPathToArchiveWithProgress(tracker *progressTrackingWriter, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+
+	baseName := filepath.Base(strings.TrimSuffix(path, string(os.PathSeparator)))
+	if !info.IsDir() {
+		return addFileToArchiveWithProgress(tracker, path, baseName)
+	}
+
+	// Ensure empty directories are preserved
+	if err := addDirEntry(tracker.writer, baseName); err != nil {
+		return err
+	}
+
+	return filepath.WalkDir(path, func(curr string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		if curr == path {
+			return nil
+		}
+
+		rel, err := filepath.Rel(path, curr)
+		if err != nil {
+			return err
+		}
+
+		entryPath := filepath.ToSlash(filepath.Join(baseName, rel))
+		if d.IsDir() {
+			return addDirEntry(tracker.writer, entryPath)
+		}
+
+		return addFileToArchiveWithProgress(tracker, curr, entryPath)
+	})
+}
+
+func addDirEntry(zw *zip.Writer, name string) error {
+	if name == "" {
+		return nil
+	}
+	if !strings.HasSuffix(name, "/") {
+		name += "/"
+	}
+
+	_, err := zw.Create(name)
+	return err
+}
+
+func addFileToArchiveWithProgress(tracker *progressTrackingWriter, path string, zipPath string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+
+	header, err := zip.FileInfoHeader(info)
+	if err != nil {
+		return err
+	}
+	header.Name = filepath.ToSlash(zipPath)
+	header.Method = zip.Deflate
+
+	writer, err := tracker.writer.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+
+	fd, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer fd.Close()
+
+	// Copy with progress tracking
+	written, err := io.Copy(writer, fd)
+	if err != nil {
+		return err
+	}
+
+	// Report progress
+	tracker.addBytes(written)
+	return nil
 }
 
 // setContentDisposition sets the Content-Disposition HTTP header for downloads

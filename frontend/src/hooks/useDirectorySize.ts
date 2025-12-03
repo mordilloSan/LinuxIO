@@ -21,16 +21,12 @@ const FAILED_RETRY_DELAY = 30 * 1000; // 30 seconds before retrying failed paths
 const MAX_RETRIES = 2;
 
 // Directories that should not have size calculations (not indexed by the indexer)
-const EXCLUDED_DIRECTORIES = [
-  "/proc",
-  "/dev",
-  "/sys",
-];
+const EXCLUDED_DIRECTORIES = ["/proc", "/dev", "/sys"];
 
 const shouldSkipSizeCalculation = (path: string): boolean => {
   if (!path) return true;
   return EXCLUDED_DIRECTORIES.some(
-    (excluded) => path === excluded || path.startsWith(excluded + "/")
+    (excluded) => path === excluded || path.startsWith(excluded + "/"),
   );
 };
 

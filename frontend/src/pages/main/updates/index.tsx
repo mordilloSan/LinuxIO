@@ -30,14 +30,8 @@ const Updates: React.FC = () => {
   });
 
   const updates = useMemo(() => data?.updates || [], [data]);
-  const {
-    updateOne,
-    updateAll,
-    updatingPackage,
-    progress,
-    error,
-    clearError,
-  } = usePackageUpdater(refetch);
+  const { updateOne, updateAll, updatingPackage, progress, error, clearError } =
+    usePackageUpdater(refetch);
 
   // Determine what button to show based on active tab
   const getRightContent = () => {

@@ -320,6 +320,35 @@ func WebSocketHandler(c *gin.Context) {
 				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_closed", Data: "Main terminal closed."})
 			}
 
+		case "subscribe_download_progress":
+			reqId := wsMsg.Data
+			if reqId == "" {
+				logger.Warnf("[WebSocket] subscribe_download_progress with empty reqId")
+				continue
+			}
+			key := sess.SessionID + ":" + reqId
+			logger.Debugf("[WebSocket] Subscribing to download progress: %s", key)
+
+			GlobalProgressBroadcaster.Register(key, func(update ProgressUpdate) {
+				_ = safeConn.WriteJSON(WSResponse{
+					Type:      update.Type,
+					RequestID: reqId,
+					Data:      update,
+				})
+			})
+
+			// Unregister when WebSocket closes or context is cancelled
+			go func(subscriptionKey string) {
+				<-ctx.Done()
+				logger.Debugf("[WebSocket] Unsubscribing from download progress: %s", subscriptionKey)
+				GlobalProgressBroadcaster.Unregister(subscriptionKey)
+			}(key)
+
+			_ = safeConn.WriteJSON(WSResponse{
+				Type:      "download_subscribed",
+				RequestID: reqId,
+			})
+
 		default:
 			logger.Warnf("[WebSocket] Unknown message type: %s", wsMsg.Type)
 		}

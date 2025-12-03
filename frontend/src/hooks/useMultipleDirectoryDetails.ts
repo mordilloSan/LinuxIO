@@ -31,7 +31,7 @@ const EXCLUDED_DIRECTORIES = ["/proc", "/dev", "/sys"];
 const shouldSkipSizeCalculation = (path: string): boolean => {
   if (!path) return true;
   return EXCLUDED_DIRECTORIES.some(
-    (excluded) => path === excluded || path.startsWith(excluded + "/")
+    (excluded) => path === excluded || path.startsWith(excluded + "/"),
   );
 };
 
@@ -43,7 +43,7 @@ export const useMultipleDirectoryDetails = (
   const directoryPaths = paths.filter(
     (path) =>
       fileResourceMap[path]?.type === "directory" &&
-      !shouldSkipSizeCalculation(path)
+      !shouldSkipSizeCalculation(path),
   );
 
   // Use useQueries to fetch directory sizes - shares cache with useDirectorySize!
@@ -56,7 +56,7 @@ export const useMultipleDirectoryDetails = (
           {
             params: { path },
             timeout: 10000,
-          }
+          },
         );
         return response.data;
       },
@@ -71,7 +71,7 @@ export const useMultipleDirectoryDetails = (
 
   // Create a map of path -> query result for easy lookup
   const queryMap = new Map(
-    directoryPaths.map((path, index) => [path, queries[index]])
+    directoryPaths.map((path, index) => [path, queries[index]]),
   );
 
   // Aggregate the results
