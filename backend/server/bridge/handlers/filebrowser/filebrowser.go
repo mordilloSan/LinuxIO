@@ -26,6 +26,18 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
+type archiveCompressRequest struct {
+	Paths       []string `json:"paths"`
+	Destination string   `json:"destination"`
+	ArchiveName string   `json:"archiveName"`
+	Format      string   `json:"format"`
+}
+
+type archiveExtractRequest struct {
+	ArchivePath string `json:"archivePath"`
+	Destination string `json:"destination"`
+}
+
 // resourceGetHandler retrieves information about a resource via bridge with streaming
 func resourceGetHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
@@ -337,6 +349,135 @@ func rawHandler(c *gin.Context) {
 	files := c.Query("files")
 	fileList := strings.Split(files, "||")
 	rawFilesHandler(c, fileList)
+}
+
+// archiveCompressHandler builds an archive from provided paths.
+func archiveCompressHandler(c *gin.Context) {
+	sess := session.SessionFromContext(c)
+	if sess == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		return
+	}
+
+	var req archiveCompressRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request payload"})
+		return
+	}
+
+	if len(req.Paths) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "paths are required"})
+		return
+	}
+
+	format := req.Format
+	if format == "" {
+		format = "zip"
+	}
+
+	destDir := req.Destination
+	if destDir == "" {
+		destDir = filepath.Dir(req.Paths[0])
+	}
+
+	archiveName := req.ArchiveName
+	if archiveName == "" {
+		archiveName = buildArchiveName(req.Paths, format)
+	}
+	archiveName = filepath.Base(archiveName)
+	archiveName = ensureArchiveExtension(archiveName, format)
+
+	args := []string{
+		filepath.Join(destDir, archiveName),
+		strings.Join(req.Paths, "||"),
+		format,
+	}
+
+	data, err := bridge.CallWithSession(sess, "filebrowser", "archive_create", args)
+	if err != nil {
+		logger.Debugf("bridge error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
+		return
+	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+
+	if resp.Status != "ok" {
+		status := http.StatusInternalServerError
+		if strings.HasPrefix(resp.Error, "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	if resp.Output == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp.Output)
+}
+
+// archiveExtractHandler extracts a supported archive to a destination.
+func archiveExtractHandler(c *gin.Context) {
+	sess := session.SessionFromContext(c)
+	if sess == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		return
+	}
+
+	var req archiveExtractRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request payload"})
+		return
+	}
+
+	if strings.TrimSpace(req.ArchivePath) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "archivePath is required"})
+		return
+	}
+
+	dest := req.Destination
+	if dest == "" {
+		dest = defaultExtractPath(req.ArchivePath)
+	}
+
+	args := []string{req.ArchivePath, dest}
+	data, err := bridge.CallWithSession(sess, "filebrowser", "archive_extract", args)
+	if err != nil {
+		logger.Debugf("bridge error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
+		return
+	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+
+	if resp.Status != "ok" {
+		status := http.StatusInternalServerError
+		if strings.HasPrefix(resp.Error, "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	if resp.Output == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp.Output)
 }
 
 // ============================================================================
@@ -871,6 +1012,60 @@ func addFileToArchiveWithProgress(tracker *progressTrackingWriter, path string, 
 	// Report progress
 	tracker.addBytes(written)
 	return nil
+}
+
+func buildArchiveName(paths []string, format string) string {
+	if len(paths) == 0 {
+		return ensureArchiveExtension("archive", format)
+	}
+
+	name := filepath.Base(strings.TrimRight(paths[0], "/"))
+	if name == "" || name == "." || name == "/" {
+		name = "archive"
+	}
+	if len(paths) > 1 {
+		name = "archive"
+	}
+	return ensureArchiveExtension(name, format)
+}
+
+func ensureArchiveExtension(name, format string) string {
+	lower := strings.ToLower(name)
+	switch format {
+	case "tar.gz":
+		if strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") {
+			return name
+		}
+		name = strings.TrimSuffix(name, ".tar")
+		name = strings.TrimSuffix(name, ".gz")
+		return name + ".tar.gz"
+	default:
+		if strings.HasSuffix(lower, ".zip") {
+			return name
+		}
+		return name + ".zip"
+	}
+}
+
+func defaultExtractPath(archivePath string) string {
+	baseDir := filepath.Dir(archivePath)
+	baseName := filepath.Base(archivePath)
+	lowerName := strings.ToLower(baseName)
+
+	switch {
+	case strings.HasSuffix(lowerName, ".tar.gz"):
+		baseName = strings.TrimSuffix(baseName, ".tar.gz")
+	case strings.HasSuffix(lowerName, ".tgz"):
+		baseName = strings.TrimSuffix(baseName, ".tgz")
+	default:
+		baseName = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	}
+
+	if baseName == "" || baseName == "/" || baseName == "." {
+		baseName = "extracted"
+	}
+
+	return filepath.Join(baseDir, baseName)
 }
 
 // setContentDisposition sets the Content-Disposition HTTP header for downloads

@@ -1,3 +1,5 @@
+import { useCallback } from "react";
+
 type DroppedEntry = {
   file?: File;
   relativePath: string;
@@ -160,5 +162,11 @@ export const extractDroppedEntries = async (
 
   return deduped;
 };
+
+export const useDroppedEntries = () =>
+  useCallback(
+    (dataTransfer: DataTransfer) => extractDroppedEntries(dataTransfer),
+    [],
+  );
 
 export type { DroppedEntry };

@@ -29,6 +29,8 @@ func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 		"resource_patch":  resourcePatch,
 		"raw_files":       rawFiles,
 		"dir_size":        dirSize,
+		"archive_create":  archiveCreate,
+		"archive_extract": archiveExtract,
 	}
 }
 
@@ -471,4 +473,116 @@ func dirSize(args []string) (any, error) {
 		"path": path,
 		"size": size,
 	}, nil
+}
+
+// archiveCreate builds an archive on disk from provided files.
+// Args: [destinationPath, fileList, algo?]
+func archiveCreate(args []string) (any, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("bad_request:missing destination or files")
+	}
+
+	destination := args[0]
+	fileListRaw := args[1]
+	files := strings.Split(fileListRaw, "||")
+	if len(files) == 0 || files[0] == "" {
+		return nil, fmt.Errorf("bad_request:invalid files list")
+	}
+
+	algo := "zip"
+	if len(args) > 2 && args[2] != "" {
+		algo = args[2]
+	}
+
+	var extension string
+	switch algo {
+	case "zip", "true", "":
+		extension = ".zip"
+	case "tar.gz":
+		extension = ".tar.gz"
+	default:
+		return nil, fmt.Errorf("bad_request:format not implemented")
+	}
+
+	targetPath := filepath.Join(destination)
+	lowerTarget := strings.ToLower(targetPath)
+
+	switch extension {
+	case ".zip":
+		if !strings.HasSuffix(lowerTarget, ".zip") {
+			targetPath = targetPath + ".zip"
+		}
+	case ".tar.gz":
+		if !(strings.HasSuffix(lowerTarget, ".tar.gz") || strings.HasSuffix(lowerTarget, ".tgz")) {
+			targetPath = targetPath + ".tar.gz"
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), services.PermDir); err != nil {
+		logger.Debugf("error preparing archive destination: %v", err)
+		return nil, fmt.Errorf("error preparing archive destination: %w", err)
+	}
+
+	var err error
+	switch extension {
+	case ".zip":
+		err = services.CreateZip(targetPath, files...)
+	case ".tar.gz":
+		err = services.CreateTarGz(targetPath, files...)
+	}
+	if err != nil {
+		logger.Debugf("error creating archive: %v", err)
+		return nil, fmt.Errorf("error creating archive: %w", err)
+	}
+
+	return map[string]any{
+		"path":   targetPath,
+		"format": algo,
+	}, nil
+}
+
+// archiveExtract extracts supported archives to a destination folder.
+// Args: [archivePath, destination?]
+func archiveExtract(args []string) (any, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("bad_request:missing archive path")
+	}
+
+	archivePath := filepath.Join(args[0])
+	destination := ""
+	if len(args) > 1 && args[1] != "" {
+		destination = filepath.Join(args[1])
+	} else {
+		destination = defaultExtractDestination(archivePath)
+	}
+
+	if err := services.ExtractArchive(archivePath, destination); err != nil {
+		logger.Debugf("error extracting archive: %v", err)
+		return nil, fmt.Errorf("error extracting archive: %w", err)
+	}
+
+	return map[string]any{
+		"destination": destination,
+	}, nil
+}
+
+func defaultExtractDestination(archivePath string) string {
+	baseDir := filepath.Dir(archivePath)
+	baseName := filepath.Base(archivePath)
+	lowerName := strings.ToLower(baseName)
+
+	switch {
+	case strings.HasSuffix(lowerName, ".tar.gz"):
+		baseName = strings.TrimSuffix(baseName, ".tar.gz")
+	case strings.HasSuffix(lowerName, ".tgz"):
+		baseName = strings.TrimSuffix(baseName, ".tgz")
+	default:
+		baseName = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	}
+
+	if baseName == "" || baseName == "/" || baseName == "." {
+		baseName = "extracted"
+	}
+
+	return filepath.Join(baseDir, baseName)
 }

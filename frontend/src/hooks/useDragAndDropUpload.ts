@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { FileTransferContextValue } from "@/contexts/FileTransferContext";
 import { FileResource } from "@/types/filebrowser";
 
-import { DroppedEntry, extractDroppedEntries } from "../pages/main/filebrowser/hooks/droppedEntries";
+import { DroppedEntry, useDroppedEntries } from "./useDroppedEntries";
 
 type UseDragAndDropUploadParams = {
   normalizedPath: string;
@@ -37,6 +37,7 @@ export const useDragAndDropUpload = ({
   const [overwriteTargets, setOverwriteTargets] = useState<
     DroppedEntry[] | null
   >(null);
+  const extractDroppedEntries = useDroppedEntries();
 
   const uploadDroppedFiles = useCallback(
     async (entries: DroppedEntry[], options?: { override?: boolean }) => {
@@ -125,7 +126,7 @@ export const useDragAndDropUpload = ({
         toast.error("Failed to upload dropped items");
       }
     },
-    [editingPath, resource, uploadDroppedFiles],
+    [editingPath, resource, uploadDroppedFiles, extractDroppedEntries],
   );
 
   const handleConfirmOverwrite = useCallback(async () => {

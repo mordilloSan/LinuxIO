@@ -4,6 +4,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
 import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
+import ArchiveIcon from "@mui/icons-material/Archive";
+import UnarchiveIcon from "@mui/icons-material/Unarchive";
 import SecurityIcon from "@mui/icons-material/Security";
 import UploadIcon from "@mui/icons-material/Upload";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -30,6 +32,10 @@ interface ContextMenuProps {
   onDownload: () => void;
   onUpload: () => void;
   onShowDetails?: () => void;
+  onCompress?: () => void;
+  onExtract?: () => void;
+  canCompress?: boolean;
+  canExtract?: boolean;
 }
 
 const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -46,10 +52,17 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   onDownload,
   onUpload,
   onShowDetails = () => {},
+  onCompress = () => {},
+  onExtract = () => {},
+  canCompress,
+  canExtract,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const detailsDisabled =
     canShowDetails === undefined ? !hasSelection : !canShowDetails;
+  const compressDisabled =
+    canCompress === undefined ? !hasSelection : !canCompress;
+  const extractDisabled = canExtract === undefined ? true : !canExtract;
 
   // Close menu on Escape key
   useEffect(() => {
@@ -144,6 +157,20 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
           <VisibilityIcon fontSize="small" />
         </ListItemIcon>
         <ListItemText>Show Details</ListItemText>
+      </MenuItem>
+
+      <MenuItem onClick={onCompress} disabled={compressDisabled}>
+        <ListItemIcon>
+          <ArchiveIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText>Compress to ZIP</ListItemText>
+      </MenuItem>
+
+      <MenuItem onClick={onExtract} disabled={extractDisabled}>
+        <ListItemIcon>
+          <UnarchiveIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText>Extract Here</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onDelete} disabled={!hasSelection}>

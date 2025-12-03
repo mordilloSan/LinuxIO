@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -102,6 +103,160 @@ func CreateTarGz(tmpDirPath string, filenames ...string) error {
 	}
 
 	return nil
+}
+
+// ExtractArchive extracts supported archive types (zip, tar.gz, tgz) into the destination directory.
+func ExtractArchive(archivePath, destination string) error {
+	archivePath = filepath.Join(archivePath)
+	destination = filepath.Join(destination)
+
+	if err := os.MkdirAll(destination, PermDir); err != nil {
+		return err
+	}
+	if err := os.Chmod(destination, PermDir); err != nil {
+		return err
+	}
+
+	lowerName := strings.ToLower(archivePath)
+	switch {
+	case strings.HasSuffix(lowerName, ".zip"):
+		return extractZip(archivePath, destination)
+	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
+		return extractTarGz(archivePath, destination)
+	default:
+		return fmt.Errorf("unsupported archive format")
+	}
+}
+
+func extractZip(archivePath, destination string) error {
+	reader, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	for _, file := range reader.File {
+		if err := extractZipEntry(file, destination); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func extractZipEntry(file *zip.File, destination string) error {
+	targetPath := filepath.Join(destination, file.Name)
+	if !isWithinBase(destination, targetPath) {
+		return fmt.Errorf("illegal file path in archive: %s", file.Name)
+	}
+
+	if file.FileInfo().IsDir() {
+		if err := os.MkdirAll(targetPath, PermDir); err != nil {
+			return err
+		}
+		return os.Chmod(targetPath, PermDir)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), PermDir); err != nil {
+		return err
+	}
+
+	reader, err := file.Open()
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	writer, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, PermFile)
+	if err != nil {
+		return err
+	}
+	defer writer.Close()
+
+	if _, err := io.Copy(writer, reader); err != nil {
+		return err
+	}
+
+	return os.Chmod(targetPath, PermFile)
+}
+
+func extractTarGz(archivePath, destination string) error {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer gzipReader.Close()
+
+	tarReader := tar.NewReader(gzipReader)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		if err := extractTarEntry(header, tarReader, destination); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination string) error {
+	targetPath := filepath.Join(destination, header.Name)
+	if !isWithinBase(destination, targetPath) {
+		return fmt.Errorf("illegal file path in archive: %s", header.Name)
+	}
+
+	switch header.Typeflag {
+	case tar.TypeDir:
+		if err := os.MkdirAll(targetPath, PermDir); err != nil {
+			return err
+		}
+		return os.Chmod(targetPath, PermDir)
+	case tar.TypeReg:
+		if err := os.MkdirAll(filepath.Dir(targetPath), PermDir); err != nil {
+			return err
+		}
+		outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, PermFile)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(outFile, tarReader); err != nil {
+			outFile.Close()
+			return err
+		}
+		if err := outFile.Close(); err != nil {
+			return err
+		}
+		return os.Chmod(targetPath, PermFile)
+	case tar.TypeSymlink, tar.TypeLink:
+		// Skip symlinks/hardlinks for safety
+		return nil
+	default:
+		return nil
+	}
+}
+
+func isWithinBase(baseDir, targetPath string) bool {
+	baseDir = filepath.Clean(baseDir)
+	targetPath = filepath.Clean(targetPath)
+
+	rel, err := filepath.Rel(baseDir, targetPath)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
 // addFile adds a file or directory to an archive (zip or tar.gz)

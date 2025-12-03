@@ -35,3 +35,34 @@ export const buildDownloadUrl = (path: string, inline = false) => {
   if (inline) search.set("inline", "true");
   return `/navigator/api/raw?${search.toString()}`;
 };
+
+export const isArchiveFile = (name: string) => {
+  const lower = name.toLowerCase();
+  return (
+    lower.endsWith(".zip") ||
+    lower.endsWith(".tar.gz") ||
+    lower.endsWith(".tgz")
+  );
+};
+
+export const stripArchiveExtension = (name: string) => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".tar.gz")) {
+    return name.slice(0, -7);
+  }
+  if (lower.endsWith(".tgz")) {
+    return name.slice(0, -4);
+  }
+  if (lower.endsWith(".zip")) {
+    return name.slice(0, -4);
+  }
+  return name;
+};
+
+export const ensureZipExtension = (name: string) => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".zip")) {
+    return name;
+  }
+  return `${name}.zip`;
+};

@@ -200,6 +200,44 @@ func TestCreateTarGz(t *testing.T) {
 	})
 }
 
+func TestExtractArchive(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	t.Run("extract_zip_archive", func(t *testing.T) {
+		srcDir := createTestDir(t, tmpDir, "zip-src")
+		createTestFile(t, srcDir, "file.txt", []byte("zip data"))
+		zipPath := filepath.Join(tmpDir, "archive.zip")
+
+		err := CreateZip(zipPath, srcDir)
+		require.NoError(t, err, "CreateZip should succeed before extraction")
+
+		destDir := filepath.Join(tmpDir, "zip-dest")
+		err = ExtractArchive(zipPath, destDir)
+		require.NoError(t, err, "ExtractArchive should extract zip")
+
+		content, err := os.ReadFile(filepath.Join(destDir, "zip-src", "file.txt"))
+		require.NoError(t, err, "extracted file should exist")
+		assert.Equal(t, "zip data", string(content), "extracted content should match")
+	})
+
+	t.Run("extract_tar_gz_archive", func(t *testing.T) {
+		srcDir := createTestDir(t, tmpDir, "tar-src")
+		createTestFile(t, srcDir, "nested.txt", []byte("tar data"))
+		tarPath := filepath.Join(tmpDir, "archive.tar.gz")
+
+		err := CreateTarGz(tarPath, srcDir)
+		require.NoError(t, err, "CreateTarGz should succeed before extraction")
+
+		destDir := filepath.Join(tmpDir, "tar-dest")
+		err = ExtractArchive(tarPath, destDir)
+		require.NoError(t, err, "ExtractArchive should extract tar.gz")
+
+		content, err := os.ReadFile(filepath.Join(destDir, "tar-src", "nested.txt"))
+		require.NoError(t, err, "extracted file should exist")
+		assert.Equal(t, "tar data", string(content), "extracted content should match")
+	})
+}
+
 func TestArchiveOperationsEdgeCases(t *testing.T) {
 	tmpDir := t.TempDir()
 
