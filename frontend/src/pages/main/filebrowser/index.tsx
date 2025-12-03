@@ -45,15 +45,15 @@ import SortBar, {
   SortOrder,
 } from "@/components/filebrowser/SortBar";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useConfigValue } from "@/hooks/useConfig";
-import { useFileTransfers } from "@/hooks/useFileTransfers";
-import { ViewMode, FileItem } from "@/types/filebrowser";
 import {
   ensureZipExtension,
   isArchiveFile,
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useConfigValue } from "@/hooks/useConfig";
+import { useFileTransfers } from "@/hooks/useFileTransfers";
+import { ViewMode, FileItem } from "@/types/filebrowser";
 import axios from "@/utils/axios";
 
 const viewModes: ViewMode[] = ["card", "list"];
@@ -103,8 +103,6 @@ const FileBrowser: React.FC = () => {
     deleteItems,
     compressItems,
     extractArchive,
-    isCompressing,
-    isExtracting,
   } = useFileMutations({
     normalizedPath,
     queryClient,
@@ -160,9 +158,8 @@ const FileBrowser: React.FC = () => {
     [selectedItems],
   );
 
-  const isArchiveBusy = isCompressing || isExtracting;
-  const canExtractSelection = Boolean(archiveSelection) && !isArchiveBusy;
-  const canCompressSelection = selectedPaths.size > 0 && !isArchiveBusy;
+  const canExtractSelection = Boolean(archiveSelection);
+  const canCompressSelection = selectedPaths.size > 0;
 
   const handleSwitchView = useCallback(() => {
     setViewMode((current) => {
@@ -362,13 +359,15 @@ const FileBrowser: React.FC = () => {
   const handleCompressSelection = useCallback(async () => {
     handleCloseContextMenu();
     const paths = Array.from(selectedPaths);
-    if (!paths.length || isArchiveBusy) return;
+    if (!paths.length) return;
 
     const baseName =
       selectedItems.length === 1
         ? stripArchiveExtension(selectedItems[0].name)
         : "archive";
-    const archiveName = getUniqueName(ensureZipExtension(baseName || "archive"));
+    const archiveName = getUniqueName(
+      ensureZipExtension(baseName || "archive"),
+    );
 
     try {
       await compressItems({
@@ -376,14 +375,13 @@ const FileBrowser: React.FC = () => {
         archiveName,
         destination: normalizedPath,
       });
-    } catch (error) {
+    } catch {
       // Errors are surfaced via toast in the mutation
     }
   }, [
     compressItems,
     getUniqueName,
     handleCloseContextMenu,
-    isArchiveBusy,
     normalizedPath,
     selectedItems,
     selectedPaths,
@@ -391,7 +389,7 @@ const FileBrowser: React.FC = () => {
 
   const handleExtractSelection = useCallback(async () => {
     handleCloseContextMenu();
-    if (!archiveSelection || isArchiveBusy) return;
+    if (!archiveSelection) return;
 
     const targetFolder = getUniqueName(
       stripArchiveExtension(archiveSelection.name) || "extracted",
@@ -403,7 +401,7 @@ const FileBrowser: React.FC = () => {
         archivePath: archiveSelection.path,
         destination,
       });
-    } catch (error) {
+    } catch {
       // Errors are surfaced via toast in the mutation
     }
   }, [
@@ -411,7 +409,6 @@ const FileBrowser: React.FC = () => {
     extractArchive,
     getUniqueName,
     handleCloseContextMenu,
-    isArchiveBusy,
     joinPath,
     normalizedPath,
   ]);

@@ -13,6 +13,9 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 )
 
+// ProgressCallback is invoked with the number of bytes processed.
+type ProgressCallback func(processed int64)
+
 // ComputeArchiveSize calculates the estimated size of files/directories for archiving
 func ComputeArchiveSize(fileList []string) (int64, error) {
 	var estimatedSize int64
@@ -50,7 +53,8 @@ func ComputeArchiveSize(fileList []string) (int64, error) {
 }
 
 // CreateZip creates a zip archive from the provided file list
-func CreateZip(tmpDirPath string, filenames ...string) error {
+// skipPath allows excluding the archive itself if it lives inside the source tree.
+func CreateZip(tmpDirPath string, cb ProgressCallback, skipPath string, filenames ...string) error {
 	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
@@ -61,7 +65,7 @@ func CreateZip(tmpDirPath string, filenames ...string) error {
 	defer zipWriter.Close()
 
 	for _, fname := range filenames {
-		if addErr := addFile(fname, nil, zipWriter, false); addErr != nil {
+		if addErr := addFile(fname, nil, zipWriter, false, cb, skipPath); addErr != nil {
 			logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
 			return addErr
 		}
@@ -77,7 +81,8 @@ func CreateZip(tmpDirPath string, filenames ...string) error {
 }
 
 // CreateTarGz creates a tar.gz archive from the provided file list
-func CreateTarGz(tmpDirPath string, filenames ...string) error {
+// skipPath allows excluding the archive itself if it lives inside the source tree.
+func CreateTarGz(tmpDirPath string, cb ProgressCallback, skipPath string, filenames ...string) error {
 	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
@@ -90,7 +95,7 @@ func CreateTarGz(tmpDirPath string, filenames ...string) error {
 	defer tarWriter.Close()
 
 	for _, fname := range filenames {
-		if addErr := addFile(fname, tarWriter, nil, false); addErr != nil {
+		if addErr := addFile(fname, tarWriter, nil, false, cb, skipPath); addErr != nil {
 			logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
 			return addErr
 		}
@@ -260,9 +265,14 @@ func isWithinBase(baseDir, targetPath string) bool {
 }
 
 // addFile adds a file or directory to an archive (zip or tar.gz)
-func addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool) error {
+func addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, cb ProgressCallback, skipPath string) error {
 	// Direct filesystem access
 	realPath := filepath.Join(path)
+
+	if skipPath != "" && filepath.Clean(realPath) == filepath.Clean(skipPath) {
+		return nil
+	}
+
 	info, err := os.Stat(realPath)
 	if err != nil {
 		return err
@@ -276,6 +286,10 @@ func addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten 
 		return filepath.Walk(realPath, func(filePath string, fileInfo os.FileInfo, err error) error {
 			if err != nil {
 				return err
+			}
+
+			if skipPath != "" && filepath.Clean(filePath) == filepath.Clean(skipPath) {
+				return nil
 			}
 
 			// Calculate the relative path
@@ -314,16 +328,16 @@ func addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten 
 				}
 				return nil
 			}
-			return addSingleFile(filePath, relPath, zipWriter, tarWriter)
+			return addSingleFile(filePath, relPath, zipWriter, tarWriter, cb)
 		})
 	} else {
 		// For a single file, use the base name as the archive path
-		return addSingleFile(realPath, baseName, zipWriter, tarWriter)
+		return addSingleFile(realPath, baseName, zipWriter, tarWriter, cb)
 	}
 }
 
 // addSingleFile adds a single file to an archive
-func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer) error {
+func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, cb ProgressCallback) error {
 	file, err := os.Open(realPath)
 	if err != nil {
 		// If we get "is a directory" error, this is likely a symlink to a directory
@@ -354,8 +368,7 @@ func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWrite
 		if err = tarWriter.WriteHeader(header); err != nil {
 			return err
 		}
-		_, err = io.Copy(tarWriter, file)
-		return err
+		return copyWithProgress(tarWriter, file, cb)
 	}
 
 	if zipWriter != nil {
@@ -364,13 +377,36 @@ func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWrite
 			return err
 		}
 		header.Name = archivePath
+		// Explicitly set compression method to Deflate for better compression
+		header.Method = zip.Deflate
 		writer, err := zipWriter.CreateHeader(header)
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(writer, file)
-		return err
+		return copyWithProgress(writer, file, cb)
 	}
 
 	return nil
+}
+
+// copyWithProgress writes from src to dst, invoking cb after each chunk.
+func copyWithProgress(dst io.Writer, src io.Reader, cb ProgressCallback) error {
+	buf := make([]byte, 8*1024)
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			if cb != nil {
+				cb(int64(n))
+			}
+			if _, werr := dst.Write(buf[:n]); werr != nil {
+				return werr
+			}
+		}
+		if rerr == io.EOF {
+			return nil
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
 }

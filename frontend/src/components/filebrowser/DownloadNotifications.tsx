@@ -5,9 +5,33 @@ import React from "react";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 
 const DownloadNotifications: React.FC = () => {
-  const { transfers, cancelDownload, cancelUpload } = useFileTransfers();
+  const { transfers, cancelDownload, cancelUpload, cancelCompression } =
+    useFileTransfers();
 
   if (transfers.length === 0) return null;
+
+  const getTitle = (type: (typeof transfers)[number]["type"]) => {
+    switch (type) {
+      case "download":
+        return "Download Progress";
+      case "upload":
+        return "Upload Progress";
+      case "compression":
+        return "Compression Progress";
+      default:
+        return "Progress";
+    }
+  };
+
+  const handleCancel = (transfer: (typeof transfers)[number]) => {
+    if (transfer.type === "download") {
+      cancelDownload(transfer.id);
+    } else if (transfer.type === "upload") {
+      cancelUpload(transfer.id);
+    } else if (transfer.type === "compression") {
+      cancelCompression(transfer.id);
+    }
+  };
 
   return (
     <Box
@@ -16,67 +40,64 @@ const DownloadNotifications: React.FC = () => {
         bottom: 16,
         right: 16,
         zIndex: 1400,
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-        maxWidth: 320,
+        maxWidth: 380,
+        boxShadow: 6,
+        borderRadius: 2,
+        border: "1px solid",
+        borderColor: "divider",
+        overflow: "hidden",
       }}
     >
-      {transfers.map((transfer) => (
-        <Box
-          key={transfer.id}
-          sx={{
-            bgcolor: "background.paper",
-            boxShadow: 6,
-            borderRadius: 2,
-            p: 2,
-            border: "1px solid",
-            borderColor: "divider",
-          }}
-        >
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              mb: 1,
-            }}
-          >
-            <Typography variant="subtitle2" fontWeight="bold">
-              {transfer.type === "download" ? "Download" : "Upload"} Progress
-            </Typography>
-            <IconButton
-              size="small"
-              onClick={() =>
-                transfer.type === "download"
-                  ? cancelDownload(transfer.id)
-                  : cancelUpload(transfer.id)
-              }
-              sx={{ ml: 1 }}
+      <Box
+        sx={{
+          p: 2,
+          pb: 1.5,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        <Typography variant="subtitle2" fontWeight="bold">
+          File Operations
+        </Typography>
+      </Box>
+      <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 2 }}>
+        {transfers.map((transfer) => (
+          <Box key={transfer.id}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                mb: 0.5,
+              }}
             >
-              <CloseIcon fontSize="small" />
-            </IconButton>
+              <Typography variant="body2" fontWeight="medium">
+                {getTitle(transfer.type)}
+              </Typography>
+              <IconButton
+                size="small"
+                onClick={() => handleCancel(transfer)}
+                sx={{ ml: 1, p: 0.5 }}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            <Typography variant="caption" sx={{ mb: 0.5, display: "block" }}>
+              {transfer.label ||
+                (transfer.type === "download"
+                  ? "Preparing archive..."
+                  : transfer.type === "upload"
+                    ? "Preparing upload..."
+                    : "Compressing selection...")}
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={transfer.progress}
+              sx={{ height: 6, borderRadius: 1 }}
+            />
           </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            {transfer.label ||
-              (transfer.type === "download"
-                ? "Preparing archive..."
-                : "Preparing upload...")}
-          </Typography>
-          <LinearProgress
-            variant="determinate"
-            value={transfer.progress}
-            sx={{ height: 6, borderRadius: 1 }}
-          />
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ mt: 0.5, display: "block" }}
-          >
-            {transfer.progress}%
-          </Typography>
-        </Box>
-      ))}
+        ))}
+      </Box>
     </Box>
   );
 };

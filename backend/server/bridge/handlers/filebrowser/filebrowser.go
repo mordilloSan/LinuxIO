@@ -31,6 +31,7 @@ type archiveCompressRequest struct {
 	Destination string   `json:"destination"`
 	ArchiveName string   `json:"archiveName"`
 	Format      string   `json:"format"`
+	RequestID   string   `json:"requestId"`
 }
 
 type archiveExtractRequest struct {
@@ -387,10 +388,18 @@ func archiveCompressHandler(c *gin.Context) {
 	archiveName = filepath.Base(archiveName)
 	archiveName = ensureArchiveExtension(archiveName, format)
 
+	progressKey := ""
+	if strings.TrimSpace(req.RequestID) != "" {
+		progressKey = fmt.Sprintf("%s:%s", sess.SessionID, strings.TrimSpace(req.RequestID))
+	}
+
 	args := []string{
 		filepath.Join(destDir, archiveName),
 		strings.Join(req.Paths, "||"),
 		format,
+	}
+	if progressKey != "" {
+		args = append(args, progressKey)
 	}
 
 	data, err := bridge.CallWithSession(sess, "filebrowser", "archive_create", args)

@@ -17,6 +17,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 func FilebrowserHandlers() map[string]ipc.HandlerFunc {
@@ -340,10 +341,10 @@ func rawFiles(args []string) (any, error) {
 	archiveData := tempName
 	if extension == ".zip" {
 		archiveData = archiveData + ".zip"
-		err = services.CreateZip(archiveData, fileList...)
+		err = services.CreateZip(archiveData, nil, archiveData, fileList...)
 	} else {
 		archiveData = archiveData + ".tar.gz"
-		err = services.CreateTarGz(archiveData, fileList...)
+		err = services.CreateTarGz(archiveData, nil, archiveData, fileList...)
 	}
 	if err != nil {
 		logger.Debugf("error creating archive: %v", err)
@@ -518,6 +519,56 @@ func archiveCreate(args []string) (any, error) {
 		}
 	}
 
+	progressKey := ""
+	if len(args) > 3 && args[3] != "" {
+		progressKey = args[3]
+	}
+
+	if progressKey != "" {
+		defer web.GlobalProgressBroadcaster.Unregister(progressKey)
+	}
+
+	var progressCb services.ProgressCallback
+	var totalSize int64
+	var processed int64
+	var lastPercent float64
+
+	if progressKey != "" {
+		size, err := services.ComputeArchiveSize(files)
+		if err != nil {
+			logger.Debugf("error computing archive size for progress: %v", err)
+		} else if size > 0 {
+			totalSize = size
+			progressCb = func(n int64) {
+				processed += n
+				if processed > totalSize {
+					processed = totalSize
+				}
+				percent := float64(processed) / float64(totalSize) * 100
+				if percent > 100 {
+					percent = 100
+				}
+				if percent < lastPercent+0.5 && percent < 100 {
+					return
+				}
+				lastPercent = percent
+				web.GlobalProgressBroadcaster.Send(progressKey, web.ProgressUpdate{
+					Type:           "compression_progress",
+					Percent:        percent,
+					BytesProcessed: processed,
+					TotalBytes:     totalSize,
+				})
+			}
+
+			web.GlobalProgressBroadcaster.Send(progressKey, web.ProgressUpdate{
+				Type:           "compression_progress",
+				Percent:        0,
+				BytesProcessed: 0,
+				TotalBytes:     totalSize,
+			})
+		}
+	}
+
 	if err := os.MkdirAll(filepath.Dir(targetPath), services.PermDir); err != nil {
 		logger.Debugf("error preparing archive destination: %v", err)
 		return nil, fmt.Errorf("error preparing archive destination: %w", err)
@@ -526,13 +577,22 @@ func archiveCreate(args []string) (any, error) {
 	var err error
 	switch extension {
 	case ".zip":
-		err = services.CreateZip(targetPath, files...)
+		err = services.CreateZip(targetPath, progressCb, targetPath, files...)
 	case ".tar.gz":
-		err = services.CreateTarGz(targetPath, files...)
+		err = services.CreateTarGz(targetPath, progressCb, targetPath, files...)
 	}
 	if err != nil {
 		logger.Debugf("error creating archive: %v", err)
 		return nil, fmt.Errorf("error creating archive: %w", err)
+	}
+
+	if progressKey != "" {
+		web.GlobalProgressBroadcaster.Send(progressKey, web.ProgressUpdate{
+			Type:           "compression_complete",
+			Percent:        100,
+			BytesProcessed: totalSize,
+			TotalBytes:     totalSize,
+		})
 	}
 
 	return map[string]any{

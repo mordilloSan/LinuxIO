@@ -349,6 +349,34 @@ func WebSocketHandler(c *gin.Context) {
 				RequestID: reqId,
 			})
 
+		case "subscribe_compression_progress":
+			reqId := wsMsg.Data
+			if reqId == "" {
+				logger.Warnf("[WebSocket] subscribe_compression_progress with empty reqId")
+				continue
+			}
+			key := sess.SessionID + ":" + reqId
+			logger.Debugf("[WebSocket] Subscribing to compression progress: %s", key)
+
+			GlobalProgressBroadcaster.Register(key, func(update ProgressUpdate) {
+				_ = safeConn.WriteJSON(WSResponse{
+					Type:      update.Type,
+					RequestID: reqId,
+					Data:      update,
+				})
+			})
+
+			go func(subscriptionKey string) {
+				<-ctx.Done()
+				logger.Debugf("[WebSocket] Unsubscribing from compression progress: %s", subscriptionKey)
+				GlobalProgressBroadcaster.Unregister(subscriptionKey)
+			}(key)
+
+			_ = safeConn.WriteJSON(WSResponse{
+				Type:      "compression_subscribed",
+				RequestID: reqId,
+			})
+
 		default:
 			logger.Warnf("[WebSocket] Unknown message type: %s", wsMsg.Type)
 		}

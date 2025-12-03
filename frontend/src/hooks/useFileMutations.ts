@@ -6,6 +6,7 @@ import {
 import { toast } from "sonner";
 
 import axios from "@/utils/axios";
+import { useFileTransfers } from "./useFileTransfers";
 
 type UseFileMutationsParams = {
   normalizedPath: string;
@@ -30,6 +31,7 @@ export const useFileMutations = ({
   onDeleteSuccess,
 }: UseFileMutationsParams) => {
   const queryClient = providedQueryClient ?? useQueryClient();
+  const { startCompression } = useFileTransfers();
 
   const invalidateListing = () =>
     queryClient.invalidateQueries({
@@ -88,10 +90,7 @@ export const useFileMutations = ({
     },
   });
 
-  const {
-    mutateAsync: compressItems,
-    isPending: isCompressing,
-  } = useMutation({
+  const { mutateAsync: compressItems, isPending: isCompressing } = useMutation({
     mutationFn: async ({
       paths,
       archiveName,
@@ -100,11 +99,10 @@ export const useFileMutations = ({
       if (!paths.length) {
         throw new Error("No paths provided for compression");
       }
-      await axios.post("/navigator/api/archive/compress", {
+      await startCompression({
         paths,
-        archiveName,
+        archiveName: archiveName || "archive.zip",
         destination: destination || normalizedPath,
-        format: "zip",
       });
     },
     onSuccess: () => {
@@ -112,14 +110,18 @@ export const useFileMutations = ({
       toast.success("Archive created successfully");
     },
     onError: (error: any) => {
+      if (
+        error?.name === "CanceledError" ||
+        error?.name === "AbortError" ||
+        error?.message === "canceled"
+      ) {
+        return;
+      }
       toast.error(error.response?.data?.error || "Failed to create archive");
     },
   });
 
-  const {
-    mutateAsync: extractArchive,
-    isPending: isExtracting,
-  } = useMutation({
+  const { mutateAsync: extractArchive, isPending: isExtracting } = useMutation({
     mutationFn: async ({ archivePath, destination }: ExtractPayload) => {
       if (!archivePath) {
         throw new Error("No archive selected");
