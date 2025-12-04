@@ -40,6 +40,7 @@ import FileEditor from "@/components/filebrowser/FileEditor";
 import { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import InputDialog from "@/components/filebrowser/InputDialog";
 import MultiFileDetail from "@/components/filebrowser/MultiFileDetail";
+import PermissionsDialog from "@/components/filebrowser/PermissionsDialog";
 import SortBar, {
   SortField,
   SortOrder,
@@ -86,6 +87,15 @@ const FileBrowser: React.FC = () => {
   const [isSavingFile, setIsSavingFile] = useState(false);
   const [isEditorDirty, setIsEditorDirty] = useState(false);
   const [closeEditorDialog, setCloseEditorDialog] = useState(false);
+  const [permissionsDialog, setPermissionsDialog] = useState<{
+    paths: string[];
+    pathLabel: string;
+    selectionCount: number;
+    mode: string;
+    isDirectory: boolean;
+    owner?: string;
+    group?: string;
+  } | null>(null);
   const editorRef = useRef<FileEditorHandle>(null);
 
   const queryClient = useQueryClient();
@@ -103,6 +113,7 @@ const FileBrowser: React.FC = () => {
     deleteItems,
     compressItems,
     extractArchive,
+    changePermissions,
   } = useFileMutations({
     normalizedPath,
     queryClient,
@@ -299,11 +310,45 @@ const FileBrowser: React.FC = () => {
     [createFolder],
   );
 
-  const handleChangePermissions = useCallback(() => {
+  const handleChangePermissions = useCallback(async () => {
     handleCloseContextMenu();
-    // TODO: Implement permissions dialog
-    console.log("Change permissions clicked for:", Array.from(selectedPaths));
-  }, [handleCloseContextMenu, selectedPaths]);
+
+    if (selectedPaths.size === 0) return;
+
+    const selectedPathList = Array.from(selectedPaths);
+    const selectedPath = selectedPathList[0];
+    const selectionCount = selectedPathList.length;
+    const hasDirectorySelected = selectedItems.some(
+      (item) => item.type === "directory",
+    );
+
+    try {
+      // Fetch stat info to get current permissions (use first item as reference)
+      const response = await axios.get("/navigator/api/resources/stat", {
+        params: { path: selectedPath },
+      });
+
+      const stat = response.data;
+      const mode = stat.mode || "0644"; // Default if not available
+      const isDirectory = stat.isDir || hasDirectorySelected;
+      const owner = stat.owner || undefined;
+      const group = stat.group || undefined;
+
+      setPermissionsDialog({
+        paths: selectedPathList,
+        pathLabel:
+          selectionCount > 1 ? `${selectionCount} items` : selectedPath,
+        selectionCount,
+        mode: mode,
+        isDirectory: isDirectory,
+        owner: owner,
+        group: group,
+      });
+    } catch (error) {
+      console.error("Failed to fetch file stat:", error);
+      toast.error("Failed to fetch file permissions");
+    }
+  }, [handleCloseContextMenu, selectedPaths, selectedItems]);
 
   const handleCopy = useCallback(() => {
     handleCloseContextMenu();
@@ -412,6 +457,39 @@ const FileBrowser: React.FC = () => {
     joinPath,
     normalizedPath,
   ]);
+
+  const handleClosePermissionsDialog = useCallback(() => {
+    setPermissionsDialog(null);
+  }, []);
+
+  const handleConfirmPermissions = useCallback(
+    async (
+      mode: string,
+      recursive: boolean,
+      owner?: string,
+      group?: string,
+    ) => {
+      if (!permissionsDialog) return;
+
+      try {
+        await Promise.all(
+          permissionsDialog.paths.map((path) =>
+            changePermissions({
+              path: path,
+              mode: mode,
+              recursive: recursive,
+              owner,
+              group,
+            }),
+          ),
+        );
+        setPermissionsDialog(null);
+      } catch {
+        // Errors are surfaced via toast in the mutation
+      }
+    },
+    [permissionsDialog, changePermissions],
+  );
 
   const handleEditFile = useCallback((filePath: string) => {
     setEditingPath(filePath);
@@ -770,6 +848,18 @@ const FileBrowser: React.FC = () => {
         confirmText="Delete"
         onClose={handleCloseDeleteDialog}
         onConfirm={handleConfirmDelete}
+      />
+
+      <PermissionsDialog
+        open={Boolean(permissionsDialog)}
+        pathLabel={permissionsDialog?.pathLabel || ""}
+        selectionCount={permissionsDialog?.selectionCount || 0}
+        currentMode={permissionsDialog?.mode || "0644"}
+        isDirectory={permissionsDialog?.isDirectory || false}
+        owner={permissionsDialog?.owner}
+        group={permissionsDialog?.group}
+        onClose={handleClosePermissionsDialog}
+        onConfirm={handleConfirmPermissions}
       />
 
       <Dialog

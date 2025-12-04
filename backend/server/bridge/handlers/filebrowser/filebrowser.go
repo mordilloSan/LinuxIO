@@ -605,6 +605,11 @@ func resourcePostDirectHandler(c *gin.Context) {
 
 	if err := writeFileFromBody(realPath, c.Request.Body, override); err != nil {
 		logger.Debugf("could not create file: %v", err)
+		// Check if it's a permission error
+		if errors.Is(err, os.ErrPermission) || strings.Contains(err.Error(), "permission denied") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "permission denied"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create file"})
 		return
 	}
@@ -1075,6 +1080,113 @@ func defaultExtractPath(archivePath string) string {
 	}
 
 	return filepath.Join(baseDir, baseName)
+}
+
+// chmodHandler changes file or directory permissions
+func chmodHandler(c *gin.Context) {
+	sess := session.SessionFromContext(c)
+	if sess == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		return
+	}
+
+	type chmodRequest struct {
+		Path      string `json:"path"`
+		Mode      string `json:"mode"`
+		Owner     string `json:"owner"`
+		Group     string `json:"group"`
+		Recursive bool   `json:"recursive"`
+	}
+
+	var req chmodRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request payload"})
+		return
+	}
+
+	if strings.TrimSpace(req.Path) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
+		return
+	}
+
+	if strings.TrimSpace(req.Mode) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "mode is required"})
+		return
+	}
+
+	args := []string{req.Path, req.Mode, req.Owner, req.Group}
+	if req.Recursive {
+		args = append(args, "true")
+	}
+
+	data, err := bridge.CallWithSession(sess, "filebrowser", "chmod", args)
+	if err != nil {
+		logger.Debugf("bridge error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
+		return
+	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+
+	if resp.Status != "ok" {
+		status := http.StatusInternalServerError
+		if strings.HasPrefix(resp.Error, "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	if resp.Output == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp.Output)
+}
+
+// usersGroupsHandler returns all users and groups on the system
+func usersGroupsHandler(c *gin.Context) {
+	sess := session.SessionFromContext(c)
+	if sess == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		return
+	}
+
+	data, err := bridge.CallWithSession(sess, "filebrowser", "users_groups", []string{})
+	if err != nil {
+		logger.Debugf("bridge error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
+		return
+	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+
+	if resp.Status != "ok" {
+		status := http.StatusInternalServerError
+		if strings.HasPrefix(resp.Error, "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	if resp.Output == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp.Output)
 }
 
 // setContentDisposition sets the Content-Disposition HTTP header for downloads
