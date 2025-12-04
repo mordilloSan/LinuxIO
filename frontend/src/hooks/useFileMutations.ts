@@ -33,6 +33,11 @@ type ChmodPayload = {
   group?: string;
 };
 
+type CopyMovePayload = {
+  sourcePaths: string[];
+  destinationDir: string;
+};
+
 export const useFileMutations = ({
   normalizedPath,
   queryClient: providedQueryClient,
@@ -181,6 +186,62 @@ export const useFileMutations = ({
     },
   });
 
+  const { mutateAsync: copyItems } = useMutation({
+    mutationFn: async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
+      if (!sourcePaths.length) {
+        throw new Error("No paths provided");
+      }
+      await Promise.all(
+        sourcePaths.map((sourcePath) => {
+          const fileName = sourcePath.split("/").pop() || "";
+          const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
+          return axios.patch("/navigator/api/resources", null, {
+            params: {
+              action: "copy",
+              from: sourcePath,
+              destination,
+            },
+          });
+        }),
+      );
+    },
+    onSuccess: () => {
+      invalidateListing();
+      toast.success("Items copied successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Failed to copy items");
+    },
+  });
+
+  const { mutateAsync: moveItems } = useMutation({
+    mutationFn: async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
+      if (!sourcePaths.length) {
+        throw new Error("No paths provided");
+      }
+      await Promise.all(
+        sourcePaths.map((sourcePath) => {
+          const fileName = sourcePath.split("/").pop() || "";
+          const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
+          return axios.patch("/navigator/api/resources", null, {
+            params: {
+              action: "move",
+              from: sourcePath,
+              destination,
+            },
+          });
+        }),
+      );
+    },
+    onSuccess: () => {
+      invalidateListing();
+      toast.success("Items moved successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || "Failed to move items");
+    },
+  });
+
   return {
     createFile,
     createFolder,
@@ -188,6 +249,8 @@ export const useFileMutations = ({
     compressItems,
     extractArchive,
     changePermissions,
+    copyItems,
+    moveItems,
     isCompressing,
     isExtracting,
   };

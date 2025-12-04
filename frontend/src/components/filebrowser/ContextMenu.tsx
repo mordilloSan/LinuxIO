@@ -1,9 +1,10 @@
 import ArchiveIcon from "@mui/icons-material/Archive";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import ContentCutIcon from "@mui/icons-material/ContentCut";
+import ContentPasteIcon from "@mui/icons-material/ContentPaste";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
-import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import SecurityIcon from "@mui/icons-material/Security";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
@@ -21,13 +22,15 @@ import React, { useEffect, useRef } from "react";
 interface ContextMenuProps {
   anchorPosition: { top: number; left: number } | null;
   hasSelection: boolean;
+  hasClipboard?: boolean;
   canShowDetails?: boolean;
   onClose: () => void;
   onCreateFile: () => void;
   onCreateFolder: () => void;
   onChangePermissions: () => void;
   onCopy: () => void;
-  onMove: () => void;
+  onCut: () => void;
+  onPaste: () => void;
   onDelete: () => void;
   onDownload: () => void;
   onUpload: () => void;
@@ -41,13 +44,15 @@ interface ContextMenuProps {
 const ContextMenu: React.FC<ContextMenuProps> = ({
   anchorPosition,
   hasSelection,
+  hasClipboard = false,
   canShowDetails,
   onClose,
   onCreateFile,
   onCreateFolder,
   onChangePermissions,
   onCopy,
-  onMove,
+  onCut,
+  onPaste,
   onDelete,
   onDownload,
   onUpload,
@@ -136,11 +141,18 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
         <ListItemText>Copy</ListItemText>
       </MenuItem>
 
-      <MenuItem onClick={onMove} disabled={!hasSelection}>
+      <MenuItem onClick={onCut} disabled={!hasSelection}>
         <ListItemIcon>
-          <DriveFileMoveIcon fontSize="small" />
+          <ContentCutIcon fontSize="small" />
         </ListItemIcon>
-        <ListItemText>Move</ListItemText>
+        <ListItemText>Cut</ListItemText>
+      </MenuItem>
+
+      <MenuItem onClick={onPaste} disabled={!hasClipboard}>
+        <ListItemIcon>
+          <ContentPasteIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText>Paste</ListItemText>
       </MenuItem>
 
       <Divider />
