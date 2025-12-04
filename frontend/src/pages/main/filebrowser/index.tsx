@@ -64,6 +64,13 @@ const viewIconMap: Record<ViewMode, ReactNode> = {
   list: <ViewListIcon fontSize="small" />,
 };
 
+type ClipboardOperation = "copy" | "cut";
+
+interface ClipboardData {
+  paths: string[];
+  operation: ClipboardOperation;
+}
+
 const FileBrowser: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -96,6 +103,7 @@ const FileBrowser: React.FC = () => {
     owner?: string;
     group?: string;
   } | null>(null);
+  const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
   const editorRef = useRef<FileEditorHandle>(null);
 
   const queryClient = useQueryClient();
@@ -114,6 +122,8 @@ const FileBrowser: React.FC = () => {
     compressItems,
     extractArchive,
     changePermissions,
+    copyItems,
+    moveItems,
   } = useFileMutations({
     normalizedPath,
     queryClient,
@@ -352,15 +362,50 @@ const FileBrowser: React.FC = () => {
 
   const handleCopy = useCallback(() => {
     handleCloseContextMenu();
-    // TODO: Implement copy functionality
-    console.log("Copy clicked for:", Array.from(selectedPaths));
+    if (selectedPaths.size === 0) return;
+    setClipboard({
+      paths: Array.from(selectedPaths),
+      operation: "copy",
+    });
+    toast.success(`${selectedPaths.size} item(s) copied to clipboard`);
   }, [handleCloseContextMenu, selectedPaths]);
 
-  const handleMove = useCallback(() => {
+  const handleCut = useCallback(() => {
     handleCloseContextMenu();
-    // TODO: Implement move functionality
-    console.log("Move clicked for:", Array.from(selectedPaths));
+    if (selectedPaths.size === 0) return;
+    setClipboard({
+      paths: Array.from(selectedPaths),
+      operation: "cut",
+    });
+    toast.success(`${selectedPaths.size} item(s) cut to clipboard`);
   }, [handleCloseContextMenu, selectedPaths]);
+
+  const handlePaste = useCallback(async () => {
+    handleCloseContextMenu();
+    if (!clipboard) {
+      toast.error("Nothing to paste");
+      return;
+    }
+
+    try {
+      if (clipboard.operation === "copy") {
+        await copyItems({
+          sourcePaths: clipboard.paths,
+          destinationDir: normalizedPath,
+        });
+      } else {
+        await moveItems({
+          sourcePaths: clipboard.paths,
+          destinationDir: normalizedPath,
+        });
+        // Clear clipboard after cut operation
+        setClipboard(null);
+        setSelectedPaths(new Set());
+      }
+    } catch {
+      // Error is handled by the mutation
+    }
+  }, [handleCloseContextMenu, clipboard, copyItems, moveItems, normalizedPath]);
 
   const handleDelete = useCallback(() => {
     handleCloseContextMenu();
@@ -758,12 +803,14 @@ const FileBrowser: React.FC = () => {
       <ContextMenu
         anchorPosition={contextMenuPosition}
         hasSelection={selectedPaths.size > 0}
+        hasClipboard={clipboard !== null}
         onClose={handleCloseContextMenu}
         onCreateFile={handleCreateFile}
         onCreateFolder={handleCreateFolder}
         onChangePermissions={handleChangePermissions}
         onCopy={handleCopy}
-        onMove={handleMove}
+        onCut={handleCut}
+        onPaste={handlePaste}
         onDelete={handleDelete}
         onDownload={handleDownloadSelected}
         onUpload={handleUpload}
