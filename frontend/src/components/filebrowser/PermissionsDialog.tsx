@@ -116,7 +116,6 @@ const permissionsToOctal = (perms: PermissionBits): string => {
 const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   open,
   pathLabel,
-  selectionCount,
   currentMode,
   isDirectory,
   owner,
@@ -150,16 +149,6 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     }
   }, [open]);
 
-  // Update state when dialog opens or props change
-  useEffect(() => {
-    if (open) {
-      setPermissions(parseMode(currentMode));
-      setRecursive(false);
-      setOwnerInput(owner || "");
-      setGroupInput(group || "");
-    }
-  }, [open, currentMode, owner, group]);
-
   const handlePermissionChange = useCallback(
     (category: keyof PermissionBits, type: "read" | "write" | "execute") => {
       setPermissions((prev) => ({
@@ -181,7 +170,6 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     onClose();
   }, [permissions, recursive, ownerInput, groupInput, onConfirm, onClose]);
 
-  const fileName = pathLabel.split("/").filter(Boolean).pop() || pathLabel;
   const theme = useTheme();
 
   return (
@@ -190,7 +178,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
-      key={`${currentMode}-${owner}-${group}`}
+      key={open ? `${currentMode}-${owner}-${group}` : "closed"}
       slotProps={{
         paper: {
           sx: {
@@ -208,7 +196,6 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
           },
         },
       }}
-
     >
       <DialogTitle
         sx={{
@@ -230,7 +217,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
           {pathLabel}
         </Typography>
       </DialogTitle>
-      <DialogContent sx={{ overflow: 'visible' }}>
+      <DialogContent sx={{ overflow: "visible" }}>
         <Box
           sx={{
             display: "grid",
@@ -245,10 +232,12 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             options={availableUsers}
             value={ownerInput}
             onInputChange={(_, newValue) => setOwnerInput(newValue)}
-            ListboxProps={{
-              className: "custom-scrollbar",
-              sx: {
-                maxHeight: "200px",
+            slotProps={{
+              listbox: {
+                className: "custom-scrollbar",
+                sx: {
+                  maxHeight: "200px",
+                },
               },
             }}
             sx={{
@@ -266,10 +255,12 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
             options={availableGroups}
             value={groupInput}
             onInputChange={(_, newValue) => setGroupInput(newValue)}
-            ListboxProps={{
-              className: "custom-scrollbar",
-              sx: {
-                maxHeight: "200px",
+            slotProps={{
+              listbox: {
+                className: "custom-scrollbar",
+                sx: {
+                  maxHeight: "200px",
+                },
               },
             }}
             sx={{
