@@ -392,6 +392,86 @@ func CommonPrefix(sep byte, paths ...string) string {
 	return string(c)
 }
 
+// ChangePermissions changes the permissions of a file or directory
+// If recursive is true and the path is a directory, changes permissions recursively
+func ChangePermissions(path string, mode os.FileMode, recursive bool) error {
+	path = filepath.Clean(path)
+
+	// Check if path exists
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("failed to stat path: %w", err)
+	}
+
+	// Change permissions of the main path
+	if err := os.Chmod(path, mode); err != nil {
+		return fmt.Errorf("failed to chmod %s: %w", path, err)
+	}
+
+	// If it's a directory and recursive is true, walk through and change all nested items
+	if info.IsDir() && recursive {
+		return filepath.Walk(path, func(walkPath string, walkInfo os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				logger.Errorf("error walking path %s: %v", walkPath, walkErr)
+				return nil // Continue walking even if one item fails
+			}
+
+			// Skip the root path as we already changed it
+			if walkPath == path {
+				return nil
+			}
+
+			if err := os.Chmod(walkPath, mode); err != nil {
+				logger.Errorf("failed to chmod %s: %v", walkPath, err)
+				// Continue even if one item fails
+				return nil
+			}
+
+			return nil
+		})
+	}
+
+	return nil
+}
+
+// ChangeOwnership updates the owner and/or group for a file or directory.
+// If recursive is true and the path is a directory, changes ownership recursively.
+// Passing uid or gid as -1 will leave that field unchanged (POSIX semantics).
+func ChangeOwnership(path string, uid, gid int, recursive bool) error {
+	path = filepath.Clean(path)
+
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("failed to lstat path: %w", err)
+	}
+
+	if err := os.Lchown(path, uid, gid); err != nil {
+		return fmt.Errorf("failed to chown %s: %w", path, err)
+	}
+
+	if info.IsDir() && recursive {
+		return filepath.Walk(path, func(walkPath string, walkInfo os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				logger.Errorf("error walking path %s: %v", walkPath, walkErr)
+				return nil
+			}
+
+			// Skip root (already changed)
+			if walkPath == path {
+				return nil
+			}
+
+			if err := os.Lchown(walkPath, uid, gid); err != nil {
+				logger.Errorf("failed to chown %s: %v", walkPath, err)
+			}
+
+			return nil
+		})
+	}
+
+	return nil
+}
+
 // validateMoveDestination validates that a move operation is safe
 func validateMoveDestination(src, dst string) error {
 	// Clean and normalize paths

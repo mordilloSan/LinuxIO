@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +34,8 @@ func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 		"dir_size":        dirSize,
 		"archive_create":  archiveCreate,
 		"archive_extract": archiveExtract,
+		"chmod":           resourceChmod,
+		"users_groups":    usersGroups,
 	}
 }
 
@@ -390,7 +394,13 @@ func normalizeIndexerPath(path string) string {
 	if path == "" || path == "/" {
 		return "/"
 	}
-	return "/" + strings.Trim(path, "/")
+	// Strip trailing slashes - indexer is sensitive to them
+	normalized := strings.TrimRight(path, "/")
+	// Ensure leading slash
+	if !strings.HasPrefix(normalized, "/") {
+		normalized = "/" + normalized
+	}
+	return normalized
 }
 
 // fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
@@ -645,4 +655,196 @@ func defaultExtractDestination(archivePath string) string {
 	}
 
 	return filepath.Join(baseDir, baseName)
+}
+
+// resourceChmod changes file or directory permissions and can optionally update ownership.
+// Args: [path, mode, owner?, group?, recursive?]
+func resourceChmod(args []string) (any, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("bad_request:missing path or mode")
+	}
+
+	path := args[0]
+	modeStr := args[1]
+	owner := ""
+	group := ""
+	recursive := false
+
+	switch len(args) {
+	case 3:
+		if args[2] == "true" || args[2] == "false" {
+			recursive = args[2] == "true"
+		} else {
+			owner = args[2]
+		}
+	case 4:
+		owner = args[2]
+		group = args[3]
+	case 5:
+		owner = args[2]
+		group = args[3]
+		recursive = args[4] == "true"
+	}
+
+	// Parse the mode string (e.g., "0755", "755")
+	var mode int64
+	var err error
+	if strings.HasPrefix(modeStr, "0") {
+		mode, err = strconv.ParseInt(modeStr, 8, 32)
+	} else {
+		mode, err = strconv.ParseInt(modeStr, 8, 32)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("bad_request:invalid mode: %v", err)
+	}
+
+	realPath := filepath.Join(path)
+
+	err = services.ChangePermissions(realPath, os.FileMode(mode), recursive)
+	if err != nil {
+		logger.Debugf("error changing permissions: %v", err)
+		return nil, fmt.Errorf("bad_request:%v", err)
+	}
+
+	if strings.TrimSpace(owner) != "" || strings.TrimSpace(group) != "" {
+		uid, err := resolveUserID(owner)
+		if err != nil {
+			logger.Debugf("error resolving owner: %v", err)
+			return nil, fmt.Errorf("bad_request:%v", err)
+		}
+
+		gid, err := resolveGroupID(group)
+		if err != nil {
+			logger.Debugf("error resolving group: %v", err)
+			return nil, fmt.Errorf("bad_request:%v", err)
+		}
+
+		if err := services.ChangeOwnership(realPath, uid, gid, recursive); err != nil {
+			logger.Debugf("error changing ownership: %v", err)
+			return nil, fmt.Errorf("bad_request:%v", err)
+		}
+	}
+
+	return map[string]any{
+		"message": "permissions changed",
+		"path":    path,
+		"mode":    fmt.Sprintf("%04o", mode),
+		"owner":   owner,
+		"group":   group,
+	}, nil
+}
+
+func resolveUserID(identifier string) (int, error) {
+	trimmed := strings.TrimSpace(identifier)
+	if trimmed == "" {
+		return -1, nil
+	}
+
+	if u, err := user.Lookup(trimmed); err == nil {
+		return strconv.Atoi(u.Uid)
+	}
+
+	if u, err := user.LookupId(trimmed); err == nil {
+		return strconv.Atoi(u.Uid)
+	}
+
+	if id, err := strconv.Atoi(trimmed); err == nil {
+		return id, nil
+	}
+
+	return -1, fmt.Errorf("unknown user: %s", trimmed)
+}
+
+func resolveGroupID(identifier string) (int, error) {
+	trimmed := strings.TrimSpace(identifier)
+	if trimmed == "" {
+		return -1, nil
+	}
+
+	if g, err := user.LookupGroup(trimmed); err == nil {
+		return strconv.Atoi(g.Gid)
+	}
+
+	if g, err := user.LookupGroupId(trimmed); err == nil {
+		return strconv.Atoi(g.Gid)
+	}
+
+	if id, err := strconv.Atoi(trimmed); err == nil {
+		return id, nil
+	}
+
+	return -1, fmt.Errorf("unknown group: %s", trimmed)
+}
+
+// usersGroups returns lists of all users and groups on the system
+// Args: []
+func usersGroups(args []string) (any, error) {
+	users, err := getAllUsers()
+	if err != nil {
+		logger.Debugf("error getting users: %v", err)
+		return nil, fmt.Errorf("error getting users: %w", err)
+	}
+
+	groups, err := getAllGroups()
+	if err != nil {
+		logger.Debugf("error getting groups: %v", err)
+		return nil, fmt.Errorf("error getting groups: %w", err)
+	}
+
+	return map[string]any{
+		"users":  users,
+		"groups": groups,
+	}, nil
+}
+
+func getAllUsers() ([]string, error) {
+	content, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return nil, err
+	}
+
+	users := []string{}
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Format: username:password:UID:GID:GECOS:home:shell
+		parts := strings.Split(line, ":")
+		if len(parts) > 0 {
+			username := strings.TrimSpace(parts[0])
+			if username != "" {
+				users = append(users, username)
+			}
+		}
+	}
+
+	return users, nil
+}
+
+func getAllGroups() ([]string, error) {
+	content, err := os.ReadFile("/etc/group")
+	if err != nil {
+		return nil, err
+	}
+
+	groups := []string{}
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Format: groupname:password:GID:user_list
+		parts := strings.Split(line, ":")
+		if len(parts) > 0 {
+			groupname := strings.TrimSpace(parts[0])
+			if groupname != "" {
+				groups = append(groups, groupname)
+			}
+		}
+	}
+
+	return groups, nil
 }

@@ -27,7 +27,7 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
       slotProps={{
         paper: {
           sx: {
-            backgroundColor: theme.palette.background.paper,
+            backgroundColor: theme.header.background,
             borderRadius: 4,
             border: `1px solid rgba(255, 255, 255, 0.2)`,
             boxShadow: `0 0 10px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 255, 255, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.1)`,

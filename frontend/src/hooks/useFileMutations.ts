@@ -25,6 +25,14 @@ type ExtractPayload = {
   destination?: string;
 };
 
+type ChmodPayload = {
+  path: string;
+  mode: string;
+  recursive?: boolean;
+  owner?: string;
+  group?: string;
+};
+
 export const useFileMutations = ({
   normalizedPath,
   queryClient: providedQueryClient,
@@ -140,12 +148,46 @@ export const useFileMutations = ({
     },
   });
 
+  const { mutateAsync: changePermissions } = useMutation({
+    mutationFn: async ({
+      path,
+      mode,
+      recursive,
+      owner,
+      group,
+    }: ChmodPayload) => {
+      if (!path) {
+        throw new Error("No path provided");
+      }
+      if (!mode) {
+        throw new Error("No mode provided");
+      }
+      await axios.post("/navigator/api/chmod", {
+        path,
+        mode,
+        recursive: recursive || false,
+        owner,
+        group,
+      });
+    },
+    onSuccess: () => {
+      invalidateListing();
+      toast.success("Permissions changed successfully");
+    },
+    onError: (error: any) => {
+      toast.error(
+        error.response?.data?.error || "Failed to change permissions",
+      );
+    },
+  });
+
   return {
     createFile,
     createFolder,
     deleteItems,
     compressItems,
     extractArchive,
+    changePermissions,
     isCompressing,
     isExtracting,
   };

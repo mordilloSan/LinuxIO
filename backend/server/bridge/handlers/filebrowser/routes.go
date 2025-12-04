@@ -19,6 +19,8 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 	r.GET("/api/dir-size", dirSizeHandler)
 	r.POST("/api/archive/compress", archiveCompressHandler)
 	r.POST("/api/archive/extract", archiveExtractHandler)
+	r.POST("/api/chmod", chmodHandler)
+	r.GET("/api/users-groups", usersGroupsHandler)
 
 	return nil
 }
