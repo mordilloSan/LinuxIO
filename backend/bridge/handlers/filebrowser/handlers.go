@@ -24,18 +24,22 @@ import (
 
 func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
-		"resource_get":    resourceGet,
-		"resource_stat":   resourceStat,
-		"resource_delete": resourceDelete,
-		"resource_post":   resourcePost,
-		"resource_put":    resourcePut,
-		"resource_patch":  resourcePatch,
-		"raw_files":       rawFiles,
-		"dir_size":        dirSize,
-		"archive_create":  archiveCreate,
-		"archive_extract": archiveExtract,
-		"chmod":           resourceChmod,
-		"users_groups":    usersGroups,
+		"resource_get":           resourceGet,
+		"resource_stat":          resourceStat,
+		"resource_delete":        resourceDelete,
+		"resource_post":          resourcePost,
+		"resource_put":           resourcePut,
+		"resource_patch":         resourcePatch,
+		"raw_files":              rawFiles,
+		"dir_size":               dirSize,
+		"archive_create":         archiveCreate,
+		"archive_extract":        archiveExtract,
+		"chmod":                  resourceChmod,
+		"users_groups":           usersGroups,
+		"file_upload_from_temp":  fileUploadFromTemp,
+		"file_update_from_temp":  fileUpdateFromTemp,
+		"file_download_to_temp":  fileDownloadToTemp,
+		"archive_download_setup": archiveDownloadSetup,
 	}
 }
 
@@ -847,4 +851,213 @@ func getAllGroups() ([]string, error) {
 	}
 
 	return groups, nil
+}
+
+// fileUploadFromTemp moves a file from a temp location to the final destination
+// Args: [tempFilePath, destinationPath, override?]
+func fileUploadFromTemp(args []string) (any, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("bad_request:missing temp file path or destination")
+	}
+
+	tempFilePath := args[0]
+	destPath := args[1]
+	override := len(args) > 2 && args[2] == "true"
+
+	// Validate temp file exists
+	tempStat, err := os.Stat(tempFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("bad_request:temp file not found: %v", err)
+	}
+	if tempStat.IsDir() {
+		return nil, fmt.Errorf("bad_request:temp path is a directory")
+	}
+
+	// Clean destination path
+	realDest := filepath.Join(destPath)
+
+	// Check for conflicts
+	if stat, statErr := os.Stat(realDest); statErr == nil {
+		if stat.IsDir() {
+			return nil, fmt.Errorf("bad_request:destination is a directory")
+		}
+		if !override {
+			return nil, fmt.Errorf("bad_request:file already exists")
+		}
+	}
+
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(realDest), services.PermDir); err != nil {
+		return nil, fmt.Errorf("failed to create parent directory: %v", err)
+	}
+
+	// Move temp file to destination
+	if err := os.Rename(tempFilePath, realDest); err != nil {
+		// If rename fails (cross-device), copy and delete
+		if err := services.CopyFile(tempFilePath, realDest); err != nil {
+			return nil, fmt.Errorf("failed to copy file: %v", err)
+		}
+		_ = os.Remove(tempFilePath)
+	}
+
+	// Set proper permissions
+	if err := os.Chmod(realDest, services.PermFile); err != nil {
+		logger.Debugf("failed to set permissions: %v", err)
+	}
+
+	return map[string]any{"message": "file uploaded", "path": destPath}, nil
+}
+
+// fileUpdateFromTemp updates an existing file from a temp location
+// Args: [tempFilePath, destinationPath]
+func fileUpdateFromTemp(args []string) (any, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("bad_request:missing temp file path or destination")
+	}
+
+	tempFilePath := args[0]
+	destPath := args[1]
+
+	// Validate temp file exists
+	if _, err := os.Stat(tempFilePath); err != nil {
+		return nil, fmt.Errorf("bad_request:temp file not found: %v", err)
+	}
+
+	// Clean destination path
+	realDest := filepath.Join(destPath)
+
+	if strings.HasSuffix(destPath, "/") {
+		return nil, fmt.Errorf("bad_request:destination cannot be a directory")
+	}
+
+	// Read temp file content
+	content, err := os.ReadFile(tempFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read temp file: %v", err)
+	}
+
+	// Write to destination
+	if err := os.WriteFile(realDest, content, services.PermFile); err != nil {
+		return nil, fmt.Errorf("failed to write file: %v", err)
+	}
+
+	// Clean up temp file
+	_ = os.Remove(tempFilePath)
+
+	return map[string]any{"message": "file updated", "path": destPath}, nil
+}
+
+// fileDownloadToTemp copies a file to a temp location for the server to stream
+// Args: [filePath]
+func fileDownloadToTemp(args []string) (any, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("bad_request:missing file path")
+	}
+
+	filePath := args[0]
+	realPath := filepath.Join(filePath)
+
+	// Validate file exists
+	stat, err := os.Stat(realPath)
+	if err != nil {
+		return nil, fmt.Errorf("bad_request:file not found: %v", err)
+	}
+	if stat.IsDir() {
+		return nil, fmt.Errorf("bad_request:path is a directory, use archive_download_setup instead")
+	}
+
+	// Create temp file
+	tempFile, err := os.CreateTemp("", "linuxio-download-*.tmp")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %v", err)
+	}
+	tempPath := tempFile.Name()
+	tempFile.Close()
+
+	// Copy file to temp location
+	if err := services.CopyFile(realPath, tempPath); err != nil {
+		_ = os.Remove(tempPath)
+		return nil, fmt.Errorf("failed to copy file: %v", err)
+	}
+
+	fileName := filepath.Base(realPath)
+
+	return map[string]any{
+		"tempPath": tempPath,
+		"fileName": fileName,
+		"size":     stat.Size(),
+	}, nil
+}
+
+// archiveDownloadSetup creates an archive in a temp location for download
+// Args: [fileList (|| separated), algo?]
+func archiveDownloadSetup(args []string) (any, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("bad_request:missing file list")
+	}
+
+	fileListRaw := args[0]
+	files := strings.Split(fileListRaw, "||")
+	if len(files) == 0 || files[0] == "" {
+		return nil, fmt.Errorf("bad_request:invalid files list")
+	}
+
+	algo := "zip"
+	if len(args) > 1 && args[1] != "" {
+		algo = args[1]
+	}
+
+	var extension string
+	switch algo {
+	case "zip", "true", "":
+		extension = ".zip"
+	case "tar.gz":
+		extension = ".tar.gz"
+	default:
+		return nil, fmt.Errorf("bad_request:unsupported format")
+	}
+
+	// Create temp file for archive
+	tempFile, err := os.CreateTemp("", "linuxio-archive-*"+extension)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp archive: %v", err)
+	}
+	tempPath := tempFile.Name()
+	tempFile.Close()
+
+	// Create archive
+	switch extension {
+	case ".zip":
+		err = services.CreateZip(tempPath, nil, tempPath, files...)
+	case ".tar.gz":
+		err = services.CreateTarGz(tempPath, nil, tempPath, files...)
+	}
+
+	if err != nil {
+		_ = os.Remove(tempPath)
+		return nil, fmt.Errorf("failed to create archive: %v", err)
+	}
+
+	// Get archive info
+	stat, err := os.Stat(tempPath)
+	if err != nil {
+		_ = os.Remove(tempPath)
+		return nil, fmt.Errorf("failed to stat archive: %v", err)
+	}
+
+	// Determine archive name
+	archiveName := "download" + extension
+	if len(files) == 1 {
+		base := filepath.Base(strings.TrimSuffix(files[0], string(os.PathSeparator)))
+		if base != "" {
+			archiveName = base + extension
+		}
+	}
+
+	return map[string]any{
+		"tempPath":    tempPath,
+		"archiveName": archiveName,
+		"size":        stat.Size(),
+		"format":      algo,
+	}, nil
 }
