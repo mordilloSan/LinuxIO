@@ -16,54 +16,17 @@
 
 ### 🔄 Other Changes
 
-* update ([e7bdaea](https://github.com/owner/repo/commit/e7bdaea)) by @MordilloSan
-* update ([45fd701](https://github.com/owner/repo/commit/45fd701)) by @MordilloSan
-* update ([0f5708f](https://github.com/owner/repo/commit/0f5708f)) by @MordilloSan
-* update ([069360b](https://github.com/owner/repo/commit/069360b)) by @MordilloSan
-* update ([f64c6d7](https://github.com/owner/repo/commit/f64c6d7)) by @MordilloSan
-* update ([c4af8f0](https://github.com/owner/repo/commit/c4af8f0)) by @MordilloSan
-* update ([c57c260](https://github.com/owner/repo/commit/c57c260)) by @MordilloSan
-* update ([341a0c0](https://github.com/owner/repo/commit/341a0c0)) by @MordilloSan
-* up ([90e6572](https://github.com/owner/repo/commit/90e6572)) by @MordilloSan
-* update ([b6347ce](https://github.com/owner/repo/commit/b6347ce)) by @MordilloSan
 * Refactor filebrowser: Remove facades and use services directly ([c9179d2](https://github.com/owner/repo/commit/c9179d2)) by @MordilloSan
 * Create archive_service.go and remove archive logic from raw.go ([c38291a](https://github.com/owner/repo/commit/c38291a)) by @MordilloSan
 * Add comprehensive architecture documentation ([105345a](https://github.com/owner/repo/commit/105345a)) by @MordilloSan
 * Consolidate fileops and services into single package ([bc89b9d](https://github.com/owner/repo/commit/bc89b9d)) by @MordilloSan
 * Add user context validation infrastructure and audit ([cba6948](https://github.com/owner/repo/commit/cba6948)) by @MordilloSan
-* up ([59a0e34](https://github.com/owner/repo/commit/59a0e34)) by @MordilloSan
-* update ([a557ef9](https://github.com/owner/repo/commit/a557ef9)) by @MordilloSan
-* update ([8a8c382](https://github.com/owner/repo/commit/8a8c382)) by @MordilloSan
-* update ([1a51ffb](https://github.com/owner/repo/commit/1a51ffb)) by @MordilloSan
 * bridge migration ([98a8272](https://github.com/owner/repo/commit/98a8272)) by @MordilloSan
-* update ([2b2e92e](https://github.com/owner/repo/commit/2b2e92e)) by @MordilloSan
 * Implement streaming architecture for file browser with persistent socket optimization ([e8c2132](https://github.com/owner/repo/commit/e8c2132)) by @MordilloSan
 * Fix folder navigation not triggering re-fetch in file browser ([6ef7238](https://github.com/owner/repo/commit/6ef7238)) by @MordilloSan
 * Improve folder navigation - keep previous data while refetching ([007a111](https://github.com/owner/repo/commit/007a111)) by @MordilloSan
 * Add lightweight DirectoryListingLoader component and use in filebrowser ([f1f2a05](https://github.com/owner/repo/commit/f1f2a05)) by @MordilloSan
-* update ([3fe57ef](https://github.com/owner/repo/commit/3fe57ef)) by @MordilloSan
-* update ([a32681b](https://github.com/owner/repo/commit/a32681b)) by @MordilloSan
-* update ([2bb7ace](https://github.com/owner/repo/commit/2bb7ace)) by @MordilloSan
-* update ([358be77](https://github.com/owner/repo/commit/358be77)) by @MordilloSan
 * lucide update ([6d55d24](https://github.com/owner/repo/commit/6d55d24)) by @MordilloSan
-* update ([3dcb088](https://github.com/owner/repo/commit/3dcb088)) by @MordilloSan
-* update ([b1da9e3](https://github.com/owner/repo/commit/b1da9e3)) by @MordilloSan
-* update ([14eddb3](https://github.com/owner/repo/commit/14eddb3)) by @MordilloSan
-* update ([f5c1233](https://github.com/owner/repo/commit/f5c1233)) by @MordilloSan
-* update ([6c660e2](https://github.com/owner/repo/commit/6c660e2)) by @MordilloSan
-* update ([f058026](https://github.com/owner/repo/commit/f058026)) by @MordilloSan
-* update ([aec2aaf](https://github.com/owner/repo/commit/aec2aaf)) by @MordilloSan
-* up ([79ead4a](https://github.com/owner/repo/commit/79ead4a)) by @MordilloSan
-* up ([cc6ca3c](https://github.com/owner/repo/commit/cc6ca3c)) by @MordilloSan
-* update ([3dc47f7](https://github.com/owner/repo/commit/3dc47f7)) by @MordilloSan
-* update ([c53e590](https://github.com/owner/repo/commit/c53e590)) by @MordilloSan
-* update ([ac02d12](https://github.com/owner/repo/commit/ac02d12)) by @MordilloSan
-* update ([8de26be](https://github.com/owner/repo/commit/8de26be)) by @MordilloSan
-* update ([36c0626](https://github.com/owner/repo/commit/36c0626)) by @MordilloSan
-* up ([5247c3a](https://github.com/owner/repo/commit/5247c3a)) by @MordilloSan
-* u ([6b04e77](https://github.com/owner/repo/commit/6b04e77)) by @MordilloSan
-* up ([c114d8b](https://github.com/owner/repo/commit/c114d8b)) by @MordilloSan
-* update ([c2d67d0](https://github.com/owner/repo/commit/c2d67d0)) by @MordilloSan
 * Fix terminal hang: add missing list_shells_main handler ([a782146](https://github.com/owner/repo/commit/a782146)) by @MordilloSan
 * update ([bf42260](https://github.com/owner/repo/commit/bf42260)) by @MordilloSan
 * - websocket and route channeling. ([be59e87](https://github.com/owner/repo/commit/be59e87)) by @MordilloSan
@@ -72,10 +35,7 @@
 * code restructure 3 ([aac3b10](https://github.com/owner/repo/commit/aac3b10)) by @MordilloSan
 * update ([5ceb09c](https://github.com/owner/repo/commit/5ceb09c)) by @MordilloSan
 * goroutine crash fix ([c533979](https://github.com/owner/repo/commit/c533979)) by @MordilloSan
-* up ([8676edf](https://github.com/owner/repo/commit/8676edf)) by @MordilloSan
-* up ([db4d4e3](https://github.com/owner/repo/commit/db4d4e3)) by @MordilloSan
 * editor update ([34f63ac](https://github.com/owner/repo/commit/34f63ac)) by @MordilloSan
-* update ([5f02309](https://github.com/owner/repo/commit/5f02309)) by @MordilloSan
 * bug fixes ([e9556fd](https://github.com/owner/repo/commit/e9556fd)) by @MordilloSan
 * update all bug fix ([01f61ec](https://github.com/owner/repo/commit/01f61ec)) by @MordilloSan
 * update ui fix ([4911d2c](https://github.com/owner/repo/commit/4911d2c)) by @MordilloSan
