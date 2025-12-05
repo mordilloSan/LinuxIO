@@ -45,28 +45,22 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		SessionID: sess.SessionID,
 	}
 
-	var conn net.Conn
-	var err error
-	const (
-		totalWait   = 2 * time.Second
-		step        = 100 * time.Millisecond
-		dialTimeout = 500 * time.Millisecond
-	)
-	deadline := time.Now().Add(totalWait)
-	for {
-		conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
-		if err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			err2 := fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
-			logger.ErrorKV("bridge call failed: connection timeout",
-				"user", sess.User.Username,
-				"socket_path", socketPath,
-				"error", err2)
-			return nil, err
-		}
-		time.Sleep(step)
+	if err := req.ValidateBasic(); err != nil {
+		logger.ErrorKV("bridge call failed: invalid request",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err)
+		return nil, err
+	}
+
+	conn, err := dialBridgeWithRetry(socketPath)
+	if err != nil {
+		logger.ErrorKV("bridge call failed: dial error",
+			"user", sess.User.Username,
+			"socket_path", socketPath,
+			"error", err)
+		return nil, err
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
@@ -85,7 +79,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 			"type", reqType,
 			"command", command,
 			"error", err2)
-		return nil, err
+		return nil, err2
 	}
 
 	var raw json.RawMessage
@@ -96,7 +90,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 			"type", reqType,
 			"command", command,
 			"error", err2)
-		return nil, err
+		return nil, err2
 	}
 
 	// Log successful response
@@ -107,6 +101,105 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		"response_bytes", len(raw))
 
 	return []byte(raw), nil
+}
+
+// CallWithSessionStreaming sends a streaming request to the bridge with chunk data.
+// Used for file upload/download operations where data is transferred in chunks.
+func CallWithSessionStreaming(sess *session.Session, reqType, command string, args []string, requestID string, offset, total int64, payload string, final bool) ([]byte, error) {
+	logger.DebugKV("streaming bridge call initiated",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"request_id", requestID,
+		"offset", offset,
+		"total", total,
+		"payload_len", len(payload),
+		"final", final)
+
+	socketPath := sess.SocketPath
+	if socketPath == "" {
+		return nil, fmt.Errorf("empty session.SocketPath")
+	}
+
+	req := ipc.Request{
+		Type:      reqType,
+		Command:   command,
+		Secret:    sess.BridgeSecret,
+		Args:      args,
+		SessionID: sess.SessionID,
+		RequestID: requestID,
+		Offset:    offset,
+		Total:     total,
+		Payload:   payload,
+		Final:     final,
+	}
+
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid streaming request (%s/%s): %w", reqType, command, err)
+	}
+
+	conn, err := dialBridgeWithRetry(socketPath)
+	if err != nil {
+		logger.ErrorKV("streaming bridge call failed: dial error",
+			"user", sess.User.Username,
+			"socket_path", socketPath,
+			"error", err)
+		return nil, err
+	}
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.WarnKV("streaming bridge conn close failed", "socket_path", socketPath, "error", cerr)
+		}
+	}()
+
+	enc := json.NewEncoder(conn)
+	enc.SetEscapeHTML(false)
+	dec := json.NewDecoder(conn)
+
+	if err := enc.Encode(req); err != nil {
+		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
+		logger.ErrorKV("streaming bridge call failed: encoding error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"request_id", requestID,
+			"error", err2)
+		return nil, err2
+	}
+
+	var raw json.RawMessage
+	if err := dec.Decode(&raw); err != nil {
+		err2 := fmt.Errorf("failed to decode response from bridge: %w", err)
+		logger.ErrorKV("streaming bridge call failed: decoding error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"request_id", requestID,
+			"error", err2)
+		return nil, err2
+	}
+
+	return []byte(raw), nil
+}
+
+func dialBridgeWithRetry(socketPath string) (net.Conn, error) {
+	const (
+		totalWait   = 2 * time.Second
+		step        = 100 * time.Millisecond
+		dialTimeout = 500 * time.Millisecond
+	)
+	deadline := time.Now().Add(totalWait)
+
+	for {
+		conn, err := net.DialTimeout("unix", socketPath, dialTimeout)
+		if err == nil {
+			return conn, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
+		}
+		time.Sleep(step)
+	}
 }
 
 // StartBridge launches linuxio-bridge via the setuid helper.
