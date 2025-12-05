@@ -2,19 +2,18 @@ package filebrowser
 
 import (
 	"crypto/md5"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -278,8 +277,8 @@ func resourcePostHandler(c *gin.Context) {
 		return
 	}
 
-	// For file uploads, stream via IPC to bridge
-	resourcePostStreaming(c, sess, path, override)
+	// For file uploads, handle via temp file then bridge
+	resourcePostViaTemp(c, sess, path, override)
 }
 
 // resourcePutHandler updates an existing file resource
@@ -303,8 +302,8 @@ func resourcePutHandler(c *gin.Context) {
 		return
 	}
 
-	// Handle via IPC streaming
-	resourcePutStreaming(c, sess, path)
+	// Handle via temp file then bridge
+	resourcePutViaTemp(c, sess, path)
 }
 
 // resourcePatchHandler performs patch operations (move, copy, rename)
@@ -370,8 +369,8 @@ func rawHandler(c *gin.Context) {
 	files := c.Query("files")
 	fileList := strings.Split(files, "||")
 
-	// Handle via IPC streaming
-	rawFilesStreaming(c, sess, fileList)
+	// Handle via bridge - get temp file path
+	rawFilesViaTemp(c, sess, fileList)
 }
 
 // archiveCompressHandler builds an archive from provided paths.
@@ -512,362 +511,213 @@ func archiveExtractHandler(c *gin.Context) {
 }
 
 // ============================================================================
-// STREAMING HANDLERS - IPC chunking (no server filesystem operations)
+// TEMP FILE HANDLERS - Bridge-based operations using temp files
 // ============================================================================
 
-// resourcePostStreaming handles file uploads by streaming chunks to bridge via IPC
-func resourcePostStreaming(c *gin.Context, sess *session.Session, path string, override bool) {
-	// Handle Chunked Uploads (large files)
+// resourcePostViaTemp handles file uploads via temp file then bridge
+func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, override bool) {
+	// Handle Chunked Uploads
 	chunkOffsetStr := c.GetHeader("X-File-Chunk-Offset")
 	if chunkOffsetStr != "" {
-		handleChunkedUploadStreaming(c, sess, path, override)
+		handleChunkedUpload(c, sess, path, override)
 		return
 	}
 
-	// Generate unique request ID for this upload
-	requestID := uuid.New().String()
-
-	// Read entire file into memory in chunks and send to bridge
-	const chunkSize = 256 * 1024 // 256KB chunks
-	buffer := make([]byte, chunkSize)
-	offset := int64(0)
-
-	for {
-		n, err := c.Request.Body.Read(buffer)
-		if n > 0 {
-			// Validate chunk size doesn't exceed maximum
-			if n > ipc.MaxChunkSize {
-				logger.Debugf("chunk size %d exceeds maximum %d", n, ipc.MaxChunkSize)
-				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "chunk size exceeds maximum allowed"})
-				return
-			}
-
-			// Encode chunk as base64
-			payload := base64.StdEncoding.EncodeToString(buffer[:n])
-
-			// Determine if this is the final chunk
-			final := (err == io.EOF)
-
-			// Build args: [destPath, override]
-			args := []string{path}
-			if override {
-				args = append(args, "true")
-			}
-
-			// Send chunk to bridge via IPC streaming
-			data, streamErr := bridge.CallWithSessionStreaming(
-				sess,
-				"filebrowser",
-				"upload_chunk",
-				args,
-				requestID,
-				offset,
-				0, // Total unknown for non-chunked uploads
-				payload,
-				final,
-			)
-
-			if streamErr != nil {
-				logger.Debugf("bridge streaming error: %v", streamErr)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "upload failed"})
-				return
-			}
-
-			// Parse response
-			var resp ipc.Response
-			if unmarshalErr := json.Unmarshal(data, &resp); unmarshalErr != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-				return
-			}
-
-			if resp.Status != "ok" {
-				status := http.StatusInternalServerError
-				if strings.HasPrefix(resp.Error, "bad_request:") || strings.Contains(resp.Error, "already exists") {
-					status = http.StatusBadRequest
-				}
-				c.JSON(status, gin.H{"error": resp.Error})
-				return
-			}
-
-			// If final chunk, return success
-			if final {
-				c.JSON(http.StatusOK, resp.Output)
-				return
-			}
-
-			offset += int64(n)
-		}
-
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			logger.Debugf("error reading request body: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read upload data"})
-			return
-		}
-	}
-
-	// No data read (empty file) – send a final empty chunk to create/touch the file.
-	if offset == 0 {
-		args := []string{path}
-		if override {
-			args = append(args, "true")
-		}
-		data, streamErr := bridge.CallWithSessionStreaming(
-			sess,
-			"filebrowser",
-			"upload_chunk",
-			args,
-			requestID,
-			0,
-			0,
-			"",
-			true,
-		)
-		if streamErr != nil {
-			logger.Debugf("bridge streaming error: %v", streamErr)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "upload failed"})
-			return
-		}
-
-		var resp ipc.Response
-		if unmarshalErr := json.Unmarshal(data, &resp); unmarshalErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-			return
-		}
-		if resp.Status != "ok" {
-			status := http.StatusInternalServerError
-			if strings.HasPrefix(resp.Error, "bad_request:") || strings.Contains(resp.Error, "already exists") {
-				status = http.StatusBadRequest
-			}
-			c.JSON(status, gin.H{"error": resp.Error})
-			return
-		}
-
-		c.JSON(http.StatusOK, resp.Output)
-	}
-}
-
-// handleChunkedUploadStreaming handles large file uploads with X-File-Chunk-* headers
-func handleChunkedUploadStreaming(c *gin.Context, sess *session.Session, path string, override bool) {
-	chunkOffsetStr := c.GetHeader("X-File-Chunk-Offset")
-	totalSizeStr := c.GetHeader("X-File-Total-Size")
-
-	offset, err := strconv.ParseInt(chunkOffsetStr, 10, 64)
+	// Create temp file for upload
+	tempFile, err := os.CreateTemp("", "linuxio-upload-*.tmp")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chunk offset"})
+		logger.Debugf("could not create temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create temp file"})
 		return
 	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath) // Cleanup in case of error
 
-	totalSize, err := strconv.ParseInt(totalSizeStr, 10, 64)
+	// Write request body to temp file
+	_, err = io.Copy(tempFile, c.Request.Body)
+	tempFile.Close()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid total size"})
+		logger.Debugf("could not write to temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write upload data"})
 		return
 	}
 
-	// Validate total size doesn't exceed maximum
-	if totalSize > ipc.MaxFileSize {
-		logger.Debugf("total size %d exceeds maximum %d", totalSize, ipc.MaxFileSize)
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "file size exceeds maximum allowed"})
-		return
-	}
-
-	// Generate consistent requestID based on path hash (same as before)
-	hasher := md5.New()
-	hasher.Write([]byte(path))
-	requestID := hex.EncodeToString(hasher.Sum(nil))
-
-	// Read chunk data
-	chunkData, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read chunk"})
-		return
-	}
-
-	// Validate chunk size doesn't exceed maximum
-	if len(chunkData) > ipc.MaxChunkSize {
-		logger.Debugf("chunk size %d exceeds maximum %d", len(chunkData), ipc.MaxChunkSize)
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "chunk size exceeds maximum allowed"})
-		return
-	}
-
-	// Encode as base64
-	payload := base64.StdEncoding.EncodeToString(chunkData)
-
-	// Determine if final chunk
-	final := (offset + int64(len(chunkData))) >= totalSize
-
-	// Build args
-	args := []string{path}
+	// Call bridge to move temp file to final destination
+	args := []string{tempPath, path}
 	if override {
 		args = append(args, "true")
 	}
 
-	// Send chunk to bridge
-	data, err := bridge.CallWithSessionStreaming(
-		sess,
-		"filebrowser",
-		"upload_chunk",
-		args,
-		requestID,
-		offset,
-		totalSize,
-		payload,
-		final,
-	)
-
+	data, err := bridge.CallWithSession(sess, "filebrowser", "file_upload_from_temp", args)
 	if err != nil {
-		logger.Debugf("bridge streaming error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "upload failed"})
+		logger.Debugf("bridge error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
 		return
 	}
 
-	// Parse response
 	var resp ipc.Response
-	if unmarshalErr := json.Unmarshal(data, &resp); unmarshalErr != nil {
+	if err := json.Unmarshal(data, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 		return
 	}
 
 	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.Contains(resp.Error, "already exists") {
+		if strings.HasPrefix(resp.Error, "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		c.JSON(status, gin.H{"error": resp.Error})
+		if strings.Contains(resp.Error, "already exists") {
+			status = http.StatusConflict
+		}
+		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
 
-	// Return success
-	c.JSON(http.StatusOK, resp.Output)
+	c.Status(http.StatusCreated)
 }
 
-// resourcePutStreaming handles file updates by streaming to bridge via IPC
-func resourcePutStreaming(c *gin.Context, sess *session.Session, path string) {
-	// Generate unique request ID
-	requestID := uuid.New().String()
+// handleChunkedUpload handles chunked file uploads
+func handleChunkedUpload(c *gin.Context, sess *session.Session, path string, override bool) {
+	chunkOffsetStr := c.GetHeader("X-File-Chunk-Offset")
+	totalSizeStr := c.GetHeader("X-File-Total-Size")
 
-	// Read and stream file content in chunks
-	const chunkSize = 256 * 1024 // 256KB chunks
-	buffer := make([]byte, chunkSize)
-	offset := int64(0)
-
-	for {
-		n, err := c.Request.Body.Read(buffer)
-		if n > 0 {
-			// Validate chunk size doesn't exceed maximum
-			if n > ipc.MaxChunkSize {
-				logger.Debugf("chunk size %d exceeds maximum %d", n, ipc.MaxChunkSize)
-				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "chunk size exceeds maximum allowed"})
-				return
-			}
-
-			// Encode chunk as base64
-			payload := base64.StdEncoding.EncodeToString(buffer[:n])
-
-			// Determine if this is the final chunk
-			final := (err == io.EOF)
-
-			// Build args: [destPath] (PUT always overrides)
-			args := []string{path}
-
-			// Send chunk to bridge via IPC streaming
-			data, streamErr := bridge.CallWithSessionStreaming(
-				sess,
-				"filebrowser",
-				"upload_chunk",
-				args,
-				requestID,
-				offset,
-				0, // Total unknown for PUT
-				payload,
-				final,
-			)
-
-			if streamErr != nil {
-				logger.Debugf("bridge streaming error: %v", streamErr)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
-				return
-			}
-
-			// Parse response
-			var resp ipc.Response
-			if errResponse := json.Unmarshal(data, &resp); errResponse != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-				return
-			}
-
-			if resp.Status != "ok" {
-				status := http.StatusInternalServerError
-				if strings.Contains(resp.Error, "not found") {
-					status = http.StatusNotFound
-				}
-				c.JSON(status, gin.H{"error": resp.Error})
-				return
-			}
-
-			// If final chunk, return success
-			if final {
-				c.JSON(http.StatusOK, resp.Output)
-				return
-			}
-
-			offset += int64(n)
-		}
-
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			logger.Debugf("error reading request body: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read update data"})
-			return
-		}
+	offset, err := strconv.ParseInt(chunkOffsetStr, 10, 64)
+	if err != nil {
+		logger.Debugf("invalid chunk offset: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chunk offset"})
+		return
 	}
 
-	// No data read (empty file) – send a final empty chunk to touch/replace the file.
-	if offset == 0 {
-		args := []string{path}
-		data, streamErr := bridge.CallWithSessionStreaming(
-			sess,
-			"filebrowser",
-			"upload_chunk",
-			args,
-			requestID,
-			0,
-			0,
-			"",
-			true,
-		)
+	totalSize, err := strconv.ParseInt(totalSizeStr, 10, 64)
+	if err != nil {
+		logger.Debugf("invalid total size: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid total size"})
+		return
+	}
 
-		if streamErr != nil {
-			logger.Debugf("bridge streaming error: %v", streamErr)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "update failed"})
+	// Use a temp file based on path hash
+	hasher := md5.New()
+	hasher.Write([]byte(path))
+	uploadID := hex.EncodeToString(hasher.Sum(nil))
+	tempFilePath := filepath.Join("tmp", "uploads", uploadID)
+
+	err = os.MkdirAll(filepath.Dir(tempFilePath), 0755)
+	if err != nil {
+		logger.Debugf("could not create temp dir: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create temp directory"})
+		return
+	}
+
+	outFile, err := os.OpenFile(tempFilePath, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		logger.Debugf("could not open temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not open temp file"})
+		return
+	}
+	defer outFile.Close()
+
+	_, err = outFile.Seek(offset, 0)
+	if err != nil {
+		logger.Debugf("could not seek in temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not seek in temp file"})
+		return
+	}
+
+	chunkSize, err := io.Copy(outFile, c.Request.Body)
+	if err != nil {
+		logger.Debugf("could not write chunk to temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write chunk to temp file"})
+		return
+	}
+
+	// If upload is complete, move to final destination via bridge
+	if (offset + chunkSize) >= totalSize {
+		outFile.Close()
+
+		args := []string{tempFilePath, path}
+		if override {
+			args = append(args, "true")
+		}
+
+		data, err := bridge.CallWithSession(sess, "filebrowser", "file_upload_from_temp", args)
+		if err != nil {
+			logger.Debugf("bridge error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
 			return
 		}
 
 		var resp ipc.Response
-		if unmarshalErr := json.Unmarshal(data, &resp); unmarshalErr != nil {
+		if err := json.Unmarshal(data, &resp); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
 			return
 		}
 
 		if resp.Status != "ok" {
 			status := http.StatusInternalServerError
-			if strings.Contains(resp.Error, "not found") {
-				status = http.StatusNotFound
+			if strings.HasPrefix(resp.Error, "bad_request:") {
+				status = http.StatusBadRequest
 			}
-			c.JSON(status, gin.H{"error": resp.Error})
+			errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+			c.JSON(status, gin.H{"error": errMsg})
 			return
 		}
-
-		c.JSON(http.StatusOK, resp.Output)
 	}
+
+	c.Status(http.StatusOK)
 }
 
-// rawFilesStreaming handles file downloads by streaming chunks from bridge via IPC
-func rawFilesStreaming(c *gin.Context, sess *session.Session, fileList []string) {
+// resourcePutViaTemp handles file updates via temp file then bridge
+func resourcePutViaTemp(c *gin.Context, sess *session.Session, path string) {
+	// Create temp file
+	tempFile, err := os.CreateTemp("", "linuxio-update-*.tmp")
+	if err != nil {
+		logger.Debugf("could not create temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create temp file"})
+		return
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath) // Cleanup in case of error
+
+	// Write request body to temp file
+	_, err = io.Copy(tempFile, c.Request.Body)
+	tempFile.Close()
+	if err != nil {
+		logger.Debugf("could not write to temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write update data"})
+		return
+	}
+
+	// Call bridge to update file from temp
+	args := []string{tempPath, path}
+	data, err := bridge.CallWithSession(sess, "filebrowser", "file_update_from_temp", args)
+	if err != nil {
+		logger.Debugf("bridge error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
+		return
+	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal(data, &resp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
+		return
+	}
+
+	if resp.Status != "ok" {
+		status := http.StatusInternalServerError
+		if strings.HasPrefix(resp.Error, "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// rawFilesViaTemp handles downloads via temp files from bridge
+func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string) {
 	if len(fileList) == 0 || fileList[0] == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid files list"})
 		return
@@ -879,13 +729,21 @@ func rawFilesStreaming(c *gin.Context, sess *session.Session, fileList []string)
 		return
 	}
 
-	// For multiple files or archives, still need to create archive via bridge first
-	// Then stream the archive file
-	var filePath, fileName string
-	var totalSize int64
-
+	// Determine if this is a single file or needs archiving
+	var needsArchive bool
 	if len(paths) > 1 {
-		// Multiple files - create archive via bridge
+		needsArchive = true
+	} else if len(paths) == 1 {
+		// Check if single path is a directory
+		// We'll let the bridge determine this
+		needsArchive = false
+	}
+
+	var tempPath, fileName string
+	var fileSize int64
+
+	if needsArchive || len(paths) > 1 {
+		// Multiple files or directory - create archive via bridge
 		args := []string{strings.Join(paths, "||"), "zip"}
 		data, err := bridge.CallWithSession(sess, "filebrowser", "archive_download_setup", args)
 		if err != nil {
@@ -905,35 +763,44 @@ func rawFilesStreaming(c *gin.Context, sess *session.Session, fileList []string)
 			if strings.HasPrefix(resp.Error, "bad_request:") {
 				status = http.StatusBadRequest
 			}
-			c.JSON(status, gin.H{"error": strings.TrimPrefix(resp.Error, "bad_request:")})
+			errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+			c.JSON(status, gin.H{"error": errMsg})
 			return
 		}
 
-		// Extract temp path from response (bridge created archive)
+		// Extract temp path and file name from response
 		result, ok := resp.Output.(map[string]any)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
 			return
 		}
 
-		tempPath, _ := result["tempPath"].(string)
-		archiveName, _ := result["archiveName"].(string)
-		size, _ := result["size"].(float64)
+		tempPathVal, ok := result["tempPath"].(string)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+			return
+		}
+		fileNameVal, ok := result["archiveName"].(string)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+			return
+		}
+		sizeVal, ok := result["size"].(float64)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+			return
+		}
 
-		filePath = tempPath
-		fileName = archiveName
-		totalSize = int64(size)
+		tempPath = tempPathVal
+		fileName = fileNameVal
+		fileSize = int64(sizeVal)
 	} else {
-		// Single file
-		filePath = paths[0]
-		fileName = filepath.Base(filePath)
-
-		// Get file size via stat
-		args := []string{filePath}
-		data, err := bridge.CallWithSession(sess, "filebrowser", "resource_stat", args)
+		// Single file download via bridge
+		args := []string{paths[0]}
+		data, err := bridge.CallWithSession(sess, "filebrowser", "file_download_to_temp", args)
 		if err != nil {
-			logger.Debugf("bridge stat error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stat file"})
+			logger.Debugf("bridge error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
 			return
 		}
 
@@ -944,89 +811,69 @@ func rawFilesStreaming(c *gin.Context, sess *session.Session, fileList []string)
 		}
 
 		if resp.Status != "ok" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
+			status := http.StatusInternalServerError
+			if strings.HasPrefix(resp.Error, "bad_request:") {
+				status = http.StatusBadRequest
+			}
+			if strings.Contains(resp.Error, "not found") {
+				status = http.StatusNotFound
+			}
+			errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+			c.JSON(status, gin.H{"error": errMsg})
 			return
 		}
 
+		// Extract temp path and file name from response
 		result, ok := resp.Output.(map[string]any)
-		if ok {
-			if sizeFloat, ok := result["size"].(float64); ok {
-				totalSize = int64(sizeFloat)
-			}
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+			return
 		}
+
+		tempPathVal, ok := result["tempPath"].(string)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+			return
+		}
+		fileNameVal, ok := result["fileName"].(string)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+			return
+		}
+		sizeVal, ok := result["size"].(float64)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+			return
+		}
+
+		tempPath = tempPathVal
+		fileName = fileNameVal
+		fileSize = int64(sizeVal)
 	}
 
-	// Set headers for file download
+	// Open temp file and stream to client
+	defer os.Remove(tempPath)
+
+	fd, err := os.Open(tempPath)
+	if err != nil {
+		logger.Debugf("error opening temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not open download file"})
+		return
+	}
+	defer fd.Close()
+
+	setContentDisposition(c, fileName)
+	c.Header("Cache-Control", "private")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Length", fmt.Sprintf("%d", fileSize))
+
 	contentType := "application/octet-stream"
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
-	c.Header("Content-Type", contentType)
-	c.Header("Content-Length", fmt.Sprintf("%d", totalSize))
-
-	// Stream file from bridge in chunks
-	requestID := uuid.New().String()
-	offset := int64(0)
-	c.Status(http.StatusOK)
-
-	for {
-		// Request chunk from bridge
-		args := []string{filePath}
-		data, err := bridge.CallWithSessionStreaming(
-			sess,
-			"filebrowser",
-			"download_chunk",
-			args,
-			requestID,
-			offset,
-			0,
-			"",
-			false,
-		)
-
-		if err != nil {
-			logger.Debugf("bridge download chunk error: %v", err)
-			return
-		}
-
-		var resp ipc.Response
-		if err := json.Unmarshal(data, &resp); err != nil {
-			logger.Debugf("invalid bridge response: %v", err)
-			return
-		}
-
-		if resp.Status != "ok" {
-			logger.Debugf("bridge error: %s", resp.Error)
-			return
-		}
-
-		// Decode payload
-		if resp.Payload != "" {
-			chunkData, err := base64.StdEncoding.DecodeString(resp.Payload)
-			if err != nil {
-				logger.Debugf("base64 decode error: %v", err)
-				return
-			}
-
-			// Write chunk to response
-			if _, err := c.Writer.Write(chunkData); err != nil {
-				logger.Debugf("write error: %v", err)
-				return
-			}
-
-			offset += int64(len(chunkData))
-		}
-
-		// Check if final chunk
-		if resp.Final {
-			break
-		}
+	if strings.HasSuffix(fileName, ".zip") {
+		contentType = "application/zip"
 	}
 
-	c.Writer.Flush()
+	c.DataFromReader(http.StatusOK, fileSize, contentType, fd, map[string]string{})
 }
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
 
 func parseFileList(entries []string) []string {
 	var paths []string
@@ -1204,4 +1051,13 @@ func usersGroupsHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp.Output)
+}
+
+// setContentDisposition sets the Content-Disposition HTTP header for downloads
+func setContentDisposition(c *gin.Context, fileName string) {
+	if c.Query("inline") == "true" {
+		c.Header("Content-Disposition", "inline; filename*=utf-8''"+url.PathEscape(fileName))
+	} else {
+		c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(fileName))
+	}
 }

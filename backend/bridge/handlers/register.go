@@ -16,7 +16,6 @@ import (
 
 // Map of type -> (command -> handler)
 var HandlersByType = map[string]map[string]ipc.HandlerFunc{}
-var StreamingHandlersByType = map[string]map[string]ipc.StreamingHandlerFunc{}
 
 func RegisterAllHandlers(shutdownChan chan string) {
 	HandlersByType["dbus"] = dbus.DbusHandlers()
@@ -27,10 +26,6 @@ func RegisterAllHandlers(shutdownChan chan string) {
 	HandlersByType["config"] = userconfig.ThemeHandlers()
 	HandlersByType["system"] = system.SystemHandlers()
 	HandlersByType["filebrowser"] = filebrowser.FilebrowserHandlers()
-	StreamingHandlersByType["filebrowser"] = map[string]ipc.StreamingHandlerFunc{
-		"upload_chunk":   filebrowser.StreamingUploadChunk,
-		"download_chunk": filebrowser.StreamingDownloadChunk,
-	}
 }
 
 // RegisterTerminalHandlers attaches terminal handlers that require the session context.
