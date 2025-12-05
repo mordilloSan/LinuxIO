@@ -22,7 +22,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	userconfig "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -203,20 +202,6 @@ func main() {
 	// -------------------------------------------------------------------------
 	system.StartSimpleNetInfoSampler()
 
-	// Start periodic cleanup for stale file uploads
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				filebrowser.CleanupStaleUploads(10 * time.Minute)
-			case <-bridgeClosing:
-				return
-			}
-		}
-	}()
-
 	// Handle Ctrl-C / kill properly → request shutdown once
 	sigc := make(chan os.Signal, 2)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
@@ -315,13 +300,6 @@ func handleMainRequest(conn net.Conn, id string) {
 		return
 	}
 
-	// Basic structural validation before auth checks
-	if err := req.Validate(); err != nil {
-		logger.WarnKV("invalid request", "conn_id", id, "request_id", req.RequestID, "error", err)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: err.Error(), RequestID: req.RequestID})
-		return
-	}
-
 	if req.Secret != Sess.BridgeSecret {
 		logger.WarnKV("invalid bridge secret", "conn_id", id)
 		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
@@ -339,29 +317,6 @@ func handleMainRequest(conn net.Conn, id string) {
 	}
 
 	logger.DebugKV("bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
-
-	// Check if this is a streaming request (has RequestID set)
-	if req.RequestID != "" {
-		if group, ok := handlers.StreamingHandlersByType[req.Type]; ok {
-			if h, ok := group[req.Command]; ok {
-				resp, err := h(&req)
-				if err != nil {
-					logger.ErrorKV("streaming handler error", "conn_id", id, "request_id", req.RequestID, "error", err)
-					_ = encoder.Encode(ipc.Response{Status: "error", Error: err.Error(), RequestID: req.RequestID})
-					return
-				}
-				if resp.RequestID == "" {
-					resp.RequestID = req.RequestID
-				}
-				if err := encoder.Encode(resp); err != nil {
-					logger.ErrorKV("streaming response encode error", "conn_id", id, "request_id", req.RequestID, "error", err)
-				}
-				return
-			}
-		}
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: "unknown streaming type/command", RequestID: req.RequestID})
-		return
-	}
 
 	group, found := handlers.HandlersByType[req.Type]
 	if !found || group == nil {
