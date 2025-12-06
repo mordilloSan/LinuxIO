@@ -32,7 +32,7 @@ func GetVersion(c *gin.Context) {
 		return
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(resp, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response from bridge"})
 		return
