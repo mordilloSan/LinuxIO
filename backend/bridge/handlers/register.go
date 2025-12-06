@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	userconfig "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	config "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
@@ -23,7 +23,7 @@ func RegisterAllHandlers(shutdownChan chan string) {
 	HandlersByType["docker"] = docker.DockerHandlers()
 	HandlersByType["control"] = control.ControlHandlers(shutdownChan)
 	HandlersByType["wireguard"] = wireguard.WireguardHandlers()
-	HandlersByType["config"] = userconfig.ThemeHandlers()
+	HandlersByType["config"] = config.ThemeHandlers()
 	HandlersByType["system"] = system.SystemHandlers()
 	HandlersByType["filebrowser"] = filebrowser.FilebrowserHandlers()
 }

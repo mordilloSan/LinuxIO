@@ -1,4 +1,4 @@
-package userconfig
+package config
 
 // Settings holds the persisted configuration.
 type Settings struct {
