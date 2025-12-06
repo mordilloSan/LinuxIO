@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -276,6 +277,7 @@ func printBridgeVersion() {
 }
 
 // handleMainRequest processes incoming bridge requests.
+// Auto-detects legacy JSON protocol vs new framed protocol.
 func handleMainRequest(conn net.Conn, id string) {
 	wg.Add(1)
 	defer wg.Done()
@@ -285,105 +287,244 @@ func handleMainRequest(conn net.Conn, id string) {
 		}
 	}()
 
-	decoder := json.NewDecoder(conn)
+	// Peek at first byte to detect protocol
+	peekable := bufio.NewReader(conn)
+	firstByte, err := peekable.Peek(1)
+	if err != nil {
+		logger.WarnKV("failed to peek connection", "conn_id", id, "error", err)
+		return
+	}
+
+	// Detect protocol type:
+	// - JSON protocol starts with '{' (0x7B)
+	// - Framed protocol starts with message type (0x01, 0x02, 0x03)
+	if firstByte[0] == '{' {
+		// Legacy JSON protocol
+		handleLegacyJSONRequest(peekable, conn, id)
+	} else if firstByte[0] >= 0x01 && firstByte[0] <= 0x03 {
+		// New framed protocol
+		handleFramedRequest(peekable, conn, id)
+	} else {
+		logger.WarnKV("unknown protocol", "conn_id", id, "first_byte", fmt.Sprintf("0x%02x", firstByte[0]))
+	}
+}
+
+// handleLegacyJSONRequest handles the original JSON-only protocol
+func handleLegacyJSONRequest(reader io.Reader, conn net.Conn, id string) {
+	decoder := json.NewDecoder(reader)
 	encoder := json.NewEncoder(conn)
 	encoder.SetEscapeHTML(false)
 
-	var req ipc.Request
-	if err := decoder.Decode(&req); err != nil {
-		if err == io.EOF {
-			logger.DebugKV("connection closed without data", "conn_id", id)
-		} else {
-			logger.WarnKV("invalid JSON from client", "conn_id", id, "error", err)
-		}
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
-		return
-	}
-
-	if req.Secret != Sess.BridgeSecret {
-		logger.WarnKV("invalid bridge secret", "conn_id", id)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
-		return
-	}
-	if req.SessionID != Sess.SessionID {
-		logger.WarnKV("session mismatch", "conn_id", id)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: "session mismatch"})
-		return
-	}
-	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
-		logger.WarnKV("invalid characters in request", "conn_id", id, "req_type", req.Type, "command", req.Command)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})
-		return
-	}
-
-	logger.DebugKV("bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
-
-	group, found := handlers.HandlersByType[req.Type]
-	if !found || group == nil {
-		logger.WarnKV("unknown request type", "conn_id", id, "req_type", req.Type)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
-		return
-	}
-	handler, ok := group[req.Command]
-	if !ok {
-		logger.WarnKV("unknown request command", "conn_id", id, "req_type", req.Type, "command", req.Command)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
-		return
-	}
-
-	type result struct {
-		out any
-		err error
-	}
-	done := make(chan result, 1)
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.ErrorKV("handler panic", "conn_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
-				done <- result{nil, fmt.Errorf("panic: %v", r)}
+	for {
+		var req ipc.Request
+		if err := decoder.Decode(&req); err != nil {
+			if err == io.EOF {
+				logger.DebugKV("legacy client closed connection", "conn_id", id)
+			} else {
+				logger.WarnKV("invalid JSON from client", "conn_id", id, "error", err)
+				_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
 			}
-		}()
-		out, err := handler(req.Args)
-		done <- result{out, err}
-	}()
-
-	select {
-	case r := <-done:
-		if r.err != nil {
-			logger.ErrorKV("handler error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
-			_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
 			return
 		}
 
-		// Coerce r.out into json.RawMessage
-		var raw json.RawMessage
-		switch v := r.out.(type) {
-		case nil:
-			raw = nil
-		case json.RawMessage:
-			raw = v
-		case []byte:
-			raw = json.RawMessage(v)
-		default:
-			b, err := json.Marshal(v)
-			if err != nil {
-				logger.ErrorKV("handler marshal error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", err)
-				_ = encoder.Encode(ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
-				return
-			}
-			raw = b
+		if req.Secret != Sess.BridgeSecret {
+			logger.WarnKV("invalid bridge secret", "conn_id", id)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
+			return
+		}
+		if req.SessionID != Sess.SessionID {
+			logger.WarnKV("session mismatch", "conn_id", id)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: "session mismatch"})
+			return
+		}
+		if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
+			logger.WarnKV("invalid characters in request", "conn_id", id, "req_type", req.Type, "command", req.Command)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})
+			return
 		}
 
-		_ = encoder.Encode(ipc.Response{Status: "ok", Output: raw})
-		return
+		logger.DebugKV("bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
 
-	case <-bridgeClosing:
-		_ = encoder.Encode(ipc.Response{
-			Status: "error",
-			Error:  "canceled: bridge shutting down",
-		})
-		return
+		group, found := handlers.HandlersByType[req.Type]
+		if !found || group == nil {
+			logger.WarnKV("unknown request type", "conn_id", id, "req_type", req.Type)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+			continue
+		}
+		handler, ok := group[req.Command]
+		if !ok {
+			logger.WarnKV("unknown request command", "conn_id", id, "req_type", req.Type, "command", req.Command)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+			continue
+		}
+
+		type result struct {
+			out any
+			err error
+		}
+		done := make(chan result, 1)
+
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.ErrorKV("handler panic", "conn_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
+					done <- result{nil, fmt.Errorf("panic: %v", r)}
+				}
+			}()
+			out, err := handler(req.Args)
+			done <- result{out, err}
+		}()
+
+		select {
+		case r := <-done:
+			if r.err != nil {
+				logger.ErrorKV("handler error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
+				_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
+				continue
+			}
+
+			// Coerce r.out into json.RawMessage
+			var raw json.RawMessage
+			switch v := r.out.(type) {
+			case nil:
+				raw = nil
+			case json.RawMessage:
+				raw = v
+			case []byte:
+				raw = json.RawMessage(v)
+			default:
+				b, err := json.Marshal(v)
+				if err != nil {
+					logger.ErrorKV("handler marshal error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", err)
+					_ = encoder.Encode(ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
+					continue
+				}
+				raw = b
+			}
+
+			if err := encoder.Encode(ipc.Response{Status: "ok", Output: raw}); err != nil {
+				logger.WarnKV("failed to send legacy response", "conn_id", id, "error", err)
+				return
+			}
+
+		case <-bridgeClosing:
+			_ = encoder.Encode(ipc.Response{
+				Status: "error",
+				Error:  "canceled: bridge shutting down",
+			})
+			return
+		}
+	}
+}
+
+// handleFramedRequest handles the new framed protocol (supports binary + streaming)
+func handleFramedRequest(reader io.Reader, conn net.Conn, id string) {
+	for {
+		var req ipc.Request
+		msgType, err := ipc.ReadJSONFrame(reader, &req)
+		if err != nil {
+			if err == io.EOF {
+				logger.DebugKV("framed client closed connection", "conn_id", id)
+			} else {
+				logger.WarnKV("failed to read framed request", "conn_id", id, "error", err)
+				_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "invalid framed request"})
+			}
+			return
+		}
+
+		if msgType != ipc.MsgTypeJSON {
+			logger.WarnKV("expected JSON request frame", "conn_id", id, "msg_type", fmt.Sprintf("0x%02x", msgType))
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "expected JSON request"})
+			return
+		}
+
+		// Validate request
+		if req.Secret != Sess.BridgeSecret {
+			logger.WarnKV("invalid bridge secret", "conn_id", id)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "invalid secret"})
+			return
+		}
+		if req.SessionID != Sess.SessionID {
+			logger.WarnKV("session mismatch", "conn_id", id)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "session mismatch"})
+			return
+		}
+		if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
+			logger.WarnKV("invalid characters in request", "conn_id", id, "req_type", req.Type, "command", req.Command)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "invalid characters in command/type"})
+			return
+		}
+
+		logger.DebugKV("framed bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
+
+		group, found := handlers.HandlersByType[req.Type]
+		if !found || group == nil {
+			logger.WarnKV("unknown request type", "conn_id", id, "req_type", req.Type)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+			continue
+		}
+		handler, ok := group[req.Command]
+		if !ok {
+			logger.WarnKV("unknown request command", "conn_id", id, "req_type", req.Type, "command", req.Command)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+			continue
+		}
+
+		type result struct {
+			out any
+			err error
+		}
+		done := make(chan result, 1)
+
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.ErrorKV("handler panic", "conn_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
+					done <- result{nil, fmt.Errorf("panic: %v", r)}
+				}
+			}()
+			out, err := handler(req.Args)
+			done <- result{out, err}
+		}()
+
+		select {
+		case r := <-done:
+			if r.err != nil {
+				logger.ErrorKV("handler error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
+				_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: r.err.Error()})
+				continue
+			}
+
+			var raw json.RawMessage
+			switch v := r.out.(type) {
+			case nil:
+				raw = nil
+			case json.RawMessage:
+				raw = v
+			case []byte:
+				raw = json.RawMessage(v)
+			default:
+				b, err := json.Marshal(v)
+				if err != nil {
+					logger.ErrorKV("handler marshal error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", err)
+					_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
+					continue
+				}
+				raw = b
+			}
+
+			if err := ipc.WriteResponseFrame(conn, &ipc.Response{Status: "ok", Output: raw}); err != nil {
+				logger.WarnKV("failed to send framed response", "conn_id", id, "error", err)
+				return
+			}
+
+		case <-bridgeClosing:
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{
+				Status: "error",
+				Error:  "canceled: bridge shutting down",
+			})
+			return
+		}
 	}
 }
 

@@ -768,32 +768,23 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string) {
 			return
 		}
 
-		// Extract temp path and file name from response
-		result, ok := resp.Output.(map[string]any)
-		if !ok {
+		var result struct {
+			TempPath    string `json:"tempPath"`
+			ArchiveName string `json:"archiveName"`
+			Size        int64  `json:"size"`
+		}
+		if err := json.Unmarshal(resp.Output, &result); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+			return
+		}
+		if result.TempPath == "" || result.ArchiveName == "" {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
 			return
 		}
 
-		tempPathVal, ok := result["tempPath"].(string)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-			return
-		}
-		fileNameVal, ok := result["archiveName"].(string)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-			return
-		}
-		sizeVal, ok := result["size"].(float64)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-			return
-		}
-
-		tempPath = tempPathVal
-		fileName = fileNameVal
-		fileSize = int64(sizeVal)
+		tempPath = result.TempPath
+		fileName = result.ArchiveName
+		fileSize = result.Size
 	} else {
 		// Single file download via bridge
 		args := []string{paths[0]}
@@ -823,32 +814,23 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string) {
 			return
 		}
 
-		// Extract temp path and file name from response
-		result, ok := resp.Output.(map[string]any)
-		if !ok {
+		var result struct {
+			TempPath string `json:"tempPath"`
+			FileName string `json:"fileName"`
+			Size     int64  `json:"size"`
+		}
+		if err := json.Unmarshal(resp.Output, &result); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+			return
+		}
+		if result.TempPath == "" || result.FileName == "" {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
 			return
 		}
 
-		tempPathVal, ok := result["tempPath"].(string)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-			return
-		}
-		fileNameVal, ok := result["fileName"].(string)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-			return
-		}
-		sizeVal, ok := result["size"].(float64)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-			return
-		}
-
-		tempPath = tempPathVal
-		fileName = fileNameVal
-		fileSize = int64(sizeVal)
+		tempPath = result.TempPath
+		fileName = result.FileName
+		fileSize = result.Size
 	}
 
 	// Open temp file and stream to client

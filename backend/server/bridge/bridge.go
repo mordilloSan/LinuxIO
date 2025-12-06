@@ -19,7 +19,40 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// Use everywhere for bridge actions: returns *raw* JSON response string (for HTTP handler to decode output as needed)
+// CallTypedWithSession makes a bridge call and decodes the response directly into result.
+// This helper wraps CallWithSession and decodes the bridge response.
+func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result interface{}) error {
+	raw, err := CallWithSession(sess, reqType, command, args)
+	if err != nil {
+		return err
+	}
+
+	var resp struct {
+		Status string          `json:"status"`
+		Output json.RawMessage `json:"output,omitempty"`
+		Error  string          `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("decode bridge response: %w", err)
+	}
+
+	if resp.Status != "ok" {
+		return fmt.Errorf("bridge error: %s", resp.Error)
+	}
+
+	if result == nil || len(resp.Output) == 0 {
+		return nil
+	}
+
+	if err := json.Unmarshal(resp.Output, result); err != nil {
+		return fmt.Errorf("decode bridge output: %w", err)
+	}
+
+	return nil
+}
+
+// CallWithSession makes a bridge call and returns raw JSON response bytes.
+// Returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
 	// Log the incoming bridge call
 	logger.DebugKV("bridge call initiated",
@@ -28,7 +61,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		"command", command,
 		"args", fmt.Sprintf("%v", args))
 
-	socketPath := sess.SocketPath // <-- field, not method
+	socketPath := sess.SocketPath
 	if socketPath == "" {
 		err := fmt.Errorf("empty session.SocketPath")
 		logger.ErrorKV("bridge call failed: invalid socket path",
@@ -45,28 +78,13 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		SessionID: sess.SessionID,
 	}
 
-	var conn net.Conn
-	var err error
-	const (
-		totalWait   = 2 * time.Second
-		step        = 100 * time.Millisecond
-		dialTimeout = 500 * time.Millisecond
-	)
-	deadline := time.Now().Add(totalWait)
-	for {
-		conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
-		if err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			err2 := fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
-			logger.ErrorKV("bridge call failed: connection timeout",
-				"user", sess.User.Username,
-				"socket_path", socketPath,
-				"error", err2)
-			return nil, err
-		}
-		time.Sleep(step)
+	conn, err := dialBridge(socketPath)
+	if err != nil {
+		logger.ErrorKV("bridge call failed: connection timeout",
+			"user", sess.User.Username,
+			"socket_path", socketPath,
+			"error", err)
+		return nil, err
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
@@ -316,4 +334,212 @@ func getAuthHelperPath() string {
 		return p
 	}
 	return ""
+}
+
+// ============================================================================
+// NEW: Framed Protocol Support (Binary + Streaming)
+// ============================================================================
+
+// dialBridge creates a connection to the bridge socket
+func dialBridge(socketPath string) (net.Conn, error) {
+	const (
+		totalWait   = 2 * time.Second
+		step        = 100 * time.Millisecond
+		dialTimeout = 500 * time.Millisecond
+	)
+
+	var conn net.Conn
+	var err error
+	deadline := time.Now().Add(totalWait)
+
+	for {
+		conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
+		if err == nil {
+			return conn, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
+		}
+		time.Sleep(step)
+	}
+}
+
+// StreamWithSession opens a streaming connection for continuous responses
+// Returns a StreamReader that must be closed by the caller
+// Use this for: journald logs, tail -f, live stats, etc.
+func StreamWithSession(sess *session.Session, reqType, command string, args []string) (*ipc.StreamReader, error) {
+	logger.DebugKV("bridge stream initiated",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"args", fmt.Sprintf("%v", args))
+
+	if sess.SocketPath == "" {
+		return nil, fmt.Errorf("empty session.SocketPath")
+	}
+
+	conn, err := dialBridge(sess.SocketPath)
+	if err != nil {
+		logger.ErrorKV("bridge stream failed: connection error",
+			"user", sess.User.Username,
+			"socket_path", sess.SocketPath,
+			"error", err)
+		return nil, err
+	}
+
+	// Send request using framed protocol
+	req := ipc.Request{
+		Type:      reqType,
+		Command:   command,
+		Secret:    sess.BridgeSecret,
+		Args:      args,
+		SessionID: sess.SessionID,
+	}
+
+	if err := ipc.WriteRequestFrame(conn, &req); err != nil {
+		conn.Close()
+		logger.ErrorKV("bridge stream failed: send error",
+			"user", sess.User.Username,
+			"error", err)
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	logger.DebugKV("bridge stream established",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command)
+
+	return ipc.NewStreamReader(conn), nil
+}
+
+// DownloadFromSession downloads binary data from bridge
+// Returns an io.ReadCloser that streams binary chunks
+// Use this for: file downloads, archive downloads, etc.
+func DownloadFromSession(sess *session.Session, reqType, command string, args []string) (io.ReadCloser, error) {
+	logger.DebugKV("bridge download initiated",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"args", fmt.Sprintf("%v", args))
+
+	stream, err := StreamWithSession(sess, reqType, command, args)
+	if err != nil {
+		return nil, err
+	}
+
+	// First frame should be a status response
+	resp, msgType, err := stream.Read()
+	if err != nil {
+		stream.Close()
+		return nil, fmt.Errorf("failed to read initial response: %w", err)
+	}
+
+	if msgType != ipc.MsgTypeJSON {
+		stream.Close()
+		return nil, fmt.Errorf("expected JSON response, got type 0x%02x", msgType)
+	}
+
+	if resp.Status != "ok" {
+		stream.Close()
+		return nil, fmt.Errorf("bridge error: %s", resp.Error)
+	}
+
+	// Now stream is ready to read binary chunks
+	return ipc.NewBinaryReader(stream), nil
+}
+
+// UploadToSession uploads binary data to bridge
+// Reads from the provided reader and sends as binary chunks
+// Use this for: file uploads, archive uploads, etc.
+func UploadToSession(sess *session.Session, reqType, command string, args []string, data io.Reader) error {
+	logger.DebugKV("bridge upload initiated",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"args", fmt.Sprintf("%v", args))
+
+	if sess.SocketPath == "" {
+		return fmt.Errorf("empty session.SocketPath")
+	}
+
+	conn, err := dialBridge(sess.SocketPath)
+	if err != nil {
+		logger.ErrorKV("bridge upload failed: connection error",
+			"user", sess.User.Username,
+			"error", err)
+		return err
+	}
+	defer conn.Close()
+
+	// Send request
+	req := ipc.Request{
+		Type:      reqType,
+		Command:   command,
+		Secret:    sess.BridgeSecret,
+		Args:      args,
+		SessionID: sess.SessionID,
+	}
+
+	if err := ipc.WriteRequestFrame(conn, &req); err != nil {
+		logger.ErrorKV("bridge upload failed: send request error",
+			"user", sess.User.Username,
+			"error", err)
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+
+	// Read initial response
+	var resp ipc.Response
+	msgType, err := ipc.ReadJSONFrame(conn, &resp)
+	if err != nil {
+		return fmt.Errorf("failed to read initial response: %w", err)
+	}
+
+	if msgType != ipc.MsgTypeJSON {
+		return fmt.Errorf("expected JSON response, got type 0x%02x", msgType)
+	}
+
+	if resp.Status != "ok" {
+		return fmt.Errorf("bridge error: %s", resp.Error)
+	}
+
+	// Stream binary data in chunks
+	const chunkSize = 512 * 1024 // 512KB chunks
+	buf := make([]byte, chunkSize)
+
+	for {
+		n, err := data.Read(buf)
+		if n > 0 {
+			if err := ipc.WriteBinaryFrame(conn, buf[:n]); err != nil {
+				return fmt.Errorf("failed to send binary chunk: %w", err)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read data: %w", err)
+		}
+	}
+
+	// Send empty binary frame to signal end
+	if err := ipc.WriteBinaryFrame(conn, nil); err != nil {
+		return fmt.Errorf("failed to send end marker: %w", err)
+	}
+
+	// Read final response
+	msgType, err = ipc.ReadJSONFrame(conn, &resp)
+	if err != nil {
+		return fmt.Errorf("failed to read final response: %w", err)
+	}
+
+	if resp.Status != "ok" {
+		return fmt.Errorf("upload failed: %s", resp.Error)
+	}
+
+	logger.DebugKV("bridge upload completed",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command)
+
+	return nil
 }

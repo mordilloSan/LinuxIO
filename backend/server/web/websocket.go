@@ -399,7 +399,6 @@ func readFromBridgeMain(sess *session.Session, waitMs int) (string, bool, error)
 		return "", false, errors.New(resp.Error)
 	}
 
-	// resp.Output is `any`, so type assert to map
 	data, closed := extractTerminalOutput(resp.Output)
 	return data, closed, nil
 }
@@ -420,61 +419,52 @@ func readFromBridgeContainer(sess *session.Session, containerID string, waitMs i
 		return "", false, errors.New(resp.Error)
 	}
 
-	// resp.Output is `any`, so type assert to map
 	data, closed := extractTerminalOutput(resp.Output)
 	return data, closed, nil
 }
 
-// extractTerminalOutput extracts data and closed from resp.Output (which is type `any`)
-func extractTerminalOutput(output any) (data string, closed bool) {
-	if output == nil {
+// extractTerminalOutput decodes the terminal bridge response payload.
+func extractTerminalOutput(output json.RawMessage) (data string, closed bool) {
+	if len(output) == 0 {
 		return "", false
 	}
 
-	// When JSON unmarshals into `any`, objects become map[string]interface{}
-	if m, ok := output.(map[string]interface{}); ok {
-		if d, ok := m["data"].(string); ok {
-			data = d
-		}
-		if c, ok := m["closed"].(bool); ok {
-			closed = c
-		}
+	var payload struct {
+		Data   string `json:"data"`
+		Closed bool   `json:"closed"`
 	}
-	return data, closed
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return "", false
+	}
+	return payload.Data, payload.Closed
 }
 
-// extractDataString extracts the "data" field from resp.Output (which is type `any`)
-func extractDataString(output any) string {
-	if output == nil {
+// extractDataString extracts the "data" field from resp.Output.
+func extractDataString(output json.RawMessage) string {
+	if len(output) == 0 {
 		return ""
 	}
 
-	if m, ok := output.(map[string]interface{}); ok {
-		if d, ok := m["data"].(string); ok {
-			return d
-		}
+	var payload struct {
+		Data string `json:"data"`
 	}
-	return ""
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return ""
+	}
+	return payload.Data
 }
 
-// extractStringSlice extracts a []string from resp.Output (which is type `any`)
-func extractStringSlice(output any) []string {
-	if output == nil {
+// extractStringSlice extracts a []string from resp.Output.
+func extractStringSlice(output json.RawMessage) []string {
+	if len(output) == 0 {
 		return []string{}
 	}
 
-	// Could be []interface{} when unmarshaled
-	if arr, ok := output.([]interface{}); ok {
-		result := make([]string, 0, len(arr))
-		for _, v := range arr {
-			if s, ok := v.(string); ok {
-				result = append(result, s)
-			}
-		}
-		return result
+	var arr []string
+	if err := json.Unmarshal(output, &arr); err != nil {
+		return []string{}
 	}
-
-	return []string{}
+	return arr
 }
 
 func isExpectedWSClose(err error) bool {

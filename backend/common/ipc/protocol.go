@@ -1,5 +1,7 @@
 package ipc
 
+import "encoding/json"
+
 // Request/Response are the on-the-wire schema used over the unix socket.
 type Request struct {
 	Type      string   `json:"type"`
@@ -10,9 +12,9 @@ type Request struct {
 }
 
 type Response struct {
-	Status string `json:"status"`           // "ok" | "error"
-	Output any    `json:"output,omitempty"` // NOT json.RawMessage
-	Error  string `json:"error,omitempty"`
+	Status string          `json:"status"`           // "ok" | "error"
+	Output json.RawMessage `json:"output,omitempty"` // raw JSON payload
+	Error  string          `json:"error,omitempty"`
 }
 
 // Optional helper signature for bridge-side handlers
