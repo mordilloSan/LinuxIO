@@ -19,114 +19,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// CallTypedWithSession makes a bridge call and decodes the response directly into result.
-// This helper wraps CallWithSession and decodes the bridge response.
-func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result interface{}) error {
-	raw, err := CallWithSession(sess, reqType, command, args)
-	if err != nil {
-		return err
-	}
-
-	var resp struct {
-		Status string          `json:"status"`
-		Output json.RawMessage `json:"output,omitempty"`
-		Error  string          `json:"error,omitempty"`
-	}
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return fmt.Errorf("decode bridge response: %w", err)
-	}
-
-	if resp.Status != "ok" {
-		return fmt.Errorf("bridge error: %s", resp.Error)
-	}
-
-	if result == nil || len(resp.Output) == 0 {
-		return nil
-	}
-
-	if err := json.Unmarshal(resp.Output, result); err != nil {
-		return fmt.Errorf("decode bridge output: %w", err)
-	}
-
-	return nil
-}
-
-// CallWithSession makes a bridge call and returns raw JSON response bytes.
-// Returns *raw* JSON response string (for HTTP handler to decode output as needed)
-func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
-	// Log the incoming bridge call
-	logger.DebugKV("bridge call initiated",
-		"user", sess.User.Username,
-		"type", reqType,
-		"command", command,
-		"args", fmt.Sprintf("%v", args))
-
-	socketPath := sess.SocketPath
-	if socketPath == "" {
-		err := fmt.Errorf("empty session.SocketPath")
-		logger.ErrorKV("bridge call failed: invalid socket path",
-			"user", sess.User.Username,
-			"error", err)
-		return nil, err
-	}
-
-	req := ipc.Request{
-		Type:      reqType,
-		Command:   command,
-		Secret:    sess.BridgeSecret,
-		Args:      args,
-		SessionID: sess.SessionID,
-	}
-
-	conn, err := dialBridge(socketPath)
-	if err != nil {
-		logger.ErrorKV("bridge call failed: connection timeout",
-			"user", sess.User.Username,
-			"socket_path", socketPath,
-			"error", err)
-		return nil, err
-	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			logger.WarnKV("bridge conn close failed", "socket_path", socketPath, "error", cerr)
-		}
-	}()
-
-	enc := json.NewEncoder(conn)
-	enc.SetEscapeHTML(false)
-	dec := json.NewDecoder(conn)
-
-	if err := enc.Encode(req); err != nil {
-		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
-		logger.ErrorKV("bridge call failed: encoding error",
-			"user", sess.User.Username,
-			"type", reqType,
-			"command", command,
-			"error", err2)
-		return nil, err
-	}
-
-	var raw json.RawMessage
-	if err := dec.Decode(&raw); err != nil {
-		err2 := fmt.Errorf("failed to decode response from bridge: %w", err)
-		logger.ErrorKV("bridge call failed: decoding error",
-			"user", sess.User.Username,
-			"type", reqType,
-			"command", command,
-			"error", err2)
-		return nil, err
-	}
-
-	// Log successful response
-	logger.DebugKV("bridge call completed",
-		"user", sess.User.Username,
-		"type", reqType,
-		"command", command,
-		"response_bytes", len(raw))
-
-	return []byte(raw), nil
-}
-
 // StartBridge launches linuxio-bridge via the setuid helper.
 // Returns (privilegedMode, error). privilegedMode reflects the helper's decision.
 func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
@@ -337,7 +229,7 @@ func getAuthHelperPath() string {
 }
 
 // ============================================================================
-// NEW: Framed Protocol Support (Binary + Streaming)
+// Comunication with the bridge
 // ============================================================================
 
 // dialBridge creates a connection to the bridge socket
@@ -362,6 +254,114 @@ func dialBridge(socketPath string) (net.Conn, error) {
 		}
 		time.Sleep(step)
 	}
+}
+
+// CallWithSession makes a bridge call and returns raw JSON response bytes.
+// Returns *raw* JSON response string (for HTTP handler to decode output as needed)
+func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
+	// Log the incoming bridge call
+	logger.DebugKV("bridge call initiated",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"args", fmt.Sprintf("%v", args))
+
+	socketPath := sess.SocketPath
+	if socketPath == "" {
+		err := fmt.Errorf("empty session.SocketPath")
+		logger.ErrorKV("bridge call failed: invalid socket path",
+			"user", sess.User.Username,
+			"error", err)
+		return nil, err
+	}
+
+	req := ipc.Request{
+		Type:      reqType,
+		Command:   command,
+		Secret:    sess.BridgeSecret,
+		Args:      args,
+		SessionID: sess.SessionID,
+	}
+
+	conn, err := dialBridge(socketPath)
+	if err != nil {
+		logger.ErrorKV("bridge call failed: connection timeout",
+			"user", sess.User.Username,
+			"socket_path", socketPath,
+			"error", err)
+		return nil, err
+	}
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.WarnKV("bridge conn close failed", "socket_path", socketPath, "error", cerr)
+		}
+	}()
+
+	enc := json.NewEncoder(conn)
+	enc.SetEscapeHTML(false)
+	dec := json.NewDecoder(conn)
+
+	if err := enc.Encode(req); err != nil {
+		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
+		logger.ErrorKV("bridge call failed: encoding error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err2)
+		return nil, err
+	}
+
+	var raw json.RawMessage
+	if err := dec.Decode(&raw); err != nil {
+		err2 := fmt.Errorf("failed to decode response from bridge: %w", err)
+		logger.ErrorKV("bridge call failed: decoding error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err2)
+		return nil, err
+	}
+
+	// Log successful response
+	logger.DebugKV("bridge call completed",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"response_bytes", len(raw))
+
+	return []byte(raw), nil
+}
+
+// CallTypedWithSession makes a bridge call and decodes the response directly into result.
+// This helper wraps CallWithSession and decodes the bridge response.
+func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result interface{}) error {
+	raw, err := CallWithSession(sess, reqType, command, args)
+	if err != nil {
+		return err
+	}
+
+	var resp struct {
+		Status string          `json:"status"`
+		Output json.RawMessage `json:"output,omitempty"`
+		Error  string          `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("decode bridge response: %w", err)
+	}
+
+	if resp.Status != "ok" {
+		return fmt.Errorf("bridge error: %s", resp.Error)
+	}
+
+	if result == nil || len(resp.Output) == 0 {
+		return nil
+	}
+
+	if err := json.Unmarshal(resp.Output, result); err != nil {
+		return fmt.Errorf("decode bridge output: %w", err)
+	}
+
+	return nil
 }
 
 // StreamWithSession opens a streaming connection for continuous responses
