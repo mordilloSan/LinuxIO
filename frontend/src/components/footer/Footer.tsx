@@ -2,16 +2,14 @@ import { Grid, Box, useTheme, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
+import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import axios from "@/utils/axios";
 
 interface VersionResponse {
-  output: {
-    checked_at: string;
-    current_version: string;
-    latest_version: string;
-    update_available: boolean;
-  };
-  status: string;
+  checked_at: string;
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
 }
 
 function Footer() {
@@ -53,18 +51,20 @@ function Footer() {
           container
           justifyContent="flex-end"
         >
-          {data?.output.current_version && (
-            <Typography
-              variant="caption"
-              sx={{
-                opacity: 0.6,
-                fontSize: "0.7rem",
-                padding: 1,
-              }}
-            >
-              {data.output.current_version}
-            </Typography>
-          )}
+          <ErrorBoundary>
+            {data?.current_version && (
+              <Typography
+                variant="caption"
+                sx={{
+                  opacity: 0.6,
+                  fontSize: "0.7rem",
+                  padding: 1,
+                }}
+              >
+                {data.current_version}
+              </Typography>
+            )}
+          </ErrorBoundary>
         </Grid>
       </Grid>
     </Box>

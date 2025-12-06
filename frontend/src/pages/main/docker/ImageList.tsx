@@ -113,12 +113,15 @@ function renderCollapseContent(row: any) {
 }
 
 export default function ImageList() {
-  const { data, isLoading } = useQuery({
+  const { data = [], isLoading } = useQuery<any[]>({
     queryKey: ["dockerImages"],
-    queryFn: async () => (await axios.get("/docker/images")).data.output,
+    queryFn: async () => {
+      const res = await axios.get("/docker/images");
+      return res.data ?? [];
+    },
   });
 
-  const rows = data ? formatImageRows(data) : [];
+  const rows = formatImageRows(data);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   if (isLoading) {

@@ -6,8 +6,6 @@
 
 8 - Check if terminal is killed on logout/crash
 
-9 - test the hell out of info_operations.go.... Handler go routines crashing (All in name of speed.)
-
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
 filebrowser header should contain sessionid - DONE

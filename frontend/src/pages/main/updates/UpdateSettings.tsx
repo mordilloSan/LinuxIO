@@ -35,8 +35,6 @@ interface AutoUpdateState {
   notes?: string[];
 }
 
-type ApiEnvelope<T> = { status: "ok" | "error"; output?: T; error?: string };
-
 const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   ...s,
   options: {
@@ -58,13 +56,14 @@ const UpdateSettings: React.FC = () => {
   useEffect(() => {
     let mounted = true;
     axios
-      .get<ApiEnvelope<AutoUpdateState>>("/updates/auto")
+      .get<AutoUpdateState | null>("/updates/auto")
       .then((res) => {
         if (!mounted) return;
-        if (res.data.status !== "ok" || !res.data.output) {
-          throw new Error(res.data.error || "Unknown error");
+        const payload = res.data;
+        if (!payload) {
+          throw new Error("Empty auto update response");
         }
-        const norm = normalizeState(res.data.output);
+        const norm = normalizeState(payload);
         setServerState(norm);
         setDraft(norm.options);
         setExcludeInput(norm.options.exclude_packages.join(", "));
@@ -106,14 +105,11 @@ const UpdateSettings: React.FC = () => {
           .map((s) => s.trim())
           .filter(Boolean),
       };
-      const res = await axios.put<ApiEnvelope<AutoUpdateState>>(
-        "/updates/auto",
-        payload,
-      );
-      if (res.data.status !== "ok" || !res.data.output) {
-        throw new Error(res.data.error || "Unknown error");
+      const res = await axios.put<AutoUpdateState | null>("/updates/auto", payload);
+      if (!res.data) {
+        throw new Error("Empty auto update response");
       }
-      const norm = normalizeState(res.data.output);
+      const norm = normalizeState(res.data);
       setServerState(norm);
       setDraft(norm.options);
       setExcludeInput(norm.options.exclude_packages.join(", "));
@@ -127,11 +123,10 @@ const UpdateSettings: React.FC = () => {
   // -------- Apply at next reboot --------
   const handleApplyOffline = async () => {
     try {
-      const res = await axios.post<ApiEnvelope<{ status: string }>>(
-        "/updates/apply-offline",
-      );
-      if (res.data.status !== "ok") {
-        throw new Error(res.data.error || "Failed to schedule offline update");
+      const res = await axios.post("/updates/apply-offline");
+      const payload = res.data as { status?: string; error?: string } | null;
+      if (payload?.status && payload.status !== "ok") {
+        throw new Error(payload.error || "Failed to schedule offline update");
       }
       console.log("Offline update scheduled");
     } catch (err) {
