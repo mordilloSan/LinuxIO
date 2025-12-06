@@ -42,16 +42,13 @@ func getUpdatesHandler(c *gin.Context) {
 
 	// 2. Defensive: If output is empty/null, treat as empty array
 	updates := []Update{}
-	if resp.Output != nil {
-		// Re-marshal Output back to JSON, then unmarshal to target type
-		if outputBytes, err := json.Marshal(resp.Output); err == nil {
-			if err := json.Unmarshal(outputBytes, &updates); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "failed to decode updates JSON",
-					"details": err.Error(),
-				})
-				return
-			}
+	if len(resp.Output) > 0 {
+		if err := json.Unmarshal(resp.Output, &updates); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "failed to decode updates JSON",
+				"details": err.Error(),
+			})
+			return
 		}
 	}
 

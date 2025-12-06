@@ -36,13 +36,10 @@ func WireguardListInterfaces(c *gin.Context) {
 		return
 	}
 
-	// Re-marshal and unmarshal to get typed data
 	var out []map[string]interface{}
-	if outputBytes, err := json.Marshal(resp.Output); err == nil {
-		if err := json.Unmarshal(outputBytes, &out); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
-			return
-		}
+	if err := json.Unmarshal(resp.Output, &out); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"interfaces": out})
 }
@@ -146,11 +143,9 @@ func WireguardListPeers(c *gin.Context) {
 	}
 
 	var out []map[string]interface{}
-	if outputBytes, err := json.Marshal(resp.Output); err == nil {
-		if err := json.Unmarshal(outputBytes, &out); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
-			return
-		}
+	if err := json.Unmarshal(resp.Output, &out); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"peers": out})
 }
@@ -223,11 +218,9 @@ func WireguardPeerQRCode(c *gin.Context) {
 	}
 
 	var out map[string]string
-	if outputBytes, err := json.Marshal(resp.Output); err == nil {
-		if err := json.Unmarshal(outputBytes, &out); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
-			return
-		}
+	if err := json.Unmarshal(resp.Output, &out); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
+		return
 	}
 	c.JSON(http.StatusOK, out)
 }
@@ -257,11 +250,9 @@ func WireguardPeerConfigDownload(c *gin.Context) {
 	}
 
 	var out map[string]string
-	if outputBytes, err := json.Marshal(resp.Output); err == nil {
-		if err := json.Unmarshal(outputBytes, &out); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
-			return
-		}
+	if err := json.Unmarshal(resp.Output, &out); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
+		return
 	}
 	configContent := out["config"]
 
