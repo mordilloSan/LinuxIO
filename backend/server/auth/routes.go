@@ -18,7 +18,7 @@ type Config struct {
 // --- test seams (overridden in tests) ---
 var (
 	startBridge        = bridge.StartBridge
-	callBridgeWithSess = bridge.CallWithSession
+	callBridgeWithSess = bridge.CallTypedWithSession
 	getBridgeBinary    = bridge.GetBridgeBinaryPath
 	lookupUser         = user.Lookup
 )
