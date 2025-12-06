@@ -15,3 +15,5 @@ backend/server/web/frontend/
 .vscode/
 *.swp
 
+.cache
+.go-cache

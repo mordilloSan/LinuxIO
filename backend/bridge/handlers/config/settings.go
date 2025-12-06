@@ -1,4 +1,4 @@
-package userconfig
+package config
 
 // DefaultAppSettings returns sane UI defaults.
 func DefaultAppSettings() AppSettings {

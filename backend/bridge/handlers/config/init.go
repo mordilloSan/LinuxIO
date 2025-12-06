@@ -1,6 +1,6 @@
 //go:generate go run ./generator.go
 
-package userconfig
+package config
 
 import (
 	"path/filepath"

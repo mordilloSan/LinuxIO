@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	userconfig "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	config "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 )
 
 func main() {
@@ -18,7 +18,7 @@ func main() {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		log.Fatalf("mkdir: %v", err)
 	}
-	data, err := yaml.Marshal(userconfig.ExampleDefaults())
+	data, err := yaml.Marshal(config.ExampleDefaults())
 	if err != nil {
 		log.Fatalf("marshal: %v", err)
 	}

@@ -22,7 +22,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
-	userconfig "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -186,8 +186,8 @@ func main() {
 	logger.Infof("[bridge] LISTENING on %s", socketPath)
 
 	// Ensure per-user config exists and is valid
-	userconfig.EnsureConfigReady(Sess.User.Username)
-	logger.Debugf("[bridge] userconfig ready")
+	config.EnsureConfigReady(Sess.User.Username)
+	logger.Debugf("[bridge] config ready")
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)

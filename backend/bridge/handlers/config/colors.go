@@ -1,4 +1,4 @@
-package userconfig
+package config
 
 import (
 	"regexp"
