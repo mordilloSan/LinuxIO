@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 	"github.com/mordilloSan/go_logger/logger"
@@ -35,8 +34,7 @@ func serviceAction(c *gin.Context, action string) {
 		return
 	}
 
-	_, err := bridge.CallWithSession(sess, "dbus", action, []string{serviceName})
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "dbus", action, []string{serviceName}, nil); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -46,57 +44,34 @@ func serviceAction(c *gin.Context, action string) {
 func getServiceStatus(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 
-	output, err := bridge.CallWithSession(sess, "dbus", "ListServices", nil)
-	if err != nil {
+	var resp json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "dbus", "ListServices", nil, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	var resp ipc.Response
-
-	if err := json.Unmarshal([]byte(output), &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-
-	if resp.Output == nil {
+	if len(resp) == 0 {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp.Output) // Changed from c.Data()
+	c.JSON(http.StatusOK, resp)
 }
 
 func getServiceDetail(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	serviceName := c.Param("name")
 
-	output, err := bridge.CallWithSession(sess, "dbus", "GetServiceInfo", []string{serviceName})
-	if err != nil {
+	var resp json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "dbus", "GetServiceInfo", []string{serviceName}, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp ipc.Response
-	if err := json.Unmarshal([]byte(output), &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-
-	if resp.Output == nil {
+	if len(resp) == 0 {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp.Output) // Changed from c.Data()
+	c.JSON(http.StatusOK, resp)
 }
 
 func getServiceLogs(c *gin.Context) {
@@ -112,22 +87,10 @@ func getServiceLogs(c *gin.Context) {
 	// Get optional query parameters
 	lines := c.DefaultQuery("lines", "100") // Default 100 lines
 
-	output, err := bridge.CallWithSession(sess, "dbus", "GetServiceLogs", []string{serviceName, lines})
-	if err != nil {
+	var resp json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "dbus", "GetServiceLogs", []string{serviceName, lines}, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal([]byte(output), &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "decode bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, resp)
 }
