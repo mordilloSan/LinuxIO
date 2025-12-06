@@ -50,7 +50,7 @@ func RunServer(cfg ServerConfig) {
 	})
 	sm.RegisterOnDelete(func(sess *session.Session, reason session.DeleteReason) {
 		if sess.User.Username != "" {
-			if _, err := bridge.CallWithSession(sess, "control", "shutdown", []string{string(reason)}); err != nil {
+			if err := bridge.CallTypedWithSession(sess, "control", "shutdown", []string{string(reason)}, nil); err != nil {
 				logger.WarnKV("bridge shutdown failed", "user", sess.User.Username, "reason", reason, "error", err)
 			}
 		}

@@ -6,6 +6,8 @@ backend/server/web/frontend/
 ./linuxio-bridge
 ./linuxio
 ./linuxio-auth-helper
+.cache
+.gocache
 
 # Logs and misc
 *.log

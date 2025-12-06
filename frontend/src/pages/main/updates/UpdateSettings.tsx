@@ -105,7 +105,10 @@ const UpdateSettings: React.FC = () => {
           .map((s) => s.trim())
           .filter(Boolean),
       };
-      const res = await axios.put<AutoUpdateState | null>("/updates/auto", payload);
+      const res = await axios.put<AutoUpdateState | null>(
+        "/updates/auto",
+        payload,
+      );
       if (!res.data) {
         throw new Error("Empty auto update response");
       }
