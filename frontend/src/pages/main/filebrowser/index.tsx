@@ -26,6 +26,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { useDragAndDropUpload } from "../../../hooks/useDragAndDropUpload";
+import type { DroppedEntry } from "../../../hooks/useDragAndDropUpload";
 import { useFileBrowserQueries } from "../../../hooks/useFileBrowserQueries";
 import { useFileMutations } from "../../../hooks/useFileMutations";
 
@@ -71,6 +72,76 @@ interface ClipboardData {
   operation: ClipboardOperation;
 }
 
+const normalizeUploadRelativePath = (path: string) =>
+  path
+    .split(/[\\/]+/)
+    .filter(Boolean)
+    .join("/");
+
+const buildEntriesFromFileList = (
+  files: FileList | null,
+): DroppedEntry[] => {
+  if (!files?.length) return [];
+  const directories = new Set<string>();
+  const entries: DroppedEntry[] = [];
+
+  Array.from(files).forEach((file) => {
+    const relativePath = normalizeUploadRelativePath(
+      (file as any).webkitRelativePath || file.name,
+    );
+    if (!relativePath) return;
+
+    entries.push({
+      file,
+      relativePath,
+      isDirectory: false,
+    });
+
+    const segments = relativePath.split("/");
+    segments.pop();
+    let current = "";
+    segments.forEach((segment) => {
+      if (!segment) return;
+      current = current ? `${current}/${segment}` : segment;
+      const normalized = normalizeUploadRelativePath(current);
+      if (normalized) {
+        directories.add(normalized);
+      }
+    });
+  });
+
+  const directoryEntries = Array.from(directories).map((relativePath) => ({
+    relativePath,
+    isDirectory: true,
+  }));
+
+  return [...directoryEntries, ...entries];
+};
+
+const mergeDroppedEntries = (
+  existing: DroppedEntry[],
+  additions: DroppedEntry[],
+): DroppedEntry[] => {
+  if (!additions.length) return existing;
+  const map = new Map<string, DroppedEntry>();
+  [...existing, ...additions].forEach((entry) => {
+    const normalized = normalizeUploadRelativePath(entry.relativePath);
+    if (!normalized) return;
+    const key = `${entry.isDirectory ? "dir" : "file"}::${normalized}`;
+    map.set(key, {
+      ...entry,
+      relativePath: normalized,
+    });
+  });
+
+  return Array.from(map.values()).sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) {
+      return a.isDirectory ? -1 : 1;
+    }
+    return a.relativePath.localeCompare(b.relativePath);
+  });
+};
+
 const FileBrowser: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -94,6 +165,9 @@ const FileBrowser: React.FC = () => {
   const [isSavingFile, setIsSavingFile] = useState(false);
   const [isEditorDirty, setIsEditorDirty] = useState(false);
   const [closeEditorDialog, setCloseEditorDialog] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [isUploadProcessing, setIsUploadProcessing] = useState(false);
+  const [uploadEntries, setUploadEntries] = useState<DroppedEntry[]>([]);
   const [permissionsDialog, setPermissionsDialog] = useState<{
     paths: string[];
     pathLabel: string;
@@ -105,6 +179,8 @@ const FileBrowser: React.FC = () => {
   } | null>(null);
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
   const editorRef = useRef<FileEditorHandle>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const queryClient = useQueryClient();
   const { startDownload, startUpload } = useFileTransfers();
@@ -442,8 +518,8 @@ const FileBrowser: React.FC = () => {
 
   const handleUpload = useCallback(() => {
     handleCloseContextMenu();
-    // TODO: Implement upload dialog
-    console.log("Upload clicked");
+    setUploadEntries([]);
+    setUploadDialogOpen(true);
   }, [handleCloseContextMenu]);
 
   const handleCompressSelection = useCallback(async () => {
@@ -547,20 +623,18 @@ const FileBrowser: React.FC = () => {
     try {
       setIsSavingFile(true);
       const content = editorRef.current.getContent();
-
       console.log(
         "Saving file:",
         editingPath,
         "Content length:",
         content.length,
       );
-
       const response = await axios.put("/navigator/api/resources", content, {
         params: { path: editingPath },
         headers: { "Content-Type": "text/plain" },
       });
-
       console.log("Save response:", response);
+
       toast.success("File saved successfully!");
       setIsEditorDirty(false);
 
@@ -637,6 +711,7 @@ const FileBrowser: React.FC = () => {
     handleDrop,
     handleConfirmOverwrite,
     handleCancelOverwrite,
+    setOverwriteTargets: setOverwriteTargetsForDialog,
   } = useDragAndDropUpload({
     normalizedPath,
     resource,
@@ -644,6 +719,93 @@ const FileBrowser: React.FC = () => {
     startUpload,
     onUploadComplete: invalidateListing,
   });
+
+  const handleUploadInputChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files?.length) {
+        event.target.value = "";
+        return;
+      }
+
+      const entries = buildEntriesFromFileList(files);
+      if (!entries.length) {
+        event.target.value = "";
+        toast.error("No files detected in selection");
+        return;
+      }
+
+      setUploadEntries((prev) => mergeDroppedEntries(prev, entries));
+      event.target.value = "";
+    },
+    [],
+  );
+
+  const handleCloseUploadDialog = useCallback(() => {
+    if (isUploadProcessing) return;
+    setUploadDialogOpen(false);
+    setUploadEntries([]);
+  }, [isUploadProcessing]);
+
+  const handleClearUploadSelection = useCallback(() => {
+    if (isUploadProcessing) return;
+    setUploadEntries([]);
+  }, [isUploadProcessing]);
+
+  const handlePickFiles = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handlePickFolder = useCallback(() => {
+    folderInputRef.current?.click();
+  }, []);
+
+  const handleStartUpload = useCallback(async () => {
+    if (uploadEntries.length === 0) {
+      toast.error("Select files or folders to upload");
+      return;
+    }
+
+    setIsUploadProcessing(true);
+    try {
+      const result = await startUpload(uploadEntries, normalizedPath);
+      if (result.conflicts.length) {
+        setOverwriteTargetsForDialog(result.conflicts);
+        toast.warning(
+          `${result.conflicts.length} item${result.conflicts.length === 1 ? " is" : "s are"} already present. Overwrite them?`,
+        );
+      }
+      if (result.uploaded > 0) {
+        invalidateListing();
+      }
+      if (!result.conflicts.length) {
+        setUploadDialogOpen(false);
+        setUploadEntries([]);
+      }
+    } catch (err) {
+      console.error("Upload failed", err);
+      toast.error("Upload failed");
+    } finally {
+      setIsUploadProcessing(false);
+    }
+  }, [
+    invalidateListing,
+    normalizedPath,
+    setOverwriteTargetsForDialog,
+    startUpload,
+    uploadEntries,
+  ]);
+
+  const uploadSummary = useMemo(() => {
+    return uploadEntries.reduce(
+      (acc, entry) => {
+        if (entry.isDirectory) acc.folders += 1;
+        else acc.files += 1;
+        return acc;
+      },
+      { files: 0, folders: 0 },
+    );
+  }, [uploadEntries]);
 
   return (
     <>
@@ -908,6 +1070,79 @@ const FileBrowser: React.FC = () => {
         onClose={handleClosePermissionsDialog}
         onConfirm={handleConfirmPermissions}
       />
+
+      <Dialog
+        open={uploadDialogOpen}
+        onClose={handleCloseUploadDialog}
+        maxWidth="sm"
+        fullWidth
+        disableEscapeKeyDown={isUploadProcessing}
+      >
+        <DialogTitle>Upload files or folders</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            Items will be uploaded to {normalizedPath}
+          </Typography>
+          <Box sx={{ display: "flex", gap: 1.5, mt: 2, flexWrap: "wrap" }}>
+            <Button variant="outlined" onClick={handlePickFiles}>
+              Select files
+            </Button>
+            <Button variant="outlined" onClick={handlePickFolder}>
+              Select folders
+            </Button>
+          </Box>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={handleUploadInputChange}
+          />
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={handleUploadInputChange}
+            {...({ webkitdirectory: true, mozdirectory: true } as any)}
+          />
+          <Typography variant="body2" sx={{ mt: 2 }}>
+            {uploadEntries.length
+              ? `Selected ${uploadSummary.files} file${uploadSummary.files === 1 ? "" : "s"} and ${uploadSummary.folders} folder${uploadSummary.folders === 1 ? "" : "s"}.`
+              : "No items selected yet."}
+          </Typography>
+          {uploadEntries.length > 0 && (
+            <List dense sx={{ mt: 1.5, maxHeight: 240, overflowY: "auto" }}>
+              {uploadEntries.map((entry) => (
+                <ListItem key={`${entry.isDirectory ? "dir" : "file"}-${entry.relativePath}`}>
+                  <ListItemText
+                    primary={entry.relativePath}
+                    secondary={entry.isDirectory ? "Folder" : "File"}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={handleClearUploadSelection}
+            disabled={!uploadEntries.length || isUploadProcessing}
+          >
+            Clear
+          </Button>
+          <Button onClick={handleCloseUploadDialog} disabled={isUploadProcessing}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleStartUpload}
+            variant="contained"
+            disabled={!uploadEntries.length || isUploadProcessing}
+          >
+            {isUploadProcessing ? "Uploading..." : "Upload"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={Boolean(overwriteTargets?.length)}

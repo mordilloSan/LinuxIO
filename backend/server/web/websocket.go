@@ -477,5 +477,3 @@ func isExpectedWSClose(err error) bool {
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "use of closed network connection")
 }
-
-// PTY reading now occurs inside the bridge process.

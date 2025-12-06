@@ -24,6 +24,7 @@ type UseDragAndDropUploadResult = {
   handleDrop: (event: React.DragEvent) => Promise<void>;
   handleConfirmOverwrite: () => Promise<void>;
   handleCancelOverwrite: () => void;
+  setOverwriteTargets: (targets: DroppedEntry[] | null) => void;
 };
 
 export const useDragAndDropUpload = ({
@@ -140,6 +141,13 @@ export const useDragAndDropUpload = ({
     setOverwriteTargets(null);
   }, []);
 
+  const setOverwriteTargetsForDialog = useCallback(
+    (targets: DroppedEntry[] | null) => {
+      setOverwriteTargets(targets);
+    },
+    [],
+  );
+
   return {
     isDragOver,
     overwriteTargets,
@@ -149,6 +157,7 @@ export const useDragAndDropUpload = ({
     handleDrop,
     handleConfirmOverwrite,
     handleCancelOverwrite,
+    setOverwriteTargets: setOverwriteTargetsForDialog,
   };
 };
 
