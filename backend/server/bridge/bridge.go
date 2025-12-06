@@ -332,6 +332,8 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 	return []byte(raw), nil
 }
 
+var ErrEmptyBridgeOutput = errors.New("bridge returned empty output")
+
 // CallTypedWithSession makes a bridge call and decodes the response directly into result.
 // This helper wraps CallWithSession and decodes the bridge response.
 func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result interface{}) error {
@@ -353,8 +355,12 @@ func CallTypedWithSession(sess *session.Session, reqType, command string, args [
 		return fmt.Errorf("bridge error: %s", resp.Error)
 	}
 
-	if result == nil || len(resp.Output) == 0 {
+	if result == nil {
 		return nil
+	}
+
+	if len(resp.Output) == 0 {
+		return ErrEmptyBridgeOutput
 	}
 
 	if err := json.Unmarshal(resp.Output, result); err != nil {
@@ -480,11 +486,11 @@ func UploadToSession(sess *session.Session, reqType, command string, args []stri
 		SessionID: sess.SessionID,
 	}
 
-	if err := ipc.WriteRequestFrame(conn, &req); err != nil {
+	if err2 := ipc.WriteRequestFrame(conn, &req); err2 != nil {
 		logger.ErrorKV("bridge upload failed: send request error",
 			"user", sess.User.Username,
-			"error", err)
-		return fmt.Errorf("failed to send request: %w", err)
+			"error", err2)
+		return fmt.Errorf("failed to send request: %w", err2)
 	}
 
 	// Read initial response
@@ -507,28 +513,27 @@ func UploadToSession(sess *session.Session, reqType, command string, args []stri
 	buf := make([]byte, chunkSize)
 
 	for {
-		n, err := data.Read(buf)
+		n, readErr := data.Read(buf)
 		if n > 0 {
-			if err := ipc.WriteBinaryFrame(conn, buf[:n]); err != nil {
-				return fmt.Errorf("failed to send binary chunk: %w", err)
+			if writeErr := ipc.WriteBinaryFrame(conn, buf[:n]); writeErr != nil {
+				return fmt.Errorf("failed to send binary chunk: %w", writeErr)
 			}
 		}
-		if err == io.EOF {
+		if readErr == io.EOF {
 			break
 		}
-		if err != nil {
-			return fmt.Errorf("failed to read data: %w", err)
+		if readErr != nil {
+			return fmt.Errorf("failed to read data: %w", readErr)
 		}
 	}
 
 	// Send empty binary frame to signal end
-	if err := ipc.WriteBinaryFrame(conn, nil); err != nil {
-		return fmt.Errorf("failed to send end marker: %w", err)
+	if err3 := ipc.WriteBinaryFrame(conn, nil); err3 != nil {
+		return fmt.Errorf("failed to send end marker: %w", err3)
 	}
 
 	// Read final response
-	msgType, err = ipc.ReadJSONFrame(conn, &resp)
-	if err != nil {
+	if _, err = ipc.ReadJSONFrame(conn, &resp); err != nil {
 		return fmt.Errorf("failed to read final response: %w", err)
 	}
 
