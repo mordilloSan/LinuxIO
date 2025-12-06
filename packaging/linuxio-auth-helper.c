@@ -1117,6 +1117,11 @@ int main(void)
         }
       }
 
+      // Re-enable core dumps for the bridge process now that we're running
+      // under the target user. The helper disables dumpability early on to
+      // avoid leaking credentials, so we have to opt-in again here.
+      (void)prctl(PR_SET_DUMPABLE, 1);
+
       if (verbose)
         setenv("LINUXIO_VERBOSE", "1", 1);
 
