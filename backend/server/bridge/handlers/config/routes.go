@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
@@ -22,31 +21,18 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 			return
 		}
 
-		data, err := bridge.CallWithSession(sess, "config", "theme_get", []string{sess.User.Username})
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load theme"})
-			return
-		}
-
-		var resp ipc.Response
-		if err := json.Unmarshal(data, &resp); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-			return
-		}
-		if resp.Status != "ok" {
-			errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		var result json.RawMessage
+		if err := bridge.CallTypedWithSession(sess, "config", "theme_get", []string{sess.User.Username}, &result); err != nil {
 			status := http.StatusInternalServerError
-			if strings.HasPrefix(resp.Error, "bad_request:") {
+			if strings.Contains(err.Error(), "bad_request:") {
 				status = http.StatusBadRequest
 			}
+			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 			c.JSON(status, gin.H{"error": errMsg})
 			return
 		}
-		if resp.Output == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-			return
-		}
-		c.JSON(http.StatusOK, resp.Output) // Gin will marshal it
+		c.JSON(http.StatusOK, result)
 	})
 
 	// POST /theme/set -> update user's theme (and related UI settings)
@@ -63,30 +49,17 @@ func RegisterThemeRoutes(priv *gin.RouterGroup) {
 			return
 		}
 
-		data, err := bridge.CallWithSession(sess, "config", "theme_set", []string{sess.User.Username, string(body)})
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save theme"})
-			return
-		}
-
-		var resp ipc.Response
-		if err := json.Unmarshal(data, &resp); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-			return
-		}
-		if resp.Status != "ok" {
-			errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		var result json.RawMessage
+		if err := bridge.CallTypedWithSession(sess, "config", "theme_set", []string{sess.User.Username, string(body)}, &result); err != nil {
 			status := http.StatusInternalServerError
-			if strings.HasPrefix(resp.Error, "bad_request:") {
+			if strings.Contains(err.Error(), "bad_request:") {
 				status = http.StatusBadRequest
 			}
+			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 			c.JSON(status, gin.H{"error": errMsg})
 			return
 		}
-		if resp.Output == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-			return
-		}
-		c.JSON(http.StatusOK, resp.Output) // Gin will marshal it
+		c.JSON(http.StatusOK, result)
 	})
 }

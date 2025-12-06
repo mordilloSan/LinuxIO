@@ -84,9 +84,17 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   // ---- logs via react-query (fetch only when dialog is open) ----
   const fetchLogs = async (): Promise<string> => {
     const res = await axios.get(`/docker/containers/${container.Id}/logs`);
-    return typeof res.data === "string"
-      ? res.data
-      : (res.data?.output ?? JSON.stringify(res.data, null, 2));
+    const payload = res.data;
+    if (typeof payload === "string") {
+      return payload;
+    }
+    if (payload && typeof payload.output === "string") {
+      return payload.output;
+    }
+    if (payload && typeof payload.logs === "string") {
+      return payload.logs;
+    }
+    return JSON.stringify(payload ?? {}, null, 2);
   };
 
   const logsQuery = useQuery({

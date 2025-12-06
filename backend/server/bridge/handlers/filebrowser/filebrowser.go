@@ -16,7 +16,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
@@ -57,35 +56,20 @@ func resourceGetHandler(c *gin.Context) {
 		args = append(args, "", "true")
 	}
 
-	data, err := bridge.CallWithSession(sess, "filebrowser", "resource_get", args)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "resource_get", args, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
 
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 // resourceStatHandler returns extended metadata via bridge
@@ -104,35 +88,20 @@ func resourceStatHandler(c *gin.Context) {
 		return
 	}
 
-	data, err := bridge.CallWithSession(sess, "filebrowser", "resource_stat", []string{path})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "resource_stat", []string{path}, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
 
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 // dirSizeHandler calculates directory size via bridge
@@ -151,35 +120,20 @@ func dirSizeHandler(c *gin.Context) {
 		return
 	}
 
-	data, err := bridge.CallWithSession(sess, "filebrowser", "dir_size", []string{path})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "dir_size", []string{path}, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
 
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 // resourceDeleteHandler deletes a resource via bridge
@@ -198,25 +152,14 @@ func resourceDeleteHandler(c *gin.Context) {
 		return
 	}
 
-	data, err := bridge.CallWithSession(sess, "filebrowser", "resource_delete", []string{path})
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "resource_delete", []string{path}, nil); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
@@ -250,25 +193,14 @@ func resourcePostHandler(c *gin.Context) {
 			args = append(args, "", "true")
 		}
 
-		data, err := bridge.CallWithSession(sess, "filebrowser", "resource_post", args)
-		if err != nil {
+		if err := bridge.CallTypedWithSession(sess, "filebrowser", "resource_post", args, nil); err != nil {
 			logger.Debugf("bridge error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-			return
-		}
-
-		var resp ipc.Response
-		if err := json.Unmarshal(data, &resp); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-			return
-		}
-
-		if resp.Status != "ok" {
 			status := http.StatusInternalServerError
-			if strings.HasPrefix(resp.Error, "bad_request:") {
+			if strings.Contains(err.Error(), "bad_request:") {
 				status = http.StatusBadRequest
 			}
-			errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 			c.JSON(status, gin.H{"error": errMsg})
 			return
 		}
@@ -332,25 +264,14 @@ func resourcePatchHandler(c *gin.Context) {
 	}
 
 	args := []string{action, src, dst}
-	data, err := bridge.CallWithSession(sess, "filebrowser", "resource_patch", args)
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "resource_patch", args, nil); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
@@ -423,35 +344,20 @@ func archiveCompressHandler(c *gin.Context) {
 		args = append(args, progressKey)
 	}
 
-	data, err := bridge.CallWithSession(sess, "filebrowser", "archive_create", args)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "archive_create", args, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
 
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 // archiveExtractHandler extracts a supported archive to a destination.
@@ -479,35 +385,20 @@ func archiveExtractHandler(c *gin.Context) {
 	}
 
 	args := []string{req.ArchivePath, dest}
-	data, err := bridge.CallWithSession(sess, "filebrowser", "archive_extract", args)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "archive_extract", args, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
 
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 // ============================================================================
@@ -548,28 +439,17 @@ func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, ove
 		args = append(args, "true")
 	}
 
-	data, err := bridge.CallWithSession(sess, "filebrowser", "file_upload_from_temp", args)
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "file_upload_from_temp", args, nil); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		if strings.Contains(resp.Error, "already exists") {
+		if strings.Contains(err.Error(), "already exists") {
 			status = http.StatusConflict
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
@@ -640,25 +520,14 @@ func handleChunkedUpload(c *gin.Context, sess *session.Session, path string, ove
 			args = append(args, "true")
 		}
 
-		data, err := bridge.CallWithSession(sess, "filebrowser", "file_upload_from_temp", args)
-		if err != nil {
+		if err := bridge.CallTypedWithSession(sess, "filebrowser", "file_upload_from_temp", args, nil); err != nil {
 			logger.Debugf("bridge error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-			return
-		}
-
-		var resp ipc.Response
-		if err := json.Unmarshal(data, &resp); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-			return
-		}
-
-		if resp.Status != "ok" {
 			status := http.StatusInternalServerError
-			if strings.HasPrefix(resp.Error, "bad_request:") {
+			if strings.Contains(err.Error(), "bad_request:") {
 				status = http.StatusBadRequest
 			}
-			errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 			c.JSON(status, gin.H{"error": errMsg})
 			return
 		}
@@ -690,25 +559,14 @@ func resourcePutViaTemp(c *gin.Context, sess *session.Session, path string) {
 
 	// Call bridge to update file from temp
 	args := []string{tempPath, path}
-	data, err := bridge.CallWithSession(sess, "filebrowser", "file_update_from_temp", args)
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "file_update_from_temp", args, nil); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
@@ -745,36 +603,20 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string) {
 	if needsArchive || len(paths) > 1 {
 		// Multiple files or directory - create archive via bridge
 		args := []string{strings.Join(paths, "||"), "zip"}
-		data, err := bridge.CallWithSession(sess, "filebrowser", "archive_download_setup", args)
-		if err != nil {
-			logger.Debugf("bridge error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-			return
-		}
-
-		var resp ipc.Response
-		if err := json.Unmarshal(data, &resp); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-			return
-		}
-
-		if resp.Status != "ok" {
-			status := http.StatusInternalServerError
-			if strings.HasPrefix(resp.Error, "bad_request:") {
-				status = http.StatusBadRequest
-			}
-			errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
-			c.JSON(status, gin.H{"error": errMsg})
-			return
-		}
-
 		var result struct {
 			TempPath    string `json:"tempPath"`
 			ArchiveName string `json:"archiveName"`
 			Size        int64  `json:"size"`
 		}
-		if err := json.Unmarshal(resp.Output, &result); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+		if err := bridge.CallTypedWithSession(sess, "filebrowser", "archive_download_setup", args, &result); err != nil {
+			logger.Debugf("bridge error: %v", err)
+			status := http.StatusInternalServerError
+			if strings.Contains(err.Error(), "bad_request:") {
+				status = http.StatusBadRequest
+			}
+			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
+			c.JSON(status, gin.H{"error": errMsg})
 			return
 		}
 		if result.TempPath == "" || result.ArchiveName == "" {
@@ -788,39 +630,23 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string) {
 	} else {
 		// Single file download via bridge
 		args := []string{paths[0]}
-		data, err := bridge.CallWithSession(sess, "filebrowser", "file_download_to_temp", args)
-		if err != nil {
-			logger.Debugf("bridge error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-			return
-		}
-
-		var resp ipc.Response
-		if err := json.Unmarshal(data, &resp); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-			return
-		}
-
-		if resp.Status != "ok" {
-			status := http.StatusInternalServerError
-			if strings.HasPrefix(resp.Error, "bad_request:") {
-				status = http.StatusBadRequest
-			}
-			if strings.Contains(resp.Error, "not found") {
-				status = http.StatusNotFound
-			}
-			errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
-			c.JSON(status, gin.H{"error": errMsg})
-			return
-		}
-
 		var result struct {
 			TempPath string `json:"tempPath"`
 			FileName string `json:"fileName"`
 			Size     int64  `json:"size"`
 		}
-		if err := json.Unmarshal(resp.Output, &result); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+		if err := bridge.CallTypedWithSession(sess, "filebrowser", "file_download_to_temp", args, &result); err != nil {
+			logger.Debugf("bridge error: %v", err)
+			status := http.StatusInternalServerError
+			if strings.Contains(err.Error(), "bad_request:") {
+				status = http.StatusBadRequest
+			}
+			if strings.Contains(err.Error(), "not found") {
+				status = http.StatusNotFound
+			}
+			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
+			c.JSON(status, gin.H{"error": errMsg})
 			return
 		}
 		if result.TempPath == "" || result.FileName == "" {
@@ -965,35 +791,20 @@ func chmodHandler(c *gin.Context) {
 		args = append(args, "true")
 	}
 
-	data, err := bridge.CallWithSession(sess, "filebrowser", "chmod", args)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "chmod", args, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
 
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 // usersGroupsHandler returns all users and groups on the system
@@ -1004,35 +815,20 @@ func usersGroupsHandler(c *gin.Context) {
 		return
 	}
 
-	data, err := bridge.CallWithSession(sess, "filebrowser", "users_groups", []string{})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "users_groups", []string{}, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed"})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-
-	if resp.Status != "ok" {
 		status := http.StatusInternalServerError
-		if strings.HasPrefix(resp.Error, "bad_request:") {
+		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
-		errMsg := strings.TrimPrefix(resp.Error, "bad_request:")
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
 
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 // setContentDisposition sets the Content-Disposition HTTP header for downloads
