@@ -1,6 +1,13 @@
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
-import { Box, Button, IconButton, LinearProgress, Tooltip, Typography } from "@mui/material";
+import {
+  Box,
+  Button,
+  IconButton,
+  LinearProgress,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import React from "react";
 
 import { useFileTransfers } from "@/hooks/useFileTransfers";
@@ -16,7 +23,9 @@ const DownloadNotifications: React.FC = () => {
   const { transfers, cancelDownload, cancelUpload, cancelCompression } =
     useFileTransfers();
   const [isExpanded, setIsExpanded] = React.useState(false);
-  const [completedTransfers, setCompletedTransfers] = React.useState<CompletedTransfer[]>([]);
+  const [completedTransfers, setCompletedTransfers] = React.useState<
+    CompletedTransfer[]
+  >([]);
   const hasTransfers = transfers.length > 0;
   const hasCompletedTransfers = completedTransfers.length > 0;
 
@@ -38,19 +47,22 @@ const DownloadNotifications: React.FC = () => {
     // Find transfers that were in progress but are no longer in the list
     const completedNow = prevTransfers.filter(
       (prevTransfer) =>
-        prevTransfer.progress === 100 && !currentTransferIds.has(prevTransfer.id)
+        prevTransfer.progress === 100 &&
+        !currentTransferIds.has(prevTransfer.id),
     );
 
     if (completedNow.length > 0) {
-      setCompletedTransfers((prev) => [
-        ...completedNow.map((t) => ({
-          id: t.id,
-          type: t.type,
-          label: t.label,
-          completedAt: new Date(),
-        })),
-        ...prev,
-      ].slice(0, 10)); // Keep only last 10 completed transfers
+      setCompletedTransfers((prev) =>
+        [
+          ...completedNow.map((t) => ({
+            id: t.id,
+            type: t.type,
+            label: t.label,
+            completedAt: new Date(),
+          })),
+          ...prev,
+        ].slice(0, 10),
+      ); // Keep only last 10 completed transfers
     }
 
     prevTransfersRef.current = transfers;
@@ -106,7 +118,7 @@ const DownloadNotifications: React.FC = () => {
           flexDirection: "column",
           gap: 0.5,
           border: "1px solid",
-          borderColor: "transparent" ,
+          borderColor: "transparent",
           borderRadius: 1,
           p: 1,
           boxShadow: isExpanded ? 4 : "none",
@@ -114,7 +126,8 @@ const DownloadNotifications: React.FC = () => {
           minWidth: 90,
         }}
       >
-        {hasTransfers && leastProgressTransfer?.type === "compression" ? null : (
+        {hasTransfers &&
+        leastProgressTransfer?.type === "compression" ? null : (
           <Typography variant="caption" color="text.secondary">
             {hasTransfers && leastProgressTransfer
               ? getTitle(leastProgressTransfer.type)
@@ -136,7 +149,7 @@ const DownloadNotifications: React.FC = () => {
             bottom: "calc(100% + 12px)",
             right: 0,
             zIndex: 1400,
-                        minWidth: 220,
+            minWidth: 220,
             maxWidth: 380,
             boxShadow: 6,
             borderRadius: 2,
@@ -181,71 +194,85 @@ const DownloadNotifications: React.FC = () => {
               overflow: "auto",
             }}
           >
-            {hasTransfers && transfers.map((transfer) => (
-              <Box key={transfer.id}>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    mb: 0.5,
-                  }}
-                >
-                  <Typography
-                    variant="body2"
-                    fontWeight="medium"
-                    color="text.secondary"
-                    sx={{ flex: 1 }}
+            {hasTransfers &&
+              transfers.map((transfer) => (
+                <Box key={transfer.id}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      mb: 0.5,
+                    }}
                   >
-                    {transfer.label
-                      ? removePercentage(transfer.label)
-                      : (transfer.type === "download"
-                        ? "Preparing archive..."
-                        : transfer.type === "upload"
-                          ? "Preparing upload..."
-                          : "Compressing selection...")}
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleCancel(transfer)}
-                    sx={{ ml: 1, p: 0.5 }}
+                    <Typography
+                      variant="body2"
+                      fontWeight="medium"
+                      color="text.secondary"
+                      sx={{ flex: 1 }}
+                    >
+                      {transfer.label
+                        ? removePercentage(transfer.label)
+                        : transfer.type === "download"
+                          ? "Preparing archive..."
+                          : transfer.type === "upload"
+                            ? "Preparing upload..."
+                            : "Compressing selection..."}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleCancel(transfer)}
+                      sx={{ ml: 1, p: 0.5 }}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                  <Tooltip
+                    title={`${Math.round(transfer.progress)}%`}
+                    arrow
+                    placement="top"
                   >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
+                    <LinearProgress
+                      variant="determinate"
+                      value={transfer.progress}
+                      sx={{ height: 6, borderRadius: 1, cursor: "pointer" }}
+                    />
+                  </Tooltip>
                 </Box>
-                <Tooltip title={`${Math.round(transfer.progress)}%`} arrow placement="top">
-                  <LinearProgress
-                    variant="determinate"
-                    value={transfer.progress}
-                    sx={{ height: 6, borderRadius: 1, cursor: "pointer" }}
-                  />
-                </Tooltip>
-              </Box>
-            ))}
+              ))}
 
-            {hasCompletedTransfers && completedTransfers.map((transfer) => (
-              <Box key={transfer.id}>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Typography variant="body2" fontWeight="medium" color="text.secondary">
-                    {transfer.label ||
-                      (transfer.type === "download"
-                        ? "Download complete"
-                        : transfer.type === "upload"
-                          ? "Upload complete"
-                          : "Compression complete")}
-                  </Typography>
-                  <Typography variant="caption" color="success.main" fontWeight="bold">
-                    ✓
-                  </Typography>
+            {hasCompletedTransfers &&
+              completedTransfers.map((transfer) => (
+                <Box key={transfer.id}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      fontWeight="medium"
+                      color="text.secondary"
+                    >
+                      {transfer.label ||
+                        (transfer.type === "download"
+                          ? "Download complete"
+                          : transfer.type === "upload"
+                            ? "Upload complete"
+                            : "Compression complete")}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="success.main"
+                      fontWeight="bold"
+                    >
+                      ✓
+                    </Typography>
+                  </Box>
                 </Box>
-              </Box>
-            ))}
+              ))}
 
             {!hasTransfers && !hasCompletedTransfers && (
               <Typography

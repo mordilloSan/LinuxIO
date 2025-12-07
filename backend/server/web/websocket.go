@@ -349,6 +349,20 @@ func WebSocketHandler(c *gin.Context) {
 				RequestID: reqId,
 			})
 
+		case "unsubscribe_download_progress":
+			reqId := wsMsg.Data
+			if reqId == "" {
+				logger.Warnf("[WebSocket] unsubscribe_download_progress with empty reqId")
+				continue
+			}
+			key := sess.SessionID + ":" + reqId
+			logger.Debugf("[WebSocket] Unsubscribing from download progress: %s", key)
+			GlobalProgressBroadcaster.Unregister(key)
+			_ = safeConn.WriteJSON(WSResponse{
+				Type:      "download_unsubscribed",
+				RequestID: reqId,
+			})
+
 		case "subscribe_compression_progress":
 			reqId := wsMsg.Data
 			if reqId == "" {
@@ -374,6 +388,20 @@ func WebSocketHandler(c *gin.Context) {
 
 			_ = safeConn.WriteJSON(WSResponse{
 				Type:      "compression_subscribed",
+				RequestID: reqId,
+			})
+
+		case "unsubscribe_compression_progress":
+			reqId := wsMsg.Data
+			if reqId == "" {
+				logger.Warnf("[WebSocket] unsubscribe_compression_progress with empty reqId")
+				continue
+			}
+			key := sess.SessionID + ":" + reqId
+			logger.Debugf("[WebSocket] Unsubscribing from compression progress: %s", key)
+			GlobalProgressBroadcaster.Unregister(key)
+			_ = safeConn.WriteJSON(WSResponse{
+				Type:      "compression_unsubscribed",
 				RequestID: reqId,
 			})
 
