@@ -24,9 +24,7 @@ function redirectToSignIn() {
   const params = new URLSearchParams(window.location.search);
   const existing = params.get("redirect");
   const current =
-    window.location.pathname +
-    window.location.search +
-    window.location.hash;
+    window.location.pathname + window.location.search + window.location.hash;
   const target = existing || current;
 
   const to = `/sign-in${target ? `?redirect=${encodeURIComponent(target)}` : ""}`;

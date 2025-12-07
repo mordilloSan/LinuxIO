@@ -2,7 +2,6 @@ import { ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
 import React, { PropsWithChildren, useMemo } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
-import DownloadNotifications from "@/components/filebrowser/DownloadNotifications";
 import PageLoader from "@/components/loaders/PageLoader";
 import { ConfigProvider } from "@/contexts/ConfigContext";
 import { FileTransferProvider } from "@/contexts/FileTransferContext";
@@ -61,7 +60,6 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
             <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
           </AuthedThemeShell>
         </ConfigProvider>
-        <DownloadNotifications />
       </FileTransferProvider>
     </WebSocketProvider>
   );

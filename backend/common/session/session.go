@@ -23,11 +23,12 @@ import (
 type DeleteReason string
 
 const (
-	ReasonLogout     DeleteReason = "logout"
-	ReasonGCIdle     DeleteReason = "gc_idle"
-	ReasonGCAbsolute DeleteReason = "gc_absolute"
-	ReasonManual     DeleteReason = "manual"
-	ReasonServerQuit DeleteReason = "server_quit"
+	ReasonLogout        DeleteReason = "logout"
+	ReasonGCIdle        DeleteReason = "gc_idle"
+	ReasonGCAbsolute    DeleteReason = "gc_absolute"
+	ReasonManual        DeleteReason = "manual"
+	ReasonServerQuit    DeleteReason = "server_quit"
+	ReasonBridgeFailure DeleteReason = "bridge_failure"
 )
 
 type SessionConfig struct {
@@ -90,6 +91,10 @@ type Session struct {
 	// Persistent bridge connection (not serialized)
 	bridgeConn   net.Conn
 	bridgeConnMu sync.Mutex
+
+	// Termination handler (not serialized)
+	terminateFunc func(DeleteReason) error
+	terminateMu   sync.Mutex
 }
 
 // -----------------------------------------------------------------------------
@@ -193,6 +198,25 @@ func (s *Session) CloseBridgeConn() error {
 		return err
 	}
 	return nil
+}
+
+// Terminate invokes the session's termination handler if set.
+// This allows the session to request its own deletion (e.g., on bridge failure).
+func (s *Session) Terminate(reason DeleteReason) error {
+	s.terminateMu.Lock()
+	fn := s.terminateFunc
+	s.terminateMu.Unlock()
+	if fn != nil {
+		return fn(reason)
+	}
+	return nil
+}
+
+// setTerminateFunc sets the termination handler for this session.
+func (s *Session) setTerminateFunc(fn func(DeleteReason) error) {
+	s.terminateMu.Lock()
+	s.terminateFunc = fn
+	s.terminateMu.Unlock()
 }
 
 // -----------------------------------------------------------------------------
@@ -315,6 +339,11 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 		return nil, err
 	}
 
+	// Set up termination handler so the session can delete itself
+	sess.setTerminateFunc(func(reason DeleteReason) error {
+		return m.DeleteSession(sess.SessionID, reason)
+	})
+
 	logger.Infof("Created session for user '%s'", user.Username)
 	return sess, nil
 }
@@ -327,7 +356,15 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 	if !ok {
 		return nil, errors.New("session not found")
 	}
-	return m.decode(b)
+	sess, err := m.decode(b)
+	if err != nil {
+		return nil, err
+	}
+	// Restore termination handler (not serialized)
+	sess.setTerminateFunc(func(reason DeleteReason) error {
+		return m.DeleteSession(sess.SessionID, reason)
+	})
+	return sess, nil
 }
 
 func (m *Manager) DeleteSession(id string, r DeleteReason) error {
