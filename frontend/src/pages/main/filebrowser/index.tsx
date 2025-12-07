@@ -78,9 +78,7 @@ const normalizeUploadRelativePath = (path: string) =>
     .filter(Boolean)
     .join("/");
 
-const buildEntriesFromFileList = (
-  files: FileList | null,
-): DroppedEntry[] => {
+const buildEntriesFromFileList = (files: FileList | null): DroppedEntry[] => {
   if (!files?.length) return [];
   const directories = new Set<string>();
   const entries: DroppedEntry[] = [];
@@ -486,7 +484,6 @@ const FileBrowser: React.FC = () => {
   const handleDelete = useCallback(() => {
     handleCloseContextMenu();
     const paths = Array.from(selectedPaths);
-    console.log("Delete clicked, selectedPaths:", paths);
     if (paths.length > 0) {
       setPendingDeletePaths(paths);
       setDeleteDialog(true);
@@ -499,7 +496,6 @@ const FileBrowser: React.FC = () => {
     if (!pendingDeletePaths.length) {
       return;
     }
-    console.log("Confirming delete for paths:", pendingDeletePaths);
     deleteItems(pendingDeletePaths);
     setPendingDeletePaths([]);
   }, [deleteItems, pendingDeletePaths]);
@@ -623,18 +619,10 @@ const FileBrowser: React.FC = () => {
     try {
       setIsSavingFile(true);
       const content = editorRef.current.getContent();
-      console.log(
-        "Saving file:",
-        editingPath,
-        "Content length:",
-        content.length,
-      );
-      const response = await axios.put("/navigator/api/resources", content, {
+      await axios.put("/navigator/api/resources", content, {
         params: { path: editingPath },
         headers: { "Content-Type": "text/plain" },
       });
-      console.log("Save response:", response);
-
       toast.success("File saved successfully!");
       setIsEditorDirty(false);
 
@@ -1114,7 +1102,9 @@ const FileBrowser: React.FC = () => {
           {uploadEntries.length > 0 && (
             <List dense sx={{ mt: 1.5, maxHeight: 240, overflowY: "auto" }}>
               {uploadEntries.map((entry) => (
-                <ListItem key={`${entry.isDirectory ? "dir" : "file"}-${entry.relativePath}`}>
+                <ListItem
+                  key={`${entry.isDirectory ? "dir" : "file"}-${entry.relativePath}`}
+                >
                   <ListItemText
                     primary={entry.relativePath}
                     secondary={entry.isDirectory ? "Folder" : "File"}
@@ -1131,7 +1121,10 @@ const FileBrowser: React.FC = () => {
           >
             Clear
           </Button>
-          <Button onClick={handleCloseUploadDialog} disabled={isUploadProcessing}>
+          <Button
+            onClick={handleCloseUploadDialog}
+            disabled={isUploadProcessing}
+          >
             Cancel
           </Button>
           <Button

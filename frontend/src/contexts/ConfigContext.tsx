@@ -1,4 +1,5 @@
 // src/contexts/ConfigContext.tsx
+import type { AxiosError } from "axios";
 import React, {
   createContext,
   useEffect,
@@ -8,6 +9,7 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
+import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
   ConfigContextType,
@@ -38,6 +40,7 @@ export const ConfigContext = createContext<ConfigContextType | undefined>(
 export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [isLoaded, setLoaded] = useState(false);
+  const { signOut } = useAuth();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -45,8 +48,15 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       try {
         const r = await axios.get("/theme/get", { signal: controller.signal });
         setConfig(applyDefaults(r.data));
-      } catch {
+      } catch (error: unknown) {
+        const status = (error as AxiosError)?.response?.status;
         toast.error("Session expired. Please sign in again.");
+
+        if (status === 500) {
+          await signOut();
+          return;
+        }
+
         window.location.assign("/sign-in");
         return;
       } finally {
@@ -54,7 +64,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [signOut]);
 
   const save = useCallback(
     (cfg: AppConfig) => {

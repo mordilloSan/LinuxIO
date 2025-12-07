@@ -182,52 +182,6 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	return privileged, nil
 }
 
-// GetBridgeBinaryPath returns an absolute or name-only path for the bridge.
-func GetBridgeBinaryPath(override string) string {
-	const binaryName = "linuxio-bridge"
-
-	if override != "" && isExec(override) {
-		return override
-	}
-	if v := os.Getenv("LINUXIO_BRIDGE_BIN"); v != "" && isExec(v) {
-		return v
-	}
-
-	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), binaryName)
-		if isExec(candidate) {
-			return candidate
-		}
-	}
-	if path, err := exec.LookPath(binaryName); err == nil && isExec(path) {
-		return path
-	}
-	logger.Debugf("[bridge.GetBridgeBinaryPath] %s not found beside server, or in user $PATH; consider installing into a well-known path or setting LINUXIO_BRIDGE_BIN.", binaryName)
-	return ""
-}
-
-func isExec(p string) bool {
-	st, err := os.Stat(p)
-	if err != nil || st.IsDir() {
-		return false
-	}
-	return st.Mode()&0o111 != 0
-}
-
-func getAuthHelperPath() string {
-	if v := os.Getenv("LINUXIO_PAM_HELPER"); v != "" && isExec(v) {
-		return v
-	}
-	const legacy = "/usr/local/bin/linuxio-auth-helper"
-	if isExec(legacy) {
-		return legacy
-	}
-	if p, err := exec.LookPath("linuxio-auth-helper"); err == nil && isExec(p) {
-		return p
-	}
-	return ""
-}
-
 // ============================================================================
 // Comunication with the bridge
 // ============================================================================
@@ -272,6 +226,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		logger.ErrorKV("bridge call failed: invalid socket path",
 			"user", sess.User.Username,
 			"error", err)
+		terminateSessionOnBridgeFailure(sess)
 		return nil, err
 	}
 
@@ -287,8 +242,9 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 	if err != nil {
 		logger.ErrorKV("bridge call failed: connection timeout",
 			"user", sess.User.Username,
-			"socket_path", socketPath,
+			"command", command,
 			"error", err)
+		terminateSessionOnBridgeFailure(sess)
 		return nil, err
 	}
 	defer func() {
@@ -308,6 +264,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 			"type", reqType,
 			"command", command,
 			"error", err2)
+		terminateSessionOnBridgeFailure(sess)
 		return nil, err
 	}
 
@@ -319,6 +276,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 			"type", reqType,
 			"command", command,
 			"error", err2)
+		terminateSessionOnBridgeFailure(sess)
 		return nil, err
 	}
 
@@ -339,6 +297,7 @@ var ErrEmptyBridgeOutput = errors.New("bridge returned empty output")
 func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result interface{}) error {
 	raw, err := CallWithSession(sess, reqType, command, args)
 	if err != nil {
+		terminateSessionOnBridgeFailure(sess)
 		return err
 	}
 
@@ -547,4 +506,65 @@ func UploadToSession(sess *session.Session, reqType, command string, args []stri
 		"command", command)
 
 	return nil
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+func terminateSessionOnBridgeFailure(sess *session.Session) {
+	if sess == nil {
+		return
+	}
+	if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
+		logger.WarnKV("failed to terminate session after bridge failure",
+			"user", sess.User.Username,
+			"error", err)
+	}
+}
+
+// GetBridgeBinaryPath returns an absolute or name-only path for the bridge.
+func GetBridgeBinaryPath(override string) string {
+	const binaryName = "linuxio-bridge"
+
+	if override != "" && isExec(override) {
+		return override
+	}
+	if v := os.Getenv("LINUXIO_BRIDGE_BIN"); v != "" && isExec(v) {
+		return v
+	}
+
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), binaryName)
+		if isExec(candidate) {
+			return candidate
+		}
+	}
+	if path, err := exec.LookPath(binaryName); err == nil && isExec(path) {
+		return path
+	}
+	logger.Debugf("[bridge.GetBridgeBinaryPath] %s not found beside server, or in user $PATH; consider installing into a well-known path or setting LINUXIO_BRIDGE_BIN.", binaryName)
+	return ""
+}
+
+func isExec(p string) bool {
+	st, err := os.Stat(p)
+	if err != nil || st.IsDir() {
+		return false
+	}
+	return st.Mode()&0o111 != 0
+}
+
+func getAuthHelperPath() string {
+	if v := os.Getenv("LINUXIO_PAM_HELPER"); v != "" && isExec(v) {
+		return v
+	}
+	const legacy = "/usr/local/bin/linuxio-auth-helper"
+	if isExec(legacy) {
+		return legacy
+	}
+	if p, err := exec.LookPath("linuxio-auth-helper"); err == nil && isExec(p) {
+		return p
+	}
+	return ""
 }

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import DownloadNotifications from "@/components/filebrowser/DownloadNotifications";
 import axios from "@/utils/axios";
 
 interface VersionResponse {
@@ -28,10 +29,13 @@ function Footer() {
   return (
     <Box
       sx={{
+        width: "100%",
         background: theme.footer?.background || theme.palette.background.paper,
         position: "relative",
+        zIndex: 1300,
       }}
     >
+
       <Grid container spacing={0}>
         {/* Left side links */}
         <Grid
@@ -39,8 +43,16 @@ function Footer() {
             xs: 12,
             md: 6,
           }}
-          sx={{ display: { xs: "none", md: "block" } }}
-        ></Grid>
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
+          }}
+        >
+          <ErrorBoundary>
+            <DownloadNotifications />
+          </ErrorBoundary>
+        </Grid>
 
         {/* Right side copyright */}
         <Grid

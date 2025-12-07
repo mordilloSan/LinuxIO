@@ -32,46 +32,51 @@ const Dashboard: React.FC = () => {
   if (!isLoaded) return null;
 
   return (
-    <Box sx={{ display: "flex", height: "100vh" }}>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <CssBaseline />
-      <Sidebar items={dashboardItems} />
-      <Box
-        sx={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          transition: theme.transitions.create(["margin-left", "width"], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-          ml: { md: `${sidebarWidth}px` },
-        }}
-      >
-        <Navbar onDrawerToggle={toggleMobileOpen} />
-
-        {/* Update Banner - shows on all pages */}
-        {updateInfo?.available && (
-          <UpdateBanner updateInfo={updateInfo} onDismiss={dismissUpdate} />
-        )}
-
+      <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        <Sidebar items={dashboardItems} />
         <Box
-          className="custom-scrollbar"
           sx={{
             flex: 1,
-            overflow: "auto",
-            background: theme.palette.background.default,
-            p: location.pathname.includes("/filebrowser")
-              ? 0
-              : { xs: 5, lg: 7 },
-            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            transition: theme.transitions.create(["margin-left", "width"], {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.leavingScreen,
+            }),
+            ml: { md: `${sidebarWidth}px` },
+            width: { xs: "100%", md: `calc(100% - ${sidebarWidth}px)` },
           }}
         >
-          <ErrorBoundary>
-            <Suspense fallback={<PageLoader />}>
-              <Outlet />
-            </Suspense>
-          </ErrorBoundary>
+          <Navbar onDrawerToggle={toggleMobileOpen} />
+
+          {/* Update Banner - shows on all pages */}
+          {updateInfo?.available && (
+            <UpdateBanner updateInfo={updateInfo} onDismiss={dismissUpdate} />
+          )}
+
+          <Box
+            className="custom-scrollbar"
+            sx={{
+              flex: 1,
+              overflow: "auto",
+              background: theme.palette.background.default,
+              p: location.pathname.includes("/filebrowser")
+                ? 0
+                : { xs: 5, lg: 7 },
+              position: "relative",
+            }}
+          >
+            <ErrorBoundary>
+              <Suspense fallback={<PageLoader />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
+          </Box>
         </Box>
+      </Box>
+      <Box sx={{ flexShrink: 0, width: "100%" }}>
         <Footer />
       </Box>
     </Box>
