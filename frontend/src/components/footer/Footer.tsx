@@ -1,4 +1,4 @@
-import { Grid, Box, useTheme, Typography } from "@mui/material";
+import { Box, useTheme, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
@@ -35,33 +35,21 @@ function Footer() {
         zIndex: 1300,
       }}
     >
-
-      <Grid container spacing={0}>
-        {/* Left side links */}
-        <Grid
-          size={{
-            xs: 12,
-            md: 6,
-          }}
+      <Box
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          px: 1,
+        }}
+      >
+        <Box
           sx={{
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-start",
+            flexShrink: 0,
           }}
-        >
-          <ErrorBoundary>
-            <DownloadNotifications />
-          </ErrorBoundary>
-        </Grid>
-
-        {/* Right side copyright */}
-        <Grid
-          size={{
-            xs: 12,
-            md: 6,
-          }}
-          container
-          justifyContent="flex-end"
         >
           <ErrorBoundary>
             {data?.current_version && (
@@ -70,15 +58,25 @@ function Footer() {
                 sx={{
                   opacity: 0.6,
                   fontSize: "0.7rem",
-                  padding: 1,
                 }}
               >
                 {data.current_version}
               </Typography>
             )}
           </ErrorBoundary>
-        </Grid>
-      </Grid>
+        </Box>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            ml: "auto",
+          }}
+        >
+          <ErrorBoundary>
+            <DownloadNotifications />
+          </ErrorBoundary>
+        </Box>
+      </Box>
     </Box>
   );
 }
