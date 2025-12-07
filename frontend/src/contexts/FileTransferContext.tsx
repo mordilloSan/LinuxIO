@@ -84,6 +84,17 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const ws = useWebSocket();
   const cleanupTimersRef = useRef<Map<string, any>>(new Map());
 
+  const sendProgressUnsubscribe = useCallback(
+    (type: "download" | "compression", requestId: string) => {
+      const messageType =
+        type === "download"
+          ? "unsubscribe_download_progress"
+          : "unsubscribe_compression_progress";
+      ws.send({ type: messageType, data: requestId });
+    },
+    [ws],
+  );
+
   const transfers: Transfer[] = [...downloads, ...uploads, ...compressions];
 
   const updateDownload = useCallback(
@@ -98,15 +109,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [],
   );
 
-  const removeDownload = useCallback((id: string) => {
-    setDownloads((prev) => prev.filter((d) => d.id !== id));
-    const timers = cleanupTimersRef.current.get(id);
-    if (timers) {
-      if (timers.fallback) clearTimeout(timers.fallback);
-      if (timers.unsubscribe) timers.unsubscribe();
-      cleanupTimersRef.current.delete(id);
-    }
-  }, []);
+  const removeDownload = useCallback(
+    (id: string) => {
+      setDownloads((prev) => prev.filter((d) => d.id !== id));
+      const timers = cleanupTimersRef.current.get(id);
+      if (timers) {
+        if (timers.fallback) clearTimeout(timers.fallback);
+        if (timers.unsubscribe) timers.unsubscribe();
+        cleanupTimersRef.current.delete(id);
+      }
+      sendProgressUnsubscribe("download", id);
+    },
+    [sendProgressUnsubscribe],
+  );
 
   const startDownload = useCallback(
     async (paths: string[]) => {
@@ -282,15 +297,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [],
   );
 
-  const removeCompression = useCallback((id: string) => {
-    setCompressions((prev) => prev.filter((c) => c.id !== id));
-    const timers = cleanupTimersRef.current.get(id);
-    if (timers) {
-      if (timers.fallback) clearTimeout(timers.fallback);
-      if (timers.unsubscribe) timers.unsubscribe();
-      cleanupTimersRef.current.delete(id);
-    }
-  }, []);
+  const removeCompression = useCallback(
+    (id: string) => {
+      setCompressions((prev) => prev.filter((c) => c.id !== id));
+      const timers = cleanupTimersRef.current.get(id);
+      if (timers) {
+        if (timers.fallback) clearTimeout(timers.fallback);
+        if (timers.unsubscribe) timers.unsubscribe();
+        cleanupTimersRef.current.delete(id);
+      }
+      sendProgressUnsubscribe("compression", id);
+    },
+    [sendProgressUnsubscribe],
+  );
 
   const startCompression = useCallback(
     async ({

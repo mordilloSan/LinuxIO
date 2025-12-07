@@ -136,6 +136,21 @@ static void secure_bzero(void *p, size_t n)
 }
 #endif
 
+static const char *limit_reason_for_signal(int sig)
+{
+  switch (sig)
+  {
+  case SIGXCPU:
+    return "exceeded RLIMIT_CPU (CPU time limit)";
+#ifdef SIGXFSZ
+  case SIGXFSZ:
+    return "exceeded RLIMIT_FSIZE (file size limit)";
+#endif
+  default:
+    return NULL;
+  }
+}
+
 // -------- JSON escaping (FIX #1) --------
 static int json_escape_string(char *dst, size_t dstsz, const char *src)
 {
@@ -733,22 +748,23 @@ static int user_has_sudo(const struct passwd *pw, const char *password, int *out
   return 0;
 }
 
-// FIX #7: Resource limits moved to function (called in bridge child)
+// Resource limits for the bridge
 static void set_resource_limits(void)
 {
   struct rlimit rl;
-  rl.rlim_cur = rl.rlim_max = 64;
+  rl.rlim_cur = rl.rlim_max = 5UL * 60;
   (void)setrlimit(RLIMIT_CPU, &rl);
+
+  rl.rlim_cur = rl.rlim_max = 1024;
   (void)setrlimit(RLIMIT_NOFILE, &rl);
+
   int nproc_limit = env_get_int("LINUXIO_RLIMIT_NPROC", 512, 10, 2048);
   rl.rlim_cur = rl.rlim_max = nproc_limit;
   (void)setrlimit(RLIMIT_NPROC, &rl);
-  rl.rlim_cur = rl.rlim_max = 1UL * 1024 * 1024 * 1024;
-  (void)setrlimit(RLIMIT_FSIZE, &rl);
+
   rl.rlim_cur = rl.rlim_max = 16UL * 1024 * 1024 * 1024;
   (void)setrlimit(RLIMIT_AS, &rl);
-  rl.rlim_cur = rl.rlim_max = 0;
-  (void)setrlimit(RLIMIT_CORE, &rl);
+
 }
 
 // FIX #3: Improved socket path validation
@@ -1217,6 +1233,26 @@ int main(void)
     int status = 0;
     while (waitpid(child, &status, 0) < 0 && errno == EINTR)
     {
+    }
+    if (WIFSIGNALED(status))
+    {
+      int sig = WTERMSIG(status);
+      const char *sigName = strsignal(sig);
+      const char *limit_reason = limit_reason_for_signal(sig);
+      if (limit_reason)
+      {
+        journal_errorf("bridge child killed by signal %d (%s): %s",
+                       sig, sigName ? sigName : "unknown", limit_reason);
+      }
+      else
+      {
+        journal_errorf("bridge child killed by signal %d (%s)",
+                       sig, sigName ? sigName : "unknown");
+      }
+    }
+    else if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+    {
+      journal_errorf("bridge child exited with status %d", WEXITSTATUS(status));
     }
     int exitcode = WIFEXITED(status) ? WEXITSTATUS(status) : (WIFSIGNALED(status) ? 128 + WTERMSIG(status) : 1);
 
