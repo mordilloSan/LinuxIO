@@ -122,16 +122,6 @@ export const useFileMutations = ({
       invalidateListing();
       toast.success("Archive created successfully");
     },
-    onError: (error: any) => {
-      if (
-        error?.name === "CanceledError" ||
-        error?.name === "AbortError" ||
-        error?.message === "canceled"
-      ) {
-        return;
-      }
-      toast.error(error.response?.data?.error || "Failed to create archive");
-    },
   });
 
   const { mutateAsync: extractArchive, isPending: isExtracting } = useMutation({

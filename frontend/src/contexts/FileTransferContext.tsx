@@ -83,6 +83,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [compressions, setCompressions] = useState<Compression[]>([]);
   const ws = useWebSocket();
   const cleanupTimersRef = useRef<Map<string, any>>(new Map());
+  const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
+  const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
 
   const sendProgressUnsubscribe = useCallback(
     (type: "download" | "compression", requestId: string) => {
@@ -94,6 +96,33 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     [ws],
   );
+
+  const allocateDownloadLabelBase = useCallback((base: string, id: string) => {
+    const counters = downloadLabelCounterRef.current;
+    const current = counters.get(base) ?? 0;
+    const next = current + 1;
+    counters.set(base, next);
+    downloadLabelAssignmentRef.current.set(id, base);
+    return next === 1 ? base : `${base} (${next})`;
+  }, []);
+
+  const releaseDownloadLabelBase = useCallback((id: string) => {
+    const base = downloadLabelAssignmentRef.current.get(id);
+    if (!base) {
+      return;
+    }
+    downloadLabelAssignmentRef.current.delete(id);
+    const counters = downloadLabelCounterRef.current;
+    const current = counters.get(base);
+    if (!current) {
+      return;
+    }
+    if (current <= 1) {
+      counters.delete(base);
+    } else {
+      counters.set(base, current - 1);
+    }
+  }, []);
 
   const transfers: Transfer[] = [...downloads, ...uploads, ...compressions];
 
@@ -118,9 +147,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         if (timers.unsubscribe) timers.unsubscribe();
         cleanupTimersRef.current.delete(id);
       }
+      releaseDownloadLabelBase(id);
       sendProgressUnsubscribe("download", id);
     },
-    [sendProgressUnsubscribe],
+    [releaseDownloadLabelBase, sendProgressUnsubscribe],
   );
 
   const startDownload = useCallback(
@@ -130,12 +160,33 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const reqId = crypto.randomUUID();
       const abortController = new AbortController();
 
+      const candidateLabelBase =
+        paths.length === 1
+          ? paths[0].split("/").pop() || "download"
+          : "download.zip";
+      const downloadLabelBase = allocateDownloadLabelBase(
+        candidateLabelBase,
+        reqId,
+      );
+
+      const formatDownloadLabel = (
+        stage: string,
+        options: { percent?: number; name?: string } = {},
+      ) => {
+        const targetName = options.name ?? downloadLabelBase;
+        const base = `${stage} ${targetName}`;
+        if (options.percent !== undefined) {
+          return `${base} (${options.percent}%)`;
+        }
+        return base;
+      };
+
       const download: Download = {
         id: reqId,
         type: "download",
         paths,
         progress: 0,
-        label: "Preparing archive (0%)",
+        label: formatDownloadLabel("Preparing", { percent: 0 }),
         abortController,
       };
 
@@ -163,12 +214,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             const percent = Math.min(99, Math.round(msg.data.percent));
             updateDownload(reqId, {
               progress: percent,
-              label: `Preparing archive (${percent}%)`,
+              label: formatDownloadLabel("Preparing", { percent }),
             });
           } else if (msg.type === "download_ready") {
             updateDownload(reqId, {
               progress: 100,
-              label: "Starting download...",
+              label: formatDownloadLabel("Starting download"),
             });
           }
         });
@@ -178,19 +229,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         // Fallback timer if WebSocket doesn't send progress
         fallbackTimer = setTimeout(() => {
           if (!hasReceivedProgress) {
-            const prepTimer = setInterval(() => {
-              setDownloads((prev) =>
-                prev.map((d) => {
-                  if (d.id !== reqId) return d;
-                  const next = Math.min(d.progress + 5, 90);
-                  return {
-                    ...d,
-                    progress: next,
-                    label: `Preparing archive (${next}%)`,
-                  };
-                }),
-              );
-            }, 400);
+          const prepTimer = setInterval(() => {
+            setDownloads((prev) =>
+              prev.map((d) => {
+                if (d.id !== reqId) return d;
+                const next = Math.min(d.progress + 5, 90);
+                return {
+                  ...d,
+                  progress: next,
+                  label: formatDownloadLabel("Preparing", { percent: next }),
+                };
+              }),
+            );
+          }, 400);
             fallbackTimer = prepTimer as any;
           }
         }, 2000);
@@ -204,17 +255,17 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           responseType: "blob",
           signal: abortController.signal,
           onDownloadProgress: (progressEvent) => {
-            if (progressEvent.total) {
-              const percentComplete = Math.round(
-                (progressEvent.loaded / progressEvent.total) * 100,
-              );
-              updateDownload(reqId, {
-                progress: percentComplete,
-                label: `Downloading (${percentComplete}%)`,
-              });
-            }
-          },
-        });
+          if (progressEvent.total) {
+            const percentComplete = Math.round(
+              (progressEvent.loaded / progressEvent.total) * 100,
+            );
+            updateDownload(reqId, {
+              progress: percentComplete,
+              label: formatDownloadLabel("Downloading", { percent: percentComplete }),
+            });
+          }
+        },
+      });
 
         // Clean up timers
         if (fallbackTimer) {
@@ -229,17 +280,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         const disposition = response.headers["content-disposition"] || "";
         const utfName = disposition.match(/filename\*?=utf-8''([^;]+)/i);
         const simpleName = disposition.match(/filename="?([^";]+)"?/i);
-        const fallbackName =
-          paths.length === 1
-            ? paths[0].split("/").pop() || "download"
-            : "download.zip";
+        const fallbackName = downloadLabelBase;
         const fileName = utfName
           ? decodeURIComponent(utfName[1])
           : simpleName?.[1] || fallbackName;
 
         updateDownload(reqId, {
           progress: 100,
-          label: "Finalizing...",
+          label: formatDownloadLabel("Downloaded", { name: fileName }),
         });
 
         // Trigger browser download
@@ -253,7 +301,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         link.remove();
         window.URL.revokeObjectURL(blobUrl);
 
-        toast.success("Download started");
+        toast.success(formatDownloadLabel("Downloaded", { name: fileName }));
         setTimeout(() => removeDownload(reqId), 1000);
       } catch (err: any) {
         if (err?.name === "AbortError" || err?.name === "CanceledError") {
@@ -270,7 +318,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         removeDownload(reqId);
       }
     },
-    [ws, updateDownload, removeDownload],
+    [ws, updateDownload, removeDownload, allocateDownloadLabelBase],
   );
 
   const cancelDownload = useCallback(
@@ -305,9 +353,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         timers.unsubscribe();
       }
       cleanupTimersRef.current.delete(id);
+      releaseDownloadLabelBase(id);
       sendProgressUnsubscribe("compression", id);
     },
-    [sendProgressUnsubscribe],
+    [releaseDownloadLabelBase, sendProgressUnsubscribe],
   );
 
   const startCompression = useCallback(
@@ -325,7 +374,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const id = crypto.randomUUID();
       const requestId = id;
       const abortController = new AbortController();
-      const labelBase = archiveName || "archive.zip";
+      const candidateLabelBase = archiveName || "archive.zip";
+      const labelBase = allocateDownloadLabelBase(candidateLabelBase, id);
 
       const compression: Compression = {
         id,
@@ -414,7 +464,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         cleanupTimersRef.current.delete(id);
       }
     },
-    [removeCompression, updateCompression, ws],
+    [allocateDownloadLabelBase, removeCompression, updateCompression, ws],
   );
 
   const cancelCompression = useCallback(
