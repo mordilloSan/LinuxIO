@@ -416,7 +416,7 @@ func archiveCompressHandler(c *gin.Context) {
 			})
 			return
 		}
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+	} else if !errors.Is(err, os.ErrNotExist) {
 		logger.Debugf("failed to stat destination: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("unable to validate destination: %v", err),

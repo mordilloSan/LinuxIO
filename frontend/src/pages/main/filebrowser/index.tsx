@@ -358,7 +358,8 @@ const FileBrowser: React.FC = () => {
         if (candidateExt !== ext) {
           return;
         }
-        const { root: candidateRoot, suffix } = stripNumericSuffix(candidateBase);
+        const { root: candidateRoot, suffix } =
+          stripNumericSuffix(candidateBase);
         if (candidateRoot !== root) {
           return;
         }
@@ -605,8 +606,7 @@ const FileBrowser: React.FC = () => {
       const isConflict = err?.response?.status === 409;
       if (isConflict) {
         const message =
-          err?.response?.data?.error ||
-          `${archiveName} already exists`;
+          err?.response?.data?.error || `${archiveName} already exists`;
         toast.error(message);
         pendingArchiveConflictNamesRef.current.add(archiveName);
       } else if (
