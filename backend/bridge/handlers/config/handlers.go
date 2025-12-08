@@ -20,8 +20,8 @@ type themePayload struct {
 
 func ThemeHandlers() map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
-		"theme_get": themeGet,
-		"theme_set": themeSet,
+		"theme_get": ipc.WrapSimpleHandler(themeGet),
+		"theme_set": ipc.WrapSimpleHandler(themeSet),
 	}
 }
 

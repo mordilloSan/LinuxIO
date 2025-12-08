@@ -15,44 +15,44 @@ var systemDBusMu sync.Mutex
 func DbusHandlers() map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
 		// System control
-		"Reboot":   func([]string) (any, error) { return nil, CallLogin1Action("Reboot") },
-		"PowerOff": func([]string) (any, error) { return nil, CallLogin1Action("PowerOff") },
+		"Reboot":   ipc.WrapSimpleHandler(func([]string) (any, error) { return nil, CallLogin1Action("Reboot") }),
+		"PowerOff": ipc.WrapSimpleHandler(func([]string) (any, error) { return nil, CallLogin1Action("PowerOff") }),
 
 		// Updates management
-		"GetUpdates":     func([]string) (any, error) { return GetUpdatesWithDetails() },
-		"InstallPackage": func(args []string) (any, error) { return nil, InstallPackage(args[0]) },
-		"GetAutoUpdates": func([]string) (any, error) { return getAutoUpdates() },
-		"SetAutoUpdates": func(args []string) (any, error) {
+		"GetUpdates":     ipc.WrapSimpleHandler(func([]string) (any, error) { return GetUpdatesWithDetails() }),
+		"InstallPackage": ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, InstallPackage(args[0]) }),
+		"GetAutoUpdates": ipc.WrapSimpleHandler(func([]string) (any, error) { return getAutoUpdates() }),
+		"SetAutoUpdates": ipc.WrapSimpleHandler(func(args []string) (any, error) {
 			if len(args) != 1 {
 				return nil, fmt.Errorf("SetAutoUpdates expects 1 JSON arg")
 			}
 			return setAutoUpdates(args[0])
-		},
-		"ApplyOfflineUpdates": func([]string) (any, error) { return applyOfflineUpdates() },
+		}),
+		"ApplyOfflineUpdates": ipc.WrapSimpleHandler(func([]string) (any, error) { return applyOfflineUpdates() }),
 
 		// Service management
-		"ListServices":   func([]string) (any, error) { return ListServices() },
-		"GetServiceInfo": func(args []string) (any, error) { return GetServiceInfo(args[0]) },
-		"GetServiceLogs": func(args []string) (any, error) {
+		"ListServices":   ipc.WrapSimpleHandler(func([]string) (any, error) { return ListServices() }),
+		"GetServiceInfo": ipc.WrapSimpleHandler(func(args []string) (any, error) { return GetServiceInfo(args[0]) }),
+		"GetServiceLogs": ipc.WrapSimpleHandler(func(args []string) (any, error) {
 			if len(args) < 2 {
 				return nil, fmt.Errorf("GetServiceLogs requires serviceName and lines")
 			}
 			return GetServiceLogs(args[0], args[1])
-		},
-		"StartService":   func(args []string) (any, error) { return nil, StartService(args[0]) },
-		"StopService":    func(args []string) (any, error) { return nil, StopService(args[0]) },
-		"RestartService": func(args []string) (any, error) { return nil, RestartService(args[0]) },
-		"ReloadService":  func(args []string) (any, error) { return nil, ReloadService(args[0]) },
-		"EnableService":  func(args []string) (any, error) { return nil, EnableService(args[0]) },
-		"DisableService": func(args []string) (any, error) { return nil, DisableService(args[0]) },
-		"MaskService":    func(args []string) (any, error) { return nil, MaskService(args[0]) },
-		"UnmaskService":  func(args []string) (any, error) { return nil, UnmaskService(args[0]) },
+		}),
+		"StartService":   ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, StartService(args[0]) }),
+		"StopService":    ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, StopService(args[0]) }),
+		"RestartService": ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, RestartService(args[0]) }),
+		"ReloadService":  ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, ReloadService(args[0]) }),
+		"EnableService":  ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, EnableService(args[0]) }),
+		"DisableService": ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, DisableService(args[0]) }),
+		"MaskService":    ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, MaskService(args[0]) }),
+		"UnmaskService":  ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, UnmaskService(args[0]) }),
 
 		// Network information
-		"GetNetworkInfo": func([]string) (any, error) { return GetNetworkInfo() },
+		"GetNetworkInfo": ipc.WrapSimpleHandler(func([]string) (any, error) { return GetNetworkInfo() }),
 
 		// Network configuration - IPv4
-		"SetIPv4Manual": func(args []string) (any, error) {
+		"SetIPv4Manual": ipc.WrapSimpleHandler(func(args []string) (any, error) {
 			if len(args) < 4 {
 				return nil, fmt.Errorf("SetIPv4Manual requires interface, addressCIDR, gateway, and dns servers")
 			}
@@ -61,8 +61,8 @@ func DbusHandlers() map[string]ipc.HandlerFunc {
 			gateway := args[2]
 			dnsServers := args[3:] // All remaining args are DNS servers
 			return nil, SetIPv4Manual(iface, addressCIDR, gateway, dnsServers)
-		},
-		"SetIPv4": func(args []string) (any, error) {
+		}),
+		"SetIPv4": ipc.WrapSimpleHandler(func(args []string) (any, error) {
 			if len(args) < 2 {
 				return nil, fmt.Errorf("SetIPv4 requires interface and method (dhcp/static)")
 			}
@@ -73,10 +73,10 @@ func DbusHandlers() map[string]ipc.HandlerFunc {
 			default:
 				return nil, fmt.Errorf("SetIPv4 method must be 'dhcp' or 'static'")
 			}
-		},
+		}),
 
 		// Network configuration - IPv6
-		"SetIPv6": func(args []string) (any, error) {
+		"SetIPv6": ipc.WrapSimpleHandler(func(args []string) (any, error) {
 			if len(args) < 2 {
 				return nil, fmt.Errorf("SetIPv6 requires interface and method (dhcp/static)")
 			}
@@ -92,15 +92,15 @@ func DbusHandlers() map[string]ipc.HandlerFunc {
 			default:
 				return nil, fmt.Errorf("SetIPv6 method must be 'dhcp' or 'static'")
 			}
-		},
+		}),
 
 		// Network configuration - Other
-		"SetMTU": func(args []string) (any, error) {
+		"SetMTU": ipc.WrapSimpleHandler(func(args []string) (any, error) {
 			if len(args) != 2 {
 				return nil, fmt.Errorf("SetMTU requires interface and MTU value")
 			}
 			return nil, SetMTU(args[0], args[1])
-		},
+		}),
 	}
 }
 

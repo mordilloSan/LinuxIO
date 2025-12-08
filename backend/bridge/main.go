@@ -371,7 +371,7 @@ func handleLegacyJSONRequest(reader io.Reader, conn net.Conn, id string) {
 					done <- result{nil, fmt.Errorf("panic: %v", r)}
 				}
 			}()
-			out, err := handler(req.Args)
+			out, err := handler(nil, req.Args)
 			done <- result{out, err}
 		}()
 
@@ -476,16 +476,17 @@ func handleFramedRequest(reader io.Reader, conn net.Conn, id string) {
 		}
 		done := make(chan result, 1)
 
-		go func() {
+		reqCtx := ipc.NewRequestContext(conn)
+		go func(ctx *ipc.RequestContext) {
 			defer func() {
 				if r := recover(); r != nil {
 					logger.ErrorKV("handler panic", "conn_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
 					done <- result{nil, fmt.Errorf("panic: %v", r)}
 				}
 			}()
-			out, err := handler(req.Args)
+			out, err := handler(ctx, req.Args)
 			done <- result{out, err}
-		}()
+		}(reqCtx)
 
 		select {
 		case r := <-done:

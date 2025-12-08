@@ -18,4 +18,16 @@ type Response struct {
 }
 
 // Optional helper signature for bridge-side handlers
-type HandlerFunc func([]string) (any, error)
+// HandlerFunc is the bridge handler signature. ctx will be nil for
+// legacy (non-framed) clients that do not support streaming updates.
+type HandlerFunc func(ctx *RequestContext, args []string) (any, error)
+
+// SimpleHandler is the legacy signature used by most handlers.
+type SimpleHandler func([]string) (any, error)
+
+// WrapSimpleHandler adapts a SimpleHandler into a context-aware handler.
+func WrapSimpleHandler(h SimpleHandler) HandlerFunc {
+	return func(_ *RequestContext, args []string) (any, error) {
+		return h(args)
+	}
+}
