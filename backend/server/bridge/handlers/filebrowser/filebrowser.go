@@ -680,13 +680,11 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string, p
 	}
 
 	// Determine if this is a single file or needs archiving
-	var needsArchive bool
-	if len(paths) > 1 {
-		needsArchive = true
-	} else if len(paths) == 1 {
-		// Check if single path is a directory
-		// We'll let the bridge determine this
-		needsArchive = false
+	needsArchive := len(paths) > 1
+	if !needsArchive && len(paths) == 1 {
+		if info, err := os.Stat(paths[0]); err == nil && info.IsDir() {
+			needsArchive = true
+		}
 	}
 
 	var tempPath, fileName string

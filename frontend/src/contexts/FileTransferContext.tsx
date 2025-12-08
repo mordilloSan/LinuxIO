@@ -161,10 +161,16 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const reqId = crypto.randomUUID();
       const abortController = new AbortController();
 
+      const sanitizeLabelBase = (path: string) => {
+        const trimmed = path.replace(/\/+$/, "");
+        if (!trimmed) {
+          return "download";
+        }
+        const segments = trimmed.split("/");
+        return segments[segments.length - 1] || "download";
+      };
       const candidateLabelBase =
-        paths.length === 1
-          ? paths[0].split("/").pop() || "download"
-          : "download.zip";
+        paths.length === 1 ? sanitizeLabelBase(paths[0]) : "download.zip";
       const downloadLabelBase = allocateDownloadLabelBase(
         candidateLabelBase,
         reqId,
@@ -290,7 +296,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
         updateDownload(reqId, {
           progress: 100,
-          label: formatDownloadLabel("Downloaded", { name: fileName }),
+          label: formatDownloadLabel("Downloaded", { name: downloadLabelBase }),
         });
 
         // Trigger browser download
@@ -304,7 +310,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         link.remove();
         window.URL.revokeObjectURL(blobUrl);
 
-        toast.success(formatDownloadLabel("Downloaded", { name: fileName }));
+        toast.success(formatDownloadLabel("Downloaded", { name: downloadLabelBase }));
         setTimeout(() => removeDownload(reqId), 1000);
       } catch (err: any) {
         if (err?.name === "AbortError" || err?.name === "CanceledError") {
