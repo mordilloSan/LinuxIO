@@ -83,6 +83,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [compressions, setCompressions] = useState<Compression[]>([]);
   const ws = useWebSocket();
   const cleanupTimersRef = useRef<Map<string, any>>(new Map());
+  const activeCompressionIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
 
@@ -347,6 +348,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const removeCompression = useCallback(
     (id: string) => {
+      if (!activeCompressionIdsRef.current.has(id)) {
+        return;
+      }
+      activeCompressionIdsRef.current.delete(id);
+
       setCompressions((prev) => prev.filter((c) => c.id !== id));
       const timers = cleanupTimersRef.current.get(id);
       if (timers?.unsubscribe) {
@@ -389,6 +395,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       };
 
       setCompressions((prev) => [...prev, compression]);
+      activeCompressionIdsRef.current.add(id);
 
       const applyReportedProgress = (rawPercent: number) => {
         const percent = Math.min(99, Math.round(rawPercent));

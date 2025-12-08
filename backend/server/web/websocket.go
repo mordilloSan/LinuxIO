@@ -122,6 +122,27 @@ func WebSocketHandler(c *gin.Context) {
 	}
 	channelMgr.Subscribe(initialRoute)
 
+	subscriptionCancels := struct {
+		mu      sync.Mutex
+		cancels map[string]context.CancelFunc
+	}{
+		cancels: make(map[string]context.CancelFunc),
+	}
+
+	addSubscriptionCancel := func(key string, cancel context.CancelFunc) {
+		subscriptionCancels.mu.Lock()
+		subscriptionCancels.cancels[key] = cancel
+		subscriptionCancels.mu.Unlock()
+	}
+
+	popSubscriptionCancel := func(key string) context.CancelFunc {
+		subscriptionCancels.mu.Lock()
+		cancel := subscriptionCancels.cancels[key]
+		delete(subscriptionCancels.cancels, key)
+		subscriptionCancels.mu.Unlock()
+		return cancel
+	}
+
 	done := make(chan struct{})
 	defer func() {
 		close(done)
@@ -329,6 +350,9 @@ func WebSocketHandler(c *gin.Context) {
 			key := sess.SessionID + ":" + reqId
 			logger.Debugf("[WebSocket] Subscribing to download progress: %s", key)
 
+			subCtx, cancel := context.WithCancel(ctx)
+			addSubscriptionCancel(key, cancel)
+
 			GlobalProgressBroadcaster.Register(key, func(update ProgressUpdate) {
 				_ = safeConn.WriteJSON(WSResponse{
 					Type:      update.Type,
@@ -337,12 +361,16 @@ func WebSocketHandler(c *gin.Context) {
 				})
 			})
 
-			// Unregister when WebSocket closes or context is cancelled
-			go func(subscriptionKey string) {
-				<-ctx.Done()
-				logger.Debugf("[WebSocket] Unsubscribing from download progress: %s", subscriptionKey)
-				GlobalProgressBroadcaster.Unregister(subscriptionKey)
-			}(key)
+			go func(subscriptionKey string, childCtx context.Context) {
+				<-childCtx.Done()
+				subscriptionCancels.mu.Lock()
+				delete(subscriptionCancels.cancels, subscriptionKey)
+				subscriptionCancels.mu.Unlock()
+				if ctx.Err() != nil {
+					logger.Debugf("[WebSocket] Unsubscribing from download progress: %s", subscriptionKey)
+					GlobalProgressBroadcaster.Unregister(subscriptionKey)
+				}
+			}(key, subCtx)
 
 			_ = safeConn.WriteJSON(WSResponse{
 				Type:      "download_subscribed",
@@ -357,6 +385,9 @@ func WebSocketHandler(c *gin.Context) {
 			}
 			key := sess.SessionID + ":" + reqId
 			logger.Debugf("[WebSocket] Unsubscribing from download progress: %s", key)
+			if cancel := popSubscriptionCancel(key); cancel != nil {
+				cancel()
+			}
 			GlobalProgressBroadcaster.Unregister(key)
 			_ = safeConn.WriteJSON(WSResponse{
 				Type:      "download_unsubscribed",
@@ -372,6 +403,9 @@ func WebSocketHandler(c *gin.Context) {
 			key := sess.SessionID + ":" + reqId
 			logger.Debugf("[WebSocket] Subscribing to compression progress: %s", key)
 
+			subCtx, cancel := context.WithCancel(ctx)
+			addSubscriptionCancel(key, cancel)
+
 			GlobalProgressBroadcaster.Register(key, func(update ProgressUpdate) {
 				_ = safeConn.WriteJSON(WSResponse{
 					Type:      update.Type,
@@ -380,11 +414,16 @@ func WebSocketHandler(c *gin.Context) {
 				})
 			})
 
-			go func(subscriptionKey string) {
-				<-ctx.Done()
-				logger.Debugf("[WebSocket] Unsubscribing from compression progress: %s", subscriptionKey)
-				GlobalProgressBroadcaster.Unregister(subscriptionKey)
-			}(key)
+			go func(subscriptionKey string, childCtx context.Context) {
+				<-childCtx.Done()
+				subscriptionCancels.mu.Lock()
+				delete(subscriptionCancels.cancels, subscriptionKey)
+				subscriptionCancels.mu.Unlock()
+				if ctx.Err() != nil {
+					logger.Debugf("[WebSocket] Unsubscribing from compression progress: %s", subscriptionKey)
+					GlobalProgressBroadcaster.Unregister(subscriptionKey)
+				}
+			}(key, subCtx)
 
 			_ = safeConn.WriteJSON(WSResponse{
 				Type:      "compression_subscribed",
@@ -399,6 +438,9 @@ func WebSocketHandler(c *gin.Context) {
 			}
 			key := sess.SessionID + ":" + reqId
 			logger.Debugf("[WebSocket] Unsubscribing from compression progress: %s", key)
+			if cancel := popSubscriptionCancel(key); cancel != nil {
+				cancel()
+			}
 			GlobalProgressBroadcaster.Unregister(key)
 			_ = safeConn.WriteJSON(WSResponse{
 				Type:      "compression_unsubscribed",
