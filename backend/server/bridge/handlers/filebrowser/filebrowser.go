@@ -29,6 +29,7 @@ type archiveCompressRequest struct {
 	ArchiveName string   `json:"archiveName"`
 	Format      string   `json:"format"`
 	RequestID   string   `json:"requestId"`
+	Override    bool     `json:"override"`
 }
 
 type archiveExtractRequest struct {
@@ -407,13 +408,29 @@ func archiveCompressHandler(c *gin.Context) {
 	archiveName = filepath.Base(archiveName)
 	archiveName = ensureArchiveExtension(archiveName, format)
 
+	destPath := filepath.Join(destDir, archiveName)
+	if _, err := os.Stat(destPath); err == nil {
+		if !req.Override {
+			c.JSON(http.StatusConflict, gin.H{
+				"error": fmt.Sprintf("archive already exists: %s", archiveName),
+			})
+			return
+		}
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		logger.Debugf("failed to stat destination: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("unable to validate destination: %v", err),
+		})
+		return
+	}
+
 	progressKey := ""
 	if strings.TrimSpace(req.RequestID) != "" {
 		progressKey = fmt.Sprintf("%s:%s", sess.SessionID, strings.TrimSpace(req.RequestID))
 	}
 
 	args := []string{
-		filepath.Join(destDir, archiveName),
+		destPath,
 		strings.Join(req.Paths, "||"),
 		format,
 	}

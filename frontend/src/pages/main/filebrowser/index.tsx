@@ -18,6 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, {
   ReactNode,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -77,6 +78,28 @@ const normalizeUploadRelativePath = (path: string) =>
     .split(/[\\/]+/)
     .filter(Boolean)
     .join("/");
+
+const splitName = (name: string) => {
+  const idx = name.lastIndexOf(".");
+  if (idx > 0) {
+    return {
+      base: name.slice(0, idx),
+      ext: name.slice(idx),
+    };
+  }
+  return { base: name, ext: "" };
+};
+
+const stripNumericSuffix = (base: string) => {
+  const match = /^(.+?)(?: \((\d+)\))?$/.exec(base);
+  if (!match) {
+    return { root: base, suffix: null };
+  }
+  return {
+    root: match[1],
+    suffix: match[2] ? parseInt(match[2], 10) : null,
+  };
+};
 
 const buildEntriesFromFileList = (files: FileList | null): DroppedEntry[] => {
   if (!files?.length) return [];
@@ -244,6 +267,8 @@ const FileBrowser: React.FC = () => {
     () => new Set(resource?.items?.map((item) => item.name) ?? []),
     [resource],
   );
+  const pendingArchiveNamesRef = useRef<Set<string>>(new Set());
+  const pendingArchiveConflictNamesRef = useRef<Set<string>>(new Set());
 
   const archiveSelection = useMemo(
     () =>
@@ -315,20 +340,56 @@ const FileBrowser: React.FC = () => {
   );
 
   const getUniqueName = useCallback(
-    (baseName: string) => {
-      if (!existingNames.size) return baseName;
-      let candidate = baseName;
-      let counter = 1;
+    (baseName: string, additionalNames?: Set<string>) => {
+      const nameSet = new Set(existingNames);
+      additionalNames?.forEach((name) => nameSet.add(name));
+      pendingArchiveConflictNamesRef.current.forEach((name) =>
+        nameSet.add(name),
+      );
 
-      while (existingNames.has(candidate)) {
-        candidate = `${baseName} (${counter})`;
-        counter += 1;
+      const { base, ext } = splitName(baseName);
+      const { root } = stripNumericSuffix(base);
+
+      let hasPlain = false;
+      let maxSuffix = 0;
+
+      nameSet.forEach((name) => {
+        const { base: candidateBase, ext: candidateExt } = splitName(name);
+        if (candidateExt !== ext) {
+          return;
+        }
+        const { root: candidateRoot, suffix } = stripNumericSuffix(candidateBase);
+        if (candidateRoot !== root) {
+          return;
+        }
+        if (suffix === null) {
+          hasPlain = true;
+        } else {
+          if (suffix > maxSuffix) {
+            maxSuffix = suffix;
+          }
+        }
+      });
+
+      if (!hasPlain && !nameSet.has(baseName)) {
+        return baseName;
       }
 
-      return candidate;
+      return `${root} (${maxSuffix + 1})${ext}`;
     },
     [existingNames],
   );
+
+  useEffect(() => {
+    const conflicts = pendingArchiveConflictNamesRef.current;
+    const toRemove: string[] = [];
+    conflicts.forEach((name) => {
+      if (existingNames.has(name)) {
+        toRemove.push(name);
+      }
+    });
+    toRemove.forEach((name) => conflicts.delete(name));
+  }, [existingNames]);
 
   const joinPath = useCallback((base: string, name: string) => {
     if (base.endsWith("/")) {
@@ -527,9 +588,12 @@ const FileBrowser: React.FC = () => {
       selectedItems.length === 1
         ? stripArchiveExtension(selectedItems[0].name)
         : "archive";
+    const pendingNames = pendingArchiveNamesRef.current;
     const archiveName = getUniqueName(
       ensureZipExtension(baseName || "archive"),
+      pendingNames,
     );
+    pendingNames.add(archiveName);
 
     try {
       await compressItems({
@@ -537,8 +601,27 @@ const FileBrowser: React.FC = () => {
         archiveName,
         destination: normalizedPath,
       });
-    } catch {
-      // Errors are surfaced via toast in the mutation
+    } catch (err: any) {
+      const isConflict = err?.response?.status === 409;
+      if (isConflict) {
+        const message =
+          err?.response?.data?.error ||
+          `${archiveName} already exists`;
+        toast.error(message);
+        pendingArchiveConflictNamesRef.current.add(archiveName);
+      } else if (
+        err?.name !== "CanceledError" &&
+        err?.name !== "AbortError" &&
+        err?.message !== "canceled"
+      ) {
+        const message =
+          err?.response?.data?.error ||
+          err?.message ||
+          "Failed to create archive";
+        toast.error(message);
+      }
+    } finally {
+      pendingArchiveNamesRef.current.delete(archiveName);
     }
   }, [
     compressItems,
