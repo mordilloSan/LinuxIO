@@ -230,19 +230,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         // Fallback timer if WebSocket doesn't send progress
         fallbackTimer = setTimeout(() => {
           if (!hasReceivedProgress) {
-          const prepTimer = setInterval(() => {
-            setDownloads((prev) =>
-              prev.map((d) => {
-                if (d.id !== reqId) return d;
-                const next = Math.min(d.progress + 5, 90);
-                return {
-                  ...d,
-                  progress: next,
-                  label: formatDownloadLabel("Preparing", { percent: next }),
-                };
-              }),
-            );
-          }, 400);
+            const prepTimer = setInterval(() => {
+              setDownloads((prev) =>
+                prev.map((d) => {
+                  if (d.id !== reqId) return d;
+                  const next = Math.min(d.progress + 5, 90);
+                  return {
+                    ...d,
+                    progress: next,
+                    label: formatDownloadLabel("Preparing", { percent: next }),
+                  };
+                }),
+              );
+            }, 400);
             fallbackTimer = prepTimer as any;
           }
         }, 2000);
@@ -256,17 +256,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           responseType: "blob",
           signal: abortController.signal,
           onDownloadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentComplete = Math.round(
-              (progressEvent.loaded / progressEvent.total) * 100,
-            );
-            updateDownload(reqId, {
-              progress: percentComplete,
-              label: formatDownloadLabel("Downloading", { percent: percentComplete }),
-            });
-          }
-        },
-      });
+            if (progressEvent.total) {
+              const percentComplete = Math.round(
+                (progressEvent.loaded / progressEvent.total) * 100,
+              );
+              updateDownload(reqId, {
+                progress: percentComplete,
+                label: formatDownloadLabel("Downloading", {
+                  percent: percentComplete,
+                }),
+              });
+            }
+          },
+        });
 
         // Clean up timers
         if (fallbackTimer) {
