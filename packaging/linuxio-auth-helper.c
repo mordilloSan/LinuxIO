@@ -82,6 +82,7 @@ static int safe_vsnprintf(char *dst, size_t dstsz, const char *fmt, va_list ap)
   return n;
 #endif
 }
+
 static int safe_snprintf(char *dst, size_t dstsz, const char *fmt, ...)
 {
   va_list ap;
@@ -108,6 +109,7 @@ static void journal_errorf(const char *fmt, ...)
   closelog();
 #endif
 }
+
 static void log_stderrf(const char *fmt, ...)
 {
   char buf[1024];
@@ -136,19 +138,18 @@ static void secure_bzero(void *p, size_t n)
 }
 #endif
 
-static const char *limit_reason_for_signal(int sig)
+static const char *limit_reason_for_signal(int sig, char *buf, size_t buflen)
 {
-  switch (sig)
-  {
+  switch (sig) {
   case SIGXCPU:
     return "exceeded RLIMIT_CPU (CPU time limit)";
-#ifdef SIGXFSZ
-  case SIGXFSZ:
-    return "exceeded RLIMIT_FSIZE (file size limit)";
-#endif
+  // You could add SIGKILL+SIGXCPU hard-limit heuristics here if you ever use different cur/max
   default:
-    return NULL;
+    break;
   }
+  (void)buf;
+  (void)buflen;
+  return NULL;
 }
 
 // -------- JSON escaping (FIX #1) --------
@@ -283,6 +284,7 @@ static char *readline_stdin(size_t max)
   buf[i] = '\0';
   return buf;
 }
+
 static char *readline_stdin_timeout(size_t max, int timeout_sec)
 {
   if (timeout_sec <= 0)
@@ -460,6 +462,7 @@ static int validate_bridge_via_fd(int fd, uid_t required_owner)
     return -1;
   return 0;
 }
+
 static int validate_parent_dir_policy(const struct stat *ds, uid_t file_owner, uid_t user_uid)
 {
   if (!S_ISDIR(ds->st_mode))
@@ -482,6 +485,7 @@ static int validate_parent_dir_policy(const struct stat *ds, uid_t file_owner, u
   }
   return -1;
 }
+
 static int validate_parent_dir_via_fd(int dfd, uid_t file_owner, uid_t user_uid)
 {
   struct stat ds;
@@ -489,6 +493,7 @@ static int validate_parent_dir_via_fd(int dfd, uid_t file_owner, uid_t user_uid)
     return -1;
   return validate_parent_dir_policy(&ds, file_owner, user_uid);
 }
+
 static int open_and_validate_bridge(const char *bridge_path, uid_t required_owner, int *out_fd)
 {
   int fd = open(bridge_path, O_PATH | O_CLOEXEC | O_NOFOLLOW);
@@ -714,35 +719,36 @@ static char *get_password_locked(int *locked_out)
 
 static int user_has_sudo(const struct passwd *pw, const char *password, int *out_nopasswd)
 {
+  // We don't currently differentiate NOPASSWD vs PASSWD in the rest of the code,
+  // so just clear this and treat "has sudo" as a boolean.
   if (out_nopasswd)
     *out_nopasswd = 0;
-  int to_nopw = env_get_int("LINUXIO_SUDO_TIMEOUT_NOPASSWD", 3, 1, 30);
+
+  // How long we wait for sudo -S -v to complete
   int to_pw = env_get_int("LINUXIO_SUDO_TIMEOUT_PASSWORD", 4, 1, 30);
 
-  const char *argv_nopw[] = {"/usr/bin/sudo", "-n", "-v", NULL};
-  int rc = run_cmd_as_user_with_input(pw, argv_nopw, NULL, to_nopw);
+  // If we don't have a password, don't even try
+  if (!password || !*password)
+    return 0;
+
+  // Validate sudo using the same password we used for PAM
+  const char *argv_pw[] = {"/usr/bin/sudo", "-S", "-p", "", "-v", NULL};
+
+  char buf[1024];
+  (void)safe_snprintf(buf, sizeof(buf), "%s\n", password);
+
+  int rc = run_cmd_as_user_with_input(pw, argv_pw, buf, to_pw);
+
+  // Wipe the temporary buffer
+  secure_bzero(buf, sizeof(buf));
+
   if (rc == 0)
   {
-    if (out_nopasswd)
-      *out_nopasswd = 1;
+    // Drop any cached sudo credentials immediately; we just wanted to know
+    // whether sudo works, not to keep a ticket open.
     const char *argv_k[] = {"/usr/bin/sudo", "-k", NULL};
     (void)run_cmd_as_user_with_input(pw, argv_k, NULL, 2);
     return 1;
-  }
-
-  if (password && *password)
-  {
-    const char *argv_pw[] = {"/usr/bin/sudo", "-S", "-p", "", "-v", NULL};
-    char buf[1024];
-    (void)safe_snprintf(buf, sizeof(buf), "%s\n", password);
-    rc = run_cmd_as_user_with_input(pw, argv_pw, buf, to_pw);
-    secure_bzero(buf, sizeof(buf));
-    if (rc == 0)
-    {
-      const char *argv_k[] = {"/usr/bin/sudo", "-k", NULL};
-      (void)run_cmd_as_user_with_input(pw, argv_k, NULL, 2);
-      return 1;
-    }
   }
 
   return 0;
@@ -752,22 +758,21 @@ static int user_has_sudo(const struct passwd *pw, const char *password, int *out
 static void set_resource_limits(void)
 {
   struct rlimit rl;
-  rl.rlim_cur = rl.rlim_max = 5UL * 60;
+  rl.rlim_cur = rl.rlim_max = 10UL * 60;
   (void)setrlimit(RLIMIT_CPU, &rl);
 
-  rl.rlim_cur = rl.rlim_max = 1024;
+  rl.rlim_cur = rl.rlim_max = 2048;
   (void)setrlimit(RLIMIT_NOFILE, &rl);
 
-  int nproc_limit = env_get_int("LINUXIO_RLIMIT_NPROC", 512, 10, 2048);
+  int nproc_limit = env_get_int("LINUXIO_RLIMIT_NPROC", 1024, 10, 4096);
   rl.rlim_cur = rl.rlim_max = nproc_limit;
   (void)setrlimit(RLIMIT_NPROC, &rl);
 
   rl.rlim_cur = rl.rlim_max = 16UL * 1024 * 1024 * 1024;
   (void)setrlimit(RLIMIT_AS, &rl);
-
 }
 
-// FIX #3: Improved socket path validation
+// Socket path validation
 static int valid_socket_path_for_uid(const char *p, uid_t uid)
 {
   if (!p || !*p)
@@ -879,7 +884,7 @@ int main(void)
     return 1;
   }
 
-  // NOTE: Don't open session yet - will do in nanny child (FIX #2)
+  // NOTE: Don't open session yet - will do in nanny child
 
   struct passwd *pw = getpwnam(user);
   if (!pw)
@@ -1091,7 +1096,7 @@ int main(void)
 
       umask(077);
 
-      // FIX #7: Apply resource limits here in bridge child
+      // Apply resource limits here in bridge child
       set_resource_limits();
 
       if (want_privileged)
@@ -1231,32 +1236,58 @@ int main(void)
     close(bridge_fd);
 
     int status = 0;
-    while (waitpid(child, &status, 0) < 0 && errno == EINTR)
+    struct rusage ru;
+    memset(&ru, 0, sizeof(ru));
+
+    /* Wait for bridge child and capture resource usage */
+    while (wait4(child, &status, 0, &ru) < 0 && errno == EINTR)
     {
     }
+
     if (WIFSIGNALED(status))
     {
       int sig = WTERMSIG(status);
       const char *sigName = strsignal(sig);
-      const char *limit_reason = limit_reason_for_signal(sig);
+      char limit_reason_buf[256];
+      const char *limit_reason = limit_reason_for_signal(sig, limit_reason_buf, sizeof(limit_reason_buf));
+
       if (limit_reason)
       {
-        journal_errorf("bridge child killed by signal %d (%s): %s",
-                       sig, sigName ? sigName : "unknown", limit_reason);
+        journal_errorf(
+            "bridge child killed by signal %d (%s): %s; "
+            "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
+            sig, sigName ? sigName : "unknown", limit_reason,
+            (long long)ru.ru_maxrss,
+            (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
+            (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
       }
       else
       {
-        journal_errorf("bridge child killed by signal %d (%s)",
-                       sig, sigName ? sigName : "unknown");
+        journal_errorf(
+            "bridge child killed by signal %d (%s); "
+            "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
+            sig, sigName ? sigName : "unknown",
+            (long long)ru.ru_maxrss,
+            (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
+            (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
       }
     }
     else if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
     {
-      journal_errorf("bridge child exited with status %d", WEXITSTATUS(status));
+      journal_errorf(
+          "bridge child exited with status %d; "
+          "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
+          WEXITSTATUS(status),
+          (long long)ru.ru_maxrss,
+          (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
+          (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
     }
-    int exitcode = WIFEXITED(status) ? WEXITSTATUS(status) : (WIFSIGNALED(status) ? 128 + WTERMSIG(status) : 1);
 
-    // FIX #2: Clean PAM session properly in nanny
+    int exitcode = WIFEXITED(status)
+                       ? WEXITSTATUS(status)
+                       : (WIFSIGNALED(status) ? 128 + WTERMSIG(status) : 1);
+
+    // Clean PAM session properly in nanny
     (void)pam_close_session(pamh, 0);
     (void)pam_setcred(pamh, PAM_DELETE_CRED);
     (void)pam_end(pamh, 0);
