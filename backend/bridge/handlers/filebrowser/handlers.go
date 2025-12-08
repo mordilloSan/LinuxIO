@@ -19,25 +19,24 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
-		"resource_get":           resourceGet,
-		"resource_stat":          resourceStat,
-		"resource_delete":        resourceDelete,
-		"resource_post":          resourcePost,
-		"resource_put":           resourcePut,
-		"resource_patch":         resourcePatch,
-		"raw_files":              rawFiles,
-		"dir_size":               dirSize,
+		"resource_get":           ipc.WrapSimpleHandler(resourceGet),
+		"resource_stat":          ipc.WrapSimpleHandler(resourceStat),
+		"resource_delete":        ipc.WrapSimpleHandler(resourceDelete),
+		"resource_post":          ipc.WrapSimpleHandler(resourcePost),
+		"resource_put":           ipc.WrapSimpleHandler(resourcePut),
+		"resource_patch":         ipc.WrapSimpleHandler(resourcePatch),
+		"raw_files":              ipc.WrapSimpleHandler(rawFiles),
+		"dir_size":               ipc.WrapSimpleHandler(dirSize),
 		"archive_create":         archiveCreate,
-		"archive_extract":        archiveExtract,
-		"chmod":                  resourceChmod,
-		"users_groups":           usersGroups,
-		"file_upload_from_temp":  fileUploadFromTemp,
-		"file_update_from_temp":  fileUpdateFromTemp,
+		"archive_extract":        ipc.WrapSimpleHandler(archiveExtract),
+		"chmod":                  ipc.WrapSimpleHandler(resourceChmod),
+		"users_groups":           ipc.WrapSimpleHandler(usersGroups),
+		"file_upload_from_temp":  ipc.WrapSimpleHandler(fileUploadFromTemp),
+		"file_update_from_temp":  ipc.WrapSimpleHandler(fileUpdateFromTemp),
 		"file_download_to_temp":  fileDownloadToTemp,
 		"archive_download_setup": archiveDownloadSetup,
 	}
@@ -492,7 +491,7 @@ func dirSize(args []string) (any, error) {
 
 // archiveCreate builds an archive on disk from provided files.
 // Args: [destinationPath, fileList, algo?]
-func archiveCreate(args []string) (any, error) {
+func archiveCreate(ctx *ipc.RequestContext, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("bad_request:missing destination or files")
 	}
@@ -533,21 +532,27 @@ func archiveCreate(args []string) (any, error) {
 		}
 	}
 
-	progressKey := ""
-	if len(args) > 3 && args[3] != "" {
-		progressKey = args[3]
-	}
-
-	if progressKey != "" {
-		defer web.GlobalProgressBroadcaster.Unregister(progressKey)
-	}
-
 	var progressCb services.ProgressCallback
 	var totalSize int64
 	var processed int64
 	var lastPercent float64
 
-	if progressKey != "" {
+	streamProgress := ctx != nil && ctx.HasStream()
+	sendProgress := func(status string, percent float64) {
+		if !streamProgress {
+			return
+		}
+		payload := map[string]any{
+			"percent":        percent,
+			"bytesProcessed": processed,
+			"totalBytes":     totalSize,
+		}
+		if err := ctx.SendStreamJSON(status, payload); err != nil {
+			logger.Debugf("archive_create stream send failed: %v", err)
+		}
+	}
+
+	if streamProgress {
 		size, err := services.ComputeArchiveSize(files)
 		if err != nil {
 			logger.Debugf("error computing archive size for progress: %v", err)
@@ -566,20 +571,12 @@ func archiveCreate(args []string) (any, error) {
 					return
 				}
 				lastPercent = percent
-				web.GlobalProgressBroadcaster.Send(progressKey, web.ProgressUpdate{
-					Type:           "compression_progress",
-					Percent:        percent,
-					BytesProcessed: processed,
-					TotalBytes:     totalSize,
-				})
+				sendProgress("compression_progress", percent)
 			}
 
-			web.GlobalProgressBroadcaster.Send(progressKey, web.ProgressUpdate{
-				Type:           "compression_progress",
-				Percent:        0,
-				BytesProcessed: 0,
-				TotalBytes:     totalSize,
-			})
+			processed = 0
+			lastPercent = 0
+			sendProgress("compression_progress", 0)
 		}
 	}
 
@@ -600,13 +597,9 @@ func archiveCreate(args []string) (any, error) {
 		return nil, fmt.Errorf("error creating archive: %w", err)
 	}
 
-	if progressKey != "" {
-		web.GlobalProgressBroadcaster.Send(progressKey, web.ProgressUpdate{
-			Type:           "compression_complete",
-			Percent:        100,
-			BytesProcessed: totalSize,
-			TotalBytes:     totalSize,
-		})
+	if streamProgress && totalSize > 0 {
+		processed = totalSize
+		sendProgress("compression_complete", 100)
 	}
 
 	return map[string]any{
@@ -949,7 +942,7 @@ func fileUpdateFromTemp(args []string) (any, error) {
 
 // fileDownloadToTemp copies a file to a temp location for the server to stream
 // Args: [filePath]
-func fileDownloadToTemp(args []string) (any, error) {
+func fileDownloadToTemp(ctx *ipc.RequestContext, args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing file path")
 	}
@@ -974,6 +967,24 @@ func fileDownloadToTemp(args []string) (any, error) {
 	tempPath := tempFile.Name()
 	tempFile.Close()
 
+	streamProgress := ctx != nil && ctx.HasStream()
+	send := func(status string, percent float64, processed int64) {
+		if !streamProgress {
+			return
+		}
+		payload := map[string]any{
+			"percent":        percent,
+			"bytesProcessed": processed,
+			"totalBytes":     stat.Size(),
+		}
+		if sendErr := ctx.SendStreamJSON(status, payload); sendErr != nil {
+			logger.Debugf("file_download_to_temp stream send failed: %v", sendErr)
+		}
+	}
+	if streamProgress {
+		send("download_progress", 0, 0)
+	}
+
 	// Copy file to temp location
 	if err := services.CopyFile(realPath, tempPath); err != nil {
 		_ = os.Remove(tempPath)
@@ -981,6 +992,9 @@ func fileDownloadToTemp(args []string) (any, error) {
 	}
 
 	fileName := filepath.Base(realPath)
+	if streamProgress {
+		send("download_ready", 100, stat.Size())
+	}
 
 	return map[string]any{
 		"tempPath": tempPath,
@@ -991,7 +1005,7 @@ func fileDownloadToTemp(args []string) (any, error) {
 
 // archiveDownloadSetup creates an archive in a temp location for download
 // Args: [fileList (|| separated), algo?]
-func archiveDownloadSetup(args []string) (any, error) {
+func archiveDownloadSetup(ctx *ipc.RequestContext, args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing file list")
 	}
@@ -1025,12 +1039,59 @@ func archiveDownloadSetup(args []string) (any, error) {
 	tempPath := tempFile.Name()
 	tempFile.Close()
 
+	streamProgress := ctx != nil && ctx.HasStream()
+	var totalSize int64
+	var processed int64
+	var lastPercent float64
+	send := func(status string, percent float64) {
+		if !streamProgress {
+			return
+		}
+		payload := map[string]any{
+			"percent":        percent,
+			"bytesProcessed": processed,
+			"totalBytes":     totalSize,
+		}
+		if sendErr := ctx.SendStreamJSON(status, payload); sendErr != nil {
+			logger.Debugf("archive_download_setup stream send failed: %v", sendErr)
+		}
+	}
+
+	var progressCb services.ProgressCallback
+	if streamProgress {
+		size, sizeErr := services.ComputeArchiveSize(files)
+		if sizeErr != nil {
+			logger.Debugf("error computing archive size for download progress: %v", sizeErr)
+		} else if size > 0 {
+			totalSize = size
+			progressCb = func(n int64) {
+				processed += n
+				if processed > totalSize {
+					processed = totalSize
+				}
+				percent := float64(processed) / float64(totalSize) * 100
+				if percent > 100 {
+					percent = 100
+				}
+				if percent < lastPercent+0.5 && percent < 100 {
+					return
+				}
+				lastPercent = percent
+				send("download_progress", percent)
+			}
+
+			processed = 0
+			lastPercent = 0
+			send("download_progress", 0)
+		}
+	}
+
 	// Create archive
 	switch extension {
 	case ".zip":
-		err = services.CreateZip(tempPath, nil, tempPath, files...)
+		err = services.CreateZip(tempPath, progressCb, tempPath, files...)
 	case ".tar.gz":
-		err = services.CreateTarGz(tempPath, nil, tempPath, files...)
+		err = services.CreateTarGz(tempPath, progressCb, tempPath, files...)
 	}
 
 	if err != nil {
@@ -1043,6 +1104,13 @@ func archiveDownloadSetup(args []string) (any, error) {
 	if err != nil {
 		_ = os.Remove(tempPath)
 		return nil, fmt.Errorf("failed to stat archive: %v", err)
+	}
+	if streamProgress {
+		if totalSize == 0 {
+			totalSize = stat.Size()
+		}
+		processed = totalSize
+		send("download_ready", 100)
 	}
 
 	// Determine archive name

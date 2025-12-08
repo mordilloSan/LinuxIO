@@ -301,11 +301,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     (id: string) => {
       setCompressions((prev) => prev.filter((c) => c.id !== id));
       const timers = cleanupTimersRef.current.get(id);
-      if (timers) {
-        if (timers.fallback) clearTimeout(timers.fallback);
-        if (timers.unsubscribe) timers.unsubscribe();
-        cleanupTimersRef.current.delete(id);
+      if (timers?.unsubscribe) {
+        timers.unsubscribe();
       }
+      cleanupTimersRef.current.delete(id);
       sendProgressUnsubscribe("compression", id);
     },
     [sendProgressUnsubscribe],
@@ -341,24 +340,30 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       setCompressions((prev) => [...prev, compression]);
 
-      let hasProgress = false;
-      let fallbackTimer:
-        | ReturnType<typeof setTimeout>
-        | ReturnType<typeof setInterval>
-        | null = null;
+      const applyReportedProgress = (rawPercent: number) => {
+        const percent = Math.min(99, Math.round(rawPercent));
+        setCompressions((prev) =>
+          prev.map((c) => {
+            if (c.id !== id) return c;
+            const next = Math.max(c.progress, percent);
+            if (next === c.progress) {
+              return c;
+            }
+            return {
+              ...c,
+              progress: next,
+              label: `Compressing ${labelBase} (${next}%)`,
+            };
+          }),
+        );
+      };
 
       const unsubscribe = ws.subscribe((msg: any) => {
         if (msg.requestId !== requestId) return;
 
         if (msg.type === "compression_progress" && msg.data) {
-          hasProgress = true;
-          const percent = Math.min(99, Math.round(msg.data.percent));
-          updateCompression(id, {
-            progress: percent,
-            label: `Compressing ${labelBase} (${percent}%)`,
-          });
+          applyReportedProgress(msg.data.percent);
         } else if (msg.type === "compression_complete") {
-          hasProgress = true;
           updateCompression(id, {
             progress: 100,
             label: `Created ${labelBase}`,
@@ -369,29 +374,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       ws.send({ type: "subscribe_compression_progress", data: requestId });
 
-      fallbackTimer = setTimeout(() => {
-        if (hasProgress) return;
-        fallbackTimer = setInterval(() => {
-          setCompressions((prev) =>
-            prev.map((c) => {
-              if (c.id !== id) return c;
-              const next = Math.min((c.progress || 0) + 4, 90);
-              return {
-                ...c,
-                progress: next,
-                label: `Compressing ${labelBase} (${next}%)`,
-              };
-            }),
-          );
-        }, 450);
-        cleanupTimersRef.current.set(id, {
-          fallback: fallbackTimer,
-          unsubscribe,
-        });
-      }, 1500);
-
       cleanupTimersRef.current.set(id, {
-        fallback: fallbackTimer,
         unsubscribe,
       });
 
@@ -424,9 +407,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         setTimeout(() => removeCompression(id), 800);
         throw err;
       } finally {
-        if (fallbackTimer) {
-          clearTimeout(fallbackTimer as any);
-        }
         const timers = cleanupTimersRef.current.get(id);
         if (timers?.unsubscribe) {
           timers.unsubscribe();
