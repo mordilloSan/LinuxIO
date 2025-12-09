@@ -18,7 +18,7 @@ func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 		"archive_extract":        ipc.WrapSimpleHandler(archiveExtract),
 		"chmod":                  ipc.WrapSimpleHandler(resourceChmod),
 		"users_groups":           ipc.WrapSimpleHandler(usersGroups),
-		"file_upload_stream":     fileUploadStream,
+		"file_upload_stream":     fileUploadFromTemp,
 		"file_download_to_temp":  fileDownloadToTemp,
 		"archive_download_setup": archiveDownloadSetup,
 	}
