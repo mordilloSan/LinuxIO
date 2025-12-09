@@ -88,12 +88,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
 
   const sendProgressUnsubscribe = useCallback(
-    (type: "download" | "compression", requestId: string) => {
-      const messageType =
-        type === "download"
-          ? "unsubscribe_download_progress"
-          : "unsubscribe_compression_progress";
-      ws.send({ type: messageType, data: requestId });
+    (_type: "download" | "compression" | "upload", requestId: string) => {
+      ws.send({ type: "unsubscribe_operation_progress", data: requestId });
     },
     [ws],
   );
@@ -231,7 +227,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         });
 
-        ws.send({ type: "subscribe_download_progress", data: reqId });
+        ws.send({ type: "subscribe_operation_progress", data: reqId });
 
         // Fallback timer if WebSocket doesn't send progress
         fallbackTimer = setTimeout(() => {
@@ -439,7 +435,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       });
 
-      ws.send({ type: "subscribe_compression_progress", data: requestId });
+      ws.send({ type: "subscribe_operation_progress", data: requestId });
 
       cleanupTimersRef.current.set(id, {
         unsubscribe,
@@ -507,9 +503,21 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [],
   );
 
-  const removeUpload = useCallback((id: string) => {
-    setUploads((prev) => prev.filter((u) => u.id !== id));
-  }, []);
+  const removeUpload = useCallback(
+    (id: string) => {
+      setUploads((prev) => prev.filter((u) => u.id !== id));
+
+      const timers = cleanupTimersRef.current.get(id);
+      if (timers) {
+        if (timers.fallback) clearTimeout(timers.fallback);
+        if (timers.unsubscribe) timers.unsubscribe();
+        cleanupTimersRef.current.delete(id);
+      }
+
+      sendProgressUnsubscribe("upload", id);
+    },
+    [sendProgressUnsubscribe],
+  );
 
   const startUpload = useCallback(
     async (
@@ -526,6 +534,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       const uploadId = crypto.randomUUID();
+      const requestId = uploadId;
       const abortController = new AbortController();
 
       const directories = entries
@@ -559,6 +568,49 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return `${normalized}${relative}`;
       };
 
+      // WS-based upload progress (bridge-side)
+      const applyReportedProgress = (rawPercent: number) => {
+        const percent = Math.min(99, Math.round(rawPercent));
+        setUploads((prev) =>
+          prev.map((u) => {
+            if (u.id !== uploadId) return u;
+            return {
+              ...u,
+              progress: percent,
+              label: `Uploading ${u.completedFiles}/${u.totalFiles} files (${percent}%)`,
+            };
+          }),
+        );
+      };
+
+      const unsubscribe = ws.subscribe((msg: any) => {
+        if (msg.requestId !== requestId) return;
+
+        if (msg.type === "upload_progress" && msg.data) {
+          applyReportedProgress(msg.data.percent);
+        }
+        // Optional: handle "upload_complete" if the backend emits it
+        if (msg.type === "upload_complete") {
+          setUploads((prev) =>
+            prev.map((u) =>
+              u.id === uploadId
+                ? {
+                    ...u,
+                    progress: 100,
+                    label: `Uploaded ${u.totalFiles}/${u.totalFiles} files`,
+                  }
+                : u,
+            ),
+          );
+        }
+      });
+
+      ws.send({ type: "subscribe_operation_progress", data: requestId });
+
+      cleanupTimersRef.current.set(uploadId, {
+        unsubscribe,
+      });
+
       try {
         // Create directories first
         for (const { relativePath } of directories) {
@@ -582,6 +634,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
                 path: dirPath,
                 override: override ? "true" : undefined,
                 source: "/",
+                requestId,
               },
               signal: abortController.signal,
             });
@@ -618,6 +671,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
               params: {
                 path: targetFilePath,
                 override: override ? "true" : undefined,
+                requestId,
               },
               headers: {
                 "Content-Type": file.type || "application/octet-stream",
@@ -639,6 +693,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
               },
             });
             uploaded += 1;
+            // reflect completedFiles
+            updateUpload(uploadId, {
+              completedFiles: uploaded,
+              progress: Math.round((uploaded / totalFiles) * 100),
+            });
           } catch (err: any) {
             if (err.name === "CanceledError") break;
             if (err.response?.status === 409 && !override) {
@@ -679,7 +738,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return { conflicts, uploaded, failures };
       }
     },
-    [updateUpload, removeUpload],
+    [updateUpload, removeUpload, ws],
   );
 
   const cancelUpload = useCallback(
