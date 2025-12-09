@@ -39,6 +39,13 @@ type InferredPowerData struct {
 	States       []PowerStateInfo `json:"states"`
 }
 
+// precompiled regexes
+var (
+	validDeviceNameRe = regexp.MustCompile(`^(sd[a-z]|hd[a-z]|nvme\d+n\d+)$`)
+	nvmePsRe          = regexp.MustCompile(`ps\s+(\d+)\s+:\s+mp:([\d.]+)W`)
+	nvmeStateRe       = regexp.MustCompile(`Power State:\s+(\d+)`)
+)
+
 func FetchDriveInfo() ([]map[string]any, error) {
 	out, err := exec.Command("lsblk", "-d", "-O", "-J").Output()
 	if err != nil {
@@ -61,23 +68,21 @@ func FetchDriveInfo() ([]map[string]any, error) {
 			"model":  strings.TrimSpace(dev.Model),
 			"serial": strings.TrimSpace(dev.Serial),
 			"size":   dev.Size,
-			"type":   dev.Tran,
+			"type":   dev.Tran, // transport (sata, nvme, usb, etc)
 			"vendor": strings.TrimSpace(dev.Vendor),
 			"ro":     dev.RO,
 		}
 
-		// Add SMART info for all drives
-		smart, err := FetchSmartInfo(dev.Name)
-		if err != nil {
+		// SMART info (best-effort)
+		if smart, err := FetchSmartInfo(dev.Name); err != nil {
 			drive["smartError"] = err.Error()
 		} else {
 			drive["smart"] = smart
 		}
 
-		// Add NVMe power info if NVMe
-		if dev.Tran == "nvme" {
-			power, err := GetNVMePowerState(dev.Name)
-			if err != nil {
+		// NVMe power info if it's an NVMe device
+		if isNVMeDevice(dev) {
+			if power, err := GetNVMePowerState(dev.Name); err != nil {
 				drive["powerError"] = err.Error()
 			} else {
 				var states []map[string]any
@@ -102,9 +107,16 @@ func FetchDriveInfo() ([]map[string]any, error) {
 	return drives, nil
 }
 
+func isNVMeDevice(dev BlockDevice) bool {
+	// On some systems lsblk tran for NVMe may not be "nvme", so also check the name.
+	if strings.HasPrefix(dev.Name, "nvme") {
+		return true
+	}
+	return dev.Tran == "nvme"
+}
+
 func FetchSmartInfo(device string) (map[string]any, error) {
-	validName := regexp.MustCompile(`^(sd[a-z]|hd[a-z]|nvme\d+n\d+)$`)
-	if !validName.MatchString(device) {
+	if !validDeviceNameRe.MatchString(device) {
 		return nil, errors.New("invalid device name")
 	}
 
@@ -116,7 +128,9 @@ func FetchSmartInfo(device string) (map[string]any, error) {
 	cmd := exec.Command(smartctlPath, "--json", "-x", "/dev/"+device)
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("smartctl failed: %w", err)
+		// smartctl returns non-zero if drive doesn't support SMART, etc.
+		// We still try to use whatever JSON it produced, but wrap the error.
+		return nil, fmt.Errorf("smartctl failed for %s: %w", device, err)
 	}
 
 	var parsed map[string]any
@@ -132,22 +146,30 @@ func GetNVMePowerState(device string) (*InferredPowerData, error) {
 	cmd := exec.Command("nvme", "id-ctrl", "/dev/"+device)
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to run nvme id-ctrl: %w", err)
+		return nil, fmt.Errorf("failed to run nvme id-ctrl for %s: %w", device, err)
 	}
 
-	psRegex := regexp.MustCompile(`ps\s+(\d+)\s+:\s+mp:([\d.]+)W`)
 	var states []PowerStateInfo
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
-		if match := psRegex.FindStringSubmatch(line); len(match) == 3 {
-			stateNum, _ := strconv.Atoi(match[1])
-			maxPower, _ := strconv.ParseFloat(match[2], 64)
-			states = append(states, PowerStateInfo{
-				State:       stateNum,
-				MaxPowerW:   maxPower,
-				Description: strings.TrimSpace(line),
-			})
+	for _, line := range strings.Split(string(out), "\n") {
+		match := nvmePsRe.FindStringSubmatch(line)
+		if len(match) != 3 {
+			continue
 		}
+
+		stateNum, err := strconv.Atoi(match[1])
+		if err != nil {
+			continue
+		}
+		maxPower, err := strconv.ParseFloat(match[2], 64)
+		if err != nil {
+			continue
+		}
+
+		states = append(states, PowerStateInfo{
+			State:       stateNum,
+			MaxPowerW:   maxPower,
+			Description: strings.TrimSpace(line),
+		})
 	}
 
 	if len(states) == 0 {
@@ -158,27 +180,29 @@ func GetNVMePowerState(device string) (*InferredPowerData, error) {
 	cmd = exec.Command("nvme", "smart-log", "/dev/"+device)
 	out, err = cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to run nvme smart-log: %w", err)
+		return nil, fmt.Errorf("failed to run nvme smart-log for %s: %w", device, err)
 	}
-	stateRe := regexp.MustCompile(`Power State:\s+(\d+)`)
-	match := stateRe.FindStringSubmatch(string(out))
 
-	var currentState int
+	match := nvmeStateRe.FindStringSubmatch(string(out))
+
+	currentState := -1
 	var estimated float64
 
 	if len(match) == 2 {
-		currentState, _ = strconv.Atoi(match[1])
-		for _, s := range states {
-			if s.State == currentState {
-				estimated = s.MaxPowerW
-				break
+		if s, err := strconv.Atoi(match[1]); err == nil {
+			currentState = s
+			for _, ps := range states {
+				if ps.State == currentState {
+					estimated = ps.MaxPowerW
+					break
+				}
 			}
 		}
-	} else {
-		currentState = -1
-		if len(states) > 0 {
-			estimated = states[0].MaxPowerW // fallback to first power state
-		}
+	}
+
+	// Fallback: if we couldn't determine current state, use the first state's power as a rough estimate
+	if currentState == -1 && len(states) > 0 && estimated == 0 {
+		estimated = states[0].MaxPowerW
 	}
 
 	return &InferredPowerData{
