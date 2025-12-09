@@ -7,10 +7,11 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/go_logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 func getUpdatesHandler(c *gin.Context) {
@@ -18,7 +19,7 @@ func getUpdatesHandler(c *gin.Context) {
 
 	var raw json.RawMessage
 	if err := bridge.CallTypedWithSession(sess, "dbus", "GetUpdates", nil, &raw); err != nil {
-		if errors.Is(err, bridge.ErrEmptyBridgeOutput) {
+		if errors.Is(err, ipc.ErrEmptyBridgeOutput) {
 			c.JSON(http.StatusOK, gin.H{"updates": []Update{}})
 			return
 		}

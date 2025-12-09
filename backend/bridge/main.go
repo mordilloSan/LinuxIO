@@ -199,7 +199,7 @@ func main() {
 	}
 
 	// -------------------------------------------------------------------------
-	// Background samplers, GPU info
+	// Background samplers for network
 	// -------------------------------------------------------------------------
 	system.StartSimpleNetInfoSampler()
 

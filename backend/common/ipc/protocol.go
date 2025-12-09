@@ -1,6 +1,9 @@
 package ipc
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+)
 
 // Request/Response are the on-the-wire schema used over the unix socket.
 type Request struct {
@@ -16,6 +19,9 @@ type Response struct {
 	Output json.RawMessage `json:"output,omitempty"` // raw JSON payload
 	Error  string          `json:"error,omitempty"`
 }
+
+var ErrEmptyBridgeOutput = errors.New("bridge returned empty output")
+var ErrResponseAlreadySent = errors.New("response already sent")
 
 // Optional helper signature for bridge-side handlers
 // HandlerFunc is the bridge handler signature. ctx will be nil for

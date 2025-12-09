@@ -290,8 +290,6 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 	return []byte(raw), nil
 }
 
-var ErrEmptyBridgeOutput = errors.New("bridge returned empty output")
-
 // CallTypedWithSession makes a bridge call and decodes the response directly into result.
 // This helper wraps CallWithSession and decodes the bridge response.
 func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result interface{}) error {
@@ -319,7 +317,7 @@ func CallTypedWithSession(sess *session.Session, reqType, command string, args [
 	}
 
 	if len(resp.Output) == 0 {
-		return ErrEmptyBridgeOutput
+		return ipc.ErrEmptyBridgeOutput
 	}
 
 	if err := json.Unmarshal(resp.Output, result); err != nil {

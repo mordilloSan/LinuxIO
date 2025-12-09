@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
@@ -48,7 +49,7 @@ func postApplyOfflineUpdatesHandler(c *gin.Context) {
 
 	var raw json.RawMessage
 	if err := bridge.CallTypedWithSession(sess, "dbus", "ApplyOfflineUpdates", nil, &raw); err != nil {
-		if errors.Is(err, bridge.ErrEmptyBridgeOutput) {
+		if errors.Is(err, ipc.ErrEmptyBridgeOutput) {
 			c.Data(http.StatusOK, "application/json", []byte(`{"status":"ok"}`))
 			return
 		}
