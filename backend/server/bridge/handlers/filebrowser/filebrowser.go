@@ -283,7 +283,7 @@ func resourcePostHandler(c *gin.Context) {
 	}
 
 	// For file uploads, handle via temp file then bridge
-	resourcePostViaStream(c, sess, path, override)
+	resourcePostViaTemp(c, sess, path, override)
 }
 
 // resourcePutHandler updates an existing file resource
@@ -493,34 +493,53 @@ func archiveExtractHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// resourcePostViaStream streams file upload directly to the bridge via framed protocol.
-func resourcePostViaStream(c *gin.Context, sess *session.Session, path string, override bool) {
-	// Still keep chunked uploads on the old path, if you want
+// ============================================================================
+// TEMP FILE HANDLERS - Bridge-based operations using temp files
+// ============================================================================
+
+// resourcePostViaTemp handles file uploads via temp file then bridge
+func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, override bool) {
+	// Handle Chunked Uploads
 	chunkOffsetStr := c.GetHeader("X-File-Chunk-Offset")
 	if chunkOffsetStr != "" {
 		handleChunkedUpload(c, sess, path, override)
 		return
 	}
 
-	// We stream the body directly to bridge.
-	args := []string{path}
+	// Create temp file for upload
+	tempFile, err := os.CreateTemp("", "linuxio-upload-*.tmp")
+	if err != nil {
+		logger.Debugf("could not create temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create temp file"})
+		return
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath) // Cleanup in case of error
+
+	// Write request body to temp file
+	_, err = io.Copy(tempFile, c.Request.Body)
+	tempFile.Close()
+	if err != nil {
+		logger.Debugf("could not write to temp file: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write upload data"})
+		return
+	}
+
+	// Call bridge to move temp file to final destination
+	args := []string{tempPath, path}
 	if override {
 		args = append(args, "true")
 	}
 
-	// Use the new streaming helper
-	if err := bridge.UploadToSession(sess, "filebrowser", "file_upload_stream", args, c.Request.Body); err != nil {
-		logger.Debugf("bridge upload error: %v", err)
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "file_upload_from_temp", args, nil); err != nil {
+		logger.Debugf("bridge error: %v", err)
 		status := http.StatusInternalServerError
-
-		// Preserve your old error mapping behaviour
 		if strings.Contains(err.Error(), "bad_request:") {
 			status = http.StatusBadRequest
 		}
 		if strings.Contains(err.Error(), "already exists") {
 			status = http.StatusConflict
 		}
-
 		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
 		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		c.JSON(status, gin.H{"error": errMsg})
@@ -529,10 +548,6 @@ func resourcePostViaStream(c *gin.Context, sess *session.Session, path string, o
 
 	c.Status(http.StatusCreated)
 }
-
-// ============================================================================
-// TEMP FILE HANDLERS - Bridge-based operations using temp files
-// ============================================================================
 
 // handleChunkedUpload handles chunked file uploads
 func handleChunkedUpload(c *gin.Context, sess *session.Session, path string, override bool) {
