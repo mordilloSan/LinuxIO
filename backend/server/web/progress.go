@@ -4,15 +4,15 @@ import (
 	"sync"
 )
 
-// ProgressUpdate represents a download progress update
+// ProgressUpdate represents a generic operation progress update (download, upload, compression, etc.)
 type ProgressUpdate struct {
-	Type           string  `json:"type"`           // "download_progress" or "download_ready"
+	Type           string  `json:"type"`           // e.g. "download_progress", "download_ready", "compression_progress", "compression_complete", "upload_progress", ...
 	Percent        float64 `json:"percent"`        // 0-100
 	BytesProcessed int64   `json:"bytesProcessed"` // Bytes processed so far
-	TotalBytes     int64   `json:"totalBytes"`     // Total bytes to process
+	TotalBytes     int64   `json:"totalBytes"`     // Total bytes to process (if known)
 }
 
-// ProgressBroadcaster manages progress update handlers for downloads
+// ProgressBroadcaster manages progress update handlers for operations (keyed by "sessionID:requestID")
 type ProgressBroadcaster struct {
 	mu       sync.RWMutex
 	handlers map[string]func(ProgressUpdate) // key: "sessionID:requestID"

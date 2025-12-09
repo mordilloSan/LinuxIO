@@ -341,21 +341,21 @@ func WebSocketHandler(c *gin.Context) {
 				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_closed", Data: "Main terminal closed."})
 			}
 
-		case "subscribe_download_progress":
+		case "subscribe_operation_progress":
 			reqId := wsMsg.Data
 			if reqId == "" {
-				logger.Warnf("[WebSocket] subscribe_download_progress with empty reqId")
+				logger.Warnf("[WebSocket] subscribe_operation_progress with empty reqId")
 				continue
 			}
 			key := sess.SessionID + ":" + reqId
-			logger.Debugf("[WebSocket] Subscribing to download progress: %s", key)
+			logger.Debugf("[WebSocket] Subscribing to operation progress: %s", key)
 
 			subCtx, cancel := context.WithCancel(ctx)
 			addSubscriptionCancel(key, cancel)
 
 			GlobalProgressBroadcaster.Register(key, func(update ProgressUpdate) {
 				_ = safeConn.WriteJSON(WSResponse{
-					Type:      update.Type,
+					Type:      update.Type, // e.g. "download_progress", "compression_progress", "upload_progress"
 					RequestID: reqId,
 					Data:      update,
 				})
@@ -366,84 +366,29 @@ func WebSocketHandler(c *gin.Context) {
 				subscriptionCancels.mu.Lock()
 				delete(subscriptionCancels.cancels, subscriptionKey)
 				subscriptionCancels.mu.Unlock()
-				if ctx.Err() != nil {
-					logger.Debugf("[WebSocket] Unsubscribing from download progress: %s", subscriptionKey)
-					GlobalProgressBroadcaster.Unregister(subscriptionKey)
-				}
+				logger.Debugf("[WebSocket] Unsubscribing from operation progress: %s", subscriptionKey)
+				GlobalProgressBroadcaster.Unregister(subscriptionKey)
 			}(key, subCtx)
 
 			_ = safeConn.WriteJSON(WSResponse{
-				Type:      "download_subscribed",
+				Type:      "operation_subscribed",
 				RequestID: reqId,
 			})
 
-		case "unsubscribe_download_progress":
+		case "unsubscribe_operation_progress":
 			reqId := wsMsg.Data
 			if reqId == "" {
-				logger.Warnf("[WebSocket] unsubscribe_download_progress with empty reqId")
+				logger.Warnf("[WebSocket] unsubscribe_operation_progress with empty reqId")
 				continue
 			}
 			key := sess.SessionID + ":" + reqId
-			logger.Debugf("[WebSocket] Unsubscribing from download progress: %s", key)
+			logger.Debugf("[WebSocket] Unsubscribing from operation progress: %s", key)
 			if cancel := popSubscriptionCancel(key); cancel != nil {
 				cancel()
 			}
 			GlobalProgressBroadcaster.Unregister(key)
 			_ = safeConn.WriteJSON(WSResponse{
-				Type:      "download_unsubscribed",
-				RequestID: reqId,
-			})
-
-		case "subscribe_compression_progress":
-			reqId := wsMsg.Data
-			if reqId == "" {
-				logger.Warnf("[WebSocket] subscribe_compression_progress with empty reqId")
-				continue
-			}
-			key := sess.SessionID + ":" + reqId
-			logger.Debugf("[WebSocket] Subscribing to compression progress: %s", key)
-
-			subCtx, cancel := context.WithCancel(ctx)
-			addSubscriptionCancel(key, cancel)
-
-			GlobalProgressBroadcaster.Register(key, func(update ProgressUpdate) {
-				_ = safeConn.WriteJSON(WSResponse{
-					Type:      update.Type,
-					RequestID: reqId,
-					Data:      update,
-				})
-			})
-
-			go func(subscriptionKey string, childCtx context.Context) {
-				<-childCtx.Done()
-				subscriptionCancels.mu.Lock()
-				delete(subscriptionCancels.cancels, subscriptionKey)
-				subscriptionCancels.mu.Unlock()
-				if ctx.Err() != nil {
-					logger.Debugf("[WebSocket] Unsubscribing from compression progress: %s", subscriptionKey)
-					GlobalProgressBroadcaster.Unregister(subscriptionKey)
-				}
-			}(key, subCtx)
-
-			_ = safeConn.WriteJSON(WSResponse{
-				Type:      "compression_subscribed",
-				RequestID: reqId,
-			})
-
-		case "unsubscribe_compression_progress":
-			reqId := wsMsg.Data
-			if reqId == "" {
-				logger.Warnf("[WebSocket] unsubscribe_compression_progress with empty reqId")
-				continue
-			}
-			key := sess.SessionID + ":" + reqId
-			logger.Debugf("[WebSocket] Unsubscribing from compression progress: %s", key)
-			if cancel := popSubscriptionCancel(key); cancel != nil {
-				cancel()
-			}
-			GlobalProgressBroadcaster.Unregister(key)
-			_ = safeConn.WriteJSON(WSResponse{
-				Type:      "compression_unsubscribed",
+				Type:      "operation_unsubscribed",
 				RequestID: reqId,
 			})
 
