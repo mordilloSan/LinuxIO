@@ -9,6 +9,7 @@ import (
 // RequestContext wraps optional streaming helpers available to
 // bridge handlers processing framed requests.
 type RequestContext struct {
+	conn   net.Conn
 	stream *StreamWriter
 }
 
@@ -17,7 +18,19 @@ func NewRequestContext(conn net.Conn) *RequestContext {
 	if conn == nil {
 		return &RequestContext{}
 	}
-	return &RequestContext{stream: NewStreamWriter(conn)}
+	return &RequestContext{
+		conn:   conn,
+		stream: NewStreamWriter(conn),
+	}
+}
+
+// Conn exposes the underlying net.Conn so handlers can use low-level
+// framing helpers like ReadFrame / WriteResponseFrame directly.
+func (rc *RequestContext) Conn() net.Conn {
+	if rc == nil {
+		return nil
+	}
+	return rc.conn
 }
 
 // HasStream reports whether streaming helpers are enabled.

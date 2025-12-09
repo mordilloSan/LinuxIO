@@ -310,7 +310,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         link.remove();
         window.URL.revokeObjectURL(blobUrl);
 
-        toast.success(formatDownloadLabel("Downloaded", { name: downloadLabelBase }));
+        toast.success(
+          formatDownloadLabel("Downloaded", { name: downloadLabelBase }),
+        );
         setTimeout(() => removeDownload(reqId), 1000);
       } catch (err: any) {
         if (err?.name === "AbortError" || err?.name === "CanceledError") {

@@ -35,11 +35,120 @@ func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 		"archive_extract":        ipc.WrapSimpleHandler(archiveExtract),
 		"chmod":                  ipc.WrapSimpleHandler(resourceChmod),
 		"users_groups":           ipc.WrapSimpleHandler(usersGroups),
-		"file_upload_from_temp":  ipc.WrapSimpleHandler(fileUploadFromTemp),
-		"file_update_from_temp":  ipc.WrapSimpleHandler(fileUpdateFromTemp),
+		"file_upload_stream":     fileUploadStream,
 		"file_download_to_temp":  fileDownloadToTemp,
 		"archive_download_setup": archiveDownloadSetup,
 	}
+}
+
+// fileUploadStream handles framed streaming upload from server.
+// Args: [destinationPath, override?]
+func fileUploadStream(ctx *ipc.RequestContext, args []string) (any, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("streaming context required")
+	}
+	if len(args) < 1 {
+		// Send explicit error and tell the dispatcher we already responded.
+		_ = ipc.WriteResponseFrame(ctx.Conn(), &ipc.Response{
+			Status: "error",
+			Error:  "bad_request:missing destination path",
+		})
+		return nil, ipc.ErrResponseAlreadySent
+	}
+
+	destPath := args[0]
+	override := len(args) > 1 && args[1] == "true"
+
+	// Create temp file on the bridge side (same semantics as before,
+	// but temp lives on the target host, not server).
+	tmpFile, err := os.CreateTemp("", "linuxio-upload-*.tmp")
+	if err != nil {
+		_ = ipc.WriteResponseFrame(ctx.Conn(), &ipc.Response{
+			Status: "error",
+			Error:  fmt.Sprintf("failed to create temp file: %v", err),
+		})
+		return nil, ipc.ErrResponseAlreadySent
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		tmpFile.Close()
+		// In success case, fileUploadFromTemp will move/remove it.
+		// In error case, we can try to remove, but ignore errors.
+		_ = os.Remove(tmpPath)
+	}()
+
+	// INITIAL HANDSHAKE: tell client we're ready to receive data.
+	if err := ipc.WriteResponseFrame(ctx.Conn(), &ipc.Response{Status: "ok"}); err != nil {
+		return nil, ipc.ErrResponseAlreadySent
+	}
+
+	// Read binary frames until we see an empty binary frame (end marker).
+	var total int64
+	for {
+		frame, err := ipc.ReadFrame(ctx.Conn())
+		if err != nil {
+			_ = ipc.WriteResponseFrame(ctx.Conn(), &ipc.Response{
+				Status: "error",
+				Error:  fmt.Sprintf("read frame failed: %v", err),
+			})
+			return nil, ipc.ErrResponseAlreadySent
+		}
+
+		msgType := frame.Type
+		payload := frame.Payload
+
+		switch msgType {
+		case ipc.MsgTypeBinary:
+			// Empty binary payload = end marker
+			if len(payload) == 0 {
+				goto DONE_STREAM
+			}
+			if _, err := tmpFile.Write(payload); err != nil {
+				_ = ipc.WriteResponseFrame(ctx.Conn(), &ipc.Response{
+					Status: "error",
+					Error:  fmt.Sprintf("write temp file failed: %v", err),
+				})
+				return nil, ipc.ErrResponseAlreadySent
+			}
+			total += int64(len(payload))
+
+		default:
+			// For safety, ignore other frame types during upload
+			logger.WarnKV("unexpected frame type during upload",
+				"msg_type", fmt.Sprintf("0x%02x", msgType))
+		}
+	}
+
+DONE_STREAM:
+	if err := tmpFile.Sync(); err != nil {
+		logger.WarnKV("tmp file sync failed", "path", tmpPath, "error", err)
+	}
+
+	// Reuse existing logic to move temp into final destination and apply perms.
+	args2 := []string{tmpPath, destPath}
+	if override {
+		args2 = append(args2, "true")
+	}
+
+	if _, err := fileUploadFromTemp(nil, args2); err != nil {
+		_ = ipc.WriteResponseFrame(ctx.Conn(), &ipc.Response{
+			Status: "error",
+			Error:  err.Error(),
+		})
+		return nil, ipc.ErrResponseAlreadySent
+	}
+
+	// FINAL RESPONSE to match UploadToSession expectation
+	if err := ipc.WriteResponseFrame(ctx.Conn(), &ipc.Response{Status: "ok"}); err != nil {
+		return nil, ipc.ErrResponseAlreadySent
+	}
+
+	logger.DebugKV("file upload completed via stream",
+		"dest", destPath,
+		"bytes", total)
+
+	// Tell dispatcher: we've already sent all responses.
+	return nil, ipc.ErrResponseAlreadySent
 }
 
 // resourceGet retrieves information about a resource
@@ -848,7 +957,7 @@ func getAllGroups() ([]string, error) {
 
 // fileUploadFromTemp moves a file from a temp location to the final destination
 // Args: [tempFilePath, destinationPath, override?]
-func fileUploadFromTemp(args []string) (any, error) {
+func fileUploadFromTemp(_ *ipc.RequestContext, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("bad_request:missing temp file path or destination")
 	}
@@ -899,45 +1008,6 @@ func fileUploadFromTemp(args []string) (any, error) {
 	}
 
 	return map[string]any{"message": "file uploaded", "path": destPath}, nil
-}
-
-// fileUpdateFromTemp updates an existing file from a temp location
-// Args: [tempFilePath, destinationPath]
-func fileUpdateFromTemp(args []string) (any, error) {
-	if len(args) < 2 {
-		return nil, fmt.Errorf("bad_request:missing temp file path or destination")
-	}
-
-	tempFilePath := args[0]
-	destPath := args[1]
-
-	// Validate temp file exists
-	if _, err := os.Stat(tempFilePath); err != nil {
-		return nil, fmt.Errorf("bad_request:temp file not found: %v", err)
-	}
-
-	// Clean destination path
-	realDest := filepath.Join(destPath)
-
-	if strings.HasSuffix(destPath, "/") {
-		return nil, fmt.Errorf("bad_request:destination cannot be a directory")
-	}
-
-	// Read temp file content
-	content, err := os.ReadFile(tempFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read temp file: %v", err)
-	}
-
-	// Write to destination
-	if err := os.WriteFile(realDest, content, services.PermFile); err != nil {
-		return nil, fmt.Errorf("failed to write file: %v", err)
-	}
-
-	// Clean up temp file
-	_ = os.Remove(tempFilePath)
-
-	return map[string]any{"message": "file updated", "path": destPath}, nil
 }
 
 // fileDownloadToTemp copies a file to a temp location for the server to stream
