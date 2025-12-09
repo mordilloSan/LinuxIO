@@ -3,17 +3,14 @@ frontend/node_modules/
 backend/server/web/frontend/
 
 # Go Binaries
-./linuxio-bridge
-./linuxio
-./linuxio-auth-helper
+linuxio-auth-helper
+linuxio-bridge
+
 .cache
-.gocache
+.go-cache
 
 # Logs and misc
 *.log
 .DS_Store
 .vscode/
 *.swp
-
-.cache
-.go-cache
