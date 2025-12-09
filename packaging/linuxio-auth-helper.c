@@ -92,7 +92,7 @@ static int safe_snprintf(char *dst, size_t dstsz, const char *fmt, ...)
   return n;
 }
 
-// -------- minimal logging (errors only to journal/syslog) --------
+// -------- minimal logging  --------
 static void journal_errorf(const char *fmt, ...)
 {
   char buf[512];
@@ -106,6 +106,23 @@ static void journal_errorf(const char *fmt, ...)
 #else
   openlog("linuxio-auth-helper", LOG_PID, LOG_AUTHPRIV);
   syslog(LOG_ERR, "%s", buf);
+  closelog();
+#endif
+}
+
+static void journal_infof(const char *fmt, ...)
+{
+  char buf[512];
+  va_list ap;
+  va_start(ap, fmt);
+  (void)safe_vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+#ifdef HAVE_SD_JOURNAL
+  (void)sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_INFO,
+                        "SYSLOG_IDENTIFIER=linuxio-auth-helper", NULL);
+#else
+  openlog("linuxio-auth-helper", LOG_PID, LOG_AUTHPRIV);
+  syslog(LOG_INFO, "%s", buf);
   closelog();
 #endif
 }
@@ -140,7 +157,8 @@ static void secure_bzero(void *p, size_t n)
 
 static const char *limit_reason_for_signal(int sig, char *buf, size_t buflen)
 {
-  switch (sig) {
+  switch (sig)
+  {
   case SIGXCPU:
     return "exceeded RLIMIT_CPU (CPU time limit)";
   // You could add SIGKILL+SIGXCPU hard-limit heuristics here if you ever use different cur/max
@@ -900,6 +918,9 @@ int main(void)
     return 5;
   }
 
+  journal_infof("PAM authentication successful for user '%s' (uid=%u, gid=%u)",
+                user, (unsigned)pw->pw_uid, (unsigned)pw->pw_gid);
+
   gid_t linuxio_gid = 0;
   if (ensure_runtime_dirs(pw, &linuxio_gid) != 0)
   {
@@ -1061,7 +1082,7 @@ int main(void)
 
   if (nanny == 0)
   {
-    // FIX #2: Open PAM session in nanny child
+    // Open PAM session in nanny child
     rc = pam_open_session(pamh, 0);
     if (rc != PAM_SUCCESS)
     {
@@ -1178,7 +1199,7 @@ int main(void)
       sock = sockbuf;
     }
 
-    // FIX #1: JSON with proper escaping for all fields
+    // JSON with proper escaping for all fields
     char json[16384]; // Increased size for escaped content
     char sess_id_esc[1024], sess_user_esc[1024], secret_esc[16384];
     char server_base_esc[16384], sock_esc[8192];
