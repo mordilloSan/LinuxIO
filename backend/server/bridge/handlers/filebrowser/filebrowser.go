@@ -17,9 +17,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/server/bridge/stream"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
@@ -36,75 +36,6 @@ type archiveExtractRequest struct {
 	ArchivePath string `json:"archivePath"`
 	Destination string `json:"destination"`
 	RequestID   string `json:"requestId"`
-}
-
-type streamProgressPayload struct {
-	Percent        float64 `json:"percent"`
-	BytesProcessed int64   `json:"bytesProcessed"`
-	TotalBytes     int64   `json:"totalBytes"`
-}
-
-func callFilebrowserStream(sess *session.Session, command string, args []string, progressKey string, result interface{}) error {
-	stream, err := bridge.StreamWithSession(sess, "filebrowser", command, args)
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-
-	var finalResp *ipc.Response
-	for {
-		resp, msgType, readErr := stream.Read()
-		if readErr != nil {
-			if errors.Is(readErr, io.EOF) {
-				break
-			}
-			return fmt.Errorf("stream read failed: %w", readErr)
-		}
-
-		switch msgType {
-		case ipc.MsgTypeStream:
-			if progressKey == "" || len(resp.Output) == 0 {
-				continue
-			}
-			var payload streamProgressPayload
-			if err := json.Unmarshal(resp.Output, &payload); err != nil {
-				logger.Debugf("invalid %s progress payload: %v", command, err)
-				continue
-			}
-			web.GlobalProgressBroadcaster.Send(progressKey, web.ProgressUpdate{
-				Type:           resp.Status,
-				Percent:        payload.Percent,
-				BytesProcessed: payload.BytesProcessed,
-				TotalBytes:     payload.TotalBytes,
-			})
-		case ipc.MsgTypeJSON:
-			finalResp = resp
-			goto DONE
-		default:
-			logger.Warnf("unexpected frame type from bridge for %s: 0x%02x", command, msgType)
-		}
-	}
-
-DONE:
-	if finalResp == nil {
-		return fmt.Errorf("bridge error: empty response")
-	}
-	if !strings.EqualFold(finalResp.Status, "ok") {
-		if finalResp.Error == "" {
-			return fmt.Errorf("bridge error: unknown")
-		}
-		return fmt.Errorf("bridge error: %s", finalResp.Error)
-	}
-	if result == nil {
-		return nil
-	}
-	if len(finalResp.Output) == 0 {
-		return ipc.ErrEmptyBridgeOutput
-	}
-	if err := json.Unmarshal(finalResp.Output, result); err != nil {
-		return fmt.Errorf("decode bridge output: %w", err)
-	}
-	return nil
 }
 
 // resourceGetHandler retrieves information about a resource via bridge with streaming
@@ -437,7 +368,7 @@ func archiveCompressHandler(c *gin.Context) {
 		format,
 	}
 	var result json.RawMessage
-	if err := callFilebrowserStream(sess, "archive_create", args, progressKey, &result); err != nil {
+	if err := stream.CallWithProgress(sess, "filebrowser", "archive_create", args, progressKey, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
 		status := http.StatusInternalServerError
 		errMsg := err.Error()
@@ -484,7 +415,7 @@ func archiveExtractHandler(c *gin.Context) {
 		progressKey = fmt.Sprintf("%s:%s", sess.SessionID, strings.TrimSpace(req.RequestID))
 	}
 	var result json.RawMessage
-	if err := callFilebrowserStream(sess, "archive_extract", args, progressKey, &result); err != nil {
+	if err := stream.CallWithProgress(sess, "filebrowser", "archive_extract", args, progressKey, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "bad_request:") {
@@ -577,9 +508,9 @@ func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, ove
 
 	// Write request body to temp file
 	if tracker != nil {
-		if err := copyRequestBodyWithProgress(tempFile, c.Request.Body, tracker); err != nil {
+		if trackerErr := copyRequestBodyWithProgress(tempFile, c.Request.Body, tracker); trackerErr != nil {
 			tempFile.Close()
-			logger.Debugf("could not write to temp file: %v", err)
+			logger.Debugf("could not write to temp file: %v", trackerErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write upload data"})
 			return
 		}
@@ -599,7 +530,7 @@ func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, ove
 		args = append(args, "true")
 	}
 
-	if err := callFilebrowserStream(sess, "file_upload_from_temp", args, progressKey, nil); err != nil {
+	if err := stream.CallWithProgress(sess, "filebrowser", "file_upload_from_temp", args, progressKey, nil); err != nil {
 		logger.Debugf("bridge error: %v", err)
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "bad_request:") {
@@ -684,7 +615,7 @@ func handleChunkedUpload(c *gin.Context, sess *session.Session, path string, ove
 		if requestID != "" {
 			progressKey = fmt.Sprintf("%s:%s", sess.SessionID, requestID)
 		}
-		if err := callFilebrowserStream(sess, "file_upload_from_temp", args, progressKey, nil); err != nil {
+		if err := stream.CallWithProgress(sess, "filebrowser", "file_upload_from_temp", args, progressKey, nil); err != nil {
 			logger.Debugf("bridge error: %v", err)
 			status := http.StatusInternalServerError
 			if strings.Contains(err.Error(), "bad_request:") {
@@ -792,7 +723,7 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string, p
 			ArchiveName string `json:"archiveName"`
 			Size        int64  `json:"size"`
 		}
-		if err := callFilebrowserStream(sess, "archive_download_setup", args, progressKey, &result); err != nil {
+		if err := stream.CallWithProgress(sess, "filebrowser", "archive_download_setup", args, progressKey, &result); err != nil {
 			logger.Debugf("bridge error: %v", err)
 			status := http.StatusInternalServerError
 			if strings.Contains(err.Error(), "bad_request:") {
@@ -819,7 +750,7 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string, p
 			FileName string `json:"fileName"`
 			Size     int64  `json:"size"`
 		}
-		if err := callFilebrowserStream(sess, "file_download_to_temp", args, progressKey, &result); err != nil {
+		if err := stream.CallWithProgress(sess, "filebrowser", "file_download_to_temp", args, progressKey, &result); err != nil {
 			logger.Debugf("bridge error: %v", err)
 			status := http.StatusInternalServerError
 			if strings.Contains(err.Error(), "bad_request:") {

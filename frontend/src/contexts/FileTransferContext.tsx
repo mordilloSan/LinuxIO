@@ -16,6 +16,7 @@ interface Download {
   paths: string[];
   progress: number;
   label: string;
+  speed?: number;
   abortController: AbortController;
 }
 
@@ -27,6 +28,7 @@ interface Upload {
   currentFile: string;
   progress: number;
   label: string;
+  speed?: number;
   abortController: AbortController;
 }
 
@@ -104,6 +106,34 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const activeExtractionIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
+  const transferRatesRef = useRef<
+    Map<string, { bytes: number; timestamp: number }>
+  >(new Map());
+
+  const recordTransferRate = useCallback(
+    (id: string, bytesProcessed?: number) => {
+      if (!id || bytesProcessed === undefined || bytesProcessed < 0) {
+        transferRatesRef.current.delete(id);
+        return undefined;
+      }
+      const now = Date.now();
+      const prev = transferRatesRef.current.get(id);
+      let rate: number | undefined;
+      if (prev) {
+        const deltaBytes = bytesProcessed - prev.bytes;
+        const deltaMs = now - prev.timestamp;
+        if (deltaBytes >= 0 && deltaMs > 0) {
+          rate = deltaBytes / (deltaMs / 1000);
+        }
+      }
+      transferRatesRef.current.set(id, {
+        bytes: bytesProcessed,
+        timestamp: now,
+      });
+      return rate;
+    },
+    [],
+  );
 
   const sendProgressUnsubscribe = useCallback(
     (
@@ -172,6 +202,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       releaseDownloadLabelBase(id);
       sendProgressUnsubscribe("download", id);
+      transferRatesRef.current.delete(id);
     },
     [releaseDownloadLabelBase, sendProgressUnsubscribe],
   );
@@ -216,6 +247,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         paths,
         progress: 0,
         label: formatDownloadLabel("Preparing", { percent: 0 }),
+        speed: undefined,
         abortController,
       };
 
@@ -241,14 +273,17 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           if (msg.type === "download_progress" && msg.data) {
             hasReceivedProgress = true;
             const percent = Math.min(99, Math.round(msg.data.percent));
+            const speed = recordTransferRate(reqId, msg.data.bytesProcessed);
             updateDownload(reqId, {
               progress: percent,
               label: formatDownloadLabel("Preparing", { percent }),
+              ...(speed !== undefined ? { speed } : {}),
             });
           } else if (msg.type === "download_ready") {
             updateDownload(reqId, {
               progress: 100,
               label: formatDownloadLabel("Starting download"),
+              speed: undefined,
             });
           }
         });
@@ -319,7 +354,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         updateDownload(reqId, {
           progress: 100,
           label: formatDownloadLabel("Downloaded", { name: downloadLabelBase }),
+          speed: undefined,
         });
+        recordTransferRate(reqId, undefined);
 
         // Trigger browser download
         const blob = response.data;
@@ -348,10 +385,17 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             "Download failed";
           toast.error(message);
         }
+        recordTransferRate(reqId, undefined);
         removeDownload(reqId);
       }
     },
-    [ws, updateDownload, removeDownload, allocateDownloadLabelBase],
+    [
+      ws,
+      updateDownload,
+      removeDownload,
+      allocateDownloadLabelBase,
+      recordTransferRate,
+    ],
   );
 
   const cancelDownload = useCallback(
@@ -538,7 +582,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       activeExtractionIdsRef.current.delete(id);
 
-      setExtractions((prev) => prev.filter((extraction) => extraction.id !== id));
+      setExtractions((prev) =>
+        prev.filter((extraction) => extraction.id !== id),
+      );
       const timers = cleanupTimersRef.current.get(id);
       if (timers?.unsubscribe) {
         timers.unsubscribe();
@@ -706,6 +752,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       sendProgressUnsubscribe("upload", id);
+      transferRatesRef.current.delete(id);
     },
     [sendProgressUnsubscribe],
   );
@@ -745,6 +792,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         currentFile: "",
         progress: 0,
         label: `Uploading 0/${totalFiles} files`,
+        speed: undefined,
         abortController,
       };
 
@@ -760,16 +808,20 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       };
 
       // WS-based upload progress (bridge-side)
-      const applyReportedProgress = (rawPercent: number) => {
+      const applyReportedProgress = (rawPercent: number, speed?: number) => {
         const percent = Math.min(99, Math.round(rawPercent));
         setUploads((prev) =>
           prev.map((u) => {
             if (u.id !== uploadId) return u;
-            return {
+            const updated: Upload = {
               ...u,
               progress: percent,
               label: `Uploading ${u.completedFiles}/${u.totalFiles} files (${percent}%)`,
             };
+            if (speed !== undefined) {
+              updated.speed = speed;
+            }
+            return updated;
           }),
         );
       };
@@ -778,7 +830,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         if (msg.requestId !== requestId) return;
 
         if (msg.type === "upload_progress" && msg.data) {
-          applyReportedProgress(msg.data.percent);
+          const speed = recordTransferRate(uploadId, msg.data.bytesProcessed);
+          applyReportedProgress(msg.data.percent, speed);
         }
         // Optional: handle "upload_complete" if the backend emits it
         if (msg.type === "upload_complete") {
@@ -919,7 +972,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         updateUpload(uploadId, {
           progress: 100,
           label: `Uploaded ${uploaded}/${totalFiles} files`,
+          speed: undefined,
         });
+        recordTransferRate(uploadId, undefined);
         removeUpload(uploadId);
         return { conflicts, uploaded, failures };
       } catch (err: any) {
@@ -929,11 +984,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           console.error("Upload failed", err);
           toast.error("Upload failed");
         }
+        recordTransferRate(uploadId, undefined);
         removeUpload(uploadId);
         return { conflicts, uploaded, failures };
       }
     },
-    [updateUpload, removeUpload, ws],
+    [updateUpload, removeUpload, ws, recordTransferRate],
   );
 
   const cancelUpload = useCallback(

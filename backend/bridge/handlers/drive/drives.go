@@ -156,12 +156,12 @@ func GetNVMePowerState(device string) (*InferredPowerData, error) {
 			continue
 		}
 
-		stateNum, err := strconv.Atoi(match[1])
-		if err != nil {
+		stateNum, parseErr := strconv.Atoi(match[1])
+		if parseErr != nil {
 			continue
 		}
-		maxPower, err := strconv.ParseFloat(match[2], 64)
-		if err != nil {
+		maxPower, powerErr := strconv.ParseFloat(match[2], 64)
+		if powerErr != nil {
 			continue
 		}
 
