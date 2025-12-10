@@ -41,12 +41,23 @@ interface Compression {
   abortController: AbortController;
 }
 
-type Transfer = Download | Upload | Compression;
+interface Extraction {
+  id: string;
+  type: "extraction";
+  archivePath: string;
+  destination: string;
+  progress: number;
+  label: string;
+  abortController: AbortController;
+}
+
+type Transfer = Download | Upload | Compression | Extraction;
 
 export interface FileTransferContextValue {
   downloads: Download[];
   uploads: Upload[];
   compressions: Compression[];
+  extractions: Extraction[];
   transfers: Transfer[];
   startDownload: (paths: string[]) => Promise<void>;
   cancelDownload: (id: string) => void;
@@ -56,6 +67,11 @@ export interface FileTransferContextValue {
     destination: string;
   }) => Promise<void>;
   cancelCompression: (id: string) => void;
+  startExtraction: (options: {
+    archivePath: string;
+    destination?: string;
+  }) => Promise<void>;
+  cancelExtraction: (id: string) => void;
   startUpload: (
     entries: Array<{ file?: File; relativePath: string; isDirectory: boolean }>,
     targetPath: string,
@@ -81,14 +97,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [downloads, setDownloads] = useState<Download[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [compressions, setCompressions] = useState<Compression[]>([]);
+  const [extractions, setExtractions] = useState<Extraction[]>([]);
   const ws = useWebSocket();
   const cleanupTimersRef = useRef<Map<string, any>>(new Map());
   const activeCompressionIdsRef = useRef<Set<string>>(new Set());
+  const activeExtractionIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
 
   const sendProgressUnsubscribe = useCallback(
-    (_type: "download" | "compression" | "upload", requestId: string) => {
+    (
+      _type: "download" | "compression" | "upload" | "extraction",
+      requestId: string,
+    ) => {
       ws.send({ type: "unsubscribe_operation_progress", data: requestId });
     },
     [ws],
@@ -121,7 +142,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  const transfers: Transfer[] = [...downloads, ...uploads, ...compressions];
+  const transfers: Transfer[] = [
+    ...downloads,
+    ...uploads,
+    ...compressions,
+    ...extractions,
+  ];
 
   const updateDownload = useCallback(
     (
@@ -491,6 +517,171 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [compressions, updateCompression],
   );
 
+  const updateExtraction = useCallback(
+    (
+      id: string,
+      updates: Partial<Omit<Extraction, "id" | "type" | "abortController">>,
+    ) => {
+      setExtractions((prev) =>
+        prev.map((extraction) =>
+          extraction.id === id ? { ...extraction, ...updates } : extraction,
+        ),
+      );
+    },
+    [],
+  );
+
+  const removeExtraction = useCallback(
+    (id: string) => {
+      if (!activeExtractionIdsRef.current.has(id)) {
+        return;
+      }
+      activeExtractionIdsRef.current.delete(id);
+
+      setExtractions((prev) => prev.filter((extraction) => extraction.id !== id));
+      const timers = cleanupTimersRef.current.get(id);
+      if (timers?.unsubscribe) {
+        timers.unsubscribe();
+      }
+      cleanupTimersRef.current.delete(id);
+      releaseDownloadLabelBase(id);
+      sendProgressUnsubscribe("extraction", id);
+    },
+    [releaseDownloadLabelBase, sendProgressUnsubscribe],
+  );
+
+  const startExtraction = useCallback(
+    async ({
+      archivePath,
+      destination,
+    }: {
+      archivePath: string;
+      destination?: string;
+    }) => {
+      if (!archivePath) {
+        throw new Error("No archive specified for extraction");
+      }
+
+      const id = crypto.randomUUID();
+      const requestId = id;
+      const abortController = new AbortController();
+      const deriveLabelBase = () => {
+        const trimmed = archivePath.replace(/\/+$/, "");
+        const parts = trimmed.split("/");
+        const rawName = parts[parts.length - 1] || "archive";
+        const lower = rawName.toLowerCase();
+        if (lower.endsWith(".tar.gz")) {
+          return rawName.slice(0, -7) || rawName;
+        }
+        if (lower.endsWith(".tgz")) {
+          return rawName.slice(0, -4) || rawName;
+        }
+        if (lower.endsWith(".zip")) {
+          return rawName.slice(0, -4) || rawName;
+        }
+        return rawName;
+      };
+      const labelBase = allocateDownloadLabelBase(deriveLabelBase(), id);
+
+      const extraction: Extraction = {
+        id,
+        type: "extraction",
+        archivePath,
+        destination: destination || "",
+        progress: 0,
+        label: `Extracting ${labelBase} (0%)`,
+        abortController,
+      };
+
+      setExtractions((prev) => [...prev, extraction]);
+      activeExtractionIdsRef.current.add(id);
+
+      const applyReportedProgress = (rawPercent: number) => {
+        const percent = Math.min(99, Math.round(rawPercent));
+        setExtractions((prev) =>
+          prev.map((item) => {
+            if (item.id !== id) return item;
+            const next = Math.max(item.progress, percent);
+            if (next === item.progress) {
+              return item;
+            }
+            return {
+              ...item,
+              progress: next,
+              label: `Extracting ${labelBase} (${next}%)`,
+            };
+          }),
+        );
+      };
+
+      const unsubscribe = ws.subscribe((msg: any) => {
+        if (msg.requestId !== requestId) return;
+
+        if (msg.type === "extraction_progress" && msg.data) {
+          applyReportedProgress(msg.data.percent);
+        } else if (msg.type === "extraction_complete") {
+          updateExtraction(id, {
+            progress: 100,
+            label: `Extracted ${labelBase}`,
+          });
+          setTimeout(() => removeExtraction(id), 800);
+        }
+      });
+
+      ws.send({ type: "subscribe_operation_progress", data: requestId });
+
+      cleanupTimersRef.current.set(id, {
+        unsubscribe,
+      });
+
+      try {
+        await axios.post(
+          "/navigator/api/archive/extract",
+          {
+            archivePath,
+            destination,
+            requestId,
+          },
+          { signal: abortController.signal },
+        );
+
+        updateExtraction(id, {
+          progress: 100,
+          label: `Extracted ${labelBase}`,
+        });
+        setTimeout(() => removeExtraction(id), 800);
+      } catch (err: any) {
+        if (err?.name === "CanceledError" || err?.name === "AbortError") {
+          toast.info("Extraction cancelled");
+        } else {
+          const message =
+            err?.response?.data?.error || err?.message || "Extraction failed";
+          updateExtraction(id, { label: message });
+        }
+        setTimeout(() => removeExtraction(id), 800);
+        throw err;
+      } finally {
+        const timers = cleanupTimersRef.current.get(id);
+        if (timers?.unsubscribe) {
+          timers.unsubscribe();
+        }
+        cleanupTimersRef.current.delete(id);
+      }
+    },
+    [allocateDownloadLabelBase, removeExtraction, updateExtraction, ws],
+  );
+
+  const cancelExtraction = useCallback(
+    (id: string) => {
+      const extraction = extractions.find((item) => item.id === id);
+      if (extraction) {
+        extraction.abortController.abort();
+        updateExtraction(id, { label: "Cancelling..." });
+      }
+    },
+    [extractions, updateExtraction],
+  );
+
   const updateUpload = useCallback(
     (
       id: string,
@@ -770,11 +961,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         downloads,
         uploads,
         compressions,
+        extractions,
         transfers,
         startDownload,
         cancelDownload,
         startCompression,
         cancelCompression,
+        startExtraction,
+        cancelExtraction,
         startUpload,
         cancelUpload,
       }}

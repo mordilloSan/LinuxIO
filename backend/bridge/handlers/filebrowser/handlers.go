@@ -15,7 +15,7 @@ func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 		"raw_files":              ipc.WrapSimpleHandler(rawFiles),
 		"dir_size":               ipc.WrapSimpleHandler(dirSize),
 		"archive_create":         archiveCreate,
-		"archive_extract":        ipc.WrapSimpleHandler(archiveExtract),
+		"archive_extract":        archiveExtract,
 		"chmod":                  ipc.WrapSimpleHandler(resourceChmod),
 		"users_groups":           ipc.WrapSimpleHandler(usersGroups),
 		"file_upload_stream":     fileUploadFromTemp,

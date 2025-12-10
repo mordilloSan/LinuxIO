@@ -21,7 +21,6 @@ func ComputeArchiveSize(fileList []string) (int64, error) {
 	var estimatedSize int64
 	for _, fname := range fileList {
 		path := fname
-		var err error
 		// Direct filesystem access
 		realPath := filepath.Join(path)
 		stat, err := os.Stat(realPath)
@@ -50,6 +49,63 @@ func ComputeArchiveSize(fileList []string) (int64, error) {
 		}
 	}
 	return estimatedSize, nil
+}
+
+// ComputeExtractSize estimates the number of bytes that will be written when extracting an archive.
+func ComputeExtractSize(archivePath string) (int64, error) {
+	realPath := filepath.Join(archivePath)
+	lowerName := strings.ToLower(realPath)
+
+	switch {
+	case strings.HasSuffix(lowerName, ".zip"):
+		reader, err := zip.OpenReader(realPath)
+		if err != nil {
+			return 0, err
+		}
+		defer reader.Close()
+
+		var total int64
+		for _, file := range reader.File {
+			if file.FileInfo().IsDir() {
+				continue
+			}
+			total += int64(file.UncompressedSize64)
+		}
+		return total, nil
+
+	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
+		file, err := os.Open(realPath)
+		if err != nil {
+			return 0, err
+		}
+		defer file.Close()
+
+		gzipReader, err := gzip.NewReader(file)
+		if err != nil {
+			return 0, err
+		}
+		defer gzipReader.Close()
+
+		tarReader := tar.NewReader(gzipReader)
+		var total int64
+		for {
+			header, err := tarReader.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return 0, err
+			}
+			if header.FileInfo().IsDir() {
+				continue
+			}
+			total += header.Size
+		}
+		return total, nil
+
+	default:
+		return 0, fmt.Errorf("unsupported archive format")
+	}
 }
 
 // CreateZip creates a zip archive from the provided file list
@@ -111,7 +167,7 @@ func CreateTarGz(tmpDirPath string, cb ProgressCallback, skipPath string, filena
 }
 
 // ExtractArchive extracts supported archive types (zip, tar.gz, tgz) into the destination directory.
-func ExtractArchive(archivePath, destination string) error {
+func ExtractArchive(archivePath, destination string, cb ProgressCallback) error {
 	archivePath = filepath.Join(archivePath)
 	destination = filepath.Join(destination)
 
@@ -125,15 +181,15 @@ func ExtractArchive(archivePath, destination string) error {
 	lowerName := strings.ToLower(archivePath)
 	switch {
 	case strings.HasSuffix(lowerName, ".zip"):
-		return extractZip(archivePath, destination)
+		return extractZip(archivePath, destination, cb)
 	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
-		return extractTarGz(archivePath, destination)
+		return extractTarGz(archivePath, destination, cb)
 	default:
 		return fmt.Errorf("unsupported archive format")
 	}
 }
 
-func extractZip(archivePath, destination string) error {
+func extractZip(archivePath, destination string, cb ProgressCallback) error {
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return err
@@ -141,7 +197,7 @@ func extractZip(archivePath, destination string) error {
 	defer reader.Close()
 
 	for _, file := range reader.File {
-		if err := extractZipEntry(file, destination); err != nil {
+		if err := extractZipEntry(file, destination, cb); err != nil {
 			return err
 		}
 	}
@@ -149,7 +205,7 @@ func extractZip(archivePath, destination string) error {
 	return nil
 }
 
-func extractZipEntry(file *zip.File, destination string) error {
+func extractZipEntry(file *zip.File, destination string, cb ProgressCallback) error {
 	targetPath := filepath.Join(destination, file.Name)
 	if !isWithinBase(destination, targetPath) {
 		return fmt.Errorf("illegal file path in archive: %s", file.Name)
@@ -178,14 +234,14 @@ func extractZipEntry(file *zip.File, destination string) error {
 	}
 	defer writer.Close()
 
-	if _, err := io.Copy(writer, reader); err != nil {
+	if err := copyWithProgress(writer, reader, cb); err != nil {
 		return err
 	}
 
 	return os.Chmod(targetPath, PermFile)
 }
 
-func extractTarGz(archivePath, destination string) error {
+func extractTarGz(archivePath, destination string, cb ProgressCallback) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return err
@@ -209,7 +265,7 @@ func extractTarGz(archivePath, destination string) error {
 			return err
 		}
 
-		if err := extractTarEntry(header, tarReader, destination); err != nil {
+		if err := extractTarEntry(header, tarReader, destination, cb); err != nil {
 			return err
 		}
 	}
@@ -217,7 +273,7 @@ func extractTarGz(archivePath, destination string) error {
 	return nil
 }
 
-func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination string) error {
+func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination string, cb ProgressCallback) error {
 	targetPath := filepath.Join(destination, header.Name)
 	if !isWithinBase(destination, targetPath) {
 		return fmt.Errorf("illegal file path in archive: %s", header.Name)
@@ -237,7 +293,7 @@ func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination stri
 		if err != nil {
 			return err
 		}
-		if _, err := io.Copy(outFile, tarReader); err != nil {
+		if err := copyWithProgress(outFile, tarReader, cb); err != nil {
 			outFile.Close()
 			return err
 		}

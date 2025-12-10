@@ -589,7 +589,7 @@ func archiveCreate(ctx *ipc.RequestContext, args []string) (any, error) {
 
 // archiveExtract extracts supported archives to a destination folder.
 // Args: [archivePath, destination?]
-func archiveExtract(args []string) (any, error) {
+func archiveExtract(ctx *ipc.RequestContext, args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing archive path")
 	}
@@ -602,9 +602,62 @@ func archiveExtract(args []string) (any, error) {
 		destination = defaultExtractDestination(archivePath)
 	}
 
-	if err := services.ExtractArchive(archivePath, destination); err != nil {
+	streamProgress := ctx != nil && ctx.HasStream()
+	var progressCb services.ProgressCallback
+	var totalSize int64
+	var processed int64
+	var lastPercent float64
+
+	sendProgress := func(status string, percent float64) {
+		if !streamProgress {
+			return
+		}
+		payload := map[string]any{
+			"percent":        percent,
+			"bytesProcessed": processed,
+			"totalBytes":     totalSize,
+		}
+		if err := ctx.SendStreamJSON(status, payload); err != nil {
+			logger.Debugf("archive_extract stream send failed: %v", err)
+		}
+	}
+
+	if streamProgress {
+		size, err := services.ComputeExtractSize(archivePath)
+		if err != nil {
+			logger.Debugf("error computing extract size for progress: %v", err)
+		} else if size > 0 {
+			totalSize = size
+			progressCb = func(n int64) {
+				processed += n
+				if processed > totalSize {
+					processed = totalSize
+				}
+				percent := float64(processed) / float64(totalSize) * 100
+				if percent > 100 {
+					percent = 100
+				}
+				if percent < lastPercent+0.5 && percent < 100 {
+					return
+				}
+				lastPercent = percent
+				sendProgress("extraction_progress", percent)
+			}
+
+			processed = 0
+			lastPercent = 0
+			sendProgress("extraction_progress", 0)
+		}
+	}
+
+	if err := services.ExtractArchive(archivePath, destination, progressCb); err != nil {
 		logger.Debugf("error extracting archive: %v", err)
 		return nil, fmt.Errorf("error extracting archive: %w", err)
+	}
+
+	if streamProgress && totalSize > 0 {
+		processed = totalSize
+		sendProgress("extraction_complete", 100)
 	}
 
 	return map[string]any{
