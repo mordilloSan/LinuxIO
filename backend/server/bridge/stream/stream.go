@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,12 +25,26 @@ type progressPayload struct {
 // CallWithProgress invokes a bridge command that may emit streaming progress
 // frames. Any ipc.MsgTypeStream frames are forwarded to GlobalProgressBroadcaster
 // using the provided progressKey. The final JSON frame is decoded into result.
-func CallWithProgress(sess *session.Session, subsystem, command string, args []string, progressKey string, result interface{}) error {
+// If ctx is non-nil, it can be used to cancel the stream.
+func CallWithProgress(ctx context.Context, sess *session.Session, subsystem, command string, args []string, progressKey string, result interface{}) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	stream, err := bridge.StreamWithSession(sess, subsystem, command, args)
 	if err != nil {
 		return err
 	}
 	defer stream.Close()
+
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = stream.Close()
+		case <-done:
+		}
+	}()
+	defer close(done)
 
 	var finalResp *ipc.Response
 	for {
@@ -37,6 +52,11 @@ func CallWithProgress(sess *session.Session, subsystem, command string, args []s
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				break
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
 			}
 			return fmt.Errorf("stream read failed: %w", readErr)
 		}
@@ -67,6 +87,11 @@ func CallWithProgress(sess *session.Session, subsystem, command string, args []s
 
 DONE:
 	if finalResp == nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		return fmt.Errorf("bridge error: empty response")
 	}
 	if !strings.EqualFold(finalResp.Status, "ok") {
