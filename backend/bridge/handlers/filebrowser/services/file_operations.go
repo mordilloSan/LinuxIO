@@ -491,6 +491,10 @@ func validateMoveDestination(src, dst string) error {
 	src = filepath.Clean(src)
 	dst = filepath.Clean(dst)
 
+	if src == dst {
+		return fmt.Errorf("source and destination are the same")
+	}
+
 	// Check if source is a directory
 	srcInfo, err := os.Stat(src)
 	if err != nil {
