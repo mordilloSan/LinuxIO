@@ -333,9 +333,10 @@ build-backend: ensure-go
 	@echo "📦 Module: $(MODULE_PATH)"
 	@echo "🔖 Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
-	GOFLAGS="-buildvcs=false" \
+	GOFLAGS="-buildvcs=false -tags=nomsgpack" \
 	go build \
 	-ldflags "\
+		-s -w \
 		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
@@ -354,9 +355,10 @@ build-bridge: ensure-go
 	@echo "📦 Module: $(MODULE_PATH)"
 	@echo "🔖 Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
-	GOFLAGS="-buildvcs=false" \
+	GOFLAGS="-buildvcs=false -tags=nomsgpack" \
 	go build \
 	-ldflags "\
+		-s -w \
 		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
