@@ -19,7 +19,7 @@ interface CompletedTransfer {
   completedAt: Date;
 }
 
-const DownloadNotifications: React.FC = () => {
+const FileNotifications: React.FC = () => {
   const {
     transfers,
     cancelDownload,
@@ -303,4 +303,4 @@ const DownloadNotifications: React.FC = () => {
   );
 };
 
-export default DownloadNotifications;
+export default FileNotifications;

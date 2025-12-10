@@ -916,6 +916,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           );
         }
 
+        updateUpload(uploadId, {
+          progress: 100,
+          label: `Uploaded ${uploaded}/${totalFiles} files`,
+        });
         removeUpload(uploadId);
         return { conflicts, uploaded, failures };
       } catch (err: any) {

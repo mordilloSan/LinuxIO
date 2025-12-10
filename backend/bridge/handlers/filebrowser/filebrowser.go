@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -878,9 +879,9 @@ func getAllGroups() ([]string, error) {
 	return groups, nil
 }
 
-// fileUploadFromTemp moves a file from a temp location to the final destination
+// fileUploadFromTemp moves a file from a temp location to the final destination.
 // Args: [tempFilePath, destinationPath, override?]
-func fileUploadFromTemp(_ *ipc.RequestContext, args []string) (any, error) {
+func fileUploadFromTemp(ctx *ipc.RequestContext, args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("bad_request:missing temp file path or destination")
 	}
@@ -916,18 +917,105 @@ func fileUploadFromTemp(_ *ipc.RequestContext, args []string) (any, error) {
 		return nil, fmt.Errorf("failed to create parent directory: %v", err)
 	}
 
+	streamProgress := ctx != nil && ctx.HasStream()
+	totalSize := tempStat.Size()
+	var processed int64
+	var lastPercent float64
+
+	sendProgress := func(status string, percent float64) {
+		if !streamProgress {
+			return
+		}
+		payload := map[string]any{
+			"percent":        percent,
+			"bytesProcessed": processed,
+			"totalBytes":     totalSize,
+		}
+		if err := ctx.SendStreamJSON(status, payload); err != nil {
+			logger.Debugf("file_upload_from_temp stream send failed: %v", err)
+		}
+	}
+
+	updateProgress := func(delta int64) {
+		if !streamProgress || totalSize <= 0 {
+			return
+		}
+		processed += delta
+		if processed > totalSize {
+			processed = totalSize
+		}
+		percent := float64(processed) / float64(totalSize) * 100
+		if percent > 100 {
+			percent = 100
+		}
+		if percent < lastPercent+0.5 && percent < 100 {
+			return
+		}
+		lastPercent = percent
+		sendProgress("upload_progress", percent)
+	}
+
+	copyWithProgress := func(src, dst string) error {
+		in, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+
+		out, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, services.PermFile)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+
+		buf := make([]byte, 512*1024)
+		for {
+			n, rerr := in.Read(buf)
+			if n > 0 {
+				if _, werr := out.Write(buf[:n]); werr != nil {
+					return werr
+				}
+				updateProgress(int64(n))
+			}
+			if rerr == io.EOF {
+				break
+			}
+			if rerr != nil {
+				return rerr
+			}
+		}
+		if err := out.Sync(); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	// Move temp file to destination
 	if err := os.Rename(tempFilePath, realDest); err != nil {
-		// If rename fails (cross-device), copy and delete
-		if err := services.CopyFile(tempFilePath, realDest); err != nil {
+		// If rename fails (cross-device), copy and delete with progress reporting
+		if streamProgress && totalSize > 0 {
+			sendProgress("upload_progress", 0)
+		}
+		if err := copyWithProgress(tempFilePath, realDest); err != nil {
 			return nil, fmt.Errorf("failed to copy file: %v", err)
 		}
 		_ = os.Remove(tempFilePath)
+	} else {
+		processed = totalSize
 	}
 
 	// Set proper permissions
 	if err := os.Chmod(realDest, services.PermFile); err != nil {
 		logger.Debugf("failed to set permissions: %v", err)
+	}
+
+	if streamProgress {
+		if totalSize == 0 {
+			processed = 0
+		} else if processed == 0 {
+			processed = totalSize
+		}
+		sendProgress("upload_complete", 100)
 	}
 
 	return map[string]any{"message": "file uploaded", "path": destPath}, nil
