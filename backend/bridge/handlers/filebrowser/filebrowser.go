@@ -207,7 +207,7 @@ func resourcePatch(args []string) (any, error) {
 
 	if destExists {
 		if realSrc == realDest {
-			return map[string]any{"message": "no-op"}, nil
+			return nil, fmt.Errorf("bad_request:source and destination are the same")
 		}
 		if !overwrite {
 			return nil, fmt.Errorf("bad_request:destination exists")
