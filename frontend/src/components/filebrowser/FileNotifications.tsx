@@ -82,6 +82,26 @@ const FileNotifications: React.FC = () => {
     return label.replace(/\s*\(\d+%\)\s*$/, "");
   };
 
+  const formatSpeed = (speed?: number) => {
+    if (!speed || speed <= 0) {
+      return null;
+    }
+    const units = ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"];
+    let value = speed;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+    const formatted =
+      value >= 100
+        ? value.toFixed(0)
+        : value >= 10
+          ? value.toFixed(1)
+          : value.toFixed(2);
+    return `${formatted} ${units[unitIndex]}`;
+  };
+
   const getTitle = (type: (typeof transfers)[number]["type"]) => {
     switch (type) {
       case "download":
@@ -238,17 +258,29 @@ const FileNotifications: React.FC = () => {
                       <CloseIcon fontSize="small" />
                     </IconButton>
                   </Box>
-                  <Tooltip
-                    title={`${Math.round(transfer.progress)}%`}
-                    arrow
-                    placement="top"
-                  >
-                    <LinearProgress
-                      variant="determinate"
-                      value={transfer.progress}
-                      sx={{ height: 6, borderRadius: 1, cursor: "pointer" }}
-                    />
-                  </Tooltip>
+                  {(() => {
+                    const percentText = `${Math.round(transfer.progress)}%`;
+                    const speedText =
+                      "speed" in transfer
+                        ? formatSpeed(
+                            typeof (transfer as any).speed === "number"
+                              ? (transfer as any).speed
+                              : undefined,
+                          )
+                        : null;
+                    const tooltipTitle = speedText
+                      ? `${percentText} • ${speedText}`
+                      : percentText;
+                    return (
+                      <Tooltip title={tooltipTitle} arrow placement="top">
+                        <LinearProgress
+                          variant="determinate"
+                          value={transfer.progress}
+                          sx={{ height: 6, borderRadius: 1, cursor: "pointer" }}
+                        />
+                      </Tooltip>
+                    );
+                  })()}
                 </Box>
               ))}
 
@@ -266,15 +298,15 @@ const FileNotifications: React.FC = () => {
                       variant="body2"
                       fontWeight="medium"
                       color="text.secondary"
-                  >
-                    {transfer.label ||
-                      (transfer.type === "download"
-                        ? "Download complete"
-                        : transfer.type === "upload"
-                          ? "Upload complete"
-                          : transfer.type === "compression"
-                            ? "Compression complete"
-                            : "Extraction complete")}
+                    >
+                      {transfer.label ||
+                        (transfer.type === "download"
+                          ? "Download complete"
+                          : transfer.type === "upload"
+                            ? "Upload complete"
+                            : transfer.type === "compression"
+                              ? "Compression complete"
+                              : "Extraction complete")}
                     </Typography>
                     <Typography
                       variant="caption"
