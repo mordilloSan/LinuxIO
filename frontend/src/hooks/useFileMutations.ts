@@ -204,7 +204,7 @@ export const useFileMutations = ({
     onSuccess: () => {
       invalidateListing();
       toast.success("Items copied successfully");
-  },
+    },
     onError: (error: any) => {
       toast.error(
         error.response?.data?.error || error.message || "Failed to copy items",
@@ -240,7 +240,7 @@ export const useFileMutations = ({
     onSuccess: () => {
       invalidateListing();
       toast.success("Items moved successfully");
-  },
+    },
     onError: (error: any) => {
       toast.error(
         error.response?.data?.error || error.message || "Failed to move items",

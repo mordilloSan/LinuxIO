@@ -18,7 +18,7 @@ func TestMoveFile(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "source.txt", []byte("content"))
 		dstPath := filepath.Join(tmpDir, "destination.txt")
 
-		err := MoveFile(srcFile, dstPath)
+		err := MoveFile(srcFile, dstPath, false)
 		assert.NoError(t, err)
 
 		// Source should not exist
@@ -36,7 +36,7 @@ func TestMoveFile(t *testing.T) {
 		destDir := createTestDir(t, tmpDir, "subdir")
 		dstPath := filepath.Join(destDir, "file.txt")
 
-		err := MoveFile(srcFile, dstPath)
+		err := MoveFile(srcFile, dstPath, false)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(dstPath)
@@ -48,7 +48,7 @@ func TestMoveFile(t *testing.T) {
 		srcPath := filepath.Join(tmpDir, "nonexistent.txt")
 		dstPath := filepath.Join(tmpDir, "dest.txt")
 
-		err := MoveFile(srcPath, dstPath)
+		err := MoveFile(srcPath, dstPath, false)
 		assert.Error(t, err, "should error when source doesn't exist")
 	})
 
@@ -56,7 +56,7 @@ func TestMoveFile(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "src.txt", []byte("new"))
 		dstFile := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
 
-		err := MoveFile(srcFile, dstFile)
+		err := MoveFile(srcFile, dstFile, true)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(dstFile)
@@ -72,7 +72,7 @@ func TestCopyFile(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "source.txt", []byte("original"))
 		destPath := filepath.Join(tmpDir, "copy.txt")
 
-		err := CopyFile(srcFile, destPath)
+		err := CopyFile(srcFile, destPath, false)
 		assert.NoError(t, err)
 
 		// Source should still exist
@@ -90,7 +90,7 @@ func TestCopyFile(t *testing.T) {
 		destDir := createTestDir(t, tmpDir, "subdir")
 		destPath := filepath.Join(destDir, "file.txt")
 
-		err := CopyFile(srcFile, destPath)
+		err := CopyFile(srcFile, destPath, false)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(destPath)
@@ -102,7 +102,7 @@ func TestCopyFile(t *testing.T) {
 		srcPath := filepath.Join(tmpDir, "nonexistent.txt")
 		destPath := filepath.Join(tmpDir, "dest.txt")
 
-		err := CopyFile(srcPath, destPath)
+		err := CopyFile(srcPath, destPath, false)
 		assert.Error(t, err)
 	})
 
@@ -114,12 +114,20 @@ func TestCopyFile(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "large.bin", largContent)
 		destPath := filepath.Join(tmpDir, "large_copy.bin")
 
-		err := CopyFile(srcFile, destPath)
+		err := CopyFile(srcFile, destPath, false)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(destPath)
 		assert.NoError(t, err)
 		assert.Equal(t, largContent, content, "large file content should match")
+	})
+
+	t.Run("copy_conflict_without_overwrite", func(t *testing.T) {
+		srcFile := createTestFile(t, tmpDir, "src.txt", []byte("new"))
+		dstFile := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
+
+		err := CopyFile(srcFile, dstFile, false)
+		assert.Error(t, err, "should error when destination exists and overwrite is false")
 	})
 }
 
