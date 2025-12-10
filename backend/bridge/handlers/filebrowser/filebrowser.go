@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mordilloSan/go_logger/logger"
@@ -1019,6 +1020,125 @@ func fileUploadFromTemp(ctx *ipc.RequestContext, args []string) (any, error) {
 	}
 
 	return map[string]any{"message": "file uploaded", "path": destPath}, nil
+}
+
+// fileUpdateFromTemp replaces an existing file (or creates it) using data staged in a temp file.
+// Args: [tempFilePath, destinationPath]
+func fileUpdateFromTemp(ctx *ipc.RequestContext, args []string) (any, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("bad_request:missing temp file path or destination")
+	}
+
+	tempFilePath := args[0]
+	destPath := args[1]
+
+	tempStat, err := os.Stat(tempFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("bad_request:temp file not found: %v", err)
+	}
+	if tempStat.IsDir() {
+		return nil, fmt.Errorf("bad_request:temp path is a directory")
+	}
+
+	realDest := filepath.Join(destPath)
+
+	destStat, err := os.Stat(realDest)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("failed to stat destination: %v", err)
+	}
+	if err == nil && destStat.IsDir() {
+		return nil, fmt.Errorf("bad_request:destination is a directory")
+	}
+
+	if err := os.MkdirAll(filepath.Dir(realDest), services.PermDir); err != nil {
+		return nil, fmt.Errorf("failed to create parent directory: %v", err)
+	}
+
+	desiredMode := services.PermFile
+	var uid, gid int
+	hasOwner := false
+	if destStat != nil {
+		desiredMode = destStat.Mode()
+		if st, ok := destStat.Sys().(*syscall.Stat_t); ok {
+			uid = int(st.Uid)
+			gid = int(st.Gid)
+			hasOwner = true
+		}
+	}
+
+	if err := replaceFileFromTemp(tempFilePath, realDest, desiredMode, hasOwner, uid, gid); err != nil {
+		return nil, err
+	}
+
+	return map[string]any{"message": "file updated", "path": destPath}, nil
+}
+
+func replaceFileFromTemp(tempPath, destPath string, mode os.FileMode, restoreOwner bool, uid, gid int) error {
+	// Attempt an atomic replace first.
+	if err := os.Rename(tempPath, destPath); err == nil {
+		if err := os.Chmod(destPath, mode); err != nil {
+			return fmt.Errorf("failed to set permissions: %v", err)
+		}
+		if restoreOwner {
+			if err := os.Chown(destPath, uid, gid); err != nil {
+				logger.Debugf("failed to restore ownership for %s: %v", destPath, err)
+			}
+		}
+		return nil
+	}
+
+	// Cross-device fallback: copy into a temp file in the destination directory, then rename.
+	tmpFile, err := os.CreateTemp(filepath.Dir(destPath), "linuxio-update-*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to prepare temporary file: %v", err)
+	}
+	tmpPath := tmpFile.Name()
+	cleanup := true
+	defer func() {
+		_ = tmpFile.Close()
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if err := copyIntoFile(tempPath, tmpFile); err != nil {
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		return fmt.Errorf("failed to flush temporary file: %v", err)
+	}
+	if err := tmpFile.Chmod(mode); err != nil {
+		return fmt.Errorf("failed to set permissions on temporary file: %v", err)
+	}
+	if restoreOwner {
+		if err := os.Chown(tmpPath, uid, gid); err != nil {
+			logger.Debugf("failed to set ownership on temporary file %s: %v", tmpPath, err)
+		}
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temporary file: %v", err)
+	}
+
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		return fmt.Errorf("failed to replace destination: %v", err)
+	}
+	cleanup = false
+
+	return nil
+}
+
+func copyIntoFile(srcPath string, dst *os.File) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open temp file: %v", err)
+	}
+	defer src.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("failed to write file data: %v", err)
+	}
+	return nil
 }
 
 // fileDownloadToTemp copies a file to a temp location for the server to stream

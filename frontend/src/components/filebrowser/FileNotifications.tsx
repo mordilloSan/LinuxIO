@@ -156,7 +156,7 @@ const FileNotifications: React.FC = () => {
         }}
       >
         {hasTransfers &&
-          leastProgressTransfer?.type === "compression" ? null : (
+        leastProgressTransfer?.type === "compression" ? null : (
           <Typography variant="caption" color="text.secondary">
             {hasTransfers && leastProgressTransfer
               ? getTitle(leastProgressTransfer.type)
@@ -208,8 +208,7 @@ const FileNotifications: React.FC = () => {
                 onClick={clearCompletedTransfers}
                 startIcon={<DeleteSweepIcon />}
                 sx={{ minWidth: "auto" }}
-              >
-              </Button>
+              ></Button>
             )}
           </Box>
           <Box
@@ -262,10 +261,10 @@ const FileNotifications: React.FC = () => {
                     const speedText =
                       "speed" in transfer
                         ? formatSpeed(
-                          typeof (transfer as any).speed === "number"
-                            ? (transfer as any).speed
-                            : undefined,
-                        )
+                            typeof (transfer as any).speed === "number"
+                              ? (transfer as any).speed
+                              : undefined,
+                          )
                         : null;
                     const tooltipTitle = speedText
                       ? `${percentText} • ${speedText}`
