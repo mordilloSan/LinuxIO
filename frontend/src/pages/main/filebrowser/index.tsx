@@ -594,8 +594,7 @@ const FileBrowser: React.FC = () => {
 
       const { path, isDirectory } = renameDialog;
       const parent = getParentPath(path);
-      let destination =
-        parent === "/" ? `/${trimmed}` : `${parent}/${trimmed}`;
+      let destination = parent === "/" ? `/${trimmed}` : `${parent}/${trimmed}`;
       if (isDirectory && !destination.endsWith("/")) {
         destination += "/";
       }

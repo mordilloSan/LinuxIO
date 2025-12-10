@@ -73,8 +73,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   const compressDisabled =
     canCompress === undefined ? !hasSelection : !canCompress;
   const extractDisabled = canExtract === undefined ? true : !canExtract;
-  const renameDisabled =
-    canRename === undefined ? !hasSelection : !canRename;
+  const renameDisabled = canRename === undefined ? !hasSelection : !canRename;
 
   // Close menu on Escape key
   useEffect(() => {
