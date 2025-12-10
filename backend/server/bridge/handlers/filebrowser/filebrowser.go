@@ -35,6 +35,7 @@ type archiveCompressRequest struct {
 type archiveExtractRequest struct {
 	ArchivePath string `json:"archivePath"`
 	Destination string `json:"destination"`
+	RequestID   string `json:"requestId"`
 }
 
 type streamProgressPayload struct {
@@ -477,8 +478,12 @@ func archiveExtractHandler(c *gin.Context) {
 	}
 
 	args := []string{req.ArchivePath, dest}
+	progressKey := ""
+	if strings.TrimSpace(req.RequestID) != "" {
+		progressKey = fmt.Sprintf("%s:%s", sess.SessionID, strings.TrimSpace(req.RequestID))
+	}
 	var result json.RawMessage
-	if err := bridge.CallTypedWithSession(sess, "filebrowser", "archive_extract", args, &result); err != nil {
+	if err := callFilebrowserStream(sess, "archive_extract", args, progressKey, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "bad_request:") {

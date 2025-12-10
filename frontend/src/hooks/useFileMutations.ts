@@ -44,7 +44,7 @@ export const useFileMutations = ({
   onDeleteSuccess,
 }: UseFileMutationsParams) => {
   const queryClient = providedQueryClient ?? useQueryClient();
-  const { startCompression } = useFileTransfers();
+  const { startCompression, startExtraction } = useFileTransfers();
 
   const invalidateListing = () =>
     queryClient.invalidateQueries({
@@ -129,7 +129,7 @@ export const useFileMutations = ({
       if (!archivePath) {
         throw new Error("No archive selected");
       }
-      await axios.post("/navigator/api/archive/extract", {
+      await startExtraction({
         archivePath,
         destination,
       });

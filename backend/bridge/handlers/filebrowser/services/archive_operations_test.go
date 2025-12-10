@@ -88,6 +88,43 @@ func TestComputeArchiveSize(t *testing.T) {
 	})
 }
 
+func TestComputeExtractSize(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	t.Run("zip_archive", func(t *testing.T) {
+		srcDir := createTestDir(t, tmpDir, "zip-src-size")
+		content := []byte("zip data")
+		createTestFile(t, srcDir, "file.txt", content)
+		zipPath := filepath.Join(tmpDir, "archive.zip")
+
+		err := CreateZip(zipPath, nil, zipPath, srcDir)
+		require.NoError(t, err)
+
+		size, err := ComputeExtractSize(zipPath)
+		require.NoError(t, err)
+		assert.Equal(t, int64(len(content)), size)
+	})
+
+	t.Run("tar_gz_archive", func(t *testing.T) {
+		srcDir := createTestDir(t, tmpDir, "tar-src-size")
+		content := []byte("tar data payload")
+		createTestFile(t, srcDir, "nested.txt", content)
+		tarPath := filepath.Join(tmpDir, "archive.tar.gz")
+
+		err := CreateTarGz(tarPath, nil, tarPath, srcDir)
+		require.NoError(t, err)
+
+		size, err := ComputeExtractSize(tarPath)
+		require.NoError(t, err)
+		assert.Equal(t, int64(len(content)), size)
+	})
+
+	t.Run("unsupported_format", func(t *testing.T) {
+		_, err := ComputeExtractSize(filepath.Join(tmpDir, "file.bin"))
+		assert.Error(t, err)
+	})
+}
+
 func TestCreateZip(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -212,7 +249,7 @@ func TestExtractArchive(t *testing.T) {
 		require.NoError(t, err, "CreateZip should succeed before extraction")
 
 		destDir := filepath.Join(tmpDir, "zip-dest")
-		err = ExtractArchive(zipPath, destDir)
+		err = ExtractArchive(zipPath, destDir, nil)
 		require.NoError(t, err, "ExtractArchive should extract zip")
 
 		content, err := os.ReadFile(filepath.Join(destDir, "zip-src", "file.txt"))
@@ -229,7 +266,7 @@ func TestExtractArchive(t *testing.T) {
 		require.NoError(t, err, "CreateTarGz should succeed before extraction")
 
 		destDir := filepath.Join(tmpDir, "tar-dest")
-		err = ExtractArchive(tarPath, destDir)
+		err = ExtractArchive(tarPath, destDir, nil)
 		require.NoError(t, err, "ExtractArchive should extract tar.gz")
 
 		content, err := os.ReadFile(filepath.Join(destDir, "tar-src", "nested.txt"))

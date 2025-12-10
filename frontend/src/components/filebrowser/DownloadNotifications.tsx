@@ -14,14 +14,19 @@ import { useFileTransfers } from "@/hooks/useFileTransfers";
 
 interface CompletedTransfer {
   id: string;
-  type: "download" | "upload" | "compression";
+  type: "download" | "upload" | "compression" | "extraction";
   label?: string;
   completedAt: Date;
 }
 
 const DownloadNotifications: React.FC = () => {
-  const { transfers, cancelDownload, cancelUpload, cancelCompression } =
-    useFileTransfers();
+  const {
+    transfers,
+    cancelDownload,
+    cancelUpload,
+    cancelCompression,
+    cancelExtraction,
+  } = useFileTransfers();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [completedTransfers, setCompletedTransfers] = React.useState<
     CompletedTransfer[]
@@ -85,6 +90,8 @@ const DownloadNotifications: React.FC = () => {
         return "Upload Progress";
       case "compression":
         return "Compression Progress";
+      case "extraction":
+        return "Extraction Progress";
       default:
         return "Progress";
     }
@@ -97,6 +104,8 @@ const DownloadNotifications: React.FC = () => {
       cancelUpload(transfer.id);
     } else if (transfer.type === "compression") {
       cancelCompression(transfer.id);
+    } else if (transfer.type === "extraction") {
+      cancelExtraction(transfer.id);
     }
   };
 
@@ -217,7 +226,9 @@ const DownloadNotifications: React.FC = () => {
                           ? "Preparing archive..."
                           : transfer.type === "upload"
                             ? "Preparing upload..."
-                            : "Compressing selection..."}
+                            : transfer.type === "compression"
+                              ? "Compressing selection..."
+                              : "Extracting archive..."}
                     </Typography>
                     <IconButton
                       size="small"
@@ -255,13 +266,15 @@ const DownloadNotifications: React.FC = () => {
                       variant="body2"
                       fontWeight="medium"
                       color="text.secondary"
-                    >
-                      {transfer.label ||
-                        (transfer.type === "download"
-                          ? "Download complete"
-                          : transfer.type === "upload"
-                            ? "Upload complete"
-                            : "Compression complete")}
+                  >
+                    {transfer.label ||
+                      (transfer.type === "download"
+                        ? "Download complete"
+                        : transfer.type === "upload"
+                          ? "Upload complete"
+                          : transfer.type === "compression"
+                            ? "Compression complete"
+                            : "Extraction complete")}
                     </Typography>
                     <Typography
                       variant="caption"
