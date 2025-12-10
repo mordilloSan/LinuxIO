@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
-import DownloadNotifications from "@/components/filebrowser/DownloadNotifications";
+import FileNotifications from "@/components/filebrowser/FileNotifications";
 import axios from "@/utils/axios";
 
 interface VersionResponse {
@@ -73,7 +73,7 @@ function Footer() {
           }}
         >
           <ErrorBoundary>
-            <DownloadNotifications />
+            <FileNotifications />
           </ErrorBoundary>
         </Box>
       </Box>

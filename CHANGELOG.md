@@ -1,6 +1,16 @@
 
 ## v0.4.0 — 2025-12-04
 
+### Overall Comments
+
+This is a overall for the filebrowser that now is internal software....
+
+Also implements an indexer, as outside dependencie. 
+
+No more neeed for docker container.
+
+Worked on the bridge IPC.
+
 ### 🚀 Features
 
 * feat: implement marquee selection feature with visual overlay ([08a407b](https://github.com/owner/repo/commit/08a407b)) by @MordilloSan
