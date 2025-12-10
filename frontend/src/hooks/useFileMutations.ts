@@ -181,9 +181,15 @@ export const useFileMutations = ({
       if (!sourcePaths.length) {
         throw new Error("No paths provided");
       }
+      const cleanBase = (p: string) =>
+        (p.replace(/\/+$/, "").split("/").pop() || "").trim();
+
       await Promise.all(
         sourcePaths.map((sourcePath) => {
-          const fileName = sourcePath.split("/").pop() || "";
+          const fileName = cleanBase(sourcePath);
+          if (!fileName) {
+            throw new Error(`Invalid source path: "${sourcePath}"`);
+          }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
           return axios.patch("/navigator/api/resources", null, {
             params: {
@@ -198,9 +204,11 @@ export const useFileMutations = ({
     onSuccess: () => {
       invalidateListing();
       toast.success("Items copied successfully");
-    },
+  },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || "Failed to copy items");
+      toast.error(
+        error.response?.data?.error || error.message || "Failed to copy items",
+      );
     },
   });
 
@@ -209,9 +217,15 @@ export const useFileMutations = ({
       if (!sourcePaths.length) {
         throw new Error("No paths provided");
       }
+      const cleanBase = (p: string) =>
+        (p.replace(/\/+$/, "").split("/").pop() || "").trim();
+
       await Promise.all(
         sourcePaths.map((sourcePath) => {
-          const fileName = sourcePath.split("/").pop() || "";
+          const fileName = cleanBase(sourcePath);
+          if (!fileName) {
+            throw new Error(`Invalid source path: "${sourcePath}"`);
+          }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
           return axios.patch("/navigator/api/resources", null, {
             params: {
@@ -226,9 +240,11 @@ export const useFileMutations = ({
     onSuccess: () => {
       invalidateListing();
       toast.success("Items moved successfully");
-    },
+  },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || "Failed to move items");
+      toast.error(
+        error.response?.data?.error || error.message || "Failed to move items",
+      );
     },
   });
 

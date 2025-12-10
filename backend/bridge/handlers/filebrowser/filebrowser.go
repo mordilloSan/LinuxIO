@@ -190,6 +190,37 @@ func resourcePatch(args []string) (any, error) {
 	realDest := filepath.Join(parentDir, filepath.Base(dst))
 	realSrc := filepath.Join(src)
 
+	overwrite := len(args) > 3 && args[3] == "true"
+
+	srcInfo, err := os.Stat(realSrc)
+	if err != nil {
+		logger.Debugf("error getting source info: %v", err)
+		return nil, fmt.Errorf("bad_request:source not found")
+	}
+
+	destInfo, destErr := os.Stat(realDest)
+	destExists := destErr == nil
+	if destErr != nil && !os.IsNotExist(destErr) {
+		logger.Debugf("error stating destination: %v", destErr)
+		return nil, fmt.Errorf("bad_request:could not stat destination")
+	}
+
+	if destExists {
+		if realSrc == realDest {
+			return map[string]any{"message": "no-op"}, nil
+		}
+		if !overwrite {
+			return nil, fmt.Errorf("bad_request:destination exists")
+		}
+		if srcInfo.IsDir() != destInfo.IsDir() {
+			return nil, fmt.Errorf("bad_request:destination exists with different type")
+		}
+		if err := os.RemoveAll(realDest); err != nil {
+			logger.Debugf("error clearing destination for overwrite: %v", err)
+			return nil, fmt.Errorf("bad_request:failed to prepare destination")
+		}
+	}
+
 	switch action {
 	case "copy":
 		err := services.CopyFile(realSrc, realDest)

@@ -19,7 +19,7 @@ func CorsMiddleware(vitePort int) gin.HandlerFunc {
 			c.Header("Vary", "Origin")
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		} else if origin != "" {
 			logger.Debugf("CORS denied: %s %s", c.Request.Method, origin)
 		}
