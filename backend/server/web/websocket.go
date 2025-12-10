@@ -387,6 +387,7 @@ func WebSocketHandler(c *gin.Context) {
 				cancel()
 			}
 			GlobalProgressBroadcaster.Unregister(key)
+			GlobalOperationCanceller.Cancel(key)
 			_ = safeConn.WriteJSON(WSResponse{
 				Type:      "operation_unsubscribed",
 				RequestID: reqId,
