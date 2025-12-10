@@ -28,6 +28,7 @@ interface Upload {
   currentFile: string;
   progress: number;
   label: string;
+  displayName?: string;
   speed?: number;
   abortController: AbortController;
 }
@@ -107,7 +108,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
   const transferRatesRef = useRef<
-    Map<string, { bytes: number; timestamp: number }>
+    Map<string, { bytes: number; timestamp: number; emitted: boolean }>
   >(new Map());
   const TRANSFER_RATE_SAMPLE_MS = 1000;
 
@@ -123,6 +124,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         transferRatesRef.current.set(id, {
           bytes: bytesProcessed,
           timestamp: now,
+          emitted: false,
         });
         return undefined;
       }
@@ -130,26 +132,39 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         transferRatesRef.current.set(id, {
           bytes: bytesProcessed,
           timestamp: now,
+          emitted: prev.emitted,
         });
         return undefined;
       }
       const deltaBytes = bytesProcessed - prev.bytes;
       const deltaMs = now - prev.timestamp;
-      if (deltaMs < TRANSFER_RATE_SAMPLE_MS) {
+      if (deltaBytes <= 0) {
         return undefined;
       }
-      if (deltaBytes <= 0) {
+      if (prev.emitted && deltaMs < TRANSFER_RATE_SAMPLE_MS) {
         return undefined;
       }
       const rate = deltaBytes / (deltaMs / 1000);
       transferRatesRef.current.set(id, {
         bytes: bytesProcessed,
         timestamp: now,
+        emitted: true,
       });
       return rate;
     },
     [],
   );
+
+  const primeTransferRate = useCallback((id: string, initialBytes = 0) => {
+    if (!id) {
+      return;
+    }
+    transferRatesRef.current.set(id, {
+      bytes: initialBytes,
+      timestamp: Date.now(),
+      emitted: false,
+    });
+  }, []);
 
   const sendProgressUnsubscribe = useCallback(
     (
@@ -329,6 +344,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           unsubscribe,
         });
 
+        primeTransferRate(reqId, 0);
         const response = await axios.get(url, {
           responseType: "blob",
           signal: abortController.signal,
@@ -418,6 +434,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       removeDownload,
       allocateDownloadLabelBase,
       recordTransferRate,
+      primeTransferRate,
     ],
   );
 
@@ -797,7 +814,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const uploadId = crypto.randomUUID();
       const requestId = uploadId;
       const abortController = new AbortController();
-
       const directories = entries
         .filter((item) => item.isDirectory)
         .sort(
@@ -807,6 +823,26 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const files = entries.filter((item) => !item.isDirectory);
       const totalFiles = directories.length + files.length;
 
+      const describeEntry = (
+        entry: (typeof entries)[number] | undefined,
+      ): string => {
+        if (!entry) return "";
+        const trimmed = entry.relativePath.replace(/\/+$/, "");
+        if (trimmed) {
+          return trimmed;
+        }
+        if (entry.file?.name) {
+          return entry.file.name;
+        }
+        return entry.isDirectory ? "folder" : "file";
+      };
+
+      const singleEntrySource = directories[0] ?? files[0] ?? entries[0];
+      const isSingleUpload = totalFiles === 1;
+      const singleEntryLabel = isSingleUpload
+        ? describeEntry(singleEntrySource) || "item"
+        : "";
+
       const upload: Upload = {
         id: uploadId,
         type: "upload",
@@ -814,12 +850,18 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         completedFiles: 0,
         currentFile: "",
         progress: 0,
-        label: `Uploading 0/${totalFiles} files`,
+        label:
+          isSingleUpload && singleEntryLabel
+            ? `Uploading ${singleEntryLabel} (0%)`
+            : `Uploading 0/${totalFiles} files`,
+        displayName:
+          isSingleUpload && singleEntryLabel ? singleEntryLabel : undefined,
         speed: undefined,
         abortController,
       };
 
       setUploads((prev) => [...prev, upload]);
+      primeTransferRate(uploadId, 0);
 
       const conflicts: typeof entries = [];
       let uploaded = 0;
@@ -837,10 +879,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         setUploads((prev) =>
           prev.map((u) => {
             if (u.id !== uploadId) return u;
+            const label = u.displayName
+              ? `Uploading ${u.displayName} (${percent}%)`
+              : `Uploading ${u.completedFiles}/${u.totalFiles} files (${percent}%)`;
             const updated: Upload = {
               ...u,
               progress: percent,
-              label: `Uploading ${u.completedFiles}/${u.totalFiles} files (${percent}%)`,
+              label,
             };
             return updated;
           }),
@@ -861,7 +906,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
                 ? {
                     ...u,
                     progress: 100,
-                    label: `Uploaded ${u.totalFiles}/${u.totalFiles} files`,
+                    label: u.displayName
+                      ? `Uploaded ${u.displayName}`
+                      : `Uploaded ${u.totalFiles}/${u.totalFiles} files`,
                   }
                 : u,
             ),
@@ -923,12 +970,17 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
           const targetFilePath = buildTargetPath(targetPath, relativePath);
           const fileOffset = uploadedBytesTotal;
+          primeTransferRate(uploadId, fileOffset);
 
+          const stageLabel =
+            isSingleUpload && singleEntryLabel
+              ? `Uploading ${singleEntryLabel} (0%)`
+              : `Uploading ${uploaded + 1}/${totalFiles} files`;
           updateUpload(uploadId, {
             currentFile: relativePath,
             completedFiles: uploaded,
             progress: Math.round((uploaded / totalFiles) * 100),
-            label: `Uploading ${uploaded + 1}/${totalFiles} files`,
+            label: stageLabel,
           });
 
           try {
@@ -954,7 +1006,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
                     ((uploaded + fileProgress / 100) / totalFiles) * 100,
                   );
                   updates.progress = overallProgress;
-                  updates.label = `Uploading ${relativePath} (${fileProgress}%)`;
+                  const labelName =
+                    (isSingleUpload && singleEntryLabel) ||
+                    relativePath ||
+                    file?.name ||
+                    "item";
+                  updates.label = `Uploading ${labelName} (${fileProgress}%)`;
                 }
                 if (typeof progressEvent.loaded === "number") {
                   const speed = recordTransferRate(
@@ -1004,9 +1061,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           );
         }
 
+        const completionLabel =
+          totalFiles === 1 && singleEntryLabel
+            ? `Uploaded ${singleEntryLabel}`
+            : `Uploaded ${uploaded}/${totalFiles} files`;
         updateUpload(uploadId, {
           progress: 100,
-          label: `Uploaded ${uploaded}/${totalFiles} files`,
+          label: completionLabel,
           speed: undefined,
         });
         recordTransferRate(uploadId, undefined);
@@ -1024,7 +1085,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return { conflicts, uploaded, failures };
       }
     },
-    [updateUpload, removeUpload, ws, recordTransferRate],
+    [updateUpload, removeUpload, ws, recordTransferRate, primeTransferRate],
   );
 
   const cancelUpload = useCallback(
