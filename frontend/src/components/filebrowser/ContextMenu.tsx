@@ -5,6 +5,7 @@ import ContentPasteIcon from "@mui/icons-material/ContentPaste";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
+import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import SecurityIcon from "@mui/icons-material/Security";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
@@ -34,11 +35,13 @@ interface ContextMenuProps {
   onDelete: () => void;
   onDownload: () => void;
   onUpload: () => void;
+  onRename: () => void;
   onShowDetails?: () => void;
   onCompress?: () => void;
   onExtract?: () => void;
   canCompress?: boolean;
   canExtract?: boolean;
+  canRename?: boolean;
 }
 
 const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -56,11 +59,13 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   onDelete,
   onDownload,
   onUpload,
+  onRename,
   onShowDetails = () => {},
   onCompress = () => {},
   onExtract = () => {},
   canCompress,
   canExtract,
+  canRename,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const detailsDisabled =
@@ -68,6 +73,8 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   const compressDisabled =
     canCompress === undefined ? !hasSelection : !canCompress;
   const extractDisabled = canExtract === undefined ? true : !canExtract;
+  const renameDisabled =
+    canRename === undefined ? !hasSelection : !canRename;
 
   // Close menu on Escape key
   useEffect(() => {
@@ -146,6 +153,13 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
           <ContentCutIcon fontSize="small" />
         </ListItemIcon>
         <ListItemText>Cut</ListItemText>
+      </MenuItem>
+
+      <MenuItem onClick={onRename} disabled={renameDisabled}>
+        <ListItemIcon>
+          <DriveFileRenameOutlineIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText>Rename</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onPaste} disabled={!hasClipboard}>

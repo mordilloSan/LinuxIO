@@ -38,6 +38,11 @@ type CopyMovePayload = {
   destinationDir: string;
 };
 
+type RenamePayload = {
+  from: string;
+  destination: string;
+};
+
 export const useFileMutations = ({
   normalizedPath,
   queryClient: providedQueryClient,
@@ -176,6 +181,30 @@ export const useFileMutations = ({
     },
   });
 
+  const { mutateAsync: renameItem } = useMutation({
+    mutationFn: async ({ from, destination }: RenamePayload) => {
+      if (!from || !destination) {
+        throw new Error("Invalid rename parameters");
+      }
+      await axios.patch("/navigator/api/resources", null, {
+        params: {
+          action: "rename",
+          from,
+          destination,
+        },
+      });
+    },
+    onSuccess: () => {
+      invalidateListing();
+      toast.success("Item renamed successfully");
+    },
+    onError: (error: any) => {
+      toast.error(
+        error.response?.data?.error || error.message || "Failed to rename item",
+      );
+    },
+  });
+
   const { mutateAsync: copyItems } = useMutation({
     mutationFn: async ({ sourcePaths, destinationDir }: CopyMovePayload) => {
       if (!sourcePaths.length) {
@@ -257,6 +286,7 @@ export const useFileMutations = ({
     changePermissions,
     copyItems,
     moveItems,
+    renameItem,
     isCompressing,
     isExtracting,
   };
