@@ -187,10 +187,10 @@ func resourcePatch(args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:parent directory not found")
 	}
 
+	overwrite := len(args) > 3 && args[3] == "true"
+
 	realDest := filepath.Join(parentDir, filepath.Base(dst))
 	realSrc := filepath.Join(src)
-
-	overwrite := len(args) > 3 && args[3] == "true"
 
 	srcInfo, err := os.Stat(realSrc)
 	if err != nil {
@@ -215,21 +215,17 @@ func resourcePatch(args []string) (any, error) {
 		if srcInfo.IsDir() != destInfo.IsDir() {
 			return nil, fmt.Errorf("bad_request:destination exists with different type")
 		}
-		if err := os.RemoveAll(realDest); err != nil {
-			logger.Debugf("error clearing destination for overwrite: %v", err)
-			return nil, fmt.Errorf("bad_request:failed to prepare destination")
-		}
 	}
 
 	switch action {
 	case "copy":
-		err := services.CopyFile(realSrc, realDest)
+		err := services.CopyFile(realSrc, realDest, overwrite)
 		if err != nil {
 			logger.Debugf("error copying resource: %v", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
 	case "rename", "move":
-		err := services.MoveFile(realSrc, realDest)
+		err := services.MoveFile(realSrc, realDest, overwrite)
 		if err != nil {
 			logger.Debugf("error moving/renaming resource: %v", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
@@ -361,6 +357,7 @@ func archiveCreate(ctx *ipc.RequestContext, args []string) (any, error) {
 	if len(args) > 2 && args[2] != "" {
 		algo = args[2]
 	}
+	overwrite := len(args) > 3 && args[3] == "true"
 
 	var extension string
 	switch algo {
@@ -384,6 +381,20 @@ func archiveCreate(ctx *ipc.RequestContext, args []string) (any, error) {
 		if !(strings.HasSuffix(lowerTarget, ".tar.gz") || strings.HasSuffix(lowerTarget, ".tgz")) {
 			targetPath = targetPath + ".tar.gz"
 		}
+	}
+
+	if info, statErr := os.Stat(targetPath); statErr == nil {
+		if !overwrite {
+			return nil, fmt.Errorf("bad_request:destination exists")
+		}
+		if info.IsDir() {
+			return nil, fmt.Errorf("bad_request:destination exists with different type")
+		}
+		if rmErr := os.Remove(targetPath); rmErr != nil {
+			return nil, fmt.Errorf("error preparing archive destination: %w", rmErr)
+		}
+	} else if !os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("error checking archive destination: %w", statErr)
 	}
 
 	var progressCb services.ProgressCallback
@@ -1060,7 +1071,7 @@ func fileDownloadToTemp(ctx *ipc.RequestContext, args []string) (any, error) {
 	}
 
 	// Copy file to temp location
-	if err := services.CopyFile(realPath, tempPath); err != nil {
+	if err := services.CopyFile(realPath, tempPath, true); err != nil {
 		_ = os.Remove(tempPath)
 		return nil, fmt.Errorf("failed to copy file: %v", err)
 	}

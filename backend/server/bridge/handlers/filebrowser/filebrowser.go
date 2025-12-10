@@ -370,6 +370,11 @@ func archiveCompressHandler(c *gin.Context) {
 		strings.Join(req.Paths, "||"),
 		format,
 	}
+	if req.Override {
+		args = append(args, "true")
+	} else {
+		args = append(args, "false")
+	}
 	var result json.RawMessage
 	if err := stream.CallWithProgress(opCtx, sess, "filebrowser", "archive_create", args, progressKey, &result); err != nil {
 		logger.Debugf("bridge error: %v", err)

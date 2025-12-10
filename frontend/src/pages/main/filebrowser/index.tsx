@@ -1130,17 +1130,19 @@ const FileBrowser: React.FC = () => {
         onConfirm={handleConfirmDelete}
       />
 
-      <PermissionsDialog
-        open={Boolean(permissionsDialog)}
-        pathLabel={permissionsDialog?.pathLabel || ""}
-        selectionCount={permissionsDialog?.selectionCount || 0}
-        currentMode={permissionsDialog?.mode || "0644"}
-        isDirectory={permissionsDialog?.isDirectory || false}
-        owner={permissionsDialog?.owner}
-        group={permissionsDialog?.group}
-        onClose={handleClosePermissionsDialog}
-        onConfirm={handleConfirmPermissions}
-      />
+      {permissionsDialog && (
+        <PermissionsDialog
+          open
+          pathLabel={permissionsDialog.pathLabel}
+          selectionCount={permissionsDialog.selectionCount}
+          currentMode={permissionsDialog.mode}
+          isDirectory={permissionsDialog.isDirectory}
+          owner={permissionsDialog.owner}
+          group={permissionsDialog.group}
+          onClose={handleClosePermissionsDialog}
+          onConfirm={handleConfirmPermissions}
+        />
+      )}
 
       <Dialog
         open={uploadDialogOpen}

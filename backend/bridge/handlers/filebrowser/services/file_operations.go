@@ -10,8 +10,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 )
 
 var (
@@ -22,28 +23,36 @@ var (
 // MoveFile moves a file from src to dst.
 // By default, the rename system call is used. If src and dst point to different volumes,
 // the file copy is used as a fallback.
-func MoveFile(src, dst string) error {
+func MoveFile(src, dst string, overwrite bool) error {
 	// Validate the move operation before executing
 	if err := validateMoveDestination(src, dst); err != nil {
 		return err
 	}
 
-	err := os.Rename(src, dst)
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	if destErr := prepareDestination(srcInfo.IsDir(), dst, overwrite); destErr != nil {
+		return destErr
+	}
+
+	err = os.Rename(src, dst)
 	if err == nil {
 		return nil
 	}
 
 	// fallback
-	err = CopyFile(src, dst)
+	err = CopyFile(src, dst, overwrite)
 	if err != nil {
 		logger.Errorf("CopyFile failed %v %v %v ", src, dst, err)
 		return err
 	}
 
 	go func() {
-		err = os.RemoveAll(src)
-		if err != nil {
-			logger.Errorf("os.Remove failed %v %v ", src, err)
+		if removeErr := os.RemoveAll(src); removeErr != nil {
+			logger.Errorf("os.Remove failed %v %v ", src, removeErr)
 		}
 	}()
 
@@ -52,7 +61,7 @@ func MoveFile(src, dst string) error {
 
 // CopyFile copies a file or directory from source to dest and returns an error if any.
 // It handles both files and directories, copying recursively as needed.
-func CopyFile(source, dest string) error {
+func CopyFile(source, dest string, overwrite bool) error {
 	// Validate the copy operation before executing
 	if err := validateMoveDestination(source, dest); err != nil {
 		return err
@@ -61,6 +70,10 @@ func CopyFile(source, dest string) error {
 	// Check if the source exists and whether it's a file or directory.
 	info, err := os.Stat(source)
 	if err != nil {
+		return err
+	}
+
+	if err := prepareDestination(info.IsDir(), dest, overwrite); err != nil {
 		return err
 	}
 
@@ -506,4 +519,24 @@ func validateMoveDestination(src, dst string) error {
 	}
 
 	return nil
+}
+
+func prepareDestination(srcIsDir bool, dst string, overwrite bool) error {
+	dstInfo, err := os.Stat(dst)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if !overwrite {
+		return fmt.Errorf("destination already exists")
+	}
+
+	if dstInfo.IsDir() != srcIsDir {
+		return fmt.Errorf("destination exists with different type")
+	}
+
+	return os.RemoveAll(dst)
 }

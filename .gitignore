@@ -8,6 +8,8 @@ linuxio-bridge
 
 .cache
 .go-cache
+.gocache
+backend/.gocache
 
 # Logs and misc
 *.log

@@ -123,8 +123,8 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const [permissions, setPermissions] = useState<PermissionBits>(
-    () => parseMode(currentMode),
+  const [permissions, setPermissions] = useState<PermissionBits>(() =>
+    parseMode(currentMode),
   );
   const [recursive, setRecursive] = useState(false);
   const [ownerInput, setOwnerInput] = useState(owner || "");
@@ -148,15 +148,6 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
       fetchUsersAndGroups();
     }
   }, [open]);
-
-  // Keep inputs in sync with the currently selected item when the dialog opens.
-  useEffect(() => {
-    if (!open) return;
-    setPermissions(parseMode(currentMode));
-    setOwnerInput(owner || "");
-    setGroupInput(group || "");
-    setRecursive(false);
-  }, [open, currentMode, owner, group]);
 
   const handlePermissionChange = useCallback(
     (category: keyof PermissionBits, type: "read" | "write" | "execute") => {
