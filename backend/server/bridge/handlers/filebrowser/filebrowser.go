@@ -259,6 +259,7 @@ func resourcePostHandler(c *gin.Context) {
 
 	isDir := strings.HasSuffix(path, "/")
 	override := c.Query("override") == "true"
+	requestID := strings.TrimSpace(c.Query("requestId"))
 
 	// For directory creation, use bridge
 	if isDir {
@@ -284,7 +285,7 @@ func resourcePostHandler(c *gin.Context) {
 	}
 
 	// For file uploads, handle via temp file then bridge
-	resourcePostViaTemp(c, sess, path, override)
+	resourcePostViaTemp(c, sess, path, override, requestID)
 }
 
 // resourcePutHandler updates an existing file resource
@@ -502,12 +503,123 @@ func archiveExtractHandler(c *gin.Context) {
 // TEMP FILE HANDLERS - Bridge-based operations using temp files
 // ============================================================================
 
+type uploadProgressTracker struct {
+	key         string
+	serverTotal int64
+	bridgeTotal int64
+	serverDone  int64
+	bridgeDone  int64
+	completed   bool
+}
+
+func newUploadProgressTracker(key string, serverTotal int64) *uploadProgressTracker {
+	if key == "" || serverTotal <= 0 {
+		return nil
+	}
+	return &uploadProgressTracker{
+		key:         key,
+		serverTotal: serverTotal,
+		bridgeTotal: serverTotal,
+	}
+}
+
+func (t *uploadProgressTracker) totalBytes() int64 {
+	if t == nil {
+		return 0
+	}
+	total := t.serverTotal + t.bridgeTotal
+	if total <= 0 {
+		return 0
+	}
+	return total
+}
+
+func (t *uploadProgressTracker) emit(typ string) {
+	if t == nil {
+		return
+	}
+	total := t.totalBytes()
+	if total <= 0 {
+		return
+	}
+	if t.serverDone > t.serverTotal && t.serverTotal > 0 {
+		t.serverDone = t.serverTotal
+	}
+	if t.bridgeDone > t.bridgeTotal && t.bridgeTotal > 0 {
+		t.bridgeDone = t.bridgeTotal
+	}
+	processed := t.serverDone + t.bridgeDone
+	if processed > total {
+		processed = total
+	}
+	percent := float64(processed) / float64(total) * 100
+	if percent > 100 {
+		percent = 100
+	}
+	web.GlobalProgressBroadcaster.Send(t.key, web.ProgressUpdate{
+		Type:           typ,
+		Percent:        percent,
+		BytesProcessed: processed,
+		TotalBytes:     total,
+	})
+}
+
+func (t *uploadProgressTracker) addServerBytes(n int64) {
+	if t == nil || n <= 0 {
+		return
+	}
+	t.serverDone += n
+	t.emit("upload_progress")
+}
+
+func (t *uploadProgressTracker) setBridgeTotals(total int64) {
+	if t == nil {
+		return
+	}
+	if total <= 0 {
+		total = t.serverTotal
+	}
+	t.bridgeTotal = total
+}
+
+func (t *uploadProgressTracker) setBridgeProgress(processed int64) {
+	if t == nil {
+		return
+	}
+	if processed < 0 {
+		processed = 0
+	}
+	if t.bridgeTotal == 0 {
+		t.bridgeTotal = t.serverTotal
+	}
+	t.bridgeDone = processed
+	if t.bridgeDone > t.bridgeTotal && t.bridgeTotal > 0 {
+		t.bridgeDone = t.bridgeTotal
+	}
+	t.emit("upload_progress")
+}
+
+func (t *uploadProgressTracker) markBridgeComplete() {
+	if t == nil {
+		return
+	}
+	if t.completed {
+		return
+	}
+	if t.bridgeTotal == 0 {
+		t.bridgeTotal = t.serverTotal
+	}
+	t.bridgeDone = t.bridgeTotal
+	t.completed = true
+	t.emit("upload_complete")
+}
+
 // resourcePostViaTemp handles file uploads via temp file then bridge
-func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, override bool) {
+func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, override bool, requestID string) {
 	// Handle Chunked Uploads
 	chunkOffsetStr := c.GetHeader("X-File-Chunk-Offset")
 	if chunkOffsetStr != "" {
-		handleChunkedUpload(c, sess, path, override)
+		handleChunkedUpload(c, sess, path, override, requestID)
 		return
 	}
 
@@ -521,14 +633,32 @@ func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, ove
 	tempPath := tempFile.Name()
 	defer os.Remove(tempPath) // Cleanup in case of error
 
-	// Write request body to temp file
-	_, err = io.Copy(tempFile, c.Request.Body)
-	tempFile.Close()
-	if err != nil {
-		logger.Debugf("could not write to temp file: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write upload data"})
-		return
+	progressKey := ""
+	if requestID != "" {
+		progressKey = fmt.Sprintf("%s:%s", sess.SessionID, requestID)
 	}
+	var tracker *uploadProgressTracker
+	if progressKey != "" && c.Request.ContentLength > 0 {
+		tracker = newUploadProgressTracker(progressKey, c.Request.ContentLength)
+	}
+
+	// Write request body to temp file
+	if tracker != nil {
+		if err := copyRequestBodyWithProgress(tempFile, c.Request.Body, tracker); err != nil {
+			tempFile.Close()
+			logger.Debugf("could not write to temp file: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write upload data"})
+			return
+		}
+	} else {
+		if _, err = io.Copy(tempFile, c.Request.Body); err != nil {
+			tempFile.Close()
+			logger.Debugf("could not write to temp file: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write upload data"})
+			return
+		}
+	}
+	tempFile.Close()
 
 	// Call bridge to move temp file to final destination
 	args := []string{tempPath, path}
@@ -536,7 +666,7 @@ func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, ove
 		args = append(args, "true")
 	}
 
-	if err := bridge.CallTypedWithSession(sess, "filebrowser", "file_upload_from_temp", args, nil); err != nil {
+	if err := uploadViaBridgeWithProgress(sess, args, progressKey, tracker); err != nil {
 		logger.Debugf("bridge error: %v", err)
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "bad_request:") {
@@ -555,7 +685,7 @@ func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, ove
 }
 
 // handleChunkedUpload handles chunked file uploads
-func handleChunkedUpload(c *gin.Context, sess *session.Session, path string, override bool) {
+func handleChunkedUpload(c *gin.Context, sess *session.Session, path string, override bool, requestID string) {
 	chunkOffsetStr := c.GetHeader("X-File-Chunk-Offset")
 	totalSizeStr := c.GetHeader("X-File-Total-Size")
 
@@ -617,7 +747,11 @@ func handleChunkedUpload(c *gin.Context, sess *session.Session, path string, ove
 			args = append(args, "true")
 		}
 
-		if err := bridge.CallTypedWithSession(sess, "filebrowser", "file_upload_from_temp", args, nil); err != nil {
+		progressKey := ""
+		if requestID != "" {
+			progressKey = fmt.Sprintf("%s:%s", sess.SessionID, requestID)
+		}
+		if err := uploadViaBridgeWithProgress(sess, args, progressKey, nil); err != nil {
 			logger.Debugf("bridge error: %v", err)
 			status := http.StatusInternalServerError
 			if strings.Contains(err.Error(), "bad_request:") {
@@ -631,6 +765,88 @@ func handleChunkedUpload(c *gin.Context, sess *session.Session, path string, ove
 	}
 
 	c.Status(http.StatusOK)
+}
+
+func copyRequestBodyWithProgress(dst *os.File, src io.Reader, tracker *uploadProgressTracker) error {
+	buf := make([]byte, 512*1024)
+	for {
+		n, err := src.Read(buf)
+		if n > 0 {
+			if _, werr := dst.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			if tracker != nil {
+				tracker.addServerBytes(int64(n))
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func uploadViaBridgeWithProgress(sess *session.Session, args []string, progressKey string, tracker *uploadProgressTracker) error {
+	if tracker == nil {
+		return callFilebrowserStream(sess, "file_upload_from_temp", args, progressKey, nil)
+	}
+
+	stream, err := bridge.StreamWithSession(sess, "filebrowser", "file_upload_from_temp", args)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+
+	var finalResp *ipc.Response
+	for {
+		resp, msgType, readErr := stream.Read()
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			return fmt.Errorf("stream read failed: %w", readErr)
+		}
+
+		switch msgType {
+		case ipc.MsgTypeStream:
+			if len(resp.Output) == 0 {
+				continue
+			}
+			var payload streamProgressPayload
+			if err := json.Unmarshal(resp.Output, &payload); err != nil {
+				logger.Debugf("invalid upload progress payload: %v", err)
+				continue
+			}
+			if payload.TotalBytes > 0 {
+				tracker.setBridgeTotals(payload.TotalBytes)
+			}
+			tracker.setBridgeProgress(payload.BytesProcessed)
+			if strings.EqualFold(resp.Status, "upload_complete") {
+				tracker.markBridgeComplete()
+			}
+		case ipc.MsgTypeJSON:
+			finalResp = resp
+			goto DONE
+		default:
+			logger.Warnf("unexpected frame type from bridge for file_upload_from_temp: 0x%02x", msgType)
+		}
+	}
+
+DONE:
+	if finalResp == nil {
+		return fmt.Errorf("bridge error: empty response")
+	}
+	if !strings.EqualFold(finalResp.Status, "ok") {
+		if finalResp.Error == "" {
+			return fmt.Errorf("bridge error: unknown")
+		}
+		return fmt.Errorf("bridge error: %s", finalResp.Error)
+	}
+	tracker.markBridgeComplete()
+	return nil
 }
 
 // resourcePutViaTemp handles file updates via temp file then bridge
