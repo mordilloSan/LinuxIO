@@ -15,6 +15,7 @@ interface InputDialogProps {
   defaultValue?: string;
   onClose: () => void;
   onConfirm: (value: string) => void;
+  confirmText?: string;
 }
 
 const InputDialog: React.FC<InputDialogProps> = ({
@@ -24,6 +25,7 @@ const InputDialog: React.FC<InputDialogProps> = ({
   defaultValue = "",
   onClose,
   onConfirm,
+  confirmText = "Create",
 }) => {
   const [dialogState, setDialogState] = useState({
     open,
@@ -88,7 +90,7 @@ const InputDialog: React.FC<InputDialogProps> = ({
           disabled={!value.trim()}
           variant="contained"
         >
-          Create
+          {confirmText}
         </Button>
       </DialogActions>
     </Dialog>
