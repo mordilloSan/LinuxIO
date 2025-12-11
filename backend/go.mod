@@ -25,11 +25,9 @@ require (
 	github.com/coreos/go-systemd/v22 v22.6.0 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
-	github.com/quic-go/qpack v0.5.1 // indirect
-	github.com/quic-go/quic-go v0.55.0 // indirect
+	github.com/quic-go/qpack v0.6.0 // indirect
+	github.com/quic-go/quic-go v0.57.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
-	golang.org/x/mod v0.29.0 // indirect
-	golang.org/x/tools v0.38.0 // indirect
 )
 
 require (
