@@ -44,6 +44,7 @@ export const useFileBrowserQueries = ({
       );
       return normalizeResource(data);
     },
+    staleTime: 0,
   });
 
   const errorMessage = useMemo(() => {
