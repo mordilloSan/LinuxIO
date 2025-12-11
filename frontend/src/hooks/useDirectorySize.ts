@@ -1,5 +1,12 @@
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import axios from "../utils/axios";
+import { isAxiosError } from "axios";
+
+import axios from "@/utils/axios";
+import {
+  getIndexerAvailabilityFlag,
+  setIndexerAvailabilityFlag,
+} from "@/utils/indexerAvailability";
 
 export interface DirectorySizeData {
   path: string;
@@ -36,6 +43,8 @@ export const useDirectorySize = (
 ): UseDirectorySizeResult => {
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
+  const indexerDisabled = getIndexerAvailabilityFlag() === false;
+  const queryEnabled = enabled && !!path && !shouldSkip && !indexerDisabled;
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["directorySize", path],
@@ -49,7 +58,7 @@ export const useDirectorySize = (
       );
       return response.data;
     },
-    enabled: enabled && !!path && !shouldSkip,
+    enabled: queryEnabled,
     staleTime: CACHE_DURATION, // Data stays fresh for 5 minutes - no refetch during this time
     gcTime: CACHE_PERSISTENCE, // Keep data in cache for 24 hours even if unused
     refetchOnWindowFocus: false, // Don't refetch when window regains focus
@@ -58,12 +67,30 @@ export const useDirectorySize = (
     retryDelay: () => FAILED_RETRY_DELAY,
   });
 
-  const isUnavailable = error !== null && !data;
+  useEffect(() => {
+    if (!error) return;
+    if (
+      isAxiosError(error) &&
+      error.response?.data &&
+      (error.response.data as any).error === "indexer unavailable"
+    ) {
+      setIndexerAvailabilityFlag(false);
+    }
+  }, [error]);
+
+  const derivedError =
+    indexerDisabled && !shouldSkip
+      ? new Error("Directory size indexing is unavailable")
+      : error instanceof Error
+        ? error
+        : null;
+  const isUnavailable =
+    (derivedError !== null && !data) || (indexerDisabled && !shouldSkip);
 
   return {
-    size: data?.size ?? null,
-    isLoading,
-    error: error instanceof Error ? error : null,
+    size: indexerDisabled ? null : data?.size ?? null,
+    isLoading: queryEnabled ? isLoading : false,
+    error: derivedError,
     isUnavailable,
   };
 };

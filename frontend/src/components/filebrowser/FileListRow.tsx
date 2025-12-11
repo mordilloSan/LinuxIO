@@ -196,9 +196,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           style={{
             padding: theme.spacing(1.5, 2),
             fontSize: "0.875rem",
-            color: directorySizeUnavailable
-              ? theme.palette.error.main
-              : theme.palette.text.secondary,
+            color: theme.palette.text.secondary,
             opacity: hidden ? 0.5 : undefined,
             display: "flex",
             alignItems: "center",
@@ -214,11 +212,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
             >
               —
             </span>
-          ) : directorySizeUnavailable ? (
-            <span>⚠</span>
-          ) : (
-            formattedSize
-          )}
+          ) : formattedSize}
         </div>
 
         {/* Modified Date */}
