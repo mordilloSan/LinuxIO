@@ -138,7 +138,7 @@ export const useFileBrowserQueries = ({
         acc[path] = {
           name: resource.name,
           type: resource.type,
-          size: resource.size || 0,
+          size: resource.size ?? 0,
         };
         return acc;
       },

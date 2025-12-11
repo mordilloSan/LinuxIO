@@ -108,7 +108,6 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 		return nil, err
 	}
 
-	var totalSize int64
 	fileInfos := []iteminfo.ItemInfo{}
 	dirInfos := []iteminfo.ItemInfo{}
 
@@ -140,7 +139,6 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 			itemInfo.Type = "file"
 			itemInfo.Size = entry.Size()
 			fileInfos = append(fileInfos, *itemInfo)
-			totalSize += itemInfo.Size
 		}
 	}
 
@@ -152,7 +150,7 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 	dirFileInfo.ItemInfo = iteminfo.ItemInfo{
 		Name:       filepath.Base(realPath),
 		Type:       "directory",
-		Size:       totalSize, // Only sum of immediate files, not recursive
+		Size:       0, // Directory sizes are provided by the indexer via dir-size endpoint
 		ModTime:    dirStat.ModTime(),
 		HasPreview: false,
 	}

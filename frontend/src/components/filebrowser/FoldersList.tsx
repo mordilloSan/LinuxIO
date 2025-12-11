@@ -48,7 +48,9 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
         path={folder.path}
         name={folder.name}
         type={folder.type}
-        size={folder.symlink ? undefined : (size ?? folder.size)}
+        size={
+          folder.symlink ? undefined : size === null ? undefined : size
+        }
         modTime={folder.modTime}
         isDirectory={true}
         isSymlink={folder.symlink}

@@ -55,6 +55,7 @@ import {
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useConfigValue } from "@/hooks/useConfig";
+import { clearDirectorySizeCache } from "@/hooks/useDirectorySize";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { ViewMode, FileItem } from "@/types/filebrowser";
 import axios from "@/utils/axios";
@@ -841,6 +842,7 @@ const FileBrowser: React.FC = () => {
     queryClient.invalidateQueries({
       queryKey: ["fileResource", normalizedPath],
     });
+    clearDirectorySizeCache(queryClient);
   }, [normalizedPath, queryClient]);
 
   const {

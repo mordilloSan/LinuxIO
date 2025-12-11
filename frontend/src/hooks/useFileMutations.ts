@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { clearDirectorySizeCache } from "@/hooks/useDirectorySize";
 import axios from "@/utils/axios";
 import { useFileTransfers } from "./useFileTransfers";
 
@@ -51,10 +52,12 @@ export const useFileMutations = ({
   const queryClient = providedQueryClient ?? useQueryClient();
   const { startCompression, startExtraction } = useFileTransfers();
 
-  const invalidateListing = () =>
+  const invalidateListing = () => {
     queryClient.invalidateQueries({
       queryKey: ["fileResource", normalizedPath],
     });
+    clearDirectorySizeCache(queryClient);
+  };
 
   const { mutate: createFile } = useMutation({
     mutationFn: async (fileName: string) => {
