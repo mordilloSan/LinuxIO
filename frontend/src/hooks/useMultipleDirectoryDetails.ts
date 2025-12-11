@@ -1,6 +1,8 @@
 import { useQueries } from "@tanstack/react-query";
-import axios from "@/utils/axios";
+
 import { MultiStatsItem } from "@/types/filebrowser";
+import axios from "@/utils/axios";
+import { getIndexerAvailabilityFlag } from "@/utils/indexerAvailability";
 
 interface DirectoryDetailsData {
   path: string;
@@ -46,6 +48,11 @@ export const useMultipleDirectoryDetails = (
       !shouldSkipSizeCalculation(path),
   );
 
+  const indexerDisabled = getIndexerAvailabilityFlag() === false;
+  const indexerUnavailableError = indexerDisabled
+    ? new Error("Directory size indexing is unavailable")
+    : null;
+
   // Use useQueries to fetch directory sizes - shares cache with useDirectorySize!
   const queries = useQueries({
     queries: directoryPaths.map((path) => ({
@@ -64,6 +71,7 @@ export const useMultipleDirectoryDetails = (
       gcTime: CACHE_PERSISTENCE,
       refetchOnWindowFocus: false,
       refetchOnMount: false,
+      enabled: !indexerDisabled,
       retry: (failureCount: number) => failureCount < MAX_RETRIES,
       retryDelay: () => FAILED_RETRY_DELAY,
     })),
@@ -89,13 +97,28 @@ export const useMultipleDirectoryDetails = (
     const isDir = fileInfo.type === "directory";
     const query = queryMap.get(path);
 
-    // A directory is loading if we have a query for it and it's loading
-    const isLoading = isDir && query ? query.isLoading : false;
-    const hasError = isDir && query ? query.isError : false;
-    const dirSize = query?.data?.size;
+    let isLoading = false;
+    let aggregateSize: number | undefined;
+    let itemError: Error | null = null;
 
-    if (isLoading) result.isAnyLoading = true;
-    if (hasError) result.isAnyError = true;
+    if (isDir) {
+      if (indexerDisabled) {
+        itemError = indexerUnavailableError;
+      } else if (query) {
+        isLoading = query.isLoading;
+        if (isLoading) {
+          result.isAnyLoading = true;
+        }
+        if (query.isError && query.error) {
+          itemError = query.error as Error;
+        }
+        aggregateSize = query.data?.size;
+      }
+    }
+
+    if (itemError) {
+      result.isAnyError = true;
+    }
 
     result.items.push({
       path,
@@ -103,13 +126,13 @@ export const useMultipleDirectoryDetails = (
       type: fileInfo.type,
       size: fileInfo.size,
       isLoading,
-      error: hasError && query?.error ? (query.error as Error) : null,
-      aggregateSize: isDir && dirSize !== undefined ? dirSize : undefined,
+      error: itemError,
+      aggregateSize,
     });
 
     // For directories with fetched size, use that; otherwise use filesystem size
-    if (isDir && dirSize !== undefined && !hasError) {
-      result.totalSize += dirSize;
+    if (isDir && aggregateSize !== undefined && !itemError) {
+      result.totalSize += aggregateSize;
     } else {
       result.totalSize += fileInfo.size;
     }

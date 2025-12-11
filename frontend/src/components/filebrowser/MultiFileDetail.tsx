@@ -85,6 +85,19 @@ const MultiFileItemRow: React.FC<{
   const theme = useTheme();
   const [hovered, setHovered] = React.useState(false);
 
+  const renderSize = () => {
+    if (isLoading) {
+      return <span style={{ animation: "detailGlow 2.5s infinite" }}>—</span>;
+    }
+    if (item.error) {
+      return "—";
+    }
+    if (isDir && (item as any).aggregateSize !== undefined) {
+      return formatFileSize((item as any).aggregateSize);
+    }
+    return formatFileSize(item.size);
+  };
+
   return (
     <Box
       key={item.path}
@@ -134,24 +147,7 @@ const MultiFileItemRow: React.FC<{
         )}
       </Box>
       <Typography variant="body2" color="text.secondary">
-        Size:{" "}
-        {isLoading ? (
-          <span style={{ animation: "detailGlow 2.5s infinite" }}>—</span>
-        ) : isDir && (item as any).aggregateSize !== undefined ? (
-          formatFileSize((item as any).aggregateSize)
-        ) : (
-          formatFileSize(item.size)
-        )}
-        {isDir && item.error && (
-          <Typography
-            component="span"
-            variant="body2"
-            color="error"
-            sx={{ ml: 1, fontSize: "0.85rem" }}
-          >
-            ⚠ Failed to load size
-          </Typography>
-        )}
+        Size: {renderSize()}
       </Typography>
     </Box>
   );

@@ -3,6 +3,7 @@ package filebrowser
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -22,6 +24,23 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
+
+var (
+	indexerAvailable      atomic.Bool
+	errIndexerUnavailable = errors.New("indexer unavailable")
+)
+
+func init() {
+	indexerAvailable.Store(true)
+}
+
+func setIndexerAvailability(available bool) {
+	indexerAvailable.Store(available)
+}
+
+func isIndexerEnabled() bool {
+	return indexerAvailable.Load()
+}
 
 // resourceGet retrieves information about a resource
 // Args: [path, "", getContent?] or [path]
@@ -295,6 +314,10 @@ var indexerHTTPClient = &http.Client{
 
 // fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
 func fetchDirSizeFromIndexer(path string) (int64, error) {
+	if !isIndexerEnabled() {
+		return 0, errIndexerUnavailable
+	}
+
 	normPath := normalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/dirsize", nil)
@@ -307,11 +330,15 @@ func fetchDirSizeFromIndexer(path string) (int64, error) {
 
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
+		setIndexerAvailability(false)
 		return 0, fmt.Errorf("indexer dirsize request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+		}
 		return 0, fmt.Errorf("indexer dirsize returned status %s", resp.Status)
 	}
 
@@ -319,6 +346,8 @@ func fetchDirSizeFromIndexer(path string) (int64, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return 0, fmt.Errorf("decode indexer dirsize response: %w", err)
 	}
+
+	setIndexerAvailability(true)
 
 	if payload.Size != 0 {
 		return payload.Size, nil
@@ -342,6 +371,10 @@ type indexerEntry struct {
 // addToIndexer notifies the indexer daemon about a new or updated file/directory.
 // This updates the cached directory sizes in the indexer.
 func addToIndexer(path string, info os.FileInfo) error {
+	if !isIndexerEnabled() {
+		return nil
+	}
+
 	// Get inode number
 	var inode uint64
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
@@ -380,14 +413,20 @@ func addToIndexer(path string, info os.FileInfo) error {
 	if err != nil {
 		// Log but don't fail the operation if indexer is unavailable
 		logger.Debugf("indexer add request failed (indexer may be offline): %v", err)
+		setIndexerAvailability(false)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Debugf("indexer add returned non-OK status: %s", resp.Status)
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+		}
 		return nil
 	}
+
+	setIndexerAvailability(true)
 
 	// Log successful indexer update
 	fileType := "file"
@@ -405,6 +444,10 @@ func addToIndexer(path string, info os.FileInfo) error {
 // deleteFromIndexer notifies the indexer daemon about a deleted file/directory.
 // This updates the cached directory sizes in the indexer.
 func deleteFromIndexer(path string) error {
+	if !isIndexerEnabled() {
+		return nil
+	}
+
 	normPath := normalizeIndexerPath(path)
 	deleteURL := fmt.Sprintf("http://unix/delete?path=%s", url.QueryEscape(normPath))
 
@@ -417,14 +460,20 @@ func deleteFromIndexer(path string) error {
 	if err != nil {
 		// Log but don't fail the operation if indexer is unavailable
 		logger.Debugf("indexer delete request failed (indexer may be offline): %v", err)
+		setIndexerAvailability(false)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Debugf("indexer delete returned non-OK status: %s", resp.Status)
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+		}
 		return nil
 	}
+
+	setIndexerAvailability(true)
 
 	// Log successful indexer deletion
 	logger.InfoKV("notified indexer of deleted entry", "path", normPath)
@@ -437,16 +486,21 @@ func deleteFromIndexer(path string) error {
 func checkIndexerStatus() (bool, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/status", nil)
 	if err != nil {
+		setIndexerAvailability(false)
 		return false, fmt.Errorf("failed to build indexer status request: %w", err)
 	}
 
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
+		setIndexerAvailability(false)
 		return false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+		}
 		return false, fmt.Errorf("indexer status returned status %s", resp.Status)
 	}
 
@@ -461,13 +515,17 @@ func checkIndexerStatus() (bool, error) {
 		DatabaseSize int64  `json:"database_size,omitempty"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		setIndexerAvailability(false)
 		return false, fmt.Errorf("failed to decode indexer status: %w", err)
 	}
 
 	// Status should be "idle" or "running"
 	if status.Status != "idle" && status.Status != "running" {
+		setIndexerAvailability(false)
 		return false, fmt.Errorf("unexpected indexer status: %s", status.Status)
 	}
+
+	setIndexerAvailability(true)
 
 	// Log successful indexer connection with details
 	if status.Status == "idle" {
@@ -524,6 +582,9 @@ func dirSize(args []string) (any, error) {
 	// Get directory size from the indexer daemon (precomputed)
 	size, err := fetchDirSizeFromIndexer(path)
 	if err != nil {
+		if errors.Is(err, errIndexerUnavailable) {
+			return nil, fmt.Errorf("bad_request:indexer unavailable")
+		}
 		logger.Debugf("error fetching directory size from indexer: %v", err)
 		return nil, fmt.Errorf("error fetching directory size: %w", err)
 	}

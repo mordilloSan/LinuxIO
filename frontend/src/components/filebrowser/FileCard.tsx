@@ -196,9 +196,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           <div
             style={{
               fontSize: "0.90rem",
-              color: directorySizeUnavailable
-                ? theme.palette.error.main
-                : theme.palette.text.secondary,
+              color: theme.palette.text.secondary,
               gap: theme.spacing(0.5),
               lineHeight: 1.2,
               opacity: metadataOpacity,
@@ -216,8 +214,6 @@ const FileCard: React.FC<FileCardProps> = React.memo(
               >
                 —
               </span>
-            ) : directorySizeUnavailable ? (
-              <span style={{ fontSize: "0.85rem" }}>⚠</span>
             ) : size !== undefined && size !== 0 ? (
               formatFileSize(size, 1, "")
             ) : (
