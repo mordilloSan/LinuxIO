@@ -12,6 +12,7 @@ func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 		"resource_post":          ipc.WrapSimpleHandler(resourcePost),
 		"resource_patch":         ipc.WrapSimpleHandler(resourcePatch),
 		"dir_size":               ipc.WrapSimpleHandler(dirSize),
+		"indexer_status":         ipc.WrapSimpleHandler(indexerStatus),
 		"archive_create":         archiveCreate,
 		"archive_extract":        archiveExtract,
 		"chmod":                  ipc.WrapSimpleHandler(resourceChmod),

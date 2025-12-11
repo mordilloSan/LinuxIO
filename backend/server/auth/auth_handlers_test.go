@@ -85,14 +85,23 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess
 		_ = args
-		if group != "control" || cmd != "ping" {
-			t.Fatalf("unexpected bridge call %s.%s", group, cmd)
-		}
-		if result != nil {
-			if err := json.Unmarshal([]byte(`{"type":"pong"}`), result); err != nil {
-				return err
+		if group == "control" && cmd == "ping" {
+			if result != nil {
+				if err := json.Unmarshal([]byte(`{"type":"pong"}`), result); err != nil {
+					return err
+				}
 			}
+			return nil
 		}
+		if group == "filebrowser" && cmd == "indexer_status" {
+			if result != nil {
+				if err := json.Unmarshal([]byte(`{"available":true}`), result); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		t.Fatalf("unexpected bridge call %s.%s", group, cmd)
 		return nil
 	}
 
@@ -237,13 +246,22 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	}
 	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess
-		_ = group
-		_ = cmd
 		_ = args
-		if result != nil {
-			if err := json.Unmarshal([]byte(`{"type":"pong"}`), result); err != nil {
-				return err
+		if group == "control" && cmd == "ping" {
+			if result != nil {
+				if err := json.Unmarshal([]byte(`{"type":"pong"}`), result); err != nil {
+					return err
+				}
 			}
+			return nil
+		}
+		if group == "filebrowser" && cmd == "indexer_status" {
+			if result != nil {
+				if err := json.Unmarshal([]byte(`{"available":true}`), result); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
 		return nil
 	}
