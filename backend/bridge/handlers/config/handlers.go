@@ -20,35 +20,30 @@ type themePayload struct {
 
 func ThemeHandlers() map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
-		"theme_get": themeGet,
-		"theme_set": themeSet,
+		"theme_get": ipc.WrapSimpleHandler(themeGet),
+		"theme_set": ipc.WrapSimpleHandler(themeSet),
 	}
 }
 
-func themeGet(_ *ipc.RequestContext, args []string) (any, error) {
+func themeGet(args []string) (any, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("bad_request:missing username")
 	}
 	username := args[0]
-
 	cfg, cfgPath, err := Load(username)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-
 	logger.Debugf("[theme.get] user=%q path=%s theme=%s primary=%s collapsed=%v showHidden=%v",
-		username, cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor,
-		cfg.AppSettings.SidebarCollapsed, cfg.AppSettings.ShowHiddenFiles)
-
+		username, cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor, cfg.AppSettings.SidebarCollapsed, cfg.AppSettings.ShowHiddenFiles)
 	return cfg.AppSettings, nil
 }
 
-func themeSet(_ *ipc.RequestContext, args []string) (any, error) {
+func themeSet(args []string) (any, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("bad_request:missing arguments")
 	}
 	username := args[0]
-
 	var payload themePayload
 	if err := json.Unmarshal([]byte(args[1]), &payload); err != nil {
 		return nil, fmt.Errorf("bad_request:invalid request body")
@@ -58,7 +53,6 @@ func themeSet(_ *ipc.RequestContext, args []string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-
 	prev := cfg.AppSettings
 	next := prev
 
@@ -91,8 +85,7 @@ func themeSet(_ *ipc.RequestContext, args []string) (any, error) {
 	}
 
 	logger.Debugf("[theme.set] user=%q updated theme: theme=%s primary=%s collapsed=%v showHidden=%v path=%s",
-		username, next.Theme, next.PrimaryColor, next.SidebarCollapsed,
-		next.ShowHiddenFiles, cfgPath)
+		username, next.Theme, next.PrimaryColor, next.SidebarCollapsed, next.ShowHiddenFiles, cfgPath)
 
 	return map[string]any{
 		"message":          "theme updated",
