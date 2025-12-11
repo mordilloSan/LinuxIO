@@ -16,6 +16,18 @@ import (
 // ProgressCallback is invoked with the number of bytes processed.
 type ProgressCallback func(processed int64)
 
+// ExtractOptions allows callers to receive per-entry notifications and progress callbacks.
+type ExtractOptions struct {
+	ProgressCb  ProgressCallback
+	OnExtracted func(path string)
+}
+
+func (o ExtractOptions) report(path string) {
+	if o.OnExtracted != nil {
+		o.OnExtracted(path)
+	}
+}
+
 // ComputeArchiveSize calculates the estimated size of files/directories for archiving
 func ComputeArchiveSize(fileList []string) (int64, error) {
 	var estimatedSize int64
@@ -168,6 +180,11 @@ func CreateTarGz(tmpDirPath string, cb ProgressCallback, skipPath string, filena
 
 // ExtractArchive extracts supported archive types (zip, tar.gz, tgz) into the destination directory.
 func ExtractArchive(archivePath, destination string, cb ProgressCallback) error {
+	return ExtractArchiveWithOptions(archivePath, destination, ExtractOptions{ProgressCb: cb})
+}
+
+// ExtractArchiveWithOptions extracts supported archives (zip, tar.gz, tgz) and reports progress/extracted paths.
+func ExtractArchiveWithOptions(archivePath, destination string, opts ExtractOptions) error {
 	archivePath = filepath.Join(archivePath)
 	destination = filepath.Join(destination)
 
@@ -181,15 +198,15 @@ func ExtractArchive(archivePath, destination string, cb ProgressCallback) error 
 	lowerName := strings.ToLower(archivePath)
 	switch {
 	case strings.HasSuffix(lowerName, ".zip"):
-		return extractZip(archivePath, destination, cb)
+		return extractZip(archivePath, destination, opts)
 	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
-		return extractTarGz(archivePath, destination, cb)
+		return extractTarGz(archivePath, destination, opts)
 	default:
 		return fmt.Errorf("unsupported archive format")
 	}
 }
 
-func extractZip(archivePath, destination string, cb ProgressCallback) error {
+func extractZip(archivePath, destination string, opts ExtractOptions) error {
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return err
@@ -197,7 +214,7 @@ func extractZip(archivePath, destination string, cb ProgressCallback) error {
 	defer reader.Close()
 
 	for _, file := range reader.File {
-		if err := extractZipEntry(file, destination, cb); err != nil {
+		if err := extractZipEntry(file, destination, opts); err != nil {
 			return err
 		}
 	}
@@ -205,7 +222,7 @@ func extractZip(archivePath, destination string, cb ProgressCallback) error {
 	return nil
 }
 
-func extractZipEntry(file *zip.File, destination string, cb ProgressCallback) error {
+func extractZipEntry(file *zip.File, destination string, opts ExtractOptions) error {
 	targetPath := filepath.Join(destination, file.Name)
 	if !isWithinBase(destination, targetPath) {
 		return fmt.Errorf("illegal file path in archive: %s", file.Name)
@@ -215,7 +232,11 @@ func extractZipEntry(file *zip.File, destination string, cb ProgressCallback) er
 		if err := os.MkdirAll(targetPath, PermDir); err != nil {
 			return err
 		}
-		return os.Chmod(targetPath, PermDir)
+		if err := os.Chmod(targetPath, PermDir); err != nil {
+			return err
+		}
+		opts.report(targetPath)
+		return nil
 	}
 
 	if err := os.MkdirAll(filepath.Dir(targetPath), PermDir); err != nil {
@@ -234,14 +255,18 @@ func extractZipEntry(file *zip.File, destination string, cb ProgressCallback) er
 	}
 	defer writer.Close()
 
-	if err := copyWithProgress(writer, reader, cb); err != nil {
+	if err := copyWithProgress(writer, reader, opts.ProgressCb); err != nil {
 		return err
 	}
 
-	return os.Chmod(targetPath, PermFile)
+	if err := os.Chmod(targetPath, PermFile); err != nil {
+		return err
+	}
+	opts.report(targetPath)
+	return nil
 }
 
-func extractTarGz(archivePath, destination string, cb ProgressCallback) error {
+func extractTarGz(archivePath, destination string, opts ExtractOptions) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return err
@@ -265,7 +290,7 @@ func extractTarGz(archivePath, destination string, cb ProgressCallback) error {
 			return err
 		}
 
-		if err := extractTarEntry(header, tarReader, destination, cb); err != nil {
+		if err := extractTarEntry(header, tarReader, destination, opts); err != nil {
 			return err
 		}
 	}
@@ -273,7 +298,7 @@ func extractTarGz(archivePath, destination string, cb ProgressCallback) error {
 	return nil
 }
 
-func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination string, cb ProgressCallback) error {
+func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination string, opts ExtractOptions) error {
 	targetPath := filepath.Join(destination, header.Name)
 	if !isWithinBase(destination, targetPath) {
 		return fmt.Errorf("illegal file path in archive: %s", header.Name)
@@ -284,7 +309,11 @@ func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination stri
 		if err := os.MkdirAll(targetPath, PermDir); err != nil {
 			return err
 		}
-		return os.Chmod(targetPath, PermDir)
+		if err := os.Chmod(targetPath, PermDir); err != nil {
+			return err
+		}
+		opts.report(targetPath)
+		return nil
 	case tar.TypeReg:
 		if err := os.MkdirAll(filepath.Dir(targetPath), PermDir); err != nil {
 			return err
@@ -293,14 +322,18 @@ func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination stri
 		if err != nil {
 			return err
 		}
-		if err := copyWithProgress(outFile, tarReader, cb); err != nil {
+		if err := copyWithProgress(outFile, tarReader, opts.ProgressCb); err != nil {
 			outFile.Close()
 			return err
 		}
 		if err := outFile.Close(); err != nil {
 			return err
 		}
-		return os.Chmod(targetPath, PermFile)
+		if err := os.Chmod(targetPath, PermFile); err != nil {
+			return err
+		}
+		opts.report(targetPath)
+		return nil
 	case tar.TypeSymlink, tar.TypeLink:
 		// Skip symlinks/hardlinks for safety
 		return nil
