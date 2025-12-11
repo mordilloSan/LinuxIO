@@ -451,14 +451,14 @@ func checkIndexerStatus() (bool, error) {
 	}
 
 	var status struct {
-		Status        string `json:"status"`
-		NumDirs       int64  `json:"num_dirs,omitempty"`
-		NumFiles      int64  `json:"num_files,omitempty"`
-		TotalSize     int64  `json:"total_size,omitempty"`
-		LastIndexed   string `json:"last_indexed,omitempty"`
-		TotalIndexes  int    `json:"total_indexes,omitempty"`
-		TotalEntries  int64  `json:"total_entries,omitempty"`
-		DatabaseSize  int64  `json:"database_size,omitempty"`
+		Status       string `json:"status"`
+		NumDirs      int64  `json:"num_dirs,omitempty"`
+		NumFiles     int64  `json:"num_files,omitempty"`
+		TotalSize    int64  `json:"total_size,omitempty"`
+		LastIndexed  string `json:"last_indexed,omitempty"`
+		TotalIndexes int    `json:"total_indexes,omitempty"`
+		TotalEntries int64  `json:"total_entries,omitempty"`
+		DatabaseSize int64  `json:"database_size,omitempty"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
 		return false, fmt.Errorf("failed to decode indexer status: %w", err)
