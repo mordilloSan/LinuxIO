@@ -38,6 +38,28 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	logger.Debugf("Using bridge binary: %s", bridgeBinary)
 	logger.Debugf("Using auth helper: %s", helperPath)
 
+	// Create pipe for bridge logs in development mode
+	var logPipeR, logPipeW *os.File
+	if strings.ToLower(envMode) == "development" {
+		var err error
+		logPipeR, logPipeW, err = os.Pipe()
+		if err != nil {
+			logger.Warnf("Failed to create log pipe: %v (falling back to file logging)", err)
+		} else {
+			// Start goroutine to read bridge logs and display them
+			go func() {
+				defer logPipeR.Close()
+				scanner := bufio.NewScanner(logPipeR)
+				for scanner.Scan() {
+					logger.Infof("[bridge] %s", scanner.Text())
+				}
+				if err := scanner.Err(); err != nil {
+					logger.Debugf("Bridge log pipe scanner error: %v", err)
+				}
+			}()
+		}
+	}
+
 	// Build env for the helper (helper now decides privilege itself)
 	env := append(os.Environ(),
 		"LINUXIO_ENV="+strings.ToLower(envMode),
@@ -56,9 +78,19 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	if v := os.Getenv("LINUXIO_SERVER_CERT"); v != "" {
 		env = append(env, "LINUXIO_SERVER_CERT="+v)
 	}
+	// Pass log pipe FD if available
+	// ExtraFiles start at FD 3, so logPipeW will be FD 3 in the auth-helper
+	// Auth-helper will dup it to a higher FD before using FD 3 for bootstrap
+	if logPipeW != nil {
+		env = append(env, "LINUXIO_LOG_FD=3")
+	}
 
 	cmd := exec.Command(helperPath)
 	cmd.Env = env
+	// Pass the log pipe as an extra file descriptor (becomes FD 3 in auth-helper)
+	if logPipeW != nil {
+		cmd.ExtraFiles = []*os.File{logPipeW}
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -76,8 +108,19 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	}
 
 	if err := cmd.Start(); err != nil {
+		if logPipeW != nil {
+			logPipeW.Close()
+		}
 		return false, fmt.Errorf("start helper: %w", err)
 	}
+
+	// Setup cleanup for log pipe on error paths
+	var bridgeStarted bool
+	defer func() {
+		if !bridgeStarted && logPipeW != nil {
+			logPipeW.Close()
+		}
+	}()
 
 	// Read first line = MODE=...
 	br := bufio.NewReader(stdout)
@@ -176,6 +219,15 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	// Reap the parent helper (nanny owns bridge)
 	if err := cmd.Wait(); err != nil {
 		logger.WarnKV("auth helper exited non-zero after OK", "error", err)
+	}
+
+	// Mark bridge as successfully started before closing our copy of the log pipe FD
+	bridgeStarted = true
+
+	// Close the write end of the log pipe now that the bridge has inherited it
+	// This ensures the pipe reader will get EOF when the bridge exits
+	if logPipeW != nil {
+		logPipeW.Close()
 	}
 
 	logger.InfoKV("bridge launch acknowledged", "user", sess.User.Username, "privileged", privileged)

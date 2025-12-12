@@ -42,6 +42,7 @@ type envConfig struct {
 	SocketPath    string
 	ServerBaseURL string
 	ServerCert    string
+	LogFD         int
 }
 
 type boot struct {
@@ -54,6 +55,7 @@ type boot struct {
 	ServerCert    string `json:"server_cert,omitempty"`
 	SocketPath    string `json:"socket_path,omitempty"`
 	Verbose       string `json:"verbose,omitempty"`
+	LogFD         int    `json:"log_fd,omitempty"` // FD for piped logging in dev mode
 }
 
 func readBootstrapFromFD3() (*boot, error) {
@@ -89,6 +91,7 @@ func initEnvCfg() envConfig {
 			SocketPath:    b.SocketPath,
 			ServerBaseURL: b.ServerBaseURL,
 			ServerCert:    b.ServerCert,
+			LogFD:         b.LogFD,
 		}
 		return cfg
 	}
@@ -154,9 +157,25 @@ func main() {
 	}
 
 	// Initialize logger ASAP
-	// In development mode, log to file since stdout/stderr are redirected by auth-helper
+	// If we have a log FD in dev mode, redirect stdout/stderr to it for piped logging
+	// (dev mode logger uses stdout for colored output)
+	if env == "development" && envCfg.LogFD > 0 {
+		logFile := os.NewFile(uintptr(envCfg.LogFD), "logpipe")
+		if logFile != nil {
+			// Redirect both stdout and stderr to the log pipe
+			syscall.Dup2(int(logFile.Fd()), int(os.Stdout.Fd()))
+			syscall.Dup2(int(logFile.Fd()), int(os.Stderr.Fd()))
+			// Close the original FD to avoid leaking
+			if envCfg.LogFD != int(os.Stdout.Fd()) && envCfg.LogFD != int(os.Stderr.Fd()) {
+				logFile.Close()
+			}
+		}
+	}
+
+	// Initialize logger (will use stderr, which may now point to the pipe)
 	var logFile string
-	if env == "development" {
+	if env == "development" && envCfg.LogFD == 0 {
+		// Dev mode without pipe - log to file
 		logDir := "/tmp/linuxio"
 		_ = os.MkdirAll(logDir, 0o755)
 		logFile = filepath.Join(logDir, fmt.Sprintf("bridge-%s.log", Sess.SessionID))

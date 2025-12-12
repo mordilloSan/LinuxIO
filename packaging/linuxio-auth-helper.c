@@ -948,8 +948,32 @@ int main(void)
   char *server_cert = safe_getenv_strdup("LINUXIO_SERVER_CERT", MAX_ENV_VALUE_LEN);
   char *verbose_in = safe_getenv_strdup("LINUXIO_VERBOSE", 16);
   char *socket_path_env = safe_getenv_strdup("LINUXIO_SOCKET_PATH", MAX_PATH_LEN);
+  char *log_fd_str = safe_getenv_strdup("LINUXIO_LOG_FD", 16);
 
   const char *envmode = (envmode_in && *envmode_in) ? envmode_in : "production";
+  int log_fd = -1;
+  if (log_fd_str && *log_fd_str)
+  {
+    char *end = NULL;
+    long fd_val = strtol(log_fd_str, &end, 10);
+    if (end && !*end && fd_val >= 0 && fd_val < 1024)
+    {
+      log_fd = (int)fd_val;
+      // Move log FD to a higher number (FD 10) so FD 3 is available for bootstrap
+      int new_log_fd = dup(log_fd);
+      if (new_log_fd >= 0)
+      {
+        close(log_fd);
+        log_fd = new_log_fd;
+        // Remove CLOEXEC so it survives fork/exec
+        int flags = fcntl(log_fd, F_GETFD);
+        if (flags >= 0)
+        {
+          fcntl(log_fd, F_SETFD, flags & ~FD_CLOEXEC);
+        }
+      }
+    }
+  }
   const char *bridge_path = (bridge_in && *bridge_in) ? bridge_in : "/usr/local/bin/linuxio-bridge";
   if (bridge_path[0] != '/')
   {
@@ -970,6 +994,7 @@ int main(void)
     free(server_cert);
     free(verbose_in);
     free(socket_path_env);
+    free(log_fd_str);
     return 5;
   }
 
@@ -1009,6 +1034,7 @@ int main(void)
         free(server_cert);
         free(verbose_in);
         free(socket_path_env);
+    free(log_fd_str);
         return 5;
       }
     }
@@ -1030,6 +1056,7 @@ int main(void)
       free(server_cert);
       free(verbose_in);
       free(socket_path_env);
+    free(log_fd_str);
       return 5;
     }
   }
@@ -1055,6 +1082,7 @@ int main(void)
     free(server_cert);
     free(verbose_in);
     free(socket_path_env);
+    free(log_fd_str);
     return 5;
   }
 
@@ -1077,6 +1105,7 @@ int main(void)
     free(server_cert);
     free(verbose_in);
     free(socket_path_env);
+    free(log_fd_str);
     return 5;
   }
 
@@ -1167,6 +1196,7 @@ int main(void)
       if (verbose)
         setenv("LINUXIO_VERBOSE", "1", 1);
 
+      // Redirect bridge output (bridge will use log_fd from bootstrap JSON if available)
       (void)redirect_bridge_output(pw->pw_uid, linuxio_gid, sess_id);
 
       const char *argv_child[5];
@@ -1225,12 +1255,13 @@ int main(void)
                     "\"server_base_url\":\"%s\","
                     "\"server_cert\":\"%s\","
                     "\"socket_path\":\"%s\","
-                    "\"verbose\":\"%s\""
+                    "\"verbose\":\"%s\","
+                    "\"log_fd\":%d"
                     "}",
                     sess_id_esc, sess_user_esc,
                     (unsigned)pw->pw_uid, (unsigned)pw->pw_gid,
                     secret_esc, server_base_esc, cert_esc,
-                    sock_esc, verbose ? "1" : "0");
+                    sock_esc, verbose ? "1" : "0", log_fd);
     }
     else
     {
@@ -1244,12 +1275,13 @@ int main(void)
                     "\"server_base_url\":\"%s\","
                     "\"server_cert\":null,"
                     "\"socket_path\":\"%s\","
-                    "\"verbose\":\"%s\""
+                    "\"verbose\":\"%s\","
+                    "\"log_fd\":%d"
                     "}",
                     sess_id_esc, sess_user_esc,
                     (unsigned)pw->pw_uid, (unsigned)pw->pw_gid,
                     secret_esc, server_base_esc,
-                    sock_esc, verbose ? "1" : "0");
+                    sock_esc, verbose ? "1" : "0", log_fd);
     }
 
     (void)write_all(boot_pipe[1], json, strlen(json));
@@ -1335,6 +1367,7 @@ int main(void)
   free(server_cert);
   free(verbose_in);
   free(socket_path_env);
+    free(log_fd_str);
 
   // Parent doesn't manage PAM anymore
   _exit(0);
