@@ -9,6 +9,7 @@ type ItemMetadata = {
   hidden?: boolean;
   hasPreview?: boolean;
   symlink?: boolean;
+  showFullPath?: boolean; // Show full directory path (for search results)
 };
 
 type ItemWithPath = ItemMetadata & {

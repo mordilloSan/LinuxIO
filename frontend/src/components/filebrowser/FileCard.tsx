@@ -48,6 +48,7 @@ export interface FileCardProps {
   directorySizeLoading?: boolean;
   directorySizeError?: Error | null;
   directorySizeUnavailable?: boolean;
+  showFullPath?: boolean; // Show full directory path (for search results)
   onClick: (event: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
@@ -64,6 +65,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     isSymlink = false,
     selected = false,
     hidden = false,
+    showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
     directorySizeUnavailable = false,
@@ -191,6 +193,25 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           >
             {name}
           </div>
+
+          {/* Directory path for search results */}
+          {showFullPath && path && (
+            <div
+              style={{
+                fontSize: "0.75rem",
+                color: theme.palette.text.secondary,
+                opacity: 0.7,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                lineHeight: 1.2,
+                marginTop: "2px",
+              }}
+              title={path}
+            >
+              {path.replace(/\/[^/]*$/, "") || "/"}
+            </div>
+          )}
 
           {/* Size line (middle) */}
           <div

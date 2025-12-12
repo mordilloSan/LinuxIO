@@ -45,6 +45,7 @@ export interface FileListRowProps {
   isSymlink?: boolean;
   selected?: boolean;
   hidden?: boolean;
+  showFullPath?: boolean; // Show full directory path (for search results)
   directorySizeLoading?: boolean;
   directorySizeError?: Error | null;
   directorySizeUnavailable?: boolean;
@@ -68,6 +69,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     isSymlink = false,
     selected = false,
     hidden = false,
+    showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
     directorySizeUnavailable = false,
@@ -164,8 +166,6 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
             fontWeight: 500,
             fontSize: "0.9375rem",
             overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
             color: theme.palette.text.primary,
             opacity: hidden ? 0.5 : undefined,
             minWidth: 0,
@@ -180,15 +180,39 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
               isSymlink={isSymlink}
             />
           </div>
-          <span
+          <div
             style={{
               overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              minWidth: 0,
+              flex: 1,
             }}
           >
-            {name}
-          </span>
+            <div
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {name}
+            </div>
+            {showFullPath && path && (
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: theme.palette.text.secondary,
+                  opacity: 0.7,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  marginTop: "2px",
+                }}
+                title={path}
+              >
+                {path.replace(/\/[^/]*$/, "") || "/"}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Size */}

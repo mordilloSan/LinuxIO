@@ -28,6 +28,7 @@ import { toast } from "sonner";
 
 import { useDragAndDropUpload } from "../../../hooks/useDragAndDropUpload";
 import type { DroppedEntry } from "../../../hooks/useDragAndDropUpload";
+import { useFileSearch } from "../../../hooks/useFileSearch";
 import { useFileBrowserQueries } from "../../../hooks/useFileBrowserQueries";
 import { useFileMutations } from "../../../hooks/useFileMutations";
 
@@ -187,6 +188,7 @@ const FileBrowser: React.FC = () => {
   const [isSavingFile, setIsSavingFile] = useState(false);
   const [isEditorDirty, setIsEditorDirty] = useState(false);
   const [closeEditorDialog, setCloseEditorDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [isUploadProcessing, setIsUploadProcessing] = useState(false);
   const [uploadEntries, setUploadEntries] = useState<DroppedEntry[]>([]);
@@ -274,6 +276,71 @@ const FileBrowser: React.FC = () => {
     () => new Set(resource?.items?.map((item) => item.name) ?? []),
     [resource],
   );
+
+  // Use indexer search when query is present (always from root)
+  const {
+    results: searchResults,
+    isLoading: isSearching,
+    isUnavailable: isSearchUnavailable,
+  } = useFileSearch({
+    query: searchQuery,
+    basePath: "/", // Always search from root, not current folder
+    enabled: searchQuery.trim().length >= 2,
+  });
+
+  // Convert search results to FileItem format and create filtered resource
+  const filteredResource = useMemo(() => {
+    if (!resource || !searchQuery.trim()) {
+      return resource;
+    }
+
+    if (resource.type !== "directory" || !resource.items) {
+      return resource;
+    }
+
+    // If search is unavailable, fall back to client-side filtering
+    if (isSearchUnavailable) {
+      const lowerQuery = searchQuery.toLowerCase().trim();
+      const filteredItems = resource.items.filter((item) =>
+        item.name.toLowerCase().includes(lowerQuery),
+      );
+      return {
+        ...resource,
+        items: filteredItems,
+      };
+    }
+
+    // Use search results from indexer
+    if (searchResults.length > 0) {
+      const items = searchResults.map((result) => ({
+        name: result.name,
+        path: result.path,
+        size: result.size,
+        type: result.isDir ? "directory" : "file",
+        modTime: result.modTime || "",
+        isDirectory: result.isDir,
+        extension: result.isDir ? "" : result.name.split(".").pop() || "",
+        showFullPath: true, // Show directory path in search results
+      }));
+
+      return {
+        ...resource,
+        items,
+      };
+    }
+
+    // No results from search
+    return {
+      ...resource,
+      items: [],
+    };
+  }, [resource, searchQuery, searchResults, isSearchUnavailable]);
+
+  // Clear search when navigating to a different directory
+  useEffect(() => {
+    setSearchQuery("");
+  }, [normalizedPath]);
+
   const pendingArchiveNamesRef = useRef<Set<string>>(new Set());
   const pendingArchiveConflictNamesRef = useRef<Set<string>>(new Set());
 
@@ -305,6 +372,10 @@ const FileBrowser: React.FC = () => {
   const handleToggleHiddenFiles = useCallback(() => {
     setShowHiddenFilesConfig((prev) => !prev);
   }, [setShowHiddenFilesConfig]);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+  }, []);
 
   const handleSortChange = useCallback((field: SortField) => {
     setSortField((currentField) => {
@@ -981,6 +1052,8 @@ const FileBrowser: React.FC = () => {
           editingFileName={editingFileResource?.name}
           editingFilePath={editingPath || undefined}
           isDirty={isEditorDirty}
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
         />
         <Box
           sx={{
@@ -1030,11 +1103,11 @@ const FileBrowser: React.FC = () => {
             {!editingPath &&
               !isPending &&
               !errorMessage &&
-              resource &&
-              resource.type === "directory" && (
+              filteredResource &&
+              filteredResource.type === "directory" && (
                 <DirectoryListing
                   key={normalizedPath}
-                  resource={resource}
+                  resource={filteredResource}
                   showHiddenFiles={showHiddenFiles}
                   viewMode={viewMode}
                   sortField={sortField}

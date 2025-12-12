@@ -20,6 +20,7 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 	// Transfer/metadata helpers.
 	r.GET("/api/raw", rawHandler)                           // downloads (bridge: file_download_to_temp/archive_download_setup)
 	r.GET("/api/dir-size", dirSizeHandler)                  // cached dir size (bridge: dir_size)
+	r.GET("/api/search", searchHandler)                     // search files (bridge: search)
 	r.POST("/api/archive/compress", archiveCompressHandler) // compress (bridge: archive_create)
 	r.POST("/api/archive/extract", archiveExtractHandler)   // extract (bridge: archive_extract)
 	r.POST("/api/chmod", chmodHandler)                      // perms/ownership (bridge: chmod)
