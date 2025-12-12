@@ -595,6 +595,88 @@ func dirSize(args []string) (any, error) {
 	}, nil
 }
 
+// searchFiles searches for files/directories in the indexer database
+// Args: [query, limit?, basePath?]
+func searchFiles(args []string) (any, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("bad_request:missing search query")
+	}
+
+	query := args[0]
+	if strings.TrimSpace(query) == "" {
+		return nil, fmt.Errorf("bad_request:search query cannot be empty")
+	}
+
+	limit := "100" // default limit
+	if len(args) > 1 && args[1] != "" {
+		limit = args[1]
+	}
+
+	basePath := "/" // default to root
+	if len(args) > 2 && args[2] != "" {
+		basePath = normalizeIndexerPath(args[2])
+	}
+
+	results, err := searchInIndexer(query, limit, basePath)
+	if err != nil {
+		if errors.Is(err, errIndexerUnavailable) {
+			return nil, fmt.Errorf("bad_request:indexer unavailable")
+		}
+		logger.Debugf("error searching indexer: %v", err)
+		return nil, fmt.Errorf("error searching files: %w", err)
+	}
+
+	return map[string]any{
+		"query":   query,
+		"results": results,
+		"count":   len(results),
+	}, nil
+}
+
+// searchInIndexer queries the indexer for files matching the search term
+func searchInIndexer(query, limit, basePath string) ([]map[string]any, error) {
+	if !isIndexerEnabled() {
+		return nil, errIndexerUnavailable
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/search", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build indexer search request: %w", err)
+	}
+
+	q := req.URL.Query()
+	q.Set("q", query)
+	q.Set("limit", limit)
+	if basePath != "/" {
+		q.Set("base", basePath)
+	}
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := indexerHTTPClient.Do(req)
+	if err != nil {
+		setIndexerAvailability(false)
+		return nil, fmt.Errorf("indexer search request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+		}
+		return nil, fmt.Errorf("indexer search returned status %s", resp.Status)
+	}
+
+	// Indexer returns array directly, not wrapped in object
+	var results []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		return nil, fmt.Errorf("decode indexer search response: %w", err)
+	}
+
+	setIndexerAvailability(true)
+
+	return results, nil
+}
+
 // archiveCreate builds an archive on disk from provided files.
 // Args: [destinationPath, fileList, algo?]
 func archiveCreate(ctx *ipc.RequestContext, args []string) (any, error) {

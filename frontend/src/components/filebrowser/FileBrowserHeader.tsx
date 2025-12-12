@@ -16,6 +16,7 @@ import {
 import React, { ReactNode } from "react";
 
 import { ViewMode } from "../../types/filebrowser";
+import SearchBar from "./SearchBar";
 
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
@@ -30,6 +31,8 @@ interface FileBrowserHeaderProps {
   editingFileName?: string;
   editingFilePath?: string;
   isDirty?: boolean;
+  searchQuery?: string;
+  onSearchChange?: (value: string) => void;
 }
 
 const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
@@ -44,6 +47,8 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   editingFileName,
   editingFilePath,
   isDirty = false,
+  searchQuery = "",
+  onSearchChange = () => {},
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -84,8 +89,8 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
         </Box>
       )}
 
-      {/* Center section - File info when editing */}
-      {showQuickSave && editingFileName && (
+      {/* Center section - File info when editing OR search bar when browsing */}
+      {showQuickSave && editingFileName ? (
         <Box sx={{ flex: 1, textAlign: "center", mx: 2 }}>
           <Typography variant="h6" fontWeight={600}>
             {editingFileName}
@@ -93,6 +98,21 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
           <Typography variant="caption" color="text.secondary">
             {editingFilePath}
           </Typography>
+        </Box>
+      ) : (
+        <Box
+          sx={{
+            flex: 1,
+            display: "flex",
+            justifyContent: "center",
+            mx: 2,
+          }}
+        >
+          <SearchBar
+            value={searchQuery}
+            onChange={onSearchChange}
+            placeholder="Search files and folders..."
+          />
         </Box>
       )}
 

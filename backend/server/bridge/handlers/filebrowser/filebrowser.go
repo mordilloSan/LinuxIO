@@ -142,6 +142,40 @@ func dirSizeHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// searchHandler searches for files via bridge/indexer
+func searchHandler(c *gin.Context) {
+	sess := session.SessionFromContext(c)
+	if sess == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
+		return
+	}
+
+	query := c.Query("q")
+	if strings.TrimSpace(query) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "search query is required"})
+		return
+	}
+
+	limit := c.DefaultQuery("limit", "100")
+	basePath := c.DefaultQuery("base", "/")
+
+	args := []string{query, limit, basePath}
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "search", args, &result); err != nil {
+		logger.Debugf("bridge error: %v", err)
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 // resourceDeleteHandler deletes a resource via bridge
 func resourceDeleteHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
