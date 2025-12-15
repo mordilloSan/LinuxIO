@@ -277,12 +277,6 @@ func resourcePatch(args []string) (any, error) {
 	return map[string]any{"message": "operation completed"}, nil
 }
 
-type indexerDirSizeResponse struct {
-	Path  string `json:"path"`
-	Size  int64  `json:"size"`
-	Bytes int64  `json:"bytes"`
-}
-
 func normalizeIndexerPath(path string) string {
 	if path == "" || path == "/" {
 		return "/"
@@ -310,49 +304,6 @@ var indexerHTTPClient = &http.Client{
 		},
 	},
 	Timeout: 10 * time.Second,
-}
-
-// fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
-func fetchDirSizeFromIndexer(path string) (int64, error) {
-	if !isIndexerEnabled() {
-		return 0, errIndexerUnavailable
-	}
-
-	normPath := normalizeIndexerPath(path)
-
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/dirsize", nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to build indexer request: %w", err)
-	}
-	q := req.URL.Query()
-	q.Set("path", normPath)
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		setIndexerAvailability(false)
-		return 0, fmt.Errorf("indexer dirsize request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode >= http.StatusInternalServerError {
-			setIndexerAvailability(false)
-		}
-		return 0, fmt.Errorf("indexer dirsize returned status %s", resp.Status)
-	}
-
-	var payload indexerDirSizeResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return 0, fmt.Errorf("decode indexer dirsize response: %w", err)
-	}
-
-	setIndexerAvailability(true)
-
-	if payload.Size != 0 {
-		return payload.Size, nil
-	}
-	return payload.Bytes, nil
 }
 
 // indexerEntry represents a file or directory entry for the indexer API
@@ -558,6 +509,55 @@ func indexerStatus(_ []string) (any, error) {
 	}, nil
 }
 
+type indexerDirSizeResponse struct {
+	Path  string `json:"path"`
+	Size  int64  `json:"size"`
+	Bytes int64  `json:"bytes"`
+}
+
+// fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
+func fetchDirSizeFromIndexer(path string) (int64, error) {
+	if !isIndexerEnabled() {
+		return 0, errIndexerUnavailable
+	}
+
+	normPath := normalizeIndexerPath(path)
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/dirsize", nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build indexer request: %w", err)
+	}
+	q := req.URL.Query()
+	q.Set("path", normPath)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := indexerHTTPClient.Do(req)
+	if err != nil {
+		setIndexerAvailability(false)
+		return 0, fmt.Errorf("indexer dirsize request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+		}
+		return 0, fmt.Errorf("indexer dirsize returned status %s", resp.Status)
+	}
+
+	var payload indexerDirSizeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return 0, fmt.Errorf("decode indexer dirsize response: %w", err)
+	}
+
+	setIndexerAvailability(true)
+
+	if payload.Size != 0 {
+		return payload.Size, nil
+	}
+	return payload.Bytes, nil
+}
+
 // dirSize calculates the total size of a directory recursively
 // Args: [path]
 func dirSize(args []string) (any, error) {
@@ -595,6 +595,92 @@ func dirSize(args []string) (any, error) {
 	}, nil
 }
 
+// subfoldersResponse represents a subfolder entry from the indexer
+type subfoldersResponse struct {
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Size    int64  `json:"size"`
+	ModTime string `json:"mod_time"`
+}
+
+// subfolders gets direct child folders with their pre-calculated sizes
+// Args: [path]
+func subfolders(args []string) (any, error) {
+	path := "/"
+	if len(args) > 0 && args[0] != "" {
+		path = args[0]
+	}
+
+	// Validate path exists and is a directory if not root
+	if path != "/" {
+		realPath := filepath.Join(path)
+		stat, err := os.Stat(realPath)
+		if err != nil {
+			logger.Debugf("error stating directory: %v", err)
+			return nil, fmt.Errorf("bad_request:directory not found")
+		}
+		if !stat.IsDir() {
+			return nil, fmt.Errorf("bad_request:path is not a directory")
+		}
+	}
+
+	// Fetch subfolders from indexer
+	folders, err := fetchSubfoldersFromIndexer(path)
+	if err != nil {
+		if errors.Is(err, errIndexerUnavailable) {
+			return nil, fmt.Errorf("bad_request:indexer unavailable")
+		}
+		logger.Debugf("error fetching subfolders from indexer: %v", err)
+		return nil, fmt.Errorf("error fetching subfolders: %w", err)
+	}
+
+	return map[string]any{
+		"path":       path,
+		"subfolders": folders,
+		"count":      len(folders),
+	}, nil
+}
+
+// fetchSubfoldersFromIndexer queries the indexer daemon for direct child folders with sizes
+func fetchSubfoldersFromIndexer(path string) ([]subfoldersResponse, error) {
+	if !isIndexerEnabled() {
+		return nil, errIndexerUnavailable
+	}
+
+	normPath := normalizeIndexerPath(path)
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/subfolders", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build indexer request: %w", err)
+	}
+	q := req.URL.Query()
+	q.Set("path", normPath)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := indexerHTTPClient.Do(req)
+	if err != nil {
+		setIndexerAvailability(false)
+		return nil, fmt.Errorf("indexer subfolders request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+		}
+		return nil, fmt.Errorf("indexer subfolders returned status %s", resp.Status)
+	}
+
+	var folders []subfoldersResponse
+	if err := json.NewDecoder(resp.Body).Decode(&folders); err != nil {
+		return nil, fmt.Errorf("decode indexer subfolders response: %w", err)
+	}
+
+	setIndexerAvailability(true)
+
+	return folders, nil
+}
+
 // searchFiles searches for files/directories in the indexer database
 // Args: [query, limit?, basePath?]
 func searchFiles(args []string) (any, error) {
@@ -626,11 +712,50 @@ func searchFiles(args []string) (any, error) {
 		return nil, fmt.Errorf("error searching files: %w", err)
 	}
 
+	normalizeIndexerSearchResults(results)
+
 	return map[string]any{
 		"query":   query,
 		"results": results,
 		"count":   len(results),
 	}, nil
+}
+
+func normalizeIndexerSearchResults(results []map[string]any) {
+	for _, result := range results {
+		path, _ := result["path"].(string)
+		typeRaw, typeOk := result["type"].(string)
+		normalizedType := strings.ToLower(typeRaw)
+
+		isDir, isDirOk := result["isDir"].(bool)
+
+		derivedIsDir := false
+		switch normalizedType {
+		case "directory", "dir", "folder":
+			derivedIsDir = true
+		case "file":
+			derivedIsDir = false
+		default:
+			if isDirOk {
+				derivedIsDir = isDir
+			} else if strings.HasSuffix(path, "/") {
+				derivedIsDir = true
+			}
+		}
+
+		if !isDirOk {
+			result["isDir"] = derivedIsDir
+		}
+
+		if derivedIsDir {
+			result["type"] = "directory"
+			continue
+		}
+
+		if !typeOk || normalizedType == "" || normalizedType == "file" || normalizedType == "directory" || normalizedType == "dir" || normalizedType == "folder" {
+			result["type"] = "file"
+		}
+	}
 }
 
 // searchInIndexer queries the indexer for files matching the search term

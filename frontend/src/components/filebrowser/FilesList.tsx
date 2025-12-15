@@ -69,6 +69,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(
               isSymlink={file.symlink}
               hidden={file.hidden}
               selected={selectedPaths.has(file.path)}
+              showFullPath={file.showFullPath}
               onClick={(event) => onFileClick(event, file.path)}
               onDoubleClick={() => onDownloadFile(file)}
               onContextMenu={(event) => onFileContextMenu(event, file.path)}

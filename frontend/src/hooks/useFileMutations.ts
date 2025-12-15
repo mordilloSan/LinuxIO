@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { clearDirectorySizeCache } from "@/hooks/useDirectorySize";
+import { clearSubfoldersCache } from "@/hooks/useSubfolders";
 import axios from "@/utils/axios";
 import { useFileTransfers } from "./useFileTransfers";
 
@@ -56,7 +56,7 @@ export const useFileMutations = ({
     queryClient.invalidateQueries({
       queryKey: ["fileResource", normalizedPath],
     });
-    clearDirectorySizeCache(queryClient);
+    clearSubfoldersCache(queryClient);
   };
 
   const { mutate: createFile } = useMutation({

@@ -28,9 +28,9 @@ import { toast } from "sonner";
 
 import { useDragAndDropUpload } from "../../../hooks/useDragAndDropUpload";
 import type { DroppedEntry } from "../../../hooks/useDragAndDropUpload";
-import { useFileSearch } from "../../../hooks/useFileSearch";
 import { useFileBrowserQueries } from "../../../hooks/useFileBrowserQueries";
 import { useFileMutations } from "../../../hooks/useFileMutations";
+import { useFileSearch } from "../../../hooks/useFileSearch";
 
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
@@ -56,8 +56,8 @@ import {
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useConfigValue } from "@/hooks/useConfig";
-import { clearDirectorySizeCache } from "@/hooks/useDirectorySize";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
+import { clearSubfoldersCache } from "@/hooks/useSubfolders";
 import { ViewMode, FileItem } from "@/types/filebrowser";
 import axios from "@/utils/axios";
 
@@ -278,15 +278,12 @@ const FileBrowser: React.FC = () => {
   );
 
   // Use indexer search when query is present (always from root)
-  const {
-    results: searchResults,
-    isLoading: isSearching,
-    isUnavailable: isSearchUnavailable,
-  } = useFileSearch({
-    query: searchQuery,
-    basePath: "/", // Always search from root, not current folder
-    enabled: searchQuery.trim().length >= 2,
-  });
+  const { results: searchResults, isUnavailable: isSearchUnavailable } =
+    useFileSearch({
+      query: searchQuery,
+      basePath: "/", // Always search from root, not current folder
+      enabled: searchQuery.trim().length >= 2,
+    });
 
   // Convert search results to FileItem format and create filtered resource
   const filteredResource = useMemo(() => {
@@ -312,16 +309,30 @@ const FileBrowser: React.FC = () => {
 
     // Use search results from indexer
     if (searchResults.length > 0) {
-      const items = searchResults.map((result) => ({
-        name: result.name,
-        path: result.path,
-        size: result.size,
-        type: result.isDir ? "directory" : "file",
-        modTime: result.modTime || "",
-        isDirectory: result.isDir,
-        extension: result.isDir ? "" : result.name.split(".").pop() || "",
-        showFullPath: true, // Show directory path in search results
-      }));
+      const items = searchResults.map((result) => {
+        const normalizedType =
+          typeof result.type === "string" ? result.type.toLowerCase() : "";
+        const isDirectory =
+          normalizedType === "directory" ||
+          normalizedType === "dir" ||
+          normalizedType === "folder" ||
+          Boolean(result.isDir) ||
+          result.path.endsWith("/");
+        return {
+          name: result.name,
+          path: result.path,
+          size: result.size,
+          type: isDirectory
+            ? "directory"
+            : normalizedType && normalizedType !== "file"
+              ? (result.type ?? "file")
+              : "file",
+          modTime: result.modTime || "",
+          isDirectory,
+          extension: isDirectory ? "" : result.name.split(".").pop() || "",
+          showFullPath: true, // Show directory path in search results
+        };
+      });
 
       return {
         ...resource,
@@ -913,7 +924,7 @@ const FileBrowser: React.FC = () => {
     queryClient.invalidateQueries({
       queryKey: ["fileResource", normalizedPath],
     });
-    clearDirectorySizeCache(queryClient);
+    clearSubfoldersCache(queryClient);
   }, [normalizedPath, queryClient]);
 
   const {

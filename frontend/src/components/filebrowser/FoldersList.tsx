@@ -4,7 +4,7 @@ import { FileItem, ViewMode } from "../../types/filebrowser";
 
 import FileCard from "@/components/filebrowser/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
-import { useDirectorySize } from "@/hooks/useDirectorySize";
+import { SubfolderData } from "@/hooks/useSubfolders";
 
 interface FoldersListProps {
   folders: FileItem[];
@@ -14,6 +14,8 @@ interface FoldersListProps {
   onOpenDirectory: (path: string) => void;
   onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
   isMarqueeSelecting?: boolean;
+  subfoldersMap: Map<string, SubfolderData>;
+  isLoadingSubfolders: boolean;
 }
 
 interface FolderItemProps {
@@ -24,6 +26,8 @@ interface FolderItemProps {
   onOpenDirectory: (path: string) => void;
   onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
   disableHover?: boolean;
+  subfoldersMap: Map<string, SubfolderData>;
+  isLoadingSubfolders: boolean;
 }
 
 const FolderItem: React.FC<FolderItemProps> = React.memo(
@@ -35,12 +39,27 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
     onOpenDirectory,
     onFolderContextMenu,
     disableHover = false,
+    subfoldersMap,
+    isLoadingSubfolders,
   }) => {
-    // Skip size calculation for symlinks
-    const { size, isLoading, error, isUnavailable } = useDirectorySize(
-      folder.symlink ? "" : folder.path || "",
-    );
     const ItemComponent = viewMode === "list" ? FileListRow : FileCard;
+
+    // Get size from subfoldersMap instead of making individual API calls
+    // Normalize path by removing trailing slash for lookup (API returns paths without trailing slashes)
+    const normalizedPath = folder.path.endsWith("/")
+      ? folder.path.slice(0, -1)
+      : folder.path;
+    const subfolderData = folder.symlink
+      ? null
+      : subfoldersMap.get(normalizedPath);
+    const size = subfolderData ? subfolderData.size : null;
+
+    // For symlinks, don't show loading or unavailable states
+    // For regular folders, show loading if data hasn't arrived yet, unavailable if it's null after loading
+    const shouldShowSize = !folder.symlink;
+    const sizeIsLoading = shouldShowSize && isLoadingSubfolders;
+    const sizeIsUnavailable =
+      shouldShowSize && !isLoadingSubfolders && size === null;
 
     return (
       <ItemComponent
@@ -48,17 +67,15 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
         path={folder.path}
         name={folder.name}
         type={folder.type}
-        size={
-          folder.symlink ? undefined : size === null ? undefined : size
-        }
+        size={folder.symlink ? undefined : size === null ? undefined : size}
         modTime={folder.modTime}
         isDirectory={true}
         isSymlink={folder.symlink}
         hidden={folder.hidden}
         selected={selected}
-        directorySizeLoading={isLoading}
-        directorySizeError={error}
-        directorySizeUnavailable={isUnavailable}
+        directorySizeLoading={sizeIsLoading}
+        directorySizeError={null}
+        directorySizeUnavailable={sizeIsUnavailable}
         onClick={(event) => onFolderClick(event, folder.path)}
         onDoubleClick={() => onOpenDirectory(folder.path)}
         onContextMenu={(event) => onFolderContextMenu(event, folder.path)}
@@ -79,6 +96,8 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
     onOpenDirectory,
     onFolderContextMenu,
     isMarqueeSelecting = false,
+    subfoldersMap,
+    isLoadingSubfolders,
   }) => {
     if (folders.length === 0) {
       return null;
@@ -120,6 +139,8 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
               onOpenDirectory={onOpenDirectory}
               onFolderContextMenu={onFolderContextMenu}
               disableHover={isMarqueeSelecting}
+              subfoldersMap={subfoldersMap}
+              isLoadingSubfolders={isLoadingSubfolders}
             />
           ))}
         </div>

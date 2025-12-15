@@ -2,6 +2,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import React, { useState, useCallback, useMemo } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
+import { useDirectorySize } from "@/hooks/useDirectorySize";
 import { formatFileSize } from "@/utils/formaters";
 
 const glowAnimation = `
@@ -82,22 +83,45 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     const theme = useTheme();
     const [hovered, setHovered] = useState(false);
 
+    // For search results (showFullPath=true), fetch individual directory sizes
+    const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
+    const {
+      size: fetchedSize,
+      isLoading: isFetchingSize,
+      error: fetchError,
+      isUnavailable: isSizeUnavailable,
+    } = useDirectorySize(path || "", needsIndividualDirSize);
+
+    // Override size props with fetched data when displaying search results
+    const effectiveSize = needsIndividualDirSize
+      ? (fetchedSize ?? undefined)
+      : size;
+    const effectiveSizeLoading = needsIndividualDirSize
+      ? isFetchingSize
+      : directorySizeLoading;
+    const effectiveSizeError = needsIndividualDirSize
+      ? fetchError
+      : directorySizeError;
+    const effectiveSizeUnavailable = needsIndividualDirSize
+      ? isSizeUnavailable
+      : directorySizeUnavailable;
+
     const formattedDate = modTime
       ? new Date(modTime).toLocaleDateString("en-GB")
       : "";
 
     const formattedSize = useMemo(() => {
-      if (directorySizeLoading) {
+      if (effectiveSizeLoading) {
         return ""; // Will render glow effect instead
       }
-      if (directorySizeUnavailable) {
+      if (effectiveSizeUnavailable) {
         return ""; // Will render warning icon instead
       }
-      if (size !== undefined && size !== 0) {
-        return formatFileSize(size, 1, "");
+      if (effectiveSize !== undefined && effectiveSize !== 0) {
+        return formatFileSize(effectiveSize, 1, "");
       }
       return "—";
-    }, [size, directorySizeLoading, directorySizeUnavailable]);
+    }, [effectiveSize, effectiveSizeLoading, effectiveSizeUnavailable]);
 
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -189,12 +213,44 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           >
             <div
               style={{
+                display: "flex",
+                alignItems: "center",
+                gap: theme.spacing(1),
                 overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
               }}
             >
-              {name}
+              <div
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {name}
+              </div>
+              {showFullPath && (
+                <span
+                  style={{
+                    fontSize: "0.65rem",
+                    fontWeight: 600,
+                    color: isDirectory
+                      ? theme.palette.primary.main
+                      : theme.palette.text.secondary,
+                    backgroundColor: isDirectory
+                      ? alpha(theme.palette.primary.main, 0.15)
+                      : alpha(theme.palette.text.secondary, 0.1),
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {isDirectory ? "Folder" : "File"}
+                </span>
+              )}
             </div>
             {showFullPath && path && (
               <div
@@ -226,9 +282,9 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
             alignItems: "center",
             justifyContent: "flex-start",
           }}
-          title={directorySizeError?.message}
+          title={effectiveSizeError?.message}
         >
-          {directorySizeLoading ? (
+          {effectiveSizeLoading ? (
             <span
               style={{
                 animation: "sizeGlow 2.5s infinite",
@@ -236,7 +292,9 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
             >
               —
             </span>
-          ) : formattedSize}
+          ) : (
+            formattedSize
+          )}
         </div>
 
         {/* Modified Date */}
