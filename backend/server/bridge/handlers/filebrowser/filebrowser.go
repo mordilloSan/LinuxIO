@@ -429,20 +429,6 @@ func archiveCompressHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid destination"})
 		return
 	}
-	if _, err := os.Stat(destPath); err == nil {
-		if !req.Override {
-			c.JSON(http.StatusConflict, gin.H{
-				"error": fmt.Sprintf("archive already exists: %s", archiveName),
-			})
-			return
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		logger.Debugf("failed to stat destination: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("unable to validate destination: %v", err),
-		})
-		return
-	}
 
 	progressKey := ""
 	if strings.TrimSpace(req.RequestID) != "" {
@@ -473,6 +459,9 @@ func archiveCompressHandler(c *gin.Context) {
 		if strings.Contains(errMsg, "bridge error: bad_request:") {
 			status = http.StatusBadRequest
 			errMsg = strings.TrimPrefix(errMsg, "bridge error: bad_request:")
+			if strings.Contains(strings.ToLower(errMsg), "destination exists") {
+				status = http.StatusConflict
+			}
 		} else {
 			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
 		}
@@ -1115,17 +1104,6 @@ func sanitizeAbsDir(dir string) (string, error) {
 	clean, ok := sanitizeAbsPath(dir)
 	if !ok {
 		return "", fmt.Errorf("invalid destination")
-	}
-
-	info, err := os.Stat(clean)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("destination directory not found")
-		}
-		return "", fmt.Errorf("unable to validate destination: %v", err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("destination is not a directory")
 	}
 
 	return clean, nil
