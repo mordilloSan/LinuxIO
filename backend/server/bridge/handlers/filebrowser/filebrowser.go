@@ -907,18 +907,10 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string, p
 		return
 	}
 
-	// Determine if this is a single file or needs archiving
-	needsArchive := len(paths) > 1
-	if !needsArchive && len(paths) == 1 {
-		if info, err := os.Stat(paths[0]); err == nil && info.IsDir() {
-			needsArchive = true
-		}
-	}
-
 	var tempPath, fileName string
 	var fileSize int64
 
-	if needsArchive || len(paths) > 1 {
+	if len(paths) > 1 {
 		// Multiple files or directory - create archive via bridge
 		args := []string{strings.Join(paths, "||"), "zip"}
 		var result struct {
@@ -950,7 +942,7 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string, p
 		fileName = result.ArchiveName
 		fileSize = result.Size
 	} else {
-		// Single file download via bridge
+		// Single file download via bridge; if it's a directory, fall back to archive_download_setup.
 		args := []string{paths[0]}
 		var result struct {
 			TempPath string `json:"tempPath"`
@@ -963,26 +955,60 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string, p
 				c.Status(499)
 				return
 			}
-			status := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "bad_request:") {
-				status = http.StatusBadRequest
-			}
-			if strings.Contains(err.Error(), "not found") {
-				status = http.StatusNotFound
-			}
-			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
-			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
-			c.JSON(status, gin.H{"error": errMsg})
-			return
-		}
-		if result.TempPath == "" || result.FileName == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-			return
-		}
 
-		tempPath = result.TempPath
-		fileName = result.FileName
-		fileSize = result.Size
+			if strings.Contains(err.Error(), "path is a directory") {
+				// Directory download -> build archive instead.
+				args := []string{paths[0], "zip"}
+				var archiveResult struct {
+					TempPath    string `json:"tempPath"`
+					ArchiveName string `json:"archiveName"`
+					Size        int64  `json:"size"`
+				}
+				if downloadErr := stream.CallWithProgress(ctx, sess, "filebrowser", "archive_download_setup", args, progressKey, &archiveResult); downloadErr != nil {
+					logger.Debugf("bridge error: %v", downloadErr)
+					if errors.Is(downloadErr, context.Canceled) {
+						c.Status(499)
+						return
+					}
+					status := http.StatusInternalServerError
+					if strings.Contains(downloadErr.Error(), "bad_request:") {
+						status = http.StatusBadRequest
+					}
+					errMsg := strings.TrimPrefix(downloadErr.Error(), "bridge error: bad_request:")
+					errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
+					c.JSON(status, gin.H{"error": errMsg})
+					return
+				}
+				if archiveResult.TempPath == "" || archiveResult.ArchiveName == "" {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+					return
+				}
+				tempPath = archiveResult.TempPath
+				fileName = archiveResult.ArchiveName
+				fileSize = archiveResult.Size
+			} else {
+				status := http.StatusInternalServerError
+				if strings.Contains(err.Error(), "bad_request:") {
+					status = http.StatusBadRequest
+				}
+				if strings.Contains(err.Error(), "not found") {
+					status = http.StatusNotFound
+				}
+				errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+				errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
+				c.JSON(status, gin.H{"error": errMsg})
+				return
+			}
+		} else {
+			if result.TempPath == "" || result.FileName == "" {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
+				return
+			}
+
+			tempPath = result.TempPath
+			fileName = result.FileName
+			fileSize = result.Size
+		}
 	}
 
 	// Open temp file and stream to client
@@ -1024,7 +1050,17 @@ func parseFileList(entries []string) []string {
 		if path == "" {
 			continue
 		}
-		paths = append(paths, filepath.Clean(path))
+		clean := filepath.Clean(path)
+		if clean == "." || clean == "" {
+			continue
+		}
+		if !filepath.IsAbs(clean) {
+			continue
+		}
+		if strings.ContainsRune(clean, '\x00') {
+			continue
+		}
+		paths = append(paths, clean)
 	}
 	return paths
 }

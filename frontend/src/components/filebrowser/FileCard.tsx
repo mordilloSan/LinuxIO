@@ -248,7 +248,8 @@ const FileCard: React.FC<FileCardProps> = React.memo(
             }}
             title={effectiveSizeError?.message}
           >
-            {effectiveSizeLoading ? (
+            {effectiveSizeLoading &&
+            (effectiveSize === undefined || effectiveSize === 0) ? (
               <span
                 style={{
                   animation: "sizeGlow 2.5s infinite",
