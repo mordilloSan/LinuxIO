@@ -109,6 +109,13 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
       : "";
 
     const formattedSize = useMemo(() => {
+      if (
+        effectiveSizeLoading &&
+        effectiveSize !== undefined &&
+        effectiveSize !== 0
+      ) {
+        return formatFileSize(effectiveSize, 1, "");
+      }
       if (effectiveSizeLoading) {
         return ""; // Will render glow effect instead
       }
