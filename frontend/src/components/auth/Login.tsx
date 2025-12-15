@@ -1,4 +1,5 @@
-import { Visibility, VisibilityOff } from "@mui/icons-material";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   TextField,
   Button,
@@ -94,7 +95,7 @@ function LogIn() {
                   onClick={() => setShowPassword((p) => !p)}
                   edge="end"
                 >
-                  {showPassword ? <VisibilityOff /> : <Visibility />}
+                  {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                 </IconButton>
               </InputAdornment>
             ),

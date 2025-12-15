@@ -6,32 +6,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
 
 func handleGetProcesses(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	rawResp, err := bridge.CallWithSession(sess, "system", "get_processes", nil)
-	if err != nil {
+	var resp json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "system", "get_processes", nil, &resp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed", "detail": err.Error()})
 		return
 	}
-	var resp ipc.Response
-	if err := json.Unmarshal([]byte(rawResp), &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response", "detail": err.Error()})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-
-	if resp.Output == nil {
+	if len(resp) == 0 {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, resp)
 }

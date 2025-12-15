@@ -1,17 +1,16 @@
-import { Grid, Box, useTheme, Typography } from "@mui/material";
+import { Box, useTheme, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
+import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import FileNotifications from "@/components/filebrowser/FileNotifications";
 import axios from "@/utils/axios";
 
 interface VersionResponse {
-  output: {
-    checked_at: string;
-    current_version: string;
-    latest_version: string;
-    update_available: boolean;
-  };
-  status: string;
+  checked_at: string;
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
 }
 
 function Footer() {
@@ -30,43 +29,54 @@ function Footer() {
   return (
     <Box
       sx={{
+        width: "100%",
         background: theme.footer?.background || theme.palette.background.paper,
         position: "relative",
+        zIndex: 1300,
       }}
     >
-      <Grid container spacing={0}>
-        {/* Left side links */}
-        <Grid
-          size={{
-            xs: 12,
-            md: 6,
+      <Box
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          px: 1,
+        }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
+            flexShrink: 0,
           }}
-          sx={{ display: { xs: "none", md: "block" } }}
-        ></Grid>
-
-        {/* Right side copyright */}
-        <Grid
-          size={{
-            xs: 12,
-            md: 6,
-          }}
-          container
-          justifyContent="flex-end"
         >
-          {data?.output.current_version && (
-            <Typography
-              variant="caption"
-              sx={{
-                opacity: 0.6,
-                fontSize: "0.7rem",
-                padding: 1,
-              }}
-            >
-              {data.output.current_version}
-            </Typography>
-          )}
-        </Grid>
-      </Grid>
+          <ErrorBoundary>
+            {data?.current_version && (
+              <Typography
+                variant="caption"
+                sx={{
+                  opacity: 0.6,
+                  fontSize: "0.7rem",
+                }}
+              >
+                {data.current_version}
+              </Typography>
+            )}
+          </ErrorBoundary>
+        </Box>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            ml: "auto",
+          }}
+        >
+          <ErrorBoundary>
+            <FileNotifications />
+          </ErrorBoundary>
+        </Box>
+      </Box>
     </Box>
   );
 }

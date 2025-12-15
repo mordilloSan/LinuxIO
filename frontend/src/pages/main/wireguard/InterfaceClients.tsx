@@ -1,4 +1,6 @@
-import { Delete, GetApp, QrCode } from "@mui/icons-material";
+import DeleteIcon from "@mui/icons-material/Delete";
+import GetAppIcon from "@mui/icons-material/GetApp";
+import QrCodeIcon from "@mui/icons-material/QrCode";
 import {
   Grid,
   Card,
@@ -6,7 +8,6 @@ import {
   Typography,
   Box,
   IconButton,
-  CircularProgress,
   Dialog,
   DialogContent,
   Chip,
@@ -16,6 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 
 type Peer = {
@@ -42,7 +44,7 @@ interface InterfaceDetailsProps {
 }
 
 // --- small format helpers ---
-const formatBytes = (n?: number) => {
+const formatFileSize = (n?: number) => {
   if (n == null) return "-";
   const abs = Math.abs(n);
   if (abs < 1024) return `${n} B`;
@@ -155,7 +157,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     }
   };
 
-  if (isLoading) return <CircularProgress />;
+  if (isLoading) return <ComponentLoader />;
   if (isError)
     return <Typography color="error">Failed to load peer details</Typography>;
 
@@ -208,19 +210,19 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                           onClick={() => handleDeletePeer(peer.name)}
                           sx={{ color: "red" }}
                         >
-                          <Delete />
+                          <DeleteIcon />
                         </IconButton>
                         <IconButton
                           aria-label="Download Config"
                           onClick={() => handleDownloadConfig(peer.name)}
                         >
-                          <GetApp />
+                          <GetAppIcon />
                         </IconButton>
                         <IconButton
                           aria-label="View QR Code"
                           onClick={() => handleViewQrCode(peer.name)}
                         >
-                          <QrCode />
+                          <QrCodeIcon />
                         </IconButton>
                       </Box>
                     </Box>
@@ -230,14 +232,14 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                     </Typography>
 
                     <Typography variant="body2">
-                      Rx: {formatBytes(peer.rx_bytes)}{" "}
+                      Rx: {formatFileSize(peer.rx_bytes)}{" "}
                       <span style={{ opacity: 0.7 }}>
                         ({formatBps(peer.rx_bps)})
                       </span>
                     </Typography>
 
                     <Typography variant="body2">
-                      Tx: {formatBytes(peer.tx_bytes)}{" "}
+                      Tx: {formatFileSize(peer.tx_bytes)}{" "}
                       <span style={{ opacity: 0.7 }}>
                         ({formatBps(peer.tx_bps)})
                       </span>

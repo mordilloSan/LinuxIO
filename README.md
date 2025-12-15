@@ -17,7 +17,7 @@ Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes furthe
 
 - **Docker management** (like Portainer)
 - **WireGuard VPN** configuration
-- **File management** (FileBrowser Quantum integration)
+- **File management** (FileBrowser Quantum inspired)
 - **System monitoring** (CPU, RAM, disk, network)
 
 **Goal:** One tool to manage your homelab without juggling multiple UIs.
@@ -30,7 +30,7 @@ Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes furthe
 - 📊 **Live System Stats** - CPU, memory, disk, network monitoring
 - 🐳 **Docker Manager** - Container management
 - 🛡️ **WireGuard UI** - VPN configuration
-- 📁 **File Explorer** - Integrated FileBrowser Quantum
+- 📁 **File Explorer** - Integrated File Explorer
 - 👤 **User Accounts** - User management
 - 📤 **Share Manager** - Samba/NFS shares
 - 🌐 **NetworkManager** - Network configuration

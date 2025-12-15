@@ -1,10 +1,11 @@
-import { Box, CircularProgress, Alert } from "@mui/material";
+import { Box, Alert } from "@mui/material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 
 import ServiceLogsDrawer from "./ServiceLogsDrawer";
 import ServiceTable, { Service } from "./ServiceTable";
 
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 
 const ServicesList: React.FC = () => {
@@ -80,11 +81,7 @@ const ServicesList: React.FC = () => {
 
   return (
     <Box>
-      {isLoading && (
-        <Box textAlign="center" my={5}>
-          <CircularProgress />
-        </Box>
-      )}
+      {isLoading && <ComponentLoader />}
       {isError && (
         <Alert severity="error">
           {error instanceof Error ? error.message : "Failed to load services"}

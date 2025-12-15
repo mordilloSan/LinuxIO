@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,11 +13,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 var upgrader = websocket.Upgrader{
@@ -110,6 +111,38 @@ func WebSocketHandler(c *gin.Context) {
 	logger.Debugf("[WebSocket] Connection details: user=%s remote=%s path=%s ua=%s",
 		sess.User.Username, c.ClientIP(), c.Request.URL.Path, c.Request.UserAgent())
 
+	// Initialize channel manager for route subscriptions
+	channelMgr := NewChannelManager(ctx)
+	defer channelMgr.CloseAll()
+
+	// Get initial route from query params
+	initialRoute := c.Query("route")
+	if initialRoute == "" {
+		initialRoute = "terminal" // default route
+	}
+	channelMgr.Subscribe(initialRoute)
+
+	subscriptionCancels := struct {
+		mu      sync.Mutex
+		cancels map[string]context.CancelFunc
+	}{
+		cancels: make(map[string]context.CancelFunc),
+	}
+
+	addSubscriptionCancel := func(key string, cancel context.CancelFunc) {
+		subscriptionCancels.mu.Lock()
+		subscriptionCancels.cancels[key] = cancel
+		subscriptionCancels.mu.Unlock()
+	}
+
+	popSubscriptionCancel := func(key string) context.CancelFunc {
+		subscriptionCancels.mu.Lock()
+		cancel := subscriptionCancels.cancels[key]
+		delete(subscriptionCancels.cancels, key)
+		subscriptionCancels.mu.Unlock()
+		return cancel
+	}
+
 	done := make(chan struct{})
 	defer func() {
 		close(done)
@@ -136,6 +169,16 @@ func WebSocketHandler(c *gin.Context) {
 		logger.Debugf("[WebSocket] Message: %+v", wsMsg)
 
 		switch wsMsg.Type {
+		case "route_change":
+			newRoute := wsMsg.Data
+			if newRoute == "" {
+				logger.Warnf("[WebSocket] route_change with empty route")
+				continue
+			}
+			logger.Debugf("[WebSocket] Route change: %s -> %s", channelMgr.GetActiveRoute(), newRoute)
+			channelMgr.Subscribe(newRoute)
+			_ = safeConn.WriteJSON(WSResponse{Type: "route_changed", Data: newRoute})
+
 		case "terminal_start":
 			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
 				// Start container terminal via bridge
@@ -150,11 +193,18 @@ func WebSocketHandler(c *gin.Context) {
 				}
 				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Container shell started.\r\n"})
 
+				// Subscribe to terminal route to get route context
+				routeCtx := channelMgr.Subscribe("terminal")
+
 				// Poll bridge for output and forward to WS
-				go func(containerID string) {
+				go func(containerID string, routeCtx context.Context) {
 					for {
 						select {
 						case <-done:
+							logger.Debugf("[WebSocket] Container terminal polling stopped: connection closed")
+							return
+						case <-routeCtx.Done():
+							logger.Debugf("[WebSocket] Container terminal polling stopped: route changed")
 							return
 						default:
 						}
@@ -173,7 +223,7 @@ func WebSocketHandler(c *gin.Context) {
 							time.Sleep(60 * time.Millisecond)
 						}
 					}
-				}(wsMsg.ContainerID)
+				}(wsMsg.ContainerID, routeCtx)
 			} else {
 				// Start main terminal via bridge
 				if _, err := bridge.CallWithSession(sess, "terminal", "start_main", nil); err != nil {
@@ -193,10 +243,17 @@ func WebSocketHandler(c *gin.Context) {
 					}
 				}
 
-				go func() {
+				// Subscribe to terminal route to get route context
+				routeCtx := channelMgr.Subscribe("terminal")
+
+				go func(routeCtx context.Context) {
 					for {
 						select {
 						case <-done:
+							logger.Debugf("[WebSocket] Main terminal polling stopped: connection closed")
+							return
+						case <-routeCtx.Done():
+							logger.Debugf("[WebSocket] Main terminal polling stopped: route changed")
 							return
 						default:
 						}
@@ -215,7 +272,7 @@ func WebSocketHandler(c *gin.Context) {
 							time.Sleep(60 * time.Millisecond)
 						}
 					}
-				}()
+				}(routeCtx)
 			}
 
 		case "terminal_input":
@@ -284,6 +341,58 @@ func WebSocketHandler(c *gin.Context) {
 				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_closed", Data: "Main terminal closed."})
 			}
 
+		case "subscribe_operation_progress":
+			reqId := wsMsg.Data
+			if reqId == "" {
+				logger.Warnf("[WebSocket] subscribe_operation_progress with empty reqId")
+				continue
+			}
+			key := sess.SessionID + ":" + reqId
+			logger.Debugf("[WebSocket] Subscribing to operation progress: %s", key)
+
+			subCtx, cancel := context.WithCancel(ctx)
+			addSubscriptionCancel(key, cancel)
+
+			GlobalProgressBroadcaster.Register(key, func(update ProgressUpdate) {
+				_ = safeConn.WriteJSON(WSResponse{
+					Type:      update.Type, // e.g. "download_progress", "compression_progress", "upload_progress"
+					RequestID: reqId,
+					Data:      update,
+				})
+			})
+
+			go func(subscriptionKey string, childCtx context.Context) {
+				<-childCtx.Done()
+				subscriptionCancels.mu.Lock()
+				delete(subscriptionCancels.cancels, subscriptionKey)
+				subscriptionCancels.mu.Unlock()
+				logger.Debugf("[WebSocket] Unsubscribing from operation progress: %s", subscriptionKey)
+				GlobalProgressBroadcaster.Unregister(subscriptionKey)
+			}(key, subCtx)
+
+			_ = safeConn.WriteJSON(WSResponse{
+				Type:      "operation_subscribed",
+				RequestID: reqId,
+			})
+
+		case "unsubscribe_operation_progress":
+			reqId := wsMsg.Data
+			if reqId == "" {
+				logger.Warnf("[WebSocket] unsubscribe_operation_progress with empty reqId")
+				continue
+			}
+			key := sess.SessionID + ":" + reqId
+			logger.Debugf("[WebSocket] Unsubscribing from operation progress: %s", key)
+			if cancel := popSubscriptionCancel(key); cancel != nil {
+				cancel()
+			}
+			GlobalProgressBroadcaster.Unregister(key)
+			GlobalOperationCanceller.Cancel(key)
+			_ = safeConn.WriteJSON(WSResponse{
+				Type:      "operation_unsubscribed",
+				RequestID: reqId,
+			})
+
 		default:
 			logger.Warnf("[WebSocket] Unknown message type: %s", wsMsg.Type)
 		}
@@ -306,7 +415,6 @@ func readFromBridgeMain(sess *session.Session, waitMs int) (string, bool, error)
 		return "", false, errors.New(resp.Error)
 	}
 
-	// resp.Output is `any`, so type assert to map
 	data, closed := extractTerminalOutput(resp.Output)
 	return data, closed, nil
 }
@@ -327,61 +435,52 @@ func readFromBridgeContainer(sess *session.Session, containerID string, waitMs i
 		return "", false, errors.New(resp.Error)
 	}
 
-	// resp.Output is `any`, so type assert to map
 	data, closed := extractTerminalOutput(resp.Output)
 	return data, closed, nil
 }
 
-// extractTerminalOutput extracts data and closed from resp.Output (which is type `any`)
-func extractTerminalOutput(output any) (data string, closed bool) {
-	if output == nil {
+// extractTerminalOutput decodes the terminal bridge response payload.
+func extractTerminalOutput(output json.RawMessage) (data string, closed bool) {
+	if len(output) == 0 {
 		return "", false
 	}
 
-	// When JSON unmarshals into `any`, objects become map[string]interface{}
-	if m, ok := output.(map[string]interface{}); ok {
-		if d, ok := m["data"].(string); ok {
-			data = d
-		}
-		if c, ok := m["closed"].(bool); ok {
-			closed = c
-		}
+	var payload struct {
+		Data   string `json:"data"`
+		Closed bool   `json:"closed"`
 	}
-	return data, closed
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return "", false
+	}
+	return payload.Data, payload.Closed
 }
 
-// extractDataString extracts the "data" field from resp.Output (which is type `any`)
-func extractDataString(output any) string {
-	if output == nil {
+// extractDataString extracts the "data" field from resp.Output.
+func extractDataString(output json.RawMessage) string {
+	if len(output) == 0 {
 		return ""
 	}
 
-	if m, ok := output.(map[string]interface{}); ok {
-		if d, ok := m["data"].(string); ok {
-			return d
-		}
+	var payload struct {
+		Data string `json:"data"`
 	}
-	return ""
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return ""
+	}
+	return payload.Data
 }
 
-// extractStringSlice extracts a []string from resp.Output (which is type `any`)
-func extractStringSlice(output any) []string {
-	if output == nil {
+// extractStringSlice extracts a []string from resp.Output.
+func extractStringSlice(output json.RawMessage) []string {
+	if len(output) == 0 {
 		return []string{}
 	}
 
-	// Could be []interface{} when unmarshaled
-	if arr, ok := output.([]interface{}); ok {
-		result := make([]string, 0, len(arr))
-		for _, v := range arr {
-			if s, ok := v.(string); ok {
-				result = append(result, s)
-			}
-		}
-		return result
+	var arr []string
+	if err := json.Unmarshal(output, &arr); err != nil {
+		return []string{}
 	}
-
-	return []string{}
+	return arr
 }
 
 func isExpectedWSClose(err error) bool {
@@ -394,5 +493,3 @@ func isExpectedWSClose(err error) bool {
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "use of closed network connection")
 }
-
-// PTY reading now occurs inside the bridge process.

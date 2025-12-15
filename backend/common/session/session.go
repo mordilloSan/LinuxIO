@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-
 	"github.com/mordilloSan/go_logger/logger"
 )
 
@@ -23,11 +23,12 @@ import (
 type DeleteReason string
 
 const (
-	ReasonLogout     DeleteReason = "logout"
-	ReasonGCIdle     DeleteReason = "gc_idle"
-	ReasonGCAbsolute DeleteReason = "gc_absolute"
-	ReasonManual     DeleteReason = "manual"
-	ReasonServerQuit DeleteReason = "server_quit"
+	ReasonLogout        DeleteReason = "logout"
+	ReasonGCIdle        DeleteReason = "gc_idle"
+	ReasonGCAbsolute    DeleteReason = "gc_absolute"
+	ReasonManual        DeleteReason = "manual"
+	ReasonServerQuit    DeleteReason = "server_quit"
+	ReasonBridgeFailure DeleteReason = "bridge_failure"
 )
 
 type SessionConfig struct {
@@ -50,7 +51,7 @@ type CookieConfig struct {
 }
 
 var DefaultConfig = SessionConfig{
-	IdleTimeout:          30 * time.Minute,
+	IdleTimeout:          15 * time.Minute,
 	AbsoluteTimeout:      12 * time.Hour,
 	RefreshThrottle:      60 * time.Second,
 	SingleSessionPerUser: false,
@@ -86,6 +87,14 @@ type Session struct {
 	BridgeSecret string `json:"bridge_secret"`
 	SocketPath   string `json:"socket_path"`
 	Timing       Timing `json:"timing"`
+
+	// Persistent bridge connection (not serialized)
+	bridgeConn   net.Conn
+	bridgeConnMu sync.Mutex
+
+	// Termination handler (not serialized)
+	terminateFunc func(DeleteReason) error
+	terminateMu   sync.Mutex
 }
 
 // -----------------------------------------------------------------------------
@@ -108,7 +117,7 @@ type Manager struct {
 	st  Store
 
 	onDeleteMu sync.RWMutex
-	onDelete   []func(Session, DeleteReason)
+	onDelete   []func(*Session, DeleteReason)
 
 	gcStop chan struct{}
 }
@@ -165,22 +174,67 @@ func (m *Manager) CookieConfig() CookieConfig { return m.cfg.Cookie }
 // Config returns a copy of the effective session config.
 func (m *Manager) Config() SessionConfig { return m.cfg }
 
+// SetBridgeConn stores the persistent bridge connection in the session.
+func (s *Session) SetBridgeConn(conn net.Conn) {
+	s.bridgeConnMu.Lock()
+	defer s.bridgeConnMu.Unlock()
+	s.bridgeConn = conn
+}
+
+// GetBridgeConn retrieves the persistent bridge connection, if any.
+func (s *Session) GetBridgeConn() net.Conn {
+	s.bridgeConnMu.Lock()
+	defer s.bridgeConnMu.Unlock()
+	return s.bridgeConn
+}
+
+// CloseBridgeConn closes and clears the persistent bridge connection.
+func (s *Session) CloseBridgeConn() error {
+	s.bridgeConnMu.Lock()
+	defer s.bridgeConnMu.Unlock()
+	if s.bridgeConn != nil {
+		err := s.bridgeConn.Close()
+		s.bridgeConn = nil
+		return err
+	}
+	return nil
+}
+
+// Terminate invokes the session's termination handler if set.
+// This allows the session to request its own deletion (e.g., on bridge failure).
+func (s *Session) Terminate(reason DeleteReason) error {
+	s.terminateMu.Lock()
+	fn := s.terminateFunc
+	s.terminateMu.Unlock()
+	if fn != nil {
+		return fn(reason)
+	}
+	return nil
+}
+
+// setTerminateFunc sets the termination handler for this session.
+func (s *Session) setTerminateFunc(fn func(DeleteReason) error) {
+	s.terminateMu.Lock()
+	s.terminateFunc = fn
+	s.terminateMu.Unlock()
+}
+
 // -----------------------------------------------------------------------------
 // Hooks
 // -----------------------------------------------------------------------------
 
-func (m *Manager) RegisterOnDelete(fn func(Session, DeleteReason)) {
+func (m *Manager) RegisterOnDelete(fn func(*Session, DeleteReason)) {
 	m.onDeleteMu.Lock()
 	m.onDelete = append(m.onDelete, fn)
 	m.onDeleteMu.Unlock()
 }
 
-func (m *Manager) broadcastOnDelete(s Session, r DeleteReason) {
+func (m *Manager) broadcastOnDelete(s *Session, r DeleteReason) {
 	m.onDeleteMu.RLock()
-	subs := append([]func(Session, DeleteReason){}, m.onDelete...)
+	subs := append([]func(*Session, DeleteReason){}, m.onDelete...)
 	m.onDeleteMu.RUnlock()
 	for _, f := range subs {
-		go func(ff func(Session, DeleteReason)) {
+		go func(ff func(*Session, DeleteReason)) {
 			defer func() { _ = recover() }()
 			ff(s, r)
 		}(f)
@@ -271,7 +325,7 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 				}
 				if os.User.Username == user.Username {
 					_ = m.st.Delete(tok)
-					m.broadcastOnDelete(*os, ReasonManual)
+					m.broadcastOnDelete(os, ReasonManual)
 				}
 			}
 		}
@@ -285,6 +339,11 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 		return nil, err
 	}
 
+	// Set up termination handler so the session can delete itself
+	sess.setTerminateFunc(func(reason DeleteReason) error {
+		return m.DeleteSession(sess.SessionID, reason)
+	})
+
 	logger.Infof("Created session for user '%s'", user.Username)
 	return sess, nil
 }
@@ -297,7 +356,15 @@ func (m *Manager) GetSession(id string) (*Session, error) {
 	if !ok {
 		return nil, errors.New("session not found")
 	}
-	return m.decode(b)
+	sess, err := m.decode(b)
+	if err != nil {
+		return nil, err
+	}
+	// Restore termination handler (not serialized)
+	sess.setTerminateFunc(func(reason DeleteReason) error {
+		return m.DeleteSession(sess.SessionID, reason)
+	})
+	return sess, nil
 }
 
 func (m *Manager) DeleteSession(id string, r DeleteReason) error {
@@ -311,7 +378,13 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 	_ = m.st.Delete(id)
 	if s, err := m.decode(b); err == nil {
 		logger.Infof("Deleted session for user '%s' (reason=%s)", s.User.Username, r)
-		m.broadcastOnDelete(*s, r)
+		// Close persistent bridge connection
+		if closeErr := s.CloseBridgeConn(); closeErr != nil {
+			logger.WarnKV("failed to close bridge connection on session delete",
+				"user", s.User.Username,
+				"error", closeErr)
+		}
+		m.broadcastOnDelete(s, r)
 	}
 	return nil
 }
@@ -460,12 +533,12 @@ func (m *Manager) gcLoop() {
 				// here we enforce idle expiry.
 				if expiredIdle(s, now) {
 					_ = m.st.Delete(tok)
-					m.broadcastOnDelete(*s, ReasonGCIdle)
+					m.broadcastOnDelete(s, ReasonGCIdle)
 					collected++
 				}
 			}
 			if collected > 0 {
-				logger.Infof("🧽 Session GC: collected %d idle-expired session(s)", collected)
+				logger.Infof("Session GC: collected %d idle-expired session(s)", collected)
 			}
 		case <-m.gcStop:
 			return

@@ -11,7 +11,10 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import { Bell, Home, UserPlus, Server } from "lucide-react";
+import Bell from "lucide-react/dist/esm/icons/bell";
+import Home from "lucide-react/dist/esm/icons/home";
+import Server from "lucide-react/dist/esm/icons/server";
+import UserPlus from "lucide-react/dist/esm/icons/user-plus";
 import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -42,10 +45,11 @@ function Notification({
 function NavbarNotificationsDropdown() {
   const theme = useTheme();
   const ref = useRef<HTMLButtonElement>(null);
-  const [isOpen, setOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
+  const isOpen = Boolean(anchorEl);
 
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+  const handleOpen = () => setAnchorEl(ref.current);
+  const handleClose = () => setAnchorEl(null);
 
   return (
     <>
@@ -67,7 +71,7 @@ function NavbarNotificationsDropdown() {
 
       <Popover
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        anchorEl={ref.current}
+        anchorEl={anchorEl}
         onClose={handleClose}
         open={isOpen}
         slotProps={{

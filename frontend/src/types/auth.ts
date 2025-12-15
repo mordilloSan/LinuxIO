@@ -88,6 +88,7 @@ export interface LoginResponse {
   success: boolean;
   privileged: boolean;
   update?: UpdateInfo;
+  indexer_available?: boolean;
 }
 /**
  * Props accepted by the `<AuthProvider>` component.

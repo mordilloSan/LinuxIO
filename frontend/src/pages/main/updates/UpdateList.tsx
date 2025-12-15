@@ -10,7 +10,6 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 
 import FrostedCard from "@/components/cards/RootCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
 
 interface Props {
@@ -18,7 +17,7 @@ interface Props {
   onUpdateClick: (pkg: string) => Promise<void>;
   isUpdating?: boolean;
   currentPackage?: string | null;
-  onComplete: () => void;
+  onComplete: () => void | Promise<any>;
   isLoading?: boolean;
 }
 
@@ -58,7 +57,7 @@ const UpdateList: React.FC<Props> = ({
   }
 
   if (isUpdating) {
-    return <ComponentLoader />;
+    return null; // Hide list while updating; only the progress bar should show
   }
 
   return (
@@ -153,7 +152,7 @@ const UpdateList: React.FC<Props> = ({
                   disabled={!!isUpdating}
                   onClick={async () => {
                     await onUpdateClick(update.package_id);
-                    onComplete();
+                    await onComplete();
                   }}
                   sx={{ cursor: "pointer" }}
                 />

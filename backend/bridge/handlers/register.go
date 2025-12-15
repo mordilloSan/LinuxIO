@@ -1,11 +1,12 @@
 package handlers
 
 import (
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	config "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/drive"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
@@ -24,6 +25,7 @@ func RegisterAllHandlers(shutdownChan chan string) {
 	HandlersByType["wireguard"] = wireguard.WireguardHandlers()
 	HandlersByType["config"] = config.ThemeHandlers()
 	HandlersByType["system"] = system.SystemHandlers()
+	HandlersByType["filebrowser"] = filebrowser.FilebrowserHandlers()
 }
 
 // RegisterTerminalHandlers attaches terminal handlers that require the session context.

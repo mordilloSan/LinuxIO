@@ -1,4 +1,7 @@
-import { FileCopy, Download, Close, Search } from "@mui/icons-material";
+import CloseIcon from "@mui/icons-material/Close";
+import DownloadIcon from "@mui/icons-material/Download";
+import FileCopyIcon from "@mui/icons-material/FileCopy";
+import SearchIcon from "@mui/icons-material/Search";
 import {
   Dialog,
   DialogTitle,
@@ -8,11 +11,12 @@ import {
   Box,
   Tooltip,
   Typography,
-  CircularProgress,
   Switch,
   FormControlLabel,
 } from "@mui/material";
 import React, { useState, useMemo, useEffect, useRef } from "react";
+
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface LogsDialogProps {
   open: boolean;
@@ -83,14 +87,6 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     }
   }, [autoRefresh, onRefresh, open]);
 
-  // Reset search/autorefresh when closed
-  useEffect(() => {
-    if (!open) {
-      setSearch("");
-      setAutoRefresh(autoRefreshDefault);
-    }
-  }, [open, autoRefreshDefault]);
-
   return (
     <Dialog
       open={open}
@@ -104,11 +100,15 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
               logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
             }
           },
+          onExited: () => {
+            setSearch("");
+            setAutoRefresh(autoRefreshDefault);
+          },
         },
       }}
     >
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <Search fontSize="small" />
+        <SearchIcon fontSize="small" />
         <TextField
           variant="standard"
           placeholder="Search logs…"
@@ -119,12 +119,12 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
         />
         <Tooltip title="Copy logs">
           <IconButton onClick={handleCopy} size="small">
-            <FileCopy fontSize="small" />
+            <FileCopyIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Download logs">
           <IconButton onClick={handleDownload} size="small">
-            <Download fontSize="small" />
+            <DownloadIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         {onRefresh && (
@@ -133,7 +133,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
               control={
                 <Switch
                   checked={autoRefresh}
-                  onChange={() => setAutoRefresh((v) => !v)}
+                  onChange={(_, checked) => setAutoRefresh(checked)}
                   color="primary"
                   size="small"
                 />
@@ -144,7 +144,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
           </Tooltip>
         )}
         <IconButton onClick={onClose} size="small">
-          <Close fontSize="small" />
+          <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
       <DialogContent
@@ -185,14 +185,11 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
                 right: 0,
                 bottom: 0,
                 background: "rgba(25,25,29,0.85)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
                 zIndex: 10,
                 borderRadius: 2,
               }}
             >
-              <CircularProgress />
+              <ComponentLoader />
             </Box>
           )}
         </Box>

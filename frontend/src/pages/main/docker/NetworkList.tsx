@@ -145,15 +145,15 @@ function renderCollapseContent(row: any) {
 }
 
 export default function DockerNetworksTable() {
-  const { data } = useQuery({
+  const { data = [] } = useQuery<any[]>({
     queryKey: ["dockerNetworks"],
     queryFn: async () => {
       const res = await axios.get("/docker/networks");
-      return res.data.output;
+      return res.data ?? [];
     },
   });
 
-  const rows = data ? formatNetworkRows(data) : [];
+  const rows = formatNetworkRows(data);
 
   return (
     <CollapsibleTable

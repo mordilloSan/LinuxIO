@@ -1,15 +1,14 @@
 package auth
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/control"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 // Handlers bundles dependencies (no global state).
@@ -61,35 +60,19 @@ func (h *Handlers) Login(c *gin.Context) {
 	}
 
 	// Verify bridge socket is ready with ping/pong
-	pingResp, err := callBridgeWithSess(sess, "control", "ping", nil)
-	if err != nil {
+	var pingResult struct {
+		Type string `json:"type"`
+	}
+	if err := callBridgeWithSess(sess, "control", "ping", nil, &pingResult); err != nil {
 		logger.Errorf("[auth.login] bridge socket not ready after start: %v", err)
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
 		return
 	}
 
-	// Parse and validate ping response
-	var pingResult map[string]interface{}
-	if err := json.Unmarshal(pingResp, &pingResult); err != nil {
-		logger.Errorf("[auth.login] invalid ping response format: %v", err)
-		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
-		return
-	}
-
-	// Check the wrapper status first
-	if status, ok := pingResult["status"].(string); !ok || status != "ok" {
-		logger.Errorf("[auth.login] ping failed: %s", string(pingResp))
-		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
-		return
-	}
-
-	// Extract the nested output and verify it's a pong
-	output, ok := pingResult["output"].(map[string]interface{})
-	if !ok || output["type"] != "pong" {
-		logger.Errorf("[auth.login] unexpected ping response: %s", string(pingResp))
+	// Ensure the response is a pong
+	if pingResult.Type != "pong" {
+		logger.Errorf("[auth.login] unexpected ping response type: %s", pingResult.Type)
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
 		return
@@ -115,6 +98,21 @@ func (h *Handlers) Login(c *gin.Context) {
 	if privileged {
 		if updateInfo := control.CheckForUpdate(); updateInfo != nil {
 			response["update"] = updateInfo
+		}
+	}
+
+	// Check if indexer daemon is available
+	var indexerStatusResult struct {
+		Available bool   `json:"available"`
+		Error     string `json:"error,omitempty"`
+	}
+	if err := callBridgeWithSess(sess, "filebrowser", "indexer_status", nil, &indexerStatusResult); err != nil {
+		logger.Debugf("[auth.login] failed to check indexer status: %v", err)
+		// Don't fail login if indexer check fails, just log it
+	} else {
+		response["indexer_available"] = indexerStatusResult.Available
+		if indexerStatusResult.Error != "" {
+			logger.Debugf("[auth.login] indexer check returned error: %s", indexerStatusResult.Error)
 		}
 	}
 

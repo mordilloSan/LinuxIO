@@ -3,6 +3,7 @@ package system
 import (
 	"bufio"
 	"context"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -57,7 +58,13 @@ func GetUpdatesFast() (*UpdatesFastResponse, error) {
 	return resp, nil
 }
 
-func seen(bin string) bool { return exec.Command("bash", "-lc", "command -v "+bin).Run() == nil }
+func seen(bin string) bool {
+	if strings.TrimSpace(bin) == "" {
+		return false
+	}
+	_, err := exec.LookPath(bin)
+	return err == nil
+}
 
 func pickCommand() (Manager, string, []string) {
 	switch {
@@ -70,7 +77,7 @@ func pickCommand() (Manager, string, []string) {
 	case seen("zypper"):
 		return MgrZypper, "zypper", []string{"-q", "lu", "-s"}
 	case seen("pacman"):
-		return MgrPacman, "bash", []string{"-lc", "pacman -Sup --noconfirm 2>/dev/null || true"}
+		return MgrPacman, "pacman", []string{"-Sup", "--noconfirm"}
 	case seen("apk"):
 		return MgrAPK, "apk", []string{"list", "-u"}
 	default:
@@ -80,6 +87,9 @@ func pickCommand() (Manager, string, []string) {
 
 func runCmd(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	if name == "pacman" {
+		cmd.Stderr = io.Discard
+	}
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

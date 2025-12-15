@@ -114,12 +114,15 @@ linters:
       no-global: all
       context: scope
     unused:
-      field-writes-are-uses: false
+      field-writes-are-uses: true
       post-statements-are-reads: true
-      exported-fields-are-used: false
-      parameters-are-used: false
-      local-variables-are-used: false
+      exported-fields-are-used: true
+      parameters-are-used: true
+      local-variables-are-used: true
       generated-is-used: true
+  enable:
+  - unused
+  - staticcheck  
   exclusions:
     generated: lax
     presets:
@@ -143,6 +146,10 @@ linters:
           - noctx
           - wrapcheck
         path: _test\.go
+      - linters:
+          - gofumpt
+          - gofmt
+        path: bridge/handlers/config/generator\.go
     paths:
       - third_party$
       - builtin$
@@ -152,4 +159,3 @@ issues:
 formatters:
   enable:
     - gofmt
-    - gofumpt

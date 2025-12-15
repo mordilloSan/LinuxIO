@@ -46,7 +46,7 @@ const components = {
         height: "8px",
       },
       ".custom-scrollbar::-webkit-scrollbar-thumb": {
-        backgroundColor: "rgba(100, 100, 100, 0.4)",
+        backgroundColor: "rgba(100, 100, 100, 0.2)",
         borderRadius: "8px",
         border: "2px solid transparent",
         backgroundClip: "content-box",
@@ -57,7 +57,7 @@ const components = {
         borderRadius: "8px",
       },
       ".custom-scrollbar::-webkit-scrollbar-thumb:hover": {
-        backgroundColor: "rgba(100, 100, 100, 0.7)",
+        backgroundColor: "rgba(100, 100, 100, 0.45)",
       },
     }),
   },

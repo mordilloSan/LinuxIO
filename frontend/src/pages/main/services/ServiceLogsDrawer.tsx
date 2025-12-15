@@ -1,15 +1,9 @@
-import { Close } from "@mui/icons-material";
-import {
-  Drawer,
-  Box,
-  IconButton,
-  Typography,
-  CircularProgress,
-  Alert,
-} from "@mui/material";
+import CloseIcon from "@mui/icons-material/Close";
+import { Drawer, Box, IconButton, Typography, Alert } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
 
 interface ServiceLogsDrawerProps {
@@ -52,15 +46,11 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
         >
           <Typography variant="h6">Logs: {serviceName}</Typography>
           <IconButton onClick={onClose}>
-            <Close />
+            <CloseIcon />
           </IconButton>
         </Box>
 
-        {isLoading && (
-          <Box textAlign="center" my={5}>
-            <CircularProgress />
-          </Box>
-        )}
+        {isLoading && <ComponentLoader />}
 
         {isError && (
           <Alert severity="error">

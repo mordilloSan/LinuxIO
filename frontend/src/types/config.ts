@@ -2,6 +2,7 @@ export type AppConfig = {
   theme: string;
   primaryColor: string;
   sidebarCollapsed: boolean;
+  showHiddenFiles: boolean;
 };
 
 export type ConfigContextType = {
