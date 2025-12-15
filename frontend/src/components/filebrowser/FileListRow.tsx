@@ -94,7 +94,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
 
     // Override size props with fetched data when displaying search results
     const effectiveSize = needsIndividualDirSize
-      ? (fetchedSize ?? undefined)
+      ? (fetchedSize ?? size)
       : size;
     const effectiveSizeLoading = needsIndividualDirSize
       ? isFetchingSize

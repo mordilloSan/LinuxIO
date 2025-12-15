@@ -517,10 +517,6 @@ type indexerDirSizeResponse struct {
 
 // fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
 func fetchDirSizeFromIndexer(path string) (int64, error) {
-	if !isIndexerEnabled() {
-		return 0, errIndexerUnavailable
-	}
-
 	normPath := normalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/dirsize", nil)
@@ -534,13 +530,14 @@ func fetchDirSizeFromIndexer(path string) (int64, error) {
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
 		setIndexerAvailability(false)
-		return 0, fmt.Errorf("indexer dirsize request failed: %w", err)
+		return 0, fmt.Errorf("%w: indexer dirsize request failed: %v", errIndexerUnavailable, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode >= http.StatusInternalServerError {
 			setIndexerAvailability(false)
+			return 0, fmt.Errorf("%w: indexer dirsize returned status %s", errIndexerUnavailable, resp.Status)
 		}
 		return 0, fmt.Errorf("indexer dirsize returned status %s", resp.Status)
 	}
@@ -600,6 +597,7 @@ type subfoldersResponse struct {
 	Path    string `json:"path"`
 	Name    string `json:"name"`
 	Size    int64  `json:"size"`
+	Bytes   int64  `json:"bytes,omitempty"`
 	ModTime string `json:"mod_time"`
 }
 
@@ -611,7 +609,7 @@ func subfolders(args []string) (any, error) {
 		path = args[0]
 	}
 
-	// Validate path exists and is a directory if not root
+	// Validate path exists and is a directory if not root.
 	if path != "/" {
 		realPath := filepath.Join(path)
 		stat, err := os.Stat(realPath)
@@ -624,7 +622,7 @@ func subfolders(args []string) (any, error) {
 		}
 	}
 
-	// Fetch subfolders from indexer
+	// Fetch subfolders from indexer (it will handle path validation)
 	folders, err := fetchSubfoldersFromIndexer(path)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
@@ -643,10 +641,6 @@ func subfolders(args []string) (any, error) {
 
 // fetchSubfoldersFromIndexer queries the indexer daemon for direct child folders with sizes
 func fetchSubfoldersFromIndexer(path string) ([]subfoldersResponse, error) {
-	if !isIndexerEnabled() {
-		return nil, errIndexerUnavailable
-	}
-
 	normPath := normalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/subfolders", nil)
@@ -660,13 +654,14 @@ func fetchSubfoldersFromIndexer(path string) ([]subfoldersResponse, error) {
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
 		setIndexerAvailability(false)
-		return nil, fmt.Errorf("indexer subfolders request failed: %w", err)
+		return nil, fmt.Errorf("%w: indexer subfolders request failed: %v", errIndexerUnavailable, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode >= http.StatusInternalServerError {
 			setIndexerAvailability(false)
+			return nil, fmt.Errorf("%w: indexer subfolders returned status %s", errIndexerUnavailable, resp.Status)
 		}
 		return nil, fmt.Errorf("indexer subfolders returned status %s", resp.Status)
 	}
@@ -677,6 +672,13 @@ func fetchSubfoldersFromIndexer(path string) ([]subfoldersResponse, error) {
 	}
 
 	setIndexerAvailability(true)
+
+	for i := range folders {
+		if folders[i].Size == 0 && folders[i].Bytes != 0 {
+			folders[i].Size = folders[i].Bytes
+		}
+		folders[i].Bytes = 0
+	}
 
 	return folders, nil
 }
@@ -760,10 +762,6 @@ func normalizeIndexerSearchResults(results []map[string]any) {
 
 // searchInIndexer queries the indexer for files matching the search term
 func searchInIndexer(query, limit, basePath string) ([]map[string]any, error) {
-	if !isIndexerEnabled() {
-		return nil, errIndexerUnavailable
-	}
-
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/search", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build indexer search request: %w", err)
@@ -780,13 +778,14 @@ func searchInIndexer(query, limit, basePath string) ([]map[string]any, error) {
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
 		setIndexerAvailability(false)
-		return nil, fmt.Errorf("indexer search request failed: %w", err)
+		return nil, fmt.Errorf("%w: indexer search request failed: %v", errIndexerUnavailable, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode >= http.StatusInternalServerError {
 			setIndexerAvailability(false)
+			return nil, fmt.Errorf("%w: indexer search returned status %s", errIndexerUnavailable, resp.Status)
 		}
 		return nil, fmt.Errorf("indexer search returned status %s", resp.Status)
 	}

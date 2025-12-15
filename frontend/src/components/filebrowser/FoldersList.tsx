@@ -46,13 +46,20 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
 
     // Get size from subfoldersMap instead of making individual API calls
     // Normalize path by removing trailing slash for lookup (API returns paths without trailing slashes)
+    const isSearchResult = folder.showFullPath === true;
     const normalizedPath = folder.path.endsWith("/")
       ? folder.path.slice(0, -1)
       : folder.path;
     const subfolderData = folder.symlink
       ? null
       : subfoldersMap.get(normalizedPath);
-    const size = subfolderData ? subfolderData.size : null;
+    const size = isSearchResult
+      ? typeof folder.size === "number"
+        ? folder.size
+        : null
+      : subfolderData
+        ? subfolderData.size
+        : null;
 
     // For symlinks, don't show loading or unavailable states
     // For regular folders, show loading if data hasn't arrived yet, unavailable if it's null after loading
@@ -73,6 +80,7 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
         isSymlink={folder.symlink}
         hidden={folder.hidden}
         selected={selected}
+        showFullPath={folder.showFullPath}
         directorySizeLoading={sizeIsLoading}
         directorySizeError={null}
         directorySizeUnavailable={sizeIsUnavailable}

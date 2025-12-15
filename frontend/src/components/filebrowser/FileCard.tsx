@@ -87,7 +87,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
 
     // Override size props with fetched data when displaying search results
     const effectiveSize = needsIndividualDirSize
-      ? (fetchedSize ?? undefined)
+      ? (fetchedSize ?? size)
       : size;
     const effectiveSizeLoading = needsIndividualDirSize
       ? isFetchingSize
@@ -216,33 +216,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           {/* Directory path and type badge for search results */}
           {showFullPath && (
             <>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: theme.spacing(1),
-                  marginTop: "2px",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "0.70rem",
-                    fontWeight: 600,
-                    color: isDirectory
-                      ? theme.palette.primary.main
-                      : theme.palette.text.secondary,
-                    backgroundColor: isDirectory
-                      ? alpha(theme.palette.primary.main, 0.15)
-                      : alpha(theme.palette.text.secondary, 0.1),
-                    padding: "2px 6px",
-                    borderRadius: "4px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  {isDirectory ? "Folder" : "File"}
-                </span>
-              </div>
+
               {path && (
                 <div
                   style={{
