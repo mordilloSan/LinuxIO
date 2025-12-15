@@ -1,5 +1,5 @@
 
-## v0.4.0 — 2025-12-10
+## v0.4.0 — 2025-12-15
 
 ### 🚀 Features
 
@@ -12,6 +12,9 @@
 * feat: Implement streaming file upload and download via IPC ([40bf8a8](https://github.com/owner/repo/commit/40bf8a8)) by @MordilloSan
 * feat: Implement framed protocol support for binary and streaming data ([3cf058d](https://github.com/owner/repo/commit/3cf058d)) by @MordilloSan
 * feat: Add error handling for empty bridge output and improve error logging in session upload ([f647fe0](https://github.com/owner/repo/commit/f647fe0)) by @MordilloSan
+* feat: pipe bridge logs to main program stdout in dev mode ([0d2c73a](https://github.com/owner/repo/commit/0d2c73a)) by @MordilloSan
+* feat: optimize directory size fetching with batch API and search result support ([30ed87e](https://github.com/owner/repo/commit/30ed87e)) by @MordilloSan
+* feat: ([8cb7581](https://github.com/owner/repo/commit/8cb7581)) by @MordilloSan
 
 ### ♻️ Refactoring
 
@@ -47,6 +50,14 @@
 * refactor: enhance file operations with overwrite functionality; update tests and permissions dialog handling ([0c36fa8](https://github.com/owner/repo/commit/0c36fa8)) by @MordilloSan
 * refactor: improve error handling for identical source and destination in file operations ([b058301](https://github.com/owner/repo/commit/b058301)) by @MordilloSan
 * refactor: add rename functionality to file operations; implement rename dialog and mutation handling ([f2e3dcf](https://github.com/owner/repo/commit/f2e3dcf)) by @MordilloSan
+* refactor: streamline variable assignment for rename destination in FileBrowser ([f1cf34a](https://github.com/owner/repo/commit/f1cf34a)) by @MordilloSan
+* refactor: update build flags in makefile to include -tags=nomsgpack and optimize ldflags ([b903cf8](https://github.com/owner/repo/commit/b903cf8)) by @MordilloSan
+* refactor: wrap theme handlers with ipc.WrapSimpleHandler for improved consistency ([40be5f4](https://github.com/owner/repo/commit/40be5f4)) by @MordilloSan
+* refactor: enhance archive extraction with ExtractOptions for progress reporting ([abafc05](https://github.com/owner/repo/commit/abafc05)) by @MordilloSan
+* refactor: integrate indexer notifications for file operations and add indexer status check ([bd645e5](https://github.com/owner/repo/commit/bd645e5)) by @MordilloSan
+* refactor: linting and stale time for filebrowser react query ([dacd079](https://github.com/owner/repo/commit/dacd079)) by @MordilloSan
+* refactor: fixed dir-size display without needing to refresh the page ([576da33](https://github.com/owner/repo/commit/576da33)) by @MordilloSan
+* refactor: add indexer availability tracking with circuit breaker pattern ([c45cf1a](https://github.com/owner/repo/commit/c45cf1a)) by @MordilloSan
 
 ### 🔄 Other Changes
 
@@ -117,6 +128,8 @@
 * Revert "feat: Implement streaming file upload and download via IPC" ([525af16](https://github.com/owner/repo/commit/525af16)) by @MordilloSan
 * Refactor bridge handlers to use CallTypedWithSession for improved error handling and response parsing ([02878b4](https://github.com/owner/repo/commit/02878b4)) by @MordilloSan
 * Refactor IPC Handler Functions to Support Streaming ([fff890e](https://github.com/owner/repo/commit/fff890e)) by @MordilloSan
+* feature: ([bdd5dc6](https://github.com/owner/repo/commit/bdd5dc6)) by @MordilloSan
+* linting update ([999da3d](https://github.com/owner/repo/commit/999da3d)) by @MordilloSan
 
 ### 👥 Contributors
 
