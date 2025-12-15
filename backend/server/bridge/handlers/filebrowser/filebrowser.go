@@ -395,6 +395,13 @@ func archiveCompressHandler(c *gin.Context) {
 		return
 	}
 
+	paths := sanitizeAbsPaths(req.Paths)
+	if len(paths) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid paths"})
+		return
+	}
+	req.Paths = paths
+
 	format := req.Format
 	if format == "" {
 		format = "zip"
@@ -403,6 +410,11 @@ func archiveCompressHandler(c *gin.Context) {
 	destDir := req.Destination
 	if destDir == "" {
 		destDir = filepath.Dir(req.Paths[0])
+	}
+	destDir, err := sanitizeAbsDir(destDir)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	archiveName := req.ArchiveName
@@ -413,6 +425,10 @@ func archiveCompressHandler(c *gin.Context) {
 	archiveName = ensureArchiveExtension(archiveName, format)
 
 	destPath := filepath.Join(destDir, archiveName)
+	if filepath.Dir(destPath) != destDir {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid destination"})
+		return
+	}
 	if _, err := os.Stat(destPath); err == nil {
 		if !req.Override {
 			c.JSON(http.StatusConflict, gin.H{
@@ -1040,29 +1056,79 @@ func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string, p
 }
 
 func parseFileList(entries []string) []string {
+	return sanitizeAbsPaths(entries)
+}
+
+func sanitizeAbsPaths(entries []string) []string {
 	var paths []string
 	for _, raw := range entries {
+		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			continue
 		}
-		parts := strings.SplitN(raw, "::", 2)
-		path := parts[len(parts)-1]
-		if path == "" {
+
+		// Prefer treating the whole entry as a path (do not break absolute paths that contain "::").
+		if clean, ok := sanitizeAbsPath(raw); ok {
+			paths = append(paths, clean)
 			continue
 		}
-		clean := filepath.Clean(path)
-		if clean == "." || clean == "" {
-			continue
+
+		// Support legacy "label::/abs/path" entries.
+		if strings.Contains(raw, "::") {
+			parts := strings.SplitN(raw, "::", 2)
+			if len(parts) == 2 {
+				if clean, ok := sanitizeAbsPath(strings.TrimSpace(parts[1])); ok {
+					paths = append(paths, clean)
+					continue
+				}
+			}
 		}
-		if !filepath.IsAbs(clean) {
-			continue
-		}
-		if strings.ContainsRune(clean, '\x00') {
-			continue
-		}
-		paths = append(paths, clean)
 	}
 	return paths
+}
+
+func sanitizeAbsPath(path string) (string, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", false
+	}
+	if strings.ContainsRune(path, '\x00') {
+		return "", false
+	}
+
+	clean := filepath.Clean(path)
+	if clean == "." || clean == "" || !filepath.IsAbs(clean) {
+		return "", false
+	}
+	return clean, true
+}
+
+func sanitizeAbsDir(dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", fmt.Errorf("destination is required")
+	}
+	if strings.ContainsRune(dir, '\x00') {
+		return "", fmt.Errorf("invalid destination")
+	}
+
+	clean, ok := sanitizeAbsPath(dir)
+	if !ok {
+		return "", fmt.Errorf("invalid destination")
+	}
+
+	info, err := os.Stat(clean)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("destination directory not found")
+		}
+		return "", fmt.Errorf("unable to validate destination: %v", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("destination is not a directory")
+	}
+
+	return clean, nil
 }
 
 // Helper functions for archive naming
