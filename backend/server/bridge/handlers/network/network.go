@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 	"github.com/mordilloSan/go_logger/logger"
@@ -15,28 +14,17 @@ import (
 func getNetworkInfo(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 
-	rawResp, err := bridge.CallWithSession(sess, "dbus", "GetNetworkInfo", nil)
-	if err != nil {
+	var out json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "dbus", "GetNetworkInfo", nil, &out); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge call failed", "detail": err.Error()})
 		return
 	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal([]byte(rawResp), &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response", "detail": err.Error()})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-
-	if resp.Output == nil {
+	if len(out) == 0 {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, out)
 }
 
 func postSetIPv4DHCP(c *gin.Context) {
@@ -51,20 +39,9 @@ func postSetIPv4DHCP(c *gin.Context) {
 	}
 
 	// Call through bridge: group "dbus", cmd "SetIPv4", args [iface, "dhcp"]
-	raw, err := bridge.CallWithSession(sess, "dbus", "SetIPv4",
-		[]string{req.Interface, "dhcp"})
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "dbus", "SetIPv4",
+		[]string{req.Interface, "dhcp"}, nil); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
-		c.JSON(500, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(500, gin.H{"error": resp.Error})
 		return
 	}
 
@@ -109,19 +86,8 @@ func postSetIPv4Manual(c *gin.Context) {
 	args = append(args, req.DNS...)
 
 	// Call through bridge for proper privileges
-	raw, err := bridge.CallWithSession(sess, "dbus", "SetIPv4Manual", args)
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "dbus", "SetIPv4Manual", args, nil); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
-		c.JSON(500, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(500, gin.H{"error": resp.Error})
 		return
 	}
 
@@ -140,20 +106,9 @@ func postSetIPv6DHCP(c *gin.Context) {
 	}
 
 	// Call through bridge: group "dbus", cmd "SetIPv6", args [iface, "dhcp"]
-	raw, err := bridge.CallWithSession(sess, "dbus", "SetIPv6",
-		[]string{req.Interface, "dhcp"})
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "dbus", "SetIPv6",
+		[]string{req.Interface, "dhcp"}, nil); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
-		c.JSON(500, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(500, gin.H{"error": resp.Error})
 		return
 	}
 
@@ -173,20 +128,9 @@ func postSetIPv6Manual(c *gin.Context) {
 	}
 
 	// Call through bridge: group "dbus", cmd "SetIPv6", args [iface, "static", cidr]
-	raw, err := bridge.CallWithSession(sess, "dbus", "SetIPv6",
-		[]string{req.Interface, "static", req.AddressCIDR})
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "dbus", "SetIPv6",
+		[]string{req.Interface, "static", req.AddressCIDR}, nil); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
-	var resp ipc.Response
-	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
-		c.JSON(500, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(500, gin.H{"error": resp.Error})
 		return
 	}
 

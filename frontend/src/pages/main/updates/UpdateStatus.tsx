@@ -1,49 +1,48 @@
 import { Box } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
-import React, { useMemo } from "react";
+import React from "react";
 
 import UpdateActions from "./UpdateActions";
 import UpdateList from "./UpdateList";
 
-import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 import { Update } from "@/types/update";
-import axios from "@/utils/axios";
 
-const UpdateStatus: React.FC = () => {
-  const {
-    data,
-    isLoading,
-    refetch: refetchUpdates,
-  } = useQuery<{ updates: Update[] }>({
-    queryKey: ["updateInfo"],
-    queryFn: () => axios.get("/updates/packages").then((res) => res.data),
-    enabled: true,
-    refetchInterval: 50000,
-  });
+interface UpdateStatusProps {
+  updates: Update[];
+  isLoading: boolean;
+  onUpdateOne: (pkg: string) => Promise<void>;
+  updatingPackage: string | null;
+  progress: number;
+  error?: string | null;
+  onClearError?: () => void;
+  onComplete: () => void | Promise<any>;
+}
 
-  const updates = useMemo(() => data?.updates || [], [data]);
-
-  const { updateOne, updateAll, updatingPackage, progress, error, clearError } =
-    usePackageUpdater(refetchUpdates);
-
+const UpdateStatus: React.FC<UpdateStatusProps> = ({
+  updates,
+  isLoading,
+  onUpdateOne,
+  updatingPackage,
+  progress,
+  error,
+  onClearError,
+  onComplete,
+}) => {
   return (
     <Box>
       <UpdateActions
-        onUpdateAll={() => updateAll(updates.map((u) => u.package_id))}
         isUpdating={!!updatingPackage}
         currentPackage={updatingPackage}
         progress={progress}
         error={error}
-        onClearError={clearError}
-        updateCount={updates.length}
+        onClearError={onClearError}
       />
 
       <UpdateList
         updates={updates}
-        onUpdateClick={updateOne}
+        onUpdateClick={onUpdateOne}
         isUpdating={!!updatingPackage || isLoading}
         currentPackage={updatingPackage}
-        onComplete={refetchUpdates}
+        onComplete={onComplete}
         isLoading={isLoading}
       />
     </Box>

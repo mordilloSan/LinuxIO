@@ -1,4 +1,101 @@
 
+## v0.4.0 — 2025-12-15
+
+### 🚀 Features
+
+* feat: implement marquee selection feature with visual overlay ([08a407b](https://github.com/owner/repo/commit/08a407b)) by @MordilloSan
+* feat: Implement file transfer functionality with drag-and-drop support ([1b84dc9](https://github.com/owner/repo/commit/1b84dc9)) by @MordilloSan
+* feat: Add compression progress tracking and update file transfer handling ([a08529b](https://github.com/owner/repo/commit/a08529b)) by @MordilloSan
+* feat: Implement file permission management with chmod functionality and user/group retrieval ([7bad8eb](https://github.com/owner/repo/commit/7bad8eb)) by @MordilloSan
+* feat: Implement copy and cut functionality in file browser with clipboard support ([ffa761a](https://github.com/owner/repo/commit/ffa761a)) by @MordilloSan
+* feat: Add file upload, update, download, and archive download functionalities with temp file handling ([e7c0217](https://github.com/owner/repo/commit/e7c0217)) by @MordilloSan
+* feat: Implement streaming file upload and download via IPC ([40bf8a8](https://github.com/owner/repo/commit/40bf8a8)) by @MordilloSan
+* feat: Implement framed protocol support for binary and streaming data ([3cf058d](https://github.com/owner/repo/commit/3cf058d)) by @MordilloSan
+* feat: Add error handling for empty bridge output and improve error logging in session upload ([f647fe0](https://github.com/owner/repo/commit/f647fe0)) by @MordilloSan
+* feat: pipe bridge logs to main program stdout in dev mode ([0d2c73a](https://github.com/owner/repo/commit/0d2c73a)) by @MordilloSan
+* feat: optimize directory size fetching with batch API and search result support ([30ed87e](https://github.com/owner/repo/commit/30ed87e)) by @MordilloSan
+* feat: ([8cb7581](https://github.com/owner/repo/commit/8cb7581)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: replace directory size calculation with indexer service and update related hooks ([6ac8f3b](https://github.com/owner/repo/commit/6ac8f3b)) by @MordilloSan
+* refactor: Simplify PermissionsDialog component by removing unused props and optimizing key handling ([3583a42](https://github.com/owner/repo/commit/3583a42)) by @MordilloSan
+* refactor: Replace CallWithSession with CallTypedWithSession for improved error handling in network handlers ([c14678a](https://github.com/owner/repo/commit/c14678a)) by @MordilloSan
+* refactor: Replace CallWithSession with CallTypedWithSession for improved response handling across system and update handlers ([cd059d7](https://github.com/owner/repo/commit/cd059d7)) by @MordilloSan
+* refactor: Update bridge call handling to use CallTypedWithSession for improved response parsing and error handling ([4d55168](https://github.com/owner/repo/commit/4d55168)) by @MordilloSan
+* refactor: Enhance upload dialog functionality and improve file handling in FileBrowser ([d164403](https://github.com/owner/repo/commit/d164403)) by @MordilloSan
+* refactor: rename userconfig package to config and update references ([dbd4049](https://github.com/owner/repo/commit/dbd4049)) by @MordilloSan
+* refactor: enhance session termination handling and improve bridge failure response feat: incorporated download notifications on the left footer... ([845fdbf](https://github.com/owner/repo/commit/845fdbf)) by @MordilloSan
+* refactor: enhance DownloadNotifications component with completed transfers tracking and UI improvements ([f63355e](https://github.com/owner/repo/commit/f63355e)) by @MordilloSan
+* refactor: implement unsubscribe functionality for download and compression progress in WebSocketHandler feat: increase bridge kernel limits in auth-helper ([e990918](https://github.com/owner/repo/commit/e990918)) by @MordilloSan
+* refactor: enhance archive handling with unique name generation and conflict resolution ([423ea64](https://github.com/owner/repo/commit/423ea64)) by @MordilloSan
+* refactor: improve WebSocket subscription management and enhance compression handling ([38ecf86](https://github.com/owner/repo/commit/38ecf86)) by @MordilloSan
+* refactor: streamline error handling and improve code readability in filebrowser and FileTransferContext ([81492f3](https://github.com/owner/repo/commit/81492f3)) by @MordilloSan
+* refactor: optimize file archiving logic and enhance download label generation refactor: improve bridge logging on SIGKILL ([0e3d5f6](https://github.com/owner/repo/commit/0e3d5f6)) by @MordilloSan
+* refactor: clean up .gitignore formatting and improve logging in linuxio-auth-helper ([f8f219d](https://github.com/owner/repo/commit/f8f219d)) by @MordilloSan
+* refactor: implement streaming file upload and enhance error handling in filebrowser ([fb64a9f](https://github.com/owner/repo/commit/fb64a9f)) by @MordilloSan
+* refactor: generalize progress handling and update WebSocket subscription logic ([61b866e](https://github.com/owner/repo/commit/61b866e)) by @MordilloSan
+* refactor: update theme handlers to improve argument handling and logging; enhance file upload process using temporary files ([58a0b1f](https://github.com/owner/repo/commit/58a0b1f)) by @MordilloSan
+* refactor: replace fileUploadStream with fileUploadFromTemp in handler mappings ([e826a08](https://github.com/owner/repo/commit/e826a08)) by @MordilloSan
+* refactor: enhance archive extraction process with progress tracking and error handling ([36c2c2f](https://github.com/owner/repo/commit/36c2c2f)) by @MordilloSan
+* refactor: enhance file upload process with progress tracking and request ID handling ([54939bc](https://github.com/owner/repo/commit/54939bc)) by @MordilloSan
+* refactor: update file upload process with progress tracking; replace DownloadNotifications with FileNotifications component ([3259cdb](https://github.com/owner/repo/commit/3259cdb)) by @MordilloSan
+* refactor: enhance file transfer context and notifications with speed tracking; implement streaming progress handling ([1ee68fb](https://github.com/owner/repo/commit/1ee68fb)) by @MordilloSan
+* refactor: implement operation context management for cancellable file operations; enhance progress tracking and error handling ([4ac78fc](https://github.com/owner/repo/commit/4ac78fc)) by @MordilloSan
+* refactor: enhance file upload process with display name handling and progress labeling ([4554240](https://github.com/owner/repo/commit/4554240)) by @MordilloSan
+* refactor: add file update functionality from temporary files and enhance file notifications component ([899f676](https://github.com/owner/repo/commit/899f676)) by @MordilloSan
+* refactor: remove unused resourcePut and rawFiles handlers; update routes for clarity ([434e53f](https://github.com/owner/repo/commit/434e53f)) by @MordilloSan
+* refactor: synchronize permissions inputs with selected item on dialog open ([4a42d32](https://github.com/owner/repo/commit/4a42d32)) by @MordilloSan
+* refactor: update README for FileBrowser Quantum integration; enhance file mutation error handling and path validation ([16119c6](https://github.com/owner/repo/commit/16119c6)) by @MordilloSan
+* refactor: enhance file operations with overwrite functionality; update tests and permissions dialog handling ([0c36fa8](https://github.com/owner/repo/commit/0c36fa8)) by @MordilloSan
+* refactor: improve error handling for identical source and destination in file operations ([b058301](https://github.com/owner/repo/commit/b058301)) by @MordilloSan
+* refactor: add rename functionality to file operations; implement rename dialog and mutation handling ([f2e3dcf](https://github.com/owner/repo/commit/f2e3dcf)) by @MordilloSan
+* refactor: streamline variable assignment for rename destination in FileBrowser ([f1cf34a](https://github.com/owner/repo/commit/f1cf34a)) by @MordilloSan
+* refactor: update build flags in makefile to include -tags=nomsgpack and optimize ldflags ([b903cf8](https://github.com/owner/repo/commit/b903cf8)) by @MordilloSan
+* refactor: wrap theme handlers with ipc.WrapSimpleHandler for improved consistency ([40be5f4](https://github.com/owner/repo/commit/40be5f4)) by @MordilloSan
+* refactor: enhance archive extraction with ExtractOptions for progress reporting ([abafc05](https://github.com/owner/repo/commit/abafc05)) by @MordilloSan
+* refactor: integrate indexer notifications for file operations and add indexer status check ([bd645e5](https://github.com/owner/repo/commit/bd645e5)) by @MordilloSan
+* refactor: linting and stale time for filebrowser react query ([dacd079](https://github.com/owner/repo/commit/dacd079)) by @MordilloSan
+* refactor: fixed dir-size display without needing to refresh the page ([576da33](https://github.com/owner/repo/commit/576da33)) by @MordilloSan
+* refactor: add indexer availability tracking with circuit breaker pattern ([c45cf1a](https://github.com/owner/repo/commit/c45cf1a)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* Refactor filebrowser: Remove facades and use services directly ([c9179d2](https://github.com/owner/repo/commit/c9179d2)) by @MordilloSan
+* Create archive_service.go and remove archive logic from raw.go ([c38291a](https://github.com/owner/repo/commit/c38291a)) by @MordilloSan
+* Add comprehensive architecture documentation ([105345a](https://github.com/owner/repo/commit/105345a)) by @MordilloSan
+* Consolidate fileops and services into single package ([bc89b9d](https://github.com/owner/repo/commit/bc89b9d)) by @MordilloSan
+* Add user context validation infrastructure and audit ([cba6948](https://github.com/owner/repo/commit/cba6948)) by @MordilloSan
+* bridge migration ([98a8272](https://github.com/owner/repo/commit/98a8272)) by @MordilloSan
+* Implement streaming architecture for file browser with persistent socket optimization ([e8c2132](https://github.com/owner/repo/commit/e8c2132)) by @MordilloSan
+* Fix folder navigation not triggering re-fetch in file browser ([6ef7238](https://github.com/owner/repo/commit/6ef7238)) by @MordilloSan
+* Improve folder navigation - keep previous data while refetching ([007a111](https://github.com/owner/repo/commit/007a111)) by @MordilloSan
+* Add lightweight DirectoryListingLoader component and use in filebrowser ([f1f2a05](https://github.com/owner/repo/commit/f1f2a05)) by @MordilloSan
+* Fix terminal hang: add missing list_shells_main handler ([a782146](https://github.com/owner/repo/commit/a782146)) by @MordilloSan
+* update ([bf42260](https://github.com/owner/repo/commit/bf42260)) by @MordilloSan
+* - websocket and route channeling. ([be59e87](https://github.com/owner/repo/commit/be59e87)) by @MordilloSan
+* code restructure ([4cbb450](https://github.com/owner/repo/commit/4cbb450)) by @MordilloSan
+* Code restructure 2 ([ce3c881](https://github.com/owner/repo/commit/ce3c881)) by @MordilloSan
+* code restructure 3 ([aac3b10](https://github.com/owner/repo/commit/aac3b10)) by @MordilloSan
+* goroutine crash fix ([c533979](https://github.com/owner/repo/commit/c533979)) by @MordilloSan
+* editor update ([34f63ac](https://github.com/owner/repo/commit/34f63ac)) by @MordilloSan
+* bug fixes ([e9556fd](https://github.com/owner/repo/commit/e9556fd)) by @MordilloSan
+* update all bug fix ([01f61ec](https://github.com/owner/repo/commit/01f61ec)) by @MordilloSan
+* update ui fix ([4911d2c](https://github.com/owner/repo/commit/4911d2c)) by @MordilloSan
+* zip compression feature ([9c38135](https://github.com/owner/repo/commit/9c38135)) by @MordilloSan
+* Revert "feat: Implement streaming file upload and download via IPC" ([525af16](https://github.com/owner/repo/commit/525af16)) by @MordilloSan
+* Refactor bridge handlers to use CallTypedWithSession for improved error handling and response parsing ([02878b4](https://github.com/owner/repo/commit/02878b4)) by @MordilloSan
+* Refactor IPC Handler Functions to Support Streaming ([fff890e](https://github.com/owner/repo/commit/fff890e)) by @MordilloSan
+* feature: ([bdd5dc6](https://github.com/owner/repo/commit/bdd5dc6)) by @MordilloSan
+* linting update ([999da3d](https://github.com/owner/repo/commit/999da3d)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.3.9...v0.4.0
+
+
 ## v0.3.9 — 2025-10-26
 
 ### 🚀 Features

@@ -12,12 +12,9 @@ import MetricBar from "@/components/gauge/MetricBar";
 import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { ContainerInfo } from "@/types/container";
 import axios from "@/utils/axios";
-import { formatBytes } from "@/utils/formatBytes";
+import { formatFileSize } from "@/utils/formaters";
 
 const getContainerIconUrl = (name: string) => {
-  if (name.toLowerCase().startsWith("filebrowser-linuxio")) {
-    return "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/filebrowser-quantum.svg";
-  }
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase();
   return `https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/${sanitized}.svg`;
 };
@@ -87,9 +84,17 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   // ---- logs via react-query (fetch only when dialog is open) ----
   const fetchLogs = async (): Promise<string> => {
     const res = await axios.get(`/docker/containers/${container.Id}/logs`);
-    return typeof res.data === "string"
-      ? res.data
-      : (res.data?.output ?? JSON.stringify(res.data, null, 2));
+    const payload = res.data;
+    if (typeof payload === "string") {
+      return payload;
+    }
+    if (payload && typeof payload.output === "string") {
+      return payload.output;
+    }
+    if (payload && typeof payload.logs === "string") {
+      return payload.logs;
+    }
+    return JSON.stringify(payload ?? {}, null, 2);
   };
 
   const logsQuery = useQuery({
@@ -277,9 +282,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         {/* Metrics area: full width */}
         <Box sx={{ mt: 2, width: "100%" }}>
           {actionMutation.isPending ? (
-            <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
-              <ComponentLoader />
-            </Box>
+            <ComponentLoader />
           ) : (
             <>
               <MetricBar
@@ -293,8 +296,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 label="MEM"
                 percent={memPercent}
                 color={theme.palette.primary.main}
-                tooltip={`Memory Usage: ${formatBytes(memUsage)} / ${formatBytes(memLimit)}`}
-                rightLabel={formatBytes(memUsage)}
+                tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+                rightLabel={formatFileSize(memUsage)}
               />
             </>
           )}

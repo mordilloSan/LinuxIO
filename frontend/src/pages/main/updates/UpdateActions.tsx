@@ -1,4 +1,4 @@
-import { Close as CloseIcon } from "@mui/icons-material";
+import CloseIcon from "@mui/icons-material/Close";
 import {
   Box,
   LinearProgress,
@@ -9,13 +9,11 @@ import {
 import React from "react";
 
 interface UpdateActionsProps {
-  onUpdateAll: () => void;
   isUpdating: boolean;
   currentPackage: string | null;
   progress: number;
   error?: string | null;
   onClearError?: () => void;
-  updateCount: number;
 }
 
 const UpdateActions: React.FC<UpdateActionsProps> = ({

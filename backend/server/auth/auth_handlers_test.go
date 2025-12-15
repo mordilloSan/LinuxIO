@@ -82,13 +82,27 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		_ = bin
 		return true, nil // privileged
 	}
-	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string) ([]byte, error) {
+	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess
 		_ = args
-		if group != "control" || cmd != "ping" {
-			t.Fatalf("unexpected bridge call %s.%s", group, cmd)
+		if group == "control" && cmd == "ping" {
+			if result != nil {
+				if err := json.Unmarshal([]byte(`{"type":"pong"}`), result); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
-		return []byte(`{"status":"ok","output":{"type":"pong"}}`), nil
+		if group == "filebrowser" && cmd == "indexer_status" {
+			if result != nil {
+				if err := json.Unmarshal([]byte(`{"available":true}`), result); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		t.Fatalf("unexpected bridge call %s.%s", group, cmd)
+		return nil
 	}
 
 	// Manager + handlers
@@ -140,13 +154,13 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 		_ = bin
 		return false, fmt.Errorf("authentication failed: bad credentials")
 	}
-	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string) ([]byte, error) {
+	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess
 		_ = group
 		_ = cmd
 		_ = args
 		t.Fatal("should not be called when startBridge fails")
-		return nil, nil
+		return nil
 	}
 
 	sm := session.NewManager(session.New(), session.SessionConfig{})
@@ -182,12 +196,13 @@ func TestLogin_BridgeStartsButPingFails_MapsTo500_AndSessionRemoved(t *testing.T
 		_ = bin
 		return false, nil // started ok (non-privileged)
 	}
-	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string) ([]byte, error) {
+	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess
 		_ = group
 		_ = cmd
 		_ = args
-		return nil, fmt.Errorf("socket not ready")
+		_ = result
+		return fmt.Errorf("socket not ready")
 	}
 
 	sm := session.NewManager(session.New(), session.SessionConfig{})
@@ -229,12 +244,26 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 		_ = bin
 		return false, nil
 	}
-	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string) ([]byte, error) {
+	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess
-		_ = group
-		_ = cmd
 		_ = args
-		return []byte(`{"status":"ok","output":{"type":"pong"}}`), nil
+		if group == "control" && cmd == "ping" {
+			if result != nil {
+				if err := json.Unmarshal([]byte(`{"type":"pong"}`), result); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if group == "filebrowser" && cmd == "indexer_status" {
+			if result != nil {
+				if err := json.Unmarshal([]byte(`{"available":true}`), result); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		return nil
 	}
 
 	// Login to get cookie

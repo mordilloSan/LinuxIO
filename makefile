@@ -4,7 +4,7 @@ SERVER_PORT   = 18090
 VERBOSE      ?= true
 
 # Go and Node.js versions
-GO_VERSION   = 1.25.0
+GO_VERSION   = 1.25.4
 NODE_VERSION = 24
 CC ?= cc
 
@@ -333,9 +333,10 @@ build-backend: ensure-go
 	@echo "📦 Module: $(MODULE_PATH)"
 	@echo "🔖 Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
-	GOFLAGS="-buildvcs=false" \
+	GOFLAGS="-buildvcs=false -tags=nomsgpack" \
 	go build \
 	-ldflags "\
+		-s -w \
 		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
@@ -354,9 +355,10 @@ build-bridge: ensure-go
 	@echo "📦 Module: $(MODULE_PATH)"
 	@echo "🔖 Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
-	GOFLAGS="-buildvcs=false" \
+	GOFLAGS="-buildvcs=false -tags=nomsgpack" \
 	go build \
 	-ldflags "\
+		-s -w \
 		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
@@ -494,7 +496,7 @@ devinstall-force:
 	@sudo ./packaging/scripts/dev_install.sh
 
 generate:
-	@cd "$(BACKEND_DIR)" && go generate ./bridge/userconfig/init.go
+	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
 
 run:
 	@./linuxio run \

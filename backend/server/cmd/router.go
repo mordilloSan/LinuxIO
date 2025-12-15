@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/auth"
@@ -17,15 +18,14 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/drives"
+	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/network"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/power"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/services"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/backend/server/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 type Config struct {
@@ -33,7 +33,6 @@ type Config struct {
 	Verbose              bool
 	VitePort             int
 	BridgeBinaryOverride string
-	FilebrowserSecret    string
 	UI                   fs.FS
 }
 
@@ -74,15 +73,16 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	system.RegisterSystemRoutes(r.Group("/system", sm.RequireSession()))
 	control.RegisterControlRoutes(r.Group("/control", sm.RequireSession()))
 
+	navigator := r.Group("/navigator", sm.RequireSession())
+	if err := filebrowser.RegisterRoutes(navigator); err != nil {
+		logger.Errorf("failed to register filebrowser routes: %v", err)
+		navigator.Any("/*path", func(c *gin.Context) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "file browser unavailable"})
+		})
+	}
+
 	// --- WebSocket ---
 	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
-
-	// --- Filebrowser (auth protected) ---
-
-	r.Any("/navigator/*proxyPath", sm.RequireSession(), web.FilebrowserReverseProxy(cfg.FilebrowserSecret, sm, func() string {
-		return filebrowser.BaseURL
-	}),
-	)
 
 	// --- Benchmark in dev mode ---
 	if cfg.Env != "production" {

@@ -3,7 +3,6 @@ package terminal
 import (
 	"strconv"
 
-	bridgeTerminal "github.com/mordilloSan/LinuxIO/backend/bridge/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -23,61 +22,61 @@ import (
 // - close_container [containerID]
 func TerminalHandlers(sess *session.Session) map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
-		"start_main": func([]string) (any, error) {
-			return map[string]bool{"started": true}, bridgeTerminal.StartTerminal(sess)
+		"start_main": func(_ *ipc.RequestContext, _ []string) (any, error) {
+			return map[string]bool{"started": true}, StartTerminal(sess)
 		},
-		"read_main_backlog": func([]string) (any, error) {
-			data, err := bridgeTerminal.ReadTerminalBacklog(sess.SessionID)
+		"read_main_backlog": func(_ *ipc.RequestContext, _ []string) (any, error) {
+			data, err := ReadTerminalBacklog(sess.SessionID)
 			if err != nil {
 				// If no terminal yet, return empty backlog gracefully
 				return map[string]any{"data": ""}, nil
 			}
 			return map[string]any{"data": data}, nil
 		},
-		"read_main": func(args []string) (any, error) {
+		"read_main": func(_ *ipc.RequestContext, args []string) (any, error) {
 			wait := 750
 			if len(args) > 0 {
 				if v, err := strconv.Atoi(args[0]); err == nil && v >= 0 {
 					wait = v
 				}
 			}
-			data, closed, err := bridgeTerminal.ReadTerminal(sess.SessionID, wait)
+			data, closed, err := ReadTerminal(sess.SessionID, wait)
 			if err != nil && data == "" {
 				return map[string]any{"data": "", "closed": true}, nil
 			}
 			return map[string]any{"data": data, "closed": closed}, nil
 		},
-		"input_main": func(args []string) (any, error) {
+		"input_main": func(_ *ipc.RequestContext, args []string) (any, error) {
 			if len(args) == 0 {
 				return map[string]bool{"ok": true}, nil
 			}
-			return map[string]bool{"ok": true}, bridgeTerminal.WriteToTerminal(sess.SessionID, args[0])
+			return map[string]bool{"ok": true}, WriteToTerminal(sess.SessionID, args[0])
 		},
-		"resize_main": func(args []string) (any, error) {
+		"resize_main": func(_ *ipc.RequestContext, args []string) (any, error) {
 			if len(args) < 2 {
 				return map[string]bool{"ok": true}, nil
 			}
 			cols, _ := strconv.Atoi(args[0])
 			rows, _ := strconv.Atoi(args[1])
-			return map[string]bool{"ok": true}, bridgeTerminal.ResizeTerminal(sess.SessionID, cols, rows)
+			return map[string]bool{"ok": true}, ResizeTerminal(sess.SessionID, cols, rows)
 		},
-		"close_main": func([]string) (any, error) {
-			return map[string]bool{"closed": true}, bridgeTerminal.CloseTerminal(sess.SessionID)
+		"close_main": func(_ *ipc.RequestContext, _ []string) (any, error) {
+			return map[string]bool{"closed": true}, CloseTerminal(sess.SessionID)
 		},
 
-		"list_shells": func(args []string) (any, error) {
+		"list_shells": func(_ *ipc.RequestContext, args []string) (any, error) {
 			if len(args) < 1 {
 				return []string{}, nil
 			}
-			return bridgeTerminal.ListContainerShells(args[0])
+			return ListContainerShells(args[0])
 		},
-		"start_container": func(args []string) (any, error) {
+		"start_container": func(_ *ipc.RequestContext, args []string) (any, error) {
 			if len(args) < 2 {
 				return map[string]bool{"started": false}, nil
 			}
-			return map[string]bool{"started": true}, bridgeTerminal.StartContainerTerminal(sess, args[0], args[1])
+			return map[string]bool{"started": true}, StartContainerTerminal(sess, args[0], args[1])
 		},
-		"read_container": func(args []string) (any, error) {
+		"read_container": func(_ *ipc.RequestContext, args []string) (any, error) {
 			if len(args) < 1 {
 				return map[string]any{"data": "", "closed": true}, nil
 			}
@@ -87,31 +86,31 @@ func TerminalHandlers(sess *session.Session) map[string]ipc.HandlerFunc {
 					wait = v
 				}
 			}
-			data, closed, err := bridgeTerminal.ReadContainerTerminal(sess.SessionID, args[0], wait)
+			data, closed, err := ReadContainerTerminal(sess.SessionID, args[0], wait)
 			if err != nil && data == "" {
 				return map[string]any{"data": "", "closed": true}, nil
 			}
 			return map[string]any{"data": data, "closed": closed}, nil
 		},
-		"input_container": func(args []string) (any, error) {
+		"input_container": func(_ *ipc.RequestContext, args []string) (any, error) {
 			if len(args) < 2 {
 				return map[string]bool{"ok": true}, nil
 			}
-			return map[string]bool{"ok": true}, bridgeTerminal.WriteToContainerTerminal(sess.SessionID, args[0], args[1])
+			return map[string]bool{"ok": true}, WriteToContainerTerminal(sess.SessionID, args[0], args[1])
 		},
-		"resize_container": func(args []string) (any, error) {
+		"resize_container": func(_ *ipc.RequestContext, args []string) (any, error) {
 			if len(args) < 3 {
 				return map[string]bool{"ok": true}, nil
 			}
 			cols, _ := strconv.Atoi(args[1])
 			rows, _ := strconv.Atoi(args[2])
-			return map[string]bool{"ok": true}, bridgeTerminal.ResizeContainerTerminal(sess.SessionID, args[0], cols, rows)
+			return map[string]bool{"ok": true}, ResizeContainerTerminal(sess.SessionID, args[0], cols, rows)
 		},
-		"close_container": func(args []string) (any, error) {
+		"close_container": func(_ *ipc.RequestContext, args []string) (any, error) {
 			if len(args) < 1 {
 				return map[string]bool{"closed": true}, nil
 			}
-			return map[string]bool{"closed": true}, bridgeTerminal.CloseContainerTerminal(sess.SessionID, args[0])
+			return map[string]bool{"closed": true}, CloseContainerTerminal(sess.SessionID, args[0])
 		},
 	}
 }

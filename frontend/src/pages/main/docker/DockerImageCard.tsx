@@ -1,4 +1,5 @@
-import { ExpandMore, ExpandLess } from "@mui/icons-material";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
   Box,
   CardContent,
@@ -99,7 +100,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
               setOpen((o) => !o);
             }}
           >
-            {open ? <ExpandLess /> : <ExpandMore />}
+            {open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           </IconButton>
         </CardContent>
 

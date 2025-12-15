@@ -4,6 +4,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import PageLoader from "@/components/loaders/PageLoader";
 import { ConfigProvider } from "@/contexts/ConfigContext";
+import { FileTransferProvider } from "@/contexts/FileTransferContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import useAuth from "@/hooks/useAuth";
@@ -53,11 +54,13 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
   // Only now mount WS + Config + Theme + Sidebar and the children (or nested routes)
   return (
     <WebSocketProvider>
-      <ConfigProvider>
-        <AuthedThemeShell>
-          <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
-        </AuthedThemeShell>
-      </ConfigProvider>
+      <FileTransferProvider>
+        <ConfigProvider>
+          <AuthedThemeShell>
+            <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
+          </AuthedThemeShell>
+        </ConfigProvider>
+      </FileTransferProvider>
     </WebSocketProvider>
   );
 };

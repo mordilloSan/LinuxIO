@@ -1,6 +1,7 @@
 // src/components/NavbarThemeToggle.tsx
 import { IconButton, Tooltip } from "@mui/material";
-import { Sun, Moon } from "lucide-react";
+import Moon from "lucide-react/dist/esm/icons/moon";
+import Sun from "lucide-react/dist/esm/icons/sun";
 import React from "react";
 
 import { useConfigValue } from "@/hooks/useConfig";

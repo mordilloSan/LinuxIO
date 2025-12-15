@@ -16,9 +16,13 @@ import {
   AuthProviderProps,
   AUTH_ACTIONS,
   AuthUser,
+  LoginResponse,
 } from "@/types/auth";
 import axios from "@/utils/axios";
-import { resetFilebrowserUserCache } from "@/utils/filebrowser";
+import {
+  clearIndexerAvailabilityFlag,
+  setIndexerAvailabilityFlag,
+} from "@/utils/indexerAvailability";
 
 const initialState: AuthState = {
   isAuthenticated: false,
@@ -80,17 +84,13 @@ function AuthProvider({ children }: AuthProviderProps) {
   // One place to clear local state and redirect.
   // `broadcast` writes to localStorage so other tabs receive it.
   const doLocalSignOut = useCallback((broadcast: boolean) => {
-    try {
-      resetFilebrowserUserCache();
-    } catch {
-      /* ignore */
-    }
     // Clear update info on logout
     try {
       sessionStorage.removeItem("update_info");
     } catch {
       /* ignore */
     }
+    clearIndexerAvailabilityFlag();
     if (broadcast) {
       try {
         localStorage.setItem("logout", String(Date.now()));
@@ -145,16 +145,10 @@ function AuthProvider({ children }: AuthProviderProps) {
   const signIn = useCallback(
     async (username: string, password: string) => {
       // Login response may include update info
-      const { data } = await axios.post<{
-        success: boolean;
-        privileged: boolean;
-        update?: {
-          available: boolean;
-          current_version: string;
-          latest_version?: string;
-          release_url?: string;
-        };
-      }>("/auth/login", { username, password });
+      const { data } = await axios.post<LoginResponse>("/auth/login", {
+        username,
+        password,
+      });
 
       // Store update info if present
       if (data.update) {
@@ -164,6 +158,8 @@ function AuthProvider({ children }: AuthProviderProps) {
           console.error("Failed to store update info:", error);
         }
       }
+
+      setIndexerAvailabilityFlag(data.indexer_available ?? null);
 
       const user = await fetchUser();
       dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });

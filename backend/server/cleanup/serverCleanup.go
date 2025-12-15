@@ -22,8 +22,7 @@ func ShutdownAllBridges(sm *session.Manager, reason string) {
 		done := make(chan error, 1)
 
 		go func(sess *session.Session) {
-			_, e := bridge.CallWithSession(sess, "control", "shutdown", []string{reason})
-			done <- e
+			done <- bridge.CallTypedWithSession(sess, "control", "shutdown", []string{reason}, nil)
 		}(s)
 
 		select {

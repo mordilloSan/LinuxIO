@@ -1,11 +1,11 @@
 import { Box, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import axios from "@/utils/axios";
-import { formatBytes } from "@/utils/formatBytes";
+import { formatFileSize } from "@/utils/formaters";
 
 // --- API shape from /system/disk ---
 interface ApiDisk {
@@ -86,13 +86,15 @@ const Drive: React.FC = () => {
   });
 
   const [selected, setSelected] = useState("");
-
-  useEffect(() => {
-    if (drives.length && !selected) {
-      const online = drives.find((d) => d.sizeBytes > 0);
-      setSelected(online?.name || drives[0].name);
-    }
-  }, [drives, selected]);
+  const fallbackSelected = useMemo(() => {
+    if (!drives.length) return "";
+    const online = drives.find((d) => d.sizeBytes > 0);
+    return online?.name || drives[0].name;
+  }, [drives]);
+  const selectedDriveName =
+    selected && drives.some((drive) => drive.name === selected)
+      ? selected
+      : fallbackSelected;
 
   if (isLoading) {
     return (
@@ -101,8 +103,8 @@ const Drive: React.FC = () => {
         avatarIcon="mdi:harddisk"
         stats={<ComponentLoader />}
         selectOptions={[]}
-        selectedOption={selected}
-        selectedOptionLabel={selected}
+        selectedOption={selectedDriveName}
+        selectedOptionLabel={selectedDriveName}
         onSelect={() => {}}
       />
     );
@@ -122,7 +124,9 @@ const Drive: React.FC = () => {
     );
   }
 
-  const selectedDrive = drives.find((drive) => drive.name === selected);
+  const selectedDrive = drives.find(
+    (drive) => drive.name === selectedDriveName,
+  );
   const content = selectedDrive ? (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
       <Typography variant="body2">
@@ -133,7 +137,7 @@ const Drive: React.FC = () => {
       </Typography>
       <Typography variant="body2">
         <strong>Size:</strong>{" "}
-        {formatBytes(selectedDrive.sizeBytes) || "Unknown"}
+        {formatFileSize(selectedDrive.sizeBytes) || "Unknown"}
       </Typography>
       {selectedDrive.vendor && (
         <Typography variant="body2">
@@ -161,8 +165,8 @@ const Drive: React.FC = () => {
       avatarIcon="mdi:harddisk"
       stats={content}
       selectOptions={options}
-      selectedOption={selected}
-      selectedOptionLabel={selected}
+      selectedOption={selectedDriveName}
+      selectedOptionLabel={selectedDriveName}
       onSelect={(val: string) => setSelected(val)}
     />
   );

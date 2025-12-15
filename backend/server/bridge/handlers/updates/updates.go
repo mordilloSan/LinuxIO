@@ -2,22 +2,27 @@ package updates
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 func getUpdatesHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 
-	output, err := bridge.CallWithSession(sess, "dbus", "GetUpdates", nil)
-	if err != nil {
+	var raw json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "dbus", "GetUpdates", nil, &raw); err != nil {
+		if errors.Is(err, ipc.ErrEmptyBridgeOutput) {
+			c.JSON(http.StatusOK, gin.H{"updates": []Update{}})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "failed to get updates",
 			"details": err.Error(),
@@ -25,33 +30,15 @@ func getUpdatesHandler(c *gin.Context) {
 		return
 	}
 
-	// 1. Unmarshal bridge response object
-	var resp ipc.Response
-	if err := json.Unmarshal([]byte(output), &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "failed to decode bridge response",
-			"details": err.Error(),
-		})
-		return
-	}
-
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-
 	// 2. Defensive: If output is empty/null, treat as empty array
 	updates := []Update{}
-	if resp.Output != nil {
-		// Re-marshal Output back to JSON, then unmarshal to target type
-		if outputBytes, err := json.Marshal(resp.Output); err == nil {
-			if err := json.Unmarshal(outputBytes, &updates); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "failed to decode updates JSON",
-					"details": err.Error(),
-				})
-				return
-			}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &updates); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "failed to decode updates JSON",
+				"details": err.Error(),
+			})
+			return
 		}
 	}
 
@@ -77,8 +64,7 @@ func updatePackageHandler(c *gin.Context) {
 
 	sess := session.SessionFromContext(c)
 
-	output, err := bridge.CallWithSession(sess, "dbus", "InstallPackage", []string{req.PackageID})
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "dbus", "InstallPackage", []string{req.PackageID}, nil); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to update package",
 			"details": err.Error(),
@@ -88,6 +74,6 @@ func updatePackageHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "package updates triggered",
-		"output":  string(output), // Keep this - it's useful success output
+		"package": req.PackageID,
 	})
 }

@@ -1,10 +1,8 @@
-import {
-  RestartAlt,
-  StopCircle,
-  Terminal,
-  ExpandMore,
-  PlayArrow,
-} from "@mui/icons-material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import StopCircleIcon from "@mui/icons-material/StopCircle";
+import TerminalIcon from "@mui/icons-material/Terminal";
 import {
   Box,
   Table,
@@ -136,7 +134,7 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                         onClick={() => onViewLogs(service)}
                         disabled={isLoading}
                       >
-                        <Terminal fontSize="small" />
+                        <TerminalIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                     {service.active_state === "active" ? (
@@ -147,7 +145,7 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                             onClick={() => onRestart(service)}
                             disabled={isLoading}
                           >
-                            <RestartAlt fontSize="small" />
+                            <RestartAltIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Stop">
@@ -156,7 +154,7 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                             onClick={() => onStop(service)}
                             disabled={isLoading}
                           >
-                            <StopCircle fontSize="small" />
+                            <StopCircleIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       </>
@@ -167,7 +165,7 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                           onClick={() => onStart(service)}
                           disabled={isLoading}
                         >
-                          <PlayArrow fontSize="small" />
+                          <PlayArrowIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     )}
@@ -181,7 +179,7 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                         )
                       }
                     >
-                      <ExpandMore
+                      <ExpandMoreIcon
                         style={{
                           transform:
                             expanded === service.name

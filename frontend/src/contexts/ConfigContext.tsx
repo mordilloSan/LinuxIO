@@ -1,4 +1,5 @@
 // src/contexts/ConfigContext.tsx
+import type { AxiosError } from "axios";
 import React, {
   createContext,
   useEffect,
@@ -8,6 +9,7 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
+import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
   ConfigContextType,
@@ -15,23 +17,46 @@ import {
 } from "@/types/config";
 import axios from "@/utils/axios";
 
-const initialConfig = {} as AppConfig;
+const defaultConfig: AppConfig = {
+  theme: "DARK",
+  primaryColor: "#2196f3",
+  sidebarCollapsed: false,
+  showHiddenFiles: false,
+};
+
+const applyDefaults = (
+  cfg: Partial<AppConfig> | undefined | null,
+): AppConfig => ({
+  theme: cfg?.theme ?? defaultConfig.theme,
+  primaryColor: cfg?.primaryColor ?? defaultConfig.primaryColor,
+  sidebarCollapsed: cfg?.sidebarCollapsed ?? defaultConfig.sidebarCollapsed,
+  showHiddenFiles: cfg?.showHiddenFiles ?? defaultConfig.showHiddenFiles,
+});
+
 export const ConfigContext = createContext<ConfigContextType | undefined>(
   undefined,
 );
 
 export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
-  const [config, setConfig] = useState<AppConfig>(initialConfig);
+  const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [isLoaded, setLoaded] = useState(false);
+  const { signOut } = useAuth();
 
   useEffect(() => {
     const controller = new AbortController();
     (async () => {
       try {
         const r = await axios.get("/theme/get", { signal: controller.signal });
-        setConfig(r.data);
-      } catch {
+        setConfig(applyDefaults(r.data));
+      } catch (error: unknown) {
+        const status = (error as AxiosError)?.response?.status;
         toast.error("Session expired. Please sign in again.");
+
+        if (status === 500) {
+          await signOut();
+          return;
+        }
+
         window.location.assign("/sign-in");
         return;
       } finally {
@@ -39,7 +64,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [signOut]);
 
   const save = useCallback(
     (cfg: AppConfig) => {
@@ -55,7 +80,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
         const nextVal =
           typeof value === "function" ? (value as any)(prev[key]) : value;
         if (Object.is(prev[key], nextVal)) return prev;
-        const next = { ...prev, [key]: nextVal } as AppConfig;
+        const next = applyDefaults({ ...prev, [key]: nextVal });
         save(next);
         return next;
       });
@@ -67,7 +92,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
     (patch) => {
       setConfig((prev) => {
         const partial = typeof patch === "function" ? patch(prev) : patch;
-        const next = { ...prev, ...partial };
+        const next = applyDefaults({ ...prev, ...partial });
         save(next);
         return next;
       });

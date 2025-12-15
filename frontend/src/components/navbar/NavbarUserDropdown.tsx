@@ -11,7 +11,7 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
-import { LucidePower } from "lucide-react";
+import LucidePower from "lucide-react/dist/esm/icons/power";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 

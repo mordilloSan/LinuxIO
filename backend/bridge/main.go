@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,19 +17,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mordilloSan/go_logger/logger"
 	"github.com/spf13/pflag"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/terminal"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 // envConfig holds all environment values we need, captured at startup
@@ -42,6 +42,7 @@ type envConfig struct {
 	SocketPath    string
 	ServerBaseURL string
 	ServerCert    string
+	LogFD         int
 }
 
 type boot struct {
@@ -54,6 +55,7 @@ type boot struct {
 	ServerCert    string `json:"server_cert,omitempty"`
 	SocketPath    string `json:"socket_path,omitempty"`
 	Verbose       string `json:"verbose,omitempty"`
+	LogFD         int    `json:"log_fd,omitempty"` // FD for piped logging in dev mode
 }
 
 func readBootstrapFromFD3() (*boot, error) {
@@ -89,6 +91,7 @@ func initEnvCfg() envConfig {
 			SocketPath:    b.SocketPath,
 			ServerBaseURL: b.ServerBaseURL,
 			ServerCert:    b.ServerCert,
+			LogFD:         b.LogFD,
 		}
 		return cfg
 	}
@@ -154,9 +157,35 @@ func main() {
 	}
 
 	// Initialize logger ASAP
-	// In development mode, log to file since stdout/stderr are redirected by auth-helper
+	// If we have a log FD in dev mode, redirect stdout/stderr to it for piped logging
+	// (dev mode logger uses stdout for colored output)
+	if env == "development" && envCfg.LogFD > 0 {
+		logFile := os.NewFile(uintptr(envCfg.LogFD), "logpipe")
+		if logFile != nil {
+			// Redirect both stdout and stderr to the log pipe
+			logFD := int(logFile.Fd())
+			stdoutFD := int(os.Stdout.Fd())
+			stderrFD := int(os.Stderr.Fd())
+
+			if err := syscall.Dup2(logFD, stdoutFD); err != nil {
+				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stdout failed: %v\n", err)
+			}
+			if err := syscall.Dup2(logFD, stderrFD); err != nil {
+				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stderr failed: %v\n", err)
+			}
+			// Close the original FD to avoid leaking
+			if envCfg.LogFD != stdoutFD && envCfg.LogFD != stderrFD {
+				if err := logFile.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "bridge bootstrap error: close log fd failed: %v\n", err)
+				}
+			}
+		}
+	}
+
+	// Initialize logger (will use stderr, which may now point to the pipe)
 	var logFile string
-	if env == "development" {
+	if env == "development" && envCfg.LogFD == 0 {
+		// Dev mode without pipe - log to file
 		logDir := "/tmp/linuxio"
 		_ = os.MkdirAll(logDir, 0o755)
 		logFile = filepath.Join(logDir, fmt.Sprintf("bridge-%s.log", Sess.SessionID))
@@ -186,31 +215,8 @@ func main() {
 	logger.Infof("[bridge] LISTENING on %s", socketPath)
 
 	// Ensure per-user config exists and is valid
-	userconfig.EnsureConfigReady(Sess.User.Username)
-	logger.Debugf("[bridge] userconfig ready")
-
-	// Kick off Navigator defaults application in the background
-	// Use saved base URL from environment config
-	if base := envCfg.ServerBaseURL; base != "" {
-		go func(baseURL string) {
-			// Try a few times with small backoff to ride out races.
-			var err error
-			for i := range 8 {
-				err = filebrowser.ApplyNavigatorDefaults(baseURL, Sess, envCfg.ServerCert)
-				if err == nil {
-					return
-				}
-				select {
-				case <-bridgeClosing:
-					return
-				case <-time.After(time.Duration(250+100*i) * time.Millisecond):
-				}
-			}
-			logger.Debugf("Gave up applying Navigator defaults for user=%s: %v", Sess.User.Username, err)
-		}(base)
-	} else {
-		logger.Debugf("No LINUXIO_SERVER_BASE_URL; skipping Navigator defaults")
-	}
+	config.EnsureConfigReady(Sess.User.Username)
+	logger.Debugf("[bridge] config ready")
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)
@@ -222,7 +228,7 @@ func main() {
 	}
 
 	// -------------------------------------------------------------------------
-	// Background samplers, GPU info
+	// Background samplers for network
 	// -------------------------------------------------------------------------
 	system.StartSimpleNetInfoSampler()
 
@@ -300,6 +306,7 @@ func printBridgeVersion() {
 }
 
 // handleMainRequest processes incoming bridge requests.
+// Auto-detects legacy JSON protocol vs new framed protocol.
 func handleMainRequest(conn net.Conn, id string) {
 	wg.Add(1)
 	defer wg.Done()
@@ -309,105 +316,245 @@ func handleMainRequest(conn net.Conn, id string) {
 		}
 	}()
 
-	decoder := json.NewDecoder(conn)
+	// Peek at first byte to detect protocol
+	peekable := bufio.NewReader(conn)
+	firstByte, err := peekable.Peek(1)
+	if err != nil {
+		logger.WarnKV("failed to peek connection", "conn_id", id, "error", err)
+		return
+	}
+
+	// Detect protocol type:
+	// - JSON protocol starts with '{' (0x7B)
+	// - Framed protocol starts with message type (0x01, 0x02, 0x03)
+	if firstByte[0] == '{' {
+		// Legacy JSON protocol
+		handleLegacyJSONRequest(peekable, conn, id)
+	} else if firstByte[0] >= 0x01 && firstByte[0] <= 0x03 {
+		// New framed protocol
+		handleFramedRequest(peekable, conn, id)
+	} else {
+		logger.WarnKV("unknown protocol", "conn_id", id, "first_byte", fmt.Sprintf("0x%02x", firstByte[0]))
+	}
+}
+
+// handleLegacyJSONRequest handles the original JSON-only protocol
+func handleLegacyJSONRequest(reader io.Reader, conn net.Conn, id string) {
+	decoder := json.NewDecoder(reader)
 	encoder := json.NewEncoder(conn)
 	encoder.SetEscapeHTML(false)
 
-	var req ipc.Request
-	if err := decoder.Decode(&req); err != nil {
-		if err == io.EOF {
-			logger.DebugKV("connection closed without data", "conn_id", id)
-		} else {
-			logger.WarnKV("invalid JSON from client", "conn_id", id, "error", err)
-		}
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
-		return
-	}
-
-	if req.Secret != Sess.BridgeSecret {
-		logger.WarnKV("invalid bridge secret", "conn_id", id)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
-		return
-	}
-	if req.SessionID != Sess.SessionID {
-		logger.WarnKV("session mismatch", "conn_id", id)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: "session mismatch"})
-		return
-	}
-	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
-		logger.WarnKV("invalid characters in request", "conn_id", id, "req_type", req.Type, "command", req.Command)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})
-		return
-	}
-
-	logger.DebugKV("bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
-
-	group, found := handlers.HandlersByType[req.Type]
-	if !found || group == nil {
-		logger.WarnKV("unknown request type", "conn_id", id, "req_type", req.Type)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
-		return
-	}
-	handler, ok := group[req.Command]
-	if !ok {
-		logger.WarnKV("unknown request command", "conn_id", id, "req_type", req.Type, "command", req.Command)
-		_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
-		return
-	}
-
-	type result struct {
-		out any
-		err error
-	}
-	done := make(chan result, 1)
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.ErrorKV("handler panic", "conn_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
-				done <- result{nil, fmt.Errorf("panic: %v", r)}
+	for {
+		var req ipc.Request
+		if err := decoder.Decode(&req); err != nil {
+			if err == io.EOF {
+				logger.DebugKV("legacy client closed connection", "conn_id", id)
+			} else {
+				logger.WarnKV("invalid JSON from client", "conn_id", id, "error", err)
+				_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
 			}
-		}()
-		out, err := handler(req.Args)
-		done <- result{out, err}
-	}()
-
-	select {
-	case r := <-done:
-		if r.err != nil {
-			logger.ErrorKV("handler error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
-			_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
 			return
 		}
 
-		// Coerce r.out into json.RawMessage
-		var raw json.RawMessage
-		switch v := r.out.(type) {
-		case nil:
-			raw = nil
-		case json.RawMessage:
-			raw = v
-		case []byte:
-			raw = json.RawMessage(v)
-		default:
-			b, err := json.Marshal(v)
-			if err != nil {
-				logger.ErrorKV("handler marshal error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", err)
-				_ = encoder.Encode(ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
-				return
-			}
-			raw = b
+		if req.Secret != Sess.BridgeSecret {
+			logger.WarnKV("invalid bridge secret", "conn_id", id)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid secret"})
+			return
+		}
+		if req.SessionID != Sess.SessionID {
+			logger.WarnKV("session mismatch", "conn_id", id)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: "session mismatch"})
+			return
+		}
+		if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
+			logger.WarnKV("invalid characters in request", "conn_id", id, "req_type", req.Type, "command", req.Command)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid characters in command/type"})
+			return
 		}
 
-		_ = encoder.Encode(ipc.Response{Status: "ok", Output: raw})
-		return
+		logger.DebugKV("bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
 
-	case <-bridgeClosing:
-		_ = encoder.Encode(ipc.Response{
-			Status: "error",
-			Error:  "canceled: bridge shutting down",
-		})
-		return
+		group, found := handlers.HandlersByType[req.Type]
+		if !found || group == nil {
+			logger.WarnKV("unknown request type", "conn_id", id, "req_type", req.Type)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+			continue
+		}
+		handler, ok := group[req.Command]
+		if !ok {
+			logger.WarnKV("unknown request command", "conn_id", id, "req_type", req.Type, "command", req.Command)
+			_ = encoder.Encode(ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+			continue
+		}
+
+		type result struct {
+			out any
+			err error
+		}
+		done := make(chan result, 1)
+
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.ErrorKV("handler panic", "conn_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
+					done <- result{nil, fmt.Errorf("panic: %v", r)}
+				}
+			}()
+			out, err := handler(nil, req.Args)
+			done <- result{out, err}
+		}()
+
+		select {
+		case r := <-done:
+			if r.err != nil {
+				logger.ErrorKV("handler error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
+				_ = encoder.Encode(ipc.Response{Status: "error", Error: r.err.Error()})
+				continue
+			}
+
+			// Coerce r.out into json.RawMessage
+			var raw json.RawMessage
+			switch v := r.out.(type) {
+			case nil:
+				raw = nil
+			case json.RawMessage:
+				raw = v
+			case []byte:
+				raw = json.RawMessage(v)
+			default:
+				b, err := json.Marshal(v)
+				if err != nil {
+					logger.ErrorKV("handler marshal error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", err)
+					_ = encoder.Encode(ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
+					continue
+				}
+				raw = b
+			}
+
+			if err := encoder.Encode(ipc.Response{Status: "ok", Output: raw}); err != nil {
+				logger.WarnKV("failed to send legacy response", "conn_id", id, "error", err)
+				return
+			}
+
+		case <-bridgeClosing:
+			_ = encoder.Encode(ipc.Response{
+				Status: "error",
+				Error:  "canceled: bridge shutting down",
+			})
+			return
+		}
+	}
+}
+
+// handleFramedRequest handles the new framed protocol (supports binary + streaming)
+func handleFramedRequest(reader io.Reader, conn net.Conn, id string) {
+	for {
+		var req ipc.Request
+		msgType, err := ipc.ReadJSONFrame(reader, &req)
+		if err != nil {
+			if err == io.EOF {
+				logger.DebugKV("framed client closed connection", "conn_id", id)
+			} else {
+				logger.WarnKV("failed to read framed request", "conn_id", id, "error", err)
+				_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "invalid framed request"})
+			}
+			return
+		}
+
+		if msgType != ipc.MsgTypeJSON {
+			logger.WarnKV("expected JSON request frame", "conn_id", id, "msg_type", fmt.Sprintf("0x%02x", msgType))
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "expected JSON request"})
+			return
+		}
+
+		// Validate request
+		if req.Secret != Sess.BridgeSecret {
+			logger.WarnKV("invalid bridge secret", "conn_id", id)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "invalid secret"})
+			return
+		}
+		if req.SessionID != Sess.SessionID {
+			logger.WarnKV("session mismatch", "conn_id", id)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "session mismatch"})
+			return
+		}
+		if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
+			logger.WarnKV("invalid characters in request", "conn_id", id, "req_type", req.Type, "command", req.Command)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "invalid characters in command/type"})
+			return
+		}
+
+		logger.DebugKV("framed bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
+
+		group, found := handlers.HandlersByType[req.Type]
+		if !found || group == nil {
+			logger.WarnKV("unknown request type", "conn_id", id, "req_type", req.Type)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+			continue
+		}
+		handler, ok := group[req.Command]
+		if !ok {
+			logger.WarnKV("unknown request command", "conn_id", id, "req_type", req.Type, "command", req.Command)
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+			continue
+		}
+
+		type result struct {
+			out any
+			err error
+		}
+		done := make(chan result, 1)
+
+		reqCtx := ipc.NewRequestContext(conn)
+		go func(ctx *ipc.RequestContext) {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.ErrorKV("handler panic", "conn_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
+					done <- result{nil, fmt.Errorf("panic: %v", r)}
+				}
+			}()
+			out, err := handler(ctx, req.Args)
+			done <- result{out, err}
+		}(reqCtx)
+
+		select {
+		case r := <-done:
+			if r.err != nil {
+				logger.ErrorKV("handler error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
+				_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: r.err.Error()})
+				continue
+			}
+
+			var raw json.RawMessage
+			switch v := r.out.(type) {
+			case nil:
+				raw = nil
+			case json.RawMessage:
+				raw = v
+			case []byte:
+				raw = json.RawMessage(v)
+			default:
+				b, err := json.Marshal(v)
+				if err != nil {
+					logger.ErrorKV("handler marshal error", "conn_id", id, "req_type", req.Type, "command", req.Command, "error", err)
+					_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
+					continue
+				}
+				raw = b
+			}
+
+			if err := ipc.WriteResponseFrame(conn, &ipc.Response{Status: "ok", Output: raw}); err != nil {
+				logger.WarnKV("failed to send framed response", "conn_id", id, "error", err)
+				return
+			}
+
+		case <-bridgeClosing:
+			_ = ipc.WriteResponseFrame(conn, &ipc.Response{
+				Status: "error",
+				Error:  "canceled: bridge shutting down",
+			})
+			return
+		}
 	}
 }
 

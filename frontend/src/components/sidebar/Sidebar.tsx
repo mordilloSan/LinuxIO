@@ -1,4 +1,5 @@
-import { ChevronLeft, ChevronRight } from "@mui/icons-material";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import {
   Drawer,
   Box,
@@ -95,9 +96,9 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               edge="end"
             >
-              {!collapsed && <ChevronLeft sx={{ width: 22, height: 22 }} />}
+              {!collapsed && <ChevronLeftIcon sx={{ width: 22, height: 22 }} />}
               {hovered && collapsed && (
-                <ChevronRight sx={{ width: 22, height: 22 }} />
+                <ChevronRightIcon sx={{ width: 22, height: 22 }} />
               )}
             </IconButton>
           </Tooltip>

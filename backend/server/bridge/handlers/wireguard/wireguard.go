@@ -10,39 +10,16 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
 
 func WireguardListInterfaces(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	data, err := bridge.CallWithSession(sess, "wireguard", "list_interfaces", nil)
-	if err != nil {
+	var out []map[string]interface{}
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "list_interfaces", nil, &out); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	// Re-marshal and unmarshal to get typed data
-	var out []map[string]interface{}
-	if outputBytes, err := json.Marshal(resp.Output); err == nil {
-		if err := json.Unmarshal(outputBytes, &out); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
-			return
-		}
 	}
 	c.JSON(http.StatusOK, gin.H{"interfaces": out})
 }
@@ -81,43 +58,20 @@ func WireguardAddInterface(c *gin.Context) {
 		strconv.Itoa(req.NumPeers),
 	}
 
-	data, err := bridge.CallWithSession(sess, "wireguard", "add_interface", args)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "add_interface", args, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
 
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 func WireguardRemoveInterface(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	name := c.Param("name")
-	data, err := bridge.CallWithSession(sess, "wireguard", "remove_interface", []string{name})
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "remove_interface", []string{name}, nil); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -126,31 +80,10 @@ func WireguardRemoveInterface(c *gin.Context) {
 func WireguardListPeers(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	name := c.Param("name")
-	data, err := bridge.CallWithSession(sess, "wireguard", "list_peers", []string{name})
-	if err != nil {
+	var out []map[string]interface{}
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "list_peers", []string{name}, &out); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	var out []map[string]interface{}
-	if outputBytes, err := json.Marshal(resp.Output); err == nil {
-		if err := json.Unmarshal(outputBytes, &out); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
-			return
-		}
 	}
 	c.JSON(http.StatusOK, gin.H{"peers": out})
 }
@@ -159,21 +92,12 @@ func WireguardAddPeer(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	name := c.Param("name")
 	args := []string{name}
-	data, err := bridge.CallWithSession(sess, "wireguard", "add_peer", args)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "add_peer", args, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "peer": resp.Output})
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "peer": result})
 }
 
 func WireguardRemovePeer(c *gin.Context) {
@@ -181,18 +105,8 @@ func WireguardRemovePeer(c *gin.Context) {
 	name := c.Param("name")
 	peername := c.Param("peername")
 	args := []string{name, peername}
-	data, err := bridge.CallWithSession(sess, "wireguard", "remove_peer", args)
-	if err != nil {
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "remove_peer", args, nil); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -203,31 +117,10 @@ func WireguardPeerQRCode(c *gin.Context) {
 	name := c.Param("name")
 	peername := c.Param("peername")
 	args := []string{name, peername}
-	data, err := bridge.CallWithSession(sess, "wireguard", "peer_qrcode", args)
-	if err != nil {
+	var out map[string]string
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "peer_qrcode", args, &out); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	var out map[string]string
-	if outputBytes, err := json.Marshal(resp.Output); err == nil {
-		if err := json.Unmarshal(outputBytes, &out); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
-			return
-		}
 	}
 	c.JSON(http.StatusOK, out)
 }
@@ -237,31 +130,10 @@ func WireguardPeerConfigDownload(c *gin.Context) {
 	interfaceName := c.Param("name")
 	peerName := c.Param("peername")
 	args := []string{interfaceName, peerName}
-	data, err := bridge.CallWithSession(sess, "wireguard", "peer_config_download", args)
-	if err != nil {
+	var out map[string]string
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "peer_config_download", args, &out); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
-
-	var out map[string]string
-	if outputBytes, err := json.Marshal(resp.Output); err == nil {
-		if err := json.Unmarshal(outputBytes, &out); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge output"})
-			return
-		}
 	}
 	configContent := out["config"]
 
@@ -273,74 +145,35 @@ func WireguardPeerConfigDownload(c *gin.Context) {
 func WireguardGetKeys(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	name := c.Param("name")
-	data, err := bridge.CallWithSession(sess, "wireguard", "get_keys", []string{name})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "get_keys", []string{name}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": resp.Error})
-		return
-	}
-	if resp.Output == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "empty bridge output"})
-		return
-	}
 
-	c.JSON(http.StatusOK, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 func WireguardUpInterface(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	name := c.Param("name")
-	data, err := bridge.CallWithSession(sess, "wireguard", "up_interface", []string{name})
-	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(500, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(500, gin.H{"error": resp.Error})
-		return
-	}
-	if resp.Output == nil {
-		c.JSON(500, gin.H{"error": "empty bridge output"})
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "up_interface", []string{name}, &result); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(200, resp.Output)
+	c.JSON(http.StatusOK, result)
 }
 
 func WireguardDownInterface(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	name := c.Param("name")
-	data, err := bridge.CallWithSession(sess, "wireguard", "down_interface", []string{name})
-	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-	var resp ipc.Response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		c.JSON(500, gin.H{"error": "invalid bridge response"})
-		return
-	}
-	if resp.Status != "ok" {
-		c.JSON(500, gin.H{"error": resp.Error})
-		return
-	}
-	if resp.Output == nil {
-		c.JSON(500, gin.H{"error": "empty bridge output"})
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "wireguard", "down_interface", []string{name}, &result); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(200, resp.Output)
+	c.JSON(http.StatusOK, result)
 }

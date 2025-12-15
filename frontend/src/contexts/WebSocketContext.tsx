@@ -3,9 +3,10 @@ import React, {
   createContext,
   useRef,
   useCallback,
-  useLayoutEffect,
   useState,
+  useEffect,
 } from "react";
+import { useLocation } from "react-router-dom";
 
 type WebSocketMessage = any;
 type MessageHandler = (msg: WebSocketMessage) => void;
@@ -22,18 +23,34 @@ export const WebSocketContext = createContext<WebSocketContextValue | null>(
   null,
 );
 
+// Extract route name from pathname
+function getRouteFromPathname(pathname: string): string {
+  const parts = pathname.split("/").filter(Boolean);
+  if (!parts.length) return "terminal"; // default route
+  return parts[0];
+}
+
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [status, setStatus] = useState<WSStatus>("idle");
+  const [status, setStatus] = useState<WSStatus>(() =>
+    typeof window === "undefined" ? "idle" : "connecting",
+  );
   const wsRef = useRef<WebSocket | null>(null);
   const handlers = useRef<Set<MessageHandler>>(new Set());
+  const location = useLocation();
+  const initialRoute = getRouteFromPathname(location.pathname);
+  const currentRouteRef = useRef<string>(initialRoute);
 
-  useLayoutEffect(() => {
+  // Initial WebSocket connection
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const wsUrl = `${proto}://${window.location.host}/ws`;
+    const route = currentRouteRef.current;
+    const wsUrl = `${proto}://${window.location.host}/ws?route=${encodeURIComponent(route)}`;
 
-    setStatus("connecting");
     const ws = new window.WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -58,9 +75,27 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({
         /* ignore */
       }
       wsRef.current = null;
-      setStatus("closed");
     };
   }, []);
+
+  // Detect route changes and send route_change message
+  useEffect(() => {
+    const newRoute = getRouteFromPathname(location.pathname);
+
+    // Only send if route actually changed and WebSocket is open
+    if (
+      newRoute !== currentRouteRef.current &&
+      wsRef.current?.readyState === WebSocket.OPEN
+    ) {
+      currentRouteRef.current = newRoute;
+      wsRef.current.send(
+        JSON.stringify({
+          type: "route_change",
+          data: newRoute,
+        }),
+      );
+    }
+  }, [location.pathname]);
 
   const send = useCallback((msg: any) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

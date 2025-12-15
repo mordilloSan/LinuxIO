@@ -2,10 +2,12 @@ package updates
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
@@ -13,12 +15,12 @@ import (
 func getAutoUpdatesHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 
-	out, err := bridge.CallWithSession(sess, "dbus", "GetAutoUpdates", nil)
-	if err != nil {
+	var raw json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "dbus", "GetAutoUpdates", nil, &raw); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", out)
+	c.Data(http.StatusOK, "application/json", raw)
 }
 
 func putAutoUpdatesHandler(c *gin.Context) {
@@ -34,21 +36,25 @@ func putAutoUpdatesHandler(c *gin.Context) {
 	argBytes, _ := json.Marshal(opts)
 	args := []string{string(argBytes)}
 
-	out, err := bridge.CallWithSession(sess, "dbus", "SetAutoUpdates", args)
-	if err != nil {
+	var raw json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "dbus", "SetAutoUpdates", args, &raw); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", out)
+	c.Data(http.StatusOK, "application/json", raw)
 }
 
 func postApplyOfflineUpdatesHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 
-	out, err := bridge.CallWithSession(sess, "dbus", "ApplyOfflineUpdates", nil)
-	if err != nil {
+	var raw json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "dbus", "ApplyOfflineUpdates", nil, &raw); err != nil {
+		if errors.Is(err, ipc.ErrEmptyBridgeOutput) {
+			c.Data(http.StatusOK, "application/json", []byte(`{"status":"ok"}`))
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", out)
+	c.Data(http.StatusOK, "application/json", raw)
 }

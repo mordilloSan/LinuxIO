@@ -26,19 +26,15 @@ func GetVersion(c *gin.Context) {
 	}
 
 	// Call bridge to get version info (no args needed)
-	resp, err := bridge.CallWithSession(sess, "control", "version", []string{})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "control", "version", []string{}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("version check failed: %v", err)})
 		return
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response from bridge"})
-		return
-	}
-
-	c.JSON(http.StatusOK, result)
+	// DEBUG: Log what we're sending
+	fmt.Printf("[DEBUG GetVersion] Sending response: %s\n", string(result))
+	c.Data(http.StatusOK, "application/json", result)
 }
 
 // TriggerUpdate executes the update via bridge control (must be privileged user)
@@ -67,17 +63,11 @@ func TriggerUpdate(c *gin.Context) {
 	}
 
 	// Call bridge control update handler
-	resp, err := bridge.CallWithSession(sess, "control", "update", args)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "control", "update", args, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("update failed: %v", err)})
 		return
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response from bridge"})
-		return
-	}
-
-	c.JSON(http.StatusOK, result)
+	c.Data(http.StatusOK, "application/json", result)
 }

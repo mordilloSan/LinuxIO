@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -11,76 +12,76 @@ import (
 
 func ListContainers(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	data, err := bridge.CallWithSession(sess, "docker", "list_containers", nil)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "list_containers", nil, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 func StartContainer(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	id := c.Param("id")
-	data, err := bridge.CallWithSession(sess, "docker", "start_container", []string{id})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "start_container", []string{id}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 func StopContainer(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	id := c.Param("id")
-	data, err := bridge.CallWithSession(sess, "docker", "stop_container", []string{id})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "stop_container", []string{id}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 func RemoveContainer(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	id := c.Param("id")
-	data, err := bridge.CallWithSession(sess, "docker", "remove_container", []string{id})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "remove_container", []string{id}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 func RestartContainer(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	id := c.Param("id")
-	data, err := bridge.CallWithSession(sess, "docker", "restart_container", []string{id})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "restart_container", []string{id}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 func ListImages(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	data, err := bridge.CallWithSession(sess, "docker", "list_images", nil)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "list_images", nil, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 func ListDockerNetworks(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	data, err := bridge.CallWithSession(sess, "docker", "list_networks", nil)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "list_networks", nil, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 // CreateDockerNetwork handles the creation of a new Docker network.
@@ -95,46 +96,46 @@ func CreateDockerNetwork(c *gin.Context) {
 		return
 	}
 
-	data, err := bridge.CallWithSession(sess, "docker", "create_network", []string{req.Name})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "create_network", []string{req.Name}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 // DeleteDockerVolume handles the deletion of a Docker volume.
 func DeleteDockerNetwork(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	name := c.Param("name")
-	data, err := bridge.CallWithSession(sess, "docker", "delete_network", []string{name})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "delete_network", []string{name}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 func ListDockerVolumes(c *gin.Context) {
 	sess := session.SessionFromContext(c)
-	data, err := bridge.CallWithSession(sess, "docker", "list_volumes", nil)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "list_volumes", nil, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 // DeleteDockerVolume handles the deletion of a Docker volume.
 func DeleteDockerVolume(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	name := c.Param("name")
-	data, err := bridge.CallWithSession(sess, "docker", "delete_volume", []string{name})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "delete_volume", []string{name}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 // CreateDockerVolume handles the creation of a new Docker volume.
@@ -149,23 +150,22 @@ func CreateDockerVolume(c *gin.Context) {
 		return
 	}
 
-	data, err := bridge.CallWithSession(sess, "docker", "create_volume", []string{req.Name})
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "create_volume", []string{req.Name}, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Data(http.StatusOK, "application/json", data)
+	c.JSON(http.StatusOK, result)
 }
 
 func LogContainer(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	id := c.Param("id")
 	args := []string{id}
-	data, err := bridge.CallWithSession(sess, "docker", "get_container_logs", args)
-	if err != nil {
+	var result json.RawMessage
+	if err := bridge.CallTypedWithSession(sess, "docker", "get_container_logs", args, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// If data is plain text, send as text/plain. If you wrap in JSON, set to application/json.
-	c.Data(http.StatusOK, "text/plain; charset=utf-8", data)
+	c.JSON(http.StatusOK, result)
 }
