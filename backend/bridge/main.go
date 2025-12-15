@@ -163,11 +163,21 @@ func main() {
 		logFile := os.NewFile(uintptr(envCfg.LogFD), "logpipe")
 		if logFile != nil {
 			// Redirect both stdout and stderr to the log pipe
-			syscall.Dup2(int(logFile.Fd()), int(os.Stdout.Fd()))
-			syscall.Dup2(int(logFile.Fd()), int(os.Stderr.Fd()))
+			logFD := int(logFile.Fd())
+			stdoutFD := int(os.Stdout.Fd())
+			stderrFD := int(os.Stderr.Fd())
+
+			if err := syscall.Dup2(logFD, stdoutFD); err != nil {
+				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stdout failed: %v\n", err)
+			}
+			if err := syscall.Dup2(logFD, stderrFD); err != nil {
+				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stderr failed: %v\n", err)
+			}
 			// Close the original FD to avoid leaking
-			if envCfg.LogFD != int(os.Stdout.Fd()) && envCfg.LogFD != int(os.Stderr.Fd()) {
-				logFile.Close()
+			if envCfg.LogFD != stdoutFD && envCfg.LogFD != stderrFD {
+				if err := logFile.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "bridge bootstrap error: close log fd failed: %v\n", err)
+				}
 			}
 		}
 	}

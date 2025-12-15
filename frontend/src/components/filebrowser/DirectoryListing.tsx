@@ -21,6 +21,7 @@ import {
 
 import { useFileListKeyboardNavigation } from "@/hooks/useFileListKeyboardNavigation";
 import { useMarqueeSelection } from "@/hooks/useMarqueeSelection";
+import { useSubfolders } from "@/hooks/useSubfolders";
 
 interface DirectoryListingProps {
   resource: FileResource;
@@ -68,6 +69,11 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   );
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number>(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch all subfolder sizes in one request
+  const { subfoldersMap, isLoading: isLoadingSubfolders } = useSubfolders(
+    resource.path,
+  );
 
   const clearSelection = useCallback(() => {
     onSelectedPathsChange(new Set());
@@ -284,6 +290,8 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
         onOpenDirectory={onOpenDirectory}
         onFolderContextMenu={handleItemContextMenu}
         isMarqueeSelecting={isSelecting}
+        subfoldersMap={subfoldersMap}
+        isLoadingSubfolders={isLoadingSubfolders}
       />
 
       <FilesList

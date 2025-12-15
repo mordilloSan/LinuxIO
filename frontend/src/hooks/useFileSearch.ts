@@ -7,8 +7,8 @@ export interface SearchResult {
   path: string;
   name: string;
   size: number;
-  isDir: boolean;
-  type: string;
+  type?: string;
+  isDir?: boolean;
   modTime?: string;
 }
 
@@ -33,8 +33,6 @@ interface UseFileSearchResult {
   isUnavailable: boolean;
 }
 
-const SEARCH_DEBOUNCE = 300; // ms
-
 export const useFileSearch = ({
   query,
   limit = 100,
@@ -48,14 +46,17 @@ export const useFileSearch = ({
   const { data, isLoading, error } = useQuery({
     queryKey: ["fileSearch", query, limit, basePath],
     queryFn: async () => {
-      const response = await axios.get<SearchResponse>("/navigator/api/search", {
-        params: {
-          q: query,
-          limit,
-          base: basePath,
+      const response = await axios.get<SearchResponse>(
+        "/navigator/api/search",
+        {
+          params: {
+            q: query,
+            limit,
+            base: basePath,
+          },
+          timeout: 10000, // 10 second timeout
         },
-        timeout: 10000, // 10 second timeout
-      });
+      );
       return response.data;
     },
     enabled: queryEnabled,

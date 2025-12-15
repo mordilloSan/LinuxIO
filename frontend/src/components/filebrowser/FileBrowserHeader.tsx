@@ -15,8 +15,8 @@ import {
 } from "@mui/material";
 import React, { ReactNode } from "react";
 
-import { ViewMode } from "../../types/filebrowser";
 import SearchBar from "./SearchBar";
+import { ViewMode } from "../../types/filebrowser";
 
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;

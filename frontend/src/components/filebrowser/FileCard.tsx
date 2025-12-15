@@ -2,6 +2,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
+import { useDirectorySize } from "@/hooks/useDirectorySize";
 import { formatFileSize } from "@/utils/formaters";
 
 const glowAnimation = `
@@ -68,7 +69,6 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
-    directorySizeUnavailable = false,
     onClick,
     onDoubleClick,
     onContextMenu,
@@ -76,6 +76,25 @@ const FileCard: React.FC<FileCardProps> = React.memo(
   }) => {
     const theme = useTheme();
     const [hovered, setHovered] = useState(false);
+
+    // For search results (showFullPath=true), fetch individual directory sizes
+    const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
+    const {
+      size: fetchedSize,
+      isLoading: isFetchingSize,
+      error: fetchError,
+    } = useDirectorySize(path || "", needsIndividualDirSize);
+
+    // Override size props with fetched data when displaying search results
+    const effectiveSize = needsIndividualDirSize
+      ? (fetchedSize ?? undefined)
+      : size;
+    const effectiveSizeLoading = needsIndividualDirSize
+      ? isFetchingSize
+      : directorySizeLoading;
+    const effectiveSizeError = needsIndividualDirSize
+      ? fetchError
+      : directorySizeError;
 
     const formattedDate = useMemo(() => {
       if (!modTime) return "";
@@ -194,23 +213,54 @@ const FileCard: React.FC<FileCardProps> = React.memo(
             {name}
           </div>
 
-          {/* Directory path for search results */}
-          {showFullPath && path && (
-            <div
-              style={{
-                fontSize: "0.75rem",
-                color: theme.palette.text.secondary,
-                opacity: 0.7,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                lineHeight: 1.2,
-                marginTop: "2px",
-              }}
-              title={path}
-            >
-              {path.replace(/\/[^/]*$/, "") || "/"}
-            </div>
+          {/* Directory path and type badge for search results */}
+          {showFullPath && (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: theme.spacing(1),
+                  marginTop: "2px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.70rem",
+                    fontWeight: 600,
+                    color: isDirectory
+                      ? theme.palette.primary.main
+                      : theme.palette.text.secondary,
+                    backgroundColor: isDirectory
+                      ? alpha(theme.palette.primary.main, 0.15)
+                      : alpha(theme.palette.text.secondary, 0.1),
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  {isDirectory ? "Folder" : "File"}
+                </span>
+              </div>
+              {path && (
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: theme.palette.text.secondary,
+                    opacity: 0.7,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    lineHeight: 1.2,
+                    marginTop: "2px",
+                  }}
+                  title={path}
+                >
+                  {path.replace(/\/[^/]*$/, "") || "/"}
+                </div>
+              )}
+            </>
           )}
 
           {/* Size line (middle) */}
@@ -225,9 +275,9 @@ const FileCard: React.FC<FileCardProps> = React.memo(
               alignItems: "center",
               height: "1.2em",
             }}
-            title={directorySizeError?.message}
+            title={effectiveSizeError?.message}
           >
-            {directorySizeLoading ? (
+            {effectiveSizeLoading ? (
               <span
                 style={{
                   animation: "sizeGlow 2.5s infinite",
@@ -235,8 +285,8 @@ const FileCard: React.FC<FileCardProps> = React.memo(
               >
                 —
               </span>
-            ) : size !== undefined && size !== 0 ? (
-              formatFileSize(size, 1, "")
+            ) : effectiveSize !== undefined && effectiveSize !== 0 ? (
+              formatFileSize(effectiveSize, 1, "")
             ) : (
               "—"
             )}
