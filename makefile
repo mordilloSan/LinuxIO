@@ -337,9 +337,9 @@ build-backend: ensure-go
 	go build \
 	-ldflags "\
 		-s -w \
-		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
+		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio ./ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
@@ -359,9 +359,9 @@ build-bridge: ensure-go
 	go build \
 	-ldflags "\
 		-s -w \
-		-X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \
-		-X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'" \
+		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
 	echo "" && \
@@ -433,7 +433,11 @@ dev: setup dev-prep devinstall
 	  LINUXIO_ENV=development \
 	  LINUXIO_PAM_HELPER=/tmp/linuxio/dev/linuxio-auth-helper \
 	  LINUXIO_BRIDGE_BIN=/tmp/linuxio/dev/linuxio-bridge \
-	  go run . run \
+	  go run -ldflags "\
+	    -X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
+	    -X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
+	    -X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
+	  . run \
 	    -env development \
 	    -verbose=$(VERBOSE) \
 	    -vite-port=$(VITE_DEV_PORT) \
@@ -987,9 +991,9 @@ version-debug:
 	@echo ""
 	@echo "=== Build command preview ==="
 	@echo "go build -ldflags \\"
-	@echo "  -X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' \\"
-	@echo "  -X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' \\"
-	@echo "  -X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'"
+	@echo "  -X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \\"
+	@echo "  -X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \\"
+	@echo "  -X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'"
 	
 help:
 	@$(PRINTC) ""

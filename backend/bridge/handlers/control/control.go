@@ -236,6 +236,11 @@ func getInstalledVersion() string {
 	output, err := cmd.Output()
 	if err != nil {
 		logger.Debugf("failed to run linuxio --version: %v", err)
+		// Fall back to compiled-in version (useful in dev mode where binary doesn't exist)
+		if config.Version != "" && config.Version != "untracked" {
+			logger.Debugf("using compiled-in version: %s", config.Version)
+			return config.Version
+		}
 		return "unknown"
 	}
 	version := parseVersionOutput(string(output))
