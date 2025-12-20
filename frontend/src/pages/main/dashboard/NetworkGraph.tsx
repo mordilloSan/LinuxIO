@@ -67,7 +67,9 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ data }) => {
         <YAxis hide />
         <Tooltip
           cursor={false}
-          formatter={(value: number) => `${value.toFixed(2)} kB/s`}
+          formatter={(value) =>
+            value != null ? `${Number(value).toFixed(2)} kB/s` : ""
+          }
           labelFormatter={() => ""}
           contentStyle={{
             backgroundColor: "rgba(0, 0, 0, 0.7)",

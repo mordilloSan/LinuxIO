@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -331,9 +332,18 @@ func isNewerVersion(latest, current string) bool {
 
 	// Compare each numeric part
 	for i := 0; i < len(latestParts) && i < len(currentParts); i++ {
-		var latestNum, currentNum int
-		fmt.Sscanf(latestParts[i], "%d", &latestNum)
-		fmt.Sscanf(currentParts[i], "%d", &currentNum)
+		latestNum, err1 := strconv.Atoi(latestParts[i])
+		currentNum, err2 := strconv.Atoi(currentParts[i])
+		if err1 != nil || err2 != nil {
+			// If either part is not a valid number, compare as strings
+			if latestParts[i] > currentParts[i] {
+				return true
+			}
+			if latestParts[i] < currentParts[i] {
+				return false
+			}
+			continue
+		}
 
 		if latestNum > currentNum {
 			return true
