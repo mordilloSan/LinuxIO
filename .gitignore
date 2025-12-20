@@ -15,5 +15,6 @@ linuxio-bridge
 *.log
 .DS_Store
 .vscode/
+.claude/
 *.swp
 

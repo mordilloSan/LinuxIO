@@ -375,7 +375,18 @@ build-auth-helper:
 	@echo ""
 	@echo "🛡️  Building Session helper (C)..."
 	@set -euo pipefail; \
-	$(CC) $(CFLAGS) -o linuxio-auth-helper packaging/linuxio-auth-helper.c $(LDFLAGS) -lpam; \
+	LIBS="-lpam"; \
+	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null; then \
+	  LIBS="$$LIBS $$(pkg-config --libs libsystemd)"; \
+	  echo "📦 Linking with libsystemd for journald support (via pkg-config)"; \
+	elif [ -f /usr/include/systemd/sd-journal.h ]; then \
+	  LIBS="$$LIBS -lsystemd"; \
+	  echo "📦 Linking with libsystemd for journald support"; \
+	else \
+	  echo "⚠️  libsystemd-dev not found - bridge logs will go to /dev/null"; \
+	  echo "   Install with: sudo apt-get install libsystemd-dev"; \
+	fi; \
+	$(CC) $(CFLAGS) -o linuxio-auth-helper packaging/linuxio-auth-helper.c $(LDFLAGS) $$LIBS; \
 	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth-helper; fi; \
 	echo "✅ Session helper built successfully!"; \
 	echo "📄 Path: $$PWD/linuxio-auth-helper"; \
