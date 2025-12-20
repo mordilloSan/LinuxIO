@@ -16,12 +16,14 @@ import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import useAuth from "@/hooks/useAuth";
+import usePowerAction from "@/hooks/usePowerAction";
 import axios from "@/utils/axios";
 
 function NavbarUserDropdown() {
   const ref = useRef(null);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { triggerReboot, triggerPowerOff } = usePowerAction();
 
   const [anchorMenu, setAnchorMenu] = useState<null | HTMLElement>(null);
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
@@ -39,17 +41,25 @@ function NavbarUserDropdown() {
   };
 
   const handleConfirmedAction = async () => {
+    const action = confirm;
     closeMenu();
+    closeConfirm();
+
+    // Show overlay immediately
+    if (action === "reboot") {
+      triggerReboot();
+    } else if (action === "poweroff") {
+      triggerPowerOff();
+    }
+
     try {
-      if (confirm === "reboot") {
+      if (action === "reboot") {
         await axios.post("/power/reboot");
-      } else if (confirm === "poweroff") {
+      } else if (action === "poweroff") {
         await axios.post("/power/shutdown");
       }
-    } catch (err) {
-      console.error(`Failed to ${confirm} system:`, err);
-    } finally {
-      closeConfirm();
+    } catch {
+      // Server may die before responding - this is expected
     }
   };
 

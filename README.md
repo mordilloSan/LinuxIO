@@ -1,14 +1,12 @@
-# Linux I/O
-
 [![Release](https://img.shields.io/github/v/release/mordilloSan/LinuxIO)](https://github.com/mordilloSan/LinuxIO/releases/latest)
 [![CodeQL](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/backend)
 [![License](https://img.shields.io/github/license/mordilloSan/LinuxIO)](LICENSE)
 
-<p>
-  <span style="font-size: 105px; line-height: 1; vertical-align: middle;">Linux</span>
-  <img src="frontend/public/Logo.png" alt="Logo" height="100" width="100" style="vertical-align: middle;" />
-</p>
+<table><tr>
+  <td><h1>Linux</h1></td>
+  <td><img src="frontend/public/Logo.png" alt="i/O" height="40" /></td>
+</tr></table>
 
 A modern web dashboard to manage your Linux system — Docker, WireGuard, updates, users, shares, sensors, and more — all from one unified interface.
 

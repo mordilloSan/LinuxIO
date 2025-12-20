@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,13 +34,20 @@ func CheckForUpdate() *UpdateInfo {
 		return nil
 	}
 
+	// Skip update check for development versions
+	if strings.HasPrefix(current, "dev-") {
+		logger.Debugf("running dev version (%s), skipping update check", current)
+		return nil
+	}
+
 	latest, releaseURL := fetchLatestRelease()
 	if latest == "" {
 		logger.Debugf("could not fetch latest release")
 		return nil
 	}
 
-	if current != latest {
+	// Compare versions properly - only show update if latest is actually newer
+	if isNewerVersion(latest, current) {
 		logger.Infof("update available: %s -> %s", current, latest)
 		return &UpdateInfo{
 			Available:      true,
@@ -56,11 +64,51 @@ func CheckForUpdate() *UpdateInfo {
 	}
 }
 
+// isNewerVersion returns true if 'latest' is newer than 'current'.
+// Handles versions like v0.4.1, v0.4.2, etc.
+func isNewerVersion(latest, current string) bool {
+	// Normalize versions (remove 'v' prefix if present)
+	latest = strings.TrimPrefix(latest, "v")
+	current = strings.TrimPrefix(current, "v")
+
+	latestParts := strings.Split(latest, ".")
+	currentParts := strings.Split(current, ".")
+
+	// Compare each part numerically
+	for i := 0; i < len(latestParts) && i < len(currentParts); i++ {
+		l, err1 := strconv.Atoi(latestParts[i])
+		c, err2 := strconv.Atoi(currentParts[i])
+		if err1 != nil || err2 != nil {
+			// If either part is not a valid number, compare as strings
+			if latestParts[i] > currentParts[i] {
+				return true
+			}
+			if latestParts[i] < currentParts[i] {
+				return false
+			}
+			continue
+		}
+		if l > c {
+			return true
+		}
+		if l < c {
+			return false
+		}
+	}
+
+	// If all compared parts are equal, longer version is newer (e.g., 1.0.1 > 1.0)
+	return len(latestParts) > len(currentParts)
+}
+
 // getInstalledVersion runs 'linuxio --version' and parses the output
 func getInstalledVersion() string {
 	cmd := exec.Command(config.BinPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
+		// Fall back to compiled-in version (useful in dev mode where binary doesn't exist)
+		if config.Version != "" && config.Version != "untracked" {
+			return config.Version
+		}
 		logger.Debugf("failed to run linuxio --version: %v", err)
 		return "unknown"
 	}
