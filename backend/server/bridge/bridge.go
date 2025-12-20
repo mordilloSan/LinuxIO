@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mordilloSan/go_logger/logger"
@@ -21,6 +22,14 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
+
+// yamuxSessions manages persistent yamux sessions per socket path
+var yamuxSessions = struct {
+	sync.RWMutex
+	sessions map[string]*ipc.YamuxSession
+}{
+	sessions: make(map[string]*ipc.YamuxSession),
+}
 
 // validateBridgeHash computes SHA256 of the bridge binary and compares to expected.
 // Returns nil if hash matches or no hash is embedded (development mode).
@@ -288,8 +297,72 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 // Comunication with the bridge
 // ============================================================================
 
-// dialBridge creates a connection to the bridge socket
-func dialBridge(socketPath string) (net.Conn, error) {
+// GetOrCreateYamuxSession returns an existing yamux session or creates a new one
+func GetOrCreateYamuxSession(socketPath string) (*ipc.YamuxSession, error) {
+	// Check for existing session
+	yamuxSessions.RLock()
+	session, exists := yamuxSessions.sessions[socketPath]
+	yamuxSessions.RUnlock()
+
+	if exists && !session.IsClosed() {
+		return session, nil
+	}
+
+	// Create new session
+	yamuxSessions.Lock()
+	defer yamuxSessions.Unlock()
+
+	// Double-check after acquiring write lock
+	if session, exists = yamuxSessions.sessions[socketPath]; exists && !session.IsClosed() {
+		return session, nil
+	}
+
+	// Clean up old session if exists
+	if exists {
+		delete(yamuxSessions.sessions, socketPath)
+	}
+
+	// Dial the bridge
+	conn, err := dialBridgeRaw(socketPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create yamux client session
+	session, err = ipc.NewYamuxClient(conn)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to create yamux session: %w", err)
+	}
+
+	// Set cleanup callback
+	session.SetOnClose(func() {
+		yamuxSessions.Lock()
+		delete(yamuxSessions.sessions, socketPath)
+		yamuxSessions.Unlock()
+		logger.DebugKV("yamux session closed and removed", "socket_path", socketPath)
+	})
+
+	yamuxSessions.sessions[socketPath] = session
+	logger.InfoKV("yamux session established", "socket_path", socketPath)
+
+	return session, nil
+}
+
+// CloseYamuxSession closes the yamux session for a socket path
+func CloseYamuxSession(socketPath string) {
+	yamuxSessions.Lock()
+	defer yamuxSessions.Unlock()
+
+	if session, exists := yamuxSessions.sessions[socketPath]; exists {
+		session.Close()
+		delete(yamuxSessions.sessions, socketPath)
+		logger.DebugKV("yamux session closed", "socket_path", socketPath)
+	}
+}
+
+// dialBridgeRaw creates a raw connection to the bridge socket
+func dialBridgeRaw(socketPath string) (net.Conn, error) {
 	const (
 		totalWait   = 2 * time.Second
 		step        = 100 * time.Millisecond
@@ -312,9 +385,119 @@ func dialBridge(socketPath string) (net.Conn, error) {
 	}
 }
 
+// dialBridge creates a connection to the bridge socket (legacy, for backward compatibility)
+func dialBridge(socketPath string) (net.Conn, error) {
+	return dialBridgeRaw(socketPath)
+}
+
+// UseYamux controls whether to use yamux for bridge communication.
+// Enabled by default for connection reuse and multiplexing benefits.
+var UseYamux = true
+
 // CallWithSession makes a bridge call and returns raw JSON response bytes.
 // Returns *raw* JSON response string (for HTTP handler to decode output as needed)
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
+	if UseYamux {
+		return callWithSessionYamux(sess, reqType, command, args)
+	}
+	return callWithSessionLegacy(sess, reqType, command, args)
+}
+
+// callWithSessionYamux uses yamux multiplexing for the bridge call
+func callWithSessionYamux(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
+	logger.DebugKV("bridge call initiated (yamux)",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"args", fmt.Sprintf("%v", args))
+
+	socketPath := sess.SocketPath
+	if socketPath == "" {
+		err := fmt.Errorf("empty session.SocketPath")
+		logger.ErrorKV("bridge call failed: invalid socket path",
+			"user", sess.User.Username,
+			"error", err)
+		terminateSessionOnBridgeFailure(sess)
+		return nil, err
+	}
+
+	// Get or create yamux session
+	yamuxSession, err := GetOrCreateYamuxSession(socketPath)
+	if err != nil {
+		logger.ErrorKV("bridge call failed: yamux session error",
+			"user", sess.User.Username,
+			"command", command,
+			"error", err)
+		terminateSessionOnBridgeFailure(sess)
+		return nil, err
+	}
+
+	// Open a new stream for this request
+	stream, err := yamuxSession.Open()
+	if err != nil {
+		logger.ErrorKV("bridge call failed: stream open error",
+			"user", sess.User.Username,
+			"command", command,
+			"error", err)
+		// Session might be dead, close it so next call creates a new one
+		CloseYamuxSession(socketPath)
+		terminateSessionOnBridgeFailure(sess)
+		return nil, fmt.Errorf("failed to open yamux stream: %w", err)
+	}
+	defer stream.Close()
+
+	// Build request
+	req := ipc.Request{
+		Type:      reqType,
+		Command:   command,
+		Secret:    sess.BridgeSecret,
+		Args:      args,
+		SessionID: sess.SessionID,
+	}
+
+	// Send request using framed protocol
+	if err = ipc.WriteRequestFrame(stream, &req); err != nil {
+		logger.ErrorKV("bridge call failed: write error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err)
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	// Read response
+	var resp ipc.Response
+	msgType, err := ipc.ReadJSONFrame(stream, &resp)
+	if err != nil {
+		logger.ErrorKV("bridge call failed: read error",
+			"user", sess.User.Username,
+			"type", reqType,
+			"command", command,
+			"error", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if msgType != ipc.MsgTypeJSON {
+		return nil, fmt.Errorf("unexpected response type: 0x%02x", msgType)
+	}
+
+	// Marshal response back to raw JSON for compatibility
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal response: %w", err)
+	}
+
+	logger.DebugKV("bridge call completed (yamux)",
+		"user", sess.User.Username,
+		"type", reqType,
+		"command", command,
+		"response_bytes", len(raw))
+
+	return raw, nil
+}
+
+// callWithSessionLegacy uses the original per-connection protocol
+func callWithSessionLegacy(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
 	// Log the incoming bridge call
 	logger.DebugKV("bridge call initiated",
 		"user", sess.User.Username,
