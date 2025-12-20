@@ -67,13 +67,16 @@ const TerminalXTerm: React.FC = () => {
       if (viewport) viewport.classList.add("custom-scrollbar");
       fitAddon.current?.fit();
       if (xterm.current && isOpen && !startedRef.current) {
-        send({
-          type: "terminal_resize",
-          payload: { cols: xterm.current.cols, rows: xterm.current.rows },
-        });
+        // Start terminal first, then resize to actual dimensions
+        send({ type: "terminal_start" });
+        startedRef.current = true;
         setTimeout(() => {
-          send({ type: "terminal_start" });
-          startedRef.current = true;
+          if (xterm.current) {
+            send({
+              type: "terminal_resize",
+              payload: { cols: xterm.current.cols, rows: xterm.current.rows },
+            });
+          }
         }, 40);
       }
     }, 30);
