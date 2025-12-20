@@ -5,6 +5,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import PageLoader from "@/components/loaders/PageLoader";
 import { ConfigProvider } from "@/contexts/ConfigContext";
 import { FileTransferProvider } from "@/contexts/FileTransferContext";
+import { PowerActionProvider } from "@/contexts/PowerActionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import useAuth from "@/hooks/useAuth";
@@ -57,7 +58,9 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
       <FileTransferProvider>
         <ConfigProvider>
           <AuthedThemeShell>
-            <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
+            <PowerActionProvider>
+              <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
+            </PowerActionProvider>
           </AuthedThemeShell>
         </ConfigProvider>
       </FileTransferProvider>
