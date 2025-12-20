@@ -10,14 +10,11 @@ import (
 	"time"
 
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
-const (
-	RepoOwner = "mordilloSan"
-	RepoName  = "LinuxIO"
-	GitHubAPI = "https://api.github.com/repos/%s/%s/releases/latest"
-	BinPath   = "/usr/local/bin/linuxio"
-)
+const GitHubAPI = "https://api.github.com/repos/%s/%s/releases/latest"
 
 type UpdateInfo struct {
 	Available      bool   `json:"available"`
@@ -61,7 +58,7 @@ func CheckForUpdate() *UpdateInfo {
 
 // getInstalledVersion runs 'linuxio --version' and parses the output
 func getInstalledVersion() string {
-	cmd := exec.Command(BinPath, "--version")
+	cmd := exec.Command(config.BinPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
 		logger.Debugf("failed to run linuxio --version: %v", err)
@@ -109,7 +106,7 @@ func parseVersionOutput(output string) string {
 func fetchLatestRelease() (version string, releaseURL string) {
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	url := fmt.Sprintf(GitHubAPI, RepoOwner, RepoName)
+	url := fmt.Sprintf(GitHubAPI, config.RepoOwner, config.RepoName)
 	resp, err := client.Get(url)
 	if err != nil {
 		logger.Debugf("failed to fetch latest release: %v", err)

@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
+	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/auth"
 	"github.com/mordilloSan/LinuxIO/backend/server/benchmark"
@@ -40,7 +41,7 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	if cfg.Env == "development" {
+	if cfg.Env == appconfig.EnvDevelopment {
 		if err := r.SetTrustedProxies(nil); err != nil {
 			logger.Warnf("failed to set trusted proxies: %v", err)
 		}
@@ -85,12 +86,12 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
 
 	// --- Benchmark in dev mode ---
-	if cfg.Env != "production" {
+	if cfg.Env != appconfig.EnvProduction {
 		benchmark.RegisterDebugRoutes(r, cfg.Env, sm)
 	}
 
 	// --- Frontend (SPA) ---
-	if cfg.Env == "development" {
+	if cfg.Env == appconfig.EnvDevelopment {
 		r.GET("/", func(c *gin.Context) {
 			c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://localhost:%d/", cfg.VitePort))
 		})

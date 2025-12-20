@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/control"
 )
@@ -83,8 +84,8 @@ func (h *Handlers) Login(c *gin.Context) {
 	// Persist actual mode (informational)
 	_ = h.SM.SetPrivileged(sess.SessionID, privileged)
 
-	secure := (h.Env == "production") && (c.Request.TLS != nil)
-	if !secure && h.Env == "production" {
+	secure := (h.Env == config.EnvProduction) && (c.Request.TLS != nil)
+	if !secure && h.Env == config.EnvProduction {
 		logger.Warnf("[auth.login] insecure cookie write under production env (no TLS detected)")
 	}
 	h.SM.WriteCookie(c.Writer, sess.SessionID)

@@ -15,6 +15,7 @@ import (
 
 	"github.com/mordilloSan/go_logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -32,7 +33,7 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 
 	helperPath := getAuthHelperPath()
 	if helperPath == "" {
-		return false, errors.New("auth helper not found; expected /usr/local/bin/linuxio-auth-helper or LINUXIO_PAM_HELPER override")
+		return false, fmt.Errorf("auth helper not found; expected %s or LINUXIO_PAM_HELPER override", config.AuthHelperPath)
 	}
 
 	logger.Debugf("Using bridge binary: %s", bridgeBinary)
@@ -40,7 +41,7 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 
 	// Create pipe for bridge logs in development mode
 	var logPipeR, logPipeW *os.File
-	if strings.ToLower(envMode) == "development" {
+	if strings.ToLower(envMode) == config.EnvDevelopment {
 		var err error
 		logPipeR, logPipeW, err = os.Pipe()
 		if err != nil {
@@ -51,7 +52,7 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 				defer logPipeR.Close()
 				scanner := bufio.NewScanner(logPipeR)
 				for scanner.Scan() {
-					logger.Infof("[bridge] %s", scanner.Text())
+					fmt.Printf("[bridge] %s\n", scanner.Text())
 				}
 				if err := scanner.Err(); err != nil {
 					logger.Debugf("Bridge log pipe scanner error: %v", err)
@@ -478,9 +479,8 @@ func getAuthHelperPath() string {
 	if v := os.Getenv("LINUXIO_PAM_HELPER"); v != "" && isExec(v) {
 		return v
 	}
-	const legacy = "/usr/local/bin/linuxio-auth-helper"
-	if isExec(legacy) {
-		return legacy
+	if isExec(config.AuthHelperPath) {
+		return config.AuthHelperPath
 	}
 	if p, err := exec.LookPath("linuxio-auth-helper"); err == nil && isExec(p) {
 		return p

@@ -5,7 +5,10 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/backend)
 [![License](https://img.shields.io/github/license/mordilloSan/LinuxIO)](LICENSE)
 
-![Logo](frontend/public/Logo.png)
+<p>
+  <span style="font-size: 105px; line-height: 1; vertical-align: middle;">Linux</span>
+  <img src="frontend/public/Logo.png" alt="Logo" height="100" width="100" style="vertical-align: middle;" />
+</p>
 
 A modern web dashboard to manage your Linux system — Docker, WireGuard, updates, users, shares, sensors, and more — all from one unified interface.
 
@@ -45,26 +48,32 @@ Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes furthe
 ### Quick Install (Recommended)
 
 ```bash
+# Install dependencies (Docker, lm-sensors, PAM, PolicyKit, smartmontools)
+curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-dependencies.sh | sudo bash
 
-curl https://raw.githubusercontent.com/mordilloSan/LinuxIO/refs/heads/main/packaging/scripts/global_install.sh | sudo bash
-
+# Install LinuxIO binaries
+curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash
 ```
 
 Access the dashboard at: `http://localhost:8090`
 
-### System Requirements
+### Manual Dependency Installation
+
+If you prefer to install dependencies manually:
 
 **Debian/Ubuntu:**
 
 ```bash
 sudo apt update
-sudo apt install -y docker.io lm-sensors libpam0g policykit-1 smartmontools
+sudo apt install -y lm-sensors libpam0g policykit-1 smartmontools
+curl -fsSL https://get.docker.com | sudo sh
 ```
 
 **Fedora/RHEL/CentOS:**
 
 ```bash
-sudo dnf install -y docker lm_sensors pam smartmontools
+sudo dnf install -y lm_sensors pam polkit smartmontools
+curl -fsSL https://get.docker.com | sudo sh
 ```
 
 ---
@@ -76,6 +85,22 @@ sudo dnf install -y docker lm_sensors pam smartmontools
 - Go 1.25+
 - Node.js 24+
 - Make
+
+### Development Dependencies
+
+**Debian/Ubuntu:**
+
+```bash
+sudo apt install -y libpam0g-dev libsystemd-dev
+```
+
+**Fedora/RHEL/CentOS:**
+
+```bash
+sudo dnf install -y pam-devel systemd-devel
+```
+
+> Note: `libsystemd-dev` is optional but recommended - without it, auth-helper logs go to `/dev/null` instead of journald.
 
 ### Setup
 

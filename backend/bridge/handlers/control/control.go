@@ -11,17 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
-const (
-	RepoOwner        = "mordilloSan"
-	RepoName         = "LinuxIO"
-	BinDir           = "/usr/local/bin"
-	BinPath          = BinDir + "/linuxio"
-	InstallScriptURL = "https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh"
-)
+const InstallScriptURL = "https://raw.githubusercontent.com/" + config.RepoOwner + "/" + config.RepoName + "/main/packaging/scripts/install-linuxio-binaries.sh"
 
 // --- small helper for clean log lines (no ANSI) ---
 var ansiRE = regexp.MustCompile(`\x1B\[[0-9;]*[A-Za-z]`)
@@ -202,7 +198,7 @@ func runInstallScript(version string) error {
 		"--setenv=LC_ALL=C.UTF-8",
 		"-p", "Type=exec",
 		"-p", "ProtectSystem=full",
-		"-p", "ReadWritePaths=/usr/local/bin",
+		"-p", "ReadWritePaths=" + config.BinDir,
 		"-p", "PrivateTmp=false",
 		"-p", "NoNewPrivileges=no",
 		"/bin/bash", "-s", "--",
@@ -236,7 +232,7 @@ func runInstallScript(version string) error {
 }
 
 func getInstalledVersion() string {
-	cmd := exec.Command(BinPath, "--version")
+	cmd := exec.Command(config.BinPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
 		logger.Debugf("failed to run linuxio --version: %v", err)
@@ -269,7 +265,7 @@ func parseVersionOutput(output string) string {
 
 func fetchLatestVersion() (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", RepoOwner, RepoName)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", config.RepoOwner, config.RepoName)
 
 	resp, err := client.Get(url)
 	if err != nil {
