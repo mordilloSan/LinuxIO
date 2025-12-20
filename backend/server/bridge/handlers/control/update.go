@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -75,9 +76,18 @@ func isNewerVersion(latest, current string) bool {
 
 	// Compare each part numerically
 	for i := 0; i < len(latestParts) && i < len(currentParts); i++ {
-		var l, c int
-		fmt.Sscanf(latestParts[i], "%d", &l)
-		fmt.Sscanf(currentParts[i], "%d", &c)
+		l, err1 := strconv.Atoi(latestParts[i])
+		c, err2 := strconv.Atoi(currentParts[i])
+		if err1 != nil || err2 != nil {
+			// If either part is not a valid number, compare as strings
+			if latestParts[i] > currentParts[i] {
+				return true
+			}
+			if latestParts[i] < currentParts[i] {
+				return false
+			}
+			continue
+		}
 		if l > c {
 			return true
 		}
