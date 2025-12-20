@@ -11,7 +11,7 @@ function ComponentLoader() {
         minHeight: "100%",
       }}
     >
-      <CircularProgress color="secondary" />
+      <CircularProgress color="primary" />
     </Box>
   );
 }

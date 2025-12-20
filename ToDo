@@ -1,10 +1,6 @@
 5 - docker compose
 
-6 - Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable.
-
 7 - Updates - Make it more responsive. Use d-bus streaming with websocket?
-
-8 - Check if terminal is killed on logout/crash
 
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
@@ -23,6 +19,7 @@ Bridge upon receiving exit command should cancel ongoing works - DONE
 Wireguard Testing and lasthandshake - DONE
 If session is garbage colected the bridge must exist as well - DONE
 Test Multiple Users - DONE
+ Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable. - Done
 
 
 Multiplex over Single Connection (Future)

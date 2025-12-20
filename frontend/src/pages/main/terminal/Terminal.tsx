@@ -61,22 +61,21 @@ const TerminalXTerm: React.FC = () => {
     xterm.current.loadAddon(fitAddon.current);
     xterm.current.open(termRef.current);
 
-    // Set custom scrollbar on xterm viewport
-    setTimeout(() => {
+    // Set custom scrollbar and start terminal after DOM is ready
+    requestAnimationFrame(() => {
       const viewport = termRef.current?.querySelector(".xterm-viewport");
       if (viewport) viewport.classList.add("custom-scrollbar");
       fitAddon.current?.fit();
       if (xterm.current && isOpen && !startedRef.current) {
+        startedRef.current = true;
+        // Start terminal and resize in one go
+        send({ type: "terminal_start" });
         send({
           type: "terminal_resize",
           payload: { cols: xterm.current.cols, rows: xterm.current.rows },
         });
-        setTimeout(() => {
-          send({ type: "terminal_start" });
-          startedRef.current = true;
-        }, 40);
       }
-    }, 30);
+    });
 
     // Listen for websocket messages
     const unsub = subscribe((msg) => {

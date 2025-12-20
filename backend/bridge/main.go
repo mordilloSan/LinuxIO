@@ -24,7 +24,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -215,11 +214,8 @@ func main() {
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan)
 
-	// Register per-session terminal handlers and eagerly start the main shell
+	// Register per-session terminal handlers (terminal starts lazily on first use)
 	handlers.RegisterTerminalHandlers(Sess)
-	if err := terminal.StartTerminal(Sess); err != nil {
-		logger.Warnf("Failed to start session terminal: %v", err)
-	}
 
 	// -------------------------------------------------------------------------
 	// Background samplers for network
