@@ -1,8 +1,6 @@
 package utils
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,12 +9,6 @@ import (
 
 	"github.com/mordilloSan/go_logger/logger"
 )
-
-func GenerateSecretKey(n int) string {
-	bytes := make([]byte, n)
-	_, _ = rand.Read(bytes)
-	return hex.EncodeToString(bytes)
-}
 
 func GetPublicIP() (string, error) {
 	client := http.Client{

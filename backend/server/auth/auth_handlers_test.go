@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -107,7 +108,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 
 	// Manager + handlers
 	sm := session.NewManager(session.New(), session.SessionConfig{})
-	h := &Handlers{SM: sm, Env: "development", Verbose: true}
+	h := &Handlers{SM: sm, Env: config.EnvDevelopment, Verbose: true}
 	r := newRouterForTests(h)
 
 	// Act
@@ -164,7 +165,7 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	}
 
 	sm := session.NewManager(session.New(), session.SessionConfig{})
-	h := &Handlers{SM: sm, Env: "development"}
+	h := &Handlers{SM: sm, Env: config.EnvDevelopment}
 	r := newRouterForTests(h)
 
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "bad"})
@@ -206,7 +207,7 @@ func TestLogin_BridgeStartsButPingFails_MapsTo500_AndSessionRemoved(t *testing.T
 	}
 
 	sm := session.NewManager(session.New(), session.SessionConfig{})
-	h := &Handlers{SM: sm, Env: "development"}
+	h := &Handlers{SM: sm, Env: config.EnvDevelopment}
 	r := newRouterForTests(h)
 
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "pw"})
@@ -226,7 +227,7 @@ func TestLogin_BridgeStartsButPingFails_MapsTo500_AndSessionRemoved(t *testing.T
 func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	// Minimal happy path to get a session cookie:
 	sm := session.NewManager(session.New(), session.SessionConfig{})
-	h := &Handlers{SM: sm, Env: "development"}
+	h := &Handlers{SM: sm, Env: config.EnvDevelopment}
 	r := newRouterForTests(h)
 
 	// Stub seams for login:

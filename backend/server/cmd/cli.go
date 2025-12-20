@@ -8,14 +8,14 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
 // ServerConfig is the minimal runtime config passed to the server.
 type ServerConfig struct {
 	Port             int
 	BridgeBinaryPath string
-	Env              string // "development" | "production"
+	Env              string // EnvDevelopment | EnvProduction
 	Verbose          bool
 	ViteDevPort      int // used only for dev CORS allowance
 }
@@ -39,7 +39,7 @@ func StartLinuxIO() {
 		return
 
 	case "version", "--version", "-version":
-		fmt.Printf("linuxio %s\n", version.Version)
+		fmt.Printf("linuxio %s\n", config.Version)
 		return
 
 	case "run":
@@ -48,35 +48,33 @@ func StartLinuxIO() {
 		var cfg ServerConfig
 		var detach bool
 
-		runCmd.IntVar(&cfg.Port, "port", 8090, "HTTP server port")
-		runCmd.StringVar(&cfg.BridgeBinaryPath, "bridge-binary", "", "path to linuxio-bridge (optional)")
-		runCmd.StringVar(&cfg.Env, "env", "production", "environment: development|production")
-		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "verbose logging")
-		runCmd.IntVar(&cfg.ViteDevPort, "vite-port", 3000, "vite dev server port (only used for dev CORS)")
+		runCmd.IntVar(&cfg.Port, "port", 8090, "HTTP server port (1-65535)")
+		runCmd.StringVar(&cfg.BridgeBinaryPath, "bridge-binary", "", "path to linuxio-bridge binary")
+		runCmd.StringVar(&cfg.Env, "env", config.EnvProduction, "environment: development|production")
+		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "enable verbose logging")
+		runCmd.IntVar(&cfg.ViteDevPort, "vite-port", 3000, "vite dev server port (dev CORS only)")
 		runCmd.BoolVar(&detach, "detach", false, "run in background (daemonize)")
 
-		// Local usage for `run`
 		runCmd.Usage = func() {
-			fmt.Fprintf(os.Stderr, `Run the LinuxIO server
-
-Usage:
-  linuxio run [flags]
-
-Flags:
-  -port <int>               HTTP server port (default: 8090)
-  -bridge-binary <path>     Path to linuxio-bridge binary (optional)
-  -env <development|production>  Environment (default: production)
-  -verbose                  Verbose logging
-  -vite-port <int>          Vite dev server port for CORS in dev (default: 3000)
-  -detach                   Run as a background process
-`)
+			fmt.Fprintln(os.Stderr, "Run the LinuxIO server")
+			fmt.Fprintln(os.Stderr, "\nUsage:")
+			fmt.Fprintln(os.Stderr, "  linuxio run [flags]")
+			fmt.Fprintln(os.Stderr, "\nFlags:")
+			runCmd.PrintDefaults()
 		}
 
 		_ = runCmd.Parse(os.Args[2:])
 
-		// basic port validation
+		// Validate port (reject 0: server needs a fixed, known port for clients)
 		if cfg.Port <= 0 || cfg.Port > 65535 {
-			fmt.Fprintln(os.Stderr, "invalid -port: must be between 1 and 65535")
+			fmt.Fprintln(os.Stderr, "invalid -port: must be between 1 and 65535 (port 0 not supported)")
+			os.Exit(2)
+		}
+
+		// Validate environment
+		cfg.Env = strings.ToLower(cfg.Env)
+		if cfg.Env != config.EnvDevelopment && cfg.Env != config.EnvProduction {
+			fmt.Fprintf(os.Stderr, "invalid -env: must be %q or %q\n", config.EnvDevelopment, config.EnvProduction)
 			os.Exit(2)
 		}
 
