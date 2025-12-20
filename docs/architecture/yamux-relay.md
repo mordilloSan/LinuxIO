@@ -4,25 +4,51 @@
 
 The LinuxIO server acts as a transparent byte relay between WebSocket clients and the bridge via yamux streams. The server never parses payloads - it only routes bytes by stream ID.
 
+**Ultimate Goal:** One WebSocket connection per session with multiple streams for ALL communication:
+- Persistent streams (terminal, logs) - stay open
+- Request/response streams (API calls) - open → request → response → close
+
 ## Architecture
 
 ```
 Browser                    Server                         Bridge
    │                         │                              │
-   │──[muxID][flags][StreamFrame]──►│                       │
-   │                         │──route(muxID)                │
-   │                         │──────[StreamFrame]──────────►│ (yamux stream)
-   │                         │                              │──parse StreamFrame
-   │                         │                              │──process (terminal, etc)
-   │                         │◄─────[StreamFrame]───────────│
-   │◄──[muxID][flags][StreamFrame]──│                       │
+   │════ WebSocket ══════════│══════ Yamux Session ════════│
+   │                         │                              │
+   │── Stream 1 (terminal) ──│────────────────────────────►│ PTY (persistent)
+   │── Stream 3 (get_cpu) ───│────────────────────────────►│ → response → close
+   │── Stream 5 (docker_ls) ─│────────────────────────────►│ → response → close
+   │◄─ Stream 7 (push event) │◄────────────────────────────│ bridge-initiated
 ```
 
 **Key Points:**
-- Server only knows: mux stream IDs and routing
-- Server never parses StreamFrame payload
-- 0 JSON operations in server for binary streams
-- Bidirectional streaming (terminal, logs, events)
+- 1 WebSocket per session (singleton)
+- 1 yamux session per user (persistent)
+- N streams per session (multiplexed)
+- Server is pure byte relay (0 JSON parsing)
+
+## Stream Types
+
+### Persistent Streams (stay open)
+| Type | Description | Status |
+|------|-------------|--------|
+| `terminal` | PTY session | ✅ Done |
+| `container-logs` | Docker log tailing | Planned |
+| `file-watch` | File system events | Planned |
+
+### Request/Response Streams (open → close)
+| Type | Description | Status |
+|------|-------------|--------|
+| `api` | JSON API calls | Planned |
+| `file-download` | Binary file transfer | Planned |
+| `file-upload` | Binary file upload | Planned |
+
+### Bridge-Initiated Streams (push)
+| Type | Description | Status |
+|------|-------------|--------|
+| `docker-event` | Container state changes | Planned |
+| `system-alert` | Disk full, high CPU | Planned |
+| `service-status` | systemd unit changes | Planned |
 
 ## Protocol Layers
 
@@ -44,13 +70,8 @@ Binary WebSocket messages:
 0x10 = RST   (abort stream)
 ```
 
-**Stream ID allocation:**
-- Client-initiated: odd numbers (1, 3, 5, ...)
-- Server uses mux stream ID to route to yamux streams
-
 ### Layer 2: StreamFrame (Server ↔ Bridge)
 
-The payload relayed between server and bridge:
 ```
 ┌─────────────┬─────────────┬─────────────┬───────────────────┐
 │ Opcode      │ Stream ID   │ Length      │ Payload           │
@@ -58,65 +79,104 @@ The payload relayed between server and bridge:
 └─────────────┴─────────────┴─────────────┴───────────────────┘
 ```
 
-**Opcodes (0x80+ to avoid conflict with JSON framing):**
+**Opcodes:**
 ```go
-OpStreamOpen   = 0x80  // Open stream: payload = "type\0arg1\0arg2"
-OpStreamData   = 0x81  // Data frame: payload = raw bytes
-OpStreamClose  = 0x82  // Close stream: payload = empty
-OpStreamResize = 0x83  // Resize terminal: payload = [cols:2][rows:2]
+OpStreamOpen   = 0x80  // payload = "type\0arg1\0arg2"
+OpStreamData   = 0x81  // payload = raw bytes
+OpStreamClose  = 0x82  // payload = empty
+OpStreamResize = 0x83  // payload = [cols:2][rows:2]
 ```
 
-**Stream Types (in OpStreamOpen payload):**
-- `terminal` - PTY session
-- `container` - Container logs/exec (future)
+## Request/Response Pattern (Future API Migration)
 
-## Session Lifecycle
-
-### Login
+Current API call (JSON over HTTP):
 ```
-1. User authenticates via /auth/login
-2. Server creates session, launches bridge process
-3. Bridge listens on Unix socket
-4. Server opens yamux session to bridge socket
+Browser → POST /api/system/cpu → Server → JSON encode → Bridge → response → JSON decode → Browser
+         ════════════════════════════════════════════════════════════════════════════════
+         Multiple HTTP connections, JSON parsing at every hop
 ```
 
-### Stream Open (e.g., Terminal)
+Future API call (stream):
 ```
-1. Frontend: singleton StreamMultiplexer connects WebSocket to /ws/relay
-2. Frontend: openStream("terminal", payload) sends SYN with StreamFrame
-3. Server: creates yamux stream, relays StreamFrame to bridge
-4. Bridge: detects 0x80 opcode, parses StreamFrame, spawns PTY
-5. Bidirectional byte relay established
-```
-
-### Navigation (Persistent Streams)
-```
-1. User navigates away from terminal
-2. Terminal component unmounts, detaches xterm handlers
-3. Stream stays alive, PTY keeps running
-4. Output buffered in 64KB circular scrollback buffer
-5. User returns: reattach to existing stream
-6. Scrollback replayed to xterm, then live output resumes
+Browser                          Server                      Bridge
+   │                               │                           │
+   │── open stream ───────────────►│                           │
+   │── [type=api][{"method":"get_cpu"}] ──────────────────────►│
+   │                               │                           │── handle
+   │◄─────────────────── [{"cpu":45}] ─────────────────────────│
+   │── close stream ──────────────►│                           │
+   │                               │                           │
+   ════════════════════════════════════════════════════════════
+   Single WebSocket, server just routes bytes, no JSON parsing
 ```
 
-### Terminal Reset
-```
-1. User clicks reset button
-2. Frontend: closes existing stream (sends FIN)
-3. Bridge: receives EOF, terminates PTY
-4. Frontend: opens new stream (sends SYN)
-5. Bridge: spawns fresh PTY
-6. Clean terminal with new shell session
+**Benefits:**
+- Server becomes stateless relay (no request parsing)
+- Single connection handles everything
+- Cancel any request by closing its stream
+- Progress updates on same stream (file uploads)
+
+## Implementation Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Yamux layer in bridge | ✅ Done |
+| Phase 2 | Server yamux client | ✅ Done |
+| Phase 3 | WebSocket binary relay | ✅ Done |
+| Phase 4 | Terminal direct streaming | ✅ Done |
+| Phase 5 | Persistent streams (singleton mux) | ✅ Done |
+| Phase 6 | Bridge-initiated push | ⏳ Planned |
+| Phase 7 | Migrate API calls to streams | ⏳ Planned |
+| Phase 8 | File transfer streams | ⏳ Planned |
+
+## What's Done (Phases 1-5)
+
+### Backend
+- `backend/common/ipc/yamux.go` - Yamux session helpers
+- `backend/common/ipc/stream_relay.go` - StreamFrame protocol
+- `backend/bridge/main.go` - Yamux server with auto-detection
+- `backend/bridge/handlers/terminal/stream.go` - PTY streaming
+- `backend/server/bridge/bridge.go` - Yamux client session pool
+- `backend/server/web/websocket_relay.go` - Pure byte relay
+
+### Frontend
+- `frontend/src/services/StreamMultiplexer.ts` - Singleton WebSocket mux
+- `frontend/src/hooks/useStreamMux.ts` - React hook
+- `frontend/src/pages/main/terminal/Terminal.tsx` - Stream-based terminal
+
+### Features Implemented
+- Terminal ~1ms latency (was ~60ms polling)
+- Stream persistence across navigation
+- 64KB circular scrollback buffer
+- Frame buffering for split StreamFrames
+- Terminal reset (close stream → new PTY)
+- Auto-focus on navigation
+
+## What's Planned
+
+### Phase 6: Bridge-Initiated Push
+Bridge opens streams to push events:
+```go
+stream, _ := yamuxSession.Open()
+ipc.WriteRelayFrame(stream, &StreamFrame{
+    Opcode:  OpStreamData,
+    Payload: []byte(`{"type":"docker_died","id":"abc123"}`),
+})
 ```
 
-### Logout / Session End
+### Phase 7: API Migration
+Replace HTTP handlers with stream handlers:
+```go
+// Instead of: router.GET("/api/system/cpu", handleCPU)
+// Bridge handles: stream type "api" with method "get_cpu"
 ```
-1. User logs out OR session expires OR browser closes
-2. WebSocket connection closes
-3. Server: streamRelay.closeAll() closes all streams
-4. Bridge: all yamux streams receive EOF
-5. Bridge: all PTYs terminated, cleanup runs
-6. Server: yamux session closed
+
+### Phase 8: File Transfers
+Binary streaming with progress:
+```
+open stream → [type=file-download][path=/foo/bar]
+             ← [chunk 1] ← [chunk 2] ← ... ← [done]
+close stream
 ```
 
 ## File Locations
@@ -124,60 +184,28 @@ OpStreamResize = 0x83  // Resize terminal: payload = [cols:2][rows:2]
 | Component | File |
 |-----------|------|
 | WebSocket relay | `backend/server/web/websocket_relay.go` |
-| Yamux session management | `backend/server/bridge/bridge.go` |
+| Yamux session | `backend/server/bridge/bridge.go` |
 | StreamFrame protocol | `backend/common/ipc/stream_relay.go` |
 | Yamux helpers | `backend/common/ipc/yamux.go` |
-| Bridge stream routing | `backend/bridge/main.go` |
-| Terminal stream handler | `backend/bridge/handlers/terminal/stream.go` |
-| Frontend multiplexer | `frontend/src/services/StreamMultiplexer.ts` |
+| Bridge routing | `backend/bridge/main.go` |
+| Terminal handler | `backend/bridge/handlers/terminal/stream.go` |
+| Frontend mux | `frontend/src/services/StreamMultiplexer.ts` |
 | Frontend hook | `frontend/src/hooks/useStreamMux.ts` |
-| Terminal component | `frontend/src/pages/main/terminal/Terminal.tsx` |
-
-## Implementation Status
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | Yamux layer in bridge | Done |
-| Phase 2 | Server yamux client | Done |
-| Phase 3 | WebSocket binary relay | Done |
-| Phase 4 | Terminal direct streaming | Done |
-| Phase 5 | Persistent streams (singleton mux) | Done |
-| Phase 6 | Bridge-initiated push | Planned |
-
-## Frontend Features
-
-### Singleton StreamMultiplexer
-- Single WebSocket connection per session
-- Streams indexed by type (`"terminal"`, `"container"`, etc.)
-- Persists across component mounts/unmounts
-
-### Stream Persistence
-- Streams stay alive when navigating away
-- PTY continues running in background
-- Handler detachment allows buffering
-
-### Scrollback Buffer
-- 64KB circular buffer per stream (O(1) writes)
-- Replayed when handler reattaches
-- Shows previous output on navigation return
-
-### Frame Buffering
-- Handles split StreamFrames from yamux
-- Accumulates partial frames until complete
-- Ensures no data loss from stream-oriented transport
+| Terminal UI | `frontend/src/pages/main/terminal/Terminal.tsx` |
 
 ## Performance
 
-| Metric | JSON WebSocket | Binary Relay |
-|--------|----------------|--------------|
-| Connections per session | N (one per request) | 1 yamux session |
-| Terminal latency | ~60ms (polling) | ~1ms (streaming) |
+| Metric | Current (HTTP) | Streams |
+|--------|----------------|---------|
+| Connections | N per request | 1 per session |
+| Terminal latency | ~60ms | ~1ms |
 | JSON ops in server | 6 per request | 0 |
-| Bandwidth overhead | JSON wrapper | 9-byte header |
+| Request cancellation | Hacky | `stream.close()` |
+| Server-push | Not possible | Native |
 
 ## Security
 
 1. **Authentication**: WebSocket upgrade requires valid session cookie
-2. **Stream isolation**: Each relay tied to authenticated session
-3. **Bridge secret**: Validated per yamux session, not per stream
-4. **Payload opacity**: Server never inspects StreamFrame content
+2. **Stream isolation**: Each stream tied to authenticated session
+3. **Bridge secret**: Validated per yamux session
+4. **Payload opacity**: Server never inspects content
