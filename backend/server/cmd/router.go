@@ -84,6 +84,7 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 
 	// --- WebSocket ---
 	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
+	r.GET("/ws/relay", sm.RequireSession(), web.WebSocketRelayHandler)
 
 	// --- Benchmark in dev mode ---
 	if cfg.Env != appconfig.EnvProduction {

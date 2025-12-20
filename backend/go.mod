@@ -1,15 +1,16 @@
 module github.com/mordilloSan/LinuxIO/backend
 
-go 1.25.4
+go 1.25.5
 
 require (
 	github.com/creack/pty v1.1.24
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/gin-gonic/gin v1.11.0
-	github.com/godbus/dbus/v5 v5.2.0
+	github.com/godbus/dbus/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jaypipes/ghw v0.21.1
+	github.com/hashicorp/yamux v0.1.2
+	github.com/jaypipes/ghw v0.21.2
 	github.com/mordilloSan/go_logger v1.6.0
 	github.com/shirou/gopsutil/v4 v4.25.11
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
@@ -26,7 +27,7 @@ require (
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
-	github.com/goccy/go-yaml v1.19.0 // indirect
+	github.com/goccy/go-yaml v1.19.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.57.1 // indirect

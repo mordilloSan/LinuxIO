@@ -8,23 +8,26 @@ import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
-import useWebSocket from "@/hooks/useWebSocket";
+import useStreamMux from "@/hooks/useStreamMux";
+import { Stream, encodeString, decodeString } from "@/services/StreamMultiplexer";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
 const DEFAULT_FONT = 16;
 
+// Build terminal open payload: "terminal\0cols\0rows"
+function buildTerminalPayload(cols: number, rows: number): Uint8Array {
+  return encodeString(`terminal\0${cols}\0${rows}`);
+}
+
 const TerminalXTerm: React.FC = () => {
   const termRef = useRef<HTMLDivElement>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
+  const streamRef = useRef<Stream | null>(null);
   const theme = useTheme();
 
-  // CHANGED: ready -> status
-  const { send, subscribe, status } = useWebSocket();
-  const isOpen = status === "open";
-
-  const startedRef = useRef(false);
+  const { isOpen, openStream, getStream } = useStreamMux();
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);
 
   // Update xterm font size when fontSize changes
@@ -40,7 +43,7 @@ const TerminalXTerm: React.FC = () => {
   useEffect(() => {
     if (!termRef.current) return;
 
-    // Always dispose old instance!
+    // Dispose old xterm instance (but keep stream alive)
     xterm.current?.dispose();
 
     xterm.current = new Terminal({
@@ -61,64 +64,83 @@ const TerminalXTerm: React.FC = () => {
     xterm.current.loadAddon(fitAddon.current);
     xterm.current.open(termRef.current);
 
-    // Set custom scrollbar and start terminal after DOM is ready
+    // Set custom scrollbar and connect to stream after DOM is ready
     requestAnimationFrame(() => {
       const viewport = termRef.current?.querySelector(".xterm-viewport");
       if (viewport) viewport.classList.add("custom-scrollbar");
       fitAddon.current?.fit();
-      if (xterm.current && isOpen && !startedRef.current) {
-        startedRef.current = true;
-        // Start terminal and resize in one go
-        send({ type: "terminal_start" });
-        send({
-          type: "terminal_resize",
-          payload: { cols: xterm.current.cols, rows: xterm.current.rows },
-        });
+
+      if (!xterm.current || !isOpen) return;
+
+      // Check for existing terminal stream first
+      let stream = getStream("terminal");
+      console.log("[Terminal] getStream('terminal'):", stream ? `found (id=${stream.id})` : "null");
+
+      if (stream) {
+        // Reattach to existing stream
+        console.log("[Terminal] Reattaching to existing stream");
+        streamRef.current = stream;
+        // Note: xterm scrollback is lost on dispose, user needs to press Enter for prompt
+      } else {
+        // Create new stream
+        const cols = xterm.current.cols;
+        const rows = xterm.current.rows;
+        const payload = buildTerminalPayload(cols, rows);
+        stream = openStream("terminal", payload);
+
+        if (stream) {
+          streamRef.current = stream;
+        }
       }
+
+      if (stream) {
+        // Wire up data handler (reattach on each mount)
+        stream.onData = (data: Uint8Array) => {
+          if (xterm.current) {
+            const text = decodeString(data);
+            xterm.current.write(text, () => {
+              xterm.current?.scrollToBottom();
+            });
+          }
+        };
+
+        stream.onClose = () => {
+          streamRef.current = null;
+        };
+      }
+
+      // Auto-focus terminal
+      xterm.current?.focus();
     });
 
-    // Listen for websocket messages
-    const unsub = subscribe((msg) => {
-      if (msg.type === "terminal_output" && xterm.current) {
-        xterm.current.write(msg.data, () => {
-          xterm.current?.scrollToBottom();
-        });
-      }
-    });
-
-    // Terminal input -> send to socket
-    xterm.current.onData((data) => {
-      if (isOpen) {
-        send({ type: "terminal_input", data });
+    // Terminal input -> send to stream as raw bytes
+    const onDataDispose = xterm.current.onData((data) => {
+      if (streamRef.current) {
+        streamRef.current.write(encodeString(data));
       }
     });
 
     // Responsive fit on window resize
     const doFit = () => {
       fitAddon.current?.fit();
-      if (xterm.current && isOpen) {
-        send({
-          type: "terminal_resize",
-          payload: { cols: xterm.current.cols, rows: xterm.current.rows },
-        });
-      }
     };
     window.addEventListener("resize", doFit);
 
     return () => {
-      unsub();
+      console.log("[Terminal] Unmounting, detaching handlers");
+      onDataDispose.dispose();
       xterm.current?.dispose();
       window.removeEventListener("resize", doFit);
-      startedRef.current = false;
+      // Don't close stream - it persists for reconnection
+      // Detach handler so data gets buffered while unmounted
+      if (streamRef.current) {
+        console.log(`[Terminal] Setting onData=null for stream ${streamRef.current.id}`);
+        streamRef.current.onData = null;
+        streamRef.current.onClose = null;
+      }
+      streamRef.current = null;
     };
-  }, [
-    isOpen,
-    send,
-    subscribe,
-    theme.palette.background.default,
-    theme.palette.text.primary,
-    fontSize,
-  ]);
+  }, [isOpen, openStream, getStream, theme.palette.background.default, theme.palette.text.primary, fontSize]);
 
   // Live update theme
   useEffect(() => {
@@ -134,13 +156,46 @@ const TerminalXTerm: React.FC = () => {
     }
   }, [theme.palette.background.default, theme.palette.text.primary]);
 
-  // Handler for reset (Ctrl+L)
+  // Handler for reset - closes PTY and creates fresh terminal
   const handleReset = () => {
-    if (xterm.current) {
-      xterm.current.clear();
-      xterm.current.write("\x0c");
-      xterm.current.scrollToBottom();
+    if (!xterm.current || !isOpen) return;
+
+    // Close existing stream (terminates PTY on bridge)
+    if (streamRef.current) {
+      streamRef.current.onData = null;
+      streamRef.current.onClose = null;
+      streamRef.current.close();
+      streamRef.current = null;
     }
+
+    // Clear xterm display
+    xterm.current.clear();
+    xterm.current.reset();
+
+    // Open fresh stream (creates new PTY)
+    const cols = xterm.current.cols;
+    const rows = xterm.current.rows;
+    const payload = buildTerminalPayload(cols, rows);
+    const stream = openStream("terminal", payload);
+
+    if (stream) {
+      streamRef.current = stream;
+
+      stream.onData = (data: Uint8Array) => {
+        if (xterm.current) {
+          const text = decodeString(data);
+          xterm.current.write(text, () => {
+            xterm.current?.scrollToBottom();
+          });
+        }
+      };
+
+      stream.onClose = () => {
+        streamRef.current = null;
+      };
+    }
+
+    xterm.current.focus();
   };
 
   return (
