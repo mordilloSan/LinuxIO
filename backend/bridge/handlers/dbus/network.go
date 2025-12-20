@@ -397,12 +397,12 @@ func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) erro
 	// ---- parse DNS -> uint32[]
 	dnsUint32 := make([]uint32, 0, len(dnsServers))
 	for _, dnsStr := range dnsServers {
-		parts := strings.Split(strings.TrimSpace(dnsStr), ".")
-		if len(parts) != 4 {
+		dnsParts := strings.Split(strings.TrimSpace(dnsStr), ".")
+		if len(dnsParts) != 4 {
 			return fmt.Errorf("invalid DNS server format: %s", dnsStr)
 		}
 		var dnsVal uint32
-		for i, part := range parts {
+		for i, part := range dnsParts {
 			num, err := strconv.ParseUint(part, 10, 8)
 			if err != nil {
 				return fmt.Errorf("invalid DNS server: %s", dnsStr)
@@ -412,147 +412,149 @@ func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) erro
 		dnsUint32 = append(dnsUint32, dnsVal)
 	}
 
-	conn, err := godbus.SystemBus()
-	if err != nil {
-		return fmt.Errorf("connect system bus: %w", err)
-	}
-	defer conn.Close()
-
-	parts, err := getActiveConnForIface(conn, iface)
-	if err != nil {
-		return err
-	}
-
-	// ---- parse CIDR
-	s := strings.SplitN(strings.TrimSpace(addressCIDR), "/", 2)
-	if len(s) != 2 {
-		return fmt.Errorf("invalid IPv4 CIDR: %q", addressCIDR)
-	}
-	ip := strings.TrimSpace(s[0])
-	pfx64, err := strconv.ParseUint(s[1], 10, 32)
-	if err != nil {
-		return fmt.Errorf("invalid IPv4 prefix: %q", s[1])
-	}
-	prefix := uint32(pfx64)
-
-	settingsConn := conn.Object("org.freedesktop.NetworkManager", parts.SettingsPath)
-	nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
-	dev := conn.Object("org.freedesktop.NetworkManager", parts.DevicePath)
-
-	// ---- Step 1: disable IPv4 to ensure DHCP is stopped
-	var settings map[string]map[string]godbus.Variant
-	if err := settingsConn.Call(
-		"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
-	).Store(&settings); err != nil {
-		return fmt.Errorf("GetSettings: %w", err)
-	}
-
-	// sanitize binary fields
-	if ip4 := settings["ipv4"]; ip4 != nil {
-		delete(ip4, "addresses")
-		delete(ip4, "address-data")
-		delete(ip4, "routes")
-		delete(ip4, "route-data")
-		settings["ipv4"] = ip4
-	}
-	if ip6 := settings["ipv6"]; ip6 != nil {
-		delete(ip6, "addresses")
-		delete(ip6, "routes")
-		delete(ip6, "route-data")
-		settings["ipv6"] = ip6
-	}
-
-	ip4 := settings["ipv4"]
-	if ip4 == nil {
-		ip4 = make(map[string]godbus.Variant)
-	}
-	ip4["method"] = godbus.MakeVariant("disabled")
-	delete(ip4, "address-data")
-	delete(ip4, "dns")
-	delete(ip4, "gateway")
-	delete(ip4, "dhcp-client-id")
-	delete(ip4, "dhcp-timeout")
-	settings["ipv4"] = ip4
-
-	if err := settingsConn.Call(
-		"org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings,
-	).Err; err != nil {
-		return fmt.Errorf("disable IPv4: %w", err)
-	}
-
-	// Politely tell NM to drop any active lease:
-	// Device.Disconnect (stops carrier/lease) + DeactivateConnection
-	if err := dev.Call("org.freedesktop.NetworkManager.Device.Disconnect", 0).Err; err != nil {
-		// not fatal on some device types, but worth returning
-		return fmt.Errorf("device disconnect: %w", err)
-	}
-	if parts.ActivePath != "" && parts.ActivePath != "/" {
-		if err := nm.Call("org.freedesktop.NetworkManager.DeactivateConnection", 0, parts.ActivePath).Err; err != nil {
-			return fmt.Errorf("deactivate connection: %w", err)
+	return RetryOnceIfClosed(nil, func() error {
+		conn, err := godbus.SystemBus()
+		if err != nil {
+			return fmt.Errorf("connect system bus: %w", err)
 		}
-	}
+		defer conn.Close()
 
-	// small settle delay
-	time.Sleep(1500 * time.Millisecond)
+		parts, err := getActiveConnForIface(conn, iface)
+		if err != nil {
+			return err
+		}
 
-	// ---- Step 2: set manual IPv4 (address, gateway, dns) in one go
-	if err := settingsConn.Call(
-		"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
-	).Store(&settings); err != nil {
-		return fmt.Errorf("GetSettings (2nd): %w", err)
-	}
+		// ---- parse CIDR
+		s := strings.SplitN(strings.TrimSpace(addressCIDR), "/", 2)
+		if len(s) != 2 {
+			return fmt.Errorf("invalid IPv4 CIDR: %q", addressCIDR)
+		}
+		ip := strings.TrimSpace(s[0])
+		pfx64, err := strconv.ParseUint(s[1], 10, 32)
+		if err != nil {
+			return fmt.Errorf("invalid IPv4 prefix: %q", s[1])
+		}
+		prefix := uint32(pfx64)
 
-	// sanitize again
-	if ip4m := settings["ipv4"]; ip4m != nil {
-		delete(ip4m, "addresses")
-		delete(ip4m, "address-data")
-		delete(ip4m, "routes")
-		delete(ip4m, "route-data")
-		settings["ipv4"] = ip4m
-	}
-	if ip6 := settings["ipv6"]; ip6 != nil {
-		delete(ip6, "addresses")
-		delete(ip6, "routes")
-		delete(ip6, "route-data")
-		settings["ipv6"] = ip6
-	}
+		settingsConn := conn.Object("org.freedesktop.NetworkManager", parts.SettingsPath)
+		nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
+		dev := conn.Object("org.freedesktop.NetworkManager", parts.DevicePath)
 
-	ip4 = settings["ipv4"]
-	if ip4 == nil {
-		ip4 = make(map[string]godbus.Variant)
-	}
+		// ---- Step 1: disable IPv4 to ensure DHCP is stopped
+		var settings map[string]map[string]godbus.Variant
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
+		).Store(&settings); err != nil {
+			return fmt.Errorf("GetSettings: %w", err)
+		}
 
-	addrDict := map[string]godbus.Variant{
-		"address": godbus.MakeVariant(ip),
-		"prefix":  godbus.MakeVariant(prefix),
-	}
-	ip4["address-data"] = godbus.MakeVariant([]map[string]godbus.Variant{addrDict})
-	ip4["dns"] = godbus.MakeVariant(dnsUint32)
-	ip4["gateway"] = godbus.MakeVariant(gateway)
-	ip4["method"] = godbus.MakeVariant("manual")
-	ip4["may-fail"] = godbus.MakeVariant(false)
-	ip4["ignore-auto-dns"] = godbus.MakeVariant(true)
-	ip4["ignore-auto-routes"] = godbus.MakeVariant(true)
-	ip4["never-default"] = godbus.MakeVariant(false)
+		// sanitize binary fields
+		if ip4 := settings["ipv4"]; ip4 != nil {
+			delete(ip4, "addresses")
+			delete(ip4, "address-data")
+			delete(ip4, "routes")
+			delete(ip4, "route-data")
+			settings["ipv4"] = ip4
+		}
+		if ip6 := settings["ipv6"]; ip6 != nil {
+			delete(ip6, "addresses")
+			delete(ip6, "routes")
+			delete(ip6, "route-data")
+			settings["ipv6"] = ip6
+		}
 
-	settings["ipv4"] = ip4
+		ip4 := settings["ipv4"]
+		if ip4 == nil {
+			ip4 = make(map[string]godbus.Variant)
+		}
+		ip4["method"] = godbus.MakeVariant("disabled")
+		delete(ip4, "address-data")
+		delete(ip4, "dns")
+		delete(ip4, "gateway")
+		delete(ip4, "dhcp-client-id")
+		delete(ip4, "dhcp-timeout")
+		settings["ipv4"] = ip4
 
-	if err := settingsConn.Call(
-		"org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings,
-	).Err; err != nil {
-		return fmt.Errorf("set manual config: %w", err)
-	}
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings,
+		).Err; err != nil {
+			return fmt.Errorf("disable IPv4: %w", err)
+		}
 
-	// ---- Step 3: reactivate with the new settings
-	var specificObject godbus.ObjectPath = "/"
-	if err := nm.Call(
-		"org.freedesktop.NetworkManager.ActivateConnection", 0,
-		parts.SettingsPath, parts.DevicePath, specificObject,
-	).Err; err != nil {
-		return fmt.Errorf("reactivate: %w", err)
-	}
+		// Politely tell NM to drop any active lease:
+		// Device.Disconnect (stops carrier/lease) + DeactivateConnection
+		if err := dev.Call("org.freedesktop.NetworkManager.Device.Disconnect", 0).Err; err != nil {
+			// not fatal on some device types, but worth returning
+			return fmt.Errorf("device disconnect: %w", err)
+		}
+		if parts.ActivePath != "" && parts.ActivePath != "/" {
+			if err := nm.Call("org.freedesktop.NetworkManager.DeactivateConnection", 0, parts.ActivePath).Err; err != nil {
+				return fmt.Errorf("deactivate connection: %w", err)
+			}
+		}
 
-	return nil
+		// small settle delay
+		time.Sleep(1500 * time.Millisecond)
+
+		// ---- Step 2: set manual IPv4 (address, gateway, dns) in one go
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
+		).Store(&settings); err != nil {
+			return fmt.Errorf("GetSettings (2nd): %w", err)
+		}
+
+		// sanitize again
+		if ip4m := settings["ipv4"]; ip4m != nil {
+			delete(ip4m, "addresses")
+			delete(ip4m, "address-data")
+			delete(ip4m, "routes")
+			delete(ip4m, "route-data")
+			settings["ipv4"] = ip4m
+		}
+		if ip6 := settings["ipv6"]; ip6 != nil {
+			delete(ip6, "addresses")
+			delete(ip6, "routes")
+			delete(ip6, "route-data")
+			settings["ipv6"] = ip6
+		}
+
+		ip4 = settings["ipv4"]
+		if ip4 == nil {
+			ip4 = make(map[string]godbus.Variant)
+		}
+
+		addrDict := map[string]godbus.Variant{
+			"address": godbus.MakeVariant(ip),
+			"prefix":  godbus.MakeVariant(prefix),
+		}
+		ip4["address-data"] = godbus.MakeVariant([]map[string]godbus.Variant{addrDict})
+		ip4["dns"] = godbus.MakeVariant(dnsUint32)
+		ip4["gateway"] = godbus.MakeVariant(gateway)
+		ip4["method"] = godbus.MakeVariant("manual")
+		ip4["may-fail"] = godbus.MakeVariant(false)
+		ip4["ignore-auto-dns"] = godbus.MakeVariant(true)
+		ip4["ignore-auto-routes"] = godbus.MakeVariant(true)
+		ip4["never-default"] = godbus.MakeVariant(false)
+
+		settings["ipv4"] = ip4
+
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings,
+		).Err; err != nil {
+			return fmt.Errorf("set manual config: %w", err)
+		}
+
+		// ---- Step 3: reactivate with the new settings
+		var specificObject godbus.ObjectPath = "/"
+		if err := nm.Call(
+			"org.freedesktop.NetworkManager.ActivateConnection", 0,
+			parts.SettingsPath, parts.DevicePath, specificObject,
+		).Err; err != nil {
+			return fmt.Errorf("reactivate: %w", err)
+		}
+
+		return nil
+	})
 }
 
 // SetIPv4DHCP switches interface to DHCP (auto) mode
@@ -560,76 +562,78 @@ func SetIPv4DHCP(iface string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
 
-	conn, err := godbus.SystemBus()
-	if err != nil {
-		return fmt.Errorf("connect system bus: %w", err)
-	}
-	defer conn.Close()
+	return RetryOnceIfClosed(nil, func() error {
+		conn, err := godbus.SystemBus()
+		if err != nil {
+			return fmt.Errorf("connect system bus: %w", err)
+		}
+		defer conn.Close()
 
-	parts, err := getActiveConnForIface(conn, iface)
-	if err != nil {
-		return err
-	}
+		parts, err := getActiveConnForIface(conn, iface)
+		if err != nil {
+			return err
+		}
 
-	settingsConn := conn.Object("org.freedesktop.NetworkManager", parts.SettingsPath)
+		settingsConn := conn.Object("org.freedesktop.NetworkManager", parts.SettingsPath)
 
-	// Fetch current to keep unrelated sections intact
-	var settings map[string]map[string]godbus.Variant
-	if err := settingsConn.Call(
-		"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
-	).Store(&settings); err != nil {
-		return fmt.Errorf("GetSettings: %w", err)
-	}
+		// Fetch current to keep unrelated sections intact
+		var settings map[string]map[string]godbus.Variant
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
+		).Store(&settings); err != nil {
+			return fmt.Errorf("GetSettings: %w", err)
+		}
 
-	ip4 := settings["ipv4"]
-	if ip4 == nil {
-		ip4 = make(map[string]godbus.Variant)
-	}
+		ip4 := settings["ipv4"]
+		if ip4 == nil {
+			ip4 = make(map[string]godbus.Variant)
+		}
 
-	// Switch to DHCP
-	ip4["method"] = godbus.MakeVariant("auto")
+		// Switch to DHCP
+		ip4["method"] = godbus.MakeVariant("auto")
 
-	// CLEAR manual addresses in BOTH formats:
-	// 1) legacy ipv4.addresses (type: aau = array of [addr,prefix,gateway] as uint32)
-	ip4["addresses"] = godbus.MakeVariant([][]uint32{}) // <-- important
-	// 2) modern ipv4.address-data (type: aa{sv})
-	ip4["address-data"] = godbus.MakeVariant([]map[string]godbus.Variant{})
+		// CLEAR manual addresses in BOTH formats:
+		// 1) legacy ipv4.addresses (type: aau = array of [addr,prefix,gateway] as uint32)
+		ip4["addresses"] = godbus.MakeVariant([][]uint32{}) // <-- important
+		// 2) modern ipv4.address-data (type: aa{sv})
+		ip4["address-data"] = godbus.MakeVariant([]map[string]godbus.Variant{})
 
-	// CLEAR routes if you might have set them
-	ip4["routes"] = godbus.MakeVariant([][]uint32{})
-	ip4["route-data"] = godbus.MakeVariant([]map[string]godbus.Variant{})
+		// CLEAR routes if you might have set them
+		ip4["routes"] = godbus.MakeVariant([][]uint32{})
+		ip4["route-data"] = godbus.MakeVariant([]map[string]godbus.Variant{})
 
-	// CLEAR manual DNS & search, and re-enable DHCP-provided values
-	ip4["dns"] = godbus.MakeVariant([]uint32{})
-	ip4["dns-search"] = godbus.MakeVariant([]string{})
-	ip4["ignore-auto-dns"] = godbus.MakeVariant(false)
-	ip4["ignore-auto-routes"] = godbus.MakeVariant(false)
-	ip4["never-default"] = godbus.MakeVariant(false)
+		// CLEAR manual DNS & search, and re-enable DHCP-provided values
+		ip4["dns"] = godbus.MakeVariant([]uint32{})
+		ip4["dns-search"] = godbus.MakeVariant([]string{})
+		ip4["ignore-auto-dns"] = godbus.MakeVariant(false)
+		ip4["ignore-auto-routes"] = godbus.MakeVariant(false)
+		ip4["never-default"] = godbus.MakeVariant(false)
 
-	// REMOVE scalars that must not exist in DHCP mode
-	delete(ip4, "gateway")
-	delete(ip4, "dns-priority")
-	delete(ip4, "may-fail")
+		// REMOVE scalars that must not exist in DHCP mode
+		delete(ip4, "gateway")
+		delete(ip4, "dns-priority")
+		delete(ip4, "may-fail")
 
-	settings["ipv4"] = ip4
+		settings["ipv4"] = ip4
 
-	// Don't touch ipv6 types; only delete typed fields if present
-	if ip6 := settings["ipv6"]; ip6 != nil {
-		delete(ip6, "addresses")
-		delete(ip6, "address-data")
-		delete(ip6, "routes")
-		delete(ip6, "route-data")
-		settings["ipv6"] = ip6
-	}
+		// Don't touch ipv6 types; only delete typed fields if present
+		if ip6 := settings["ipv6"]; ip6 != nil {
+			delete(ip6, "addresses")
+			delete(ip6, "address-data")
+			delete(ip6, "routes")
+			delete(ip6, "route-data")
+			settings["ipv6"] = ip6
+		}
 
-	if err := settingsConn.Call(
-		"org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings,
-	).Err; err != nil {
-		return fmt.Errorf("update settings: %w", err)
-	}
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings,
+		).Err; err != nil {
+			return fmt.Errorf("update settings: %w", err)
+		}
 
-	// Fully bounce the connection so kernel addresses get reset
-	return reloadConnection(conn, parts.SettingsPath)
+		// Fully bounce the connection so kernel addresses get reset
+		return reloadConnection(conn, parts.SettingsPath)
+	})
 }
 
 // --- IPv6 Configuration ---
@@ -665,65 +669,67 @@ func SetMTU(iface, mtu string) error {
 		return fmt.Errorf("SetMTU requires interface and MTU value")
 	}
 
-	conn, err := godbus.SystemBus()
-	if err != nil {
-		return fmt.Errorf("failed to connect to system bus: %w", err)
-	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close D-Bus connection: %v", cerr)
-		}
-	}()
-
-	nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
-
-	var devicePaths []godbus.ObjectPath
-	if err := nm.Call("org.freedesktop.NetworkManager.GetDevices", 0).Store(&devicePaths); err != nil {
-		return fmt.Errorf("GetDevices failed: %w", err)
-	}
-
-	for _, devPath := range devicePaths {
-		dev := conn.Object("org.freedesktop.NetworkManager", devPath)
-		var devIface string
-		if err := dev.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Device", "Interface").Store(&devIface); err != nil {
-			continue
-		}
-		if devIface != iface {
-			continue
-		}
-
-		var activeConn godbus.ObjectPath
-		if err := dev.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Device", "ActiveConnection").Store(&activeConn); err != nil {
-			return fmt.Errorf("failed to get ActiveConnection: %w", err)
-		}
-
-		ac := conn.Object("org.freedesktop.NetworkManager", activeConn)
-		var connPath godbus.ObjectPath
-		if err := ac.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Connection.Active", "Connection").Store(&connPath); err != nil {
-			return fmt.Errorf("failed to get Connection path: %w", err)
-		}
-
-		settingsConn := conn.Object("org.freedesktop.NetworkManager", connPath)
-		var settings map[string]map[string]godbus.Variant
-		if err := settingsConn.Call("org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0).Store(&settings); err != nil {
-			return fmt.Errorf("failed to get connection settings: %w", err)
-		}
-
-		mtuValue, err := strconv.ParseUint(mtu, 10, 32)
+	return RetryOnceIfClosed(nil, func() error {
+		conn, err := godbus.SystemBus()
 		if err != nil {
-			return fmt.Errorf("invalid MTU value: %w", err)
+			return fmt.Errorf("failed to connect to system bus: %w", err)
+		}
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
+			}
+		}()
+
+		nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
+
+		var devicePaths []godbus.ObjectPath
+		if err := nm.Call("org.freedesktop.NetworkManager.GetDevices", 0).Store(&devicePaths); err != nil {
+			return fmt.Errorf("GetDevices failed: %w", err)
 		}
 
-		ethernetSettings := settings["802-3-ethernet"]
-		ethernetSettings["mtu"] = godbus.MakeVariant(uint32(mtuValue))
-		settings["802-3-ethernet"] = ethernetSettings
+		for _, devPath := range devicePaths {
+			dev := conn.Object("org.freedesktop.NetworkManager", devPath)
+			var devIface string
+			if err := dev.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Device", "Interface").Store(&devIface); err != nil {
+				continue
+			}
+			if devIface != iface {
+				continue
+			}
 
-		if err := settingsConn.Call("org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings).Err; err != nil {
-			return fmt.Errorf("failed to update MTU: %w", err)
+			var activeConn godbus.ObjectPath
+			if err := dev.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Device", "ActiveConnection").Store(&activeConn); err != nil {
+				return fmt.Errorf("failed to get ActiveConnection: %w", err)
+			}
+
+			ac := conn.Object("org.freedesktop.NetworkManager", activeConn)
+			var connPath godbus.ObjectPath
+			if err := ac.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.NetworkManager.Connection.Active", "Connection").Store(&connPath); err != nil {
+				return fmt.Errorf("failed to get Connection path: %w", err)
+			}
+
+			settingsConn := conn.Object("org.freedesktop.NetworkManager", connPath)
+			var settings map[string]map[string]godbus.Variant
+			if err := settingsConn.Call("org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0).Store(&settings); err != nil {
+				return fmt.Errorf("failed to get connection settings: %w", err)
+			}
+
+			mtuValue, err := strconv.ParseUint(mtu, 10, 32)
+			if err != nil {
+				return fmt.Errorf("invalid MTU value: %w", err)
+			}
+
+			ethernetSettings := settings["802-3-ethernet"]
+			ethernetSettings["mtu"] = godbus.MakeVariant(uint32(mtuValue))
+			settings["802-3-ethernet"] = ethernetSettings
+
+			if err := settingsConn.Call("org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings).Err; err != nil {
+				return fmt.Errorf("failed to update MTU: %w", err)
+			}
+
+			return reloadConnection(conn, connPath)
 		}
 
-		return reloadConnection(conn, connPath)
-	}
-
-	return fmt.Errorf("interface %s not found", iface)
+		return fmt.Errorf("interface %s not found", iface)
+	})
 }

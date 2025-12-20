@@ -362,64 +362,67 @@ collectDetails:
 func installPackage(packageID string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	conn, err := godbus.SystemBus()
-	if err != nil {
-		return fmt.Errorf("failed to connect to system bus: %w", err)
-	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+
+	return RetryOnceIfClosed(nil, func() error {
+		conn, err := godbus.SystemBus()
+		if err != nil {
+			return fmt.Errorf("failed to connect to system bus: %w", err)
 		}
-	}()
-
-	const (
-		pkBusName      = "org.freedesktop.PackageKit"
-		pkObjPath      = "/org/freedesktop/PackageKit"
-		transactionIfc = "org.freedesktop.PackageKit.Transaction"
-	)
-
-	// 1. Create Transaction
-	obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
-	var transPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
-		return fmt.Errorf("CreateTransaction failed: %w", err)
-	}
-	trans := conn.Object(pkBusName, transPath)
-
-	// Listen for signals
-	sigCh := make(chan *godbus.Signal, 20)
-	conn.Signal(sigCh)
-	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Warnf("failed to add D-Bus match signal: %v", err)
-	}
-
-	// 2. Call InstallPackages
-	call := trans.Call(transactionIfc+".InstallPackages", 0, uint64(0), []string{packageID})
-	if call.Err != nil {
-		return fmt.Errorf("InstallPackages failed: %w", call.Err)
-	}
-
-	// 3. Wait for Finished/ErrorCode signal
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-
-	for {
-		select {
-		case sig := <-sigCh:
-			if sig == nil {
-				return fmt.Errorf("nil signal from D-Bus")
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				logger.Warnf("failed to close D-Bus connection: %v", cerr)
 			}
-			switch sig.Name {
-			case transactionIfc + ".ErrorCode":
-				code, _ := sig.Body[0].(uint32)
-				msg, _ := sig.Body[1].(string)
-				return fmt.Errorf("PackageKit error code %d: %s", code, msg)
-			case transactionIfc + ".Finished":
-				// Success!
-				return nil
-			}
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for PackageKit to finish install")
+		}()
+
+		const (
+			pkBusName      = "org.freedesktop.PackageKit"
+			pkObjPath      = "/org/freedesktop/PackageKit"
+			transactionIfc = "org.freedesktop.PackageKit.Transaction"
+		)
+
+		// 1. Create Transaction
+		obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
+		var transPath godbus.ObjectPath
+		if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+			return fmt.Errorf("CreateTransaction failed: %w", err)
 		}
-	}
+		trans := conn.Object(pkBusName, transPath)
+
+		// Listen for signals
+		sigCh := make(chan *godbus.Signal, 20)
+		conn.Signal(sigCh)
+		if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+			logger.Warnf("failed to add D-Bus match signal: %v", err)
+		}
+
+		// 2. Call InstallPackages
+		call := trans.Call(transactionIfc+".InstallPackages", 0, uint64(0), []string{packageID})
+		if call.Err != nil {
+			return fmt.Errorf("InstallPackages failed: %w", call.Err)
+		}
+
+		// 3. Wait for Finished/ErrorCode signal
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		for {
+			select {
+			case sig := <-sigCh:
+				if sig == nil {
+					return fmt.Errorf("nil signal from D-Bus")
+				}
+				switch sig.Name {
+				case transactionIfc + ".ErrorCode":
+					code, _ := sig.Body[0].(uint32)
+					msg, _ := sig.Body[1].(string)
+					return fmt.Errorf("PackageKit error code %d: %s", code, msg)
+				case transactionIfc + ".Finished":
+					// Success!
+					return nil
+				}
+			case <-ctx.Done():
+				return fmt.Errorf("timeout waiting for PackageKit to finish install")
+			}
+		}
+	})
 }
