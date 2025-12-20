@@ -25,9 +25,9 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
+	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
@@ -121,11 +121,11 @@ var bridgeClosing = make(chan struct{})
 var wg sync.WaitGroup
 
 func main() {
-	var env string
+	var envMode string
 	var verbose bool
 	var showVersion bool
 
-	pflag.StringVar(&env, "env", "production", "environment (development|production)")
+	pflag.StringVar(&envMode, "env", appconfig.EnvProduction, "environment (development|production)")
 	pflag.BoolVar(&verbose, "verbose", false, "enable verbose logs")
 	pflag.BoolVar(&showVersion, "version", false, "print version and exit")
 	pflag.Parse()
@@ -146,7 +146,7 @@ func main() {
 		return
 	}
 
-	env = strings.ToLower(env)
+	envMode = strings.ToLower(envMode)
 
 	// Use saved socket path from environment config
 	socketPath := strings.TrimSpace(envCfg.SocketPath)
@@ -159,7 +159,7 @@ func main() {
 	// Initialize logger ASAP
 	// If we have a log FD in dev mode, redirect stdout/stderr to it for piped logging
 	// (dev mode logger uses stdout for colored output)
-	if env == "development" && envCfg.LogFD > 0 {
+	if envMode == appconfig.EnvDevelopment && envCfg.LogFD > 0 {
 		logFile := os.NewFile(uintptr(envCfg.LogFD), "logpipe")
 		if logFile != nil {
 			// Redirect both stdout and stderr to the log pipe
@@ -182,15 +182,9 @@ func main() {
 		}
 	}
 
-	// Initialize logger (will use stderr, which may now point to the pipe)
-	var logFile string
-	if env == "development" && envCfg.LogFD == 0 {
-		// Dev mode without pipe - log to file
-		logDir := "/tmp/linuxio"
-		_ = os.MkdirAll(logDir, 0o755)
-		logFile = filepath.Join(logDir, fmt.Sprintf("bridge-%s.log", Sess.SessionID))
-	}
-	logger.InitWithFile(env, verbose, logFile)
+	// Initialize logger - in dev mode with pipe, stdout/stderr already point to the pipe
+	// In production, C auth-helper redirects to journal or /dev/null
+	logger.InitWithFile(envMode, verbose, "")
 
 	logger.Infof("[bridge] boot: euid=%d uid=%s gid=%s socket=%s (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
@@ -302,7 +296,7 @@ func main() {
 }
 
 func printBridgeVersion() {
-	fmt.Printf("linuxio-bridge %s\n", version.Version)
+	fmt.Printf("linuxio-bridge %s\n", appconfig.Version)
 }
 
 // handleMainRequest processes incoming bridge requests.
@@ -348,7 +342,7 @@ func handleLegacyJSONRequest(reader io.Reader, conn net.Conn, id string) {
 		var req ipc.Request
 		if err := decoder.Decode(&req); err != nil {
 			if err == io.EOF {
-				logger.DebugKV("legacy client closed connection", "conn_id", id)
+				logger.DebugKV("connection closed", "conn_id", id)
 			} else {
 				logger.WarnKV("invalid JSON from client", "conn_id", id, "error", err)
 				_ = encoder.Encode(ipc.Response{Status: "error", Error: "invalid JSON"})
@@ -435,6 +429,7 @@ func handleLegacyJSONRequest(reader io.Reader, conn net.Conn, id string) {
 				logger.WarnKV("failed to send legacy response", "conn_id", id, "error", err)
 				return
 			}
+			logger.DebugKV("bridge response sent", "conn_id", id, "req_type", req.Type, "command", req.Command, "bytes", len(raw))
 
 		case <-bridgeClosing:
 			_ = encoder.Encode(ipc.Response{
@@ -453,7 +448,7 @@ func handleFramedRequest(reader io.Reader, conn net.Conn, id string) {
 		msgType, err := ipc.ReadJSONFrame(reader, &req)
 		if err != nil {
 			if err == io.EOF {
-				logger.DebugKV("framed client closed connection", "conn_id", id)
+				logger.DebugKV("connection closed", "conn_id", id)
 			} else {
 				logger.WarnKV("failed to read framed request", "conn_id", id, "error", err)
 				_ = ipc.WriteResponseFrame(conn, &ipc.Response{Status: "error", Error: "invalid framed request"})
@@ -484,7 +479,7 @@ func handleFramedRequest(reader io.Reader, conn net.Conn, id string) {
 			return
 		}
 
-		logger.DebugKV("framed bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
+		logger.DebugKV("bridge request received", "conn_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
 
 		group, found := handlers.HandlersByType[req.Type]
 		if !found || group == nil {
@@ -547,6 +542,7 @@ func handleFramedRequest(reader io.Reader, conn net.Conn, id string) {
 				logger.WarnKV("failed to send framed response", "conn_id", id, "error", err)
 				return
 			}
+			logger.DebugKV("bridge response sent", "conn_id", id, "req_type", req.Type, "command", req.Command, "bytes", len(raw))
 
 		case <-bridgeClosing:
 			_ = ipc.WriteResponseFrame(conn, &ipc.Response{

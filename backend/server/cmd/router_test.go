@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -27,7 +28,7 @@ func TestBuildRouter_DevRedirectsToVite(t *testing.T) {
 
 	sm := session.NewManager(session.New(), session.SessionConfig{})
 	cfg := Config{
-		Env:      "development",
+		Env:      config.EnvDevelopment,
 		Verbose:  false,
 		VitePort: 12345,
 		UI:       fstest.MapFS{},
