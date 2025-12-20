@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -21,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/server/cleanup"
@@ -31,13 +31,13 @@ func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
 	// Env + logging (from flags)
 	// -------------------------------------------------------------------------
-	env := strings.ToLower(cfg.Env) // "development" | "production"
+	envMode := cfg.Env // already validated and lowercased by CLI
 	verbose := cfg.Verbose
-	logger.Init(env, verbose)
-	if !(env == "development" && verbose) {
+	logger.Init(envMode, verbose)
+	if !(envMode == config.EnvDevelopment && verbose) {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	logger.InfoKV("server starting", "env", env, "verbose", verbose)
+	logger.InfoKV("server starting", "env", envMode, "verbose", verbose)
 
 	// -------------------------------------------------------------------------
 	// Sessions + cleanup hooks
@@ -45,7 +45,7 @@ func RunServer(cfg ServerConfig) {
 	ms := session.New()
 	sm := session.NewManager(ms, session.SessionConfig{
 		Cookie: session.CookieConfig{
-			Secure: env == "production",
+			Secure: envMode == config.EnvProduction,
 		},
 	})
 	sm.RegisterOnDelete(func(sess *session.Session, reason session.DeleteReason) {
@@ -69,7 +69,7 @@ func RunServer(cfg ServerConfig) {
 	// Router
 	// -------------------------------------------------------------------------
 	router := BuildRouter(Config{
-		Env:      env,
+		Env:      envMode,
 		Verbose:  verbose,
 		VitePort: cfg.ViteDevPort,
 		UI:       ui,
@@ -116,7 +116,7 @@ func RunServer(cfg ServerConfig) {
 			servStopped := make(chan struct{})
 			stop := func() { stopOnce.Do(func() { close(servStopped) }) }
 
-			if strings.ToLower(cfg.Env) == "production" {
+			if envMode == config.EnvProduction {
 				cert, cErr := web.GenerateSelfSignedCert()
 				if cErr != nil {
 					logger.Errorf("Failed to generate cert: %v", cErr)
@@ -176,7 +176,7 @@ func RunServer(cfg ServerConfig) {
 		// -------- fallback: self-bind (dev / manual runs) ----------
 		addr := fmt.Sprintf(":%d", cfg.Port)
 		srv.Addr = addr
-		if strings.ToLower(cfg.Env) == "production" {
+		if envMode == config.EnvProduction {
 			cert, cErr := web.GenerateSelfSignedCert()
 			if cErr != nil {
 				logger.Errorf("Failed to generate cert: %v", cErr)
@@ -244,7 +244,7 @@ func RunServer(cfg ServerConfig) {
 	// Close sessions
 	sm.Close()
 
-	if env == "production" {
+	if envMode == config.EnvProduction {
 		fmt.Println("Server stopped.")
 	}
 	logger.Infof("Server stopped.")

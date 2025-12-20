@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
 func withArgs(args []string, fn func()) {
@@ -68,8 +68,8 @@ func TestStartLinuxIO_Version(t *testing.T) {
 	if !strings.Contains(got, "linuxio ") {
 		t.Fatalf("expected 'linuxio ' prefix, got: %q", got)
 	}
-	if version.Version != "" && !strings.Contains(got, version.Version) {
-		t.Fatalf("expected version %q in output, got %q", version.Version, got)
+	if config.Version != "" && !strings.Contains(got, config.Version) {
+		t.Fatalf("expected version %q in output, got %q", config.Version, got)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestStartLinuxIO_Run_InvokesRunServer(t *testing.T) {
 	if !called {
 		t.Fatal("expected runServerFunc to be called")
 	}
-	if gotCfg.Env != "development" || gotCfg.Port != 18090 || !gotCfg.Verbose {
+	if gotCfg.Env != config.EnvDevelopment || gotCfg.Port != 18090 || !gotCfg.Verbose {
 		t.Fatalf("unexpected cfg: %+v", gotCfg)
 	}
 }
