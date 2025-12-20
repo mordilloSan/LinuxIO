@@ -322,7 +322,7 @@ test-backend:
 		go test ./... -count=1 -timeout 5m 2>&1 | grep -v '\[no test files\]'
 	@echo "✅ Backend tests passed!"
 
-build-vite: lint tsc
+build-vite:
 	@echo ""
 	@echo "🏗️  Building frontend..."
 	@bash -c 'cd frontend && VITE_API_URL=/ npx vite build && echo "✅ Frontend built successfully!"'
@@ -332,6 +332,11 @@ build-backend: ensure-go
 	@echo "🏗️  Building backend..."
 	@echo "📦 Module: $(MODULE_PATH)"
 	@echo "🔖 Version: $(GIT_VERSION)"
+	@if [ -n "$(BRIDGE_SHA256)" ]; then \
+		echo "🔐 Bridge SHA256: $(BRIDGE_SHA256)"; \
+	else \
+		echo "🔐 Bridge SHA256: (not embedded - development mode)"; \
+	fi
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false -tags=nomsgpack" \
 	go build \
@@ -339,7 +344,8 @@ build-backend: ensure-go
 		-s -w \
 		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
-		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
+		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)' \
+		-X '$(MODULE_PATH)/common/config.BridgeSHA256=$(BRIDGE_SHA256)'" \
 	-o ../linuxio ./ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
@@ -473,7 +479,13 @@ dev: setup dev-prep devinstall
 	[[ "$$STATUS" -eq 130 ]] && STATUS=0
 	exit "$$STATUS"
 
-build: build-vite golint build-backend build-bridge build-auth-helper
+build: test build-vite build-bridge
+	@echo ""
+	@echo "🔐 Capturing bridge hash for backend build..."
+	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
+	echo "   Hash: $$BRIDGE_HASH"; \
+	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
+	@$(MAKE) --no-print-directory build-auth-helper
 
 localinstall:
 	./packaging/scripts/local_install.sh

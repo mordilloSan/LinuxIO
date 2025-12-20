@@ -2,6 +2,8 @@ package bridge
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +22,48 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
+// validateBridgeHash computes SHA256 of the bridge binary and compares to expected.
+// Returns nil if hash matches or no hash is embedded (development mode).
+// Returns error if hash mismatch (security violation).
+func validateBridgeHash(bridgePath string) error {
+	expectedHash := config.BridgeSHA256
+
+	// Skip validation in development (no hash embedded)
+	if expectedHash == "" {
+		logger.Debugf("Bridge hash validation skipped (no embedded hash - development mode?)")
+		return nil
+	}
+
+	// Open the bridge binary
+	f, err := os.Open(bridgePath)
+	if err != nil {
+		return fmt.Errorf("failed to open bridge binary for hash validation: %w", err)
+	}
+	defer f.Close()
+
+	// Compute SHA256
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("failed to read bridge binary for hash: %w", err)
+	}
+	actualHash := hex.EncodeToString(h.Sum(nil))
+
+	// Compare hashes
+	if actualHash != expectedHash {
+		logger.ErrorKV("bridge binary hash mismatch - possible tampering detected",
+			"expected", expectedHash,
+			"actual", actualHash,
+			"path", bridgePath)
+		return fmt.Errorf("bridge binary integrity check failed: hash mismatch (expected %s..., got %s...)",
+			expectedHash[:16], actualHash[:16])
+	}
+
+	logger.DebugKV("bridge binary hash validated",
+		"hash", actualHash[:16]+"...",
+		"path", bridgePath)
+	return nil
+}
+
 // StartBridge launches linuxio-bridge via the setuid helper.
 // Returns (privilegedMode, error). privilegedMode reflects the helper's decision.
 func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
@@ -29,6 +73,11 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	}
 	if bridgeBinary == "" {
 		return false, errors.New("bridge binary not found (looked beside server and in PATH)")
+	}
+
+	// Validate bridge binary hash before proceeding
+	if err := validateBridgeHash(bridgeBinary); err != nil {
+		return false, fmt.Errorf("bridge security validation failed: %w", err)
 	}
 
 	helperPath := getAuthHelperPath()
