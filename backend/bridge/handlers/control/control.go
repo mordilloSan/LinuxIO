@@ -90,13 +90,18 @@ func getVersionInfo() (VersionInfo, error) {
 		CheckedAt:       time.Now().UTC().Format(time.RFC3339),
 	}
 
+	// Skip update check for development versions
+	if strings.HasPrefix(currentVersion, "dev-") || currentVersion == "untracked" {
+		return info, nil
+	}
+
 	latestVersion, err := fetchLatestVersion()
 	if err != nil {
 		logger.Debugf("[version] failed to fetch latest version: %v", err)
 		info.Error = fmt.Sprintf("could not check for updates: %v", err)
 	} else {
 		info.LatestVersion = latestVersion
-		info.UpdateAvailable = currentVersion != latestVersion && currentVersion != "unknown"
+		info.UpdateAvailable = currentVersion != "unknown" && isNewerVersion(latestVersion, currentVersion)
 	}
 	return info, nil
 }
@@ -235,12 +240,11 @@ func getInstalledVersion() string {
 	cmd := exec.Command(config.BinPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
-		logger.Debugf("failed to run linuxio --version: %v", err)
 		// Fall back to compiled-in version (useful in dev mode where binary doesn't exist)
 		if config.Version != "" && config.Version != "untracked" {
-			logger.Debugf("using compiled-in version: %s", config.Version)
 			return config.Version
 		}
+		logger.Debugf("failed to run linuxio --version: %v", err)
 		return "unknown"
 	}
 	version := parseVersionOutput(string(output))
@@ -309,4 +313,36 @@ func restartService() error {
 	}
 	logger.Infof("service restarted successfully")
 	return nil
+}
+
+// isNewerVersion returns true if latest is semantically newer than current.
+// Expects versions like "v1.2.3" or "1.2.3".
+func isNewerVersion(latest, current string) bool {
+	if latest == "" || current == "" {
+		return false
+	}
+
+	// Strip leading 'v' if present
+	latest = strings.TrimPrefix(latest, "v")
+	current = strings.TrimPrefix(current, "v")
+
+	latestParts := strings.Split(latest, ".")
+	currentParts := strings.Split(current, ".")
+
+	// Compare each numeric part
+	for i := 0; i < len(latestParts) && i < len(currentParts); i++ {
+		var latestNum, currentNum int
+		fmt.Sscanf(latestParts[i], "%d", &latestNum)
+		fmt.Sscanf(currentParts[i], "%d", &currentNum)
+
+		if latestNum > currentNum {
+			return true
+		}
+		if latestNum < currentNum {
+			return false
+		}
+	}
+
+	// If all compared parts are equal, longer version is newer (e.g., 1.2.3 > 1.2)
+	return len(latestParts) > len(currentParts)
 }
