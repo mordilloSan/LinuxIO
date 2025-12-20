@@ -9,7 +9,11 @@ import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import useStreamMux from "@/hooks/useStreamMux";
-import { Stream, encodeString, decodeString } from "@/services/StreamMultiplexer";
+import {
+  Stream,
+  encodeString,
+  decodeString,
+} from "@/services/StreamMultiplexer";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
@@ -74,7 +78,10 @@ const TerminalXTerm: React.FC = () => {
 
       // Check for existing terminal stream first
       let stream = getStream("terminal");
-      console.log("[Terminal] getStream('terminal'):", stream ? `found (id=${stream.id})` : "null");
+      console.log(
+        "[Terminal] getStream('terminal'):",
+        stream ? `found (id=${stream.id})` : "null",
+      );
 
       if (stream) {
         // Reattach to existing stream
@@ -134,13 +141,22 @@ const TerminalXTerm: React.FC = () => {
       // Don't close stream - it persists for reconnection
       // Detach handler so data gets buffered while unmounted
       if (streamRef.current) {
-        console.log(`[Terminal] Setting onData=null for stream ${streamRef.current.id}`);
+        console.log(
+          `[Terminal] Setting onData=null for stream ${streamRef.current.id}`,
+        );
         streamRef.current.onData = null;
         streamRef.current.onClose = null;
       }
       streamRef.current = null;
     };
-  }, [isOpen, openStream, getStream, theme.palette.background.default, theme.palette.text.primary, fontSize]);
+  }, [
+    isOpen,
+    openStream,
+    getStream,
+    theme.palette.background.default,
+    theme.palette.text.primary,
+    fontSize,
+  ]);
 
   // Live update theme
   useEffect(() => {

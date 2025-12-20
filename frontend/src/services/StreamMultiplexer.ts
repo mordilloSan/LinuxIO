@@ -124,19 +124,25 @@ class StreamImpl implements Stream {
 
   /** Set data handler - replays scrollback and flushes buffer when attaching */
   set onData(handler: ((data: Uint8Array) => void) | null) {
-    console.log(`[Stream ${this.id}] onData set to ${handler ? "handler" : "null"}, scrollback: ${this.scrollback.length}, buffer: ${this.buffer.length}`);
+    console.log(
+      `[Stream ${this.id}] onData set to ${handler ? "handler" : "null"}, scrollback: ${this.scrollback.length}, buffer: ${this.buffer.length}`,
+    );
     this._onData = handler;
 
     if (handler) {
       // Replay scrollback history first (shows previous output)
       if (this.scrollback.length > 0) {
-        console.log(`[Stream ${this.id}] Replaying ${this.scrollback.length} bytes of scrollback`);
+        console.log(
+          `[Stream ${this.id}] Replaying ${this.scrollback.length} bytes of scrollback`,
+        );
         handler(this.scrollback.read());
       }
 
       // Then flush any buffered data that arrived while detached
       if (this.buffer.length > 0) {
-        console.log(`[Stream ${this.id}] Flushing ${this.buffer.length} buffered items`);
+        console.log(
+          `[Stream ${this.id}] Flushing ${this.buffer.length} buffered items`,
+        );
         for (const data of this.buffer) {
           handler(data);
         }
@@ -183,7 +189,9 @@ class StreamImpl implements Stream {
       this._onData(data);
     } else {
       // Buffer data when no handler attached
-      console.log(`[Stream ${this.id}] Buffering ${data.length} bytes (no handler)`);
+      console.log(
+        `[Stream ${this.id}] Buffering ${data.length} bytes (no handler)`,
+      );
       this.buffer.push(data);
     }
   }
