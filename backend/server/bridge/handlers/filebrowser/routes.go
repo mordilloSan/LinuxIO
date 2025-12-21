@@ -13,12 +13,12 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 	r.GET("/api/resources", resourceGetHandler)       // metadata (bridge: resource_get)
 	r.GET("/api/resources/stat", resourceStatHandler) // stat/details (bridge: resource_stat)
 	r.DELETE("/api/resources", resourceDeleteHandler) // delete (bridge: resource_delete)
-	r.POST("/api/resources", resourcePostHandler)     // create/dir/upload (bridge: resource_post/file_upload_from_temp)
+	r.POST("/api/resources", resourcePostHandler)     // create dir only (bridge: resource_post) - uploads via yamux streams
 	r.PUT("/api/resources", resourcePutHandler)       // overwrite file (bridge: file_update_from_temp)
 	r.PATCH("/api/resources", resourcePatchHandler)   // move/copy/rename (bridge: resource_patch)
 
 	// Transfer/metadata helpers.
-	r.GET("/api/raw", rawHandler)                           // downloads (bridge: file_download_to_temp/archive_download_setup)
+	// NOTE: /api/raw removed - downloads now use yamux streams (fb-download, fb-archive)
 	r.GET("/api/dir-size", dirSizeHandler)                  // single dir size (bridge: dir_size)
 	r.GET("/api/subfolders", subfoldersHandler)             // batch folder sizes (bridge: subfolders)
 	r.GET("/api/search", searchHandler)                     // search files (bridge: search)

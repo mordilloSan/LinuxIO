@@ -120,15 +120,13 @@ export const useFileMutations = ({
       if (!paths.length) {
         throw new Error("No paths provided for compression");
       }
+      // Pass invalidateListing as onComplete - called when stream actually completes
       await startCompression({
         paths,
         archiveName: archiveName || "archive.zip",
         destination: destination || normalizedPath,
+        onComplete: invalidateListing,
       });
-    },
-    onSuccess: () => {
-      invalidateListing();
-      toast.success("Archive created successfully");
     },
   });
 
@@ -137,16 +135,15 @@ export const useFileMutations = ({
       if (!archivePath) {
         throw new Error("No archive selected");
       }
+      // Pass invalidateListing as onComplete - called when stream actually completes
       await startExtraction({
         archivePath,
         destination,
+        onComplete: invalidateListing,
       });
     },
-    onSuccess: () => {
-      invalidateListing();
-      toast.success("Archive extracted successfully");
-    },
     onError: (error: any) => {
+      // Note: errors are also handled by FileTransferContext
       toast.error(error.response?.data?.error || "Failed to extract archive");
     },
   });

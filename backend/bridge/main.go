@@ -778,8 +778,8 @@ func handleBinaryStream(conn net.Conn, id string) {
 		if err := terminal.HandleTerminalStream(Sess, conn, args); err != nil {
 			logger.WarnKV("terminal stream error", "stream_id", id, "error", err)
 		}
-	case ipc.StreamTypeFBDownload, ipc.StreamTypeFBUpload, ipc.StreamTypeFBArchive:
-		// Handle filebrowser stream - download, upload, archive operations
+	case ipc.StreamTypeFBDownload, ipc.StreamTypeFBUpload, ipc.StreamTypeFBArchive, ipc.StreamTypeFBCompress, ipc.StreamTypeFBExtract:
+		// Handle filebrowser stream - download, upload, archive, compress, extract operations
 		if err := filebrowser.HandleFilebrowserStream(Sess, conn, streamType, args); err != nil {
 			logger.WarnKV("filebrowser stream error", "stream_id", id, "type", streamType, "error", err)
 		}

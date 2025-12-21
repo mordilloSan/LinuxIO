@@ -32,6 +32,8 @@ const (
 	StreamTypeFBDownload = "fb-download" // Single file download
 	StreamTypeFBUpload   = "fb-upload"   // Single file upload
 	StreamTypeFBArchive  = "fb-archive"  // Multi-file archive download
+	StreamTypeFBCompress = "fb-compress" // Create archive from paths
+	StreamTypeFBExtract  = "fb-extract"  // Extract archive to destination
 )
 
 // StreamFrame represents a framed message for the relay protocol.
