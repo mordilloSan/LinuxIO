@@ -8,17 +8,11 @@
 
 5 - for service logs we could use real streaming?????
 
-6 - Notifications!!!!
+6 - Notifications!!!! See notifications.md
 
-Storage: server‑side per user
-Delivery: push (stream/websocket)
-UX: read/unread state, badges, and retention
-Severity/types: info/warn/error + source tags (docker/disk/system)
-Toast behavior: should new notifications also fire a toast, or only critical ones? defined by the user
+7 - Remove gin
 
-7- 
-
-use quantom filebrowser as our main navigator - DONE
+use quantum filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
 filebrowser header should contain sessionid - DONE
 destroy the filebrowser config file after we create the container - DONE
