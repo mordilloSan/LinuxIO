@@ -39,7 +39,7 @@ Browser                    Server                         Bridge
 ### Request/Response Streams (open → close)
 | Type | Description | Status |
 |------|-------------|--------|
-| `api` | JSON API calls | ⏳ In Progress |
+| `api` | JSON API calls (system, docker, dbus, wireguard) | 🔄 ~90% Done |
 | `fb-download` | Binary file transfer | ✅ Done |
 | `fb-upload` | Binary file upload | ✅ Done |
 | `fb-archive` | Multi-file archive download | ✅ Done |
@@ -129,7 +129,7 @@ Browser                          Server                      Bridge
 | Phase 4 | Terminal direct streaming | ✅ Done |
 | Phase 5 | Persistent streams (singleton mux) | ✅ Done |
 | Phase 6 | Bridge-initiated push | ⏳ Planned |
-| Phase 7 | Migrate API calls to streams | ⏳ In Progress |
+| Phase 7 | Migrate API calls to streams | 🔄 ~90% Complete |
 | Phase 8 | File transfer streams | ✅ Done |
 | Phase 9 | Remove legacy `/ws` system | ⏳ Planned |
 
@@ -185,21 +185,51 @@ ipc.WriteRelayFrame(stream, &StreamFrame{
 })
 ```
 
-### Phase 7: API Migration (In Progress)
+### Phase 7: API Migration (Nearly Complete)
 Replace HTTP handlers with stream handlers:
 ```go
 // Instead of: router.GET("/api/system/cpu", handleCPU)
 // Bridge handles: stream type "api" with method "get_cpu"
 ```
 
-**Done:**
+**Infrastructure Done:**
 - `backend/bridge/handlers/api/stream.go` - API stream handler
-- `frontend/src/utils/streamApi.ts` - Stream API client
-- `frontend/src/hooks/useStreamApi.ts` - React Query hooks
-- CPU info endpoint migrated as proof of concept
+- `frontend/src/utils/streamApi.ts` - Stream API client (`streamApi.get()`)
+- `frontend/src/hooks/useStreamApi.ts` - React Query hooks (`useStreamQuery`)
+
+**Frontend Migrations Completed:**
+
+| Page/Component | Handler Type | Commands |
+|----------------|--------------|----------|
+| Dashboard/Processor | system | get_cpu_info |
+| Dashboard/Memory | system | get_memory_info |
+| Dashboard/Network | system | get_network_info |
+| Dashboard/Drive | system | get_disks_info |
+| Dashboard/FileSystem | system | get_filesystems_info |
+| Dashboard/Gpu | system | get_gpu_info |
+| Dashboard/MotherBoard | system | get_motherboard_info |
+| Dashboard/System | system | get_host_info |
+| Docker/ContainerList | docker | list_containers |
+| Docker/ImageList | docker | list_images |
+| Docker/NetworkList | docker | list_networks |
+| ContainerCard | docker | start/stop/restart/remove_container, get_container_logs |
+| Services/ServicesPage | dbus | ListServices, Start/Stop/Restart/Reload/Enable/Disable/Mask/UnmaskService |
+| Services/ServiceLogsDrawer | dbus | GetServiceLogs |
+| Updates/index | dbus | GetUpdates |
+| Updates/UpdateSettings | dbus | GetAutoUpdates, SetAutoUpdates, ApplyOfflineUpdates |
+| Network/NetworkInterfaceList | dbus | GetNetworkInfo |
+| Network/NetworkInterfaceEditor | dbus | SetIPv4, SetIPv4Manual |
+| WireGuard/InterfaceClients | wireguard | list_peers, remove_peer, peer_config_download, peer_qrcode |
+
+**Still Using HTTP (axios):**
+- `WireguardDashboard.tsx` - list_interfaces query, delete/add_peer/toggle actions
+- `CreateInterfaceButton.tsx` - network query, create interface action
+- Filebrowser hooks - complex file operations (may stay HTTP for non-transfer operations)
+- Auth/Config contexts - session management
 
 **Remaining:**
-- Migrate all HTTP endpoints to use stream API
+- Migrate remaining WireGuard pages to stream API
+- Evaluate filebrowser migration
 - Remove HTTP handlers once migration complete
 
 ### Phase 9: Legacy `/ws` Cleanup
