@@ -9,9 +9,8 @@ import (
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
-	"github.com/shirou/gopsutil/v4/net"
-
 	"github.com/mordilloSan/go_logger/logger"
+	"github.com/shirou/gopsutil/v4/net"
 )
 
 // NMInterfaceInfo contains comprehensive network interface information
@@ -207,6 +206,10 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 		snapshotMap[s.Name] = s
 	}
 
+	// Calculate interval once for all interfaces
+	now := time.Now().Unix()
+	interval := max(now-lastTimestamp, 1)
+
 	var opErr error
 	err := RetryOnceIfClosed(nil, func() error {
 		conn, err := godbus.SystemBus()
@@ -335,17 +338,11 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 			rxSpeed := 0.0
 			txSpeed := 0.0
 			if snapshot, ok := snapshotMap[name]; ok {
-				now := time.Now().Unix()
-				interval := now - lastTimestamp
-				if interval < 1 {
-					interval = 1
-				}
 				if prev, ok := lastNetStats[name]; ok {
 					rxSpeed = float64(snapshot.BytesRecv-prev.BytesRecv) / float64(interval)
 					txSpeed = float64(snapshot.BytesSent-prev.BytesSent) / float64(interval)
 				}
 				lastNetStats[name] = snapshot
-				lastTimestamp = now
 			}
 
 			ipv4Method := getIPv4Method(conn, name)
@@ -369,6 +366,9 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 		}
 		return nil
 	})
+
+	// Update timestamp after processing all interfaces
+	lastTimestamp = now
 
 	return results, err
 }
