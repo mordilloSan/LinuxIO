@@ -385,7 +385,7 @@ func dialBridgeRaw(socketPath string) (net.Conn, error) {
 	}
 }
 
-// callWithSessionYamux uses yamux multiplexing for the bridge call
+// CallTypedWithSession makes a bridge call and returns raw bytes
 func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
 	logger.DebugKV("bridge call initiated (yamux)",
 		"user", sess.User.Username,
