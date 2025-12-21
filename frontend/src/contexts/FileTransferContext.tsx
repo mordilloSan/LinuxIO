@@ -272,8 +272,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error("Stream connection not ready");
       }
 
-      // Determine stream type based on number of paths
-      const isSingleFile = paths.length === 1;
+      // Determine stream type: use fb-download only for single files (not directories)
+      // Directories end with '/' and need fb-archive to create a zip
+      const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
       const streamType = isSingleFile ? STREAM_TYPE_FB_DOWNLOAD : "fb-archive";
 
       // Build payload
@@ -310,12 +311,24 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             lastTime = now;
           }
 
+          // Map backend phases to user-friendly labels
+          let phaseLabel: string;
+          switch (progress.phase) {
+            case "preparing":
+              phaseLabel = "Preparing";
+              break;
+            case "compressing":
+              phaseLabel = "Compressing";
+              break;
+            case "streaming":
+            default:
+              phaseLabel = "Downloading";
+              break;
+          }
+
           updateDownload(reqId, {
             progress: progress.pct,
-            label: formatDownloadLabel(
-              progress.phase === "preparing" ? "Preparing" : "Downloading",
-              { percent: progress.pct },
-            ),
+            label: formatDownloadLabel(phaseLabel, { percent: progress.pct }),
             ...(speed !== undefined && { speed }),
           });
         };
@@ -590,19 +603,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         );
 
         if (result.status === "ok") {
-          updateCompression(id, {
-            progress: 100,
-            label: `Created ${labelBase}`,
-          });
           toast.success(`Created ${labelBase}`);
           onComplete?.();
-          setTimeout(() => removeCompression(id), 800);
         } else {
-          const message = result.error || "Compression failed";
-          updateCompression(id, { label: message });
-          toast.error(message);
-          setTimeout(() => removeCompression(id), 800);
+          toast.error(result.error || "Compression failed");
         }
+        removeCompression(id);
       };
 
       stream.onClose = () => {
@@ -763,19 +769,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         );
 
         if (result.status === "ok") {
-          updateExtraction(id, {
-            progress: 100,
-            label: `Extracted ${labelBase}`,
-          });
           toast.success(`Extracted ${labelBase}`);
           onComplete?.();
-          setTimeout(() => removeExtraction(id), 800);
         } else {
-          const message = result.error || "Extraction failed";
-          updateExtraction(id, { label: message });
-          toast.error(message);
-          setTimeout(() => removeExtraction(id), 800);
+          toast.error(result.error || "Extraction failed");
         }
+        removeExtraction(id);
       };
 
       stream.onClose = () => {
