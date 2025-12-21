@@ -19,9 +19,13 @@ const STORAGE_KEY = "linuxio.toastHistory";
 const MAX_STORED_TOASTS = 50;
 
 const isBrowser = typeof window !== "undefined";
-const sessionId = `${Date.now().toString(36)}-${Math.random()
-  .toString(36)
-  .slice(2, 8)}`;
+const sessionId = `${Date.now().toString(36)}-${
+  isBrowser
+    ? Array.from(crypto.getRandomValues(new Uint8Array(4)))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
+    : Math.random().toString(36).slice(2, 8)
+}`;
 const ignoredToastIds = new Set<string>();
 
 const parseStoredHistory = (): ToastHistoryItem[] => {
