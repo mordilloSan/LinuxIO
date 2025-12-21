@@ -32,7 +32,8 @@ Browser                    Server                         Bridge
 ### Persistent Streams (stay open)
 | Type | Description | Status |
 |------|-------------|--------|
-| `terminal` | PTY session | ✅ Done |
+| `terminal` | PTY session (host) | ✅ Done |
+| `container` | Container terminal (docker exec) | ✅ Done |
 | `container-logs` | Docker log tailing | Planned |
 | `file-watch` | File system events | Planned |
 
@@ -131,7 +132,7 @@ Browser                          Server                      Bridge
 | Phase 6 | Bridge-initiated push | ⏳ Planned |
 | Phase 7 | Migrate API calls to streams | 🔄 ~95% Complete |
 | Phase 8 | File transfer streams | ✅ Done |
-| Phase 9 | Remove legacy `/ws` system | ⏳ Planned |
+| Phase 9 | Remove legacy `/ws` system | 🔄 ~80% Complete |
 
 ## What's Done (Phases 1-5, 8)
 
@@ -262,19 +263,22 @@ All filebrowser operations now use streaming:
 - Migrate theme endpoints to stream API (currently loads before WebSocket ready)
 
 ### Phase 9: Legacy `/ws` Cleanup
-The old `/ws` WebSocket system needs to be removed after Phase 7:
+The old `/ws` WebSocket system has been largely cleaned up:
 
-**Legacy code to remove:**
+**Completed:**
+- ✅ Container terminal migrated to yamux streams (`container` stream type)
+- ✅ `channels.go` removed (was only for terminal route context)
+- ✅ `websocket.go` simplified (terminal handling removed)
+
+**Legacy code still in use:**
 | File | Reason |
 |------|--------|
-| `backend/server/web/websocket.go` | Old JSON WebSocket handler |
-| `backend/server/web/channels.go` | Route subscription (unused) |
-| `backend/server/web/progress.go` | Legacy progress broadcaster |
-| `frontend/src/contexts/WebSocketContext.tsx` | Old WS context |
+| `backend/server/web/websocket.go` | Progress subscriptions for folder uploads |
+| `backend/server/web/progress.go` | Progress broadcaster |
+| `frontend/src/contexts/WebSocketContext.tsx` | WS context for progress subscriptions |
 
 **Still using legacy `/ws`:**
-- Folder uploads (HTTP + `/ws` progress) - needs migration to streams
-- Container terminal - needs migration to yamux streams
+- Folder uploads progress (HTTP + `/ws` progress) - could be migrated to streams
 
 ## File Locations
 

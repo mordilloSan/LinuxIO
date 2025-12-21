@@ -18,13 +18,25 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import useWebSocket from "@/hooks/useWebSocket";
+import useStreamMux from "@/hooks/useStreamMux";
+import { Stream, encodeString, decodeString } from "@/utils/StreamMultiplexer";
+import { streamApi } from "@/utils/streamApi";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   containerId: string;
   containerName?: string;
+}
+
+// Build container terminal payload: "container\0containerID\0shell\0cols\0rows"
+function buildContainerPayload(
+  containerId: string,
+  shell: string,
+  cols: number,
+  rows: number,
+): Uint8Array {
+  return encodeString(`container\0${containerId}\0${shell}\0${cols}\0${rows}`);
 }
 
 const TerminalDialog: React.FC<Props> = ({
@@ -36,6 +48,7 @@ const TerminalDialog: React.FC<Props> = ({
   const termRef = useRef<HTMLDivElement>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
+  const streamRef = useRef<Stream | null>(null);
 
   const [terminalKey, setTerminalKey] = useState(0);
   const [shell, setShell] = useState("");
@@ -43,27 +56,48 @@ const TerminalDialog: React.FC<Props> = ({
   const [loadingShells, setLoadingShells] = useState(false);
   const [hasLoadedShells, setHasLoadedShells] = useState(false);
 
-  // CHANGED: ready -> status
-  const { send, subscribe, status } = useWebSocket();
-  const isOpen = status === "open";
-
+  const { isOpen, openStream } = useStreamMux();
   const theme = useTheme();
+
+  // Fetch available shells when dialog opens
+  const fetchShells = useCallback(async () => {
+    if (!containerId) return;
+
+    setLoadingShells(true);
+    try {
+      const shells = await streamApi.get<string[]>(
+        "terminal",
+        "list_shells",
+        [containerId],
+      );
+      const validShells = shells.filter(
+        (s: string) => s && typeof s === "string" && s.trim() !== "",
+      );
+      setAvailableShells(validShells);
+      setShell(validShells.length > 0 ? validShells[0] : "");
+      setHasLoadedShells(true);
+    } catch (error) {
+      console.error("Failed to fetch container shells:", error);
+      setAvailableShells([]);
+      setHasLoadedShells(true);
+    } finally {
+      setLoadingShells(false);
+    }
+  }, [containerId]);
 
   const handleDialogEntered = useCallback(() => {
     setShell("");
     setAvailableShells([]);
     setHasLoadedShells(false);
-    setLoadingShells(true);
-    if (containerId) {
-      send({
-        type: "list_shells",
-        target: "container",
-        containerId,
-      });
-    }
-  }, [containerId, send]);
+    fetchShells();
+  }, [fetchShells]);
 
   const handleDialogExited = useCallback(() => {
+    // Close stream on dialog exit
+    if (streamRef.current) {
+      streamRef.current.close();
+      streamRef.current = null;
+    }
     setShell("");
     setAvailableShells([]);
     setHasLoadedShells(false);
@@ -73,46 +107,17 @@ const TerminalDialog: React.FC<Props> = ({
     fitAddon.current = null;
   }, []);
 
+  // Setup xterm and stream when shell is selected
   useEffect(() => {
-    if (!open || !isOpen || !containerId || hasLoadedShells) {
-      return;
-    }
-    send({
-      type: "list_shells",
-      target: "container",
-      containerId,
-    });
-  }, [open, isOpen, containerId, send, hasLoadedShells]);
-
-  // --- 2. Listen for shell_list and set availableShells and initial shell ---
-  useEffect(() => {
-    const unsub = subscribe((msg) => {
-      if (
-        msg.type === "shell_list" &&
-        msg.containerId === containerId &&
-        Array.isArray(msg.data) &&
-        open
-      ) {
-        // Clean out empty/falsy entries!
-        const validShells = msg.data.filter(
-          (s: string) => s && typeof s === "string" && s.trim() !== "",
-        );
-        setAvailableShells(validShells);
-        setShell(validShells.length > 0 ? validShells[0] : "");
-        setLoadingShells(false);
-        setHasLoadedShells(true);
-      }
-    });
-    return unsub;
-  }, [containerId, subscribe, open]);
-
-  // --- 3. Setup xterm and terminal session whenever open, shell, etc. changes ---
-  useEffect(() => {
-    if (!open || !termRef.current || availableShells.length === 0 || !shell)
+    if (!open || !termRef.current || availableShells.length === 0 || !shell || !isOpen)
       return;
 
     // Dispose previous instance
     xterm.current?.dispose();
+    if (streamRef.current) {
+      streamRef.current.close();
+      streamRef.current = null;
+    }
 
     xterm.current = new Terminal({
       fontFamily: "monospace",
@@ -136,38 +141,36 @@ const TerminalDialog: React.FC<Props> = ({
       if (viewport) viewport.classList.add("custom-scrollbar");
     }, 0);
 
-    // Subscribe to terminal output for this container
-    const unsub = subscribe((msg) => {
-      if (
-        msg.type === "terminal_output" &&
-        msg.containerId === containerId &&
-        xterm.current
-      ) {
-        xterm.current.write(msg.data);
-      }
-    });
+    // Open container terminal stream
+    const cols = xterm.current.cols;
+    const rows = xterm.current.rows;
+    const payload = buildContainerPayload(containerId, shell, cols, rows);
+    const stream = openStream("container", payload);
 
-    // Terminal input handler
-    xterm.current.onData((data) => {
-      if (isOpen) {
-        send({
-          type: "terminal_input",
-          target: "container",
-          containerId,
-          data,
-        });
-      }
-    });
+    if (stream) {
+      streamRef.current = stream;
 
-    // Send terminal_start when terminal is ready
-    if (isOpen && shell) {
-      send({
-        type: "terminal_start",
-        target: "container",
-        containerId,
-        data: shell,
-      });
+      // Wire up data handler
+      stream.onData = (data: Uint8Array) => {
+        if (xterm.current) {
+          const text = decodeString(data);
+          xterm.current.write(text, () => {
+            xterm.current?.scrollToBottom();
+          });
+        }
+      };
+
+      stream.onClose = () => {
+        streamRef.current = null;
+      };
     }
+
+    // Terminal input -> send to stream
+    const onDataDispose = xterm.current.onData((data) => {
+      if (streamRef.current) {
+        streamRef.current.write(encodeString(data));
+      }
+    });
 
     // Fit on window resize
     const handleResize = () => fitAddon.current?.fit();
@@ -175,49 +178,48 @@ const TerminalDialog: React.FC<Props> = ({
 
     // Focus on open
     setTimeout(() => {
-      termRef.current?.focus();
+      xterm.current?.focus();
     }, 200);
 
     return () => {
-      unsub();
+      onDataDispose.dispose();
       xterm.current?.dispose();
       window.removeEventListener("resize", handleResize);
+      // Close stream when effect cleans up
+      if (streamRef.current) {
+        streamRef.current.close();
+        streamRef.current = null;
+      }
     };
   }, [
     open,
     shell,
     containerId,
     isOpen,
-    send,
-    subscribe,
+    openStream,
     availableShells.length,
     theme.palette.background.default,
     theme.palette.text.primary,
     terminalKey,
   ]);
 
-  // --- Shell picker handler ---
+  // Shell picker handler
   const handleShellChange = (e: SelectChangeEvent<string>) => {
     const newShell = e.target.value as string;
-    if (isOpen && containerId && shell) {
-      send({
-        type: "terminal_close",
-        target: "container",
-        containerId,
-      });
+    // Close existing stream
+    if (streamRef.current) {
+      streamRef.current.close();
+      streamRef.current = null;
     }
     setShell(newShell);
     setTerminalKey((k) => k + 1); // Force remount of xterm
   };
 
-  // --- Dialog close handler ---
+  // Dialog close handler
   const handleDialogClose = () => {
-    if (isOpen && containerId) {
-      send({
-        type: "terminal_close",
-        target: "container",
-        containerId,
-      });
+    if (streamRef.current) {
+      streamRef.current.close();
+      streamRef.current = null;
     }
     onClose();
   };
