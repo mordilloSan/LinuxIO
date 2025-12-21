@@ -4,10 +4,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterRoutes wires the Filebrowser HTTP handlers into the provided router group.
+// RegisterFilebrowserRoutes wires the Filebrowser HTTP handlers into the provided router group.
 // The caller should wrap the group with session middleware before invoking this.
 // All handlers are thin HTTP→IPC translators that call bridge handlers.
-func RegisterRoutes(r *gin.RouterGroup) error {
+func RegisterFilebrowserRoutes(r *gin.RouterGroup) {
 	// Resource CRUD → bridge commands: resource_get, resource_stat, resource_delete,
 	// resource_post (dirs/uploads), file_update_from_temp, resource_patch.
 	r.GET("/api/resources", resourceGetHandler)       // metadata (bridge: resource_get)
@@ -18,14 +18,9 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 	r.PATCH("/api/resources", resourcePatchHandler)   // move/copy/rename (bridge: resource_patch)
 
 	// Transfer/metadata helpers.
-	// NOTE: /api/raw removed - downloads now use yamux streams (fb-download, fb-archive)
-	// NOTE: /api/archive/compress removed - compression now uses yamux streams (fb-compress)
-	// NOTE: /api/archive/extract removed - extraction now uses yamux streams (fb-extract)
 	r.GET("/api/dir-size", dirSizeHandler)         // single dir size (bridge: dir_size)
 	r.GET("/api/subfolders", subfoldersHandler)    // batch folder sizes (bridge: subfolders)
 	r.GET("/api/search", searchHandler)            // search files (bridge: search)
 	r.POST("/api/chmod", chmodHandler)             // perms/ownership (bridge: chmod)
 	r.GET("/api/users-groups", usersGroupsHandler) // system users/groups (bridge: users_groups)
-
-	return nil
 }
