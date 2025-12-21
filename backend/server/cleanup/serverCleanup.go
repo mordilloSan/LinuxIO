@@ -1,6 +1,8 @@
 package cleanup
 
 import (
+	"io"
+	"strings"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -27,15 +29,18 @@ func ShutdownAllBridges(sm *session.Manager, reason string) {
 
 		select {
 		case e := <-done:
-			if e != nil {
+			if e == nil {
+				logger.Debugf("Bridge shutdown confirmed")
+			} else if e == io.EOF ||
+				strings.Contains(e.Error(), "EOF") ||
+				strings.Contains(e.Error(), "shutting down") {
+				// Expected during graceful shutdown
+				logger.Debugf("Bridge shutdown (expected): %v", e)
+			} else {
 				logger.Warnf("Bridge shutdown failed: %v", e)
-				// Best effort socket cleanup is typically handled by the bridge.
-				// If you still want to remove the socket path here, add a helper in bridge:
-				// _ = os.Remove(bridge.SocketPathForSession(s))
 			}
 		case <-time.After(2 * time.Second):
 			logger.Warnf("Bridge shutdown timed out")
-			// _ = os.Remove(bridge.SocketPathForSession(s)) // optional if you add that helper
 		}
 	}
 }
