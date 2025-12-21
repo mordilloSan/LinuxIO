@@ -46,7 +46,6 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	config.RegisterThemeRoutes(r.Group("/theme", sm.RequireSession()))
 
 	// --- WebSocket ---
-	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
 	r.GET("/ws/relay", sm.RequireSession(), web.WebSocketRelayHandler)
 
 	// --- Benchmark in dev mode ---

@@ -1,13 +1,6 @@
-import React, {
-  createContext,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-} from "react";
+import React, { createContext, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
-import useWebSocket from "@/hooks/useWebSocket";
 import { streamApi } from "@/utils/streamApi";
 import {
   getStreamMux,
@@ -122,8 +115,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [compressions, setCompressions] = useState<Compression[]>([]);
   const [extractions, setExtractions] = useState<Extraction[]>([]);
-  const ws = useWebSocket();
-  const cleanupTimersRef = useRef<Map<string, any>>(new Map());
   const activeCompressionIdsRef = useRef<Set<string>>(new Set());
   const activeExtractionIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
@@ -238,17 +229,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const removeDownload = useCallback(
     (id: string) => {
       setDownloads((prev) => prev.filter((d) => d.id !== id));
-      const timers = cleanupTimersRef.current.get(id);
-      if (timers) {
-        if (timers.fallback) clearTimeout(timers.fallback);
-        if (timers.unsubscribe) timers.unsubscribe();
-        cleanupTimersRef.current.delete(id);
-      }
       releaseDownloadLabelBase(id);
       transferRatesRef.current.delete(id);
       streamRefsRef.current.delete(id);
-      // Note: No need to sendProgressUnsubscribe for stream-based downloads
-      // Progress comes through stream.onProgress, not WebSocket subscription
     },
     [releaseDownloadLabelBase],
   );
@@ -493,11 +476,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       activeCompressionIdsRef.current.delete(id);
 
       setCompressions((prev) => prev.filter((c) => c.id !== id));
-      cleanupTimersRef.current.delete(id);
       releaseDownloadLabelBase(id);
       streamRefsRef.current.delete(id);
-      // Note: No need to sendProgressUnsubscribe for stream-based compression
-      // Progress comes through stream.onProgress, not WebSocket subscription
     },
     [releaseDownloadLabelBase],
   );
@@ -637,11 +617,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setExtractions((prev) =>
         prev.filter((extraction) => extraction.id !== id),
       );
-      cleanupTimersRef.current.delete(id);
       releaseDownloadLabelBase(id);
       streamRefsRef.current.delete(id);
-      // Note: No need to sendProgressUnsubscribe for stream-based extraction
-      // Progress comes through stream.onProgress, not WebSocket subscription
     },
     [releaseDownloadLabelBase],
   );
@@ -790,18 +767,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const removeUpload = useCallback((id: string) => {
     setUploads((prev) => prev.filter((u) => u.id !== id));
-
-    const timers = cleanupTimersRef.current.get(id);
-    if (timers) {
-      if (timers.fallback) clearTimeout(timers.fallback);
-      if (timers.unsubscribe) timers.unsubscribe();
-      cleanupTimersRef.current.delete(id);
-    }
-
     transferRatesRef.current.delete(id);
     streamRefsRef.current.delete(id);
-    // Note: No need to sendProgressUnsubscribe for stream-based uploads
-    // Progress comes through stream.onProgress, not WebSocket subscription
   }, []);
 
   /**
@@ -972,7 +939,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       const uploadId = crypto.randomUUID();
-      const requestId = uploadId;
       const abortController = new AbortController();
       const directories = entries
         .filter((item) => item.isDirectory)
@@ -1032,55 +998,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         const normalized = base.endsWith("/") ? base : `${base}/`;
         return `${normalized}${relative}`;
       };
-
-      // WS-based upload progress (bridge-side)
-      const applyReportedProgress = (rawPercent: number) => {
-        const percent = Math.min(99, Math.round(rawPercent));
-        setUploads((prev) =>
-          prev.map((u) => {
-            if (u.id !== uploadId) return u;
-            const label = u.displayName
-              ? `Uploading ${u.displayName} (${percent}%)`
-              : `Uploading ${u.completedFiles}/${u.totalFiles} files (${percent}%)`;
-            const updated: Upload = {
-              ...u,
-              progress: percent,
-              label,
-            };
-            return updated;
-          }),
-        );
-      };
-
-      const unsubscribe = ws.subscribe((msg: any) => {
-        if (msg.requestId !== requestId) return;
-
-        if (msg.type === "upload_progress" && msg.data) {
-          applyReportedProgress(msg.data.percent);
-        }
-        // Optional: handle "upload_complete" if the backend emits it
-        if (msg.type === "upload_complete") {
-          setUploads((prev) =>
-            prev.map((u) =>
-              u.id === uploadId
-                ? {
-                    ...u,
-                    progress: 100,
-                    label: u.displayName
-                      ? `Uploaded ${u.displayName}`
-                      : `Uploaded ${u.totalFiles}/${u.totalFiles} files`,
-                  }
-                : u,
-            ),
-          );
-        }
-      });
-
-      ws.send({ type: "subscribe_operation_progress", data: requestId });
-
-      cleanupTimersRef.current.set(uploadId, {
-        unsubscribe,
-      });
 
       try {
         // Create directories first
@@ -1269,7 +1186,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [
       updateUpload,
       removeUpload,
-      ws,
       recordTransferRate,
       primeTransferRate,
       uploadFileViaStream,
@@ -1294,17 +1210,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     [uploads, removeUpload],
   );
-
-  // Cleanup on unmount
-  useEffect(() => {
-    const timersMap = cleanupTimersRef.current;
-    return () => {
-      timersMap.forEach((timers) => {
-        if (timers.fallback) clearTimeout(timers.fallback);
-        if (timers.unsubscribe) timers.unsubscribe();
-      });
-    };
-  }, []);
 
   return (
     <FileTransferContext.Provider
