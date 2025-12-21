@@ -18,7 +18,7 @@ import CheckCircle from "lucide-react/dist/esm/icons/check-circle";
 import Info from "lucide-react/dist/esm/icons/info";
 import Loader2 from "lucide-react/dist/esm/icons/loader-2";
 import XCircle from "lucide-react/dist/esm/icons/x-circle";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -88,17 +88,32 @@ function NavbarNotificationsDropdown() {
   const theme = useTheme();
   const ref = useRef<HTMLButtonElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
+  const [now, setNow] = useState(0);
   const isOpen = Boolean(anchorEl);
   const recentToasts = useToastHistory(MAX_RECENT_TOASTS);
 
-  const handleOpen = () => setAnchorEl(ref.current);
+  const handleOpen = () => {
+    setNow(Date.now());
+    setAnchorEl(ref.current);
+  };
   const handleClose = () => setAnchorEl(null);
 
   const recentToastCount = recentToasts.length;
   const iconSize = 18;
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 60_000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isOpen]);
+
   const formatTimeAgo = (timestamp: number) => {
-    const diff = Date.now() - timestamp;
+    if (!now) return "";
+    const diff = Math.max(0, now - timestamp);
     if (diff < 60_000) return "just now";
     const minutes = Math.floor(diff / 60_000);
     if (minutes < 60) return `${minutes}m ago`;

@@ -1,6 +1,7 @@
 // src/hooks/usePackageUpdater.ts
-import axios from "@/utils/axios";
 import { useState } from "react";
+
+import { streamApi } from "@/utils/streamApi";
 
 export const usePackageUpdater = (onComplete: () => void | Promise<any>) => {
   const [updatingPackage, setUpdatingPackage] = useState<string | null>(null);
@@ -12,11 +13,10 @@ export const usePackageUpdater = (onComplete: () => void | Promise<any>) => {
     setError(null);
 
     try {
-      await axios.post("/updates/update", { package: pkg });
+      await streamApi.post("dbus", "InstallPackage", null, [pkg]);
       await onComplete(); // refresh updates
     } catch (err: any) {
-      const errorMsg =
-        err.response?.data?.error || err.message || "Update failed";
+      const errorMsg = err.message || "Update failed";
       setError(`Failed to update ${pkg}: ${errorMsg}`);
       console.error(`Failed to update ${pkg}`, err);
       throw err; // Re-throw so UI can handle it
@@ -44,8 +44,8 @@ export const usePackageUpdater = (onComplete: () => void | Promise<any>) => {
       setUpdatingPackage(pkg);
 
       try {
-        // Use the correct endpoint
-        await axios.post("/updates/update", { package: pkg });
+        // Use stream API
+        await streamApi.post("dbus", "InstallPackage", null, [pkg]);
         updated.add(pkg);
 
         // Update progress
@@ -55,8 +55,8 @@ export const usePackageUpdater = (onComplete: () => void | Promise<any>) => {
         setProgress((totalProcessed / totalPackages) * 100);
 
         // Refresh and update the remaining list
-        const res = await axios.get("/updates/packages");
-        const fresh = res.data?.updates || []; // Fix: access .updates
+        const freshUpdates = await streamApi.get<any[]>("dbus", "GetUpdates");
+        const fresh = freshUpdates || [];
 
         // Fix: use package_id instead of name
         remaining = fresh
@@ -72,8 +72,7 @@ export const usePackageUpdater = (onComplete: () => void | Promise<any>) => {
         remaining = remaining.filter((p) => p !== pkg);
 
         // Continue with next package instead of breaking
-        const errorMsg =
-          err.response?.data?.error || err.message || "Unknown error";
+        const errorMsg = err.message || "Unknown error";
         console.warn(`Skipping ${pkg}: ${errorMsg}`);
       }
     }

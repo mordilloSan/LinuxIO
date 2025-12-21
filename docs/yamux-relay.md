@@ -220,13 +220,17 @@ Replace HTTP handlers with stream handlers:
 | Network/NetworkInterfaceList | dbus | GetNetworkInfo |
 | Network/NetworkInterfaceEditor | dbus | SetIPv4, SetIPv4Manual |
 | WireGuard/InterfaceClients | wireguard | list_peers, remove_peer, peer_config_download, peer_qrcode |
+| NavbarUserDropdown | dbus | Reboot, PowerOff |
+| usePackageUpdater | dbus | InstallPackage, GetUpdates |
+| UpdateBanner | control | update |
 
 **Still Using HTTP (axios):**
 
-#### Config (stays HTTP - loads before WebSocket ready)
+#### On-mount queries (stays HTTP - loads before WebSocket ready)
 | File | Endpoint | Description |
 |------|----------|-------------|
 | `ConfigContext.tsx` | `/theme/get`, `/theme/set` | Theme config |
+| `Footer.tsx` | `GET /control/version` | Version info |
 
 #### WireGuard
 | File | Endpoint | Description |
@@ -252,19 +256,10 @@ Replace HTTP handlers with stream handlers:
 | `filebrowser/index.tsx` | `PUT /navigator/api/resources` | Save file content |
 | `FileTransferContext.tsx:1115` | `POST /navigator/api/resources` | Folder creation |
 
-#### Updates
+#### Updates (server-side only - no bridge handler)
 | File | Endpoint | Description |
 |------|----------|-------------|
-| `usePackageUpdater.ts` | `POST /updates/update` | Update package |
-| `usePackageUpdater.ts:58` | `GET /updates/packages` | List packages |
-| `UpdateHistoryCard.tsx:36` | `GET /updates/update-history` | Update history |
-| `UpdateBanner.tsx:44` | `POST /control/update` | Apply update |
-
-#### System Control
-| File | Endpoint | Description |
-|------|----------|-------------|
-| `Footer.tsx:22` | `GET /control/version` | Version info |
-| `NavbarUserDropdown.tsx:57-59` | `POST /power/reboot`, `/power/shutdown` | Power control |
+| `UpdateHistoryCard.tsx:36` | `GET /updates/update-history` | Update history (reads log files on server) |
 
 #### Auth (stays HTTP - session management)
 | File | Endpoint | Description |
@@ -273,8 +268,6 @@ Replace HTTP handlers with stream handlers:
 
 **Remaining Tasks:**
 - Migrate WireGuard endpoints to stream API
-- Migrate Updates endpoints to stream API
-- Migrate System Control endpoints to stream API
 - Evaluate filebrowser migration (many endpoints, transfers already use streams)
 - Remove HTTP handlers once migration complete
 
