@@ -223,6 +223,7 @@ Replace HTTP handlers with stream handlers:
 | NavbarUserDropdown | dbus | Reboot, PowerOff |
 | usePackageUpdater | dbus | InstallPackage, GetUpdates |
 | UpdateBanner | control | update |
+| UpdateHistoryCard | dbus | GetUpdateHistory |
 
 **Still Using HTTP (axios):**
 
@@ -256,11 +257,6 @@ Replace HTTP handlers with stream handlers:
 | `filebrowser/index.tsx` | `PUT /navigator/api/resources` | Save file content |
 | `FileTransferContext.tsx:1115` | `POST /navigator/api/resources` | Folder creation |
 
-#### Updates (server-side only - no bridge handler)
-| File | Endpoint | Description |
-|------|----------|-------------|
-| `UpdateHistoryCard.tsx:36` | `GET /updates/update-history` | Update history (reads log files on server) |
-
 #### Auth (stays HTTP - session management)
 | File | Endpoint | Description |
 |------|----------|-------------|
@@ -268,7 +264,7 @@ Replace HTTP handlers with stream handlers:
 
 **Completed Migrations (HTTP handlers removed):**
 - Power handlers (`power/`) - Now uses dbus Reboot/PowerOff
-- Updates handlers (`updates/updates.go`, `updates_auto.go`) - Now uses dbus GetUpdates/InstallPackage
+- Updates handlers (`updates/`) - Now uses dbus GetUpdates/InstallPackage/GetUpdateHistory
 - Control update handler (`control/routes.go:TriggerUpdate`) - Now uses stream API
 - System handlers (`system/`) - All 15 endpoints now use stream API
 - Docker handlers (`docker/`) - Now uses stream API
