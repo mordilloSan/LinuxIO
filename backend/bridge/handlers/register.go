@@ -17,13 +17,13 @@ import (
 // Map of type -> (command -> handler)
 var HandlersByType = map[string]map[string]ipc.HandlerFunc{}
 
-func RegisterAllHandlers(shutdownChan chan string) {
+func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	HandlersByType["dbus"] = dbus.DbusHandlers()
 	HandlersByType["drives"] = drive.DriveHandlers()
 	HandlersByType["docker"] = docker.DockerHandlers()
 	HandlersByType["control"] = control.ControlHandlers(shutdownChan)
 	HandlersByType["wireguard"] = wireguard.WireguardHandlers()
-	HandlersByType["config"] = config.ThemeHandlers()
+	HandlersByType["config"] = config.ThemeHandlers(sess)
 	HandlersByType["system"] = system.SystemHandlers()
 	HandlersByType["filebrowser"] = filebrowser.FilebrowserHandlers()
 }
