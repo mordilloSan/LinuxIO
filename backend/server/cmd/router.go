@@ -18,7 +18,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/filebrowser"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/network"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
@@ -57,7 +56,6 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	})
 
 	// Protected endpoints:
-	network.RegisterNetworkRoutes(r.Group("/network", sm.RequireSession()))
 	wireguard.RegisterWireguardRoutes(r.Group("/wireguard", sm.RequireSession()))
 	config.RegisterThemeRoutes(r.Group("/theme", sm.RequireSession()))
 	control.RegisterControlRoutes(r.Group("/control", sm.RequireSession()))

@@ -1,11 +1,12 @@
 import { Button } from "@mui/material";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
+import { streamApi } from "@/utils/streamApi";
 
 const wireguardToastMeta = {
   meta: { href: "/wireguard", label: "Open WireGuard" },
@@ -33,32 +34,25 @@ const CreateInterfaceButton = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [dns, setDns] = useState("");
 
-  // Fetch network info
+  // Fetch network info via stream API
   const {
     data: networkData,
-    isLoading: networkLoading,
+    isPending: networkLoading,
     error: networkError,
-  } = useQuery({
-    queryKey: ["networkInfo"],
-    queryFn: async () => {
-      const res = await axios.get("/network/info");
-      return res.data;
-    },
+  } = useStreamQuery<NetworkInterface[]>({
+    handlerType: "dbus",
+    command: "GetNetworkInfo",
   });
 
-  // Fetch existing WireGuard interfaces
-  const { data: wgInterfaces } = useQuery({
-    queryKey: ["wireguardInterfaces"],
-    queryFn: async () => {
-      const res = await axios.get("/wireguard/interfaces");
-      return res.data;
-    },
+  // Fetch existing WireGuard interfaces via stream API
+  const { data: wgInterfaces } = useStreamQuery<any[]>({
+    handlerType: "wireguard",
+    command: "list_interfaces",
   });
 
   // Memoize WireGuard interfaces array
   const wgArray = useMemo(
-    () =>
-      Array.isArray(wgInterfaces?.interfaces) ? wgInterfaces.interfaces : [],
+    () => (Array.isArray(wgInterfaces) ? wgInterfaces : []),
     [wgInterfaces],
   );
 
@@ -172,33 +166,37 @@ const CreateInterfaceButton = () => {
     setLoading(true);
     setError(null);
     try {
-      const dnsArray = dns
+      const dnsStr = dns
         .split(",")
         .map((s) => s.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .join(",");
 
-      const body = {
-        name: serverName,
-        address: [CIDR],
-        listen_port: port,
-        egress_nic: nic,
-        dns: dnsArray, // send if provided; backend treats [] as "no override"
-        mtu: 0,
-        peers: [],
-        num_peers: peers,
-      };
-      await axios.post("/wireguard/interface", body);
+      // AddInterface expects: [name, addresses, listenPort, egressNic, dns, mtu, peers_json, numPeers]
+      const args = [
+        serverName,
+        CIDR, // addresses as comma-separated string
+        String(port),
+        nic,
+        dnsStr, // dns as comma-separated string
+        "0", // mtu
+        "[]", // peers_json (empty array)
+        String(peers), // numPeers
+      ];
+
+      await streamApi.get("wireguard", "add_interface", args);
 
       toast.success(
         `WireGuard interface '${serverName}' created`,
         wireguardToastMeta,
       );
       setShowDialog(false);
-      // optionally reset dns
       setDns("");
-      queryClient.invalidateQueries({ queryKey: ["wireguardInterfaces"] });
+      queryClient.invalidateQueries({
+        queryKey: ["stream", "wireguard", "list_interfaces"],
+      });
     } catch (error: any) {
-      const msg = error.response?.data?.error || error.message;
+      const msg = error.message || "Unknown error";
       toast.error(`Failed to create interface: ${msg}`, wireguardToastMeta);
       setError(msg);
     } finally {
