@@ -222,14 +222,60 @@ Replace HTTP handlers with stream handlers:
 | WireGuard/InterfaceClients | wireguard | list_peers, remove_peer, peer_config_download, peer_qrcode |
 
 **Still Using HTTP (axios):**
-- `WireguardDashboard.tsx` - list_interfaces query, delete/add_peer/toggle actions
-- `CreateInterfaceButton.tsx` - network query, create interface action
-- Filebrowser hooks - complex file operations (may stay HTTP for non-transfer operations)
-- Auth/Config contexts - session management
 
-**Remaining:**
-- Migrate remaining WireGuard pages to stream API
-- Evaluate filebrowser migration
+#### Config (stays HTTP - loads before WebSocket ready)
+| File | Endpoint | Description |
+|------|----------|-------------|
+| `ConfigContext.tsx` | `/theme/get`, `/theme/set` | Theme config |
+
+#### WireGuard
+| File | Endpoint | Description |
+|------|----------|-------------|
+| `WireguardDashboard.tsx:34` | `GET /wireguard/interfaces` | list_interfaces |
+| `WireguardDashboard.tsx:76` | `DELETE /wireguard/interface/:name` | delete interface |
+| `WireguardDashboard.tsx:94` | `POST /wireguard/interface/:name/peer` | add_peer |
+| `WireguardDashboard.tsx:115` | `POST /wireguard/interface/:name/:status` | toggle (up/down) |
+| `CreateInterfaceButton.tsx:44` | `GET /network/info` | get network info |
+| `CreateInterfaceButton.tsx:53` | `GET /wireguard/interfaces` | list interfaces |
+| `CreateInterfaceButton.tsx:190` | `POST /wireguard/interface` | create interface |
+
+#### FileBrowser (complex - may stay HTTP)
+| File | Endpoint | Description |
+|------|----------|-------------|
+| `useFileBrowserQueries.ts` | `GET /navigator/api/resources` | List/stat resources |
+| `useFileMutations.ts` | `POST/DELETE/PATCH /navigator/api/resources` | Create/delete/rename |
+| `useFileMutations.ts:165` | `POST /navigator/api/chmod` | Change permissions |
+| `useFileSearch.ts` | `GET /navigator/api/search` | File search |
+| `useDirectorySize.ts` | `GET /navigator/api/resources/size` | Dir size |
+| `useSubfolders.ts` | `GET /navigator/api/subfolders` | Subfolder listing |
+| `PermissionsDialog.tsx:140` | `GET /navigator/api/users-groups` | Users/groups list |
+| `filebrowser/index.tsx` | `PUT /navigator/api/resources` | Save file content |
+| `FileTransferContext.tsx:1115` | `POST /navigator/api/resources` | Folder creation |
+
+#### Updates
+| File | Endpoint | Description |
+|------|----------|-------------|
+| `usePackageUpdater.ts` | `POST /updates/update` | Update package |
+| `usePackageUpdater.ts:58` | `GET /updates/packages` | List packages |
+| `UpdateHistoryCard.tsx:36` | `GET /updates/update-history` | Update history |
+| `UpdateBanner.tsx:44` | `POST /control/update` | Apply update |
+
+#### System Control
+| File | Endpoint | Description |
+|------|----------|-------------|
+| `Footer.tsx:22` | `GET /control/version` | Version info |
+| `NavbarUserDropdown.tsx:57-59` | `POST /power/reboot`, `/power/shutdown` | Power control |
+
+#### Auth (stays HTTP - session management)
+| File | Endpoint | Description |
+|------|----------|-------------|
+| `AuthContext.tsx` | `/auth/me`, `/auth/login`, `/auth/logout` | Auth flow |
+
+**Remaining Tasks:**
+- Migrate WireGuard endpoints to stream API
+- Migrate Updates endpoints to stream API
+- Migrate System Control endpoints to stream API
+- Evaluate filebrowser migration (many endpoints, transfers already use streams)
 - Remove HTTP handlers once migration complete
 
 ### Phase 9: Legacy `/ws` Cleanup

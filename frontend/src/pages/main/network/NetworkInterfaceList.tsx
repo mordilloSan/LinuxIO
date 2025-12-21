@@ -55,7 +55,9 @@ const NetworkInterfaceList = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
-  const { data: rawInterfaces = [], isPending: isLoading } = useStreamQuery<NetworkInterface[]>({
+  const { data: rawInterfaces = [], isPending: isLoading } = useStreamQuery<
+    NetworkInterface[]
+  >({
     handlerType: "dbus",
     command: "GetNetworkInfo",
     refetchInterval: 1000,

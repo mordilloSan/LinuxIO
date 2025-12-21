@@ -66,7 +66,8 @@ const MemoryUsage = () => {
         <Typography variant="body1">
           <strong>Swap:</strong>{" "}
           {formatFileSize(
-            (memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0),
+            (memoryData?.system?.swapTotal ?? 0) -
+              (memoryData?.system?.swapFree ?? 0),
             2,
           )}{" "}
           of {formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}

@@ -21,7 +21,11 @@ const Updates: React.FC = () => {
   const [tab, setTab] = useState("updates");
 
   // Query updates for the button - dbus GetUpdates returns array directly
-  const { data: rawUpdates, isPending: isLoading, refetch } = useStreamQuery<Update[]>({
+  const {
+    data: rawUpdates,
+    isPending: isLoading,
+    refetch,
+  } = useStreamQuery<Update[]>({
     handlerType: "dbus",
     command: "GetUpdates",
     enabled: tab === "updates", // Only fetch when on updates tab

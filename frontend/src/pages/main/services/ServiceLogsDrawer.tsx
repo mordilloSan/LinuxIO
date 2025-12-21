@@ -16,7 +16,12 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
   onClose,
   serviceName,
 }) => {
-  const { data, isPending: isLoading, isError, error } = useStreamQuery<string[]>({
+  const {
+    data,
+    isPending: isLoading,
+    isError,
+    error,
+  } = useStreamQuery<string[]>({
     handlerType: "dbus",
     command: "GetServiceLogs",
     args: [serviceName, "200"],

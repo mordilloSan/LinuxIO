@@ -119,14 +119,17 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
 
   const handleDeletePeer = async (peerName: string) => {
     try {
-      await streamApi.get("wireguard", "remove_peer", [interfaceName, peerName]);
-      toast.success(
-        `WireGuard Peer '${peerName}' deleted`,
-        wireguardToastMeta,
-      );
+      await streamApi.get("wireguard", "remove_peer", [
+        interfaceName,
+        peerName,
+      ]);
+      toast.success(`WireGuard Peer '${peerName}' deleted`, wireguardToastMeta);
       refetch();
     } catch {
-      toast.error(`Failed to delete interface: ${peerName}`, wireguardToastMeta);
+      toast.error(
+        `Failed to delete interface: ${peerName}`,
+        wireguardToastMeta,
+      );
     }
   };
 
