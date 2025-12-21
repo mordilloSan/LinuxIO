@@ -7,7 +7,6 @@ import { ConfigProvider } from "@/contexts/ConfigContext";
 import { FileTransferProvider } from "@/contexts/FileTransferContext";
 import { PowerActionProvider } from "@/contexts/PowerActionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
-import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue, useConfigReady } from "@/hooks/useConfig";
 import createTheme from "@/theme";
@@ -52,18 +51,16 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
   }
 
   // Authenticated:
-  // Only now mount WS + Config + Theme + Sidebar and the children (or nested routes)
+  // Only now mount Config + Theme + Sidebar and the children (or nested routes)
   return (
-    <WebSocketProvider>
-      <FileTransferProvider>
-        <ConfigProvider>
-          <AuthedThemeShell>
-            <PowerActionProvider>
-              <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
-            </PowerActionProvider>
-          </AuthedThemeShell>
-        </ConfigProvider>
-      </FileTransferProvider>
-    </WebSocketProvider>
+    <FileTransferProvider>
+      <ConfigProvider>
+        <AuthedThemeShell>
+          <PowerActionProvider>
+            <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
+          </PowerActionProvider>
+        </AuthedThemeShell>
+      </ConfigProvider>
+    </FileTransferProvider>
   );
 };
