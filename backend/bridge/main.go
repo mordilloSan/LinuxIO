@@ -22,6 +22,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/api"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
@@ -782,6 +783,11 @@ func handleBinaryStream(conn net.Conn, id string) {
 		// Handle filebrowser stream - download, upload, archive, compress, extract operations
 		if err := filebrowser.HandleFilebrowserStream(Sess, conn, streamType, args); err != nil {
 			logger.WarnKV("filebrowser stream error", "stream_id", id, "type", streamType, "error", err)
+		}
+	case ipc.StreamTypeAPI:
+		// Handle API stream - JSON API calls over yamux
+		if err := api.HandleAPIStream(conn, args); err != nil {
+			logger.WarnKV("api stream error", "stream_id", id, "error", err)
 		}
 	default:
 		logger.WarnKV("unknown stream type", "stream_id", id, "type", streamType)

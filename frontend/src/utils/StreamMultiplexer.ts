@@ -396,18 +396,22 @@ export class StreamMultiplexer {
     return null;
   }
 
+  // Stream types that should be cached and reused (persistent streams)
+  private static readonly PERSISTENT_STREAM_TYPES = new Set(["terminal", "container"]);
+
   /**
    * Open a new stream and send initial payload.
    * The payload is wrapped in a StreamFrame for the bridge.
    */
   openStream(type: StreamType, initialPayload?: Uint8Array): Stream {
-    // Check for existing stream of this type
-    const existing = this.streamsByType.get(type);
-    if (existing && existing.status === "open") {
-      console.warn(
-        `[StreamMux] Stream of type "${type}" already exists, returning existing`,
-      );
-      return existing;
+    // Only reuse persistent streams (terminal, container) - not request/response streams
+    const isPersistent = StreamMultiplexer.PERSISTENT_STREAM_TYPES.has(type);
+    if (isPersistent) {
+      const existing = this.streamsByType.get(type);
+      if (existing && existing.status === "open") {
+        console.log(`[StreamMux] Reusing persistent stream "${type}"`);
+        return existing;
+      }
     }
 
     const id = this.nextStreamID;
@@ -415,7 +419,11 @@ export class StreamMultiplexer {
 
     const stream = new StreamImpl(id, type, this);
     this.streams.set(id, stream);
-    this.streamsByType.set(type, stream);
+
+    // Only cache persistent streams
+    if (isPersistent) {
+      this.streamsByType.set(type, stream);
+    }
 
     // Wrap initial payload in StreamFrame for bridge: [opcode:1][streamID:4][length:4][payload]
     const payload = initialPayload || new Uint8Array(0);

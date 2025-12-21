@@ -9,7 +9,6 @@ import React, {
 import { toast } from "sonner";
 
 import useSessionChecker from "@/hooks/useSessionChecker";
-import { initStreamMux, closeStreamMux } from "@/utils/StreamMultiplexer";
 import {
   AuthContextType,
   AuthState,
@@ -24,6 +23,7 @@ import {
   clearIndexerAvailabilityFlag,
   setIndexerAvailabilityFlag,
 } from "@/utils/indexerAvailability";
+import { initStreamMux, closeStreamMux } from "@/utils/StreamMultiplexer";
 
 const initialState: AuthState = {
   isAuthenticated: false,

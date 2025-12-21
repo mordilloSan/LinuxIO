@@ -9,11 +9,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import useStreamMux from "@/hooks/useStreamMux";
-import {
-  Stream,
-  encodeString,
-  decodeString,
-} from "@/utils/StreamMultiplexer";
+import { Stream, encodeString, decodeString } from "@/utils/StreamMultiplexer";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
