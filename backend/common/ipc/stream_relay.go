@@ -74,8 +74,8 @@ func ReadRelayFrame(r io.Reader) (*StreamFrame, error) {
 	length := binary.BigEndian.Uint32(header[5:9])
 
 	if length > 0 {
-		// Cap at 1MB to prevent memory exhaustion
-		if length > 1024*1024 {
+		// Cap at 16MB to match yamux MaxStreamWindowSize
+		if length > 16*1024*1024 {
 			return nil, fmt.Errorf("payload too large: %d bytes", length)
 		}
 		f.Payload = make([]byte, length)

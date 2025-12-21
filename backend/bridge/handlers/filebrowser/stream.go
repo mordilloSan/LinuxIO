@@ -16,10 +16,13 @@ import (
 )
 
 const (
-	// chunkSize is the size of data chunks for file transfers (512KB for high throughput)
-	chunkSize = 512 * 1024
-	// progressInterval is how often to send progress updates (every 2MB to reduce overhead)
-	progressInterval = 2 * 1024 * 1024
+	// chunkSize is the size of data chunks for file transfers
+	chunkSize = 1 * 1024 * 1024
+	// progressIntervalDownload is how often to send progress updates for downloads (2MB)
+	progressIntervalDownload = 2 * 1024 * 1024
+	// progressIntervalUpload is how often to send progress updates for uploads (512KB)
+	// More frequent for flow control - acts as ACK for client-side window
+	progressIntervalUpload = 512 * 1024
 )
 
 // HandleFilebrowserStream handles a yamux stream for filebrowser operations.
@@ -106,7 +109,7 @@ func handleDownload(stream net.Conn, args []string) error {
 			bytesRead += int64(n)
 
 			// Send progress update periodically
-			if bytesRead-lastProgress >= progressInterval || bytesRead == totalSize {
+			if bytesRead-lastProgress >= progressIntervalDownload || bytesRead == totalSize {
 				pct := 0
 				if totalSize > 0 {
 					pct = int(bytesRead * 100 / totalSize)
@@ -227,8 +230,8 @@ readLoop:
 				}
 				bytesWritten += int64(n)
 
-				// Send progress update periodically
-				if bytesWritten-lastProgress >= progressInterval || bytesWritten == expectedSize {
+				// Send progress update periodically (frequent for flow control ACK)
+				if bytesWritten-lastProgress >= progressIntervalUpload || bytesWritten == expectedSize {
 					pct := 0
 					if expectedSize > 0 {
 						pct = int(bytesWritten * 100 / expectedSize)
@@ -344,7 +347,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	var lastProgress int64
 	progressCb := func(n int64) {
 		bytesProcessed += n
-		if totalSize > 0 && (bytesProcessed-lastProgress >= progressInterval || bytesProcessed >= totalSize) {
+		if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
 			pct := int(bytesProcessed * 100 / totalSize)
 			if pct > 100 {
 				pct = 100
@@ -408,7 +411,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 
 			bytesSent += int64(n)
 
-			if bytesSent-lastProgress >= progressInterval || bytesSent == archiveSize {
+			if bytesSent-lastProgress >= progressIntervalDownload || bytesSent == archiveSize {
 				pct := 0
 				if archiveSize > 0 {
 					pct = int(bytesSent * 100 / archiveSize)

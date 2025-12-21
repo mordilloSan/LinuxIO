@@ -40,6 +40,8 @@ export interface Stream {
   readonly status: StreamStatus;
   write(data: Uint8Array): void;
   close(): void;
+  /** Abort the stream immediately (sends RST flag instead of FIN) */
+  abort(): void;
   onData: ((data: Uint8Array) => void) | null;
   onClose: (() => void) | null;
   onProgress: ((progress: ProgressFrame) => void) | null;
@@ -192,7 +194,9 @@ class StreamImpl implements Stream {
   }
 
   close(): void {
-    if (this._status === "closed" || this._status === "closing") return;
+    if (this._status === "closed" || this._status === "closing") {
+      return;
+    }
     this._status = "closing";
     // Build OpStreamClose frame for bridge: [opcode:1][streamID:4][length:4]
     const closeFrame = new Uint8Array(9);
@@ -203,6 +207,20 @@ class StreamImpl implements Stream {
     this.mux.sendFrame(this.id, Flags.FIN, closeFrame);
     // Don't remove stream or call onClose yet - wait for server's response.
     // The stream will be cleaned up when we receive the server's FIN (in handleMessage).
+  }
+
+  /**
+   * Abort/cancel the stream immediately using RST flag.
+   * Unlike close(), this signals an abort rather than graceful close.
+   * Can override a pending close() to force immediate abort.
+   */
+  abort(): void {
+    if (this._status === "closed") {
+      return;
+    }
+    // Always send RST, even if already closing (overrides pending FIN)
+    this._status = "closing";
+    this.mux.sendFrame(this.id, Flags.RST, new Uint8Array(0));
   }
 
   handleData(data: Uint8Array): void {
@@ -525,7 +543,10 @@ export const BridgeOpcode = {
 } as const;
 
 // File transfer constants (must match backend bridge/handlers/filebrowser/stream.go)
-export const STREAM_CHUNK_SIZE = 512 * 1024; // 512KB chunks for high throughput
+export const STREAM_CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
+
+// Flow control: max bytes in flight before waiting for ACK (progress update)
+export const UPLOAD_WINDOW_SIZE = 4 * 1024 * 1024; // 4MB window (4 chunks max in flight)
 
 // ============================================================================
 // Singleton Management
