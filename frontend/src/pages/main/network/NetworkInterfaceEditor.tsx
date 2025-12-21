@@ -247,7 +247,12 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         }
 
         // SetIPv4Manual: args = [interface, addressCIDR, gateway, ...dnsServers]
-        await streamApi.get("dbus", "SetIPv4Manual", [iface.name, ipv4, gateway, ...dnsServers]);
+        await streamApi.get("dbus", "SetIPv4Manual", [
+          iface.name,
+          ipv4,
+          gateway,
+          ...dnsServers,
+        ]);
 
         toast.success("Manual configuration saved");
       }

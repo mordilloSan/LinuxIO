@@ -62,7 +62,11 @@ function parseSizeToBytes(input: string | undefined | null): number {
 }
 
 const Drive: React.FC = () => {
-  const { data: rawDrives = [], isPending: isLoading, isError } = useStreamQuery<ApiDisk[]>({
+  const {
+    data: rawDrives = [],
+    isPending: isLoading,
+    isError,
+  } = useStreamQuery<ApiDisk[]>({
     handlerType: "system",
     command: "get_drive_info",
   });

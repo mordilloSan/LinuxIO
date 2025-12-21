@@ -77,7 +77,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       try {
         await streamApi.get("docker", commandMap[action], [container.Id]);
         // refresh list + logs
-        queryClient.invalidateQueries({ queryKey: ["stream", "docker", "list_containers"] });
+        queryClient.invalidateQueries({
+          queryKey: ["stream", "docker", "list_containers"],
+        });
         queryClient.invalidateQueries({
           queryKey: ["stream", "docker", "get_container_logs", container.Id],
         });
@@ -250,7 +252,12 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           containerName={name}
           onRefresh={() =>
             queryClient.invalidateQueries({
-              queryKey: ["stream", "docker", "get_container_logs", container.Id],
+              queryKey: [
+                "stream",
+                "docker",
+                "get_container_logs",
+                container.Id,
+              ],
             })
           }
           autoRefreshDefault={true}

@@ -17,7 +17,9 @@ interface InterfaceStats {
 }
 
 const NetworkInterfacesCard: React.FC = () => {
-  const { data: rawInterfaces = [], isPending: isLoading } = useStreamQuery<InterfaceStats[]>({
+  const { data: rawInterfaces = [], isPending: isLoading } = useStreamQuery<
+    InterfaceStats[]
+  >({
     handlerType: "system",
     command: "get_network_info",
     refetchInterval: 1000,

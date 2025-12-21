@@ -12,10 +12,10 @@ import {
   Stack,
 } from "@mui/material";
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { streamApi } from "@/utils/streamApi";
-import { toast } from "sonner";
 
 type Frequency = "hourly" | "daily" | "weekly";
 type Scope = "security" | "updates" | "all";
@@ -58,7 +58,8 @@ const UpdateSettings: React.FC = () => {
   // -------- Load on mount --------
   useEffect(() => {
     let mounted = true;
-    streamApi.get<AutoUpdateState>("dbus", "GetAutoUpdates")
+    streamApi
+      .get<AutoUpdateState>("dbus", "GetAutoUpdates")
       .then((payload) => {
         if (!mounted) return;
         if (!payload) {
@@ -148,7 +149,10 @@ const UpdateSettings: React.FC = () => {
       console.error("Failed to schedule offline update", err);
 
       // Show friendly messages for common cases
-      if (errMsg.includes("no updates available") || errMsg.includes("Prepared update not found")) {
+      if (
+        errMsg.includes("no updates available") ||
+        errMsg.includes("Prepared update not found")
+      ) {
         toast.info("No updates available to schedule", updatesToastMeta);
       } else {
         toast.error("Failed to schedule offline update", updatesToastMeta);

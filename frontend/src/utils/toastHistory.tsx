@@ -22,6 +22,7 @@ const isBrowser = typeof window !== "undefined";
 const sessionId = `${Date.now().toString(36)}-${Math.random()
   .toString(36)
   .slice(2, 8)}`;
+const ignoredToastIds = new Set<string>();
 
 const parseStoredHistory = (): ToastHistoryItem[] => {
   if (!isBrowser) return [];
@@ -78,15 +79,15 @@ const setHistory = (next: ToastHistoryItem[]) => {
 
 export const subscribeToastHistory = (
   listener: (history: ToastHistoryItem[]) => void,
-) => {
+): (() => void) => {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 };
 
 export const useToastHistory = (limit = 5) => {
-  const [items, setItems] = React.useState(() =>
-    historyCache.slice(0, limit),
-  );
+  const [items, setItems] = React.useState(() => historyCache.slice(0, limit));
 
   React.useEffect(() => {
     const unsubscribe = subscribeToastHistory((next) => {
@@ -96,6 +97,17 @@ export const useToastHistory = (limit = 5) => {
   }, [limit]);
 
   return items;
+};
+
+export const clearToastHistory = () => {
+  const activeToasts = toast
+    .getHistory()
+    .filter((item): item is ToastT => !("dismiss" in item));
+  activeToasts.forEach((toastItem) => {
+    ignoredToastIds.add(`${sessionId}:${toastItem.id}`);
+  });
+  setHistory([]);
+  toast.dismiss();
 };
 
 const coerceText = (
@@ -119,27 +131,32 @@ const coerceText = (
 
 const buildHistorySnapshot = () => {
   const now = Date.now();
-  const existingById = new Map(
-    historyCache.map((item) => [item.id, item]),
-  );
+  const existingById = new Map(historyCache.map((item) => [item.id, item]));
   const fromSonner = toast
     .getHistory()
     .filter((item): item is ToastT => !("dismiss" in item));
-  const nextFromSonner = fromSonner.map((toastItem, index) => {
-    const recordId = `${sessionId}:${toastItem.id}`;
-    const existing = existingById.get(recordId);
-    const title =
-      coerceText(toastItem.title) || existing?.title || "Notification";
-    const description = coerceText(toastItem.description) || undefined;
-    return {
-      id: recordId,
-      title,
-      description: description || existing?.description,
-      type: toastItem.type ?? existing?.type,
-      createdAt: existing?.createdAt ?? now + index,
-      meta: toastItem.meta ?? existing?.meta,
-    };
-  });
+  const nextFromSonner = fromSonner.reduce<ToastHistoryItem[]>(
+    (acc, toastItem, index) => {
+      const recordId = `${sessionId}:${toastItem.id}`;
+      if (ignoredToastIds.has(recordId)) {
+        return acc;
+      }
+      const existing = existingById.get(recordId);
+      const title =
+        coerceText(toastItem.title) || existing?.title || "Notification";
+      const description = coerceText(toastItem.description) || undefined;
+      acc.push({
+        id: recordId,
+        title,
+        description: description || existing?.description,
+        type: toastItem.type ?? existing?.type,
+        createdAt: existing?.createdAt ?? now + index,
+        meta: toastItem.meta ?? existing?.meta,
+      });
+      return acc;
+    },
+    [],
+  );
   const nextIds = new Set(nextFromSonner.map((item) => item.id));
   const carryOver = historyCache.filter((item) => !nextIds.has(item.id));
   const merged = [...nextFromSonner, ...carryOver]

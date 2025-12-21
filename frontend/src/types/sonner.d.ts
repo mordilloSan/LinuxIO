@@ -1,3 +1,5 @@
+import "sonner";
+
 declare module "sonner" {
   interface ToastT {
     meta?: {

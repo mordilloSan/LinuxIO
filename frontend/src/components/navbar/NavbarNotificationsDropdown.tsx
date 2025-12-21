@@ -21,7 +21,11 @@ import XCircle from "lucide-react/dist/esm/icons/x-circle";
 import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { useToastHistory, type ToastHistoryItem } from "@/utils/toastHistory";
+import {
+  clearToastHistory,
+  useToastHistory,
+  type ToastHistoryItem,
+} from "@/utils/toastHistory";
 
 const MAX_RECENT_TOASTS = 5;
 
@@ -42,6 +46,7 @@ function Notification({
   link?: { href: string; label?: string };
   onNavigate?: () => void;
 }) {
+  const primaryText = description ? `${title} — ${description}` : title;
   const secondaryContent = (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
       <Typography variant="caption" color="text.secondary">
@@ -69,16 +74,9 @@ function Notification({
       <ListItemText
         disableTypography
         primary={
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
-            <Typography variant="subtitle2" color="text.primary">
-              {title}
-            </Typography>
-            {description ? (
-              <Typography variant="body2" color="text.secondary">
-                {description}
-              </Typography>
-            ) : null}
-          </Box>
+          <Typography variant="subtitle2" color="text.primary">
+            {primaryText}
+          </Typography>
         }
         secondary={secondaryContent}
       />
@@ -231,9 +229,16 @@ function NavbarNotificationsDropdown() {
           )}
         </List>
 
-        <Box p={1} display="flex" justifyContent="center">
+        <Box p={1} display="flex" justifyContent="center" gap={1}>
           <Button size="small" component={Link} to="#">
             Show all notifications
+          </Button>
+          <Button
+            size="small"
+            onClick={clearToastHistory}
+            disabled={recentToastCount === 0}
+          >
+            Clear
           </Button>
         </Box>
       </Popover>

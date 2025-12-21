@@ -8,6 +8,16 @@
 
 5 - for service logs we could use real streaming?????
 
+6 - Notifications!!!!
+
+Storage: server‑side per user
+Delivery: push (stream/websocket)
+UX: read/unread state, badges, and retention
+Severity/types: info/warn/error + source tags (docker/disk/system)
+Toast behavior: should new notifications also fire a toast, or only critical ones? defined by the user
+
+7- 
+
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
 filebrowser header should contain sessionid - DONE
@@ -26,11 +36,4 @@ Wireguard Testing and lasthandshake - DONE
 If session is garbage colected the bridge must exist as well - DONE
 Test Multiple Users - DONE
  Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable. - Done
-
-
-Multiplex over Single Connection (Future)
-If you need bidirectional streaming (real-time updates FROM bridge TO server):
-Add RequestID to IPC protocol
-Multiplexer pattern (like HTTP/2 streams)
-Server can receive unsolicited messages from bridge
-Trade-off: Requires protocol changes + more complexity
+Multiplex over Single Connection - DONE

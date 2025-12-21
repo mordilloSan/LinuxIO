@@ -16,43 +16,56 @@ const ServicesList: React.FC = () => {
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { data, isPending: isLoading, isError, error } = useStreamQuery<Service[]>({
+  const {
+    data,
+    isPending: isLoading,
+    isError,
+    error,
+  } = useStreamQuery<Service[]>({
     handlerType: "dbus",
     command: "ListServices",
     refetchInterval: 2000,
   });
 
   // Service action handler with dynamic command
-  const performServiceAction = useCallback(async (serviceName: string, action: string) => {
-    const commandMap: Record<string, string> = {
-      start: "StartService",
-      stop: "StopService",
-      restart: "RestartService",
-      reload: "ReloadService",
-      enable: "EnableService",
-      disable: "DisableService",
-      mask: "MaskService",
-      unmask: "UnmaskService",
-    };
-    const command = commandMap[action];
-    if (!command) return;
+  const performServiceAction = useCallback(
+    async (serviceName: string, action: string) => {
+      const commandMap: Record<string, string> = {
+        start: "StartService",
+        stop: "StopService",
+        restart: "RestartService",
+        reload: "ReloadService",
+        enable: "EnableService",
+        disable: "DisableService",
+        mask: "MaskService",
+        unmask: "UnmaskService",
+      };
+      const command = commandMap[action];
+      if (!command) return;
 
-    setActionPending(true);
-    setActionError(null);
-    try {
-      await streamApi.get("dbus", command, [serviceName]);
-      queryClient.invalidateQueries({ queryKey: ["stream", "dbus", "ListServices"] });
-    } catch (err: any) {
-      console.error("Service action failed:", err);
-      setActionError(err.message || "Action failed");
-    } finally {
-      setActionPending(false);
-    }
-  }, [queryClient]);
+      setActionPending(true);
+      setActionError(null);
+      try {
+        await streamApi.get("dbus", command, [serviceName]);
+        queryClient.invalidateQueries({
+          queryKey: ["stream", "dbus", "ListServices"],
+        });
+      } catch (err: any) {
+        console.error("Service action failed:", err);
+        setActionError(err.message || "Action failed");
+      } finally {
+        setActionPending(false);
+      }
+    },
+    [queryClient],
+  );
 
-  const handleRestart = (service: Service) => performServiceAction(service.name, "restart");
-  const handleStop = (service: Service) => performServiceAction(service.name, "stop");
-  const handleStart = (service: Service) => performServiceAction(service.name, "start");
+  const handleRestart = (service: Service) =>
+    performServiceAction(service.name, "restart");
+  const handleStop = (service: Service) =>
+    performServiceAction(service.name, "stop");
+  const handleStart = (service: Service) =>
+    performServiceAction(service.name, "start");
 
   const handleViewLogs = (service: Service) => {
     setSelectedService(service.name);
@@ -68,7 +81,11 @@ const ServicesList: React.FC = () => {
         </Alert>
       )}
       {actionError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          onClose={() => setActionError(null)}
+        >
           {actionError}
         </Alert>
       )}
