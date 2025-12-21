@@ -17,13 +17,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/benchmark"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/control"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/docker"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/drives"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/network"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/power"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/services"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/updates"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/wireguard"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
@@ -64,14 +59,9 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 
 	// Protected endpoints:
 	updates.RegisterUpdateRoutes(r.Group("/updates", sm.RequireSession()))
-	services.RegisterServiceRoutes(r.Group("/services", sm.RequireSession()))
 	network.RegisterNetworkRoutes(r.Group("/network", sm.RequireSession()))
-	docker.RegisterDockerRoutes(r.Group("/docker", sm.RequireSession()))
-	drives.RegisterDriveRoutes(r.Group("/drives", sm.RequireSession()))
-	power.RegisterPowerRoutes(r.Group("/power", sm.RequireSession()))
 	wireguard.RegisterWireguardRoutes(r.Group("/wireguard", sm.RequireSession()))
 	config.RegisterThemeRoutes(r.Group("/theme", sm.RequireSession()))
-	system.RegisterSystemRoutes(r.Group("/system", sm.RequireSession()))
 	control.RegisterControlRoutes(r.Group("/control", sm.RequireSession()))
 
 	navigator := r.Group("/navigator", sm.RequireSession())

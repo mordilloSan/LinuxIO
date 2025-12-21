@@ -266,10 +266,18 @@ Replace HTTP handlers with stream handlers:
 |------|----------|-------------|
 | `AuthContext.tsx` | `/auth/me`, `/auth/login`, `/auth/logout` | Auth flow |
 
+**Completed Migrations (HTTP handlers removed):**
+- Power handlers (`power/`) - Now uses dbus Reboot/PowerOff
+- Updates handlers (`updates/updates.go`, `updates_auto.go`) - Now uses dbus GetUpdates/InstallPackage
+- Control update handler (`control/routes.go:TriggerUpdate`) - Now uses stream API
+- System handlers (`system/`) - All 15 endpoints now use stream API
+- Docker handlers (`docker/`) - Now uses stream API
+- Drives handlers (`drives/`) - Now uses stream API
+- Services handlers (`services/`) - Now uses dbus via stream API
+
 **Remaining Tasks:**
 - Migrate WireGuard endpoints to stream API
 - Evaluate filebrowser migration (many endpoints, transfers already use streams)
-- Remove HTTP handlers once migration complete
 
 ### Phase 9: Legacy `/ws` Cleanup
 The old `/ws` WebSocket system needs to be removed after Phase 7:

@@ -290,9 +290,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // Store stream reference for cancellation (sync ref for immediate access)
       streamRefsRef.current.set(reqId, stream);
-      setDownloads((prev) =>
-        prev.map((d) => (d.id === reqId ? { ...d, stream } : d)),
-      );
 
       const chunks: Uint8Array[] = [];
       let lastBytes = 0;
@@ -569,9 +566,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // Store stream reference for cancellation
       streamRefsRef.current.set(id, stream);
-      setCompressions((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, stream } : c)),
-      );
 
       stream.onProgress = (progress: ProgressFrame) => {
         const percent = Math.min(99, progress.pct);
@@ -721,9 +715,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // Store stream reference for cancellation
       streamRefsRef.current.set(id, stream);
-      setExtractions((prev) =>
-        prev.map((e) => (e.id === id ? { ...e, stream } : e)),
-      );
 
       stream.onProgress = (progress: ProgressFrame) => {
         const percent = Math.min(99, progress.pct);
@@ -842,9 +833,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // Store stream reference for cancellation (sync ref for immediate access)
       streamRefsRef.current.set(uploadId, stream);
-      setUploads((prev) =>
-        prev.map((u) => (u.id === uploadId ? { ...u, stream } : u)),
-      );
 
       return new Promise<{
         success: boolean;
