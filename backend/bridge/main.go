@@ -779,6 +779,11 @@ func handleBinaryStream(conn net.Conn, id string) {
 		if err := terminal.HandleTerminalStream(Sess, conn, args); err != nil {
 			logger.WarnKV("terminal stream error", "stream_id", id, "error", err)
 		}
+	case ipc.StreamTypeContainer:
+		// Handle container terminal stream - docker exec
+		if err := terminal.HandleContainerTerminalStream(Sess, conn, args); err != nil {
+			logger.WarnKV("container terminal stream error", "stream_id", id, "error", err)
+		}
 	case ipc.StreamTypeFBDownload, ipc.StreamTypeFBUpload, ipc.StreamTypeFBArchive, ipc.StreamTypeFBCompress, ipc.StreamTypeFBExtract:
 		// Handle filebrowser stream - download, upload, archive, compress, extract operations
 		if err := filebrowser.HandleFilebrowserStream(Sess, conn, streamType, args); err != nil {

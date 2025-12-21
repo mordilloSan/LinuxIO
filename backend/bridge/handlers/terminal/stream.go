@@ -255,3 +255,78 @@ func safeUint16(val int) uint16 {
 	}
 	return uint16(val)
 }
+
+// HandleContainerTerminalStream handles a yamux stream for container terminal I/O.
+// Args: [containerID, shell, cols, rows]
+func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args []string) error {
+	if len(args) < 2 {
+		logger.Errorf("[ContainerTerminal] missing containerID or shell")
+		sendStreamClose(stream, 1)
+		return fmt.Errorf("missing containerID or shell")
+	}
+
+	containerID := args[0]
+	shell := args[1]
+
+	logger.Debugf("[ContainerTerminal] Starting for container=%s shell=%s user=%s", containerID, shell, sess.User.Username)
+
+	cols, rows := 120, 32
+	if len(args) >= 4 {
+		if c, err := strconv.Atoi(args[2]); err == nil && c > 0 {
+			cols = c
+		}
+		if r, err := strconv.Atoi(args[3]); err == nil && r > 0 {
+			rows = r
+		}
+	}
+
+	var shellArgs []string
+	switch shell {
+	case "bash":
+		shellArgs = []string{"exec", "-it", "-e", "TERM=xterm-256color", containerID, "bash", "-il"}
+	default:
+		shellArgs = []string{"exec", "-it", "-e", "TERM=xterm-256color", containerID, shell, "-i"}
+	}
+
+	cmd := exec.Command("docker", shellArgs...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
+
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		logger.Errorf("[ContainerTerminal] pty start failed: %v", err)
+		sendStreamClose(stream, 1)
+		return err
+	}
+
+	_ = pty.Setsize(ptmx, &pty.Winsize{
+		Cols: safeUint16(cols),
+		Rows: safeUint16(rows),
+	})
+
+	sts := &StreamTerminalSession{
+		PTY:      ptmx,
+		Cmd:      cmd,
+		Stream:   stream,
+		doneChan: make(chan struct{}),
+	}
+
+	logger.Infof("[ContainerTerminal] Started for container=%s shell=%s pid=%d", containerID, shell, cmd.Process.Pid)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		sts.relayPTYToStream()
+	}()
+
+	go func() {
+		defer wg.Done()
+		sts.relayStreamToPTY()
+	}()
+
+	wg.Wait()
+	sts.cleanup()
+	logger.Infof("[ContainerTerminal] Closed for container=%s", containerID)
+	return nil
+}
