@@ -2,8 +2,6 @@ package filebrowser
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -243,7 +240,8 @@ func resourceDeleteHandler(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-// resourcePostHandler creates or uploads a new resource
+// resourcePostHandler creates a new directory.
+// File uploads are handled via yamux streams (fb-upload).
 func resourcePostHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
@@ -261,33 +259,32 @@ func resourcePostHandler(c *gin.Context) {
 
 	isDir := strings.HasSuffix(path, "/")
 	override := c.Query("override") == "true"
-	requestID := strings.TrimSpace(c.Query("requestId"))
 
-	// For directory creation, use bridge
-	if isDir {
-		args := []string{path}
-		if override {
-			args = append(args, "", "true")
-		}
-
-		if err := bridge.CallTypedWithSession(sess, "filebrowser", "resource_post", args, nil); err != nil {
-			logger.Debugf("bridge error: %v", err)
-			status := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "bad_request:") {
-				status = http.StatusBadRequest
-			}
-			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
-			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
-			c.JSON(status, gin.H{"error": errMsg})
-			return
-		}
-
-		c.Status(http.StatusOK)
+	// Allow creating directories and empty files via HTTP POST
+	// File uploads with content must use yamux streams (fb-upload)
+	if !isDir && c.Request.ContentLength > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file uploads use stream protocol, not HTTP"})
 		return
 	}
 
-	// For file uploads, handle via temp file then bridge
-	resourcePostViaTemp(c, sess, path, override, requestID)
+	args := []string{path}
+	if override {
+		args = append(args, "", "true")
+	}
+
+	if err := bridge.CallTypedWithSession(sess, "filebrowser", "resource_post", args, nil); err != nil {
+		logger.Debugf("bridge error: %v", err)
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "bad_request:") {
+			status = http.StatusBadRequest
+		}
+		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
+		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+
+	c.Status(http.StatusOK)
 }
 
 // resourcePutHandler updates an existing file resource
@@ -356,25 +353,7 @@ func resourcePatchHandler(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-// rawHandler serves raw file content or archives
-func rawHandler(c *gin.Context) {
-	sess := session.SessionFromContext(c)
-	if sess == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "no session"})
-		return
-	}
-
-	files := c.Query("files")
-	fileList := strings.Split(files, "||")
-	reqID := strings.TrimSpace(c.Query("reqId"))
-	progressKey := ""
-	if reqID != "" {
-		progressKey = fmt.Sprintf("%s:%s", sess.SessionID, reqID)
-	}
-
-	// Handle via bridge - get temp file path
-	rawFilesViaTemp(c, sess, fileList, progressKey)
-}
+// NOTE: rawHandler removed - downloads now use yamux streams (fb-download, fb-archive)
 
 // archiveCompressHandler builds an archive from provided paths.
 func archiveCompressHandler(c *gin.Context) {
@@ -527,49 +506,7 @@ func archiveExtractHandler(c *gin.Context) {
 // TEMP FILE HANDLERS - Bridge-based operations using temp files
 // ============================================================================
 
-type uploadProgressTracker struct {
-	key         string
-	serverTotal int64
-	serverDone  int64
-}
-
-func newUploadProgressTracker(key string, serverTotal int64) *uploadProgressTracker {
-	if key == "" || serverTotal <= 0 {
-		return nil
-	}
-	return &uploadProgressTracker{
-		key:         key,
-		serverTotal: serverTotal,
-	}
-}
-
-func (t *uploadProgressTracker) emit(typ string) {
-	if t == nil || t.serverTotal <= 0 {
-		return
-	}
-	if t.serverDone > t.serverTotal {
-		t.serverDone = t.serverTotal
-	}
-	percent := float64(t.serverDone) / float64(t.serverTotal) * 100
-	if percent > 100 {
-		percent = 100
-	}
-
-	web.GlobalProgressBroadcaster.Send(t.key, web.ProgressUpdate{
-		Type:           typ,
-		Percent:        percent,
-		BytesProcessed: t.serverDone,
-		TotalBytes:     t.serverTotal,
-	})
-}
-
-func (t *uploadProgressTracker) addServerBytes(n int64) {
-	if t == nil || n <= 0 {
-		return
-	}
-	t.serverDone += n
-	t.emit("upload_progress")
-}
+// NOTE: HTTP upload handlers removed - uploads now use yamux streams (fb-upload)
 
 func operationContext(c *gin.Context, progressKey string, onCancel func()) (context.Context, func()) {
 	ctx := c.Request.Context()
@@ -590,273 +527,6 @@ func operationContext(c *gin.Context, progressKey string, onCancel func()) (cont
 		cleanup()
 		cancel()
 	}
-}
-
-// resourcePostViaTemp handles file uploads via temp file then bridge
-func resourcePostViaTemp(c *gin.Context, sess *session.Session, path string, override bool, requestID string) {
-	// Handle Chunked Uploads
-	chunkOffsetStr := c.GetHeader("X-File-Chunk-Offset")
-	if chunkOffsetStr != "" {
-		handleChunkedUpload(c, sess, path, override, requestID)
-		return
-	}
-
-	if status, msg, ok := ensureUploadAllowed(sess, path, override); !ok {
-		c.JSON(status, gin.H{"error": msg})
-		return
-	}
-
-	// Create temp file for upload
-	tempFile, err := os.CreateTemp("", "linuxio-upload-*.tmp")
-	if err != nil {
-		logger.Debugf("could not create temp file: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create temp file"})
-		return
-	}
-	tempPath := tempFile.Name()
-	defer os.Remove(tempPath) // Cleanup in case of error
-
-	progressKey := ""
-	if requestID != "" {
-		progressKey = fmt.Sprintf("%s:%s", sess.SessionID, requestID)
-	}
-	ctx, finish := operationContext(c, progressKey, func() {
-		_ = c.Request.Body.Close()
-	})
-	defer finish()
-
-	var tracker *uploadProgressTracker
-	if progressKey != "" && c.Request.ContentLength > 0 {
-		tracker = newUploadProgressTracker(progressKey, c.Request.ContentLength)
-	}
-
-	// Write request body to temp file
-	if _, err := copyRequestBodyWithProgress(ctx, tempFile, c.Request.Body, tracker); err != nil {
-		tempFile.Close()
-		if errors.Is(err, context.Canceled) {
-			c.Status(499)
-			return
-		}
-		logger.Debugf("could not write to temp file: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write upload data"})
-		return
-	}
-	tempFile.Close()
-
-	// Call bridge to move temp file to final destination
-	args := []string{tempPath, path}
-	if override {
-		args = append(args, "true")
-	}
-
-	if err := stream.CallWithProgress(ctx, sess, "filebrowser", "file_upload_from_temp", args, progressKey, nil); err != nil {
-		logger.Debugf("bridge error: %v", err)
-		if errors.Is(err, context.Canceled) {
-			c.Status(499)
-			return
-		}
-		status := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "bad_request:") {
-			status = http.StatusBadRequest
-		}
-		if strings.Contains(err.Error(), "already exists") {
-			status = http.StatusConflict
-		}
-		errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
-		errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
-		c.JSON(status, gin.H{"error": errMsg})
-		return
-	}
-
-	c.Status(http.StatusCreated)
-}
-
-// handleChunkedUpload handles chunked file uploads
-func handleChunkedUpload(c *gin.Context, sess *session.Session, path string, override bool, requestID string) {
-	chunkOffsetStr := c.GetHeader("X-File-Chunk-Offset")
-	totalSizeStr := c.GetHeader("X-File-Total-Size")
-
-	offset, err := strconv.ParseInt(chunkOffsetStr, 10, 64)
-	if err != nil {
-		logger.Debugf("invalid chunk offset: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chunk offset"})
-		return
-	}
-
-	totalSize, err := strconv.ParseInt(totalSizeStr, 10, 64)
-	if err != nil {
-		logger.Debugf("invalid total size: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid total size"})
-		return
-	}
-
-	progressKey := ""
-	if requestID != "" {
-		progressKey = fmt.Sprintf("%s:%s", sess.SessionID, requestID)
-	}
-	ctx, finish := operationContext(c, progressKey, func() {
-		_ = c.Request.Body.Close()
-	})
-	defer finish()
-
-	if offset == 0 {
-		if status, msg, ok := ensureUploadAllowed(sess, path, override); !ok {
-			c.JSON(status, gin.H{"error": msg})
-			return
-		}
-	}
-
-	// Use a temp file based on path hash
-	hasher := md5.New()
-	hasher.Write([]byte(path))
-	uploadID := hex.EncodeToString(hasher.Sum(nil))
-	tempFilePath := filepath.Join("tmp", "uploads", uploadID)
-
-	err = os.MkdirAll(filepath.Dir(tempFilePath), 0755)
-	if err != nil {
-		logger.Debugf("could not create temp dir: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create temp directory"})
-		return
-	}
-
-	outFile, err := os.OpenFile(tempFilePath, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		logger.Debugf("could not open temp file: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not open temp file"})
-		return
-	}
-	defer outFile.Close()
-
-	_, err = outFile.Seek(offset, 0)
-	if err != nil {
-		logger.Debugf("could not seek in temp file: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not seek in temp file"})
-		return
-	}
-
-	chunkSize, err := copyRequestBodyWithProgress(ctx, outFile, c.Request.Body, nil)
-	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			c.Status(499)
-			return
-		}
-		logger.Debugf("could not write chunk to temp file: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not write chunk to temp file"})
-		return
-	}
-
-	// If upload is complete, move to final destination via bridge
-	if (offset + chunkSize) >= totalSize {
-		outFile.Close()
-
-		args := []string{tempFilePath, path}
-		if override {
-			args = append(args, "true")
-		}
-
-		progressKey := ""
-		if requestID != "" {
-			progressKey = fmt.Sprintf("%s:%s", sess.SessionID, requestID)
-		}
-		if err := stream.CallWithProgress(ctx, sess, "filebrowser", "file_upload_from_temp", args, progressKey, nil); err != nil {
-			logger.Debugf("bridge error: %v", err)
-			if errors.Is(err, context.Canceled) {
-				c.Status(499)
-				return
-			}
-			status := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "bad_request:") {
-				status = http.StatusBadRequest
-			}
-			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
-			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
-			c.JSON(status, gin.H{"error": errMsg})
-			return
-		}
-	}
-
-	c.Status(http.StatusOK)
-}
-
-func copyRequestBodyWithProgress(ctx context.Context, dst *os.File, src io.Reader, tracker *uploadProgressTracker) (int64, error) {
-	buf := make([]byte, 512*1024)
-	var total int64
-	for {
-		if ctx != nil {
-			select {
-			case <-ctx.Done():
-				return total, ctx.Err()
-			default:
-			}
-		}
-		n, err := src.Read(buf)
-		if n > 0 {
-			if _, werr := dst.Write(buf[:n]); werr != nil {
-				return total, werr
-			}
-			if tracker != nil {
-				tracker.addServerBytes(int64(n))
-			}
-			total += int64(n)
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return total, err
-		}
-	}
-	return total, nil
-}
-
-type contextReader struct {
-	ctx    context.Context
-	reader io.Reader
-}
-
-func (cr *contextReader) Read(p []byte) (int, error) {
-	if cr.ctx != nil {
-		select {
-		case <-cr.ctx.Done():
-			return 0, cr.ctx.Err()
-		default:
-		}
-	}
-	return cr.reader.Read(p)
-}
-
-func ensureUploadAllowed(sess *session.Session, path string, override bool) (int, string, bool) {
-	if override {
-		return 0, "", true
-	}
-
-	var raw json.RawMessage
-	if err := bridge.CallTypedWithSession(sess, "filebrowser", "resource_stat", []string{path}, &raw); err != nil {
-		if isNotExistBridgeError(err) {
-			return 0, "", true
-		}
-		status := http.StatusInternalServerError
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "bridge error: bad_request:") {
-			status = http.StatusBadRequest
-			errMsg = strings.TrimPrefix(errMsg, "bridge error: bad_request:")
-		} else {
-			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
-		}
-		return status, errMsg, false
-	}
-
-	return http.StatusConflict, "file already exists", false
-}
-
-func isNotExistBridgeError(err error) bool {
-	if err == nil {
-		return false
-	}
-	lower := strings.ToLower(err.Error())
-	return strings.Contains(lower, "no such file or directory") ||
-		strings.Contains(lower, "does not exist") ||
-		strings.Contains(lower, "not found")
 }
 
 // resourcePutViaTemp handles file updates via temp file then bridge
@@ -897,156 +567,7 @@ func resourcePutViaTemp(c *gin.Context, sess *session.Session, path string) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// rawFilesViaTemp handles downloads via temp files from bridge
-func rawFilesViaTemp(c *gin.Context, sess *session.Session, fileList []string, progressKey string) {
-	if len(fileList) == 0 || fileList[0] == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid files list"})
-		return
-	}
-	ctx, finish := operationContext(c, progressKey, nil)
-	defer finish()
-
-	paths := parseFileList(fileList)
-	if len(paths) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid files list"})
-		return
-	}
-
-	var tempPath, fileName string
-	var fileSize int64
-
-	if len(paths) > 1 {
-		// Multiple files or directory - create archive via bridge
-		args := []string{strings.Join(paths, "||"), "zip"}
-		var result struct {
-			TempPath    string `json:"tempPath"`
-			ArchiveName string `json:"archiveName"`
-			Size        int64  `json:"size"`
-		}
-		if err := stream.CallWithProgress(ctx, sess, "filebrowser", "archive_download_setup", args, progressKey, &result); err != nil {
-			logger.Debugf("bridge error: %v", err)
-			if errors.Is(err, context.Canceled) {
-				c.Status(499)
-				return
-			}
-			status := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "bad_request:") {
-				status = http.StatusBadRequest
-			}
-			errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
-			errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
-			c.JSON(status, gin.H{"error": errMsg})
-			return
-		}
-		if result.TempPath == "" || result.ArchiveName == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-			return
-		}
-
-		tempPath = result.TempPath
-		fileName = result.ArchiveName
-		fileSize = result.Size
-	} else {
-		// Single file download via bridge; if it's a directory, fall back to archive_download_setup.
-		args := []string{paths[0]}
-		var result struct {
-			TempPath string `json:"tempPath"`
-			FileName string `json:"fileName"`
-			Size     int64  `json:"size"`
-		}
-		if err := stream.CallWithProgress(ctx, sess, "filebrowser", "file_download_to_temp", args, progressKey, &result); err != nil {
-			logger.Debugf("bridge error: %v", err)
-			if errors.Is(err, context.Canceled) {
-				c.Status(499)
-				return
-			}
-
-			if strings.Contains(err.Error(), "path is a directory") {
-				// Directory download -> build archive instead.
-				args := []string{paths[0], "zip"}
-				var archiveResult struct {
-					TempPath    string `json:"tempPath"`
-					ArchiveName string `json:"archiveName"`
-					Size        int64  `json:"size"`
-				}
-				if downloadErr := stream.CallWithProgress(ctx, sess, "filebrowser", "archive_download_setup", args, progressKey, &archiveResult); downloadErr != nil {
-					logger.Debugf("bridge error: %v", downloadErr)
-					if errors.Is(downloadErr, context.Canceled) {
-						c.Status(499)
-						return
-					}
-					status := http.StatusInternalServerError
-					if strings.Contains(downloadErr.Error(), "bad_request:") {
-						status = http.StatusBadRequest
-					}
-					errMsg := strings.TrimPrefix(downloadErr.Error(), "bridge error: bad_request:")
-					errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
-					c.JSON(status, gin.H{"error": errMsg})
-					return
-				}
-				if archiveResult.TempPath == "" || archiveResult.ArchiveName == "" {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-					return
-				}
-				tempPath = archiveResult.TempPath
-				fileName = archiveResult.ArchiveName
-				fileSize = archiveResult.Size
-			} else {
-				status := http.StatusInternalServerError
-				if strings.Contains(err.Error(), "bad_request:") {
-					status = http.StatusBadRequest
-				}
-				if strings.Contains(err.Error(), "not found") {
-					status = http.StatusNotFound
-				}
-				errMsg := strings.TrimPrefix(err.Error(), "bridge error: bad_request:")
-				errMsg = strings.TrimPrefix(errMsg, "bridge error: ")
-				c.JSON(status, gin.H{"error": errMsg})
-				return
-			}
-		} else {
-			if result.TempPath == "" || result.FileName == "" {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid response format"})
-				return
-			}
-
-			tempPath = result.TempPath
-			fileName = result.FileName
-			fileSize = result.Size
-		}
-	}
-
-	// Open temp file and stream to client
-	defer os.Remove(tempPath)
-
-	fd, err := os.Open(tempPath)
-	if err != nil {
-		logger.Debugf("error opening temp file: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not open download file"})
-		return
-	}
-	defer fd.Close()
-
-	setContentDisposition(c, fileName)
-	c.Header("Cache-Control", "private")
-	c.Header("X-Content-Type-Options", "nosniff")
-	c.Header("Content-Length", fmt.Sprintf("%d", fileSize))
-
-	contentType := "application/octet-stream"
-	if strings.HasSuffix(fileName, ".zip") {
-		contentType = "application/zip"
-	}
-
-	reader := io.Reader(fd)
-	if ctx != nil {
-		reader = &contextReader{ctx: ctx, reader: fd}
-	}
-	c.DataFromReader(http.StatusOK, fileSize, contentType, reader, map[string]string{})
-}
-
-func parseFileList(entries []string) []string {
-	return sanitizeAbsPaths(entries)
-}
+// NOTE: rawFilesViaTemp removed - downloads now use yamux streams (fb-download, fb-archive)
 
 func sanitizeAbsPaths(entries []string) []string {
 	var paths []string
@@ -1239,13 +760,4 @@ func usersGroupsHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
-}
-
-// setContentDisposition sets the Content-Disposition HTTP header for downloads
-func setContentDisposition(c *gin.Context, fileName string) {
-	if c.Query("inline") == "true" {
-		c.Header("Content-Disposition", "inline; filename*=utf-8''"+url.PathEscape(fileName))
-	} else {
-		c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(fileName))
-	}
 }

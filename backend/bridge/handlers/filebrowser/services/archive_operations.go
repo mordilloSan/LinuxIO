@@ -127,25 +127,36 @@ func CreateZip(tmpDirPath string, cb ProgressCallback, skipPath string, filename
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	fileOpen := true
+	defer func() {
+		if fileOpen {
+			file.Close()
+		}
+	}()
 
 	zipWriter := zip.NewWriter(file)
-	defer zipWriter.Close()
 
 	for _, fname := range filenames {
 		if addErr := addFile(fname, nil, zipWriter, false, cb, skipPath); addErr != nil {
 			logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
+			zipWriter.Close() // Best-effort close on error
 			return addErr
 		}
 	}
 
-	// Explicitly set file permissions to bypass umask
-	err = os.Chmod(tmpDirPath, PermFile)
-	if err != nil {
+	// Must close zip writer first to finalize archive (writes central directory)
+	if err := zipWriter.Close(); err != nil {
 		return err
 	}
 
-	return nil
+	// Then close and sync the file before returning
+	if err := file.Close(); err != nil {
+		return err
+	}
+	fileOpen = false
+
+	// Set file permissions after closing
+	return os.Chmod(tmpDirPath, PermFile)
 }
 
 // CreateTarGz creates a tar.gz archive from the provided file list
@@ -155,27 +166,40 @@ func CreateTarGz(tmpDirPath string, cb ProgressCallback, skipPath string, filena
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	fileOpen := true
+	defer func() {
+		if fileOpen {
+			file.Close()
+		}
+	}()
 
 	gzWriter := gzip.NewWriter(file)
-	defer gzWriter.Close()
 	tarWriter := tar.NewWriter(gzWriter)
-	defer tarWriter.Close()
 
 	for _, fname := range filenames {
 		if addErr := addFile(fname, tarWriter, nil, false, cb, skipPath); addErr != nil {
 			logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
+			tarWriter.Close() // Best-effort close on error
+			gzWriter.Close()
 			return addErr
 		}
 	}
 
-	// Explicitly set file permissions to bypass umask
-	err = os.Chmod(tmpDirPath, PermFile)
-	if err != nil {
+	// Close writers in order: tar -> gzip -> file
+	if err := tarWriter.Close(); err != nil {
+		gzWriter.Close()
 		return err
 	}
+	if err := gzWriter.Close(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	fileOpen = false
 
-	return nil
+	// Set file permissions after closing
+	return os.Chmod(tmpDirPath, PermFile)
 }
 
 // ExtractArchive extracts supported archive types (zip, tar.gz, tgz) into the destination directory.

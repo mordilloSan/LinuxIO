@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/mordilloSan/go_logger/logger"
 
@@ -26,7 +27,7 @@ const (
 )
 
 // HandleFilebrowserStream handles a yamux stream for filebrowser operations.
-// streamType is one of: fb-download, fb-upload, fb-archive
+// streamType is one of: fb-download, fb-upload, fb-archive, fb-compress, fb-extract
 // args contains operation-specific parameters
 func HandleFilebrowserStream(sess *session.Session, stream net.Conn, streamType string, args []string) error {
 	logger.Debugf("[FBStream] Starting type=%s args=%v", streamType, args)
@@ -38,6 +39,10 @@ func HandleFilebrowserStream(sess *session.Session, stream net.Conn, streamType 
 		return handleUpload(stream, args)
 	case ipc.StreamTypeFBArchive:
 		return handleArchiveDownload(stream, args)
+	case ipc.StreamTypeFBCompress:
+		return handleCompress(stream, args)
+	case ipc.StreamTypeFBExtract:
+		return handleExtract(stream, args)
 	default:
 		logger.Warnf("[FBStream] Unknown stream type: %s", streamType)
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("unknown stream type: %s", streamType), 400)
@@ -456,5 +461,236 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	_ = ipc.WriteStreamClose(stream, 0)
 
 	logger.Infof("[FBStream] Archive download complete: files=%d size=%d", len(paths), archiveSize)
+	return nil
+}
+
+// handleCompress creates an archive from provided paths and saves it to disk.
+// args: [format, destination, path1, path2, ...]
+func handleCompress(stream net.Conn, args []string) error {
+	if len(args) < 3 {
+		_ = ipc.WriteResultError(stream, 0, "missing format, destination, or paths", 400)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("missing format, destination, or paths")
+	}
+
+	format := args[0]
+	destination := args[1]
+	paths := args[2:]
+
+	// Validate format and determine extension
+	var extension string
+	switch format {
+	case "zip":
+		extension = ".zip"
+	case "tar.gz":
+		extension = ".tar.gz"
+	default:
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("unsupported format: %s", format), 400)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("unsupported format: %s", format)
+	}
+
+	// Ensure destination has correct extension
+	targetPath := filepath.Clean(destination)
+	lowerTarget := strings.ToLower(targetPath)
+	switch extension {
+	case ".zip":
+		if !strings.HasSuffix(lowerTarget, ".zip") {
+			targetPath = targetPath + ".zip"
+		}
+	case ".tar.gz":
+		if !(strings.HasSuffix(lowerTarget, ".tar.gz") || strings.HasSuffix(lowerTarget, ".tgz")) {
+			targetPath = targetPath + ".tar.gz"
+		}
+	}
+
+	// Check if destination exists
+	if info, statErr := os.Stat(targetPath); statErr == nil {
+		if info.IsDir() {
+			_ = ipc.WriteResultError(stream, 0, "destination is a directory", 400)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("destination is a directory")
+		}
+		// Remove existing file (overwrite)
+		if rmErr := os.Remove(targetPath); rmErr != nil {
+			_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("cannot remove existing file: %v", rmErr), 500)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("remove existing file: %w", rmErr)
+		}
+	}
+
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(targetPath), services.PermDir); err != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("cannot create parent directory: %v", err), 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("create parent dir: %w", err)
+	}
+
+	// Compute total size for progress
+	totalSize, err := services.ComputeArchiveSize(paths)
+	if err != nil {
+		logger.Debugf("[FBStream] Failed to compute archive size: %v", err)
+		totalSize = 0
+	}
+
+	// Send initial progress
+	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+		Total: totalSize,
+		Phase: "preparing",
+	})
+
+	// Create progress callback
+	var bytesProcessed int64
+	var lastProgress int64
+	progressCb := func(n int64) {
+		bytesProcessed += n
+		if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
+			pct := int(bytesProcessed * 100 / totalSize)
+			if pct > 100 {
+				pct = 100
+			}
+			_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+				Bytes: bytesProcessed,
+				Total: totalSize,
+				Pct:   pct,
+				Phase: "compressing",
+			})
+			lastProgress = bytesProcessed
+		}
+	}
+
+	// Create archive
+	switch format {
+	case "zip":
+		err = services.CreateZip(targetPath, progressCb, targetPath, paths...)
+	case "tar.gz":
+		err = services.CreateTarGz(targetPath, progressCb, targetPath, paths...)
+	}
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("compression failed: %v", err), 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("create archive: %w", err)
+	}
+
+	// Get final archive size
+	var archiveSize int64
+	if info, err := os.Stat(targetPath); err == nil {
+		archiveSize = info.Size()
+		// Notify indexer
+		go func() {
+			if err := addToIndexer(targetPath, info); err != nil {
+				logger.Debugf("[FBStream] Failed to update indexer: %v", err)
+			}
+		}()
+	}
+
+	// Send success result
+	_ = ipc.WriteResultOK(stream, 0, map[string]any{
+		"path":   targetPath,
+		"size":   archiveSize,
+		"format": format,
+	})
+
+	// Close stream
+	_ = ipc.WriteStreamClose(stream, 0)
+
+	logger.Infof("[FBStream] Compress complete: path=%s files=%d size=%d", targetPath, len(paths), archiveSize)
+	return nil
+}
+
+// handleExtract extracts an archive to a destination directory.
+// args: [archivePath, destination?]
+func handleExtract(stream net.Conn, args []string) error {
+	if len(args) < 1 {
+		_ = ipc.WriteResultError(stream, 0, "missing archive path", 400)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("missing archive path")
+	}
+
+	archivePath := filepath.Clean(args[0])
+
+	// Determine destination
+	var destination string
+	if len(args) > 1 && args[1] != "" {
+		destination = filepath.Clean(args[1])
+	} else {
+		destination = defaultExtractDestination(archivePath)
+	}
+
+	// Check archive exists
+	archiveStat, err := os.Stat(archivePath)
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("archive not found: %v", err), 404)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("archive not found: %w", err)
+	}
+	if archiveStat.IsDir() {
+		_ = ipc.WriteResultError(stream, 0, "path is a directory, not an archive", 400)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("path is a directory")
+	}
+
+	// Compute total size for progress (uncompressed size)
+	totalSize, err := services.ComputeExtractSize(archivePath)
+	if err != nil {
+		logger.Debugf("[FBStream] Failed to compute extract size: %v", err)
+		totalSize = 0
+	}
+
+	// Send initial progress
+	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+		Total: totalSize,
+		Phase: "preparing",
+	})
+
+	// Create progress callback
+	var bytesProcessed int64
+	var lastProgress int64
+	progressCb := func(n int64) {
+		bytesProcessed += n
+		if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
+			pct := int(bytesProcessed * 100 / totalSize)
+			if pct > 100 {
+				pct = 100
+			}
+			_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+				Bytes: bytesProcessed,
+				Total: totalSize,
+				Pct:   pct,
+				Phase: "extracting",
+			})
+			lastProgress = bytesProcessed
+		}
+	}
+
+	// Extract archive
+	if err := services.ExtractArchive(archivePath, destination, progressCb); err != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("extraction failed: %v", err), 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("extract archive: %w", err)
+	}
+
+	// Notify indexer about extracted files (non-blocking)
+	go func() {
+		_ = filepath.Walk(destination, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if err := addToIndexer(path, info); err != nil {
+				logger.Debugf("[FBStream] Failed to update indexer for %s: %v", path, err)
+			}
+			return nil
+		})
+	}()
+
+	// Send success result
+	_ = ipc.WriteResultOK(stream, 0, map[string]any{
+		"destination": destination,
+	})
+
+	// Close stream
+	_ = ipc.WriteStreamClose(stream, 0)
+
+	logger.Infof("[FBStream] Extract complete: archive=%s destination=%s", archivePath, destination)
 	return nil
 }
