@@ -19,6 +19,21 @@ export const Flags = {
 export type StreamStatus = "opening" | "open" | "closing" | "closed";
 export type StreamType = "terminal" | "container" | string;
 
+// Forward declare types used in Stream interface (full definitions below)
+export interface ProgressFrame {
+  bytes: number;
+  total: number;
+  pct: number;
+  phase?: string;
+}
+
+export interface ResultFrame {
+  status: "ok" | "error";
+  error?: string;
+  code?: number;
+  data?: unknown;
+}
+
 export interface Stream {
   readonly id: number;
   readonly type: StreamType;
@@ -27,6 +42,8 @@ export interface Stream {
   close(): void;
   onData: ((data: Uint8Array) => void) | null;
   onClose: (() => void) | null;
+  onProgress: ((progress: ProgressFrame) => void) | null;
+  onResult: ((result: ResultFrame) => void) | null;
 }
 
 export type MuxStatus = "connecting" | "open" | "closed" | "error";
@@ -103,6 +120,8 @@ class CircularBuffer {
 class StreamImpl implements Stream {
   private _onData: ((data: Uint8Array) => void) | null = null;
   public onClose: (() => void) | null = null;
+  public onProgress: ((progress: ProgressFrame) => void) | null = null;
+  public onResult: ((result: ResultFrame) => void) | null = null;
   private _status: StreamStatus = "opening";
   private buffer: Uint8Array[] = []; // Buffer for when handler is detached
   private recvBuffer: Uint8Array = new Uint8Array(0); // Buffer for partial StreamFrames
@@ -175,10 +194,15 @@ class StreamImpl implements Stream {
   close(): void {
     if (this._status === "closed" || this._status === "closing") return;
     this._status = "closing";
-    this.mux.sendFrame(this.id, Flags.FIN, new Uint8Array(0));
-    this.mux.removeStream(this.id);
-    this._status = "closed";
-    this.onClose?.();
+    // Build OpStreamClose frame for bridge: [opcode:1][streamID:4][length:4]
+    const closeFrame = new Uint8Array(9);
+    const view = new DataView(closeFrame.buffer);
+    closeFrame[0] = 0x82; // OpStreamClose
+    view.setUint32(1, this.id, false);
+    view.setUint32(5, 0, false); // length = 0
+    this.mux.sendFrame(this.id, Flags.FIN, closeFrame);
+    // Don't remove stream or call onClose yet - wait for server's response.
+    // The stream will be cleaned up when we receive the server's FIN (in handleMessage).
   }
 
   handleData(data: Uint8Array): void {
@@ -215,6 +239,7 @@ class StreamImpl implements Stream {
         this.recvBuffer.byteOffset,
         this.recvBuffer.byteLength,
       );
+      const opcode = this.recvBuffer[0];
       const payloadLength = view.getUint32(5, false); // Big endian
       const frameLength = 9 + payloadLength;
 
@@ -223,12 +248,57 @@ class StreamImpl implements Stream {
         break;
       }
 
-      // Extract payload and deliver
+      // Extract payload
       const payload = this.recvBuffer.slice(9, frameLength);
-      this.handleData(payload);
+
+      // Route based on opcode
+      switch (opcode) {
+        case 0x81: // OpStreamData
+          this.handleData(payload);
+          break;
+        case 0x82: // OpStreamClose
+          // Bridge closed the stream - trigger close handler
+          this.handleClose();
+          this.mux.removeStream(this.id);
+          break;
+        case 0x84: // OpStreamProgress
+          this.handleProgress(payload);
+          break;
+        case 0x85: // OpStreamResult
+          this.handleResult(payload);
+          break;
+        default:
+          console.warn(
+            `[Stream ${this.id}] Unknown opcode: 0x${opcode.toString(16)}`,
+          );
+      }
 
       // Remove processed frame from buffer
       this.recvBuffer = this.recvBuffer.slice(frameLength);
+    }
+  }
+
+  /** Handle progress frame from bridge */
+  private handleProgress(payload: Uint8Array): void {
+    if (!this.onProgress) return;
+    try {
+      const json = decodeString(payload);
+      const progress: ProgressFrame = JSON.parse(json);
+      this.onProgress(progress);
+    } catch (e) {
+      console.error(`[Stream ${this.id}] Failed to parse progress:`, e);
+    }
+  }
+
+  /** Handle result frame from bridge */
+  private handleResult(payload: Uint8Array): void {
+    if (!this.onResult) return;
+    try {
+      const json = decodeString(payload);
+      const result: ResultFrame = JSON.parse(json);
+      this.onResult(result);
+    } catch (e) {
+      console.error(`[Stream ${this.id}] Failed to parse result:`, e);
     }
   }
 
@@ -450,26 +520,12 @@ export const BridgeOpcode = {
   StreamData: 0x81,
   StreamClose: 0x82,
   StreamResize: 0x83,
+  StreamProgress: 0x84,
+  StreamResult: 0x85,
 } as const;
 
-/**
- * Build a StreamFrame for the bridge.
- * Format: [opcode:1][streamID:4][length:4][payload:N]
- * This is what the bridge expects to see on the yamux stream.
- */
-export function buildStreamFrame(
-  opcode: number,
-  streamID: number,
-  payload: Uint8Array,
-): Uint8Array {
-  const frame = new Uint8Array(9 + payload.length);
-  const view = new DataView(frame.buffer);
-  frame[0] = opcode;
-  view.setUint32(1, streamID, false); // Big endian
-  view.setUint32(5, payload.length, false); // Big endian
-  frame.set(payload, 9);
-  return frame;
-}
+// File transfer constants (must match backend bridge/handlers/filebrowser/stream.go)
+export const STREAM_CHUNK_SIZE = 512 * 1024; // 512KB chunks for high throughput
 
 // ============================================================================
 // Singleton Management

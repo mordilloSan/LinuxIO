@@ -23,6 +23,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
@@ -776,6 +777,11 @@ func handleBinaryStream(conn net.Conn, id string) {
 		// Handle terminal stream - pass the connection for bidirectional I/O
 		if err := terminal.HandleTerminalStream(Sess, conn, args); err != nil {
 			logger.WarnKV("terminal stream error", "stream_id", id, "error", err)
+		}
+	case ipc.StreamTypeFBDownload, ipc.StreamTypeFBUpload, ipc.StreamTypeFBArchive:
+		// Handle filebrowser stream - download, upload, archive operations
+		if err := filebrowser.HandleFilebrowserStream(Sess, conn, streamType, args); err != nil {
+			logger.WarnKV("filebrowser stream error", "stream_id", id, "type", streamType, "error", err)
 		}
 	default:
 		logger.WarnKV("unknown stream type", "stream_id", id, "type", streamType)
