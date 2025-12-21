@@ -43,28 +43,11 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 		}
 	}
 
-	// --- Auth routes ---
-	authPublic := r.Group("/auth")
-	authPrivate := r.Group("/auth")
-	authPrivate.Use(sm.RequireSession())
-
-	auth.RegisterAuthRoutes(authPublic, authPrivate, sm, auth.Config{
-		Env:                  cfg.Env,
-		Verbose:              cfg.Verbose,
-		BridgeBinaryOverride: cfg.BridgeBinaryOverride,
-	})
-
-	// Protected endpoints:
+	// --- API routes ---
+	auth.RegisterAuthRoutes(r, sm, cfg.Env, cfg.Verbose, cfg.BridgeBinaryOverride)
 	config.RegisterThemeRoutes(r.Group("/theme", sm.RequireSession()))
 	control.RegisterControlRoutes(r.Group("/control", sm.RequireSession()))
-
-	navigator := r.Group("/navigator", sm.RequireSession())
-	if err := filebrowser.RegisterRoutes(navigator); err != nil {
-		logger.Errorf("failed to register filebrowser routes: %v", err)
-		navigator.Any("/*path", func(c *gin.Context) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "file browser unavailable"})
-		})
-	}
+	filebrowser.RegisterFilebrowserRoutes(r.Group("/navigator", sm.RequireSession()))
 
 	// --- WebSocket ---
 	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)
