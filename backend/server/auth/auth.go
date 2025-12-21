@@ -9,7 +9,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/control"
 )
 
 // Handlers bundles dependencies (no global state).
@@ -97,7 +96,7 @@ func (h *Handlers) Login(c *gin.Context) {
 
 	// Only check for updates if user is privileged
 	if privileged {
-		if updateInfo := control.CheckForUpdate(); updateInfo != nil {
+		if updateInfo := CheckForUpdate(); updateInfo != nil {
 			response["update"] = updateInfo
 		}
 	}
