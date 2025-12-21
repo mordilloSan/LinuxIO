@@ -1,17 +1,16 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   getStreamMux,
-  initStreamMux,
   Stream,
   MuxStatus,
   StreamType,
-} from "@/services/StreamMultiplexer";
+} from "@/utils/StreamMultiplexer";
 
 /**
  * Hook to use the singleton StreamMultiplexer.
  *
- * The multiplexer persists across component mounts - streams stay alive
- * when navigating away and can be reattached when returning.
+ * The multiplexer is initialized by AuthContext on login.
+ * This hook provides access to it and tracks status changes.
  */
 export function useStreamMux() {
   const [status, setStatus] = useState<MuxStatus>(() => {
@@ -20,8 +19,8 @@ export function useStreamMux() {
   });
 
   useEffect(() => {
-    // Initialize singleton if not already done
-    const mux = initStreamMux();
+    const mux = getStreamMux();
+    if (!mux) return;
 
     // Update status immediately
     setStatus(mux.status);
@@ -31,7 +30,6 @@ export function useStreamMux() {
       setStatus(newStatus);
     });
 
-    // Don't close on unmount - singleton persists
     return () => {
       unsubscribe();
     };

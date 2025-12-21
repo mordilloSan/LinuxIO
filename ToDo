@@ -1,6 +1,8 @@
-5 - docker compose
+1 - docker compose UI
 
-7 - Updates - Make it more responsive. Use d-bus streaming with websocket?
+2 - Updates - Make it more responsive. Use d-bus streaming with websocket?
+
+3 - chunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts
 
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE

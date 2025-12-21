@@ -13,7 +13,7 @@ import {
   Stream,
   encodeString,
   decodeString,
-} from "@/services/StreamMultiplexer";
+} from "@/utils/StreamMultiplexer";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;

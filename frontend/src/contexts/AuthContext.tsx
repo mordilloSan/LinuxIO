@@ -9,6 +9,7 @@ import React, {
 import { toast } from "sonner";
 
 import useSessionChecker from "@/hooks/useSessionChecker";
+import { initStreamMux, closeStreamMux } from "@/utils/StreamMultiplexer";
 import {
   AuthContextType,
   AuthState,
@@ -141,6 +142,15 @@ function AuthProvider({ children }: AuthProviderProps) {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, [doLocalSignOut]);
+
+  // Initialize stream multiplexer when authenticated
+  useEffect(() => {
+    if (state.isAuthenticated) {
+      initStreamMux();
+    } else {
+      closeStreamMux();
+    }
+  }, [state.isAuthenticated]);
 
   const signIn = useCallback(
     async (username: string, password: string) => {

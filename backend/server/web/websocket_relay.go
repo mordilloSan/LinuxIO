@@ -94,8 +94,8 @@ func WebSocketRelayHandler(c *gin.Context) {
 			// Write data to stream
 			relay.handleDATA(streamID, payload)
 		} else if flags&FlagFIN != 0 {
-			// Close stream
-			relay.handleFIN(streamID)
+			// Close stream (forward payload first if present)
+			relay.handleFIN(streamID, payload)
 		} else if flags&FlagRST != 0 {
 			// Abort stream
 			relay.handleRST(streamID)
@@ -175,10 +175,29 @@ func (r *streamRelay) handleDATA(streamID uint32, payload []byte) {
 	}
 }
 
-// handleFIN closes the stream gracefully
-func (r *streamRelay) handleFIN(streamID uint32) {
-	r.closeStream(streamID)
-	logger.Debugf("[WSRelay] stream %d closed (FIN)", streamID)
+// handleFIN forwards the close frame to bridge but doesn't close the stream yet.
+// The stream will be closed by relayFromBridge when the bridge sends its response and closes.
+func (r *streamRelay) handleFIN(streamID uint32, payload []byte) {
+	r.mu.RLock()
+	rs, exists := r.streams[streamID]
+	r.mu.RUnlock()
+
+	if !exists {
+		logger.Debugf("[WSRelay] FIN for unknown stream %d", streamID)
+		return
+	}
+
+	// Forward the payload (e.g., OpStreamClose frame) to bridge
+	// Don't close the stream - let relayFromBridge handle that when bridge responds
+	if len(payload) > 0 {
+		if _, err := rs.stream.Write(payload); err != nil {
+			logger.Debugf("[WSRelay] write FIN payload to stream %d failed: %v", streamID, err)
+			r.closeStream(streamID)
+			return
+		}
+	}
+
+	logger.Debugf("[WSRelay] stream %d FIN forwarded, waiting for bridge response", streamID)
 }
 
 // handleRST aborts the stream
