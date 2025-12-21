@@ -19,8 +19,8 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import "@xterm/xterm/css/xterm.css";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import useStreamMux from "@/hooks/useStreamMux";
-import { Stream, encodeString, decodeString } from "@/utils/StreamMultiplexer";
 import { streamApi } from "@/utils/streamApi";
+import { Stream, encodeString, decodeString } from "@/utils/StreamMultiplexer";
 
 interface Props {
   open: boolean;
@@ -65,11 +65,9 @@ const TerminalDialog: React.FC<Props> = ({
 
     setLoadingShells(true);
     try {
-      const shells = await streamApi.get<string[]>(
-        "terminal",
-        "list_shells",
-        [containerId],
-      );
+      const shells = await streamApi.get<string[]>("terminal", "list_shells", [
+        containerId,
+      ]);
       const validShells = shells.filter(
         (s: string) => s && typeof s === "string" && s.trim() !== "",
       );
@@ -109,7 +107,13 @@ const TerminalDialog: React.FC<Props> = ({
 
   // Setup xterm and stream when shell is selected
   useEffect(() => {
-    if (!open || !termRef.current || availableShells.length === 0 || !shell || !isOpen)
+    if (
+      !open ||
+      !termRef.current ||
+      availableShells.length === 0 ||
+      !shell ||
+      !isOpen
+    )
       return;
 
     // Dispose previous instance

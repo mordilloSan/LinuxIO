@@ -40,7 +40,7 @@ Browser                    Server                         Bridge
 ### Request/Response Streams (open → close)
 | Type | Description | Status |
 |------|-------------|--------|
-| `api` | JSON API calls (system, docker, dbus, config, filebrowser) | 🔄 ~95% Done |
+| `api` | JSON API calls (system, docker, dbus, config, filebrowser) | ✅ Done |
 | `fb-download` | Binary file transfer | ✅ Done |
 | `fb-upload` | Binary file upload | ✅ Done |
 | `fb-archive` | Multi-file archive download | ✅ Done |
@@ -130,9 +130,9 @@ Browser                          Server                      Bridge
 | Phase 4 | Terminal direct streaming | ✅ Done |
 | Phase 5 | Persistent streams (singleton mux) | ✅ Done |
 | Phase 6 | Bridge-initiated push | ⏳ Planned |
-| Phase 7 | Migrate API calls to streams | 🔄 ~95% Complete |
+| Phase 7 | Migrate API calls to streams | ✅ Done |
 | Phase 8 | File transfer streams | ✅ Done |
-| Phase 9 | Remove legacy `/ws` system | 🔄 ~80% Complete |
+| Phase 9 | Remove legacy `/ws` system | ✅ Done |
 
 ## What's Done (Phases 1-5, 8)
 
@@ -227,14 +227,6 @@ Replace HTTP handlers with stream handlers:
 | UpdateHistoryCard | dbus | GetUpdateHistory |
 | WireGuard | wireguard | list_interfaces, delete_interface, add_peer, toggle, create_interface |
 
-**Still Using HTTP (axios):**
-
-#### On-mount queries (stays HTTP - loads before WebSocket ready)
-| File | Endpoint | Description |
-|------|----------|-------------|
-| `Footer.tsx` | `GET /control/version` | Version info |
-| `ConfigContext.tsx` | `/theme/get`, `/theme/set` | Theme config |
-
 #### FileBrowser (fully migrated to streaming)
 All filebrowser operations now use streaming:
 - File listings, stats, mutations use `streamApi` (filebrowser handler)
@@ -260,25 +252,20 @@ All filebrowser operations now use streaming:
 - FileBrowser handlers (`navigator/`) - Fully migrated to streaming (filebrowser handler + fb-* streams)
 
 **Remaining Tasks:**
-- Migrate theme endpoints to stream API (currently loads before WebSocket ready)
+- None - all API endpoints migrated to stream API
 
-### Phase 9: Legacy `/ws` Cleanup
-The old `/ws` WebSocket system has been largely cleaned up:
+### Phase 9: Legacy `/ws` Cleanup ✅
+The old `/ws` WebSocket system has been fully removed:
 
 **Completed:**
 - ✅ Container terminal migrated to yamux streams (`container` stream type)
 - ✅ `channels.go` removed (was only for terminal route context)
-- ✅ `websocket.go` simplified (terminal handling removed)
-
-**Legacy code still in use:**
-| File | Reason |
-|------|--------|
-| `backend/server/web/websocket.go` | Progress subscriptions for folder uploads |
-| `backend/server/web/progress.go` | Progress broadcaster |
-| `frontend/src/contexts/WebSocketContext.tsx` | WS context for progress subscriptions |
-
-**Still using legacy `/ws`:**
-- Folder uploads progress (HTTP + `/ws` progress) - could be migrated to streams
+- ✅ `websocket.go` cleaned (only keeps `upgrader` and `isExpectedWSClose` for relay)
+- ✅ `progress.go` removed (progress broadcaster was unused)
+- ✅ `WebSocketContext.tsx` removed
+- ✅ `useWebSocket.ts` hook removed
+- ✅ `/ws` route removed from router
+- ✅ Theme/config endpoints migrated to stream API
 
 ## File Locations
 
@@ -292,10 +279,12 @@ The old `/ws` WebSocket system has been largely cleaned up:
 | Terminal handler | `backend/bridge/handlers/terminal/stream.go` |
 | File transfer handler | `backend/bridge/handlers/filebrowser/stream.go` |
 | API stream handler | `backend/bridge/handlers/api/stream.go` |
+| Config handler | `backend/bridge/handlers/config/handlers.go` |
 | Frontend mux | `frontend/src/utils/StreamMultiplexer.ts` |
 | Frontend stream API | `frontend/src/utils/streamApi.ts` |
 | Frontend hook | `frontend/src/hooks/useStreamMux.ts` |
 | Stream API hooks | `frontend/src/hooks/useStreamApi.ts` |
+| Config context | `frontend/src/contexts/ConfigContext.tsx` |
 | Terminal UI | `frontend/src/pages/main/terminal/Terminal.tsx` |
 | File transfer context | `frontend/src/contexts/FileTransferContext.tsx` |
 

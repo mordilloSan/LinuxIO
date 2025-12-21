@@ -599,3 +599,47 @@ export function closeStreamMux(): void {
     instance = null;
   }
 }
+
+/**
+ * Wait for the stream multiplexer to be ready (status === "open").
+ * Returns immediately if already open, or waits up to timeoutMs.
+ * @param timeoutMs Maximum time to wait (default 10 seconds)
+ * @returns Promise that resolves to true if ready, false if timeout/error
+ */
+export function waitForStreamMux(timeoutMs = 10000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const mux = instance;
+    if (!mux) {
+      resolve(false);
+      return;
+    }
+
+    if (mux.status === "open") {
+      resolve(true);
+      return;
+    }
+
+    if (mux.status === "closed" || mux.status === "error") {
+      resolve(false);
+      return;
+    }
+
+    // Wait for status change
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve(false);
+    }, timeoutMs);
+
+    const cleanup = mux.addStatusListener((status) => {
+      if (status === "open") {
+        clearTimeout(timeout);
+        cleanup();
+        resolve(true);
+      } else if (status === "closed" || status === "error") {
+        clearTimeout(timeout);
+        cleanup();
+        resolve(false);
+      }
+    });
+  });
+}

@@ -215,7 +215,7 @@ func main() {
 	logger.Debugf("[bridge] config ready")
 
 	ShutdownChan := make(chan string, 1)
-	handlers.RegisterAllHandlers(ShutdownChan)
+	handlers.RegisterAllHandlers(ShutdownChan, Sess)
 
 	// Register per-session terminal handlers (terminal starts lazily on first use)
 	handlers.RegisterTerminalHandlers(Sess)

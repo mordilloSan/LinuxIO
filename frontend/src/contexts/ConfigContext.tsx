@@ -1,5 +1,4 @@
 // src/contexts/ConfigContext.tsx
-import type { AxiosError } from "axios";
 import React, {
   createContext,
   useEffect,
@@ -15,7 +14,8 @@ import {
   ConfigContextType,
   ConfigProviderProps,
 } from "@/types/config";
-import axios from "@/utils/axios";
+import { streamApi, StreamApiError } from "@/utils/streamApi";
+import { waitForStreamMux } from "@/utils/StreamMultiplexer";
 
 const defaultConfig: AppConfig = {
   theme: "DARK",
@@ -43,33 +43,59 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const { signOut } = useAuth();
 
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
     (async () => {
       try {
-        const r = await axios.get("/theme/get", { signal: controller.signal });
-        setConfig(applyDefaults(r.data));
-      } catch (error: unknown) {
-        const status = (error as AxiosError)?.response?.status;
-        toast.error("Session expired. Please sign in again.");
+        // Wait for stream mux to be ready before fetching config
+        const muxReady = await waitForStreamMux(5000);
+        if (cancelled) return;
 
-        if (status === 500) {
+        if (!muxReady) {
+          // Mux not ready - use defaults, don't treat as auth error
+          console.warn("Stream mux not ready, using default config");
+          setLoaded(true);
+          return;
+        }
+
+        const data = await streamApi.get<AppConfig>("config", "theme_get");
+        if (!cancelled) {
+          setConfig(applyDefaults(data));
+        }
+      } catch (error: unknown) {
+        if (cancelled) return;
+
+        // Don't treat stream errors as auth errors - just use defaults
+        if (error instanceof StreamApiError && error.code === 503) {
+          console.warn("Stream API unavailable, using default config");
+          setLoaded(true);
+          return;
+        }
+
+        // Only treat actual auth errors (401/403) as session expired
+        const code = error instanceof StreamApiError ? error.code : 500;
+        if (code === 401 || code === 403) {
+          toast.error("Session expired. Please sign in again.");
           await signOut();
           return;
         }
 
-        window.location.assign("/sign-in");
-        return;
+        // For other errors, just log and use defaults
+        console.error("Failed to load config:", error);
       } finally {
-        setLoaded(true);
+        if (!cancelled) {
+          setLoaded(true);
+        }
       }
     })();
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, [signOut]);
 
   const save = useCallback(
     (cfg: AppConfig) => {
       if (!isLoaded) return;
-      axios.post("/theme/set", cfg).catch(() => {});
+      streamApi.post("config", "theme_set", cfg).catch(() => {});
     },
     [isLoaded],
   );
