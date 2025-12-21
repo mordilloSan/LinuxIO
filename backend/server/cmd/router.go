@@ -16,7 +16,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/auth"
 	"github.com/mordilloSan/LinuxIO/backend/server/benchmark"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/config"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
@@ -45,7 +44,6 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 	// --- API routes ---
 	auth.RegisterAuthRoutes(r, sm, cfg.Env, cfg.Verbose, cfg.BridgeBinaryOverride)
 	config.RegisterThemeRoutes(r.Group("/theme", sm.RequireSession()))
-	filebrowser.RegisterFilebrowserRoutes(r.Group("/navigator", sm.RequireSession()))
 
 	// --- WebSocket ---
 	r.GET("/ws", sm.RequireSession(), web.WebSocketHandler)

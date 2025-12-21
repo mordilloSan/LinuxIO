@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
-import axios from "@/utils/axios";
+import { useStreamMux } from "@/hooks/useStreamMux";
+import { streamApi } from "@/utils/streamApi";
 import { getIndexerAvailabilityFlag } from "@/utils/indexerAvailability";
 
 export interface SearchResult {
@@ -39,25 +40,21 @@ export const useFileSearch = ({
   basePath = "/",
   enabled = true,
 }: UseFileSearchOptions): UseFileSearchResult => {
+  const { isOpen } = useStreamMux();
   const indexerDisabled = getIndexerAvailabilityFlag() === false;
   const shouldSearch = query.trim().length >= 2; // Minimum 2 characters
-  const queryEnabled = enabled && shouldSearch && !indexerDisabled;
+  const queryEnabled = isOpen && enabled && shouldSearch && !indexerDisabled;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["fileSearch", query, limit, basePath],
+    queryKey: ["stream", "filebrowser", "search", query, limit, basePath],
     queryFn: async () => {
-      const response = await axios.get<SearchResponse>(
-        "/navigator/api/search",
-        {
-          params: {
-            q: query,
-            limit,
-            base: basePath,
-          },
-          timeout: 10000, // 10 second timeout
-        },
+      // Args: [query, limit?, basePath?]
+      const data = await streamApi.get<SearchResponse>(
+        "filebrowser",
+        "search",
+        [query, String(limit), basePath],
       );
-      return response.data;
+      return data;
     },
     enabled: queryEnabled,
     staleTime: 30000, // 30 seconds - search results stay fresh longer

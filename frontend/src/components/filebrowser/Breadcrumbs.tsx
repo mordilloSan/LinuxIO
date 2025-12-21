@@ -42,8 +42,9 @@ const buildBreadcrumbs = (
   const accumulated: string[] = [];
 
   segments.forEach((segment, index) => {
-    accumulated.push(encodeURIComponent(segment));
+    accumulated.push(segment);
     const isLast = index === segments.length - 1;
+    // Pass unencoded filesystem paths - encoding is handled by onNavigate
     breadcrumbs.push({
       label: segment,
       path: `/${accumulated.join("/")}${isLast && normalizedPath.endsWith("/") ? "/" : ""}`,

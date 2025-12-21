@@ -8,7 +8,7 @@ import React, {
 import { toast } from "sonner";
 
 import useWebSocket from "@/hooks/useWebSocket";
-import axios from "@/utils/axios";
+import { streamApi } from "@/utils/streamApi";
 import {
   getStreamMux,
   Stream,
@@ -1100,25 +1100,22 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           });
 
           try {
-            await axios.post("/navigator/api/resources", null, {
-              params: {
-                path: dirPath,
-                override: override ? "true" : undefined,
-                source: "/",
-                requestId,
-              },
-              signal: abortController.signal,
-            });
+            // Check if aborted before making the call
+            if (abortController.signal.aborted) break;
+            // Args: [path, override?] - directory path with trailing slash
+            const args = [dirPath];
+            if (override) {
+              args.push("true");
+            }
+            await streamApi.get("filebrowser", "resource_post", args);
             uploaded += 1;
           } catch (err: any) {
-            if (err.name === "CanceledError") break;
-            if (err.response?.status === 409 && !override) {
+            if (abortController.signal.aborted) break;
+            // 409 conflict - folder already exists
+            if (err.code === 409 && !override) {
               continue;
             }
-            const message =
-              err.response?.data?.error ||
-              err.message ||
-              "Failed to create folder";
+            const message = err.message || "Failed to create folder";
             failures.push({ path: relativePath, message });
           }
         }
