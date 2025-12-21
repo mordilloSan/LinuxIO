@@ -1,79 +1,65 @@
 package web
 
 import (
-	"context"
-	"encoding/json"
+	"encoding/binary"
 	"errors"
+	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
+
+// Stream flags for WebSocket binary protocol
+const (
+	FlagSYN  byte = 0x01 // Open new stream
+	FlagDATA byte = 0x04 // Data frame
+	FlagFIN  byte = 0x08 // Close stream
+	FlagRST  byte = 0x10 // Abort stream
+)
+
+// streamRelay manages the mapping of streamID to yamux stream
+type streamRelay struct {
+	mu      sync.RWMutex
+	streams map[uint32]*relayStream
+	ws      *websocket.Conn
+	wsMu    sync.Mutex
+	closed  uint32
+}
+
+type relayStream struct {
+	id     uint32
+	stream io.ReadWriteCloser
+	cancel chan struct{}
+}
 
 var upgrader = websocket.Upgrader{
 	// Origin check is handled by the CORS middleware.
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
-type WSMessage struct {
-	Type        string          `json:"type"`
-	RequestID   string          `json:"requestId,omitempty"`
-	Target      string          `json:"target,omitempty"`      // "main" or "container"
-	ContainerID string          `json:"containerId,omitempty"` // if target == "container"
-	Payload     json.RawMessage `json:"payload,omitempty"`
-	Data        string          `json:"data,omitempty"` // for input
+func isExpectedWSClose(err error) bool {
+	var ce *websocket.CloseError
+	if errors.As(err, &ce) {
+		switch ce.Code {
+		case websocket.CloseNormalClosure, websocket.CloseGoingAway,
+			websocket.CloseNoStatusReceived, websocket.CloseAbnormalClosure:
+			return true
+		}
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "use of closed network connection")
 }
 
-type WSResponse struct {
-	Type        string      `json:"type"`
-	RequestID   string      `json:"requestId,omitempty"`
-	ContainerID string      `json:"containerId,omitempty"`
-	Data        interface{} `json:"data,omitempty"`
-	Error       string      `json:"error,omitempty"`
-}
-
-type wsSafeConn struct {
-	Conn      *websocket.Conn
-	Mu        sync.Mutex
-	closeOnce sync.Once
-	closed    uint32 // 0 open, 1 closed
-}
-
-func (sc *wsSafeConn) WriteJSON(v interface{}) error {
-	sc.Mu.Lock()
-	defer sc.Mu.Unlock()
-	return sc.Conn.WriteJSON(v)
-}
-
-func (sc *wsSafeConn) Close() error {
-	var err error
-	sc.closeOnce.Do(func() {
-		_ = sc.Conn.WriteControl(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-			time.Now().Add(1*time.Second),
-		)
-		err = sc.Conn.Close()
-		atomic.StoreUint32(&sc.closed, 1)
-	})
-	return err
-}
-
-func (sc *wsSafeConn) IsClosed() bool {
-	return atomic.LoadUint32(&sc.closed) == 1
-}
-
-func WebSocketHandler(c *gin.Context) {
+// WebSocketRelayHandler handles binary WebSocket connections as a pure byte relay.
+// The server never parses payloads - just routes bytes between WebSocket and yamux streams.
+func WebSocketRelayHandler(c *gin.Context) {
 	sess := session.SessionFromContext(c)
 	if sess == nil {
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -82,414 +68,240 @@ func WebSocketHandler(c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		logger.Errorf("[WebSocket] WS upgrade failed: %v", err)
+		logger.Errorf("[WSRelay] upgrade failed: %v", err)
 		return
 	}
-	safeConn := &wsSafeConn{Conn: conn}
 
-	conn.SetCloseHandler(func(code int, text string) error {
-		switch code {
-		case websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived:
-			logger.Debugf("[WebSocket] Close from client (code=%d): %s", code, text)
-		default:
-			logger.Warnf("[WebSocket] Close from client (code=%d): %s", code, text)
-		}
-		return nil
-	})
-
-	ctx := c.Request.Context()
-	go func() {
-		<-ctx.Done()
-		if !safeConn.IsClosed() {
-			logger.Infof("[WebSocket] HTTP context cancelled; closing WS...")
-		}
-		_ = safeConn.Close()
-	}()
-
-	defer func() { _ = safeConn.Close() }()
-	logger.Infof("[WebSocket] Connected: user=%s", sess.User.Username)
-	logger.Debugf("[WebSocket] Connection details: user=%s remote=%s path=%s ua=%s",
-		sess.User.Username, c.ClientIP(), c.Request.URL.Path, c.Request.UserAgent())
-
-	// Initialize channel manager for route subscriptions
-	channelMgr := NewChannelManager(ctx)
-	defer channelMgr.CloseAll()
-
-	// Get initial route from query params
-	initialRoute := c.Query("route")
-	if initialRoute == "" {
-		initialRoute = "terminal" // default route
-	}
-	channelMgr.Subscribe(initialRoute)
-
-	subscriptionCancels := struct {
-		mu      sync.Mutex
-		cancels map[string]context.CancelFunc
-	}{
-		cancels: make(map[string]context.CancelFunc),
+	relay := &streamRelay{
+		streams: make(map[uint32]*relayStream),
+		ws:      conn,
 	}
 
-	addSubscriptionCancel := func(key string, cancel context.CancelFunc) {
-		subscriptionCancels.mu.Lock()
-		subscriptionCancels.cancels[key] = cancel
-		subscriptionCancels.mu.Unlock()
-	}
+	defer relay.closeAll()
+	logger.Infof("[WSRelay] Connected: user=%s", sess.User.Username)
 
-	popSubscriptionCancel := func(key string) context.CancelFunc {
-		subscriptionCancels.mu.Lock()
-		cancel := subscriptionCancels.cancels[key]
-		delete(subscriptionCancels.cancels, key)
-		subscriptionCancels.mu.Unlock()
-		return cancel
-	}
-
-	done := make(chan struct{})
-	defer func() {
-		close(done)
-		logger.Infof("[WebSocket] Disconnected: user=%s", sess.User.Username)
-	}()
-
+	// Read binary messages from WebSocket
 	for {
-		_, msg, err := conn.ReadMessage()
+		messageType, data, err := conn.ReadMessage()
 		if err != nil {
-			if isExpectedWSClose(err) {
-				logger.Debugf("[WebSocket] WS disconnect: %v", err)
-			} else {
-				logger.Warnf("[WebSocket] WS disconnect: %v", err)
+			if !isExpectedWSClose(err) {
+				logger.Warnf("[WSRelay] read error: %v", err)
 			}
 			break
 		}
 
-		var wsMsg WSMessage
-		if err := json.Unmarshal(msg, &wsMsg); err != nil {
-			logger.Warnf("[WebSocket] Invalid JSON: %v", err)
-			_ = safeConn.WriteJSON(WSResponse{Type: "error", Error: "Invalid JSON"})
+		// Only handle binary messages
+		if messageType != websocket.BinaryMessage {
+			logger.Debugf("[WSRelay] ignoring non-binary message type=%d", messageType)
 			continue
 		}
-		logger.Debugf("[WebSocket] Message: %+v", wsMsg)
 
-		switch wsMsg.Type {
-		case "route_change":
-			newRoute := wsMsg.Data
-			if newRoute == "" {
-				logger.Warnf("[WebSocket] route_change with empty route")
-				continue
-			}
-			logger.Debugf("[WebSocket] Route change: %s -> %s", channelMgr.GetActiveRoute(), newRoute)
-			channelMgr.Subscribe(newRoute)
-			_ = safeConn.WriteJSON(WSResponse{Type: "route_changed", Data: newRoute})
+		// Parse frame header: [streamID:4][flags:1][payload:N]
+		if len(data) < 5 {
+			logger.Warnf("[WSRelay] frame too short: %d bytes", len(data))
+			continue
+		}
 
-		case "terminal_start":
-			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				// Start container terminal via bridge
-				shell := wsMsg.Data
-				if shell == "" {
-					shell = "bash"
-				}
-				if _, err := bridge.CallWithSession(sess, "terminal", "start_container", []string{wsMsg.ContainerID, shell}); err != nil {
-					logger.Warnf("Could not start container terminal for %s: %v", wsMsg.ContainerID, err)
-					_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start container shell.\r\n"})
-					continue
-				}
-				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Container shell started.\r\n"})
+		streamID := binary.BigEndian.Uint32(data[0:4])
+		flags := data[4]
+		payload := data[5:]
 
-				// Subscribe to terminal route to get route context
-				routeCtx := channelMgr.Subscribe("terminal")
+		if flags&FlagSYN != 0 {
+			// Open new stream
+			relay.handleSYN(sess, streamID, payload)
+		} else if flags&FlagDATA != 0 {
+			// Write data to stream
+			relay.handleDATA(streamID, payload)
+		} else if flags&FlagFIN != 0 {
+			// Close stream (forward payload first if present)
+			relay.handleFIN(streamID, payload)
+		} else if flags&FlagRST != 0 {
+			// Abort stream
+			relay.handleRST(streamID)
+		}
+	}
 
-				// Poll bridge for output and forward to WS
-				go func(containerID string, routeCtx context.Context) {
-					for {
-						select {
-						case <-done:
-							logger.Debugf("[WebSocket] Container terminal polling stopped: connection closed")
-							return
-						case <-routeCtx.Done():
-							logger.Debugf("[WebSocket] Container terminal polling stopped: route changed")
-							return
-						default:
-						}
-						data, closed, err := readFromBridgeContainer(sess, containerID, 1200)
-						if err != nil {
-							logger.Warnf("bridge read_container error: %v", err)
-							return
-						}
-						if data != "" {
-							_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", ContainerID: containerID, Data: data})
-						}
-						if closed {
-							return
-						}
-						if data == "" {
-							time.Sleep(60 * time.Millisecond)
-						}
-					}
-				}(wsMsg.ContainerID, routeCtx)
-			} else {
-				// Start main terminal via bridge
-				if _, err := bridge.CallWithSession(sess, "terminal", "start_main", nil); err != nil {
-					logger.Warnf("Could not start terminal for %s: %v", sess.User.Username, err)
-					_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Failed to start shell.\r\n"})
-					continue
-				}
-				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: "Shell started.\r\n"})
+	logger.Infof("[WSRelay] Disconnected: user=%s", sess.User.Username)
+}
 
-				// Send retained backlog once on (re)start to repopulate xterm
-				if raw, err := bridge.CallWithSession(sess, "terminal", "read_main_backlog", nil); err == nil {
-					var resp ipc.Response
-					if json.Unmarshal(raw, &resp) == nil && strings.ToLower(resp.Status) == "ok" {
-						if dataStr := extractDataString(resp.Output); dataStr != "" {
-							_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: dataStr})
-						}
-					}
-				}
+// handleSYN opens a new yamux stream and starts relaying
+func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload []byte) {
+	r.mu.Lock()
+	if _, exists := r.streams[streamID]; exists {
+		r.mu.Unlock()
+		logger.Warnf("[WSRelay] stream %d already exists", streamID)
+		return
+	}
+	r.mu.Unlock()
 
-				// Subscribe to terminal route to get route context
-				routeCtx := channelMgr.Subscribe("terminal")
+	// Get yamux session for this user
+	yamuxSession, err := bridge.GetOrCreateYamuxSession(sess.SocketPath)
+	if err != nil {
+		logger.Errorf("[WSRelay] failed to get yamux session: %v", err)
+		r.sendFrame(streamID, FlagRST, nil)
+		return
+	}
 
-				go func(routeCtx context.Context) {
-					for {
-						select {
-						case <-done:
-							logger.Debugf("[WebSocket] Main terminal polling stopped: connection closed")
-							return
-						case <-routeCtx.Done():
-							logger.Debugf("[WebSocket] Main terminal polling stopped: route changed")
-							return
-						default:
-						}
-						data, closed, err := readFromBridgeMain(sess, 1200)
-						if err != nil {
-							logger.Warnf("bridge read_main error: %v", err)
-							return
-						}
-						if data != "" {
-							_ = safeConn.WriteJSON(WSResponse{Type: "terminal_output", Data: data})
-						}
-						if closed {
-							return
-						}
-						if data == "" {
-							time.Sleep(60 * time.Millisecond)
-						}
-					}
-				}(routeCtx)
-			}
+	// Open new yamux stream
+	stream, err := yamuxSession.Open()
+	if err != nil {
+		logger.Errorf("[WSRelay] failed to open stream: %v", err)
+		r.sendFrame(streamID, FlagRST, nil)
+		return
+	}
 
-		case "terminal_input":
-			if wsMsg.Data == "" {
-				continue
-			}
-			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				_, err := bridge.CallWithSession(sess, "terminal", "input_container", []string{wsMsg.ContainerID, wsMsg.Data})
-				if err != nil {
-					logger.Warnf("bridge input_container error: %v", err)
-				}
-			} else {
-				_, err := bridge.CallWithSession(sess, "terminal", "input_main", []string{wsMsg.Data})
-				if err != nil {
-					logger.Warnf("bridge input_main error: %v", err)
-				}
-			}
+	rs := &relayStream{
+		id:     streamID,
+		stream: stream,
+		cancel: make(chan struct{}),
+	}
 
-		case "terminal_resize":
-			var size struct {
-				Cols int `json:"cols"`
-				Rows int `json:"rows"`
-			}
-			_ = json.Unmarshal(wsMsg.Payload, &size)
-			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				_, err := bridge.CallWithSession(sess, "terminal", "resize_container", []string{wsMsg.ContainerID, strconv.Itoa(size.Cols), strconv.Itoa(size.Rows)})
-				if err != nil {
-					logger.Warnf("bridge resize_container error: %v", err)
-				}
-			} else {
-				_, err := bridge.CallWithSession(sess, "terminal", "resize_main", []string{strconv.Itoa(size.Cols), strconv.Itoa(size.Rows)})
-				if err != nil {
-					logger.Warnf("bridge resize_main error: %v", err)
-				}
-			}
+	r.mu.Lock()
+	r.streams[streamID] = rs
+	r.mu.Unlock()
 
-		case "list_shells":
-			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				raw, err := bridge.CallWithSession(sess, "terminal", "list_shells", []string{wsMsg.ContainerID})
-				if err != nil {
-					_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: []string{""}, Error: err.Error()})
-					continue
-				}
-				var resp ipc.Response
-				_ = json.Unmarshal(raw, &resp)
-				if strings.ToLower(resp.Status) != "ok" {
-					_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: []string{""}, Error: resp.Error})
-					continue
-				}
-				shells := extractStringSlice(resp.Output)
-				_ = safeConn.WriteJSON(WSResponse{Type: "shell_list", ContainerID: wsMsg.ContainerID, Data: shells})
-			}
+	// Write payload directly - frontend sends StreamFrame-formatted bytes
+	if len(payload) > 0 {
+		if _, err := stream.Write(payload); err != nil {
+			logger.Warnf("[WSRelay] failed to write SYN payload: %v", err)
+			r.closeStream(streamID)
+			return
+		}
+	}
 
-		case "terminal_close":
-			if wsMsg.Target == "container" && wsMsg.ContainerID != "" {
-				_, err := bridge.CallWithSession(sess, "terminal", "close_container", []string{wsMsg.ContainerID})
-				if err != nil {
-					logger.Warnf("bridge close_container error: %v", err)
-				}
-				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_closed", ContainerID: wsMsg.ContainerID, Data: "Container terminal closed."})
-			} else {
-				_, err := bridge.CallWithSession(sess, "terminal", "close_main", nil)
-				if err != nil {
-					logger.Warnf("bridge close_main error: %v", err)
-				}
-				_ = safeConn.WriteJSON(WSResponse{Type: "terminal_closed", Data: "Main terminal closed."})
-			}
+	// Start reading from yamux stream and relaying to WebSocket
+	go r.relayFromBridge(rs)
 
-		case "subscribe_operation_progress":
-			reqId := wsMsg.Data
-			if reqId == "" {
-				logger.Warnf("[WebSocket] subscribe_operation_progress with empty reqId")
-				continue
-			}
-			key := sess.SessionID + ":" + reqId
-			logger.Debugf("[WebSocket] Subscribing to operation progress: %s", key)
+	logger.Debugf("[WSRelay] stream %d opened", streamID)
+}
 
-			subCtx, cancel := context.WithCancel(ctx)
-			addSubscriptionCancel(key, cancel)
+// handleDATA writes payload to the yamux stream
+func (r *streamRelay) handleDATA(streamID uint32, payload []byte) {
+	r.mu.RLock()
+	rs, exists := r.streams[streamID]
+	r.mu.RUnlock()
 
-			GlobalProgressBroadcaster.Register(key, func(update ProgressUpdate) {
-				_ = safeConn.WriteJSON(WSResponse{
-					Type:      update.Type, // e.g. "download_progress", "compression_progress", "upload_progress"
-					RequestID: reqId,
-					Data:      update,
-				})
-			})
+	if !exists {
+		logger.Debugf("[WSRelay] DATA for unknown stream %d", streamID)
+		return
+	}
 
-			go func(subscriptionKey string, childCtx context.Context) {
-				<-childCtx.Done()
-				subscriptionCancels.mu.Lock()
-				delete(subscriptionCancels.cancels, subscriptionKey)
-				subscriptionCancels.mu.Unlock()
-				logger.Debugf("[WebSocket] Unsubscribing from operation progress: %s", subscriptionKey)
-				GlobalProgressBroadcaster.Unregister(subscriptionKey)
-			}(key, subCtx)
+	if len(payload) > 0 {
+		if _, err := rs.stream.Write(payload); err != nil {
+			logger.Debugf("[WSRelay] write to stream %d failed: %v", streamID, err)
+			r.closeStream(streamID)
+		}
+	}
+}
 
-			_ = safeConn.WriteJSON(WSResponse{
-				Type:      "operation_subscribed",
-				RequestID: reqId,
-			})
+// handleFIN forwards the close frame to bridge but doesn't close the stream yet.
+// The stream will be closed by relayFromBridge when the bridge sends its response and closes.
+func (r *streamRelay) handleFIN(streamID uint32, payload []byte) {
+	r.mu.RLock()
+	rs, exists := r.streams[streamID]
+	r.mu.RUnlock()
 
-		case "unsubscribe_operation_progress":
-			reqId := wsMsg.Data
-			if reqId == "" {
-				logger.Warnf("[WebSocket] unsubscribe_operation_progress with empty reqId")
-				continue
-			}
-			key := sess.SessionID + ":" + reqId
-			logger.Debugf("[WebSocket] Unsubscribing from operation progress: %s", key)
-			if cancel := popSubscriptionCancel(key); cancel != nil {
-				cancel()
-			}
-			GlobalProgressBroadcaster.Unregister(key)
-			GlobalOperationCanceller.Cancel(key)
-			_ = safeConn.WriteJSON(WSResponse{
-				Type:      "operation_unsubscribed",
-				RequestID: reqId,
-			})
+	if !exists {
+		logger.Debugf("[WSRelay] FIN for unknown stream %d", streamID)
+		return
+	}
 
+	// Forward the payload (e.g., OpStreamClose frame) to bridge
+	// Don't close the stream - let relayFromBridge handle that when bridge responds
+	if len(payload) > 0 {
+		if _, err := rs.stream.Write(payload); err != nil {
+			logger.Debugf("[WSRelay] write FIN payload to stream %d failed: %v", streamID, err)
+			r.closeStream(streamID)
+			return
+		}
+	}
+
+	logger.Debugf("[WSRelay] stream %d FIN forwarded, waiting for bridge response", streamID)
+}
+
+// handleRST aborts the stream
+func (r *streamRelay) handleRST(streamID uint32) {
+	r.closeStream(streamID)
+	logger.Debugf("[WSRelay] stream %d aborted (RST)", streamID)
+}
+
+// relayFromBridge reads from yamux stream and sends to WebSocket
+func (r *streamRelay) relayFromBridge(rs *relayStream) {
+	buf := make([]byte, 4096)
+	for {
+		select {
+		case <-rs.cancel:
+			return
 		default:
-			logger.Warnf("[WebSocket] Unknown message type: %s", wsMsg.Type)
+		}
+
+		n, err := rs.stream.Read(buf)
+		if n > 0 {
+			// Send DATA frame to WebSocket
+			r.sendFrame(rs.id, FlagDATA, buf[:n])
+		}
+		if err != nil {
+			if err != io.EOF {
+				logger.Debugf("[WSRelay] stream %d read error: %v", rs.id, err)
+			}
+			// Send FIN to WebSocket
+			r.sendFrame(rs.id, FlagFIN, nil)
+			r.closeStream(rs.id)
+			return
 		}
 	}
 }
 
-func readFromBridgeMain(sess *session.Session, waitMs int) (string, bool, error) {
-	if waitMs <= 0 {
-		waitMs = 750
+// sendFrame sends a binary frame to WebSocket
+func (r *streamRelay) sendFrame(streamID uint32, flags byte, payload []byte) {
+	if atomic.LoadUint32(&r.closed) == 1 {
+		return
 	}
-	raw, err := bridge.CallWithSession(sess, "terminal", "read_main", []string{strconv.Itoa(waitMs)})
+
+	frame := make([]byte, 5+len(payload))
+	binary.BigEndian.PutUint32(frame[0:4], streamID)
+	frame[4] = flags
+	if len(payload) > 0 {
+		copy(frame[5:], payload)
+	}
+
+	r.wsMu.Lock()
+	err := r.ws.WriteMessage(websocket.BinaryMessage, frame)
+	r.wsMu.Unlock()
+
 	if err != nil {
-		return "", false, err
+		logger.Debugf("[WSRelay] failed to send frame: %v", err)
 	}
-	var resp ipc.Response
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return "", false, err
-	}
-	if strings.ToLower(resp.Status) != "ok" {
-		return "", false, errors.New(resp.Error)
-	}
-
-	data, closed := extractTerminalOutput(resp.Output)
-	return data, closed, nil
 }
 
-func readFromBridgeContainer(sess *session.Session, containerID string, waitMs int) (string, bool, error) {
-	if waitMs <= 0 {
-		waitMs = 750
+// closeStream closes and removes a stream
+func (r *streamRelay) closeStream(streamID uint32) {
+	r.mu.Lock()
+	rs, exists := r.streams[streamID]
+	if exists {
+		delete(r.streams, streamID)
 	}
-	raw, err := bridge.CallWithSession(sess, "terminal", "read_container", []string{containerID, strconv.Itoa(waitMs)})
-	if err != nil {
-		return "", false, err
-	}
-	var resp ipc.Response
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return "", false, err
-	}
-	if strings.ToLower(resp.Status) != "ok" {
-		return "", false, errors.New(resp.Error)
-	}
+	r.mu.Unlock()
 
-	data, closed := extractTerminalOutput(resp.Output)
-	return data, closed, nil
+	if exists {
+		close(rs.cancel)
+		rs.stream.Close()
+	}
 }
 
-// extractTerminalOutput decodes the terminal bridge response payload.
-func extractTerminalOutput(output json.RawMessage) (data string, closed bool) {
-	if len(output) == 0 {
-		return "", false
+// closeAll closes all streams and the WebSocket
+func (r *streamRelay) closeAll() {
+	atomic.StoreUint32(&r.closed, 1)
+
+	r.mu.Lock()
+	streams := r.streams
+	r.streams = make(map[uint32]*relayStream)
+	r.mu.Unlock()
+
+	for _, rs := range streams {
+		close(rs.cancel)
+		rs.stream.Close()
 	}
 
-	var payload struct {
-		Data   string `json:"data"`
-		Closed bool   `json:"closed"`
-	}
-	if err := json.Unmarshal(output, &payload); err != nil {
-		return "", false
-	}
-	return payload.Data, payload.Closed
-}
-
-// extractDataString extracts the "data" field from resp.Output.
-func extractDataString(output json.RawMessage) string {
-	if len(output) == 0 {
-		return ""
-	}
-
-	var payload struct {
-		Data string `json:"data"`
-	}
-	if err := json.Unmarshal(output, &payload); err != nil {
-		return ""
-	}
-	return payload.Data
-}
-
-// extractStringSlice extracts a []string from resp.Output.
-func extractStringSlice(output json.RawMessage) []string {
-	if len(output) == 0 {
-		return []string{}
-	}
-
-	var arr []string
-	if err := json.Unmarshal(output, &arr); err != nil {
-		return []string{}
-	}
-	return arr
-}
-
-func isExpectedWSClose(err error) bool {
-	var ce *websocket.CloseError
-	if errors.As(err, &ce) {
-		switch ce.Code {
-		case websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived:
-			return true
-		}
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "use of closed network connection")
+	r.ws.Close()
 }

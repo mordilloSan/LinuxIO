@@ -1,10 +1,9 @@
 import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Typography, Box } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
 import GeneralCard from "@/components/cards/GeneralCard";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface MotherboardInfo {
   baseboard: {
@@ -21,12 +20,9 @@ interface MotherboardInfo {
 }
 
 const MotherBoardInfo: React.FC = () => {
-  const { data: motherboardInfo } = useQuery<MotherboardInfo>({
-    queryKey: ["motherboardInfo"],
-    queryFn: async () => {
-      const res = await axios.get("/system/baseboard");
-      return res.data;
-    },
+  const { data: motherboardInfo } = useStreamQuery<MotherboardInfo>({
+    handlerType: "system",
+    command: "get_motherboard_info",
     refetchInterval: 50000,
   });
 

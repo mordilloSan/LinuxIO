@@ -61,7 +61,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ data }) => {
   const latest = data.length > 0 ? data[data.length - 1] : undefined;
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height={120} minWidth={0}>
       <LineChart data={data} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
         <XAxis dataKey="time" hide />
         <YAxis hide />

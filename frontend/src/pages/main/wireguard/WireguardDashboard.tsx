@@ -1,5 +1,5 @@
 import { Grid, Typography, Box } from "@mui/material";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
@@ -8,8 +8,13 @@ import InterfaceDetails from "./InterfaceClients";
 
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import { WireGuardInterface } from "@/types/wireguard";
-import axios from "@/utils/axios";
+import { streamApi } from "@/utils/streamApi";
+
+const wireguardToastMeta = {
+  meta: { href: "/wireguard", label: "Open WireGuard" },
+};
 
 const WireGuardDashboard: React.FC = () => {
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
@@ -21,21 +26,16 @@ const WireGuardDashboard: React.FC = () => {
 
   const {
     data: interfaceData,
-    isLoading,
+    isPending: isLoading,
     isError,
     refetch,
-  } = useQuery<{ interfaces: WireGuardInterface[] }>({
-    queryKey: ["wireguardInterfaces"],
-    queryFn: async () => {
-      const res = await axios.get<{ interfaces: WireGuardInterface[] }>(
-        "/wireguard/interfaces",
-      );
-      return res.data;
-    },
+  } = useStreamQuery<WireGuardInterface[]>({
+    handlerType: "wireguard",
+    command: "list_interfaces",
     refetchInterval: 10000,
   });
 
-  const WGinterfaces = interfaceData?.interfaces || [];
+  const WGinterfaces = Array.isArray(interfaceData) ? interfaceData : [];
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent | KeyboardEvent) {
@@ -69,24 +69,35 @@ const WireGuardDashboard: React.FC = () => {
 
   const handleDelete = async (interfaceName: string) => {
     try {
-      await axios.delete(`/wireguard/interface/${interfaceName}`);
-      toast.success(`WireGuard interface '${interfaceName}' deleted`);
+      await streamApi.get("wireguard", "remove_interface", [interfaceName]);
+      toast.success(
+        `WireGuard interface '${interfaceName}' deleted`,
+        wireguardToastMeta,
+      );
       refetch();
       setSelectedInterface(null);
     } catch (error) {
-      toast.error(`Failed to delete interface '${interfaceName}'`);
+      toast.error(
+        `Failed to delete interface '${interfaceName}'`,
+        wireguardToastMeta,
+      );
       console.error("Failed to delete WireGuard interface:", error);
     }
   };
 
   const handleAddPeer = async (interfaceName: string) => {
     try {
-      await axios.post(`/wireguard/interface/${interfaceName}/peer`);
-      toast.success(`Peer added to '${interfaceName}'`);
+      await streamApi.get("wireguard", "add_peer", [interfaceName]);
+      toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
       refetch();
-      queryClient.invalidateQueries({ queryKey: ["wg-peers", interfaceName] }); // <-- This!
+      queryClient.invalidateQueries({
+        queryKey: ["stream", "wireguard", "list_peers", interfaceName],
+      });
     } catch (error) {
-      toast.error(`Failed to add peer to '${interfaceName}'`);
+      toast.error(
+        `Failed to add peer to '${interfaceName}'`,
+        wireguardToastMeta,
+      );
       console.error("Failed to add peer:", error);
     }
   };
@@ -99,14 +110,17 @@ const WireGuardDashboard: React.FC = () => {
       if (status !== "up" && status !== "down") {
         throw new Error('Action must be either "up" or "down".');
       }
-      await axios.post(`/wireguard/interface/${interfaceName}/${status}`);
+      const command = status === "up" ? "up_interface" : "down_interface";
+      await streamApi.get("wireguard", command, [interfaceName]);
       toast.success(
         `WireGuard interface "${interfaceName}" turned ${status === "up" ? "on" : "off"}.`,
+        wireguardToastMeta,
       );
       refetch();
     } catch (error: any) {
       toast.error(
-        `Failed to turn ${status} WireGuard interface "${interfaceName}": ${error?.response?.data?.error || error.message}`,
+        `Failed to turn ${status} WireGuard interface "${interfaceName}": ${error?.message || "Unknown error"}`,
+        wireguardToastMeta,
       );
       console.error(`Failed to ${status} WireGuard interface:`, error);
     }

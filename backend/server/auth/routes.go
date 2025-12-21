@@ -9,12 +9,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 )
 
-type Config struct {
-	Env                  string
-	Verbose              bool
-	BridgeBinaryOverride string
-}
-
 // --- test seams (overridden in tests) ---
 var (
 	startBridge        = bridge.StartBridge
@@ -23,21 +17,20 @@ var (
 	lookupUser         = user.Lookup
 )
 
-// RegisterAuthRoutes wires public and private auth endpoints.
-// - pub: routes without auth middleware (e.g., /auth/login)
-// - priv: routes with auth middleware already attached (e.g., /auth/me, /auth/logout)
-func RegisterAuthRoutes(pub *gin.RouterGroup, priv *gin.RouterGroup, sm *session.Manager, c Config) {
+// RegisterAuthRoutes wires public and private auth endpoints under /auth.
+func RegisterAuthRoutes(r *gin.Engine, sm *session.Manager, env string, verbose bool, bridgeBinaryOverride string) {
 	h := &Handlers{
 		SM:                   sm,
-		Env:                  c.Env,
-		Verbose:              c.Verbose,
-		BridgeBinaryOverride: c.BridgeBinaryOverride,
+		Env:                  env,
+		Verbose:              verbose,
+		BridgeBinaryOverride: bridgeBinaryOverride,
 	}
 
 	// public
-	pub.POST("/login", h.Login)
+	r.POST("/auth/login", h.Login)
 
-	// private (requires middleware applied by caller)
+	// private
+	priv := r.Group("/auth", sm.RequireSession())
 	priv.GET("/me", h.Me)
 	priv.GET("/logout", h.Logout)
 }

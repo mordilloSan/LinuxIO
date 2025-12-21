@@ -1,8 +1,20 @@
-5 - docker compose
+1 - docker compose UI
 
-7 - Updates - Make it more responsive. Use d-bus streaming with websocket?
+2 - Updates - Make it more responsive. Use d-bus streaming with websocket?
 
-use quantom filebrowser as our main navigator - DONE
+3 - chunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts
+
+4 - for docker logs we could use real streaming?????
+
+5 - for service logs we could use real streaming?????
+
+6 - Notifications!!!! See notifications.md
+
+7 - Remove gin
+
+8 - move benchmarking to the bridge also
+
+use quantum filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
 filebrowser header should contain sessionid - DONE
 destroy the filebrowser config file after we create the container - DONE
@@ -20,11 +32,4 @@ Wireguard Testing and lasthandshake - DONE
 If session is garbage colected the bridge must exist as well - DONE
 Test Multiple Users - DONE
  Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable. - Done
-
-
-Multiplex over Single Connection (Future)
-If you need bidirectional streaming (real-time updates FROM bridge TO server):
-Add RequestID to IPC protocol
-Multiplexer pattern (like HTTP/2 streams)
-Server can receive unsolicited messages from bridge
-Trade-off: Requires protocol changes + more complexity
+Multiplex over Single Connection - DONE

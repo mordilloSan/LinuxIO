@@ -58,8 +58,14 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { clearSubfoldersCache } from "@/hooks/useSubfolders";
-import { ViewMode, FileItem } from "@/types/filebrowser";
-import axios from "@/utils/axios";
+import { ViewMode, FileItem, ResourceStatData } from "@/types/filebrowser";
+import { streamApi } from "@/utils/streamApi";
+import {
+  getStreamMux,
+  encodeString,
+  STREAM_CHUNK_SIZE,
+  type ResultFrame,
+} from "@/utils/StreamMultiplexer";
 
 const viewModes: ViewMode[] = ["card", "list"];
 
@@ -217,7 +223,12 @@ const FileBrowser: React.FC = () => {
   const showQuickSave = editingPath !== null;
 
   // Extract path from URL: /filebrowser/path/to/dir -> /path/to/dir
-  const urlPath = location.pathname.replace(/^\/filebrowser\/?/, "");
+  // Decode each segment to handle URL-encoded characters (spaces, parentheses, etc.)
+  const urlPath = location.pathname
+    .replace(/^\/filebrowser\/?/, "")
+    .split("/")
+    .map((segment) => decodeURIComponent(segment))
+    .join("/");
   const normalizedPath = urlPath ? `/${urlPath}` : "/";
 
   const {
@@ -410,8 +421,12 @@ const FileBrowser: React.FC = () => {
         navigate("/filebrowser");
         return;
       }
-      // Remove leading slash for the URL path
-      const urlPath = path.startsWith("/") ? path.slice(1) : path;
+      // Encode each path segment for URL safety (handles spaces, parentheses, etc.)
+      const urlPath = path
+        .split("/")
+        .filter(Boolean)
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
       navigate(`/filebrowser/${urlPath}`);
     },
     [navigate],
@@ -578,13 +593,14 @@ const FileBrowser: React.FC = () => {
 
     try {
       // Fetch stat info to get current permissions (use first item as reference)
-      const response = await axios.get("/navigator/api/resources/stat", {
-        params: { path: selectedPath },
-      });
-
-      const stat = response.data;
+      // Args: [path]
+      const stat = await streamApi.get<ResourceStatData>(
+        "filebrowser",
+        "resource_stat",
+        [selectedPath],
+      );
       const mode = stat.mode || "0644"; // Default if not available
-      const isDirectory = stat.isDir || hasDirectorySelected;
+      const isDirectory = stat.mode?.startsWith("d") || hasDirectorySelected;
       const owner = stat.owner || undefined;
       const group = stat.group || undefined;
 
@@ -852,23 +868,76 @@ const FileBrowser: React.FC = () => {
   const handleSaveFile = useCallback(async () => {
     if (!editorRef.current || !editingPath) return;
 
+    const mux = getStreamMux();
+    if (!mux || mux.status !== "open") {
+      toast.error("Stream connection not ready");
+      return;
+    }
+
     try {
       setIsSavingFile(true);
       const content = editorRef.current.getContent();
-      await axios.put("/navigator/api/resources", content, {
-        params: { path: editingPath },
-        headers: { "Content-Type": "text/plain" },
+      const encoder = new TextEncoder();
+      const contentBytes = encoder.encode(content);
+      const contentSize = contentBytes.length;
+
+      // Open stream with fb-upload type: "fb-upload\0path\0size"
+      const payload = encodeString(`fb-upload\0${editingPath}\0${contentSize}`);
+      const stream = mux.openStream("fb-upload", payload);
+
+      if (!stream) {
+        toast.error("Failed to open save stream");
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        stream.onResult = (result: ResultFrame) => {
+          if (result.status === "ok") {
+            resolve();
+          } else {
+            reject(new Error(result.error || "Save failed"));
+          }
+        };
+
+        stream.onClose = () => {
+          reject(new Error("Stream closed unexpectedly"));
+        };
+
+        // Send content in chunks
+        let offset = 0;
+        const sendNextChunk = () => {
+          if (stream.status !== "open") return;
+
+          if (offset >= contentSize) {
+            stream.close();
+            return;
+          }
+
+          const chunk = contentBytes.slice(offset, offset + STREAM_CHUNK_SIZE);
+          stream.write(chunk);
+          offset += chunk.length;
+
+          // Continue sending
+          if (offset < contentSize) {
+            setTimeout(sendNextChunk, 0);
+          } else {
+            stream.close();
+          }
+        };
+
+        sendNextChunk();
       });
+
       toast.success("File saved successfully!");
       setIsEditorDirty(false);
 
       // Invalidate the file cache so it reloads with new content
       queryClient.invalidateQueries({
-        queryKey: ["fileEdit", editingPath],
+        queryKey: ["stream", "filebrowser", "resource_get_edit", editingPath],
       });
     } catch (error: any) {
       console.error("Save error:", error);
-      toast.error(error.response?.data?.error || "Failed to save file");
+      toast.error(error.message || "Failed to save file");
     } finally {
       setIsSavingFile(false);
     }
@@ -896,13 +965,63 @@ const FileBrowser: React.FC = () => {
   const handleSaveAndExit = useCallback(async () => {
     if (!editorRef.current || !editingPath) return;
 
+    const mux = getStreamMux();
+    if (!mux || mux.status !== "open") {
+      toast.error("Stream connection not ready");
+      return;
+    }
+
     try {
       setIsSavingFile(true);
       const content = editorRef.current.getContent();
+      const encoder = new TextEncoder();
+      const contentBytes = encoder.encode(content);
+      const contentSize = contentBytes.length;
 
-      await axios.put("/navigator/api/resources", content, {
-        params: { path: editingPath },
-        headers: { "Content-Type": "text/plain" },
+      // Open stream with fb-upload type
+      const payload = encodeString(`fb-upload\0${editingPath}\0${contentSize}`);
+      const stream = mux.openStream("fb-upload", payload);
+
+      if (!stream) {
+        toast.error("Failed to open save stream");
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        stream.onResult = (result: ResultFrame) => {
+          if (result.status === "ok") {
+            resolve();
+          } else {
+            reject(new Error(result.error || "Save failed"));
+          }
+        };
+
+        stream.onClose = () => {
+          reject(new Error("Stream closed unexpectedly"));
+        };
+
+        // Send content in chunks
+        let offset = 0;
+        const sendNextChunk = () => {
+          if (stream.status !== "open") return;
+
+          if (offset >= contentSize) {
+            stream.close();
+            return;
+          }
+
+          const chunk = contentBytes.slice(offset, offset + STREAM_CHUNK_SIZE);
+          stream.write(chunk);
+          offset += chunk.length;
+
+          if (offset < contentSize) {
+            setTimeout(sendNextChunk, 0);
+          } else {
+            stream.close();
+          }
+        };
+
+        sendNextChunk();
       });
 
       toast.success("File saved successfully!");
@@ -911,10 +1030,10 @@ const FileBrowser: React.FC = () => {
       setCloseEditorDialog(false);
 
       queryClient.invalidateQueries({
-        queryKey: ["fileEdit", editingPath],
+        queryKey: ["stream", "filebrowser", "resource_get_edit", editingPath],
       });
     } catch (error: any) {
-      toast.error(error.response?.data?.error || "Failed to save file");
+      toast.error(error.message || "Failed to save file");
     } finally {
       setIsSavingFile(false);
     }
@@ -922,7 +1041,7 @@ const FileBrowser: React.FC = () => {
 
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ["fileResource", normalizedPath],
+      queryKey: ["stream", "filebrowser", "resource_get", normalizedPath],
     });
     clearSubfoldersCache(queryClient);
   }, [normalizedPath, queryClient]);

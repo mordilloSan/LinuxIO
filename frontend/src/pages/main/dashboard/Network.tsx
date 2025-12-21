@@ -1,12 +1,11 @@
 import { Box, Typography } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 
 import NetworkGraph from "./NetworkGraph";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface InterfaceStats {
   name: string;
@@ -18,11 +17,18 @@ interface InterfaceStats {
 }
 
 const NetworkInterfacesCard: React.FC = () => {
-  const { data: interfaces = [], isLoading } = useQuery<InterfaceStats[]>({
-    queryKey: ["networkInterfaces"],
-    queryFn: async () => {
-      const { data } = await axios.get("system/network");
-      return data.map((iface: any) => ({
+  const { data: rawInterfaces = [], isPending: isLoading } = useStreamQuery<
+    InterfaceStats[]
+  >({
+    handlerType: "system",
+    command: "get_network_info",
+    refetchInterval: 1000,
+  });
+
+  // Transform data to add type field
+  const interfaces = useMemo(
+    () =>
+      rawInterfaces.map((iface) => ({
         ...iface,
         ipv4: Array.isArray(iface.ipv4) ? iface.ipv4 : [],
         type: iface.name.startsWith("wl")
@@ -30,10 +36,9 @@ const NetworkInterfacesCard: React.FC = () => {
           : iface.name.startsWith("lo")
             ? "loopback"
             : "ethernet",
-      }));
-    },
-    refetchInterval: 1000,
-  });
+      })),
+    [rawInterfaces],
+  );
 
   const filteredInterfaces = useMemo(
     () =>

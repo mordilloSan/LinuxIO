@@ -173,13 +173,48 @@ func resourcePost(args []string) (any, error) {
 			logger.Debugf("error writing directory: %v", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
+
+		// Notify indexer about the new directory
+		if info, statErr := os.Stat(realPath); statErr == nil {
+			if indexErr := addToIndexer(path, info); indexErr != nil {
+				logger.Debugf("failed to update indexer after directory create: %v", indexErr)
+			}
+		}
+
 		return map[string]any{"message": "created"}, nil
 	}
 
-	// For file uploads, we need body data from the request
-	// This will be handled differently - IPC doesn't support binary data streaming
-	// For now, we'll return an error since file uploads need HTTP streaming
-	return nil, fmt.Errorf("bad_request:file upload requires HTTP streaming")
+	// Handle empty file creation
+	// File uploads with content use yamux streams (fb-upload), not this handler
+	parentDir := filepath.Dir(realPath)
+	if mkdirErr := os.MkdirAll(parentDir, services.PermDir); mkdirErr != nil {
+		logger.Debugf("error creating parent directory: %v", mkdirErr)
+		return nil, fmt.Errorf("bad_request:failed to create parent directory: %v", mkdirErr)
+	}
+
+	// Check if file exists
+	if _, statErr := os.Stat(realPath); statErr == nil {
+		if !override {
+			return nil, fmt.Errorf("bad_request:file already exists")
+		}
+	}
+
+	// Create empty file
+	f, err := os.Create(realPath)
+	if err != nil {
+		logger.Debugf("error creating file: %v", err)
+		return nil, fmt.Errorf("bad_request:%v", err)
+	}
+	f.Close()
+
+	// Notify indexer about the new file
+	if info, err := os.Stat(realPath); err == nil {
+		if err := addToIndexer(path, info); err != nil {
+			logger.Debugf("failed to update indexer after file create: %v", err)
+		}
+	}
+
+	return map[string]any{"message": "created"}, nil
 }
 
 // resourcePatch performs patch operations (move, copy, rename)
@@ -1249,155 +1284,7 @@ func getAllGroups() ([]string, error) {
 	return groups, nil
 }
 
-// fileUploadFromTemp moves a file from a temp location to the final destination.
-// Args: [tempFilePath, destinationPath, override?]
-func fileUploadFromTemp(ctx *ipc.RequestContext, args []string) (any, error) {
-	if len(args) < 2 {
-		return nil, fmt.Errorf("bad_request:missing temp file path or destination")
-	}
-
-	tempFilePath := args[0]
-	destPath := args[1]
-	override := len(args) > 2 && args[2] == "true"
-
-	// Validate temp file exists
-	tempStat, err := os.Stat(tempFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("bad_request:temp file not found: %v", err)
-	}
-	if tempStat.IsDir() {
-		return nil, fmt.Errorf("bad_request:temp path is a directory")
-	}
-
-	// Clean destination path
-	realDest := filepath.Join(destPath)
-
-	// Check for conflicts
-	if stat, statErr := os.Stat(realDest); statErr == nil {
-		if stat.IsDir() {
-			return nil, fmt.Errorf("bad_request:destination is a directory")
-		}
-		if !override {
-			return nil, fmt.Errorf("bad_request:file already exists")
-		}
-	}
-
-	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(realDest), services.PermDir); err != nil {
-		return nil, fmt.Errorf("failed to create parent directory: %v", err)
-	}
-
-	streamProgress := ctx != nil && ctx.HasStream()
-	totalSize := tempStat.Size()
-	var processed int64
-	var lastPercent float64
-
-	sendProgress := func(status string, percent float64) {
-		if !streamProgress {
-			return
-		}
-		payload := map[string]any{
-			"percent":        percent,
-			"bytesProcessed": processed,
-			"totalBytes":     totalSize,
-		}
-		if err := ctx.SendStreamJSON(status, payload); err != nil {
-			logger.Debugf("file_upload_from_temp stream send failed: %v", err)
-		}
-	}
-
-	updateProgress := func(delta int64) {
-		if !streamProgress || totalSize <= 0 {
-			return
-		}
-		processed += delta
-		if processed > totalSize {
-			processed = totalSize
-		}
-		percent := float64(processed) / float64(totalSize) * 100
-		if percent > 100 {
-			percent = 100
-		}
-		if percent < lastPercent+0.5 && percent < 100 {
-			return
-		}
-		lastPercent = percent
-		sendProgress("upload_progress", percent)
-	}
-
-	copyWithProgress := func(src, dst string) error {
-		in, err := os.Open(src)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-
-		out, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, services.PermFile)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-
-		buf := make([]byte, 512*1024)
-		for {
-			n, rerr := in.Read(buf)
-			if n > 0 {
-				if _, werr := out.Write(buf[:n]); werr != nil {
-					return werr
-				}
-				updateProgress(int64(n))
-			}
-			if rerr == io.EOF {
-				break
-			}
-			if rerr != nil {
-				return rerr
-			}
-		}
-		if err := out.Sync(); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// Move temp file to destination
-	if err := os.Rename(tempFilePath, realDest); err != nil {
-		// If rename fails (cross-device), copy and delete with progress reporting
-		if streamProgress && totalSize > 0 {
-			sendProgress("upload_progress", 0)
-		}
-		if err := copyWithProgress(tempFilePath, realDest); err != nil {
-			return nil, fmt.Errorf("failed to copy file: %v", err)
-		}
-		_ = os.Remove(tempFilePath)
-	} else {
-		processed = totalSize
-	}
-
-	// Set proper permissions
-	if err := os.Chmod(realDest, services.PermFile); err != nil {
-		logger.Debugf("failed to set permissions: %v", err)
-	}
-
-	if streamProgress {
-		if totalSize == 0 {
-			processed = 0
-		} else if processed == 0 {
-			processed = totalSize
-		}
-		sendProgress("upload_complete", 100)
-	}
-
-	// Notify indexer about the new file
-	if finalInfo, err := os.Stat(realDest); err == nil {
-		if err := addToIndexer(destPath, finalInfo); err != nil {
-			logger.Debugf("failed to update indexer after upload: %v", err)
-			// Don't fail the operation if indexer update fails
-		}
-	}
-
-	return map[string]any{"message": "file uploaded", "path": destPath}, nil
-}
+// NOTE: fileUploadFromTemp removed - uploads now use yamux streams (fb-upload)
 
 // fileUpdateFromTemp replaces an existing file (or creates it) using data staged in a temp file.
 // Args: [tempFilePath, destinationPath]
@@ -1526,192 +1413,5 @@ func copyIntoFile(srcPath string, dst *os.File) error {
 	return nil
 }
 
-// fileDownloadToTemp copies a file to a temp location for the server to stream
-// Args: [filePath]
-func fileDownloadToTemp(ctx *ipc.RequestContext, args []string) (any, error) {
-	if len(args) < 1 {
-		return nil, fmt.Errorf("bad_request:missing file path")
-	}
-
-	filePath := args[0]
-	realPath := filepath.Join(filePath)
-
-	// Validate file exists
-	stat, err := os.Stat(realPath)
-	if err != nil {
-		return nil, fmt.Errorf("bad_request:file not found: %v", err)
-	}
-	if stat.IsDir() {
-		return nil, fmt.Errorf("bad_request:path is a directory, use archive_download_setup instead")
-	}
-
-	// Create temp file
-	tempFile, err := os.CreateTemp("", "linuxio-download-*.tmp")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %v", err)
-	}
-	tempPath := tempFile.Name()
-	tempFile.Close()
-
-	streamProgress := ctx != nil && ctx.HasStream()
-	send := func(status string, percent float64, processed int64) {
-		if !streamProgress {
-			return
-		}
-		payload := map[string]any{
-			"percent":        percent,
-			"bytesProcessed": processed,
-			"totalBytes":     stat.Size(),
-		}
-		if sendErr := ctx.SendStreamJSON(status, payload); sendErr != nil {
-			logger.Debugf("file_download_to_temp stream send failed: %v", sendErr)
-		}
-	}
-	if streamProgress {
-		send("download_progress", 0, 0)
-	}
-
-	// Copy file to temp location
-	if err := services.CopyFile(realPath, tempPath, true); err != nil {
-		_ = os.Remove(tempPath)
-		return nil, fmt.Errorf("failed to copy file: %v", err)
-	}
-
-	fileName := filepath.Base(realPath)
-	if streamProgress {
-		send("download_ready", 100, stat.Size())
-	}
-
-	return map[string]any{
-		"tempPath": tempPath,
-		"fileName": fileName,
-		"size":     stat.Size(),
-	}, nil
-}
-
-// archiveDownloadSetup creates an archive in a temp location for download
-// Args: [fileList (|| separated), algo?]
-func archiveDownloadSetup(ctx *ipc.RequestContext, args []string) (any, error) {
-	if len(args) < 1 {
-		return nil, fmt.Errorf("bad_request:missing file list")
-	}
-
-	fileListRaw := args[0]
-	files := strings.Split(fileListRaw, "||")
-	if len(files) == 0 || files[0] == "" {
-		return nil, fmt.Errorf("bad_request:invalid files list")
-	}
-
-	algo := "zip"
-	if len(args) > 1 && args[1] != "" {
-		algo = args[1]
-	}
-
-	var extension string
-	switch algo {
-	case "zip", "true", "":
-		extension = ".zip"
-	case "tar.gz":
-		extension = ".tar.gz"
-	default:
-		return nil, fmt.Errorf("bad_request:unsupported format")
-	}
-
-	// Create temp file for archive
-	tempFile, err := os.CreateTemp("", "linuxio-archive-*"+extension)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp archive: %v", err)
-	}
-	tempPath := tempFile.Name()
-	tempFile.Close()
-
-	streamProgress := ctx != nil && ctx.HasStream()
-	var totalSize int64
-	var processed int64
-	var lastPercent float64
-	send := func(status string, percent float64) {
-		if !streamProgress {
-			return
-		}
-		payload := map[string]any{
-			"percent":        percent,
-			"bytesProcessed": processed,
-			"totalBytes":     totalSize,
-		}
-		if sendErr := ctx.SendStreamJSON(status, payload); sendErr != nil {
-			logger.Debugf("archive_download_setup stream send failed: %v", sendErr)
-		}
-	}
-
-	var progressCb services.ProgressCallback
-	if streamProgress {
-		size, sizeErr := services.ComputeArchiveSize(files)
-		if sizeErr != nil {
-			logger.Debugf("error computing archive size for download progress: %v", sizeErr)
-		} else if size > 0 {
-			totalSize = size
-			progressCb = func(n int64) {
-				processed += n
-				if processed > totalSize {
-					processed = totalSize
-				}
-				percent := float64(processed) / float64(totalSize) * 100
-				if percent > 100 {
-					percent = 100
-				}
-				if percent < lastPercent+0.5 && percent < 100 {
-					return
-				}
-				lastPercent = percent
-				send("download_progress", percent)
-			}
-
-			processed = 0
-			lastPercent = 0
-			send("download_progress", 0)
-		}
-	}
-
-	// Create archive
-	switch extension {
-	case ".zip":
-		err = services.CreateZip(tempPath, progressCb, tempPath, files...)
-	case ".tar.gz":
-		err = services.CreateTarGz(tempPath, progressCb, tempPath, files...)
-	}
-
-	if err != nil {
-		_ = os.Remove(tempPath)
-		return nil, fmt.Errorf("failed to create archive: %v", err)
-	}
-
-	// Get archive info
-	stat, err := os.Stat(tempPath)
-	if err != nil {
-		_ = os.Remove(tempPath)
-		return nil, fmt.Errorf("failed to stat archive: %v", err)
-	}
-	if streamProgress {
-		if totalSize == 0 {
-			totalSize = stat.Size()
-		}
-		processed = totalSize
-		send("download_ready", 100)
-	}
-
-	// Determine archive name
-	archiveName := "download" + extension
-	if len(files) == 1 {
-		base := filepath.Base(strings.TrimSuffix(files[0], string(os.PathSeparator)))
-		if base != "" {
-			archiveName = base + extension
-		}
-	}
-
-	return map[string]any{
-		"tempPath":    tempPath,
-		"archiveName": archiveName,
-		"size":        stat.Size(),
-		"format":      algo,
-	}, nil
-}
+// NOTE: fileDownloadToTemp and archiveDownloadSetup removed
+// Downloads now use yamux streams (fb-download, fb-archive)

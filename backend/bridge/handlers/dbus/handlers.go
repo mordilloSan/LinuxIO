@@ -29,6 +29,7 @@ func DbusHandlers() map[string]ipc.HandlerFunc {
 			return setAutoUpdates(args[0])
 		}),
 		"ApplyOfflineUpdates": ipc.WrapSimpleHandler(func([]string) (any, error) { return applyOfflineUpdates() }),
+		"GetUpdateHistory":    ipc.WrapSimpleHandler(func([]string) (any, error) { return GetUpdateHistory() }),
 
 		// Service management
 		"ListServices":   ipc.WrapSimpleHandler(func([]string) (any, error) { return ListServices() }),

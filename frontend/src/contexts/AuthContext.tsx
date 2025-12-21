@@ -18,11 +18,13 @@ import {
   AuthUser,
   LoginResponse,
 } from "@/types/auth";
-import axios from "@/utils/axios";
 import {
   clearIndexerAvailabilityFlag,
   setIndexerAvailabilityFlag,
 } from "@/utils/indexerAvailability";
+import { initStreamMux, closeStreamMux } from "@/utils/StreamMultiplexer";
+
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 const initialState: AuthState = {
   isAuthenticated: false,
@@ -67,7 +69,9 @@ function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const fetchUser = useCallback(async (): Promise<AuthUser> => {
-    const { data } = await axios.get<{ user: AuthUser }>("/auth/me");
+    const res = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+    if (!res.ok) throw new Error("Failed to fetch user");
+    const data: { user: AuthUser } = await res.json();
     return data.user;
   }, []);
 
@@ -142,13 +146,29 @@ function AuthProvider({ children }: AuthProviderProps) {
     return () => window.removeEventListener("storage", onStorage);
   }, [doLocalSignOut]);
 
+  // Initialize stream multiplexer when authenticated
+  useEffect(() => {
+    if (state.isAuthenticated) {
+      initStreamMux();
+    } else {
+      closeStreamMux();
+    }
+  }, [state.isAuthenticated]);
+
   const signIn = useCallback(
     async (username: string, password: string) => {
       // Login response may include update info
-      const { data } = await axios.post<LoginResponse>("/auth/login", {
-        username,
-        password,
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Login failed");
+      }
+      const data: LoginResponse = await res.json();
 
       // Store update info if present
       if (data.update) {
@@ -170,7 +190,7 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   const signOut = useCallback(async () => {
     try {
-      await axios.get("/auth/logout");
+      await fetch(`${API_BASE}/auth/logout`, { credentials: "include" });
     } catch {
       // ignore; we still want to clear locally
     }

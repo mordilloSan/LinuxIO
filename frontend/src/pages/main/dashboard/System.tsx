@@ -2,13 +2,12 @@ import GppGoodOutlinedIcon from "@mui/icons-material/GppGoodOutlined";
 import SecurityUpdateWarningIcon from "@mui/icons-material/SecurityUpdateWarning";
 import { Typography, Box, useTheme } from "@mui/material";
 import { Link } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 
 // --- Types ---
 type Update = {
@@ -41,31 +40,33 @@ const SystemHealth = () => {
 
   // Updates
   const {
-    data: systemHealth,
-    isLoading: loadingHealth,
+    data: updatesRaw,
+    isPending: loadingHealth,
     isFetching: fetchingHealth,
-  } = useQuery<SystemUpdatesResponse>({
-    queryKey: ["updateInfo"],
-    queryFn: async () => {
-      const res = await axios.get("/system/updates");
-      if (Array.isArray(res.data)) return { updates: res.data };
-      if (res.data && Array.isArray(res.data.updates)) return res.data;
-      return { updates: [] };
-    },
+  } = useStreamQuery<Update[] | SystemUpdatesResponse>({
+    handlerType: "system",
+    command: "get_updates_fast",
     refetchInterval: 50000,
   });
 
+  // Normalize updates response
+  const systemHealth: SystemUpdatesResponse | undefined = updatesRaw
+    ? Array.isArray(updatesRaw)
+      ? { updates: updatesRaw }
+      : updatesRaw
+    : undefined;
+
   // Services
-  const { data: servicesRaw } = useQuery<ServiceStatus[]>({
-    queryKey: ["SystemStatus"],
-    queryFn: () => axios.get("/system/processes").then((res) => res.data),
+  const { data: servicesRaw } = useStreamQuery<ServiceStatus[]>({
+    handlerType: "system",
+    command: "get_processes",
     refetchInterval: 50000,
   });
 
   // Distro Info
-  const { data: distroInfo } = useQuery<DistroInfo>({
-    queryKey: ["DistroInfo"],
-    queryFn: () => axios.get("/system/info").then((res) => res.data),
+  const { data: distroInfo } = useStreamQuery<DistroInfo>({
+    handlerType: "system",
+    command: "get_host_info",
     refetchInterval: 50000,
   });
 

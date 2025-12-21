@@ -1,6 +1,5 @@
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { Box, Fade, Button } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 
 import UpdateHistory from "./UpdateHistory";
@@ -9,8 +8,8 @@ import UpdateStatus from "./UpdateStatus";
 
 import TabSelector from "@/components/tabbar/TabSelector";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import { Update } from "@/types/update";
-import axios from "@/utils/axios";
 
 const tabOptions = [
   { value: "updates", label: "Updates" },
@@ -21,15 +20,19 @@ const tabOptions = [
 const Updates: React.FC = () => {
   const [tab, setTab] = useState("updates");
 
-  // Query updates for the button
-  const { data, isLoading, refetch } = useQuery<{ updates: Update[] }>({
-    queryKey: ["updateInfo"],
-    queryFn: () => axios.get("/updates/packages").then((res) => res.data),
+  // Query updates for the button - dbus GetUpdates returns array directly
+  const {
+    data: rawUpdates,
+    isPending: isLoading,
+    refetch,
+  } = useStreamQuery<Update[]>({
+    handlerType: "dbus",
+    command: "GetUpdates",
     enabled: tab === "updates", // Only fetch when on updates tab
     refetchInterval: 50000,
   });
 
-  const updates = useMemo(() => data?.updates || [], [data]);
+  const updates = useMemo(() => rawUpdates || [], [rawUpdates]);
   const { updateOne, updateAll, updatingPackage, progress, error, clearError } =
     usePackageUpdater(refetch);
 

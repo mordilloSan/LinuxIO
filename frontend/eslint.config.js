@@ -74,8 +74,7 @@ export default [
       ...reactHooks.configs.recommended.rules,
 
       // React Compiler rule (from the correct plugin!)
-      "react-compiler/react-compiler": "error", // ← Changed from react-hooks to react-compiler
-
+      "react-compiler/react-compiler": "error",
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "react/no-unescaped-entities": "warn",

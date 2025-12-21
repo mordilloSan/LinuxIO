@@ -3,12 +3,11 @@ import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
-import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
 import CollapsibleTable from "@/components/tables/CollapsibleTable";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import { CollapsibleColumn } from "@/types/tables";
-import axios from "@/utils/axios";
 
 interface UpgradeItem {
   package: string;
@@ -30,15 +29,9 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 
 const UpdateHistoryCard: React.FC = () => {
-  const { data: rows = [] } = useQuery<UpdateHistoryRow[]>({
-    queryKey: ["updateHistory"],
-    queryFn: async () => {
-      const res = await axios.get("/updates/update-history");
-      return res.data.map((item: any) => ({
-        date: item.date,
-        upgrades: item.upgrades,
-      }));
-    },
+  const { data: rows = [] } = useStreamQuery<UpdateHistoryRow[]>({
+    handlerType: "dbus",
+    command: "GetUpdateHistory",
   });
 
   const renderCollapseContent = (row: UpdateHistoryRow) => {
