@@ -39,7 +39,7 @@ Browser                    Server                         Bridge
 ### Request/Response Streams (open → close)
 | Type | Description | Status |
 |------|-------------|--------|
-| `api` | JSON API calls (system, docker, dbus, wireguard) | 🔄 ~90% Done |
+| `api` | JSON API calls (system, docker, dbus, config, filebrowser) | 🔄 ~95% Done |
 | `fb-download` | Binary file transfer | ✅ Done |
 | `fb-upload` | Binary file upload | ✅ Done |
 | `fb-archive` | Multi-file archive download | ✅ Done |
@@ -129,7 +129,7 @@ Browser                          Server                      Bridge
 | Phase 4 | Terminal direct streaming | ✅ Done |
 | Phase 5 | Persistent streams (singleton mux) | ✅ Done |
 | Phase 6 | Bridge-initiated push | ⏳ Planned |
-| Phase 7 | Migrate API calls to streams | 🔄 ~90% Complete |
+| Phase 7 | Migrate API calls to streams | 🔄 ~95% Complete |
 | Phase 8 | File transfer streams | ✅ Done |
 | Phase 9 | Remove legacy `/ws` system | ⏳ Planned |
 
@@ -224,38 +224,23 @@ Replace HTTP handlers with stream handlers:
 | usePackageUpdater | dbus | InstallPackage, GetUpdates |
 | UpdateBanner | control | update |
 | UpdateHistoryCard | dbus | GetUpdateHistory |
+| WireGuard | wireguard | list_interfaces, delete_interface, add_peer, toggle, create_interface |
 
 **Still Using HTTP (axios):**
 
 #### On-mount queries (stays HTTP - loads before WebSocket ready)
 | File | Endpoint | Description |
 |------|----------|-------------|
-| `ConfigContext.tsx` | `/theme/get`, `/theme/set` | Theme config |
 | `Footer.tsx` | `GET /control/version` | Version info |
+| `ConfigContext.tsx` | `/theme/get`, `/theme/set` | Theme config |
 
-#### WireGuard
-| File | Endpoint | Description |
-|------|----------|-------------|
-| `WireguardDashboard.tsx:34` | `GET /wireguard/interfaces` | list_interfaces |
-| `WireguardDashboard.tsx:76` | `DELETE /wireguard/interface/:name` | delete interface |
-| `WireguardDashboard.tsx:94` | `POST /wireguard/interface/:name/peer` | add_peer |
-| `WireguardDashboard.tsx:115` | `POST /wireguard/interface/:name/:status` | toggle (up/down) |
-| `CreateInterfaceButton.tsx:44` | `GET /network/info` | get network info |
-| `CreateInterfaceButton.tsx:53` | `GET /wireguard/interfaces` | list interfaces |
-| `CreateInterfaceButton.tsx:190` | `POST /wireguard/interface` | create interface |
-
-#### FileBrowser (complex - may stay HTTP)
-| File | Endpoint | Description |
-|------|----------|-------------|
-| `useFileBrowserQueries.ts` | `GET /navigator/api/resources` | List/stat resources |
-| `useFileMutations.ts` | `POST/DELETE/PATCH /navigator/api/resources` | Create/delete/rename |
-| `useFileMutations.ts:165` | `POST /navigator/api/chmod` | Change permissions |
-| `useFileSearch.ts` | `GET /navigator/api/search` | File search |
-| `useDirectorySize.ts` | `GET /navigator/api/resources/size` | Dir size |
-| `useSubfolders.ts` | `GET /navigator/api/subfolders` | Subfolder listing |
-| `PermissionsDialog.tsx:140` | `GET /navigator/api/users-groups` | Users/groups list |
-| `filebrowser/index.tsx` | `PUT /navigator/api/resources` | Save file content |
-| `FileTransferContext.tsx:1115` | `POST /navigator/api/resources` | Folder creation |
+#### FileBrowser (fully migrated to streaming)
+All filebrowser operations now use streaming:
+- File listings, stats, mutations use `streamApi` (filebrowser handler)
+- File save uses `fb-upload` stream
+- Directory size uses `streamApi.get("filebrowser", "dir_size", ...)`
+- File search uses `streamApi`
+- Transfers use dedicated streams (`fb-download`, `fb-upload`, `fb-archive`)
 
 #### Auth (stays HTTP - session management)
 | File | Endpoint | Description |
@@ -270,10 +255,11 @@ Replace HTTP handlers with stream handlers:
 - Docker handlers (`docker/`) - Now uses stream API
 - Drives handlers (`drives/`) - Now uses stream API
 - Services handlers (`services/`) - Now uses dbus via stream API
+- WireGuard handlers (`wireguard/`) - Now uses wireguard handler via stream API
+- FileBrowser handlers (`navigator/`) - Fully migrated to streaming (filebrowser handler + fb-* streams)
 
 **Remaining Tasks:**
-- Migrate WireGuard endpoints to stream API
-- Evaluate filebrowser migration (many endpoints, transfers already use streams)
+- Migrate theme endpoints to stream API (currently loads before WebSocket ready)
 
 ### Phase 9: Legacy `/ws` Cleanup
 The old `/ws` WebSocket system needs to be removed after Phase 7:
