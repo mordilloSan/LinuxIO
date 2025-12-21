@@ -20,6 +20,10 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useStreamQuery } from "@/hooks/useStreamApi";
 import { streamApi } from "@/utils/streamApi";
 
+const wireguardToastMeta = {
+  meta: { href: "/wireguard", label: "Open WireGuard" },
+};
+
 type Peer = {
   name: string;
   public_key: string;
@@ -116,10 +120,13 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const handleDeletePeer = async (peerName: string) => {
     try {
       await streamApi.get("wireguard", "remove_peer", [interfaceName, peerName]);
-      toast.success(`WireGuard Peer '${peerName}' deleted`);
+      toast.success(
+        `WireGuard Peer '${peerName}' deleted`,
+        wireguardToastMeta,
+      );
       refetch();
     } catch {
-      toast.error(`Failed to delete interface: ${peerName}`);
+      toast.error(`Failed to delete interface: ${peerName}`, wireguardToastMeta);
     }
   };
 

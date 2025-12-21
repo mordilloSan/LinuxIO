@@ -7,6 +7,10 @@ import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
 import axios from "@/utils/axios";
 
+const wireguardToastMeta = {
+  meta: { href: "/wireguard", label: "Open WireGuard" },
+};
+
 const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
 const BASE_CIDR_SUFFIX = "0/24";
@@ -185,14 +189,17 @@ const CreateInterfaceButton = () => {
       };
       await axios.post("/wireguard/interface", body);
 
-      toast.success(`WireGuard interface '${serverName}' created`);
+      toast.success(
+        `WireGuard interface '${serverName}' created`,
+        wireguardToastMeta,
+      );
       setShowDialog(false);
       // optionally reset dns
       setDns("");
       queryClient.invalidateQueries({ queryKey: ["wireguardInterfaces"] });
     } catch (error: any) {
       const msg = error.response?.data?.error || error.message;
-      toast.error(`Failed to create interface: ${msg}`);
+      toast.error(`Failed to create interface: ${msg}`, wireguardToastMeta);
       setError(msg);
     } finally {
       setLoading(false);

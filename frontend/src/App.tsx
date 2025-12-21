@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import routes from "./routes";
+import { ToastHistorySync } from "./utils/toastHistory";
 import ReactQueryProvider from "./utils/ReactQueryProvider";
 
 function App() {
@@ -30,6 +31,7 @@ function App() {
       <AuthProvider>
         <ReactQueryProvider>{content}</ReactQueryProvider>
       </AuthProvider>
+      <ToastHistorySync />
       <Toaster
         richColors
         position="top-right"

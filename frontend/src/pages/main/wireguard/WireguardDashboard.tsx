@@ -11,6 +11,10 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { WireGuardInterface } from "@/types/wireguard";
 import axios from "@/utils/axios";
 
+const wireguardToastMeta = {
+  meta: { href: "/wireguard", label: "Open WireGuard" },
+};
+
 const WireGuardDashboard: React.FC = () => {
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
     null,
@@ -70,11 +74,17 @@ const WireGuardDashboard: React.FC = () => {
   const handleDelete = async (interfaceName: string) => {
     try {
       await axios.delete(`/wireguard/interface/${interfaceName}`);
-      toast.success(`WireGuard interface '${interfaceName}' deleted`);
+      toast.success(
+        `WireGuard interface '${interfaceName}' deleted`,
+        wireguardToastMeta,
+      );
       refetch();
       setSelectedInterface(null);
     } catch (error) {
-      toast.error(`Failed to delete interface '${interfaceName}'`);
+      toast.error(
+        `Failed to delete interface '${interfaceName}'`,
+        wireguardToastMeta,
+      );
       console.error("Failed to delete WireGuard interface:", error);
     }
   };
@@ -82,11 +92,14 @@ const WireGuardDashboard: React.FC = () => {
   const handleAddPeer = async (interfaceName: string) => {
     try {
       await axios.post(`/wireguard/interface/${interfaceName}/peer`);
-      toast.success(`Peer added to '${interfaceName}'`);
+      toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
       refetch();
       queryClient.invalidateQueries({ queryKey: ["wg-peers", interfaceName] }); // <-- This!
     } catch (error) {
-      toast.error(`Failed to add peer to '${interfaceName}'`);
+      toast.error(
+        `Failed to add peer to '${interfaceName}'`,
+        wireguardToastMeta,
+      );
       console.error("Failed to add peer:", error);
     }
   };
@@ -102,11 +115,13 @@ const WireGuardDashboard: React.FC = () => {
       await axios.post(`/wireguard/interface/${interfaceName}/${status}`);
       toast.success(
         `WireGuard interface "${interfaceName}" turned ${status === "up" ? "on" : "off"}.`,
+        wireguardToastMeta,
       );
       refetch();
     } catch (error: any) {
       toast.error(
         `Failed to turn ${status} WireGuard interface "${interfaceName}": ${error?.response?.data?.error || error.message}`,
+        wireguardToastMeta,
       );
       console.error(`Failed to ${status} WireGuard interface:`, error);
     }

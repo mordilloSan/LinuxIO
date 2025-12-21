@@ -12,14 +12,16 @@ import {
   Stack,
 } from "@mui/material";
 import React, { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { streamApi } from "@/utils/streamApi";
+import { toast } from "sonner";
 
 type Frequency = "hourly" | "daily" | "weekly";
 type Scope = "security" | "updates" | "all";
 type RebootPolicy = "never" | "if_needed" | "always" | "schedule";
+
+const updatesToastMeta = { meta: { href: "/updates", label: "Open updates" } };
 
 interface AutoUpdateOptions {
   enabled: boolean;
@@ -69,7 +71,7 @@ const UpdateSettings: React.FC = () => {
       })
       .catch((err) => {
         console.error("Failed to load auto update settings", err);
-        toast.error("Failed to load auto update settings");
+        toast.error("Failed to load auto update settings", updatesToastMeta);
       })
       .finally(() => setLoading(false));
     return () => {
@@ -118,10 +120,10 @@ const UpdateSettings: React.FC = () => {
       setServerState(norm);
       setDraft(norm.options);
       setExcludeInput(norm.options.exclude_packages.join(", "));
-      toast.success("Settings saved");
+      toast.success("Automatic Updates Settings saved", updatesToastMeta);
     } catch (err) {
       console.error("Failed to save auto update settings", err);
-      toast.error("Failed to save settings");
+      toast.error("Failed to save settings", updatesToastMeta);
     } finally {
       setSaving(false);
     }
@@ -137,10 +139,20 @@ const UpdateSettings: React.FC = () => {
       if (result?.status && result.status !== "ok") {
         throw new Error(result.error || "Failed to schedule offline update");
       }
-      toast.success("Offline update scheduled for next reboot");
-    } catch (err) {
+      toast.success(
+        "Offline update scheduled for next reboot",
+        updatesToastMeta,
+      );
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
       console.error("Failed to schedule offline update", err);
-      toast.error("Failed to schedule offline update");
+
+      // Show friendly messages for common cases
+      if (errMsg.includes("no updates available") || errMsg.includes("Prepared update not found")) {
+        toast.info("No updates available to schedule", updatesToastMeta);
+      } else {
+        toast.error("Failed to schedule offline update", updatesToastMeta);
+      }
     }
   };
 
