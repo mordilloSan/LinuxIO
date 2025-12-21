@@ -49,7 +49,8 @@ func isExpectedWSClose(err error) bool {
 	var ce *websocket.CloseError
 	if errors.As(err, &ce) {
 		switch ce.Code {
-		case websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived:
+		case websocket.CloseNormalClosure, websocket.CloseGoingAway,
+			websocket.CloseNoStatusReceived, websocket.CloseAbnormalClosure:
 			return true
 		}
 	}
