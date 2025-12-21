@@ -1,10 +1,9 @@
 import ThermostatIcon from "@mui/icons-material/Thermostat";
 import { Typography, Box } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
 import GeneralCard from "@/components/cards/GeneralCard";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface GpuDevice {
   address: string;
@@ -21,14 +20,11 @@ interface GpuDevice {
 const GpuInfo: React.FC = () => {
   const {
     data: gpus,
-    isLoading,
+    isPending: isLoading,
     isError,
-  } = useQuery<GpuDevice[]>({
-    queryKey: ["Gpuinfo"],
-    queryFn: async () => {
-      const res = await axios.get<GpuDevice[]>("/system/gpu"); // API returns an array
-      return res.data;
-    },
+  } = useStreamQuery<GpuDevice[]>({
+    handlerType: "system",
+    command: "get_gpu_info",
     refetchInterval: 50_000,
   });
 

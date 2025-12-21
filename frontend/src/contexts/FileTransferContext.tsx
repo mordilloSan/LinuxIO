@@ -1,14 +1,22 @@
-import React, {
-  createContext,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-} from "react";
+import React, { createContext, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
-import useWebSocket from "@/hooks/useWebSocket";
-import axios from "@/utils/axios";
+import { streamApi } from "@/utils/streamApi";
+import {
+  getStreamMux,
+  Stream,
+  ProgressFrame,
+  ResultFrame,
+  encodeString,
+  STREAM_CHUNK_SIZE,
+  UPLOAD_WINDOW_SIZE,
+} from "@/utils/StreamMultiplexer";
+
+// Stream types matching backend constants
+const STREAM_TYPE_FB_DOWNLOAD = "fb-download";
+const STREAM_TYPE_FB_UPLOAD = "fb-upload";
+const STREAM_TYPE_FB_COMPRESS = "fb-compress";
+const STREAM_TYPE_FB_EXTRACT = "fb-extract";
 
 interface Download {
   id: string;
@@ -18,6 +26,7 @@ interface Download {
   label: string;
   speed?: number;
   abortController: AbortController;
+  stream?: Stream | null; // For stream-based downloads
 }
 
 interface Upload {
@@ -31,6 +40,7 @@ interface Upload {
   displayName?: string;
   speed?: number;
   abortController: AbortController;
+  stream?: Stream | null; // For stream-based uploads
 }
 
 interface Compression {
@@ -42,6 +52,7 @@ interface Compression {
   progress: number;
   label: string;
   abortController: AbortController;
+  stream?: Stream | null;
 }
 
 interface Extraction {
@@ -52,6 +63,7 @@ interface Extraction {
   progress: number;
   label: string;
   abortController: AbortController;
+  stream?: Stream | null;
 }
 
 type Transfer = Download | Upload | Compression | Extraction;
@@ -68,11 +80,13 @@ export interface FileTransferContextValue {
     paths: string[];
     archiveName: string;
     destination: string;
+    onComplete?: () => void;
   }) => Promise<void>;
   cancelCompression: (id: string) => void;
   startExtraction: (options: {
     archivePath: string;
     destination?: string;
+    onComplete?: () => void;
   }) => Promise<void>;
   cancelExtraction: (id: string) => void;
   startUpload: (
@@ -101,8 +115,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [compressions, setCompressions] = useState<Compression[]>([]);
   const [extractions, setExtractions] = useState<Extraction[]>([]);
-  const ws = useWebSocket();
-  const cleanupTimersRef = useRef<Map<string, any>>(new Map());
   const activeCompressionIdsRef = useRef<Set<string>>(new Set());
   const activeExtractionIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
@@ -110,6 +122,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const transferRatesRef = useRef<
     Map<string, { bytes: number; timestamp: number; emitted: boolean }>
   >(new Map());
+  // Store stream references synchronously for immediate cancellation access
+  const streamRefsRef = useRef<Map<string, Stream>>(new Map());
   const TRANSFER_RATE_SAMPLE_MS = 1000;
 
   const recordTransferRate = useCallback(
@@ -166,16 +180,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     });
   }, []);
 
-  const sendProgressUnsubscribe = useCallback(
-    (
-      _type: "download" | "compression" | "upload" | "extraction",
-      requestId: string,
-    ) => {
-      ws.send({ type: "unsubscribe_operation_progress", data: requestId });
-    },
-    [ws],
-  );
-
   const allocateDownloadLabelBase = useCallback((base: string, id: string) => {
     const counters = downloadLabelCounterRef.current;
     const current = counters.get(base) ?? 0;
@@ -225,17 +229,115 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const removeDownload = useCallback(
     (id: string) => {
       setDownloads((prev) => prev.filter((d) => d.id !== id));
-      const timers = cleanupTimersRef.current.get(id);
-      if (timers) {
-        if (timers.fallback) clearTimeout(timers.fallback);
-        if (timers.unsubscribe) timers.unsubscribe();
-        cleanupTimersRef.current.delete(id);
-      }
       releaseDownloadLabelBase(id);
-      sendProgressUnsubscribe("download", id);
       transferRatesRef.current.delete(id);
+      streamRefsRef.current.delete(id);
     },
-    [releaseDownloadLabelBase, sendProgressUnsubscribe],
+    [releaseDownloadLabelBase],
+  );
+
+  /**
+   * Stream-based download implementation.
+   * Uses yamux binary streams for efficient file transfers.
+   */
+  const startStreamBasedDownload = useCallback(
+    async (
+      paths: string[],
+      reqId: string,
+      _downloadLabelBase: string,
+      formatDownloadLabel: (
+        stage: string,
+        options?: { percent?: number; name?: string },
+      ) => string,
+    ) => {
+      const mux = getStreamMux();
+      if (!mux || mux.status !== "open") {
+        throw new Error("Stream connection not ready");
+      }
+
+      // Determine stream type: use fb-download only for single files (not directories)
+      // Directories end with '/' and need fb-archive to create a zip
+      const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
+      const streamType = isSingleFile ? STREAM_TYPE_FB_DOWNLOAD : "fb-archive";
+
+      // Build payload
+      const payloadParts = isSingleFile
+        ? [STREAM_TYPE_FB_DOWNLOAD, paths[0]]
+        : ["fb-archive", "zip", ...paths];
+      const payload = encodeString(payloadParts.join("\0"));
+
+      const stream = mux.openStream(streamType, payload);
+      if (!stream) {
+        throw new Error("Failed to open download stream");
+      }
+
+      // Store stream reference for cancellation (sync ref for immediate access)
+      streamRefsRef.current.set(reqId, stream);
+
+      const chunks: Uint8Array[] = [];
+      let lastBytes = 0;
+      let lastTime = Date.now();
+
+      return new Promise<Blob>((resolve, reject) => {
+        stream.onProgress = (progress: ProgressFrame) => {
+          const now = Date.now();
+          const deltaBytes = progress.bytes - lastBytes;
+          const deltaMs = now - lastTime;
+
+          let speed: number | undefined;
+          if (deltaMs > 500 && deltaBytes > 0) {
+            speed = deltaBytes / (deltaMs / 1000);
+            lastBytes = progress.bytes;
+            lastTime = now;
+          }
+
+          // Map backend phases to user-friendly labels
+          let phaseLabel: string;
+          switch (progress.phase) {
+            case "preparing":
+              phaseLabel = "Preparing";
+              break;
+            case "compressing":
+              phaseLabel = "Compressing";
+              break;
+            case "streaming":
+            default:
+              phaseLabel = "Downloading";
+              break;
+          }
+
+          updateDownload(reqId, {
+            progress: progress.pct,
+            label: formatDownloadLabel(phaseLabel, { percent: progress.pct }),
+            ...(speed !== undefined && { speed }),
+          });
+        };
+
+        stream.onData = (data: Uint8Array) => {
+          chunks.push(data);
+        };
+
+        stream.onResult = (result: ResultFrame) => {
+          if (result.status === "ok") {
+            const mimeType = isSingleFile
+              ? "application/octet-stream"
+              : "application/zip";
+            const blob = new Blob(chunks as BlobPart[], { type: mimeType });
+            resolve(blob);
+          } else {
+            reject(new Error(result.error || "Download failed"));
+          }
+        };
+
+        stream.onClose = () => {
+          // If no result was received, treat as error
+          if (chunks.length === 0) {
+            reject(new Error("Stream closed before transfer completed"));
+          }
+        };
+      });
+    },
+    [updateDownload],
   );
 
   const startDownload = useCallback(
@@ -284,121 +386,34 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       setDownloads((prev) => [...prev, download]);
 
-      const filesParam = paths
-        .map(
-          (path) => `${encodeURIComponent("/")}::${encodeURIComponent(path)}`,
-        )
-        .join("||");
-      const url = `/navigator/api/raw?files=${filesParam}&reqId=${encodeURIComponent(reqId)}`;
-
-      let unsubscribe: (() => void) | null = null;
-      let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+      const mux = getStreamMux();
+      if (!mux || mux.status !== "open") {
+        toast.error("Stream connection not ready");
+        removeDownload(reqId);
+        return;
+      }
 
       try {
-        let hasReceivedProgress = false;
-
-        // Subscribe to WebSocket progress events
-        unsubscribe = ws.subscribe((msg: any) => {
-          if (msg.requestId !== reqId) return;
-
-          if (msg.type === "download_progress" && msg.data) {
-            hasReceivedProgress = true;
-            const percent = Math.min(99, Math.round(msg.data.percent));
-            updateDownload(reqId, {
-              progress: percent,
-              label: formatDownloadLabel("Preparing", { percent }),
-            });
-          } else if (msg.type === "download_ready") {
-            updateDownload(reqId, {
-              progress: 100,
-              label: formatDownloadLabel("Starting download"),
-              speed: undefined,
-            });
-          }
-        });
-
-        ws.send({ type: "subscribe_operation_progress", data: reqId });
-
-        // Fallback timer if WebSocket doesn't send progress
-        fallbackTimer = setTimeout(() => {
-          if (!hasReceivedProgress) {
-            const prepTimer = setInterval(() => {
-              setDownloads((prev) =>
-                prev.map((d) => {
-                  if (d.id !== reqId) return d;
-                  const next = Math.min(d.progress + 5, 90);
-                  return {
-                    ...d,
-                    progress: next,
-                    label: formatDownloadLabel("Preparing", { percent: next }),
-                  };
-                }),
-              );
-            }, 400);
-            fallbackTimer = prepTimer as any;
-          }
-        }, 2000);
-
-        cleanupTimersRef.current.set(reqId, {
-          fallback: fallbackTimer,
-          unsubscribe,
-        });
-
         primeTransferRate(reqId, 0);
-        const response = await axios.get(url, {
-          responseType: "blob",
-          signal: abortController.signal,
-          onDownloadProgress: (progressEvent) => {
-            const updates: Partial<Omit<Download, "id" | "abortController">> =
-              {};
-            if (progressEvent.total) {
-              const percentComplete = Math.round(
-                (progressEvent.loaded / progressEvent.total) * 100,
-              );
-              updates.progress = percentComplete;
-              updates.label = formatDownloadLabel("Downloading", {
-                percent: percentComplete,
-              });
-            }
-            if (typeof progressEvent.loaded === "number") {
-              const speed = recordTransferRate(reqId, progressEvent.loaded);
-              if (speed !== undefined) {
-                updates.speed = speed;
-              }
-            }
-            if (Object.keys(updates).length > 0) {
-              updateDownload(reqId, updates);
-            }
-          },
-        });
-
-        // Clean up timers
-        if (fallbackTimer) {
-          clearTimeout(fallbackTimer);
-        }
-        if (unsubscribe) {
-          unsubscribe();
-        }
-        cleanupTimersRef.current.delete(reqId);
-
-        // Extract filename
-        const disposition = response.headers["content-disposition"] || "";
-        const utfName = disposition.match(/filename\*?=utf-8''([^;]+)/i);
-        const simpleName = disposition.match(/filename="?([^";]+)"?/i);
-        const fallbackName = downloadLabelBase;
-        const fileName = utfName
-          ? decodeURIComponent(utfName[1])
-          : simpleName?.[1] || fallbackName;
+        const blob = await startStreamBasedDownload(
+          paths,
+          reqId,
+          downloadLabelBase,
+          formatDownloadLabel,
+        );
 
         updateDownload(reqId, {
           progress: 100,
-          label: formatDownloadLabel("Downloaded", { name: downloadLabelBase }),
+          label: formatDownloadLabel("Downloaded", {
+            name: downloadLabelBase,
+          }),
           speed: undefined,
         });
         recordTransferRate(reqId, undefined);
 
         // Trigger browser download
-        const blob = response.data;
+        const fileName =
+          paths.length === 1 ? downloadLabelBase : `${downloadLabelBase}.zip`;
         const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = blobUrl;
@@ -417,11 +432,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           console.log("Download cancelled by user");
         } else {
           console.error("Download failed", err);
-          const message =
-            err?.response?.data?.error ||
-            err?.message ||
-            (typeof err === "string" ? err : null) ||
-            "Download failed";
+          const message = err?.message || "Download failed";
           toast.error(message);
         }
         recordTransferRate(reqId, undefined);
@@ -429,12 +440,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     },
     [
-      ws,
       updateDownload,
       removeDownload,
       allocateDownloadLabelBase,
       recordTransferRate,
       primeTransferRate,
+      startStreamBasedDownload,
     ],
   );
 
@@ -442,24 +453,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     (id: string) => {
       const download = downloads.find((d) => d.id === id);
       if (download) {
+        // Abort stream if using stream-based download (RST for immediate cancel)
+        // Use ref first (synchronous) then fallback to state
+        const stream = streamRefsRef.current.get(id) || download.stream;
+        if (stream) {
+          stream.abort(); // Use abort() instead of close() for immediate cancellation
+          streamRefsRef.current.delete(id);
+        }
         download.abortController.abort();
         toast.info("Download cancelled");
         removeDownload(id);
       }
     },
     [downloads, removeDownload],
-  );
-
-  const updateCompression = useCallback(
-    (
-      id: string,
-      updates: Partial<Omit<Compression, "id" | "type" | "abortController">>,
-    ) => {
-      setCompressions((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-      );
-    },
-    [],
   );
 
   const removeCompression = useCallback(
@@ -470,15 +476,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       activeCompressionIdsRef.current.delete(id);
 
       setCompressions((prev) => prev.filter((c) => c.id !== id));
-      const timers = cleanupTimersRef.current.get(id);
-      if (timers?.unsubscribe) {
-        timers.unsubscribe();
-      }
-      cleanupTimersRef.current.delete(id);
       releaseDownloadLabelBase(id);
-      sendProgressUnsubscribe("compression", id);
+      streamRefsRef.current.delete(id);
     },
-    [releaseDownloadLabelBase, sendProgressUnsubscribe],
+    [releaseDownloadLabelBase],
   );
 
   const startCompression = useCallback(
@@ -486,15 +487,16 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       paths,
       archiveName,
       destination,
+      onComplete,
     }: {
       paths: string[];
       archiveName: string;
       destination: string;
+      onComplete?: () => void;
     }) => {
       if (!paths.length) return;
 
       const id = crypto.randomUUID();
-      const requestId = id;
       const abortController = new AbortController();
       const candidateLabelBase = archiveName || "archive.zip";
       const labelBase = allocateDownloadLabelBase(candidateLabelBase, id);
@@ -513,15 +515,45 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setCompressions((prev) => [...prev, compression]);
       activeCompressionIdsRef.current.add(id);
 
-      const applyReportedProgress = (rawPercent: number) => {
-        const percent = Math.min(99, Math.round(rawPercent));
+      const mux = getStreamMux();
+      if (!mux || mux.status !== "open") {
+        toast.error("Stream connection not ready");
+        removeCompression(id);
+        return;
+      }
+
+      // Build payload: "fb-compress\0format\0destination\0path1\0path2\0..."
+      const format = archiveName.toLowerCase().endsWith(".tar.gz")
+        ? "tar.gz"
+        : "zip";
+      const fullDestination = destination.endsWith("/")
+        ? `${destination}${archiveName}`
+        : `${destination}/${archiveName}`;
+      const payloadParts = [
+        STREAM_TYPE_FB_COMPRESS,
+        format,
+        fullDestination,
+        ...paths,
+      ];
+      const payload = encodeString(payloadParts.join("\0"));
+
+      const stream = mux.openStream(STREAM_TYPE_FB_COMPRESS, payload);
+      if (!stream) {
+        toast.error("Failed to open compression stream");
+        removeCompression(id);
+        return;
+      }
+
+      // Store stream reference for cancellation
+      streamRefsRef.current.set(id, stream);
+
+      stream.onProgress = (progress: ProgressFrame) => {
+        const percent = Math.min(99, progress.pct);
         setCompressions((prev) =>
           prev.map((c) => {
             if (c.id !== id) return c;
             const next = Math.max(c.progress, percent);
-            if (next === c.progress) {
-              return c;
-            }
+            if (next === c.progress) return c;
             return {
               ...c,
               progress: next,
@@ -531,88 +563,48 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         );
       };
 
-      const unsubscribe = ws.subscribe((msg: any) => {
-        if (msg.requestId !== requestId) return;
-
-        if (msg.type === "compression_progress" && msg.data) {
-          applyReportedProgress(msg.data.percent);
-        } else if (msg.type === "compression_complete") {
-          updateCompression(id, {
-            progress: 100,
-            label: `Created ${labelBase}`,
-          });
-          setTimeout(() => removeCompression(id), 800);
-        }
-      });
-
-      ws.send({ type: "subscribe_operation_progress", data: requestId });
-
-      cleanupTimersRef.current.set(id, {
-        unsubscribe,
-      });
-
-      try {
-        await axios.post(
-          "/navigator/api/archive/compress",
-          {
-            paths,
-            archiveName,
-            destination,
-            format: "zip",
-            requestId,
-          },
-          { signal: abortController.signal },
+      stream.onResult = (result: ResultFrame) => {
+        streamRefsRef.current.delete(id);
+        setCompressions((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, stream: null } : c)),
         );
 
-        updateCompression(id, {
-          progress: 100,
-          label: `Created ${labelBase}`,
-        });
-        setTimeout(() => removeCompression(id), 800);
-      } catch (err: any) {
-        if (err?.name === "CanceledError" || err?.name === "AbortError") {
-          toast.info("Compression cancelled");
+        if (result.status === "ok") {
+          toast.success(`Created ${labelBase}`);
+          onComplete?.();
         } else {
-          const message =
-            err?.response?.data?.error || err?.message || "Compression failed";
-          updateCompression(id, { label: message });
+          toast.error(result.error || "Compression failed");
         }
-        setTimeout(() => removeCompression(id), 800);
-        throw err;
-      } finally {
-        const timers = cleanupTimersRef.current.get(id);
-        if (timers?.unsubscribe) {
-          timers.unsubscribe();
+        removeCompression(id);
+      };
+
+      stream.onClose = () => {
+        streamRefsRef.current.delete(id);
+        // If aborted, handle cleanup
+        if (abortController.signal.aborted) {
+          removeCompression(id);
         }
-        cleanupTimersRef.current.delete(id);
-      }
+      };
     },
-    [allocateDownloadLabelBase, removeCompression, updateCompression, ws],
+    [allocateDownloadLabelBase, removeCompression],
   );
 
   const cancelCompression = useCallback(
     (id: string) => {
       const compression = compressions.find((c) => c.id === id);
       if (compression) {
+        // Abort stream if using stream-based compression
+        const stream = streamRefsRef.current.get(id) || compression.stream;
+        if (stream) {
+          stream.abort();
+          streamRefsRef.current.delete(id);
+        }
         compression.abortController.abort();
-        updateCompression(id, { label: "Cancelling..." });
+        toast.info("Compression cancelled");
+        removeCompression(id);
       }
     },
-    [compressions, updateCompression],
-  );
-
-  const updateExtraction = useCallback(
-    (
-      id: string,
-      updates: Partial<Omit<Extraction, "id" | "type" | "abortController">>,
-    ) => {
-      setExtractions((prev) =>
-        prev.map((extraction) =>
-          extraction.id === id ? { ...extraction, ...updates } : extraction,
-        ),
-      );
-    },
-    [],
+    [compressions, removeCompression],
   );
 
   const removeExtraction = useCallback(
@@ -625,31 +617,27 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setExtractions((prev) =>
         prev.filter((extraction) => extraction.id !== id),
       );
-      const timers = cleanupTimersRef.current.get(id);
-      if (timers?.unsubscribe) {
-        timers.unsubscribe();
-      }
-      cleanupTimersRef.current.delete(id);
       releaseDownloadLabelBase(id);
-      sendProgressUnsubscribe("extraction", id);
+      streamRefsRef.current.delete(id);
     },
-    [releaseDownloadLabelBase, sendProgressUnsubscribe],
+    [releaseDownloadLabelBase],
   );
 
   const startExtraction = useCallback(
     async ({
       archivePath,
       destination,
+      onComplete,
     }: {
       archivePath: string;
       destination?: string;
+      onComplete?: () => void;
     }) => {
       if (!archivePath) {
         throw new Error("No archive specified for extraction");
       }
 
       const id = crypto.randomUUID();
-      const requestId = id;
       const abortController = new AbortController();
       const deriveLabelBase = () => {
         const trimmed = archivePath.replace(/\/+$/, "");
@@ -682,15 +670,36 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setExtractions((prev) => [...prev, extraction]);
       activeExtractionIdsRef.current.add(id);
 
-      const applyReportedProgress = (rawPercent: number) => {
-        const percent = Math.min(99, Math.round(rawPercent));
+      const mux = getStreamMux();
+      if (!mux || mux.status !== "open") {
+        toast.error("Stream connection not ready");
+        removeExtraction(id);
+        return;
+      }
+
+      // Build payload: "fb-extract\0archivePath\0destination"
+      const payloadParts = destination
+        ? [STREAM_TYPE_FB_EXTRACT, archivePath, destination]
+        : [STREAM_TYPE_FB_EXTRACT, archivePath];
+      const payload = encodeString(payloadParts.join("\0"));
+
+      const stream = mux.openStream(STREAM_TYPE_FB_EXTRACT, payload);
+      if (!stream) {
+        toast.error("Failed to open extraction stream");
+        removeExtraction(id);
+        return;
+      }
+
+      // Store stream reference for cancellation
+      streamRefsRef.current.set(id, stream);
+
+      stream.onProgress = (progress: ProgressFrame) => {
+        const percent = Math.min(99, progress.pct);
         setExtractions((prev) =>
           prev.map((item) => {
             if (item.id !== id) return item;
             const next = Math.max(item.progress, percent);
-            if (next === item.progress) {
-              return item;
-            }
+            if (next === item.progress) return item;
             return {
               ...item,
               progress: next,
@@ -700,72 +709,48 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         );
       };
 
-      const unsubscribe = ws.subscribe((msg: any) => {
-        if (msg.requestId !== requestId) return;
-
-        if (msg.type === "extraction_progress" && msg.data) {
-          applyReportedProgress(msg.data.percent);
-        } else if (msg.type === "extraction_complete") {
-          updateExtraction(id, {
-            progress: 100,
-            label: `Extracted ${labelBase}`,
-          });
-          setTimeout(() => removeExtraction(id), 800);
-        }
-      });
-
-      ws.send({ type: "subscribe_operation_progress", data: requestId });
-
-      cleanupTimersRef.current.set(id, {
-        unsubscribe,
-      });
-
-      try {
-        await axios.post(
-          "/navigator/api/archive/extract",
-          {
-            archivePath,
-            destination,
-            requestId,
-          },
-          { signal: abortController.signal },
+      stream.onResult = (result: ResultFrame) => {
+        streamRefsRef.current.delete(id);
+        setExtractions((prev) =>
+          prev.map((e) => (e.id === id ? { ...e, stream: null } : e)),
         );
 
-        updateExtraction(id, {
-          progress: 100,
-          label: `Extracted ${labelBase}`,
-        });
-        setTimeout(() => removeExtraction(id), 800);
-      } catch (err: any) {
-        if (err?.name === "CanceledError" || err?.name === "AbortError") {
-          toast.info("Extraction cancelled");
+        if (result.status === "ok") {
+          toast.success(`Extracted ${labelBase}`);
+          onComplete?.();
         } else {
-          const message =
-            err?.response?.data?.error || err?.message || "Extraction failed";
-          updateExtraction(id, { label: message });
+          toast.error(result.error || "Extraction failed");
         }
-        setTimeout(() => removeExtraction(id), 800);
-        throw err;
-      } finally {
-        const timers = cleanupTimersRef.current.get(id);
-        if (timers?.unsubscribe) {
-          timers.unsubscribe();
+        removeExtraction(id);
+      };
+
+      stream.onClose = () => {
+        streamRefsRef.current.delete(id);
+        // If aborted, handle cleanup
+        if (abortController.signal.aborted) {
+          removeExtraction(id);
         }
-        cleanupTimersRef.current.delete(id);
-      }
+      };
     },
-    [allocateDownloadLabelBase, removeExtraction, updateExtraction, ws],
+    [allocateDownloadLabelBase, removeExtraction],
   );
 
   const cancelExtraction = useCallback(
     (id: string) => {
       const extraction = extractions.find((item) => item.id === id);
       if (extraction) {
+        // Abort stream if using stream-based extraction
+        const stream = streamRefsRef.current.get(id) || extraction.stream;
+        if (stream) {
+          stream.abort();
+          streamRefsRef.current.delete(id);
+        }
         extraction.abortController.abort();
-        updateExtraction(id, { label: "Cancelling..." });
+        toast.info("Extraction cancelled");
+        removeExtraction(id);
       }
     },
-    [extractions, updateExtraction],
+    [extractions, removeExtraction],
   );
 
   const updateUpload = useCallback(
@@ -780,21 +765,163 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [],
   );
 
-  const removeUpload = useCallback(
-    (id: string) => {
-      setUploads((prev) => prev.filter((u) => u.id !== id));
+  const removeUpload = useCallback((id: string) => {
+    setUploads((prev) => prev.filter((u) => u.id !== id));
+    transferRatesRef.current.delete(id);
+    streamRefsRef.current.delete(id);
+  }, []);
 
-      const timers = cleanupTimersRef.current.get(id);
-      if (timers) {
-        if (timers.fallback) clearTimeout(timers.fallback);
-        if (timers.unsubscribe) timers.unsubscribe();
-        cleanupTimersRef.current.delete(id);
+  /**
+   * Stream-based single file upload implementation.
+   * Sends file directly to bridge via yamux stream - no temp files on server.
+   */
+  const uploadFileViaStream = useCallback(
+    async (
+      file: File,
+      targetPath: string,
+      uploadId: string,
+      onProgress: (loaded: number, total: number) => void,
+      abortSignal: AbortSignal,
+    ): Promise<{ success: boolean; error?: string; cancelled?: boolean }> => {
+      const mux = getStreamMux();
+      if (!mux || mux.status !== "open") {
+        return { success: false, error: "Stream connection not ready" };
       }
 
-      sendProgressUnsubscribe("upload", id);
-      transferRatesRef.current.delete(id);
+      // Build payload: "fb-upload\0/path/to/file\0size"
+      const payload = encodeString(
+        `${STREAM_TYPE_FB_UPLOAD}\0${targetPath}\0${file.size}`,
+      );
+      const stream = mux.openStream(STREAM_TYPE_FB_UPLOAD, payload);
+
+      if (!stream) {
+        return { success: false, error: "Failed to open upload stream" };
+      }
+
+      // Store stream reference for cancellation (sync ref for immediate access)
+      streamRefsRef.current.set(uploadId, stream);
+
+      return new Promise<{
+        success: boolean;
+        error?: string;
+        cancelled?: boolean;
+      }>((resolve) => {
+        let resultReceived = false;
+
+        // Use backend progress updates (bytes actually written to disk)
+        stream.onProgress = (progress: ProgressFrame) => {
+          onProgress(progress.bytes, progress.total);
+        };
+
+        stream.onResult = (result: ResultFrame) => {
+          resultReceived = true;
+          // Clear stream reference
+          streamRefsRef.current.delete(uploadId);
+          setUploads((prev) =>
+            prev.map((u) => (u.id === uploadId ? { ...u, stream: null } : u)),
+          );
+          // Check if cancelled - even if bridge reports success, user cancelled
+          if (abortSignal.aborted) {
+            resolve({ success: false, cancelled: true });
+            return;
+          }
+          if (result.status === "ok") {
+            resolve({ success: true });
+          } else {
+            resolve({
+              success: false,
+              error: result.error || "Upload failed",
+            });
+          }
+        };
+
+        stream.onClose = () => {
+          if (!resultReceived) {
+            streamRefsRef.current.delete(uploadId);
+            setUploads((prev) =>
+              prev.map((u) => (u.id === uploadId ? { ...u, stream: null } : u)),
+            );
+            // Check if cancelled
+            if (abortSignal.aborted) {
+              resolve({ success: false, cancelled: true });
+              return;
+            }
+            resolve({
+              success: false,
+              error: "Stream closed before upload completed",
+            });
+          }
+        };
+
+        // Flow control: track bytes in flight to allow meaningful cancellation
+        const reader = new FileReader();
+        let offset = 0;
+        let bytesSent = 0;
+        let bytesAcked = 0;
+        let pendingSend = false;
+
+        // Update onProgress to handle flow control ACKs
+        const originalOnProgress = stream.onProgress;
+        stream.onProgress = (progress: ProgressFrame) => {
+          bytesAcked = progress.bytes;
+          originalOnProgress?.(progress);
+
+          // Window opened - resume sending if we were waiting
+          if (pendingSend && bytesSent - bytesAcked < UPLOAD_WINDOW_SIZE) {
+            pendingSend = false;
+            sendNextChunk();
+          }
+        };
+
+        const sendNextChunk = () => {
+          // Stop if stream was closed/aborted
+          if (stream.status !== "open") {
+            return;
+          }
+
+          if (offset >= file.size) {
+            // Done sending - close stream to signal completion
+            stream.close();
+            return;
+          }
+
+          // Flow control: wait if window is full (max ~2 chunks in flight)
+          if (bytesSent - bytesAcked >= UPLOAD_WINDOW_SIZE) {
+            pendingSend = true;
+            return; // Will resume when onProgress fires
+          }
+
+          const slice = file.slice(offset, offset + STREAM_CHUNK_SIZE);
+          reader.readAsArrayBuffer(slice);
+        };
+
+        reader.onload = () => {
+          // Stop if stream was closed/aborted
+          if (stream.status !== "open") {
+            return;
+          }
+
+          if (!reader.result) return;
+
+          const chunk = new Uint8Array(reader.result as ArrayBuffer);
+          stream.write(chunk);
+          bytesSent += chunk.length;
+          offset += chunk.length;
+
+          // Send next chunk (will check window)
+          sendNextChunk();
+        };
+
+        reader.onerror = () => {
+          stream.close();
+          resolve({ success: false, error: "Failed to read file" });
+        };
+
+        // Start sending
+        sendNextChunk();
+      });
     },
-    [sendProgressUnsubscribe],
+    [],
   );
 
   const startUpload = useCallback(
@@ -812,7 +939,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       const uploadId = crypto.randomUUID();
-      const requestId = uploadId;
       const abortController = new AbortController();
       const directories = entries
         .filter((item) => item.isDirectory)
@@ -873,55 +999,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return `${normalized}${relative}`;
       };
 
-      // WS-based upload progress (bridge-side)
-      const applyReportedProgress = (rawPercent: number) => {
-        const percent = Math.min(99, Math.round(rawPercent));
-        setUploads((prev) =>
-          prev.map((u) => {
-            if (u.id !== uploadId) return u;
-            const label = u.displayName
-              ? `Uploading ${u.displayName} (${percent}%)`
-              : `Uploading ${u.completedFiles}/${u.totalFiles} files (${percent}%)`;
-            const updated: Upload = {
-              ...u,
-              progress: percent,
-              label,
-            };
-            return updated;
-          }),
-        );
-      };
-
-      const unsubscribe = ws.subscribe((msg: any) => {
-        if (msg.requestId !== requestId) return;
-
-        if (msg.type === "upload_progress" && msg.data) {
-          applyReportedProgress(msg.data.percent);
-        }
-        // Optional: handle "upload_complete" if the backend emits it
-        if (msg.type === "upload_complete") {
-          setUploads((prev) =>
-            prev.map((u) =>
-              u.id === uploadId
-                ? {
-                    ...u,
-                    progress: 100,
-                    label: u.displayName
-                      ? `Uploaded ${u.displayName}`
-                      : `Uploaded ${u.totalFiles}/${u.totalFiles} files`,
-                  }
-                : u,
-            ),
-          );
-        }
-      });
-
-      ws.send({ type: "subscribe_operation_progress", data: requestId });
-
-      cleanupTimersRef.current.set(uploadId, {
-        unsubscribe,
-      });
-
       try {
         // Create directories first
         for (const { relativePath } of directories) {
@@ -940,112 +1017,133 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           });
 
           try {
-            await axios.post("/navigator/api/resources", null, {
-              params: {
-                path: dirPath,
-                override: override ? "true" : undefined,
-                source: "/",
-                requestId,
-              },
-              signal: abortController.signal,
-            });
+            // Check if aborted before making the call
+            if (abortController.signal.aborted) break;
+            // Args: [path, override?] - directory path with trailing slash
+            const args = [dirPath];
+            if (override) {
+              args.push("true");
+            }
+            await streamApi.get("filebrowser", "resource_post", args);
             uploaded += 1;
           } catch (err: any) {
-            if (err.name === "CanceledError") break;
-            if (err.response?.status === 409 && !override) {
+            if (abortController.signal.aborted) break;
+            // 409 conflict - folder already exists
+            if (err.code === 409 && !override) {
               continue;
             }
-            const message =
-              err.response?.data?.error ||
-              err.message ||
-              "Failed to create folder";
+            const message = err.message || "Failed to create folder";
             failures.push({ path: relativePath, message });
           }
         }
 
-        // Upload files
+        // Upload files in parallel with concurrency limit
+        const fileProgress = new Map<number, number>(); // Track progress per file index
+        const fileBytes = new Map<number, number>(); // Track bytes per file for speed calculation
+        let fileIndex = 0;
+
+        const updateOverallProgress = (
+          bytesLoaded?: number,
+          fileIdx?: number,
+        ) => {
+          // Track bytes for speed calculation
+          if (bytesLoaded !== undefined && fileIdx !== undefined) {
+            fileBytes.set(fileIdx, bytesLoaded);
+          }
+
+          // Calculate total bytes uploaded so far
+          let totalBytesUploaded = uploadedBytesTotal;
+          fileBytes.forEach((bytes) => {
+            totalBytesUploaded += bytes;
+          });
+
+          // Calculate speed
+          const speed = recordTransferRate(uploadId, totalBytesUploaded);
+
+          // Sum progress of all files (completed = 100, in-progress = their %, pending = 0)
+          let totalProgress = uploaded * 100; // Completed files contribute 100% each
+          fileProgress.forEach((pct) => {
+            totalProgress += pct;
+          });
+          const overallPct = Math.round(totalProgress / files.length);
+          const activeCount = fileProgress.size;
+          const label =
+            isSingleUpload && singleEntryLabel
+              ? `Uploading ${singleEntryLabel} (${overallPct}%)`
+              : activeCount > 1
+                ? `Uploading ${activeCount} files (${overallPct}%)`
+                : `Uploading ${uploaded + activeCount}/${files.length} files (${overallPct}%)`;
+          updateUpload(uploadId, {
+            completedFiles: uploaded,
+            progress: overallPct,
+            label,
+            ...(speed !== undefined && { speed }),
+          });
+        };
+
+        const uploadSingleFile = async (
+          entry: { file?: File; relativePath: string },
+          idx: number,
+        ): Promise<void> => {
+          const { file, relativePath } = entry;
+          if (!file) return;
+
+          const targetFilePath = buildTargetPath(targetPath, relativePath);
+          fileProgress.set(idx, 0);
+          fileBytes.set(idx, 0);
+          updateOverallProgress(0, idx);
+
+          const mux = getStreamMux();
+          if (!mux || mux.status !== "open") {
+            failures.push({
+              path: relativePath,
+              message: "Stream connection not ready",
+            });
+            fileProgress.delete(idx);
+            fileBytes.delete(idx);
+            return;
+          }
+
+          const result = await uploadFileViaStream(
+            file,
+            targetFilePath,
+            uploadId,
+            (loaded, total) => {
+              const pct = Math.round((loaded / total) * 100);
+              fileProgress.set(idx, pct);
+              updateOverallProgress(loaded, idx);
+            },
+            abortController.signal,
+          );
+
+          // If cancelled, don't count as success or error
+          if (result.cancelled) {
+            return;
+          }
+
+          const uploadSuccess = result.success;
+          const uploadError = result.error;
+
+          // Remove from active progress tracking
+          fileProgress.delete(idx);
+          fileBytes.delete(idx);
+
+          if (uploadSuccess) {
+            uploaded += 1;
+            uploadedBytesTotal += file.size;
+          } else if (uploadError) {
+            failures.push({ path: relativePath, message: uploadError });
+          }
+          updateOverallProgress();
+        };
+
+        // Process files sequentially
         for (const { file, relativePath } of files) {
           if (abortController.signal.aborted) break;
           if (!file) continue;
 
-          const targetFilePath = buildTargetPath(targetPath, relativePath);
-          const fileOffset = uploadedBytesTotal;
-          primeTransferRate(uploadId, fileOffset);
-
-          const stageLabel =
-            isSingleUpload && singleEntryLabel
-              ? `Uploading ${singleEntryLabel} (0%)`
-              : `Uploading ${uploaded + 1}/${totalFiles} files`;
-          updateUpload(uploadId, {
-            currentFile: relativePath,
-            completedFiles: uploaded,
-            progress: Math.round((uploaded / totalFiles) * 100),
-            label: stageLabel,
-          });
-
-          try {
-            await axios.post("/navigator/api/resources", file, {
-              params: {
-                path: targetFilePath,
-                override: override ? "true" : undefined,
-                requestId,
-              },
-              headers: {
-                "Content-Type": file.type || "application/octet-stream",
-              },
-              signal: abortController.signal,
-              onUploadProgress: (progressEvent) => {
-                const updates: Partial<
-                  Omit<Upload, "id" | "type" | "abortController">
-                > = {};
-                if (progressEvent.total) {
-                  const fileProgress = Math.round(
-                    (progressEvent.loaded / progressEvent.total) * 100,
-                  );
-                  const overallProgress = Math.round(
-                    ((uploaded + fileProgress / 100) / totalFiles) * 100,
-                  );
-                  updates.progress = overallProgress;
-                  const labelName =
-                    (isSingleUpload && singleEntryLabel) ||
-                    relativePath ||
-                    file?.name ||
-                    "item";
-                  updates.label = `Uploading ${labelName} (${fileProgress}%)`;
-                }
-                if (typeof progressEvent.loaded === "number") {
-                  const speed = recordTransferRate(
-                    uploadId,
-                    fileOffset + progressEvent.loaded,
-                  );
-                  if (speed !== undefined) {
-                    updates.speed = speed;
-                  }
-                }
-                if (Object.keys(updates).length > 0) {
-                  updateUpload(uploadId, updates);
-                }
-              },
-            });
-            uploaded += 1;
-            uploadedBytesTotal += file.size;
-            // reflect completedFiles
-            updateUpload(uploadId, {
-              completedFiles: uploaded,
-              progress: Math.round((uploaded / totalFiles) * 100),
-            });
-          } catch (err: any) {
-            if (err.name === "CanceledError") break;
-            if (err.response?.status === 409 && !override) {
-              conflicts.push({ file, relativePath, isDirectory: false });
-              continue;
-            }
-            const message =
-              err.response?.data?.error ||
-              err.message ||
-              "Failed to upload file";
-            failures.push({ path: relativePath, message });
-          }
+          const idx = fileIndex++;
+          await uploadSingleFile({ file, relativePath }, idx);
         }
 
         if (uploaded > 0 && !abortController.signal.aborted) {
@@ -1085,13 +1183,26 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return { conflicts, uploaded, failures };
       }
     },
-    [updateUpload, removeUpload, ws, recordTransferRate, primeTransferRate],
+    [
+      updateUpload,
+      removeUpload,
+      recordTransferRate,
+      primeTransferRate,
+      uploadFileViaStream,
+    ],
   );
 
   const cancelUpload = useCallback(
     (id: string) => {
       const upload = uploads.find((u) => u.id === id);
       if (upload) {
+        // Abort stream if using stream-based upload (RST for immediate cancel)
+        // Use ref first (synchronous) then fallback to state
+        const stream = streamRefsRef.current.get(id) || upload.stream;
+        if (stream) {
+          stream.abort(); // RST for immediate cancellation
+          streamRefsRef.current.delete(id);
+        }
         upload.abortController.abort();
         toast.info("Upload cancelled");
         removeUpload(id);
@@ -1099,17 +1210,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     [uploads, removeUpload],
   );
-
-  // Cleanup on unmount
-  useEffect(() => {
-    const timersMap = cleanupTimersRef.current;
-    return () => {
-      timersMap.forEach((timers) => {
-        if (timers.fallback) clearTimeout(timers.fallback);
-        if (timers.unsubscribe) timers.unsubscribe();
-      });
-    };
-  }, []);
 
   return (
     <FileTransferContext.Provider

@@ -1,10 +1,9 @@
 import CloseIcon from "@mui/icons-material/Close";
 import { Drawer, Box, IconButton, Typography, Alert } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface ServiceLogsDrawerProps {
   open: boolean;
@@ -17,12 +16,15 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
   onClose,
   serviceName,
 }) => {
-  const { data, isLoading, isError, error } = useQuery<string[]>({
-    queryKey: ["service-logs", serviceName],
-    queryFn: async () => {
-      const res = await axios.get(`/services/${serviceName}/logs?lines=200`);
-      return res.data;
-    },
+  const {
+    data,
+    isPending: isLoading,
+    isError,
+    error,
+  } = useStreamQuery<string[]>({
+    handlerType: "dbus",
+    command: "GetServiceLogs",
+    args: [serviceName, "200"],
     enabled: open, // Only fetch when drawer is open
     refetchInterval: open ? 5000 : false, // Auto-refresh every 5 seconds when open
   });
@@ -60,6 +62,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
 
         {data && (
           <Box
+            className="custom-scrollbar"
             sx={{
               flex: 1,
               bgcolor: "#1e1e1e",

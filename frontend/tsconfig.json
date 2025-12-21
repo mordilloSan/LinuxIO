@@ -30,6 +30,7 @@
       "@/types/*": ["types/*"],
       "@/utils/*": ["utils/*"],
       "@/assets/*": ["assets/*"],
+      "@/services/*": ["services/*"],
       // Files
       "@/constants": ["constants"],
       "@/config": ["config"],

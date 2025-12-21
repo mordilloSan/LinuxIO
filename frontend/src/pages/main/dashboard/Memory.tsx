@@ -1,11 +1,10 @@
 import { Typography, Box } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import { formatFileSize } from "@/utils/formaters";
 
 // Utility functions
@@ -13,21 +12,27 @@ import { formatFileSize } from "@/utils/formaters";
 const calculatePercentage = (used: number, total: number) =>
   ((used / total) * 100).toFixed(2);
 
+interface MemoryInfoResponse {
+  system: {
+    total: number;
+    active: number;
+    swapTotal: number;
+    swapFree: number;
+  };
+}
+
 const MemoryUsage = () => {
   const {
     data: memoryData,
     isPending,
     isError,
-  } = useQuery({
-    queryKey: ["memoryInfo"],
-    queryFn: async () => {
-      const response = await axios.get("/system/memory");
-      return response.data;
-    },
+  } = useStreamQuery<MemoryInfoResponse>({
+    handlerType: "system",
+    command: "get_memory_info",
     refetchInterval: 2000,
   });
 
-  const ramUsagePercentage = memoryData?.system.active
+  const ramUsagePercentage = memoryData?.system?.active
     ? parseFloat(
         calculatePercentage(memoryData.system.active, memoryData.system.total),
       )
@@ -52,19 +57,20 @@ const MemoryUsage = () => {
       <Box sx={{ display: "flex", gap: 1, flexDirection: "column" }}>
         <Typography variant="body1">
           <strong>Total Memory:</strong>{" "}
-          {formatFileSize(memoryData?.system.total || 0, 2)}
+          {formatFileSize(memoryData?.system?.total ?? 0, 2)}
         </Typography>
         <Typography variant="body1">
           <strong>Used Memory:</strong>{" "}
-          {formatFileSize(memoryData?.system.active || 0, 2)}
+          {formatFileSize(memoryData?.system?.active ?? 0, 2)}
         </Typography>
         <Typography variant="body1">
           <strong>Swap:</strong>{" "}
           {formatFileSize(
-            memoryData?.system.swapTotal - memoryData?.system.swapFree || 0,
+            (memoryData?.system?.swapTotal ?? 0) -
+              (memoryData?.system?.swapFree ?? 0),
             2,
           )}{" "}
-          of {formatFileSize(memoryData?.system.swapTotal || 0, 2)}
+          of {formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}
         </Typography>
       </Box>
     ),

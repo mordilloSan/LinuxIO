@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { isAxiosError } from "axios";
 
-import axios from "@/utils/axios";
+import { useStreamMux } from "@/hooks/useStreamMux";
+import { streamApi, StreamApiError } from "@/utils/streamApi";
 import {
   getIndexerAvailabilityFlag,
   setIndexerAvailabilityFlag,
@@ -56,22 +56,23 @@ export const useSubfolders = (
   path: string,
   enabled: boolean = true,
 ): UseSubfoldersResult => {
+  const { isOpen } = useStreamMux();
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
   const indexerDisabled = getIndexerAvailabilityFlag() === false;
-  const queryEnabled = enabled && !!path && !shouldSkip && !indexerDisabled;
+  const queryEnabled =
+    isOpen && enabled && !!path && !shouldSkip && !indexerDisabled;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["subfolders", path],
+    queryKey: ["stream", "filebrowser", "subfolders", path],
     queryFn: async () => {
-      const response = await axios.get<SubfoldersResponse>(
-        "/navigator/api/subfolders",
-        {
-          params: { path },
-          timeout: 10000, // 10 second timeout
-        },
+      // Args: [path]
+      const data = await streamApi.get<SubfoldersResponse>(
+        "filebrowser",
+        "subfolders",
+        [path],
       );
-      return response.data;
+      return data;
     },
     enabled: queryEnabled,
     staleTime: CACHE_DURATION,
@@ -85,9 +86,8 @@ export const useSubfolders = (
   useEffect(() => {
     if (!error) return;
     if (
-      isAxiosError(error) &&
-      error.response?.data &&
-      (error.response.data as any).error === "indexer unavailable"
+      error instanceof StreamApiError &&
+      error.message?.includes("indexer unavailable")
     ) {
       setIndexerAvailabilityFlag(false);
     }
@@ -124,7 +124,9 @@ export const clearSubfoldersCache = (
   queryClient?: ReturnType<typeof useQueryClient>,
 ) => {
   if (queryClient) {
-    queryClient.removeQueries({ queryKey: ["subfolders"] });
+    queryClient.removeQueries({
+      queryKey: ["stream", "filebrowser", "subfolders"],
+    });
   }
 };
 
@@ -134,7 +136,9 @@ export const clearSubfoldersCacheForPath = (
   queryClient?: ReturnType<typeof useQueryClient>,
 ) => {
   if (queryClient) {
-    queryClient.removeQueries({ queryKey: ["subfolders", path] });
+    queryClient.removeQueries({
+      queryKey: ["stream", "filebrowser", "subfolders", path],
+    });
   }
 };
 

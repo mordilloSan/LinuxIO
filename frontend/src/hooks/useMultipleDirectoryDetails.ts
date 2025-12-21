@@ -1,8 +1,8 @@
 import { useQueries } from "@tanstack/react-query";
 
 import { MultiStatsItem } from "@/types/filebrowser";
-import axios from "@/utils/axios";
 import { getIndexerAvailabilityFlag } from "@/utils/indexerAvailability";
+import { streamApi } from "@/utils/streamApi";
 
 interface DirectoryDetailsData {
   path: string;
@@ -58,14 +58,9 @@ export const useMultipleDirectoryDetails = (
     queries: directoryPaths.map((path) => ({
       queryKey: ["directorySize", path],
       queryFn: async () => {
-        const response = await axios.get<DirectoryDetailsData>(
-          "/navigator/api/dir-size",
-          {
-            params: { path },
-            timeout: 10000,
-          },
-        );
-        return response.data;
+        return streamApi.get<DirectoryDetailsData>("filebrowser", "dir_size", [
+          path,
+        ]);
       },
       staleTime: CACHE_DURATION,
       gcTime: CACHE_PERSISTENCE,

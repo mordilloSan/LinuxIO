@@ -30,12 +30,6 @@ export const normalizeResource = (data: ApiResource): FileResource => {
   };
 };
 
-export const buildDownloadUrl = (path: string, inline = false) => {
-  const search = new URLSearchParams({ files: path });
-  if (inline) search.set("inline", "true");
-  return `/navigator/api/raw?${search.toString()}`;
-};
-
 export const isArchiveFile = (name: string) => {
   const lower = name.toLowerCase();
   return (

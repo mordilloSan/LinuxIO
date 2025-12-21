@@ -1,10 +1,9 @@
 import { Box, Typography } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React, { useState, useMemo } from "react";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import { formatFileSize } from "@/utils/formaters";
 
 // --- API shape from /system/disk ---
@@ -64,26 +63,27 @@ function parseSizeToBytes(input: string | undefined | null): number {
 
 const Drive: React.FC = () => {
   const {
-    data: drives = [],
-    isLoading,
+    data: rawDrives = [],
+    isPending: isLoading,
     isError,
-  } = useQuery<DriveInfo[]>({
-    queryKey: ["systemDrives"],
-    queryFn: async () => {
-      const res = await axios.get<ApiDisk[]>("/system/disk");
-      const items = res.data ?? [];
-      // Normalize API → component shape
-      const normalized: DriveInfo[] = items.map((d) => ({
+  } = useStreamQuery<ApiDisk[]>({
+    handlerType: "system",
+    command: "get_drive_info",
+  });
+
+  // Normalize API → component shape
+  const drives = useMemo<DriveInfo[]>(
+    () =>
+      rawDrives.map((d) => ({
         name: d.name,
         model: d.model,
         sizeBytes: parseSizeToBytes(d.size),
         transport: d.type ?? "unknown",
         vendor: d.vendor,
         serial: d.serial,
-      }));
-      return normalized;
-    },
-  });
+      })),
+    [rawDrives],
+  );
 
   const [selected, setSelected] = useState("");
   const fallbackSelected = useMemo(() => {

@@ -1,10 +1,9 @@
 import { Box, useTheme, Typography } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import FileNotifications from "@/components/filebrowser/FileNotifications";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface VersionResponse {
   checked_at: string;
@@ -16,12 +15,9 @@ interface VersionResponse {
 function Footer() {
   const theme = useTheme();
 
-  const { data } = useQuery<VersionResponse>({
-    queryKey: ["version"],
-    queryFn: async () => {
-      const res = await axios.get("/control/version");
-      return res.data;
-    },
+  const { data } = useStreamQuery<VersionResponse>({
+    handlerType: "control",
+    command: "version",
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: false, // Don't retry on failure for footer
   });
