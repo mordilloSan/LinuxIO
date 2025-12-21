@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 
 import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
-import axios from "@/utils/axios";
+import { streamApi } from "@/utils/streamApi";
 
 function NavbarUserDropdown() {
   const ref = useRef(null);
@@ -54,9 +54,9 @@ function NavbarUserDropdown() {
 
     try {
       if (action === "reboot") {
-        await axios.post("/power/reboot");
+        await streamApi.post("dbus", "Reboot");
       } else if (action === "poweroff") {
-        await axios.post("/power/shutdown");
+        await streamApi.post("dbus", "PowerOff");
       }
     } catch {
       // Server may die before responding - this is expected

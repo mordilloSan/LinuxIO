@@ -31,26 +31,6 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
   const triggerReboot = useCallback(() => setPowerAction("rebooting"), []);
   const triggerPowerOff = useCallback(() => setPowerAction("poweringOff"), []);
 
-  // DEV ONLY: Keyboard shortcut to test power overlay
-  useEffect(() => {
-    if (import.meta.env.PROD) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === "R") {
-        e.preventDefault();
-        setPowerAction("rebooting");
-      } else if (e.ctrlKey && e.shiftKey && e.key === "S") {
-        e.preventDefault();
-        setPowerAction("poweringOff");
-      } else if (e.key === "Escape" && powerAction !== null) {
-        setPowerAction(null);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [powerAction]);
-
   // Poll server until it's back up after reboot
   useEffect(() => {
     if (powerAction !== "rebooting") return;

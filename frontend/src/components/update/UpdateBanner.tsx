@@ -3,19 +3,13 @@ import DownloadIcon from "@mui/icons-material/Download";
 import { Alert, Button, IconButton, Link, Stack } from "@mui/material";
 import { useState } from "react";
 
-import axios from "@/utils/axios";
+import { streamApi } from "@/utils/streamApi";
 
 interface UpdateInfo {
   available: boolean;
   current_version: string;
   latest_version?: string;
   release_url?: string;
-}
-
-interface ApiEnvelope<T = any> {
-  status: "ok" | "error";
-  output?: T;
-  error?: string;
 }
 
 interface UpdateBannerProps {
@@ -41,18 +35,13 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
 
     setIsUpdating(true);
     try {
-      const { data } = await axios.post<ApiEnvelope>("/control/update", {});
+      await streamApi.post("control", "update");
+      sessionStorage.removeItem("update_info");
 
-      if (data?.status === "ok") {
-        sessionStorage.removeItem("update_info");
-
-        // Wait longer before attempting reload
-        setTimeout(() => {
-          window.location.reload();
-        }, 5000); // Wait 8 seconds before first reload attempt
-      } else {
-        throw new Error(data?.error || "Update failed");
-      }
+      // Wait before attempting reload
+      setTimeout(() => {
+        window.location.reload();
+      }, 5000);
     } catch (error) {
       console.error("Update failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
