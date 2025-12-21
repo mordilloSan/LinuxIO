@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/mordilloSan/go_logger/logger"
 
@@ -154,6 +155,7 @@ func handleDownload(stream net.Conn, args []string) error {
 
 // handleUpload receives a file from the client.
 // args: [path, size]
+// If the file already exists, preserves its permissions and ownership.
 func handleUpload(stream net.Conn, args []string) error {
 	if len(args) < 2 {
 		_ = ipc.WriteResultError(stream, 0, "missing path or size", 400)
@@ -171,6 +173,25 @@ func handleUpload(stream net.Conn, args []string) error {
 	}
 
 	realPath := filepath.Clean(path)
+
+	// Check if file exists and save its attributes for later restoration
+	var preserveMode os.FileMode
+	var preserveUID, preserveGID int
+	var hasExistingAttrs bool
+
+	if existingStat, statErr := os.Stat(realPath); statErr == nil {
+		if existingStat.IsDir() {
+			_ = ipc.WriteResultError(stream, 0, "destination is a directory", 400)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("destination is a directory")
+		}
+		preserveMode = existingStat.Mode()
+		if st, ok := existingStat.Sys().(*syscall.Stat_t); ok {
+			preserveUID = int(st.Uid)
+			preserveGID = int(st.Gid)
+			hasExistingAttrs = true
+		}
+	}
 
 	// Ensure parent directory exists
 	if mkdirErr := os.MkdirAll(filepath.Dir(realPath), services.PermDir); mkdirErr != nil {
@@ -271,9 +292,18 @@ readLoop:
 	uploadSuccess = true
 	file.Close()
 
-	// Set permissions
-	if err := os.Chmod(realPath, services.PermFile); err != nil {
-		logger.Debugf("[FBStream] Failed to set permissions: %v", err)
+	// Set permissions: restore existing or use default
+	if hasExistingAttrs {
+		if err := os.Chmod(realPath, preserveMode); err != nil {
+			logger.Debugf("[FBStream] Failed to restore permissions: %v", err)
+		}
+		if err := os.Chown(realPath, preserveUID, preserveGID); err != nil {
+			logger.Debugf("[FBStream] Failed to restore ownership: %v", err)
+		}
+	} else {
+		if err := os.Chmod(realPath, services.PermFile); err != nil {
+			logger.Debugf("[FBStream] Failed to set permissions: %v", err)
+		}
 	}
 
 	// Notify indexer about the new file (non-blocking)

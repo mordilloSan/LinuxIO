@@ -3,12 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useMultipleDirectoryDetails } from "@/hooks/useMultipleDirectoryDetails";
+import { useStreamMux } from "@/hooks/useStreamMux";
 import {
   ApiResource,
   FileResource,
   ResourceStatData,
 } from "@/types/filebrowser";
-import axios from "@/utils/axios";
+import { streamApi, StreamApiError } from "@/utils/streamApi";
 
 type UseFileBrowserQueriesParams = {
   normalizedPath: string;
@@ -25,41 +26,40 @@ export const useFileBrowserQueries = ({
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
 }: UseFileBrowserQueriesParams) => {
+  const { isOpen } = useStreamMux();
+
   const {
     data: resource,
     isPending,
     isError,
     error,
   } = useQuery<FileResource>({
-    queryKey: ["fileResource", normalizedPath],
+    queryKey: ["stream", "filebrowser", "resource_get", normalizedPath],
     queryFn: async () => {
-      const { data } = await axios.get<ApiResource>(
-        "/navigator/api/resources",
-        {
-          params: {
-            path: normalizedPath,
-            source: "/",
-          },
-        },
+      // Args: [path]
+      const data = await streamApi.get<ApiResource>(
+        "filebrowser",
+        "resource_get",
+        [normalizedPath],
       );
       return normalizeResource(data);
     },
     staleTime: 0,
+    enabled: isOpen,
   });
 
   const errorMessage = useMemo(() => {
     if (!isError) return null;
-    if (error instanceof Error) {
-      const axiosError = error as any;
-      if (axiosError.response?.status === 403) {
+    if (error instanceof StreamApiError) {
+      if (error.code === 403) {
         return `Permission denied: You don't have access to "${normalizedPath}".`;
       }
-      if (
-        axiosError.response?.status === 404 ||
-        axiosError.response?.status === 500
-      ) {
+      if (error.code === 404 || error.code === 500) {
         return `Path not found: "${normalizedPath}" does not exist.`;
       }
+      return error.message;
+    }
+    if (error instanceof Error) {
       return error.message;
     }
     return "Failed to load file information.";
@@ -70,45 +70,45 @@ export const useFileBrowserQueries = ({
     isPending: isDetailPending,
     error: detailError,
   } = useQuery<FileResource>({
-    queryKey: ["fileDetail", detailTarget],
+    queryKey: ["stream", "filebrowser", "resource_get_detail", detailTarget],
     queryFn: async () => {
       const currentDetailTarget = detailTarget;
       if (!currentDetailTarget || currentDetailTarget.length !== 1) {
         throw new Error("Invalid selection");
       }
-      const { data } = await axios.get<ApiResource>(
-        "/navigator/api/resources",
-        {
-          params: { path: currentDetailTarget[0], content: "true" },
-        },
+      // Args: [path, "", getContent?]
+      const data = await streamApi.get<ApiResource>(
+        "filebrowser",
+        "resource_get",
+        [currentDetailTarget[0], "", "true"],
       );
       return data as FileResource;
     },
-    enabled: hasSingleDetailTarget,
+    enabled: isOpen && hasSingleDetailTarget,
   });
 
   const { data: statData, isPending: isStatPending } =
     useQuery<ResourceStatData>({
-      queryKey: ["fileStat", detailTarget],
+      queryKey: ["stream", "filebrowser", "resource_stat", detailTarget],
       queryFn: async () => {
         const currentDetailTarget = detailTarget;
         if (!currentDetailTarget || currentDetailTarget.length !== 1) {
           throw new Error("Invalid selection");
         }
-        const { data } = await axios.get<ResourceStatData>(
-          "/navigator/api/resources/stat",
-          {
-            params: { path: currentDetailTarget[0] },
-          },
+        // Args: [path]
+        const data = await streamApi.get<ResourceStatData>(
+          "filebrowser",
+          "resource_stat",
+          [currentDetailTarget[0]],
         );
         return data;
       },
-      enabled: hasSingleDetailTarget,
+      enabled: isOpen && hasSingleDetailTarget,
     });
 
   const { data: multipleFileResources, isPending: isMultipleFilesPending } =
     useQuery<Record<string, FileResource>>({
-      queryKey: ["multipleFileDetails", detailTarget],
+      queryKey: ["stream", "filebrowser", "resource_get_multi", detailTarget],
       queryFn: async () => {
         const currentDetailTarget = detailTarget;
         if (!currentDetailTarget || currentDetailTarget.length <= 1) {
@@ -117,18 +117,18 @@ export const useFileBrowserQueries = ({
         const results: Record<string, FileResource> = {};
         await Promise.all(
           currentDetailTarget.map(async (path) => {
-            const { data } = await axios.get<ApiResource>(
-              "/navigator/api/resources",
-              {
-                params: { path },
-              },
+            // Args: [path]
+            const data = await streamApi.get<ApiResource>(
+              "filebrowser",
+              "resource_get",
+              [path],
             );
             results[path] = normalizeResource(data);
           }),
         );
         return results;
       },
-      enabled: hasMultipleDetailTargets,
+      enabled: isOpen && hasMultipleDetailTargets,
     });
 
   const fileResourceMap = useMemo(() => {
@@ -153,18 +153,18 @@ export const useFileBrowserQueries = ({
 
   const { data: editingFileResource, isPending: isEditingFileLoading } =
     useQuery<FileResource>({
-      queryKey: ["fileEdit", editingPath],
+      queryKey: ["stream", "filebrowser", "resource_get_edit", editingPath],
       queryFn: async () => {
         if (!editingPath) throw new Error("No editing path");
-        const { data } = await axios.get<ApiResource>(
-          "/navigator/api/resources",
-          {
-            params: { path: editingPath, content: "true" },
-          },
+        // Args: [path, "", getContent?]
+        const data = await streamApi.get<ApiResource>(
+          "filebrowser",
+          "resource_get",
+          [editingPath, "", "true"],
         );
         return data as FileResource;
       },
-      enabled: !!editingPath,
+      enabled: isOpen && !!editingPath,
     });
 
   const shouldShowDetailLoader =

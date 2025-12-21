@@ -17,8 +17,9 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import axios from "axios";
 import React, { useState, useCallback, useEffect } from "react";
+
+import { streamApi } from "@/utils/streamApi";
 
 interface PermissionsDialogProps {
   open: boolean;
@@ -137,9 +138,13 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
     if (open) {
       const fetchUsersAndGroups = async () => {
         try {
-          const response = await axios.get("/navigator/api/users-groups");
-          setAvailableUsers(response.data.users || []);
-          setAvailableGroups(response.data.groups || []);
+          // Args: []
+          const data = await streamApi.get<{
+            users: string[];
+            groups: string[];
+          }>("filebrowser", "users_groups", []);
+          setAvailableUsers(data.users || []);
+          setAvailableGroups(data.groups || []);
         } catch (error) {
           console.error("Failed to fetch users and groups:", error);
           // Continue without autocomplete data

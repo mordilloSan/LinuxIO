@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { isAxiosError } from "axios";
 import { useEffect } from "react";
 
-import axios from "@/utils/axios";
+import { useStreamMux } from "@/hooks/useStreamMux";
+import { streamApi, StreamApiError } from "@/utils/streamApi";
 import {
   getIndexerAvailabilityFlag,
   setIndexerAvailabilityFlag,
@@ -47,22 +47,23 @@ export const useDirectorySize = (
   path: string,
   enabled: boolean = true,
 ): UseDirectorySizeResult => {
+  const { isOpen } = useStreamMux();
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
   const indexerDisabled = getIndexerAvailabilityFlag() === false;
-  const queryEnabled = enabled && !!path && !shouldSkip && !indexerDisabled;
+  const queryEnabled =
+    isOpen && enabled && !!path && !shouldSkip && !indexerDisabled;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["directorySize", path],
+    queryKey: ["stream", "filebrowser", "dir_size", path],
     queryFn: async () => {
-      const response = await axios.get<DirectorySizeData>(
-        "/navigator/api/dir-size",
-        {
-          params: { path },
-          timeout: 10000, // 10 second timeout
-        },
+      // Args: [path]
+      const data = await streamApi.get<DirectorySizeData>(
+        "filebrowser",
+        "dir_size",
+        [path],
       );
-      return response.data;
+      return data;
     },
     enabled: queryEnabled,
     staleTime: CACHE_DURATION,
@@ -76,9 +77,8 @@ export const useDirectorySize = (
   useEffect(() => {
     if (!error) return;
     if (
-      isAxiosError(error) &&
-      error.response?.data &&
-      (error.response.data as any).error === "indexer unavailable"
+      error instanceof StreamApiError &&
+      error.message?.includes("indexer unavailable")
     ) {
       setIndexerAvailabilityFlag(false);
     }

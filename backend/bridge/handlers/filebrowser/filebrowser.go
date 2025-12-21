@@ -173,13 +173,48 @@ func resourcePost(args []string) (any, error) {
 			logger.Debugf("error writing directory: %v", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
+
+		// Notify indexer about the new directory
+		if info, statErr := os.Stat(realPath); statErr == nil {
+			if indexErr := addToIndexer(path, info); indexErr != nil {
+				logger.Debugf("failed to update indexer after directory create: %v", indexErr)
+			}
+		}
+
 		return map[string]any{"message": "created"}, nil
 	}
 
-	// For file uploads, we need body data from the request
-	// This will be handled differently - IPC doesn't support binary data streaming
-	// For now, we'll return an error since file uploads need HTTP streaming
-	return nil, fmt.Errorf("bad_request:file upload requires HTTP streaming")
+	// Handle empty file creation
+	// File uploads with content use yamux streams (fb-upload), not this handler
+	parentDir := filepath.Dir(realPath)
+	if mkdirErr := os.MkdirAll(parentDir, services.PermDir); mkdirErr != nil {
+		logger.Debugf("error creating parent directory: %v", mkdirErr)
+		return nil, fmt.Errorf("bad_request:failed to create parent directory: %v", mkdirErr)
+	}
+
+	// Check if file exists
+	if _, statErr := os.Stat(realPath); statErr == nil {
+		if !override {
+			return nil, fmt.Errorf("bad_request:file already exists")
+		}
+	}
+
+	// Create empty file
+	f, err := os.Create(realPath)
+	if err != nil {
+		logger.Debugf("error creating file: %v", err)
+		return nil, fmt.Errorf("bad_request:%v", err)
+	}
+	f.Close()
+
+	// Notify indexer about the new file
+	if info, err := os.Stat(realPath); err == nil {
+		if err := addToIndexer(path, info); err != nil {
+			logger.Debugf("failed to update indexer after file create: %v", err)
+		}
+	}
+
+	return map[string]any{"message": "created"}, nil
 }
 
 // resourcePatch performs patch operations (move, copy, rename)

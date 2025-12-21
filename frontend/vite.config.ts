@@ -31,8 +31,7 @@ export default defineConfig(({ command }) => {
       port: devPort,
       strictPort: false,
       proxy: {
-        "/navigator": { target: devApi, changeOrigin: true },
-        "/ws":        { target: devApi, changeOrigin: true, ws: true },
+        "/ws": { target: devApi, changeOrigin: true, ws: true },
       },
     },
     build: {

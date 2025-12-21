@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -100,55 +99,12 @@ func isNewerVersion(latest, current string) bool {
 	return len(latestParts) > len(currentParts)
 }
 
-// getInstalledVersion runs 'linuxio --version' and parses the output
+// getInstalledVersion returns the compiled-in version from config.Version
 func getInstalledVersion() string {
-	cmd := exec.Command(config.BinPath, "--version")
-	output, err := cmd.Output()
-	if err != nil {
-		// Fall back to compiled-in version (useful in dev mode where binary doesn't exist)
-		if config.Version != "" && config.Version != "untracked" {
-			return config.Version
-		}
-		logger.Debugf("failed to run linuxio --version: %v", err)
+	if config.Version == "" || config.Version == "untracked" {
 		return "unknown"
 	}
-
-	version := parseVersionOutput(string(output))
-	logger.Debugf("detected installed version: %s", version)
-	return version
-}
-
-// parseVersionOutput extracts version string from binary output
-// Handles formats like:
-//
-//	"linuxio version v0.2.4"
-//	"v0.2.4"
-//	"0.2.4"
-func parseVersionOutput(output string) string {
-	output = strings.TrimSpace(output)
-
-	// Split by whitespace and look for version-like string
-	parts := strings.Fields(output)
-	for _, part := range parts {
-		// Look for vX.Y.Z or X.Y.Z pattern
-		if strings.HasPrefix(part, "v") && strings.Contains(part, ".") {
-			return part
-		}
-		if strings.Count(part, ".") >= 2 {
-			// Assume it's a version without 'v' prefix
-			return "v" + part
-		}
-	}
-
-	// Fallback: return the whole output if it looks like a version
-	if strings.Contains(output, ".") {
-		if !strings.HasPrefix(output, "v") {
-			return "v" + output
-		}
-		return output
-	}
-
-	return "unknown"
+	return config.Version
 }
 
 func fetchLatestRelease() (version string, releaseURL string) {

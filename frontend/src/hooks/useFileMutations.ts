@@ -6,7 +6,7 @@ import {
 import { toast } from "sonner";
 
 import { clearSubfoldersCache } from "@/hooks/useSubfolders";
-import axios from "@/utils/axios";
+import { streamApi, StreamApiError } from "@/utils/streamApi";
 import { useFileTransfers } from "./useFileTransfers";
 
 type UseFileMutationsParams = {
@@ -54,40 +54,48 @@ export const useFileMutations = ({
 
   const invalidateListing = () => {
     queryClient.invalidateQueries({
-      queryKey: ["fileResource", normalizedPath],
+      queryKey: ["stream", "filebrowser", "resource_get", normalizedPath],
     });
     clearSubfoldersCache(queryClient);
+  };
+
+  const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (error instanceof StreamApiError) {
+      return error.message || fallback;
+    }
+    if (error instanceof Error) {
+      return error.message || fallback;
+    }
+    return fallback;
   };
 
   const { mutate: createFile } = useMutation({
     mutationFn: async (fileName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
-      await axios.post("/navigator/api/resources", null, {
-        params: { path, source: "/" },
-      });
+      // Args: [path] - file path without trailing slash
+      await streamApi.get("filebrowser", "resource_post", [path]);
     },
     onSuccess: () => {
       invalidateListing();
       toast.success("File created successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || "Failed to create file");
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Failed to create file"));
     },
   });
 
   const { mutate: createFolder } = useMutation({
     mutationFn: async (folderName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
-      await axios.post("/navigator/api/resources", null, {
-        params: { path, source: "/" },
-      });
+      // Args: [path] - directory path with trailing slash
+      await streamApi.get("filebrowser", "resource_post", [path]);
     },
     onSuccess: () => {
       invalidateListing();
       toast.success("Folder created successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || "Failed to create folder");
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Failed to create folder"));
     },
   });
 
@@ -95,9 +103,8 @@ export const useFileMutations = ({
     mutationFn: async (paths: string[]) => {
       await Promise.all(
         paths.map((path) =>
-          axios.delete("/navigator/api/resources", {
-            params: { path, source: "/" },
-          }),
+          // Args: [path]
+          streamApi.get("filebrowser", "resource_delete", [path]),
         ),
       );
     },
@@ -106,8 +113,8 @@ export const useFileMutations = ({
       onDeleteSuccess?.();
       toast.success("Items deleted successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || "Failed to delete items");
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Failed to delete items"));
     },
   });
 
@@ -162,22 +169,19 @@ export const useFileMutations = ({
       if (!mode) {
         throw new Error("No mode provided");
       }
-      await axios.post("/navigator/api/chmod", {
-        path,
-        mode,
-        recursive: recursive || false,
-        owner,
-        group,
-      });
+      // Args: [path, mode, owner?, group?, recursive?]
+      const args = [path, mode, owner || "", group || ""];
+      if (recursive) {
+        args.push("true");
+      }
+      await streamApi.get("filebrowser", "chmod", args);
     },
     onSuccess: () => {
       invalidateListing();
       toast.success("Permissions changed successfully");
     },
-    onError: (error: any) => {
-      toast.error(
-        error.response?.data?.error || "Failed to change permissions",
-      );
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Failed to change permissions"));
     },
   });
 
@@ -186,22 +190,19 @@ export const useFileMutations = ({
       if (!from || !destination) {
         throw new Error("Invalid rename parameters");
       }
-      await axios.patch("/navigator/api/resources", null, {
-        params: {
-          action: "rename",
-          from,
-          destination,
-        },
-      });
+      // Args: [action, from, destination]
+      await streamApi.get("filebrowser", "resource_patch", [
+        "rename",
+        from,
+        destination,
+      ]);
     },
     onSuccess: () => {
       invalidateListing();
       toast.success("Item renamed successfully");
     },
-    onError: (error: any) => {
-      toast.error(
-        error.response?.data?.error || error.message || "Failed to rename item",
-      );
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Failed to rename item"));
     },
   });
 
@@ -220,13 +221,12 @@ export const useFileMutations = ({
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
-          return axios.patch("/navigator/api/resources", null, {
-            params: {
-              action: "copy",
-              from: sourcePath,
-              destination,
-            },
-          });
+          // Args: [action, from, destination]
+          return streamApi.get("filebrowser", "resource_patch", [
+            "copy",
+            sourcePath,
+            destination,
+          ]);
         }),
       );
     },
@@ -234,10 +234,8 @@ export const useFileMutations = ({
       invalidateListing();
       toast.success("Items copied successfully");
     },
-    onError: (error: any) => {
-      toast.error(
-        error.response?.data?.error || error.message || "Failed to copy items",
-      );
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Failed to copy items"));
     },
   });
 
@@ -256,13 +254,12 @@ export const useFileMutations = ({
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
-          return axios.patch("/navigator/api/resources", null, {
-            params: {
-              action: "move",
-              from: sourcePath,
-              destination,
-            },
-          });
+          // Args: [action, from, destination]
+          return streamApi.get("filebrowser", "resource_patch", [
+            "move",
+            sourcePath,
+            destination,
+          ]);
         }),
       );
     },
@@ -270,10 +267,8 @@ export const useFileMutations = ({
       invalidateListing();
       toast.success("Items moved successfully");
     },
-    onError: (error: any) => {
-      toast.error(
-        error.response?.data?.error || error.message || "Failed to move items",
-      );
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, "Failed to move items"));
     },
   });
 
