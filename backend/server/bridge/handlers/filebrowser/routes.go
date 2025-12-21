@@ -19,13 +19,13 @@ func RegisterRoutes(r *gin.RouterGroup) error {
 
 	// Transfer/metadata helpers.
 	// NOTE: /api/raw removed - downloads now use yamux streams (fb-download, fb-archive)
-	r.GET("/api/dir-size", dirSizeHandler)                  // single dir size (bridge: dir_size)
-	r.GET("/api/subfolders", subfoldersHandler)             // batch folder sizes (bridge: subfolders)
-	r.GET("/api/search", searchHandler)                     // search files (bridge: search)
-	r.POST("/api/archive/compress", archiveCompressHandler) // compress (bridge: archive_create)
-	r.POST("/api/archive/extract", archiveExtractHandler)   // extract (bridge: archive_extract)
-	r.POST("/api/chmod", chmodHandler)                      // perms/ownership (bridge: chmod)
-	r.GET("/api/users-groups", usersGroupsHandler)          // system users/groups (bridge: users_groups)
+	// NOTE: /api/archive/compress removed - compression now uses yamux streams (fb-compress)
+	// NOTE: /api/archive/extract removed - extraction now uses yamux streams (fb-extract)
+	r.GET("/api/dir-size", dirSizeHandler)         // single dir size (bridge: dir_size)
+	r.GET("/api/subfolders", subfoldersHandler)    // batch folder sizes (bridge: subfolders)
+	r.GET("/api/search", searchHandler)            // search files (bridge: search)
+	r.POST("/api/chmod", chmodHandler)             // perms/ownership (bridge: chmod)
+	r.GET("/api/users-groups", usersGroupsHandler) // system users/groups (bridge: users_groups)
 
 	return nil
 }
