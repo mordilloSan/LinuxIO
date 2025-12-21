@@ -1,22 +1,18 @@
 import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import { FilesystemInfo } from "@/types/fs";
-import axios from "@/utils/axios";
 import { formatFileSize } from "@/utils/formaters";
 
 const FsInfoCard: React.FC = () => {
-  const { data: fsInfo, isPending } = useQuery<FilesystemInfo[]>({
-    queryKey: ["fsInfo"],
-    queryFn: async () => {
-      const response = await axios.get("/system/fs");
-      return response.data;
-    },
+  const { data: fsInfo, isPending } = useStreamQuery<FilesystemInfo[]>({
+    handlerType: "system",
+    command: "get_fs_info",
     refetchInterval: 2000,
   });
   const theme = useTheme();

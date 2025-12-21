@@ -1,13 +1,12 @@
 import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Box, Typography } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React from "react";
 
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface CPUInfoResponse {
   vendorId: string;
@@ -30,12 +29,9 @@ const Processor: React.FC = () => {
     data: CPUInfo,
     isPending,
     isError,
-  } = useQuery<CPUInfoResponse>({
-    queryKey: ["CPUInfo"],
-    queryFn: async () => {
-      const response = await axios.get("/system/cpu");
-      return response.data;
-    },
+  } = useStreamQuery<CPUInfoResponse>({
+    handlerType: "system",
+    command: "get_cpu_info",
     refetchInterval: 2000,
   });
 

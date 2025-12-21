@@ -8,6 +8,7 @@ import React, {
 import { toast } from "sonner";
 
 import useWebSocket from "@/hooks/useWebSocket";
+import axios from "@/utils/axios";
 import {
   getStreamMux,
   Stream,
@@ -17,7 +18,6 @@ import {
   STREAM_CHUNK_SIZE,
   UPLOAD_WINDOW_SIZE,
 } from "@/utils/StreamMultiplexer";
-import axios from "@/utils/axios";
 
 // Stream types matching backend constants
 const STREAM_TYPE_FB_DOWNLOAD = "fb-download";
@@ -433,9 +433,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
         // Trigger browser download
         const fileName =
-          paths.length === 1
-            ? downloadLabelBase
-            : `${downloadLabelBase}.zip`;
+          paths.length === 1 ? downloadLabelBase : `${downloadLabelBase}.zip`;
         const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = blobUrl;
@@ -488,18 +486,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     },
     [downloads, removeDownload],
-  );
-
-  const updateCompression = useCallback(
-    (
-      id: string,
-      updates: Partial<Omit<Compression, "id" | "type" | "abortController">>,
-    ) => {
-      setCompressions((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-      );
-    },
-    [],
   );
 
   const removeCompression = useCallback(
@@ -560,11 +546,18 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       // Build payload: "fb-compress\0format\0destination\0path1\0path2\0..."
-      const format = archiveName.toLowerCase().endsWith(".tar.gz") ? "tar.gz" : "zip";
+      const format = archiveName.toLowerCase().endsWith(".tar.gz")
+        ? "tar.gz"
+        : "zip";
       const fullDestination = destination.endsWith("/")
         ? `${destination}${archiveName}`
         : `${destination}/${archiveName}`;
-      const payloadParts = [STREAM_TYPE_FB_COMPRESS, format, fullDestination, ...paths];
+      const payloadParts = [
+        STREAM_TYPE_FB_COMPRESS,
+        format,
+        fullDestination,
+        ...paths,
+      ];
       const payload = encodeString(payloadParts.join("\0"));
 
       const stream = mux.openStream(STREAM_TYPE_FB_COMPRESS, payload);
@@ -619,7 +612,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       };
     },
-    [allocateDownloadLabelBase, removeCompression, updateCompression],
+    [allocateDownloadLabelBase, removeCompression],
   );
 
   const cancelCompression = useCallback(
@@ -638,20 +631,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     },
     [compressions, removeCompression],
-  );
-
-  const updateExtraction = useCallback(
-    (
-      id: string,
-      updates: Partial<Omit<Extraction, "id" | "type" | "abortController">>,
-    ) => {
-      setExtractions((prev) =>
-        prev.map((extraction) =>
-          extraction.id === id ? { ...extraction, ...updates } : extraction,
-        ),
-      );
-    },
-    [],
   );
 
   const removeExtraction = useCallback(
@@ -785,7 +764,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       };
     },
-    [allocateDownloadLabelBase, removeExtraction, updateExtraction],
+    [allocateDownloadLabelBase, removeExtraction],
   );
 
   const cancelExtraction = useCallback(
@@ -818,24 +797,21 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [],
   );
 
-  const removeUpload = useCallback(
-    (id: string) => {
-      setUploads((prev) => prev.filter((u) => u.id !== id));
+  const removeUpload = useCallback((id: string) => {
+    setUploads((prev) => prev.filter((u) => u.id !== id));
 
-      const timers = cleanupTimersRef.current.get(id);
-      if (timers) {
-        if (timers.fallback) clearTimeout(timers.fallback);
-        if (timers.unsubscribe) timers.unsubscribe();
-        cleanupTimersRef.current.delete(id);
-      }
+    const timers = cleanupTimersRef.current.get(id);
+    if (timers) {
+      if (timers.fallback) clearTimeout(timers.fallback);
+      if (timers.unsubscribe) timers.unsubscribe();
+      cleanupTimersRef.current.delete(id);
+    }
 
-      transferRatesRef.current.delete(id);
-      streamRefsRef.current.delete(id);
-      // Note: No need to sendProgressUnsubscribe for stream-based uploads
-      // Progress comes through stream.onProgress, not WebSocket subscription
-    },
-    [],
-  );
+    transferRatesRef.current.delete(id);
+    streamRefsRef.current.delete(id);
+    // Note: No need to sendProgressUnsubscribe for stream-based uploads
+    // Progress comes through stream.onProgress, not WebSocket subscription
+  }, []);
 
   /**
    * Stream-based single file upload implementation.
@@ -870,7 +846,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         prev.map((u) => (u.id === uploadId ? { ...u, stream } : u)),
       );
 
-      return new Promise<{ success: boolean; error?: string; cancelled?: boolean }>((resolve) => {
+      return new Promise<{
+        success: boolean;
+        error?: string;
+        cancelled?: boolean;
+      }>((resolve) => {
         let resultReceived = false;
 
         // Use backend progress updates (bytes actually written to disk)
@@ -1096,12 +1076,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             prev.map((u) =>
               u.id === uploadId
                 ? {
-                  ...u,
-                  progress: 100,
-                  label: u.displayName
-                    ? `Uploaded ${u.displayName}`
-                    : `Uploaded ${u.totalFiles}/${u.totalFiles} files`,
-                }
+                    ...u,
+                    progress: 100,
+                    label: u.displayName
+                      ? `Uploaded ${u.displayName}`
+                      : `Uploaded ${u.totalFiles}/${u.totalFiles} files`,
+                  }
                 : u,
             ),
           );
@@ -1213,7 +1193,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
           const mux = getStreamMux();
           if (!mux || mux.status !== "open") {
-            failures.push({ path: relativePath, message: "Stream connection not ready" });
+            failures.push({
+              path: relativePath,
+              message: "Stream connection not ready",
+            });
             fileProgress.delete(idx);
             fileBytes.delete(idx);
             return;
