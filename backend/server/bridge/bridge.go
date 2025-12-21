@@ -385,26 +385,8 @@ func dialBridgeRaw(socketPath string) (net.Conn, error) {
 	}
 }
 
-// dialBridge creates a connection to the bridge socket (legacy, for backward compatibility)
-func dialBridge(socketPath string) (net.Conn, error) {
-	return dialBridgeRaw(socketPath)
-}
-
-// UseYamux controls whether to use yamux for bridge communication.
-// Enabled by default for connection reuse and multiplexing benefits.
-var UseYamux = true
-
-// CallWithSession makes a bridge call and returns raw JSON response bytes.
-// Returns *raw* JSON response string (for HTTP handler to decode output as needed)
-func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
-	if UseYamux {
-		return callWithSessionYamux(sess, reqType, command, args)
-	}
-	return callWithSessionLegacy(sess, reqType, command, args)
-}
-
 // callWithSessionYamux uses yamux multiplexing for the bridge call
-func callWithSessionYamux(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
+func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
 	logger.DebugKV("bridge call initiated (yamux)",
 		"user", sess.User.Username,
 		"type", reqType,
@@ -496,87 +478,7 @@ func callWithSessionYamux(sess *session.Session, reqType, command string, args [
 	return raw, nil
 }
 
-// callWithSessionLegacy uses the original per-connection protocol
-func callWithSessionLegacy(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
-	// Log the incoming bridge call
-	logger.DebugKV("bridge call initiated",
-		"user", sess.User.Username,
-		"type", reqType,
-		"command", command,
-		"args", fmt.Sprintf("%v", args))
-
-	socketPath := sess.SocketPath
-	if socketPath == "" {
-		err := fmt.Errorf("empty session.SocketPath")
-		logger.ErrorKV("bridge call failed: invalid socket path",
-			"user", sess.User.Username,
-			"error", err)
-		terminateSessionOnBridgeFailure(sess)
-		return nil, err
-	}
-
-	req := ipc.Request{
-		Type:      reqType,
-		Command:   command,
-		Secret:    sess.BridgeSecret,
-		Args:      args,
-		SessionID: sess.SessionID,
-	}
-
-	conn, err := dialBridge(socketPath)
-	if err != nil {
-		logger.ErrorKV("bridge call failed: connection timeout",
-			"user", sess.User.Username,
-			"command", command,
-			"error", err)
-		terminateSessionOnBridgeFailure(sess)
-		return nil, err
-	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			logger.WarnKV("bridge conn close failed", "socket_path", socketPath, "error", cerr)
-		}
-	}()
-
-	enc := json.NewEncoder(conn)
-	enc.SetEscapeHTML(false)
-	dec := json.NewDecoder(conn)
-
-	if err := enc.Encode(req); err != nil {
-		err2 := fmt.Errorf("failed to send request to bridge: %w", err)
-		logger.ErrorKV("bridge call failed: encoding error",
-			"user", sess.User.Username,
-			"type", reqType,
-			"command", command,
-			"error", err2)
-		terminateSessionOnBridgeFailure(sess)
-		return nil, err
-	}
-
-	var raw json.RawMessage
-	if err := dec.Decode(&raw); err != nil {
-		err2 := fmt.Errorf("failed to decode response from bridge: %w", err)
-		logger.ErrorKV("bridge call failed: decoding error",
-			"user", sess.User.Username,
-			"type", reqType,
-			"command", command,
-			"error", err2)
-		terminateSessionOnBridgeFailure(sess)
-		return nil, err
-	}
-
-	// Log successful response
-	logger.DebugKV("bridge call completed",
-		"user", sess.User.Username,
-		"type", reqType,
-		"command", command,
-		"response_bytes", len(raw))
-
-	return []byte(raw), nil
-}
-
 // CallTypedWithSession makes a bridge call and decodes the response directly into result.
-// This helper wraps CallWithSession and decodes the bridge response.
 func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result interface{}) error {
 	raw, err := CallWithSession(sess, reqType, command, args)
 	if err != nil {
@@ -610,54 +512,6 @@ func CallTypedWithSession(sess *session.Session, reqType, command string, args [
 	}
 
 	return nil
-}
-
-// StreamWithSession opens a streaming connection for continuous responses
-// Returns a StreamReader that must be closed by the caller
-// Use this for: journald logs, tail -f, live stats, etc.
-func StreamWithSession(sess *session.Session, reqType, command string, args []string) (*ipc.StreamReader, error) {
-	logger.DebugKV("bridge stream initiated",
-		"user", sess.User.Username,
-		"type", reqType,
-		"command", command,
-		"args", fmt.Sprintf("%v", args))
-
-	if sess.SocketPath == "" {
-		return nil, fmt.Errorf("empty session.SocketPath")
-	}
-
-	conn, err := dialBridge(sess.SocketPath)
-	if err != nil {
-		logger.ErrorKV("bridge stream failed: connection error",
-			"user", sess.User.Username,
-			"socket_path", sess.SocketPath,
-			"error", err)
-		return nil, err
-	}
-
-	// Send request using framed protocol
-	req := ipc.Request{
-		Type:      reqType,
-		Command:   command,
-		Secret:    sess.BridgeSecret,
-		Args:      args,
-		SessionID: sess.SessionID,
-	}
-
-	if err := ipc.WriteRequestFrame(conn, &req); err != nil {
-		conn.Close()
-		logger.ErrorKV("bridge stream failed: send error",
-			"user", sess.User.Username,
-			"error", err)
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-
-	logger.DebugKV("bridge stream established",
-		"user", sess.User.Username,
-		"type", reqType,
-		"command", command)
-
-	return ipc.NewStreamReader(conn), nil
 }
 
 // ============================================================================
