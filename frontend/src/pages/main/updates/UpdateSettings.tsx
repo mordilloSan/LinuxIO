@@ -12,9 +12,10 @@ import {
   Stack,
 } from "@mui/material";
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import axios from "@/utils/axios";
+import { streamApi } from "@/utils/streamApi";
 
 type Frequency = "hourly" | "daily" | "weekly";
 type Scope = "security" | "updates" | "all";
@@ -55,11 +56,9 @@ const UpdateSettings: React.FC = () => {
   // -------- Load on mount --------
   useEffect(() => {
     let mounted = true;
-    axios
-      .get<AutoUpdateState | null>("/updates/auto")
-      .then((res) => {
+    streamApi.get<AutoUpdateState>("dbus", "GetAutoUpdates")
+      .then((payload) => {
         if (!mounted) return;
-        const payload = res.data;
         if (!payload) {
           throw new Error("Empty auto update response");
         }
@@ -70,6 +69,7 @@ const UpdateSettings: React.FC = () => {
       })
       .catch((err) => {
         console.error("Failed to load auto update settings", err);
+        toast.error("Failed to load auto update settings");
       })
       .finally(() => setLoading(false));
     return () => {
@@ -105,19 +105,23 @@ const UpdateSettings: React.FC = () => {
           .map((s) => s.trim())
           .filter(Boolean),
       };
-      const res = await axios.put<AutoUpdateState | null>(
-        "/updates/auto",
-        payload,
+      // SetAutoUpdates expects a single JSON arg
+      const result = await streamApi.get<AutoUpdateState>(
+        "dbus",
+        "SetAutoUpdates",
+        [JSON.stringify(payload)],
       );
-      if (!res.data) {
+      if (!result) {
         throw new Error("Empty auto update response");
       }
-      const norm = normalizeState(res.data);
+      const norm = normalizeState(result);
       setServerState(norm);
       setDraft(norm.options);
       setExcludeInput(norm.options.exclude_packages.join(", "));
+      toast.success("Settings saved");
     } catch (err) {
       console.error("Failed to save auto update settings", err);
+      toast.error("Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -126,14 +130,17 @@ const UpdateSettings: React.FC = () => {
   // -------- Apply at next reboot --------
   const handleApplyOffline = async () => {
     try {
-      const res = await axios.post("/updates/apply-offline");
-      const payload = res.data as { status?: string; error?: string } | null;
-      if (payload?.status && payload.status !== "ok") {
-        throw new Error(payload.error || "Failed to schedule offline update");
+      const result = await streamApi.get<{ status?: string; error?: string }>(
+        "dbus",
+        "ApplyOfflineUpdates",
+      );
+      if (result?.status && result.status !== "ok") {
+        throw new Error(result.error || "Failed to schedule offline update");
       }
-      console.log("Offline update scheduled");
+      toast.success("Offline update scheduled for next reboot");
     } catch (err) {
       console.error("Failed to schedule offline update", err);
+      toast.error("Failed to schedule offline update");
     }
   };
 

@@ -9,11 +9,10 @@ import {
   TableHead,
   Paper,
 } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 
 import CollapsibleTable from "@/components/tables/CollapsibleTable";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import { CollapsibleColumn } from "@/types/collapsible";
-import axios from "@/utils/axios";
 
 const formatNetworkRows = (networks: any[]) =>
   networks.map((nw) => ({
@@ -145,12 +144,9 @@ function renderCollapseContent(row: any) {
 }
 
 export default function DockerNetworksTable() {
-  const { data = [] } = useQuery<any[]>({
-    queryKey: ["dockerNetworks"],
-    queryFn: async () => {
-      const res = await axios.get("/docker/networks");
-      return res.data ?? [];
-    },
+  const { data = [] } = useStreamQuery<any[]>({
+    handlerType: "docker",
+    command: "list_networks",
   });
 
   const rows = formatNetworkRows(data);

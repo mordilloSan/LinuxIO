@@ -1,7 +1,7 @@
 import { Box, Grid, Tooltip, Typography, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import React, { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import React, { useMemo, useState, useCallback } from "react";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
 import LogsDialog from "../../pages/main/docker/LogsDialog";
@@ -9,10 +9,11 @@ import ComponentLoader from "../loaders/ComponentLoader";
 
 import FrostedCard from "@/components/cards/RootCard";
 import MetricBar from "@/components/gauge/MetricBar";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { ContainerInfo } from "@/types/container";
-import axios from "@/utils/axios";
 import { formatFileSize } from "@/utils/formaters";
+import { streamApi } from "@/utils/streamApi";
 
 const getContainerIconUrl = (name: string) => {
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase();
@@ -62,56 +63,39 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const iconUrl = useMemo(() => getContainerIconUrl(name), [name]);
 
   // ---- actions (start/stop/restart/remove) ----
-  const actionMutation = useMutation({
-    mutationFn: async (
-      action: "start" | "stop" | "restart" | "remove" | "exec",
-    ) => {
-      await axios.post(`/docker/containers/${container.Id}/${action}`);
+  const [actionPending, setActionPending] = useState(false);
+
+  const handleAction = useCallback(
+    async (action: "start" | "stop" | "restart" | "remove") => {
+      const commandMap: Record<string, string> = {
+        start: "start_container",
+        stop: "stop_container",
+        restart: "restart_container",
+        remove: "remove_container",
+      };
+      setActionPending(true);
+      try {
+        await streamApi.get("docker", commandMap[action], [container.Id]);
+        // refresh list + logs
+        queryClient.invalidateQueries({ queryKey: ["stream", "docker", "list_containers"] });
+        queryClient.invalidateQueries({
+          queryKey: ["stream", "docker", "get_container_logs", container.Id],
+        });
+      } finally {
+        setActionPending(false);
+      }
     },
-    onSuccess: () => {
-      // refresh list + logs
-      queryClient.invalidateQueries({ queryKey: ["containers"] });
-      queryClient.invalidateQueries({
-        queryKey: ["containerLogs", container.Id],
-      });
-    },
+    [container.Id, queryClient],
+  );
+
+  // ---- logs via stream API (fetch only when dialog is open) ----
+  const logsQuery = useStreamQuery<string>({
+    handlerType: "docker",
+    command: "get_container_logs",
+    args: [container.Id],
+    enabled: logDialogOpen,
+    refetchInterval: logDialogOpen ? 4000 : false,
   });
-
-  const handleAction = (
-    action: "start" | "stop" | "restart" | "remove" | "exec",
-  ) => actionMutation.mutate(action);
-
-  // ---- logs via react-query (fetch only when dialog is open) ----
-  const fetchLogs = async (): Promise<string> => {
-    const res = await axios.get(`/docker/containers/${container.Id}/logs`);
-    const payload = res.data;
-    if (typeof payload === "string") {
-      return payload;
-    }
-    if (payload && typeof payload.output === "string") {
-      return payload.output;
-    }
-    if (payload && typeof payload.logs === "string") {
-      return payload.logs;
-    }
-    return JSON.stringify(payload ?? {}, null, 2);
-  };
-
-  const logsQuery = useQuery({
-    queryKey: ["containerLogs", container.Id],
-    queryFn: fetchLogs,
-    enabled: logDialogOpen, // only when dialog is open
-    refetchInterval: logDialogOpen ? 4000 : false, // auto-refresh while open
-    refetchOnWindowFocus: false,
-    retry: 1,
-  });
-
-  const prefetchLogs = () =>
-    queryClient.prefetchQuery({
-      queryKey: ["containerLogs", container.Id],
-      queryFn: fetchLogs,
-      staleTime: 10_000,
-    });
 
   const handleLogsClick = () => setLogDialogOpen(true);
 
@@ -234,7 +218,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 </span>
               </Tooltip>
               <Tooltip title="View Logs" arrow>
-                <span onMouseEnter={prefetchLogs}>
+                <span>
                   <ActionButton
                     icon="mdi:file-document-outline"
                     onClick={handleLogsClick}
@@ -257,7 +241,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           open={logDialogOpen}
           onClose={() => setLogDialogOpen(false)}
           logs={logsQuery.data ?? null}
-          loading={logsQuery.isLoading}
+          loading={logsQuery.isPending}
           error={
             logsQuery.isError
               ? "Failed to load logs. (Check backend logs for details.)"
@@ -266,7 +250,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           containerName={name}
           onRefresh={() =>
             queryClient.invalidateQueries({
-              queryKey: ["containerLogs", container.Id],
+              queryKey: ["stream", "docker", "get_container_logs", container.Id],
             })
           }
           autoRefreshDefault={true}
@@ -281,7 +265,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
         {/* Metrics area: full width */}
         <Box sx={{ mt: 2, width: "100%" }}>
-          {actionMutation.isPending ? (
+          {actionPending ? (
             <ComponentLoader />
           ) : (
             <>

@@ -1,19 +1,15 @@
 import { Box, Typography, Grid } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React, { Suspense } from "react";
 
 import ContainerCard from "../../../components/cards/ContainerCard";
 
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import { ContainerInfo } from "@/types/container";
-import axios from "@/utils/axios";
 
 const ContainerList: React.FC = () => {
-  const { data: containers = [] } = useQuery<ContainerInfo[]>({
-    queryKey: ["containers"],
-    queryFn: async () => {
-      const res = await axios.get("/docker/containers");
-      return res.data ?? [];
-    },
+  const { data: containers = [] } = useStreamQuery<ContainerInfo[]>({
+    handlerType: "docker",
+    command: "list_containers",
     refetchInterval: 5000,
   });
 

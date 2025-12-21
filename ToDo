@@ -4,6 +4,10 @@
 
 3 - chunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts
 
+4 - for docker logs we could use real streaming?????
+
+5 - for service logs we could use real streaming?????
+
 use quantom filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
 filebrowser header should contain sessionid - DONE

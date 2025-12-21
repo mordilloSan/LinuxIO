@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
-import axios from "@/utils/axios";
+import { streamApi } from "@/utils/streamApi";
 
 /* ================= helpers ================= */
 
@@ -195,7 +195,8 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     setSaving(true);
     try {
       if (mode === "auto") {
-        await axios.post("/network/set-ipv4-dhcp", { interface: iface.name });
+        // SetIPv4 with method "dhcp"
+        await streamApi.get("dbus", "SetIPv4", [iface.name, "dhcp"]);
         toast.success("Switched to DHCP mode");
       } else {
         const ipv4 = (editForm.ipv4 || "").trim();
@@ -245,12 +246,8 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           }
         }
 
-        await axios.post("/network/set-ipv4-manual", {
-          interface: iface.name,
-          address_cidr: ipv4,
-          gateway,
-          dns: dnsServers,
-        });
+        // SetIPv4Manual: args = [interface, addressCIDR, gateway, ...dnsServers]
+        await streamApi.get("dbus", "SetIPv4Manual", [iface.name, ipv4, gateway, ...dnsServers]);
 
         toast.success("Manual configuration saved");
       }
@@ -258,9 +255,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       onSave(iface);
       onClose();
     } catch (e: any) {
-      toast.error(
-        e?.response?.data?.error || "Failed to save network configuration",
-      );
+      toast.error(e?.message || "Failed to save network configuration");
     } finally {
       setSaving(false);
     }

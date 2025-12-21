@@ -13,12 +13,12 @@ import {
   Chip,
   Tooltip,
 } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
+import { streamApi } from "@/utils/streamApi";
 
 type Peer = {
   name: string;
@@ -93,29 +93,29 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const interfaceName = params.id;
 
   const {
-    data: peers = [],
-    isLoading,
+    data: peersData,
+    isPending: isLoading,
     isError,
     refetch,
-  } = useQuery<Peer[]>({
-    queryKey: ["wg-peers", interfaceName],
-    queryFn: async () => {
-      const res = await axios.get(
-        `/wireguard/interface/${interfaceName}/peers`,
-      );
-      return Array.isArray(res.data) ? res.data : res.data.peers || [];
-    },
+  } = useStreamQuery<Peer[] | { peers: Peer[] }>({
+    handlerType: "wireguard",
+    command: "list_peers",
+    args: [interfaceName],
     enabled: !!interfaceName,
     // poll so bps updates
     refetchInterval: 3000,
-    refetchOnWindowFocus: false,
   });
+
+  // Normalize peers response
+  const peers: Peer[] = peersData
+    ? Array.isArray(peersData)
+      ? peersData
+      : peersData.peers || []
+    : [];
 
   const handleDeletePeer = async (peerName: string) => {
     try {
-      await axios.delete(
-        `/wireguard/interface/${interfaceName}/peer/${peerName}`,
-      );
+      await streamApi.get("wireguard", "remove_peer", [interfaceName, peerName]);
       toast.success(`WireGuard Peer '${peerName}' deleted`);
       refetch();
     } catch {
@@ -125,11 +125,14 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
 
   const handleDownloadConfig = async (peername: string) => {
     try {
-      const res = await axios.get(
-        `/wireguard/interface/${interfaceName}/peer/${peername}/config`,
-        { responseType: "blob" },
+      const result = await streamApi.get<{ config: string }>(
+        "wireguard",
+        "peer_config_download",
+        [interfaceName, peername],
       );
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      // Create blob from config text
+      const blob = new Blob([result.config], { type: "text/plain" });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.setAttribute("download", `${peername}.conf`);
@@ -145,10 +148,12 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const handleViewQrCode = async (peername: string) => {
     setLoadingQr(true);
     try {
-      const res = await axios.get(
-        `/wireguard/interface/${interfaceName}/peer/${peername}/qrcode`,
+      const result = await streamApi.get<{ qrcode: string }>(
+        "wireguard",
+        "peer_qrcode",
+        [interfaceName, peername],
       );
-      setQrCode(res.data.qrcode);
+      setQrCode(result.qrcode);
       setOpenDialog(true);
     } catch (error) {
       console.error("Failed to fetch QR code:", error);
