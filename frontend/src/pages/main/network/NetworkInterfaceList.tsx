@@ -1,15 +1,14 @@
 import { Icon } from "@iconify/react";
 import { Box, Typography, Grid, Tooltip, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import axios from "@/utils/axios";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 
 export interface NetworkInterface {
   name: string;
@@ -56,14 +55,16 @@ const NetworkInterfaceList = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
-  const { data: interfaces = [], isLoading } = useQuery<NetworkInterface[]>({
-    queryKey: ["networkInterfaceList"],
-    queryFn: async () => {
-      const res = await axios.get("/network/info");
-      return res.data;
-    },
-    select: (data: NetworkInterface[]) =>
-      data
+  const { data: rawInterfaces = [], isPending: isLoading } = useStreamQuery<NetworkInterface[]>({
+    handlerType: "dbus",
+    command: "GetNetworkInfo",
+    refetchInterval: 1000,
+  });
+
+  // Transform data - filter veths and add type field
+  const interfaces = useMemo(
+    () =>
+      rawInterfaces
         .filter((iface) => !iface.name.startsWith("veth"))
         .map((iface) => ({
           ...iface,
@@ -73,8 +74,8 @@ const NetworkInterfaceList = () => {
               ? "loopback"
               : "ethernet",
         })),
-    refetchInterval: 1000,
-  });
+    [rawInterfaces],
+  );
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

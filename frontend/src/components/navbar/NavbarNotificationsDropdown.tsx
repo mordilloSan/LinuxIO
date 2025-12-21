@@ -12,22 +12,21 @@ import {
   useTheme,
 } from "@mui/material";
 import Bell from "lucide-react/dist/esm/icons/bell";
-import Home from "lucide-react/dist/esm/icons/home";
-import Server from "lucide-react/dist/esm/icons/server";
-import UserPlus from "lucide-react/dist/esm/icons/user-plus";
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast, useSonner, type ToastT } from "sonner";
+
+const MAX_RECENT_TOASTS = 5;
 
 function Notification({
   title,
   description,
 }: {
-  title: string;
-  description: string;
-  Icon: React.ElementType;
+  title: React.ReactNode;
+  description?: React.ReactNode;
 }) {
   return (
-    <ListItem divider component={Link} to="#">
+    <ListItem divider>
       <ListItemText
         primary={title}
         secondary={description}
@@ -47,16 +46,30 @@ function NavbarNotificationsDropdown() {
   const ref = useRef<HTMLButtonElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const isOpen = Boolean(anchorEl);
+  const { toasts } = useSonner();
 
   const handleOpen = () => setAnchorEl(ref.current);
   const handleClose = () => setAnchorEl(null);
+
+  const recentToasts = useMemo(() => {
+    const history = toast
+      .getHistory()
+      .filter((item): item is ToastT => !("dismiss" in item));
+
+    return history.slice(-MAX_RECENT_TOASTS).reverse();
+  }, [toasts]);
+
+  const resolveToastNode = (
+    node?: React.ReactNode | (() => React.ReactNode),
+  ) => (typeof node === "function" ? node() : node);
+  const recentToastCount = recentToasts.length;
 
   return (
     <>
       <Tooltip title="Notifications">
         <IconButton color="inherit" ref={ref} onClick={handleOpen} size="large">
           <Badge
-            badgeContent={7}
+            badgeContent={recentToastCount}
             sx={{
               "& .MuiBadge-badge": {
                 backgroundColor: theme.header.indicator.background,
@@ -92,31 +105,28 @@ function NavbarNotificationsDropdown() {
           }}
         >
           <Typography variant="subtitle2" color="textPrimary">
-            7 New Notifications
+            {recentToastCount === 0
+              ? "No notifications yet"
+              : `Last ${recentToastCount} notification${
+                  recentToastCount === 1 ? "" : "s"
+                }`}
           </Typography>
         </Box>
 
         <List disablePadding>
-          <Notification
-            title="Update complete"
-            description="Restart server to complete update."
-            Icon={Server}
-          />
-          <Notification
-            title="New connection"
-            description="Anna accepted your request."
-            Icon={UserPlus}
-          />
-          <Notification
-            title="Lorem ipsum"
-            description="Aliquam ex eros, imperdiet vulputate hendrerit et"
-            Icon={Bell}
-          />
-          <Notification
-            title="New login"
-            description="Login from 192.186.1.1."
-            Icon={Home}
-          />
+          {recentToastCount === 0 ? (
+            <ListItem>
+              <ListItemText primary="You're all caught up." />
+            </ListItem>
+          ) : (
+            recentToasts.map((toastItem) => (
+              <Notification
+                key={toastItem.id}
+                title={resolveToastNode(toastItem.title) || "Notification"}
+                description={resolveToastNode(toastItem.description)}
+              />
+            ))
+          )}
         </List>
 
         <Box p={1} display="flex" justifyContent="center">

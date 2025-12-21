@@ -1,12 +1,11 @@
 import { Box, Typography, Chip } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import CollapsibleCard from "./DockerImageCard"; // ← new import
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useStreamQuery } from "@/hooks/useStreamApi";
 import { CollapsibleColumn } from "@/types/collapsible";
-import axios from "@/utils/axios";
 
 const formatImageRows = (images: any[]) =>
   images.flatMap((img) =>
@@ -113,12 +112,9 @@ function renderCollapseContent(row: any) {
 }
 
 export default function ImageList() {
-  const { data = [], isLoading } = useQuery<any[]>({
-    queryKey: ["dockerImages"],
-    queryFn: async () => {
-      const res = await axios.get("/docker/images");
-      return res.data ?? [];
-    },
+  const { data = [], isPending: isLoading } = useStreamQuery<any[]>({
+    handlerType: "docker",
+    command: "list_images",
   });
 
   const rows = formatImageRows(data);
