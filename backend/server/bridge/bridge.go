@@ -385,8 +385,9 @@ func dialBridgeRaw(socketPath string) (net.Conn, error) {
 	}
 }
 
-// CallTypedWithSession makes a bridge call and returns raw bytes
-func CallWithSession(sess *session.Session, reqType, command string, args []string) ([]byte, error) {
+// CallTypedWithSession makes a bridge call and decodes the response directly into result.
+// Uses JSON encoding for IPC.
+func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result any) error {
 	logger.DebugKV("bridge call initiated (yamux)",
 		"user", sess.User.Username,
 		"type", reqType,
@@ -400,7 +401,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 			"user", sess.User.Username,
 			"error", err)
 		terminateSessionOnBridgeFailure(sess)
-		return nil, err
+		return err
 	}
 
 	// Get or create yamux session
@@ -411,7 +412,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 			"command", command,
 			"error", err)
 		terminateSessionOnBridgeFailure(sess)
-		return nil, err
+		return err
 	}
 
 	// Open a new stream for this request
@@ -424,7 +425,7 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		// Session might be dead, close it so next call creates a new one
 		CloseYamuxSession(socketPath)
 		terminateSessionOnBridgeFailure(sess)
-		return nil, fmt.Errorf("failed to open yamux stream: %w", err)
+		return fmt.Errorf("failed to open yamux stream: %w", err)
 	}
 	defer stream.Close()
 
@@ -437,63 +438,31 @@ func CallWithSession(sess *session.Session, reqType, command string, args []stri
 		SessionID: sess.SessionID,
 	}
 
-	// Send request using framed protocol
-	if err = ipc.WriteRequestFrame(stream, &req); err != nil {
+	// Send request using JSON encoding
+	if err = ipc.WriteRequest(stream, &req); err != nil {
 		logger.ErrorKV("bridge call failed: write error",
 			"user", sess.User.Username,
 			"type", reqType,
 			"command", command,
 			"error", err)
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return fmt.Errorf("failed to send request: %w", err)
 	}
 
-	// Read response
-	var resp ipc.Response
-	msgType, err := ipc.ReadJSONFrame(stream, &resp)
+	// Read JSON-encoded response
+	resp, err := ipc.ReadResponse(stream)
 	if err != nil {
 		logger.ErrorKV("bridge call failed: read error",
 			"user", sess.User.Username,
 			"type", reqType,
 			"command", command,
 			"error", err)
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if msgType != ipc.MsgTypeJSON {
-		return nil, fmt.Errorf("unexpected response type: 0x%02x", msgType)
-	}
-
-	// Marshal response back to raw JSON for compatibility
-	raw, err := json.Marshal(resp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response: %w", err)
+		return fmt.Errorf("failed to read response: %w", err)
 	}
 
 	logger.DebugKV("bridge call completed (yamux)",
 		"user", sess.User.Username,
 		"type", reqType,
-		"command", command,
-		"response_bytes", len(raw))
-
-	return raw, nil
-}
-
-// CallTypedWithSession makes a bridge call and decodes the response directly into result.
-func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result interface{}) error {
-	raw, err := CallWithSession(sess, reqType, command, args)
-	if err != nil {
-		terminateSessionOnBridgeFailure(sess)
-		return err
-	}
-
-	var resp struct {
-		Status string          `json:"status"`
-		Output json.RawMessage `json:"output,omitempty"`
-		Error  string          `json:"error,omitempty"`
-	}
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return fmt.Errorf("decode bridge response: %w", err)
-	}
+		"command", command)
 
 	if resp.Status != "ok" {
 		return fmt.Errorf("bridge error: %s", resp.Error)
@@ -507,8 +476,9 @@ func CallTypedWithSession(sess *session.Session, reqType, command string, args [
 		return ipc.ErrEmptyBridgeOutput
 	}
 
+	// Directly unmarshal RawMessage into result (no double-encoding)
 	if err := json.Unmarshal(resp.Output, result); err != nil {
-		return fmt.Errorf("decode bridge output: %w", err)
+		return fmt.Errorf("decode output: %w", err)
 	}
 
 	return nil
