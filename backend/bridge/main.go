@@ -24,6 +24,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
@@ -550,6 +551,11 @@ func handleBinaryStream(conn net.Conn, id string) {
 		// Handle filebrowser stream - download, upload, archive, compress, extract operations
 		if err := filebrowser.HandleFilebrowserStream(Sess, conn, streamType, args); err != nil {
 			logger.WarnKV("filebrowser stream error", "stream_id", id, "type", streamType, "error", err)
+		}
+	case ipc.StreamTypePkgUpdate:
+		// Handle package update stream - updates packages with real-time D-Bus progress
+		if err := dbus.HandlePackageUpdateStream(conn, args); err != nil {
+			logger.WarnKV("package update stream error", "stream_id", id, "error", err)
 		}
 	case ipc.StreamTypeAPI:
 		// Handle API stream - JSON API calls over yamux

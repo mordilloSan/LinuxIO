@@ -1,7 +1,5 @@
 1 - docker compose UI
 
-2 - Updates - Make it more responsive. Use d-bus streaming with websocket?
-
 3 - chunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts
 
 4 - for docker logs we could use real streaming?????
@@ -33,3 +31,4 @@ If session is garbage colected the bridge must exist as well - DONE
 Test Multiple Users - DONE
  Make sure we check the hash or some sort of validation when running the bridge binnary. We have to make sure that file is not replacable. - Done
 Multiplex over Single Connection - DONE
+Updates - Make it more responsive. Use d-bus streaming with websocket? - DONE
