@@ -24,6 +24,7 @@ function makeQueryClient() {
       queries: {
         retry: (failureCount) => failureCount < 1,
         refetchOnWindowFocus: false,
+        refetchIntervalInBackground: true, // Continue fetching when tab is hidden
         staleTime: 2000,
       },
       mutations: {
