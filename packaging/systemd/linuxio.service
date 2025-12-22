@@ -33,6 +33,7 @@ DevicePolicy=closed
 PrivateDevices=true
 UMask=0027
 ReadOnlyPaths=/etc/linuxio
+ReadWritePaths=/etc/apt/apt.conf.d /etc/systemd/system /etc/wireguard
 RemoveIPC=true
 SystemCallFilter=~@keyring @cpu-emulation @debug @module @mount @obsolete @raw-io @reboot @swap
 SystemCallErrorNumber=EPERM
