@@ -21,19 +21,12 @@ type Response struct {
 }
 
 var ErrEmptyBridgeOutput = errors.New("bridge returned empty output")
-var ErrResponseAlreadySent = errors.New("response already sent")
 
-// Optional helper signature for bridge-side handlers
-// HandlerFunc is the bridge handler signature. ctx will be nil for
-// legacy (non-framed) clients that do not support streaming updates.
-type HandlerFunc func(ctx *RequestContext, args []string) (any, error)
+// HandlerFunc is the bridge handler signature.
+type HandlerFunc func(args []string) (any, error)
 
-// SimpleHandler is the legacy signature used by most handlers.
-type SimpleHandler func([]string) (any, error)
-
-// WrapSimpleHandler adapts a SimpleHandler into a context-aware handler.
-func WrapSimpleHandler(h SimpleHandler) HandlerFunc {
-	return func(_ *RequestContext, args []string) (any, error) {
-		return h(args)
-	}
+// WrapSimpleHandler is a no-op wrapper for backwards compatibility.
+// TODO: Remove this and update all callers to pass handlers directly.
+func WrapSimpleHandler(h HandlerFunc) HandlerFunc {
+	return h
 }
