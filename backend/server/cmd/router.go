@@ -14,7 +14,6 @@ import (
 	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/auth"
-	"github.com/mordilloSan/LinuxIO/backend/server/benchmark"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
@@ -45,11 +44,6 @@ func BuildRouter(cfg Config, sm *session.Manager) *gin.Engine {
 
 	// --- WebSocket ---
 	r.GET("/ws/relay", sm.RequireSession(), web.WebSocketRelayHandler)
-
-	// --- Benchmark in dev mode ---
-	if cfg.Env != appconfig.EnvProduction {
-		benchmark.RegisterDebugRoutes(r, cfg.Env, sm)
-	}
 
 	// --- Frontend (SPA) ---
 	if cfg.Env == appconfig.EnvDevelopment {
