@@ -1,4 +1,26 @@
 
+## v0.5.1 — 2025-12-22
+
+### 🚀 Features
+
+* feat: -websocket and streaming reconnection and keepalive ([dd89a2c](https://github.com/owner/repo/commit/dd89a2c)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: - linting ([ff50f41](https://github.com/owner/repo/commit/ff50f41)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: - old IPC code cleanup fix: - bridge now allows sudo ([224d340](https://github.com/owner/repo/commit/224d340)) by @MordilloSan
+* refactor: - IPC code cleanup fix: - theming get bugfix ([a1c002d](https://github.com/owner/repo/commit/a1c002d)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.5.0...v0.5.1
+
+
 ## v0.5.0 — 2025-12-22
 
 ### 🐛 Bug Fixes
