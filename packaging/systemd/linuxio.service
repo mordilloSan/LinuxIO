@@ -27,14 +27,14 @@ ProtectClock=true
 ProtectHostname=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-RestrictNamespaces=true
+RestrictNamespaces=false
 RestrictRealtime=true
 DevicePolicy=closed
 PrivateDevices=true
 UMask=0027
 ReadOnlyPaths=/etc/linuxio
 RemoveIPC=true
-SystemCallFilter=~@keyring @cpu-emulation @debug @module @mount @obsolete @raw-io @reboot @swap
+SystemCallFilter=~@keyring @cpu-emulation @debug @module @obsolete @raw-io @reboot @swap
 SystemCallErrorNumber=EPERM
 
 [Install]
