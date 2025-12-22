@@ -133,7 +133,7 @@ class StreamImpl implements Stream {
     public readonly id: number,
     public readonly type: StreamType,
     private mux: StreamMultiplexer,
-  ) { }
+  ) {}
 
   get status(): StreamStatus {
     return this._status;
