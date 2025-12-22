@@ -93,9 +93,14 @@ func WebSocketRelayHandler(c *gin.Context) {
 	logger.Infof("[WSRelay] Connected: user=%s", sess.User.Username)
 
 	// Set up pong handler to reset read deadline
-	conn.SetReadDeadline(time.Now().Add(pongWait))
+	if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		logger.Debugf("[WSRelay] set read deadline failed: %v", err)
+	}
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(pongWait))
+		if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+			logger.Debugf("[WSRelay] set read deadline failed: %v", err)
+			return err
+		}
 		return nil
 	})
 
@@ -162,7 +167,11 @@ func (r *streamRelay) pingLoop(done <-chan struct{}) {
 				return
 			}
 			r.wsMu.Lock()
-			r.ws.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := r.ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+				r.wsMu.Unlock()
+				logger.Debugf("[WSRelay] set write deadline failed: %v", err)
+				return
+			}
 			err := r.ws.WriteMessage(websocket.PingMessage, nil)
 			r.wsMu.Unlock()
 			if err != nil {

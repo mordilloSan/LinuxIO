@@ -112,7 +112,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const save = useCallback(
     (cfg: AppConfig) => {
       if (!canSave) return; // Only save if we successfully loaded from backend
-      streamApi.post("config", "theme_set", cfg).catch(() => { });
+      streamApi.post("config", "theme_set", cfg).catch(() => {});
     },
     [canSave],
   );
