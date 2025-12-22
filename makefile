@@ -325,7 +325,7 @@ test-backend:
 build-vite:
 	@echo ""
 	@echo "🏗️  Building frontend..."
-	@bash -c 'cd frontend && VITE_API_URL=/ npx vite build && echo "✅ Frontend built successfully!"'
+	@bash -c 'cd frontend && npx vite build && echo "✅ Frontend built successfully!"'
 
 build-backend: ensure-go
 	@echo ""
