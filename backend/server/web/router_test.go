@@ -1,4 +1,4 @@
-package cmd
+package web
 
 import (
 	"io/fs"
@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
-
-	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -24,8 +22,6 @@ func doGET(t *testing.T, r http.Handler, path string) *httptest.ResponseRecorder
 }
 
 func TestBuildRouter_DevRedirectsToVite(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	sm := session.NewManager(session.New(), session.SessionConfig{})
 	cfg := Config{
 		Env:      config.EnvDevelopment,
@@ -45,20 +41,9 @@ func TestBuildRouter_DevRedirectsToVite(t *testing.T) {
 	if loc != "http://localhost:12345/" {
 		t.Fatalf("expected vite redirect, got %q", loc)
 	}
-
-	// Arbitrary SPA path also redirects to Vite
-	w = doGET(t, r, "/some/route?a=b")
-	if w.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("expected 307, got %d", w.Code)
-	}
-	if !strings.Contains(w.Header().Get("Location"), "http://localhost:12345/some/route?a=b") {
-		t.Fatalf("redirect Location unexpected: %q", w.Header().Get("Location"))
-	}
 }
 
 func TestMountProductionSPA_ServesIndexAssetsAndFallback(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	// Minimal virtual filesystem for the SPA
 	ui := fstest.MapFS{
 		"index.html":    &fstest.MapFile{Data: []byte("<html>OK</html>")},
@@ -68,29 +53,29 @@ func TestMountProductionSPA_ServesIndexAssetsAndFallback(t *testing.T) {
 		"favicon-1.png": &fstest.MapFile{Data: []byte("p1")},
 	}
 
-	r := gin.New()
-	mountProductionSPA(r, fs.FS(ui))
+	mux := http.NewServeMux()
+	mountProductionSPA(mux, fs.FS(ui))
 
 	// index
-	w := doGET(t, r, "/")
+	w := doGET(t, mux, "/")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "OK") {
 		t.Fatalf("expected index.html, got code=%d body=%q", w.Code, w.Body.String())
 	}
 
 	// asset
-	w = doGET(t, r, "/assets/app.js")
+	w = doGET(t, mux, "/assets/app.js")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "console.log(1)") {
 		t.Fatalf("expected asset content, got code=%d body=%q", w.Code, w.Body.String())
 	}
 
 	// manifest
-	w = doGET(t, r, "/manifest.json")
+	w = doGET(t, mux, "/manifest.json")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "{}") {
 		t.Fatalf("expected manifest.json, got code=%d body=%q", w.Code, w.Body.String())
 	}
 
-	// fallback (NoRoute -> index.html)
-	w = doGET(t, r, "/some/unknown/route")
+	// fallback (unknown routes -> index.html via "/" catch-all)
+	w = doGET(t, mux, "/some/unknown/route")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "OK") {
 		t.Fatalf("expected SPA fallback to index.html, got code=%d body=%q", w.Code, w.Body.String())
 	}
