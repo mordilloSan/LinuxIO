@@ -588,7 +588,9 @@ changelog:
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  DATE="$$(date -u +%Y-%m-%d)"; \
+	  REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
 	  echo "📝 Generating changelog for $$VERSION ($$DATE)..."; \
+	  echo "📦 Repository: $$REPO"; \
 	  echo ""; \
 	  PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -v "^$$VERSION$$" | head -n1 || echo "")"; \
 	  if [ -n "$$PREV_TAG" ]; then \
@@ -604,7 +606,7 @@ changelog:
 	    [ -z "$$message" ] && continue; \
 	    [[ "$$author" == "github-actions[bot]" ]] && continue; \
 	    [[ "$$message" =~ ^[Cc]hangelog$$ ]] && continue;
-	    ENTRY="* $$message ([$${hash:0:7}](https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/commit/$$hash)) by @$$author"; \
+	    ENTRY="* $$message ([$${hash:0:7}](https://github.com/$$REPO/commit/$$hash)) by @$$author"; \
 	    if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
 	    elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
 	    elif [[ "$$message" =~ ^docs(\(.*\))?: ]]; then DOCS="$$DOCS$$ENTRY"$$'\n'; \
@@ -636,7 +638,7 @@ changelog:
 	    else \
 	      git log --pretty=format:'* @%an' | sort -u; \
 	    fi; \
-	    printf "\n**Full Changelog**: https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/compare/$$PREV_TAG...$$VERSION\n"; \
+	    printf "\n**Full Changelog**: https://github.com/$$REPO/compare/$$PREV_TAG...$$VERSION\n"; \
 	  } > "$$BODY_FILE"; \
 	  HEADER="## $$VERSION — $$DATE"; \
 	  { \
@@ -690,7 +692,9 @@ rebuild-changelog:
 	@read -r _
 	@{ \
 	  set -euo pipefail; \
+	  REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
 	  echo "📝 Rebuilding entire changelog history..."; \
+	  echo "📦 Repository: $$REPO"; \
 	  echo ""; \
 	  TAGS="$$(git tag --list 'v*' --sort=-v:refname)"; \
 	  if [ -z "$$TAGS" ]; then \
@@ -715,7 +719,7 @@ rebuild-changelog:
 	      [ -z "$$message" ] && continue; \
 	      [[ "$$author" == "github-actions[bot]" ]] && continue; \
 	      [[ "$$message" =~ ^[Cc]hangelog$$ ]] && continue; \
-	      ENTRY="* $$message ([$${hash:0:7}](https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/commit/$$hash)) by @$$author"; \
+	      ENTRY="* $$message ([$${hash:0:7}](https://github.com/$$REPO/commit/$$hash)) by @$$author"; \
 	      if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
 	      elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
 	      elif [[ "$$message" =~ ^docs(\(.*\))?: ]]; then DOCS="$$DOCS$$ENTRY"$$'\n'; \
@@ -748,7 +752,7 @@ rebuild-changelog:
 	    else \
 	      git log $$VERSION --pretty=format:'* @%an' | sort -u >> CHANGELOG.md; \
 	    fi; \
-	    printf "\n\n**Full Changelog**: https://github.com/$${GITHUB_REPOSITORY:-owner/repo}/compare/$$PREV_TAG...$$VERSION\n" >> CHANGELOG.md; \
+	    printf "\n\n**Full Changelog**: https://github.com/$$REPO/compare/$$PREV_TAG...$$VERSION\n" >> CHANGELOG.md; \
 	  done; \
 	  echo ""; \
 	  echo "✅ Changelog rebuilt for all versions!"; \
