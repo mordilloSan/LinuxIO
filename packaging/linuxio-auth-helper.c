@@ -1121,8 +1121,6 @@ int main(void)
       _exit(5);
     }
 
-    (void)prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
-
     pid_t child = fork();
     if (child < 0)
     {
