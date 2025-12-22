@@ -133,7 +133,7 @@ class StreamImpl implements Stream {
     public readonly id: number,
     public readonly type: StreamType,
     private mux: StreamMultiplexer,
-  ) {}
+  ) { }
 
   get status(): StreamStatus {
     return this._status;
@@ -583,7 +583,7 @@ export function initStreamMux(): StreamMultiplexer {
   }
 
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  const url = `${proto}://${window.location.host}/ws/relay`;
+  const url = `${proto}://${window.location.host}/ws`;
 
   instance = new StreamMultiplexer(url);
   return instance;
