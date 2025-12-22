@@ -49,7 +49,6 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     onDoubleClick,
     onContextMenu,
     borderRadius,
-    disableHover = false,
   }) => {
     const theme = useTheme();
 
