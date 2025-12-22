@@ -6,17 +6,17 @@ import (
 
 func FilebrowserHandlers() map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
-		"resource_get":          ipc.WrapSimpleHandler(resourceGet),
-		"resource_stat":         ipc.WrapSimpleHandler(resourceStat),
-		"resource_delete":       ipc.WrapSimpleHandler(resourceDelete),
-		"resource_post":         ipc.WrapSimpleHandler(resourcePost),
-		"resource_patch":        ipc.WrapSimpleHandler(resourcePatch),
-		"dir_size":              ipc.WrapSimpleHandler(dirSize),
-		"subfolders":            ipc.WrapSimpleHandler(subfolders),
-		"search":                ipc.WrapSimpleHandler(searchFiles),
-		"indexer_status":        ipc.WrapSimpleHandler(indexerStatus),
-		"chmod":                 ipc.WrapSimpleHandler(resourceChmod),
-		"users_groups":          ipc.WrapSimpleHandler(usersGroups),
-		"file_update_from_temp": ipc.WrapSimpleHandler(fileUpdateFromTemp), // Used by code editor PUT
+		"resource_get":          resourceGet,
+		"resource_stat":         resourceStat,
+		"resource_delete":       resourceDelete,
+		"resource_post":         resourcePost,
+		"resource_patch":        resourcePatch,
+		"dir_size":              dirSize,
+		"subfolders":            subfolders,
+		"search":                searchFiles,
+		"indexer_status":        indexerStatus,
+		"chmod":                 resourceChmod,
+		"users_groups":          usersGroups,
+		"file_update_from_temp": fileUpdateFromTemp, // Used by code editor PUT
 	}
 }

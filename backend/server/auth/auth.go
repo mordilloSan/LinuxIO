@@ -1,14 +1,15 @@
 package auth
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 // Handlers bundles dependencies (no global state).
@@ -24,17 +25,17 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-func (h *Handlers) Login(c *gin.Context) {
+func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		web.WriteError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	// Create session without deciding privilege; helper will decide.
 	sess, err := h.createUserSession(req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "session creation failed"})
+		web.WriteError(w, http.StatusInternalServerError, "session creation failed")
 		return
 	}
 
@@ -50,12 +51,12 @@ func (h *Handlers) Login(c *gin.Context) {
 			strings.Contains(msg, "invalid credentials") ||
 			strings.Contains(msg, "pam_") || strings.Contains(msg, "pam ") {
 			logger.Warnf("[auth.login] authentication failed for user %s: %v", req.Username, err)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication failed"})
+			web.WriteError(w, http.StatusUnauthorized, "authentication failed")
 			return
 		}
 
 		logger.Errorf("[auth.login] failed to start bridge: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start bridge"})
+		web.WriteError(w, http.StatusInternalServerError, "failed to start bridge")
 		return
 	}
 
@@ -66,7 +67,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	if err := callBridgeWithSess(sess, "control", "ping", nil, &pingResult); err != nil {
 		logger.Errorf("[auth.login] bridge socket not ready after start: %v", err)
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
+		web.WriteError(w, http.StatusInternalServerError, "bridge initialization failed")
 		return
 	}
 
@@ -74,7 +75,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	if pingResult.Type != "pong" {
 		logger.Errorf("[auth.login] unexpected ping response type: %s", pingResult.Type)
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bridge initialization failed"})
+		web.WriteError(w, http.StatusInternalServerError, "bridge initialization failed")
 		return
 	}
 
@@ -83,13 +84,13 @@ func (h *Handlers) Login(c *gin.Context) {
 	// Persist actual mode (informational)
 	_ = h.SM.SetPrivileged(sess.SessionID, privileged)
 
-	secure := (h.Env == config.EnvProduction) && (c.Request.TLS != nil)
+	secure := (h.Env == config.EnvProduction) && (r.TLS != nil)
 	if !secure && h.Env == config.EnvProduction {
 		logger.Warnf("[auth.login] insecure cookie write under production env (no TLS detected)")
 	}
-	h.SM.WriteCookie(c.Writer, sess.SessionID)
+	h.SM.WriteCookie(w, sess.SessionID)
 
-	response := gin.H{
+	response := map[string]any{
 		"success":    true,
 		"privileged": privileged,
 	}
@@ -116,31 +117,31 @@ func (h *Handlers) Login(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, response)
+	web.WriteJSON(w, http.StatusOK, response)
 }
 
-func (h *Handlers) Logout(c *gin.Context) {
-	ck, err := c.Request.Cookie(h.SM.CookieName())
+func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
+	ck, err := r.Cookie(h.SM.CookieName())
 	if err != nil {
-		c.Status(http.StatusOK)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	h.SM.DeleteCookie(c.Writer)
+	h.SM.DeleteCookie(w)
 	if err := h.SM.DeleteSession(ck.Value, session.ReasonLogout); err != nil {
 		logger.ErrorKV("session delete failed", "error", err)
 	}
 	logger.InfoKV("session logout", "cookie_cleared", true)
-	c.Status(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handlers) Me(c *gin.Context) {
-	sess := session.SessionFromContext(c)
+func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
+	sess := session.SessionFromContext(r.Context())
 	if sess == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "no active session"})
+		web.WriteError(w, http.StatusUnauthorized, "no active session")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	web.WriteJSON(w, http.StatusOK, map[string]any{
 		"user":       sess.User,
 		"privileged": sess.Privileged,
 	})

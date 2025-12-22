@@ -2,7 +2,9 @@ package dbus
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -11,6 +13,32 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
+
+// StreamTypePkgUpdate is the stream type for package update operations.
+const StreamTypePkgUpdate = "pkg-update"
+
+// PkgUpdateProgress represents progress for package update operations.
+type PkgUpdateProgress struct {
+	Type       string `json:"type"`                  // "item_progress", "package", "status", "percentage"
+	PackageID  string `json:"package_id,omitempty"`  // Current package being processed
+	Status     string `json:"status,omitempty"`      // Status description (e.g., "Downloading", "Installing")
+	StatusCode uint32 `json:"status_code,omitempty"` // PackageKit status enum
+	Percentage uint32 `json:"percentage"`            // Overall or item percentage (0-100, 101=unknown)
+	ItemPct    uint32 `json:"item_pct,omitempty"`    // Per-item percentage for ItemProgress
+}
+
+// writePkgUpdateProgress writes a package update progress frame to the stream.
+func writePkgUpdateProgress(w io.Writer, streamID uint32, p *PkgUpdateProgress) error {
+	payload, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("marshal pkg update progress: %w", err)
+	}
+	return ipc.WriteRelayFrame(w, &ipc.StreamFrame{
+		Opcode:   ipc.OpStreamProgress,
+		StreamID: streamID,
+		Payload:  payload,
+	})
+}
 
 // PackageKit status enum values (from org.freedesktop.PackageKit documentation)
 var pkStatusNames = map[uint32]string{
@@ -83,7 +111,7 @@ func HandlePackageUpdateStream(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	_ = ipc.WritePkgUpdateProgress(stream, 0, &ipc.PkgUpdateProgress{
+	_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Initializing",
 		Percentage: 0,
@@ -178,7 +206,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 						statusName = fmt.Sprintf("Status %d", status)
 					}
 
-					_ = ipc.WritePkgUpdateProgress(stream, 0, &ipc.PkgUpdateProgress{
+					_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 						Type:       "item_progress",
 						PackageID:  pkgID,
 						Status:     statusName,
@@ -191,7 +219,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 				// Package(u info, s package_id, s summary)
 				if len(sig.Body) >= 2 {
 					pkgID, _ := sig.Body[1].(string)
-					_ = ipc.WritePkgUpdateProgress(stream, 0, &ipc.PkgUpdateProgress{
+					_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 						Type:      "package",
 						PackageID: pkgID,
 					})
@@ -214,7 +242,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 			case transactionIfc + ".Finished":
 				// Finished(u exit, u runtime)
 				logger.Debugf("[PkgUpdate] Finished signal received")
-				_ = ipc.WritePkgUpdateProgress(stream, 0, &ipc.PkgUpdateProgress{
+				_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 					Type:       "status",
 					Status:     "Finished",
 					Percentage: 100,
@@ -239,7 +267,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 							// Only send percentage updates for real work statuses
 							if pctVar, exists := props["Percentage"]; exists {
 								if pct, ok := pctVar.Value().(uint32); ok && isRealWorkStatus(currentStatus) {
-									_ = ipc.WritePkgUpdateProgress(stream, 0, &ipc.PkgUpdateProgress{
+									_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 										Type:       "percentage",
 										Percentage: pct,
 									})
@@ -252,7 +280,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 								if statusName == "" {
 									statusName = fmt.Sprintf("Status %d", currentStatus)
 								}
-								_ = ipc.WritePkgUpdateProgress(stream, 0, &ipc.PkgUpdateProgress{
+								_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 									Type:       "status",
 									Status:     statusName,
 									StatusCode: currentStatus,

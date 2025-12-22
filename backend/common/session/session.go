@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -12,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 )
 
@@ -483,26 +483,32 @@ func (m *Manager) ValidateFromRequest(r *http.Request) (*Session, error) {
 }
 
 // -----------------------------------------------------------------------------
-// Gin helpers
+// HTTP middleware helpers
 // -----------------------------------------------------------------------------
 
-const ctxKey = "session"
+type ctxKeyType string
 
-func (m *Manager) RequireSession() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		s, err := m.ValidateFromRequest(c.Request)
+const ctxKey ctxKeyType = "session"
+
+// RequireSession returns middleware that validates the session cookie
+// and stores the session in the request context.
+func (m *Manager) RequireSession(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s, err := m.ValidateFromRequest(r)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
 			return
 		}
-		c.Set(ctxKey, s)
-		c.Next()
-	}
+		ctx := context.WithValue(r.Context(), ctxKey, s)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
-func SessionFromContext(c *gin.Context) *Session {
-	v, _ := c.Get(ctxKey)
-	if s, ok := v.(*Session); ok {
+// SessionFromContext extracts the session from the request context.
+func SessionFromContext(ctx context.Context) *Session {
+	if s, ok := ctx.Value(ctxKey).(*Session); ok {
 		return s
 	}
 	return nil

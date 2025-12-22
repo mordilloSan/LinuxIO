@@ -37,7 +37,7 @@ func logStream(r io.Reader, prefix string, isInfo bool) {
 
 func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
-		"shutdown": ipc.WrapSimpleHandler(func(args []string) (any, error) {
+		"shutdown": func(args []string) (any, error) {
 			reason := "unknown"
 			if len(args) > 0 {
 				reason = args[0]
@@ -48,22 +48,22 @@ func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
 			default:
 			}
 			return "Bridge shutting down", nil
-		}),
-		"ping": ipc.WrapSimpleHandler(func(args []string) (any, error) {
+		},
+		"ping": func(args []string) (any, error) {
 			_ = args
 			return map[string]string{"type": "pong"}, nil
-		}),
-		"version": ipc.WrapSimpleHandler(func(args []string) (any, error) {
+		},
+		"version": func(args []string) (any, error) {
 			_ = args
 			return getVersionInfo()
-		}),
-		"update": ipc.WrapSimpleHandler(func(args []string) (any, error) {
+		},
+		"update": func(args []string) (any, error) {
 			targetVersion := ""
 			if len(args) > 0 {
 				targetVersion = args[0] // Optional: specific version
 			}
 			return performUpdate(targetVersion)
-		}),
+		},
 	}
 }
 

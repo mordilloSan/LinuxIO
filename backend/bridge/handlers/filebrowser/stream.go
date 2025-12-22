@@ -17,6 +17,15 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
+// Stream types for filebrowser operations.
+const (
+	StreamTypeFBDownload = "fb-download" // Single file download
+	StreamTypeFBUpload   = "fb-upload"   // Single file upload
+	StreamTypeFBArchive  = "fb-archive"  // Multi-file archive download
+	StreamTypeFBCompress = "fb-compress" // Create archive from paths
+	StreamTypeFBExtract  = "fb-extract"  // Extract archive to destination
+)
+
 const (
 	// chunkSize is the size of data chunks for file transfers
 	chunkSize = 1 * 1024 * 1024
@@ -34,15 +43,15 @@ func HandleFilebrowserStream(sess *session.Session, stream net.Conn, streamType 
 	logger.Debugf("[FBStream] Starting type=%s args=%v", streamType, args)
 
 	switch streamType {
-	case ipc.StreamTypeFBDownload:
+	case StreamTypeFBDownload:
 		return handleDownload(stream, args)
-	case ipc.StreamTypeFBUpload:
+	case StreamTypeFBUpload:
 		return handleUpload(stream, args)
-	case ipc.StreamTypeFBArchive:
+	case StreamTypeFBArchive:
 		return handleArchiveDownload(stream, args)
-	case ipc.StreamTypeFBCompress:
+	case StreamTypeFBCompress:
 		return handleCompress(stream, args)
-	case ipc.StreamTypeFBExtract:
+	case StreamTypeFBExtract:
 		return handleExtract(stream, args)
 	default:
 		logger.Warnf("[FBStream] Unknown stream type: %s", streamType)

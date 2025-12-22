@@ -1,4 +1,4 @@
-package cmd
+package web
 
 import "testing"
 
@@ -13,7 +13,7 @@ func TestHTTPErrorLogAdapter_Write_DoesNotError(t *testing.T) {
 		t.Fatalf("unexpected n: got %d want %d", n, len(msg))
 	}
 
-	// A couple of “suppressed” TLS lines
+	// A couple of "suppressed" TLS lines
 	_, _ = adapter.Write([]byte("http: TLS handshake error from 127.0.0.1: EOF"))
 	_, _ = adapter.Write([]byte("http: TLS handshake error from 127.0.0.1: remote error: tls: unknown certificate"))
 }
