@@ -24,7 +24,9 @@ const (
 	pingInterval = 25 * time.Second
 
 	// How long to wait for a pong response before considering connection dead
-	pongWait = 5 * time.Second
+	// This is the read deadline - must be longer than pingInterval to allow
+	// the ping/pong cycle to complete even when no data is being sent
+	pongWait = 35 * time.Second // pingInterval + 10 seconds buffer
 
 	// Maximum time allowed to write a message (ping or data)
 	writeWait = 10 * time.Second
@@ -97,6 +99,7 @@ func WebSocketRelayHandler(c *gin.Context) {
 
 	// Set up pong handler - this resets the read deadline when pong is received
 	conn.SetPongHandler(func(string) error {
+		logger.Debugf("[WSRelay] pong received, resetting deadline to %v", pongWait)
 		if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
 			logger.Debugf("[WSRelay] failed to set read deadline in pong handler: %v", err)
 			return err
@@ -105,6 +108,7 @@ func WebSocketRelayHandler(c *gin.Context) {
 	})
 
 	// Set initial read deadline
+	logger.Debugf("[WSRelay] setting initial read deadline: %v (pingInterval=%v, pongWait=%v)", pongWait, pingInterval, pongWait)
 	if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
 		logger.Warnf("[WSRelay] failed to set initial read deadline: %v", err)
 		return
@@ -400,6 +404,7 @@ func (r *streamRelay) pingLoop() {
 				logger.Debugf("[WSRelay] ping failed: %v", err)
 				return
 			}
+			logger.Debugf("[WSRelay] ping sent")
 		}
 	}
 }

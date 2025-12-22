@@ -7,10 +7,12 @@ import {
   Collapse,
   CircularProgress,
 } from "@mui/material";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import FrostedCard from "@/components/cards/RootCard";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
+import { streamApi } from "@/utils/streamApi";
 
 interface Props {
   updates: Update[];
@@ -27,12 +29,45 @@ const UpdateList: React.FC<Props> = ({
   isUpdating,
   currentPackage,
   onComplete,
+  isLoading,
 }) => {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [changelogs, setChangelogs] = useState<Record<string, string>>({});
+  const [loadingChangelog, setLoadingChangelog] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const toggleExpanded = (index: number) => {
-    setExpandedIdx(index === expandedIdx ? null : index);
+  const fetchChangelog = useCallback(
+    async (packageId: string) => {
+      if (changelogs[packageId]) return; // Already loaded
+
+      setLoadingChangelog(packageId);
+      try {
+        const detail = await streamApi.get<Update>("dbus", "GetUpdateDetail", [
+          packageId,
+        ]);
+        setChangelogs((prev) => ({
+          ...prev,
+          [packageId]: detail.changelog || "No changelog available",
+        }));
+      } catch {
+        setChangelogs((prev) => ({
+          ...prev,
+          [packageId]: "Failed to load changelog",
+        }));
+      } finally {
+        setLoadingChangelog(null);
+      }
+    },
+    [changelogs],
+  );
+
+  const toggleExpanded = (index: number, packageId: string) => {
+    if (index === expandedIdx) {
+      setExpandedIdx(null);
+    } else {
+      setExpandedIdx(index);
+      fetchChangelog(packageId);
+    }
   };
 
   useEffect(() => {
@@ -47,6 +82,10 @@ const UpdateList: React.FC<Props> = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  if (isLoading) {
+    return <ComponentLoader />;
+  }
 
   if (!updates.length && !isUpdating) {
     return (
@@ -136,7 +175,7 @@ const UpdateList: React.FC<Props> = ({
                   label="View Changelog"
                   size="small"
                   variant="outlined"
-                  onClick={() => toggleExpanded(idx)}
+                  onClick={() => toggleExpanded(idx, update.package_id)}
                   sx={{ cursor: "pointer" }}
                 />
                 <Chip
@@ -160,9 +199,17 @@ const UpdateList: React.FC<Props> = ({
 
               <Collapse in={expandedIdx === idx} timeout="auto" unmountOnExit>
                 <Box sx={{ whiteSpace: "pre-wrap", fontSize: 14, mt: 4 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {update.changelog}
-                  </Typography>
+                  {loadingChangelog === update.package_id ? (
+                    <Box
+                      sx={{ display: "flex", justifyContent: "center", py: 2 }}
+                    >
+                      <CircularProgress size={20} />
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      {changelogs[update.package_id] || "Loading..."}
+                    </Typography>
+                  )}
                 </Box>
               </Collapse>
             </CardContent>

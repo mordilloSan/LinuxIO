@@ -20,21 +20,30 @@ const tabOptions = [
 const Updates: React.FC = () => {
   const [tab, setTab] = useState("updates");
 
-  // Query updates for the button - dbus GetUpdates returns array directly
+  // Query updates - use GetUpdatesBasic for fast initial load
+  // This skips the slow GetUpdateDetail D-Bus call
   const {
     data: rawUpdates,
     isPending: isLoading,
     refetch,
   } = useStreamQuery<Update[]>({
     handlerType: "dbus",
-    command: "GetUpdates",
+    command: "GetUpdatesBasic",
     enabled: tab === "updates", // Only fetch when on updates tab
     refetchInterval: 50000,
   });
 
   const updates = useMemo(() => rawUpdates || [], [rawUpdates]);
-  const { updateOne, updateAll, updatingPackage, progress, error, clearError } =
-    usePackageUpdater(refetch);
+  const {
+    updateOne,
+    updateAll,
+    cancelUpdate,
+    updatingPackage,
+    progress,
+    status,
+    error,
+    clearError,
+  } = usePackageUpdater(refetch);
 
   // Determine what button to show based on active tab
   const getRightContent = () => {
@@ -79,8 +88,10 @@ const Updates: React.FC = () => {
               onUpdateOne={updateOne}
               updatingPackage={updatingPackage}
               progress={progress}
+              status={status}
               error={error}
               onClearError={clearError}
+              onCancel={cancelUpdate}
               onComplete={refetch}
             />
           </Box>
