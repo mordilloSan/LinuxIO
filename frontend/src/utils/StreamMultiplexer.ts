@@ -343,6 +343,7 @@ export class StreamMultiplexer {
   private connect(): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
+    this._status = "connecting";
     this.ws = new WebSocket(this.url);
     this.ws.binaryType = "arraybuffer";
 
@@ -367,6 +368,65 @@ export class StreamMultiplexer {
         this.handleMessage(event.data);
       }
     };
+  }
+
+  /**
+   * Check if the WebSocket connection is healthy.
+   * Returns true if connected and open, false otherwise.
+   */
+  isHealthy(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN && this._status === "open";
+  }
+
+  /**
+   * Reconnect the WebSocket if it's not healthy.
+   * Closes existing connection and streams, then creates a new connection.
+   * Returns a promise that resolves when the connection is open.
+   */
+  reconnect(): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (this.isHealthy()) {
+        resolve(true);
+        return;
+      }
+
+      console.log("[StreamMux] Reconnecting...");
+
+      // Clean up old connection
+      if (this.ws) {
+        this.ws.onclose = null; // Prevent double-cleanup
+        this.ws.onerror = null;
+        this.ws.onmessage = null;
+        this.ws.close();
+        this.ws = null;
+      }
+      this.closeAllStreams();
+
+      // Reset stream ID counter for new connection
+      this.nextStreamID = 1;
+
+      // Create new connection
+      this.connect();
+
+      // Wait for connection to open
+      const timeout = setTimeout(() => {
+        cleanup();
+        resolve(false);
+      }, 5000);
+
+      const cleanup = this.addStatusListener((status) => {
+        if (status === "open") {
+          clearTimeout(timeout);
+          cleanup();
+          console.log("[StreamMux] Reconnected successfully");
+          resolve(true);
+        } else if (status === "closed" || status === "error") {
+          clearTimeout(timeout);
+          cleanup();
+          resolve(false);
+        }
+      });
+    });
   }
 
   private notifyStatusChange(status: MuxStatus): void {
@@ -642,4 +702,26 @@ export function waitForStreamMux(timeoutMs = 10000): Promise<boolean> {
       }
     });
   });
+}
+
+/**
+ * Check if the stream multiplexer connection is healthy.
+ * @returns true if connected and open, false otherwise
+ */
+export function isStreamMuxHealthy(): boolean {
+  return instance?.isHealthy() ?? false;
+}
+
+/**
+ * Reconnect the stream multiplexer if the connection is not healthy.
+ * Creates a new WebSocket connection and clears all existing streams.
+ * @returns Promise that resolves to true if reconnection succeeded
+ */
+export function reconnectStreamMux(): Promise<boolean> {
+  if (!instance) {
+    // No instance exists, try to initialize
+    initStreamMux();
+    return waitForStreamMux(5000);
+  }
+  return instance.reconnect();
 }
