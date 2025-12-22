@@ -9,28 +9,23 @@ import (
 	"os/user"
 	"testing"
 
-	"github.com/gin-gonic/gin"
-
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // --- helpers ---------------------------------------------------------------
 
-func newRouterForTests(h *Handlers) *gin.Engine {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	// minimal routes like your BuildRouter does:
-	pub := r.Group("/auth")
-	priv := r.Group("/auth")
-	priv.Use(h.SM.RequireSession())
+func newRouterForTests(h *Handlers) *http.ServeMux {
+	mux := http.NewServeMux()
 
-	// Bind the same endpoints you use in production:
-	pub.POST("/login", h.Login)
-	priv.POST("/logout", h.Logout)
-	priv.GET("/me", h.Me)
+	// public
+	mux.HandleFunc("POST /auth/login", h.Login)
 
-	return r
+	// private (with session middleware)
+	mux.Handle("POST /auth/logout", h.SM.RequireSession(http.HandlerFunc(h.Logout)))
+	mux.Handle("GET /auth/me", h.SM.RequireSession(http.HandlerFunc(h.Me)))
+
+	return mux
 }
 
 func doJSON(r http.Handler, method, path string, body any, cookies ...*http.Cookie) *httptest.ResponseRecorder {

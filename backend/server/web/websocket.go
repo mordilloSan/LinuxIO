@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/mordilloSan/go_logger/logger"
 
@@ -70,19 +69,21 @@ func isExpectedWSClose(err error) bool {
 			return true
 		}
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "use of closed network connection")
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "use of closed network connection") ||
+		strings.Contains(errStr, "i/o timeout")
 }
 
 // WebSocketRelayHandler handles binary WebSocket connections as a pure byte relay.
 // The server never parses payloads - just routes bytes between WebSocket and yamux streams.
-func WebSocketRelayHandler(c *gin.Context) {
-	sess := session.SessionFromContext(c)
+func WebSocketRelayHandler(w http.ResponseWriter, r *http.Request) {
+	sess := session.SessionFromContext(r.Context())
 	if sess == nil {
-		c.AbortWithStatus(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logger.Errorf("[WSRelay] upgrade failed: %v", err)
 		return

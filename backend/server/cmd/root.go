@@ -17,11 +17,11 @@ import (
 	"time"
 
 	"github.com/coreos/go-systemd/activation"
-	"github.com/gin-gonic/gin"
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/server/auth"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
@@ -34,9 +34,6 @@ func RunServer(cfg ServerConfig) {
 	envMode := cfg.Env // already validated and lowercased by CLI
 	verbose := cfg.Verbose
 	logger.Init(envMode, verbose)
-	if !(envMode == config.EnvDevelopment && verbose) {
-		gin.SetMode(gin.ReleaseMode)
-	}
 	logger.InfoKV("server starting", "env", envMode, "verbose", verbose)
 
 	// -------------------------------------------------------------------------
@@ -68,32 +65,37 @@ func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
 	// Router
 	// -------------------------------------------------------------------------
-	router := BuildRouter(Config{
+	router := web.BuildRouter(web.Config{
 		Env:      envMode,
 		Verbose:  verbose,
 		VitePort: cfg.ViteDevPort,
 		UI:       ui,
+		RegisterRoutes: func(mux *http.ServeMux) {
+			auth.RegisterAuthRoutes(mux, sm, envMode, verbose, "")
+		},
 	}, sm)
 
-	// -------------------------------------------------------------------------asdasd
+	// -------------------------------------------------------------------------
+	// Request tracking for idle-exit
 	// -------------------------------------------------------------------------
 	var inFlight atomic.Int64
 	var lastHit atomic.Int64
 	lastHit.Store(time.Now().UnixNano())
 
-	router.Use(func(c *gin.Context) {
+	// Wrap router with request tracking middleware
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lastHit.Store(time.Now().UnixNano())
 		inFlight.Add(1)
 		defer inFlight.Add(-1)
-		c.Next()
+		router.ServeHTTP(w, r)
 	})
 
 	// -------------------------------------------------------------------------
 	// HTTP(S) server
 	// -------------------------------------------------------------------------
 	srv := &http.Server{
-		Handler:  router,
-		ErrorLog: log.New(HTTPErrorLogAdapter{}, "", 0),
+		Handler:  handler,
+		ErrorLog: log.New(web.HTTPErrorLogAdapter{}, "", 0),
 	}
 
 	quit := make(chan os.Signal, 1)
