@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -15,6 +16,18 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+)
+
+// WebSocket keepalive configuration
+const (
+	// How often to send ping frames to the client
+	pingInterval = 25 * time.Second
+
+	// How long to wait for a pong response before considering connection dead
+	pongWait = 5 * time.Second
+
+	// Maximum time allowed to write a message (ping or data)
+	writeWait = 10 * time.Second
 )
 
 // Stream flags for WebSocket binary protocol
@@ -32,6 +45,7 @@ type streamRelay struct {
 	ws      *websocket.Conn
 	wsMu    sync.Mutex
 	closed  uint32
+	done    chan struct{} // Signal to stop ping goroutine
 }
 
 type relayStream struct {
@@ -75,10 +89,23 @@ func WebSocketRelayHandler(c *gin.Context) {
 	relay := &streamRelay{
 		streams: make(map[uint32]*relayStream),
 		ws:      conn,
+		done:    make(chan struct{}),
 	}
 
 	defer relay.closeAll()
 	logger.Infof("[WSRelay] Connected: user=%s", sess.User.Username)
+
+	// Set up pong handler - this resets the read deadline when pong is received
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	// Set initial read deadline
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+
+	// Start ping goroutine to keep connection alive
+	go relay.pingLoop()
 
 	// Read binary messages from WebSocket
 	for {
@@ -89,6 +116,9 @@ func WebSocketRelayHandler(c *gin.Context) {
 			}
 			break
 		}
+
+		// Reset read deadline on any successful read (data keeps connection alive too)
+		conn.SetReadDeadline(time.Now().Add(pongWait))
 
 		// Only handle binary messages
 		if messageType != websocket.BinaryMessage {
@@ -139,6 +169,9 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 	if err != nil {
 		logger.Errorf("[WSRelay] failed to get yamux session: %v", err)
 		r.sendFrame(streamID, FlagRST, nil)
+		// Bridge is gone (likely session expired) - close the WebSocket entirely
+		// This signals to the frontend that reconnection/re-auth is needed
+		go r.closeAll()
 		return
 	}
 
@@ -266,7 +299,9 @@ func (r *streamRelay) sendFrame(streamID uint32, flags byte, payload []byte) {
 	}
 
 	r.wsMu.Lock()
+	r.ws.SetWriteDeadline(time.Now().Add(writeWait))
 	err := r.ws.WriteMessage(websocket.BinaryMessage, frame)
+	r.ws.SetWriteDeadline(time.Time{}) // Clear deadline after write
 	r.wsMu.Unlock()
 
 	if err != nil {
@@ -286,12 +321,18 @@ func (r *streamRelay) closeStream(streamID uint32) {
 	if exists {
 		close(rs.cancel)
 		rs.stream.Close()
+		logger.Debugf("[WSRelay] stream %d closed", streamID)
 	}
 }
 
 // closeAll closes all streams and the WebSocket
 func (r *streamRelay) closeAll() {
-	atomic.StoreUint32(&r.closed, 1)
+	if !atomic.CompareAndSwapUint32(&r.closed, 0, 1) {
+		return // Already closed
+	}
+
+	// Stop the ping goroutine
+	close(r.done)
 
 	r.mu.Lock()
 	streams := r.streams
@@ -304,4 +345,34 @@ func (r *streamRelay) closeAll() {
 	}
 
 	r.ws.Close()
+}
+
+// pingLoop sends periodic ping frames to keep the connection alive.
+// Runs in a separate goroutine and exits when done channel is closed.
+func (r *streamRelay) pingLoop() {
+	ticker := time.NewTicker(pingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.done:
+			return
+		case <-ticker.C:
+			if atomic.LoadUint32(&r.closed) == 1 {
+				return
+			}
+
+			r.wsMu.Lock()
+			// Set write deadline, write ping, then clear deadline
+			r.ws.SetWriteDeadline(time.Now().Add(writeWait))
+			err := r.ws.WriteMessage(websocket.PingMessage, nil)
+			r.ws.SetWriteDeadline(time.Time{}) // Clear deadline after write
+			r.wsMu.Unlock()
+
+			if err != nil {
+				logger.Debugf("[WSRelay] ping failed: %v", err)
+				return
+			}
+		}
+	}
 }
