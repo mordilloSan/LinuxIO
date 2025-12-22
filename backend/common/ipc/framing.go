@@ -1,110 +1,34 @@
 package ipc
 
 import (
-	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"io"
 )
 
-// Message types for framed protocol
-const (
-	// MsgTypeJSON is standard JSON RPC
-	MsgTypeJSON = 0x01
-)
-
-// Frame represents a single message with type and payload
-type Frame struct {
-	Type    byte
-	Payload []byte
+// WriteRequest writes a Request as JSON to the stream
+func WriteRequest(w io.Writer, req *Request) error {
+	return json.NewEncoder(w).Encode(req)
 }
 
-// WriteFrame writes a framed message: [type:1][length:4][payload:length]
-func WriteFrame(w io.Writer, msgType byte, payload []byte) error {
-	// Write message type (1 byte)
-	if _, err := w.Write([]byte{msgType}); err != nil {
-		return fmt.Errorf("write frame type: %w", err)
+// ReadRequest reads a Request as JSON from the stream
+func ReadRequest(r io.Reader) (*Request, error) {
+	var req Request
+	if err := json.NewDecoder(r).Decode(&req); err != nil {
+		return nil, err
 	}
-
-	// Write payload length (4 bytes, big endian)
-	length := uint32(len(payload))
-	if err := binary.Write(w, binary.BigEndian, length); err != nil {
-		return fmt.Errorf("write frame length: %w", err)
-	}
-
-	// Write payload
-	if len(payload) > 0 {
-		if _, err := w.Write(payload); err != nil {
-			return fmt.Errorf("write frame payload: %w", err)
-		}
-	}
-
-	return nil
+	return &req, nil
 }
 
-// ReadFrame reads a framed message
-func ReadFrame(r io.Reader) (*Frame, error) {
-	// Read message type (1 byte)
-	typeBuf := make([]byte, 1)
-	if _, err := io.ReadFull(r, typeBuf); err != nil {
-		return nil, fmt.Errorf("read frame type: %w", err)
-	}
-
-	// Read payload length (4 bytes)
-	var length uint32
-	if err := binary.Read(r, binary.BigEndian, &length); err != nil {
-		return nil, fmt.Errorf("read frame length: %w", err)
-	}
-
-	// Sanity check (prevent huge allocations)
-	const maxFrameSize = 1024 * 1024 * 1024 // 1GB max per frame
-	if length > maxFrameSize {
-		return nil, fmt.Errorf("frame too large: %d bytes (max %d)", length, maxFrameSize)
-	}
-
-	// Read payload
-	payload := make([]byte, length)
-	if length > 0 {
-		if _, err := io.ReadFull(r, payload); err != nil {
-			return nil, fmt.Errorf("read frame payload: %w", err)
-		}
-	}
-
-	return &Frame{
-		Type:    typeBuf[0],
-		Payload: payload,
-	}, nil
+// WriteResponse writes a Response as JSON to the stream
+func WriteResponse(w io.Writer, resp *Response) error {
+	return json.NewEncoder(w).Encode(resp)
 }
 
-// WriteJSONFrame is a helper to write JSON-encoded data as a frame
-func WriteJSONFrame(w io.Writer, msgType byte, v any) error {
-	payload, err := json.Marshal(v)
-	if err != nil {
-		return fmt.Errorf("marshal JSON: %w", err)
+// ReadResponse reads a Response as JSON from the stream
+func ReadResponse(r io.Reader) (*Response, error) {
+	var resp Response
+	if err := json.NewDecoder(r).Decode(&resp); err != nil {
+		return nil, err
 	}
-	return WriteFrame(w, msgType, payload)
-}
-
-// WriteRequestFrame writes a Request as a JSON frame
-func WriteRequestFrame(w io.Writer, req *Request) error {
-	return WriteJSONFrame(w, MsgTypeJSON, req)
-}
-
-// WriteResponseFrame writes a Response as a JSON frame
-func WriteResponseFrame(w io.Writer, resp *Response) error {
-	return WriteJSONFrame(w, MsgTypeJSON, resp)
-}
-
-// ReadJSONFrame reads a frame and unmarshals JSON payload
-func ReadJSONFrame(r io.Reader, v any) (msgType byte, err error) {
-	frame, err := ReadFrame(r)
-	if err != nil {
-		return 0, err
-	}
-
-	if err := json.Unmarshal(frame.Payload, v); err != nil {
-		return 0, fmt.Errorf("unmarshal frame JSON: %w", err)
-	}
-
-	return frame.Type, nil
+	return &resp, nil
 }
