@@ -1,4 +1,17 @@
 
+## v0.5.5 — 2025-12-22
+
+### 🤖 CI/CD
+
+* ci: fix release workflow, install scripts with auxiliar files and improved parallel test output ([ea4e3ed](https://github.com/mordilloSan/LinuxIO/commit/ea4e3ed)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.4...v0.5.5
+
+
 ## v0.5.4 — 2025-12-22
 
 ### 🚀 Features
