@@ -8,6 +8,7 @@
 ### 🐛 Bug Fixes
 
 * fix: - permissions fix for bridge and main server ([e9d8a74](https://github.com/mordilloSan/LinuxIO/commit/e9d8a74)) by @MordilloSan
+* fix: -linting ([506d7a6](https://github.com/mordilloSan/LinuxIO/commit/506d7a6)) by @MordilloSan
 
 ### ♻️ Refactoring
 
