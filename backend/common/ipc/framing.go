@@ -9,12 +9,8 @@ import (
 
 // Message types for framed protocol
 const (
-	// MsgTypeJSON is standard JSON RPC (backward compatible)
+	// MsgTypeJSON is standard JSON RPC
 	MsgTypeJSON = 0x01
-	// MsgTypeBinary is raw binary data chunk
-	MsgTypeBinary = 0x02
-	// MsgTypeStream is streaming JSON message (one of many)
-	MsgTypeStream = 0x03
 )
 
 // Frame represents a single message with type and payload
@@ -97,16 +93,6 @@ func WriteRequestFrame(w io.Writer, req *Request) error {
 // WriteResponseFrame writes a Response as a JSON frame
 func WriteResponseFrame(w io.Writer, resp *Response) error {
 	return WriteJSONFrame(w, MsgTypeJSON, resp)
-}
-
-// WriteStreamFrame writes a streaming message (partial response)
-func WriteStreamFrame(w io.Writer, resp *Response) error {
-	return WriteJSONFrame(w, MsgTypeStream, resp)
-}
-
-// WriteBinaryFrame writes raw binary data
-func WriteBinaryFrame(w io.Writer, data []byte) error {
-	return WriteFrame(w, MsgTypeBinary, data)
 }
 
 // ReadJSONFrame reads a frame and unmarshals JSON payload
