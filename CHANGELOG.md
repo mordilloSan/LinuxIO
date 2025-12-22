@@ -1,6 +1,10 @@
 
 ## v0.5.5 — 2025-12-22
 
+### 🐛 Bug Fixes
+
+* fix: - changelog in pr workflow ([0fa5bad](https://github.com/mordilloSan/LinuxIO/commit/0fa5bad)) by @MordilloSan
+
 ### 🤖 CI/CD
 
 * ci: fix release workflow, install scripts with auxiliar files and improved parallel test output ([ea4e3ed](https://github.com/mordilloSan/LinuxIO/commit/ea4e3ed)) by @MordilloSan
