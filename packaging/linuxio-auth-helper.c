@@ -24,6 +24,8 @@
 #include <stdarg.h>
 #include <limits.h>
 #include <sys/prctl.h>
+#include <sys/mount.h>
+#include <sched.h>
 #include <ctype.h>
 // Safe argv shim for exec* (drops const only at the API boundary)
 #define ARGV_UNCONST(a) \
@@ -772,6 +774,46 @@ static int user_has_sudo(const struct passwd *pw, const char *password, int *out
   return 0;
 }
 
+// Remount all read-only filesystems as read-write
+// Parses /proc/mounts to find ro mounts and remounts them rw
+static void remount_all_rw(void)
+{
+  FILE *f = fopen("/proc/mounts", "r");
+  if (!f)
+    return;
+
+  char line[4096];
+  while (fgets(line, sizeof(line), f))
+  {
+    // Format: device mountpoint fstype options ...
+    char device[512], mountpoint[512], fstype[64], options[1024];
+    if (sscanf(line, "%511s %511s %63s %1023s", device, mountpoint, fstype, options) < 4)
+      continue;
+
+    // Skip special filesystems
+    if (strcmp(fstype, "proc") == 0 || strcmp(fstype, "sysfs") == 0 ||
+        strcmp(fstype, "devtmpfs") == 0 || strcmp(fstype, "devpts") == 0 ||
+        strcmp(fstype, "tmpfs") == 0 || strcmp(fstype, "cgroup") == 0 ||
+        strcmp(fstype, "cgroup2") == 0 || strcmp(fstype, "securityfs") == 0 ||
+        strcmp(fstype, "debugfs") == 0 || strcmp(fstype, "tracefs") == 0 ||
+        strcmp(fstype, "fusectl") == 0 || strcmp(fstype, "configfs") == 0 ||
+        strcmp(fstype, "pstore") == 0 || strcmp(fstype, "bpf") == 0 ||
+        strcmp(fstype, "hugetlbfs") == 0 || strcmp(fstype, "mqueue") == 0 ||
+        strcmp(fstype, "efivarfs") == 0)
+      continue;
+
+    // Check if mounted read-only
+    if (strstr(options, "ro,") != NULL || strstr(options, ",ro,") != NULL ||
+        strstr(options, ",ro") != NULL || strcmp(options, "ro") == 0)
+    {
+      // Remount as read-write (best effort)
+      (void)mount(NULL, mountpoint, NULL, MS_REMOUNT | MS_BIND, NULL);
+    }
+  }
+
+  fclose(f);
+}
+
 // Resource limits for the bridge
 static void set_resource_limits(void)
 {
@@ -1149,6 +1191,24 @@ int main(void)
 
       if (want_privileged)
       {
+        // Escape parent's mount namespace (systemd's ProtectSystem=strict)
+        // This gives the privileged bridge full filesystem access
+        if (unshare(CLONE_NEWNS) != 0)
+        {
+          log_stderrf("unshare(CLONE_NEWNS) failed: %m");
+          _exit(127);
+        }
+
+        // Make mount tree private so our changes don't propagate to parent
+        if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0)
+        {
+          log_stderrf("mount MS_PRIVATE failed: %m");
+          _exit(127);
+        }
+
+        // Remount all read-only paths as read-write to escape ProtectSystem=strict
+        remount_all_rw();
+
         clearenv();
         setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
         setenv("LANG", "C", 1);
