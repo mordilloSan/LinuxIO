@@ -151,13 +151,46 @@ jobs:
             exit 1
           }
 
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+
+          # Find previous tag (the one before the current tag in version order)
+          PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | awk -v tag="$TAG" 'found {print; exit} $0 == tag {found=1}')
+
+          echo "Current tag: $TAG"
+          echo "Previous tag: ${PREV_TAG:-none}"
+
+          if [[ -n "$PREV_TAG" ]]; then
+            RANGE="$PREV_TAG..$TAG"
+          else
+            # First release - get commits from initial commit to tag
+            RANGE="$TAG"
+          fi
+
+          # Generate changelog
+          {
+            echo "## What's Changed"
+            echo ""
+            git log "$RANGE" --pretty=format:"- %s (%h)" --no-merges --reverse
+            echo ""
+            echo ""
+            if [[ -n "$PREV_TAG" ]]; then
+              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$TAG"
+            fi
+          } > CHANGELOG.md
+
+          echo "--- Generated Changelog ---"
+          cat CHANGELOG.md
+
       - name: Create draft release
         id: create_release
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ steps.tag.outputs.tag }}
           draft: true
-          generateReleaseNotes: true
+          bodyFile: CHANGELOG.md
           artifacts: |
             ${{ steps.create_tarball.outputs.tarball }}
             linuxio

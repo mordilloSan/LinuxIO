@@ -1,9 +1,8 @@
 package auth
 
 import (
+	"net/http"
 	"os/user"
-
-	"github.com/gin-gonic/gin"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
@@ -18,7 +17,7 @@ var (
 )
 
 // RegisterAuthRoutes wires public and private auth endpoints under /auth.
-func RegisterAuthRoutes(r *gin.Engine, sm *session.Manager, env string, verbose bool, bridgeBinaryOverride string) {
+func RegisterAuthRoutes(mux *http.ServeMux, sm *session.Manager, env string, verbose bool, bridgeBinaryOverride string) {
 	h := &Handlers{
 		SM:                   sm,
 		Env:                  env,
@@ -27,10 +26,9 @@ func RegisterAuthRoutes(r *gin.Engine, sm *session.Manager, env string, verbose 
 	}
 
 	// public
-	r.POST("/auth/login", h.Login)
+	mux.HandleFunc("POST /auth/login", h.Login)
 
-	// private
-	priv := r.Group("/auth", sm.RequireSession())
-	priv.GET("/me", h.Me)
-	priv.GET("/logout", h.Logout)
+	// private (wrapped with session middleware)
+	mux.Handle("GET /auth/me", sm.RequireSession(http.HandlerFunc(h.Me)))
+	mux.Handle("GET /auth/logout", sm.RequireSession(http.HandlerFunc(h.Logout)))
 }

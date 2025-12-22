@@ -26,9 +26,5 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	HandlersByType["config"] = config.ThemeHandlers(sess)
 	HandlersByType["system"] = system.SystemHandlers()
 	HandlersByType["filebrowser"] = filebrowser.FilebrowserHandlers()
-}
-
-// RegisterTerminalHandlers attaches terminal handlers that require the session context.
-func RegisterTerminalHandlers(sess *session.Session) {
 	HandlersByType["terminal"] = terminal.TerminalHandlers(sess)
 }

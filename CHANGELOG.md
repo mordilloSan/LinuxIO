@@ -1,4 +1,30 @@
 
+## v0.5.4 — 2025-12-22
+
+### 🚀 Features
+
+* feat: - remove GIN using http standard library ([aafb985](https://github.com/mordilloSan/LinuxIO/commit/aafb985)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: - permissions fix for bridge and main server ([e9d8a74](https://github.com/mordilloSan/LinuxIO/commit/e9d8a74)) by @MordilloSan
+* fix: -linting ([506d7a6](https://github.com/mordilloSan/LinuxIO/commit/506d7a6)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: - removed IPC dead code fix: - improved release commit messages refactor: - tweaked yamux timings ([081f3b9](https://github.com/mordilloSan/LinuxIO/commit/081f3b9)) by @MordilloSan
+* refactor: move stream types to handler packages, fix systemd write permissions ([350a0d6](https://github.com/mordilloSan/LinuxIO/commit/350a0d6)) by @MordilloSan
+* refactor: - dead code removal ([decf078](https://github.com/mordilloSan/LinuxIO/commit/decf078)) by @MordilloSan
+* refactor: - update TODO ([35260f8](https://github.com/mordilloSan/LinuxIO/commit/35260f8)) by @MordilloSan
+* refactor: - update TODO fix: - bug fix on ws path ([b7899ba](https://github.com/mordilloSan/LinuxIO/commit/b7899ba)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.3...v0.5.4
+
+
 ## v0.5.2 — 2025-12-22
 
 ### 🚀 Features

@@ -218,9 +218,6 @@ func main() {
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan, Sess)
 
-	// Register per-session terminal handlers (terminal starts lazily on first use)
-	handlers.RegisterTerminalHandlers(Sess)
-
 	// -------------------------------------------------------------------------
 	// Background samplers for network
 	// -------------------------------------------------------------------------
@@ -537,27 +534,27 @@ func handleBinaryStream(conn net.Conn, id string) {
 	logger.DebugKV("binary stream opened", "stream_id", id, "type", streamType, "args", args)
 
 	switch streamType {
-	case ipc.StreamTypeTerminal:
+	case "terminal":
 		// Handle terminal stream - pass the connection for bidirectional I/O
 		if err := terminal.HandleTerminalStream(Sess, conn, args); err != nil {
 			logger.WarnKV("terminal stream error", "stream_id", id, "error", err)
 		}
-	case ipc.StreamTypeContainer:
+	case "container":
 		// Handle container terminal stream - docker exec
 		if err := terminal.HandleContainerTerminalStream(Sess, conn, args); err != nil {
 			logger.WarnKV("container terminal stream error", "stream_id", id, "error", err)
 		}
-	case ipc.StreamTypeFBDownload, ipc.StreamTypeFBUpload, ipc.StreamTypeFBArchive, ipc.StreamTypeFBCompress, ipc.StreamTypeFBExtract:
+	case filebrowser.StreamTypeFBDownload, filebrowser.StreamTypeFBUpload, filebrowser.StreamTypeFBArchive, filebrowser.StreamTypeFBCompress, filebrowser.StreamTypeFBExtract:
 		// Handle filebrowser stream - download, upload, archive, compress, extract operations
 		if err := filebrowser.HandleFilebrowserStream(Sess, conn, streamType, args); err != nil {
 			logger.WarnKV("filebrowser stream error", "stream_id", id, "type", streamType, "error", err)
 		}
-	case ipc.StreamTypePkgUpdate:
+	case dbus.StreamTypePkgUpdate:
 		// Handle package update stream - updates packages with real-time D-Bus progress
 		if err := dbus.HandlePackageUpdateStream(conn, args); err != nil {
 			logger.WarnKV("package update stream error", "stream_id", id, "error", err)
 		}
-	case ipc.StreamTypeAPI:
+	case "api":
 		// Handle API stream - JSON API calls over yamux
 		if err := HandleAPIStream(conn, args); err != nil {
 			logger.WarnKV("api stream error", "stream_id", id, "error", err)

@@ -13,8 +13,8 @@ func YamuxConfig() *yamux.Config {
 	cfg := yamux.DefaultConfig()
 	cfg.AcceptBacklog = 256
 	cfg.EnableKeepAlive = true
-	cfg.KeepAliveInterval = 30 * time.Second
-	cfg.ConnectionWriteTimeout = 10 * time.Second
+	cfg.KeepAliveInterval = 35 * time.Second
+	cfg.ConnectionWriteTimeout = 20 * time.Second
 	cfg.MaxStreamWindowSize = 16 * 1024 * 1024 // 16MB per stream (supports 10MB chunks)
 	return cfg
 }
