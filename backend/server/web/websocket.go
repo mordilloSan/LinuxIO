@@ -97,12 +97,18 @@ func WebSocketRelayHandler(c *gin.Context) {
 
 	// Set up pong handler - this resets the read deadline when pong is received
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(pongWait))
+		if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+			logger.Debugf("[WSRelay] failed to set read deadline in pong handler: %v", err)
+			return err
+		}
 		return nil
 	})
 
 	// Set initial read deadline
-	conn.SetReadDeadline(time.Now().Add(pongWait))
+	if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		logger.Warnf("[WSRelay] failed to set initial read deadline: %v", err)
+		return
+	}
 
 	// Start ping goroutine to keep connection alive
 	go relay.pingLoop()
@@ -118,7 +124,10 @@ func WebSocketRelayHandler(c *gin.Context) {
 		}
 
 		// Reset read deadline on any successful read (data keeps connection alive too)
-		conn.SetReadDeadline(time.Now().Add(pongWait))
+		if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+			logger.Debugf("[WSRelay] failed to reset read deadline: %v", err)
+			break
+		}
 
 		// Only handle binary messages
 		if messageType != websocket.BinaryMessage {
@@ -299,10 +308,19 @@ func (r *streamRelay) sendFrame(streamID uint32, flags byte, payload []byte) {
 	}
 
 	r.wsMu.Lock()
-	r.ws.SetWriteDeadline(time.Now().Add(writeWait))
+	defer r.wsMu.Unlock()
+
+	if err := r.ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+		logger.Debugf("[WSRelay] failed to set write deadline: %v", err)
+		return
+	}
+
 	err := r.ws.WriteMessage(websocket.BinaryMessage, frame)
-	r.ws.SetWriteDeadline(time.Time{}) // Clear deadline after write
-	r.wsMu.Unlock()
+
+	// Always clear deadline after write attempt
+	if clearErr := r.ws.SetWriteDeadline(time.Time{}); clearErr != nil {
+		logger.Debugf("[WSRelay] failed to clear write deadline: %v", clearErr)
+	}
 
 	if err != nil {
 		logger.Debugf("[WSRelay] failed to send frame: %v", err)
@@ -364,9 +382,18 @@ func (r *streamRelay) pingLoop() {
 
 			r.wsMu.Lock()
 			// Set write deadline, write ping, then clear deadline
-			r.ws.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := r.ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+				r.wsMu.Unlock()
+				logger.Debugf("[WSRelay] ping: failed to set write deadline: %v", err)
+				return
+			}
+
 			err := r.ws.WriteMessage(websocket.PingMessage, nil)
-			r.ws.SetWriteDeadline(time.Time{}) // Clear deadline after write
+
+			// Always clear deadline after write attempt
+			if clearErr := r.ws.SetWriteDeadline(time.Time{}); clearErr != nil {
+				logger.Debugf("[WSRelay] ping: failed to clear write deadline: %v", clearErr)
+			}
 			r.wsMu.Unlock()
 
 			if err != nil {

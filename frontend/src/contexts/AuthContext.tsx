@@ -139,12 +139,15 @@ function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     if (!state.isInitialized || !state.isAuthenticated) return;
 
-    const interval = setInterval(() => {
-      // Only check if tab is visible (don't waste resources in background)
-      if (document.visibilityState === "visible") {
-        checkSession();
-      }
-    }, 5 * 60 * 1000);
+    const interval = setInterval(
+      () => {
+        // Only check if tab is visible (don't waste resources in background)
+        if (document.visibilityState === "visible") {
+          checkSession();
+        }
+      },
+      5 * 60 * 1000,
+    );
 
     return () => clearInterval(interval);
   }, [checkSession, state.isInitialized, state.isAuthenticated]);
@@ -169,7 +172,9 @@ function AuthProvider({ children }: AuthProviderProps) {
       // Listen for WebSocket closure - could indicate session expiry
       const unsubscribe = mux.addStatusListener((status) => {
         if (status === "closed" || status === "error") {
-          console.log("[AuthContext] Stream mux closed/error, checking session...");
+          console.log(
+            "[AuthContext] Stream mux closed/error, checking session...",
+          );
           checkSession();
         }
       });
