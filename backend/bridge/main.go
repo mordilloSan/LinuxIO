@@ -399,7 +399,7 @@ waitForStreams:
 }
 
 // handleYamuxStream handles a single stream within a yamux session.
-// Supports both framed JSON protocol and binary stream protocol.
+// Supports both JSON-encoded RPC and binary stream protocol.
 func handleYamuxStream(stream net.Conn, sessionID, streamID string) {
 	id := fmt.Sprintf("%s/%s", sessionID, streamID)
 
@@ -421,39 +421,32 @@ func handleYamuxStream(stream net.Conn, sessionID, streamID string) {
 		return
 	}
 
-	// Read the framed JSON request
-	var req ipc.Request
-	msgType, err := ipc.ReadJSONFrame(peekable, &req)
+	// Read the JSON-encoded request
+	req, err := ipc.ReadRequest(peekable)
 	if err != nil {
 		if err == io.EOF {
 			logger.DebugKV("yamux stream closed", "stream_id", id)
 		} else {
 			logger.WarnKV("failed to read yamux request", "stream_id", id, "error", err)
-			_ = ipc.WriteResponseFrame(stream, &ipc.Response{Status: "error", Error: "invalid request"})
+			_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "invalid request"})
 		}
-		return
-	}
-
-	if msgType != ipc.MsgTypeJSON {
-		logger.WarnKV("expected JSON request frame", "stream_id", id, "msg_type", fmt.Sprintf("0x%02x", msgType))
-		_ = ipc.WriteResponseFrame(stream, &ipc.Response{Status: "error", Error: "expected JSON request"})
 		return
 	}
 
 	// Validate request
 	if req.Secret != Sess.BridgeSecret {
 		logger.WarnKV("invalid bridge secret", "stream_id", id)
-		_ = ipc.WriteResponseFrame(stream, &ipc.Response{Status: "error", Error: "invalid secret"})
+		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "invalid secret"})
 		return
 	}
 	if req.SessionID != Sess.SessionID {
 		logger.WarnKV("session mismatch", "stream_id", id)
-		_ = ipc.WriteResponseFrame(stream, &ipc.Response{Status: "error", Error: "session mismatch"})
+		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "session mismatch"})
 		return
 	}
 	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
 		logger.WarnKV("invalid characters in request", "stream_id", id, "req_type", req.Type, "command", req.Command)
-		_ = ipc.WriteResponseFrame(stream, &ipc.Response{Status: "error", Error: "invalid characters in command/type"})
+		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "invalid characters in command/type"})
 		return
 	}
 
@@ -462,13 +455,13 @@ func handleYamuxStream(stream net.Conn, sessionID, streamID string) {
 	group, found := handlers.HandlersByType[req.Type]
 	if !found || group == nil {
 		logger.WarnKV("unknown request type", "stream_id", id, "req_type", req.Type)
-		_ = ipc.WriteResponseFrame(stream, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
+		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
 		return
 	}
 	handler, ok := group[req.Command]
 	if !ok {
 		logger.WarnKV("unknown request command", "stream_id", id, "req_type", req.Type, "command", req.Command)
-		_ = ipc.WriteResponseFrame(stream, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
+		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
 		return
 	}
 
@@ -493,36 +486,30 @@ func handleYamuxStream(stream net.Conn, sessionID, streamID string) {
 	case r := <-done:
 		if r.err != nil {
 			logger.ErrorKV("handler error", "stream_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
-			_ = ipc.WriteResponseFrame(stream, &ipc.Response{Status: "error", Error: r.err.Error()})
+			_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: r.err.Error()})
 			return
 		}
 
-		var raw json.RawMessage
-		switch v := r.out.(type) {
-		case nil:
-			raw = nil
-		case json.RawMessage:
-			raw = v
-		case []byte:
-			raw = json.RawMessage(v)
-		default:
-			b, err := json.Marshal(v)
+		// Marshal handler output to JSON once (stored as RawMessage, no double-encoding)
+		var output json.RawMessage
+		if r.out != nil {
+			var err error
+			output, err = json.Marshal(r.out)
 			if err != nil {
-				logger.ErrorKV("handler marshal error", "stream_id", id, "req_type", req.Type, "command", req.Command, "error", err)
-				_ = ipc.WriteResponseFrame(stream, &ipc.Response{Status: "error", Error: "marshal output failed: " + err.Error()})
+				logger.ErrorKV("failed to marshal handler output", "stream_id", id, "error", err)
+				_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "marshal error"})
 				return
 			}
-			raw = b
 		}
 
-		if err := ipc.WriteResponseFrame(stream, &ipc.Response{Status: "ok", Output: raw}); err != nil {
+		if err := ipc.WriteResponse(stream, &ipc.Response{Status: "ok", Output: output}); err != nil {
 			logger.WarnKV("failed to send yamux response", "stream_id", id, "error", err)
 			return
 		}
-		logger.DebugKV("yamux response sent", "stream_id", id, "req_type", req.Type, "command", req.Command, "bytes", len(raw))
+		logger.DebugKV("yamux response sent", "stream_id", id, "req_type", req.Type, "command", req.Command)
 
 	case <-bridgeClosing:
-		_ = ipc.WriteResponseFrame(stream, &ipc.Response{
+		_ = ipc.WriteResponse(stream, &ipc.Response{
 			Status: "error",
 			Error:  "canceled: bridge shutting down",
 		})

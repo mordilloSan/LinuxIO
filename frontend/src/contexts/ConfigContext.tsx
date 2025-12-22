@@ -40,26 +40,40 @@ export const ConfigContext = createContext<ConfigContextType | undefined>(
 export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [isLoaded, setLoaded] = useState(false);
+  // Track if we successfully loaded from backend - only allow saves if true
+  const [canSave, setCanSave] = useState(false);
   const { signOut } = useAuth();
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const fetchConfig = async (attempt = 1): Promise<void> => {
+      if (cancelled) return;
+
       try {
-        // Wait for stream mux to be ready before fetching config
-        const muxReady = await waitForStreamMux(5000);
+        // Wait for stream mux to be ready (250ms per attempt, up to 5 attempts = 2.5s total)
+        const muxReady = await waitForStreamMux(250);
         if (cancelled) return;
 
         if (!muxReady) {
-          // Mux not ready - use defaults, don't treat as auth error
+          // Mux not ready - retry quickly (100ms delay between attempts)
+          if (attempt < 5) {
+            retryTimeout = setTimeout(() => fetchConfig(attempt + 1), 100);
+            return;
+          }
+          // After 5 attempts, use defaults but don't allow saving
           console.warn("Stream mux not ready, using default config");
           setLoaded(true);
+          // canSave stays false - prevent overwriting backend config with defaults
           return;
         }
 
         const data = await streamApi.get<AppConfig>("config", "theme_get");
         if (!cancelled) {
           setConfig(applyDefaults(data));
+          setCanSave(true); // Successfully loaded from backend, allow saves
+          setLoaded(true);
         }
       } catch (error: unknown) {
         if (cancelled) return;
@@ -68,6 +82,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
         if (error instanceof StreamApiError && error.code === 503) {
           console.warn("Stream API unavailable, using default config");
           setLoaded(true);
+          // canSave stays false
           return;
         }
 
@@ -81,23 +96,25 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
 
         // For other errors, just log and use defaults
         console.error("Failed to load config:", error);
-      } finally {
-        if (!cancelled) {
-          setLoaded(true);
-        }
+        setLoaded(true);
+        // canSave stays false
       }
-    })();
+    };
+
+    fetchConfig();
+
     return () => {
       cancelled = true;
+      if (retryTimeout) clearTimeout(retryTimeout);
     };
   }, [signOut]);
 
   const save = useCallback(
     (cfg: AppConfig) => {
-      if (!isLoaded) return;
-      streamApi.post("config", "theme_set", cfg).catch(() => {});
+      if (!canSave) return; // Only save if we successfully loaded from backend
+      streamApi.post("config", "theme_set", cfg).catch(() => { });
     },
-    [isLoaded],
+    [canSave],
   );
 
   const setKey: ConfigContextType["setKey"] = useCallback(
