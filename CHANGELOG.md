@@ -1,3 +1,27 @@
+
+## v0.5.1 — 2025-12-22
+
+### 🚀 Features
+
+* feat: -websocket and streaming reconnection and keepalive ([dd89a2c](https://github.com/mordilloSan/LinuxIO/commit/dd89a2c)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: - linting ([ff50f41](https://github.com/mordilloSan/LinuxIO/commit/ff50f41)) by @MordilloSan
+* fix: - changelog display in PR improvement fix: - readme title position ([2670536](https://github.com/mordilloSan/LinuxIO/commit/2670536)) by @MordilloSan
+* fix: - changelog build fix ([4448a85](https://github.com/mordilloSan/LinuxIO/commit/4448a85)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: - old IPC code cleanup fix: - bridge now allows sudo ([224d340](https://github.com/mordilloSan/LinuxIO/commit/224d340)) by @MordilloSan
+* refactor: - IPC code cleanup fix: - theming get bugfix ([a1c002d](https://github.com/mordilloSan/LinuxIO/commit/a1c002d)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.0...v0.5.1
+
 # Changelog
 
 
