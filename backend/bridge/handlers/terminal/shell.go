@@ -33,17 +33,17 @@ func StartTerminal(sess *session.Session) error {
 	}
 	userHome := u.HomeDir
 
-	// Build a clean, user-oriented environment for the interactive shell.
-	// This ensures PS1 shows the correct user and history lands in the user's HOME.
-	env := append(os.Environ(),
-		"HOME="+userHome,
-		"USER="+sess.User.Username,
-		"LOGNAME="+sess.User.Username,
-		// Encourage colorized output
+	// Build a minimal environment for the interactive shell.
+	// Set standard system PATH; ~/.profile will prepend user paths like ~/.local/bin.
+	env := []string{
+		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		"HOME=" + userHome,
+		"USER=" + sess.User.Username,
+		"LOGNAME=" + sess.User.Username,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
-		"HISTFILE="+userHome+"/.bash_history",
-	)
+		"HISTFILE=" + userHome + "/.bash_history",
+	}
 
 	// Prefer bash, fall back to sh if not available.
 	shellPath := "bash"

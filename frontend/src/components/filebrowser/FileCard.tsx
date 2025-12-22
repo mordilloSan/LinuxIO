@@ -1,38 +1,32 @@
 import { alpha, useTheme } from "@mui/material/styles";
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useCallback } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { useDirectorySize } from "@/hooks/useDirectorySize";
 import { formatFileSize } from "@/utils/formaters";
 
-const glowAnimation = `
+const fileCardStyles = `
   @keyframes sizeGlow {
-    0% {
-      opacity: 0.5;
-    }
-    25% {
-      opacity: 0.7;
-    }
-    50% {
-      opacity: 1;
-    }
-    75% {
-      opacity: 0.7;
-    }
-    100% {
-      opacity: 0.5;
-    }
+    0% { opacity: 0.5; }
+    25% { opacity: 0.7; }
+    50% { opacity: 1; }
+    75% { opacity: 0.7; }
+    100% { opacity: 0.5; }
+  }
+
+  .file-card-hover:not(.file-card-disable-hover):hover {
+    transform: translateY(-2px) scale(1.01);
   }
 `;
 
 // Inject styles
 if (
   typeof document !== "undefined" &&
-  !document.getElementById("sizeGlowStyles")
+  !document.getElementById("fileCardStyles")
 ) {
   const style = document.createElement("style");
-  style.id = "sizeGlowStyles";
-  style.textContent = glowAnimation;
+  style.id = "fileCardStyles";
+  style.textContent = fileCardStyles;
   document.head.appendChild(style);
 }
 
@@ -75,7 +69,6 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     disableHover = false,
   }) => {
     const theme = useTheme();
-    const [hovered, setHovered] = useState(false);
 
     // For search results (showFullPath=true), fetch individual directory sizes
     const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
@@ -105,14 +98,6 @@ const FileCard: React.FC<FileCardProps> = React.memo(
         return alpha(theme.palette.primary.main, 0.4);
       }
       const bg = theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
-      return hidden ? alpha(bg, 0.5) : bg;
-    }, [selected, theme, hidden]);
-
-    const hoverBg = useMemo(() => {
-      if (selected) {
-        return alpha(theme.palette.primary.main, 0.4);
-      }
-      const bg = theme.palette.mode === "dark" ? "#2a3540" : "#f5f5f5";
       return hidden ? alpha(bg, 0.5) : bg;
     }, [selected, theme, hidden]);
 
@@ -156,15 +141,17 @@ const FileCard: React.FC<FileCardProps> = React.memo(
       [onDoubleClick],
     );
 
+    // Use CSS class for hover - no React state updates during hover
+    const className = `file-card-hover${disableHover ? " file-card-disable-hover" : ""}`;
+
     return (
       <div
         data-file-card="true"
         data-file-path={path}
+        className={className}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={onContextMenu}
-        onMouseEnter={() => !disableHover && setHovered(true)}
-        onMouseLeave={() => !disableHover && setHovered(false)}
         style={{
           display: "flex",
           alignItems: "center",
@@ -173,11 +160,10 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           border: selected ? "2px solid" : "3px solid",
           borderColor: borderColor,
           borderRadius: 20,
-          backgroundColor: hovered ? hoverBg : baseBg,
+          backgroundColor: baseBg,
           cursor: "pointer",
           minHeight: "60px",
           transition: "all 120ms ease",
-          transform: hovered ? "translateY(-2px) scale(1.01)" : "none",
           userSelect: "none",
         }}
       >
