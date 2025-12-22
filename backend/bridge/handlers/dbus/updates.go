@@ -12,10 +12,10 @@ import (
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
+	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/updates"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 type UpdateDetail struct {
@@ -109,8 +109,29 @@ func extractCVEs(text string) []string {
 	return re.FindAllString(text, -1)
 }
 
-func formatTextForHTML(text string) string {
-	return strings.ReplaceAll(text, "\n", "<br>")
+// extractLatestChangelog extracts only the most recent changelog entry.
+// Debian/Ubuntu changelogs have multiple version entries; we only want the first one.
+func extractLatestChangelog(changelog string) string {
+	if changelog == "" {
+		return changelog
+	}
+
+	// Debian changelog format: each entry ends with a signature line like:
+	// " -- Name <email>  Date"
+	// followed by a blank line and then the next entry starts with:
+	// "packagename (version) distribution; urgency=level"
+
+	// Find where the second changelog entry starts (a line starting with a package name and version)
+	// Pattern: two newlines followed by package name and (version)
+	nextEntryPattern := regexp.MustCompile(`\n\n[a-zA-Z0-9][a-zA-Z0-9._+-]*\s+\([^)]+\)\s+[^;]+;`)
+	matches := nextEntryPattern.FindStringIndex(changelog)
+
+	if matches != nil {
+		// Return everything before the next entry
+		return strings.TrimSpace(changelog[:matches[0]])
+	}
+
+	return changelog
 }
 
 func extractIssued(changelog string) string {
@@ -150,6 +171,24 @@ func toStringSlice(iface any) []string {
 
 // --- D-Bus Public Wrappers with Retry ---
 
+// GetUpdatesBasic returns package updates with basic info only (fast).
+// This skips the slow GetUpdateDetail D-Bus call.
+func GetUpdatesBasic() ([]UpdateDetail, error) {
+	var result []UpdateDetail
+	err := RetryOnceIfClosed(nil, func() error {
+		updates, err := getUpdatesBasic()
+		if err != nil {
+			return err
+		}
+		if updates == nil {
+			updates = make([]UpdateDetail, 0)
+		}
+		result = updates
+		return nil
+	})
+	return result, err
+}
+
 func GetUpdatesWithDetails() ([]UpdateDetail, error) {
 	var result []UpdateDetail
 	err := RetryOnceIfClosed(nil, func() error {
@@ -172,7 +211,208 @@ func InstallPackage(packageID string) error {
 	})
 }
 
+// GetSingleUpdateDetail returns detailed info for a single package.
+// Used for on-demand changelog fetching.
+func GetSingleUpdateDetail(packageID string) (*UpdateDetail, error) {
+	var result *UpdateDetail
+	err := RetryOnceIfClosed(nil, func() error {
+		detail, err := getSingleUpdateDetail(packageID)
+		if err != nil {
+			return err
+		}
+		result = detail
+		return nil
+	})
+	return result, err
+}
+
 // --- Private Implementation ---
+
+// getUpdatesBasic fetches available updates with basic info only (fast).
+// Only calls GetUpdates, skips the slow GetUpdateDetail call.
+func getUpdatesBasic() ([]UpdateDetail, error) {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
+
+	conn, err := godbus.SystemBus()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
+	}
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+		}
+	}()
+
+	const (
+		pkBusName      = "org.freedesktop.PackageKit"
+		pkObjPath      = "/org/freedesktop/PackageKit"
+		transactionIfc = "org.freedesktop.PackageKit.Transaction"
+	)
+
+	obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
+	var transPath godbus.ObjectPath
+	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
+	}
+	trans := conn.Object(pkBusName, transPath)
+
+	sigCh := make(chan *godbus.Signal, 20)
+	conn.Signal(sigCh)
+	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Errorf("Failed to add D-Bus match signal: %v", err)
+	}
+
+	getUpdatesCall := trans.Call(transactionIfc+".GetUpdates", 0, uint64(0))
+	if getUpdatesCall.Err != nil {
+		return nil, fmt.Errorf("GetUpdates failed: %w", getUpdatesCall.Err)
+	}
+
+	var updates []UpdateDetail
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+collectPackages:
+	for {
+		select {
+		case sig := <-sigCh:
+			if sig == nil {
+				break collectPackages
+			}
+			if sig.Name == transactionIfc+".Package" {
+				if len(sig.Body) > 2 {
+					pkgID, _ := sig.Body[1].(string)
+					summary, _ := sig.Body[2].(string)
+					name, version := extractNameVersion(pkgID)
+					_ = name // unused, but extractNameVersion returns both
+
+					updates = append(updates, UpdateDetail{
+						PackageID: pkgID,
+						Summary:   summary,
+						Version:   version,
+						// Other fields left empty - will be populated by GetUpdates (full) if needed
+					})
+				}
+			} else if sig.Name == transactionIfc+".Finished" {
+				break collectPackages
+			}
+		case <-ctx.Done():
+			break collectPackages
+		}
+	}
+
+	return updates, nil
+}
+
+// getSingleUpdateDetail fetches detailed info for a single package.
+func getSingleUpdateDetail(packageID string) (*UpdateDetail, error) {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
+
+	conn, err := godbus.SystemBus()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
+	}
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			logger.Warnf("failed to close D-Bus connection: %v", cerr)
+		}
+	}()
+
+	const (
+		pkBusName      = "org.freedesktop.PackageKit"
+		pkObjPath      = "/org/freedesktop/PackageKit"
+		transactionIfc = "org.freedesktop.PackageKit.Transaction"
+	)
+
+	obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
+	var transPath godbus.ObjectPath
+	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
+	}
+	trans := conn.Object(pkBusName, transPath)
+
+	sigCh := make(chan *godbus.Signal, 20)
+	conn.Signal(sigCh)
+	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Warnf("failed to add D-Bus match signal: %v", err)
+	}
+
+	// Call GetUpdateDetail for single package
+	detailCall := trans.Call(transactionIfc+".GetUpdateDetail", 0, []string{packageID})
+	if detailCall.Err != nil {
+		return nil, fmt.Errorf("GetUpdateDetail failed: %w", detailCall.Err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var detail *UpdateDetail
+
+collectDetail:
+	for {
+		select {
+		case sig := <-sigCh:
+			if sig == nil {
+				break collectDetail
+			}
+			if sig.Name == transactionIfc+".UpdateDetail" {
+				pkgID, _ := sig.Body[0].(string)
+				if pkgID != packageID {
+					continue
+				}
+
+				version, _ := sig.Body[11].(string)
+				if version == "" {
+					_, version = extractNameVersion(pkgID)
+				}
+
+				issued, _ := sig.Body[10].(string)
+				changelogRaw, _ := sig.Body[8].(string)
+				changelog := extractLatestChangelog(changelogRaw)
+				cves := toStringSlice(sig.Body[5])
+				restart, _ := sig.Body[6].(uint32)
+				state, _ := sig.Body[9].(uint32)
+
+				// Merge CVEs from changelog
+				cveSet := make(map[string]struct{})
+				for _, cve := range cves {
+					cveSet[cve] = struct{}{}
+				}
+				for _, cve := range extractCVEs(changelogRaw) {
+					cveSet[cve] = struct{}{}
+				}
+				combinedCVEs := make([]string, 0, len(cveSet))
+				for cve := range cveSet {
+					combinedCVEs = append(combinedCVEs, cve)
+				}
+
+				if issued == "" {
+					issued = extractIssued(changelogRaw)
+				}
+
+				detail = &UpdateDetail{
+					PackageID: pkgID,
+					Version:   version,
+					Issued:    issued,
+					Changelog: changelog,
+					CVEs:      combinedCVEs,
+					Restart:   restart,
+					State:     state,
+				}
+			} else if sig.Name == transactionIfc+".Finished" {
+				break collectDetail
+			}
+		case <-ctx.Done():
+			break collectDetail
+		}
+	}
+
+	if detail == nil {
+		return nil, fmt.Errorf("no details found for package %s", packageID)
+	}
+	return detail, nil
+}
 
 func getUpdatesWithDetails() ([]UpdateDetail, error) {
 	systemDBusMu.Lock()
@@ -308,7 +548,7 @@ collectDetails:
 				if err != nil {
 					return nil, fmt.Errorf("invalid changelog for %q: %w", pkgID, err)
 				}
-				changelog := formatTextForHTML(changelogRaw)
+				changelog := extractLatestChangelog(changelogRaw)
 
 				cves := toStringSlice(sig.Body[5])
 

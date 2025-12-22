@@ -36,6 +36,8 @@ const (
 	StreamTypeFBExtract  = "fb-extract"  // Extract archive to destination
 	// API stream type
 	StreamTypeAPI = "api" // JSON API calls over stream
+	// Package update stream type
+	StreamTypePkgUpdate = "pkg-update" // Package updates with progress streaming
 )
 
 // StreamFrame represents a framed message for the relay protocol.
@@ -201,5 +203,29 @@ func WriteStreamClose(w io.Writer, streamID uint32) error {
 	return WriteRelayFrame(w, &StreamFrame{
 		Opcode:   OpStreamClose,
 		StreamID: streamID,
+	})
+}
+
+// PkgUpdateProgress represents progress for package update operations.
+// Used with OpStreamProgress (0x84) for pkg-update streams.
+type PkgUpdateProgress struct {
+	Type       string `json:"type"`                  // "item_progress", "package", "status", "percentage"
+	PackageID  string `json:"package_id,omitempty"`  // Current package being processed
+	Status     string `json:"status,omitempty"`      // Status description (e.g., "Downloading", "Installing")
+	StatusCode uint32 `json:"status_code,omitempty"` // PackageKit status enum
+	Percentage uint32 `json:"percentage"`            // Overall or item percentage (0-100, 101=unknown)
+	ItemPct    uint32 `json:"item_pct,omitempty"`    // Per-item percentage for ItemProgress
+}
+
+// WritePkgUpdateProgress writes a package update progress frame to the stream.
+func WritePkgUpdateProgress(w io.Writer, streamID uint32, p *PkgUpdateProgress) error {
+	payload, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("marshal pkg update progress: %w", err)
+	}
+	return WriteRelayFrame(w, &StreamFrame{
+		Opcode:   OpStreamProgress,
+		StreamID: streamID,
+		Payload:  payload,
 	})
 }
