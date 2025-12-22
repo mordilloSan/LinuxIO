@@ -777,11 +777,20 @@ open-pr: generate
 	    echo "ℹ️  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
 	  else \
 	    echo "🔁 Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
+	    PR_BODY_FILE="$$(mktemp)"; \
+	    awk -v ver="$$VERSION" ' \
+	      /^## / { \
+	        if ($$2 == ver) { in_section=1; print; next } \
+	        else if (in_section) { exit } \
+	      } \
+	      in_section { print } \
+	    ' CHANGELOG.md > "$$PR_BODY_FILE"; \
 	    gh pr create $(call _repo_flag) \
 	      --base "$$BASE_BRANCH" \
 	      --head "$$BRANCH" \
 	      --title "Release $$VERSION" \
-	      --body-file CHANGELOG.md; \
+	      --body-file "$$PR_BODY_FILE"; \
+	    rm -f "$$PR_BODY_FILE"; \
 	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; \
 	    CREATED=1; \
 	  fi; \

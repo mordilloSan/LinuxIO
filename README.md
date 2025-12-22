@@ -3,10 +3,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/backend)
 [![License](https://img.shields.io/github/license/mordilloSan/LinuxIO)](LICENSE)
 
-<table><tr>
-  <td><h1>Linux</h1></td>
-  <td><img src="frontend/public/Logo.png" alt="i/O" height="40" /></td>
-</tr></table>
+<h1 align="center">Linux <img src="frontend/public/Logo.png" alt="i/O" height="32" align="center" /></h1>
 
 A modern web dashboard to manage your Linux system — Docker, WireGuard, updates, users, shares, sensors, and more — all from one unified interface.
 
