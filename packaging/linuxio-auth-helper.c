@@ -1189,6 +1189,12 @@ int main(void)
       // Apply resource limits here in bridge child
       set_resource_limits();
 
+      // Redirect bridge output BEFORE any namespace changes.
+      // sd_journal_stream_fd() creates a socket connection to journald which must
+      // be established while still in the parent's mount namespace, otherwise the
+      // connection will be broken after unshare(CLONE_NEWNS) causing SIGPIPE.
+      (void)redirect_bridge_output(pw->pw_uid, linuxio_gid, sess_id);
+
       if (want_privileged)
       {
         // Escape parent's mount namespace (systemd's ProtectSystem=strict)
@@ -1253,9 +1259,6 @@ int main(void)
 
       if (verbose)
         setenv("LINUXIO_VERBOSE", "1", 1);
-
-      // Redirect bridge output (bridge will use log_fd from bootstrap JSON if available)
-      (void)redirect_bridge_output(pw->pw_uid, linuxio_gid, sess_id);
 
       const char *argv_child[5];
       int ai = 0;

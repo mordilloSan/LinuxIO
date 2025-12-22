@@ -271,25 +271,44 @@ golint: ensure-golint
 	@echo "🔍 Running gofmt..."
 ifneq ($(CI),)
 	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
-	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
+	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi; \
+	echo "  ✓ gofmt ok"
 else
-	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
+	@( cd "$(BACKEND_DIR)" && gofmt -s -w . ) && echo "  ✓ gofmt ok"
 endif
 	@echo "🔍 Ensuring go.mod is tidy..."
-	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
+	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download ) && echo "  ✓ go.mod ok"
 	@echo "🔍 Running golangci-lint..."
 	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go Linting Ok!"
 
-# Optimized test target: runs setup ONCE, then parallelizes the actual checks
+# Parallel test: each task buffers output, displays immediately when complete (no interleaving)
 test: ensure-node ensure-go ensure-golint setup dev-prep
-	@echo "🧪 Running checks (parallel)..."
-	@{ \
-	  $(MAKE) --no-print-directory lint-only & \
-	  $(MAKE) --no-print-directory tsc-only & \
-	  $(MAKE) --no-print-directory golint-only & \
-	  wait; \
-	} && $(MAKE) --no-print-directory test-backend
+	@echo "🧪 Running checks in parallel..."
+	@echo "   ├─ Go lint"
+	@echo "   ├─ Go tests"
+	@echo "   ├─ TypeScript"
+	@echo "   └─ ESLint"
+	@echo ""
+	@TD=$$(mktemp -d); trap "rm -rf $$TD" EXIT; \
+	( $(MAKE) --no-print-directory lint-only        > "$$TD/lint.log" 2>&1; echo $$? > "$$TD/lint.done" ) & \
+	( $(MAKE) --no-print-directory tsc-only         > "$$TD/tsc.log" 2>&1; echo $$? > "$$TD/tsc.done" ) & \
+	( $(MAKE) --no-print-directory golint-only      > "$$TD/golint.log" 2>&1; echo $$? > "$$TD/golint.done" ) & \
+	( $(MAKE) --no-print-directory test-backend     > "$$TD/backend.log" 2>&1; echo $$? > "$$TD/backend.done" ) & \
+	SHOWN=""; FAIL=0; \
+	while [ $$(echo $$SHOWN | wc -w) -lt 4 ]; do \
+	  for T in lint tsc golint auth backend; do \
+	    case " $$SHOWN " in *" $$T "*) continue;; esac; \
+	    if [ -f "$$TD/$$T.done" ]; then \
+	      cat "$$TD/$$T.log"; echo ""; \
+	      [ $$(cat "$$TD/$$T.done") -eq 0 ] || FAIL=1; \
+	      SHOWN="$$SHOWN $$T"; \
+	    fi; \
+	  done; \
+	  sleep 0.1; \
+	done; \
+	if [ $$FAIL -ne 0 ]; then echo "❌ Some checks failed"; exit 1; fi; \
+	echo "✅ All checks passed!"
 
 # Internal targets (without prerequisites) for parallel execution
 lint-only:
@@ -305,12 +324,13 @@ golint-only:
 	@echo "🔍 Running gofmt..."
 ifneq ($(CI),)
 	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
-	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
+	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi; \
+	echo "  ✓ gofmt ok"
 else
-	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
+	@( cd "$(BACKEND_DIR)" && gofmt -s -w . ) && echo "  ✓ gofmt ok"
 endif
 	@echo "🔍 Ensuring go.mod is tidy..."
-	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
+	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download ) && echo "  ✓ go.mod ok"
 	@echo "🔍 Running golangci-lint..."
 	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go Linting Ok!"
@@ -479,16 +499,13 @@ dev: setup dev-prep devinstall
 	[[ "$$STATUS" -eq 130 ]] && STATUS=0
 	exit "$$STATUS"
 
-build: test build-vite build-bridge
+build: test build-vite build-bridge build-auth-helper
 	@echo ""
 	@echo "🔐 Capturing bridge hash for backend build..."
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
 	@$(MAKE) --no-print-directory build-auth-helper
-
-localinstall:
-	./packaging/scripts/local_install.sh
 
 devinstall:
 	@SECURE_DEV_DIR="/tmp/linuxio/dev"; \

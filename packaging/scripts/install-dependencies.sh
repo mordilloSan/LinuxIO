@@ -127,7 +127,7 @@ main() {
     log_ok "All dependencies installed successfully!"
     log_info ""
     log_info "Next step: Install LinuxIO binaries with:"
-    log_info "  curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash"
+    log_info "  curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio.sh | sudo bash"
 }
 
 # ---------- Usage ----------

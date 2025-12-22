@@ -47,7 +47,7 @@ Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes furthe
 curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-dependencies.sh | sudo bash
 
 # Install LinuxIO binaries
-curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio.sh | sudo bash
 ```
 
 Access the dashboard at: `http://localhost:8090`

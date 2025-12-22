@@ -93,12 +93,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpam0g-dev libdbus-1-dev libsystemd-dev pkg-config build-essential
 
-      - name: Use Node 24 (with npm cache)
+      - name: Use Node 24
         uses: actions/setup-node@v4
         with:
           node-version: "24"
-          # cache: "npm"
-          # cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+          cache: true
+          cache-dependency-path: backend/go.sum
 
       - name: Install frontend deps
         working-directory: frontend
@@ -111,13 +116,16 @@ jobs:
         working-directory: backend
         run: go mod download
 
-      - name: Build Go backend
-        env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-backend
-
       - name: Build Go bridge
         env: { GOOS: linux, GOARCH: amd64 }
         run: make build-bridge
+
+      - name: Build Go backend (with bridge hash)
+        env: { GOOS: linux, GOARCH: amd64 }
+        run: |
+          BRIDGE_HASH=$(sha256sum linuxio-bridge | awk '{ print $1 }')
+          echo "Embedding bridge SHA256: $BRIDGE_HASH"
+          make build-backend BRIDGE_SHA256=$BRIDGE_HASH
 
       - name: Build Go auth helper
         env: { GOOS: linux, GOARCH: amd64 }
@@ -126,11 +134,19 @@ jobs:
       - name: Make artifacts executable
         run: chmod +x linuxio linuxio-bridge linuxio-auth-helper
 
+      - name: Prepare config files
+        run: |
+          mkdir -p release-config/systemd release-config/pam.d release-config/linuxio
+          cp packaging/systemd/linuxio.service release-config/systemd/
+          cp packaging/systemd/linuxio.socket release-config/systemd/
+          cp packaging/etc/pam.d/linuxio release-config/pam.d/
+          cp packaging/etc/linuxio/disallowed-users release-config/linuxio/
+
       - name: Create tarball
         id: create_tarball
         run: |
           TAR="linuxio-${{ steps.tag.outputs.tag }}-linux-amd64.tar.gz"
-          tar czvf "$TAR" linuxio linuxio-bridge linuxio-auth-helper
+          tar czvf "$TAR" linuxio linuxio-bridge linuxio-auth-helper release-config/
           echo "tarball=$TAR" >> "$GITHUB_OUTPUT"
 
       - name: Generate checksums
