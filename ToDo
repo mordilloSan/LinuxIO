@@ -10,8 +10,6 @@
 
 7 - Remove gin
 
-8 - move benchmarking to the bridge also
-
 use quantum filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
 filebrowser header should contain sessionid - DONE
