@@ -34,6 +34,99 @@
 **Full Changelog**: https://github.com/owner/repo/compare/v0.4.3...v0.5.0
 
 
+## v0.4.3 — 2025-12-21
+
+### 🚀 Features
+
+* feat: add yamux binary streaming with persistent sessions ([6f28416](https://github.com/owner/repo/commit/6f28416)) by @MordilloSan
+* feat: streaming for download and upload ([dac1948](https://github.com/owner/repo/commit/dac1948)) by @MordilloSan
+* feat(filebrowser): migrate file transfers to yamux binary streams ([a252383](https://github.com/owner/repo/commit/a252383)) by @MordilloSan
+* feat: - migrating api handlers to bridge streaming... ([2db29f9](https://github.com/owner/repo/commit/2db29f9)) by @MordilloSan
+* feat: implemented a crude version of notifications using toast messages... ([820e5e0](https://github.com/owner/repo/commit/820e5e0)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: - CodeQL fix ([6a3ca73](https://github.com/owner/repo/commit/6a3ca73)) by @MordilloSan
+* fix: - touchups ([67deb7d](https://github.com/owner/repo/commit/67deb7d)) by @MordilloSan
+* fix: - naming cleanup ([0190984](https://github.com/owner/repo/commit/0190984)) by @MordilloSan
+* fix: bug in calculating proper network usage ([27f2135](https://github.com/owner/repo/commit/27f2135)) by @MordilloSan
+* fix(streams): distinguish persistent vs ephemeral stream types ([a8d4f26](https://github.com/owner/repo/commit/a8d4f26)) by @MordilloSan
+* fix: - reworked download folder and compressing/extract works ([35f82b7](https://github.com/owner/repo/commit/35f82b7)) by @MordilloSan
+* fix: - frontend linting ([1e9c052](https://github.com/owner/repo/commit/1e9c052)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: - todo update ([a830326](https://github.com/owner/repo/commit/a830326)) by @MordilloSan
+* refactor: - axios cleanup and logging improvement ([d0834de](https://github.com/owner/repo/commit/d0834de)) by @MordilloSan
+* refactor: - remaining handlers migrated ([7de36e4](https://github.com/owner/repo/commit/7de36e4)) by @MordilloSan
+* refactor: - legacy websocket removed ([7cbb35f](https://github.com/owner/repo/commit/7cbb35f)) by @MordilloSan
+* refactor: - docker terminal migration ([fa5a96d](https://github.com/owner/repo/commit/fa5a96d)) by @MordilloSan
+* refactor: - code cleanup ([6f2ea1a](https://github.com/owner/repo/commit/6f2ea1a)) by @MordilloSan
+* refactor: full filebrowser streaming migration ([cb9cc40](https://github.com/owner/repo/commit/cb9cc40)) by @MordilloSan
+* refactor: - migrating to streaming ([14e8f4e](https://github.com/owner/repo/commit/14e8f4e)) by @MordilloSan
+* refactor: - router code cleanup ([aa04b12](https://github.com/owner/repo/commit/aa04b12)) by @MordilloSan
+* refactor: - wireguard migration to streaming ([0edf961](https://github.com/owner/repo/commit/0edf961)) by @MordilloSan
+* refactor: - migration to streaming ([36fd96d](https://github.com/owner/repo/commit/36fd96d)) by @MordilloSan
+* refactor: - migrated all update code to the bridge ([95a0f38](https://github.com/owner/repo/commit/95a0f38)) by @MordilloSan
+* refactor: - migrating to streaming ([add5034](https://github.com/owner/repo/commit/add5034)) by @MordilloSan
+* refactor: - migration to streaming ([f62f9e3](https://github.com/owner/repo/commit/f62f9e3)) by @MordilloSan
+* refactor: - frontend linting - notifications plan - TS fixes ([0f241de](https://github.com/owner/repo/commit/0f241de)) by @MordilloSan
+* refactor: - cleanup dead code ([d2c0392](https://github.com/owner/repo/commit/d2c0392)) by @MordilloSan
+* filebrowser: move transfers/compression to yamux streams ([de1d785](https://github.com/owner/repo/commit/de1d785)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.4.2...v0.4.3
+
+
+## v0.4.2 — 2025-12-20
+
+### 🚀 Features
+
+* feat(security): add SHA256 hash validation for bridge binary ([0a8af0e](https://github.com/owner/repo/commit/0a8af0e)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: error checking linter update - frontend package update - TS in network graph ([f1034e6](https://github.com/owner/repo/commit/f1034e6)) by @MordilloSan
+* fix: terminal slow startup ([35f688c](https://github.com/owner/repo/commit/35f688c)) by @MordilloSan
+* fix: terminal lazy start and false update notifications in dev mode ([8fb2ede](https://github.com/owner/repo/commit/8fb2ede)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: power action overlay, config paths, and build improvements ([991e66c](https://github.com/owner/repo/commit/991e66c)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.4.1...v0.4.2
+
+
+## v0.4.1 — 2025-12-20
+
+### 🐛 Bug Fixes
+
+* fix: - improved logo in readme for both dark and light mode ([b02d305](https://github.com/owner/repo/commit/b02d305)) by @MordilloSan
+* fix: D-Bus deadlock in reboot/poweroff, improve install docs and scripts ([9ebd82f](https://github.com/owner/repo/commit/9ebd82f)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: consolidate config, remove magic strings, improve CLI and logging ([e1055f9](https://github.com/owner/repo/commit/e1055f9)) by @MordilloSan
+
+### 🏗️ Build
+
+* build(deps-dev): bump js-yaml from 4.1.0 to 4.1.1 in /frontend ([77c0e16](https://github.com/owner/repo/commit/77c0e16)) by @dependabot[bot]
+
+### 👥 Contributors
+
+* @MordilloSan
+* @dependabot[bot]
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.4.0...v0.4.1
+
+
 ## v0.4.0 — 2025-12-15
 
 ### 🚀 Features
