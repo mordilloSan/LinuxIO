@@ -8,7 +8,7 @@ import {
   IconButton,
   Tooltip,
 } from "@mui/material";
-import React from "react";
+import React, { useState, useCallback } from "react";
 
 import SidebarNavList from "./SidebarNavList";
 import LogoDisplay from "../logo/LogoDisplay";
@@ -21,16 +21,11 @@ export type SidebarProps = { items: SidebarItemsType[] };
 
 const Sidebar: React.FC<SidebarProps> = ({ items }) => {
   const theme = useTheme();
-  const {
-    collapsed,
-    hovered,
-    setHovered,
-    toggleCollapse,
-    isDesktop,
-    hoverEnabledRef,
-    mobileOpen,
-    setMobileOpen,
-  } = useSidebar();
+  const { collapsed, toggleCollapse, isDesktop, mobileOpen, setMobileOpen } =
+    useSidebar();
+
+  // Local hover state - doesn't affect other components via context
+  const [hovered, setHovered] = useState(false);
 
   const effectiveWidth = !isDesktop
     ? drawerWidth
@@ -38,10 +33,13 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
       ? collapsedDrawerWidth
       : drawerWidth;
 
-  const handleMouseEnter = () => {
-    if (hoverEnabledRef.current) setHovered(true);
-  };
-  const handleMouseLeave = () => setHovered(false);
+  // Only update hover state if sidebar is collapsed - no re-render needed when expanded
+  const handleMouseEnter = useCallback(() => {
+    if (collapsed) setHovered(true);
+  }, [collapsed]);
+  const handleMouseLeave = useCallback(() => {
+    if (collapsed) setHovered(false);
+  }, [collapsed]);
 
   const showText = !collapsed || (hovered && isDesktop);
 

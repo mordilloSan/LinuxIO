@@ -663,7 +663,7 @@ static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const
     close(inpipe[1]);
 
     clearenv();
-    setenv("PATH", "/usr/sbin:/usr/bin:/sbin:/bin", 1);
+    setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
     setenv("LANG", "C", 1);
     execv("/usr/bin/sudo", ARGV_UNCONST(argv));
 
@@ -1150,7 +1150,7 @@ int main(void)
       if (want_privileged)
       {
         clearenv();
-        setenv("PATH", "/usr/sbin:/usr/bin:/sbin:/bin", 1);
+        setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
         setenv("LANG", "C", 1);
         setenv("LC_ALL", "C", 1);
         setenv("HOME", "/root", 1);
@@ -1167,7 +1167,7 @@ int main(void)
       {
         drop_to_user(pw);
         clearenv();
-        setenv("PATH", "/usr/sbin:/usr/bin:/sbin:/bin", 1);
+        setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
         setenv("LANG", "C", 1);
         setenv("LC_ALL", "C", 1);
         if (pw)

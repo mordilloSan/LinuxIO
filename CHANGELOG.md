@@ -1,4 +1,28 @@
 
+## v0.5.2 — 2025-12-22
+
+### 🚀 Features
+
+* feat: - implemented a continous data connection, with ping/pong alive schema from the server. ([bf595b9](https://github.com/mordilloSan/LinuxIO/commit/bf595b9)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: - improved path inclusion on terminal fix: - improved react rerender performance on status bar and breadcrumbs ([483bcc1](https://github.com/mordilloSan/LinuxIO/commit/483bcc1)) by @MordilloSan
+* fix: - Revert buggy ping/pong ([b50d628](https://github.com/mordilloSan/LinuxIO/commit/b50d628)) by @MordilloSan
+* fix: - linting ([1a711cb](https://github.com/mordilloSan/LinuxIO/commit/1a711cb)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: - SidebarNavList.tsx - Added React.memo wrapper - SidebarContext.tsx - Removed hovered state from context (was causing entire page to re-render) - Sidebar.tsx - Made hover state local, only triggers when sidebar is collapsed ([807745e](https://github.com/mordilloSan/LinuxIO/commit/807745e)) by @MordilloSan
+* refactor: - linting and error checking ([fcfbc8b](https://github.com/mordilloSan/LinuxIO/commit/fcfbc8b)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.1...v0.5.2
+
+
 ## v0.5.1 — 2025-12-22
 
 ### 🚀 Features

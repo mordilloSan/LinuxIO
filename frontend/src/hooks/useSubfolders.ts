@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useStreamMux } from "@/hooks/useStreamMux";
@@ -93,13 +93,17 @@ export const useSubfolders = (
     }
   }, [error]);
 
-  // Create a map for quick lookup by path
-  const subfoldersMap = new Map<string, SubfolderData>();
-  if (data?.subfolders) {
-    data.subfolders.forEach((subfolder) => {
-      subfoldersMap.set(subfolder.path, subfolder);
+  // Create a stable array reference (avoid new empty array on each render)
+  const subfolders = useMemo(() => data?.subfolders ?? [], [data?.subfolders]);
+
+  // Create a memoized map for quick lookup by path
+  const subfoldersMap = useMemo(() => {
+    const map = new Map<string, SubfolderData>();
+    subfolders.forEach((subfolder) => {
+      map.set(subfolder.path, subfolder);
     });
-  }
+    return map;
+  }, [subfolders]);
 
   const derivedError =
     indexerDisabled && !shouldSkip
@@ -111,7 +115,7 @@ export const useSubfolders = (
     (derivedError !== null && !data) || (indexerDisabled && !shouldSkip);
 
   return {
-    subfolders: data?.subfolders ?? [],
+    subfolders,
     subfoldersMap,
     isLoading: queryEnabled ? isLoading : false,
     error: derivedError,
