@@ -697,9 +697,13 @@ changelog:
 	  echo ""; \
 	  echo "📦 Committing changes..."; \
 	  git add CHANGELOG.md; \
-	  git commit -m "changelog"; \
-	  git push; \
-	  echo "✅ Changes committed"; \
+	  if git diff --cached --quiet; then \
+	    echo "ℹ️  Changelog already up to date, nothing to commit."; \
+	  else \
+	    git commit -m "changelog"; \
+	    git push; \
+	    echo "✅ Changes committed"; \
+	  fi; \
 	  echo ""; \
 	}
 
@@ -781,7 +785,7 @@ rebuild-changelog:
 	  echo ""; \
 	}
 
-open-pr: generate
+open-pr: generate changelog
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
