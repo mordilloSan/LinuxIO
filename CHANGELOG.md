@@ -1,4 +1,17 @@
 
+## v0.5.5 — 2025-12-22
+
+### 🐛 Bug Fixes
+
+* fix: - bug fix with namespace for auth-helper ([6bafdca](https://github.com/mordilloSan/LinuxIO/commit/6bafdca)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.4...v0.5.5
+
+
 ## v0.5.4 — 2025-12-22
 
 ### 🚀 Features
