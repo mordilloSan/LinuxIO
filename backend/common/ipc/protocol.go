@@ -24,9 +24,3 @@ var ErrEmptyBridgeOutput = errors.New("bridge returned empty output")
 
 // HandlerFunc is the bridge handler signature.
 type HandlerFunc func(args []string) (any, error)
-
-// WrapSimpleHandler is a no-op wrapper for backwards compatibility.
-// TODO: Remove this and update all callers to pass handlers directly.
-func WrapSimpleHandler(h HandlerFunc) HandlerFunc {
-	return h
-}

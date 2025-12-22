@@ -23,7 +23,7 @@ func ThemeHandlers(sess *session.Session) map[string]ipc.HandlerFunc {
 	username := sess.User.Username
 
 	return map[string]ipc.HandlerFunc{
-		"theme_get": ipc.WrapSimpleHandler(func(args []string) (any, error) {
+		"theme_get": func(args []string) (any, error) {
 			cfg, cfgPath, err := Load(username)
 			if err != nil {
 				return nil, fmt.Errorf("load config: %w", err)
@@ -31,8 +31,8 @@ func ThemeHandlers(sess *session.Session) map[string]ipc.HandlerFunc {
 			logger.Debugf("[theme.get] user=%q path=%s theme=%s primary=%s collapsed=%v showHidden=%v",
 				username, cfgPath, cfg.AppSettings.Theme, cfg.AppSettings.PrimaryColor, cfg.AppSettings.SidebarCollapsed, cfg.AppSettings.ShowHiddenFiles)
 			return cfg.AppSettings, nil
-		}),
-		"theme_set": ipc.WrapSimpleHandler(func(args []string) (any, error) {
+		},
+		"theme_set": func(args []string) (any, error) {
 			if len(args) < 1 {
 				return nil, fmt.Errorf("bad_request:missing payload")
 			}
@@ -87,6 +87,6 @@ func ThemeHandlers(sess *session.Session) map[string]ipc.HandlerFunc {
 				"sidebarCollapsed": next.SidebarCollapsed,
 				"showHiddenFiles":  next.ShowHiddenFiles,
 			}, nil
-		}),
+		},
 	}
 }
