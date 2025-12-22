@@ -1,4 +1,17 @@
 
+## v0.5.0 — 2025-12-22
+
+### 🐛 Bug Fixes
+
+* fix: - Vite build process fix ([41deae0](https://github.com/owner/repo/commit/41deae0)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.4.3...v0.5.0
+
+
 ## v0.4.0 — 2025-12-15
 
 ### 🚀 Features
