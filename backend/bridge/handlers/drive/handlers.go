@@ -8,20 +8,20 @@ import (
 
 func DriveHandlers() map[string]ipc.HandlerFunc {
 	return map[string]ipc.HandlerFunc{
-		"get_drive_info": ipc.WrapSimpleHandler(func([]string) (any, error) {
+		"get_drive_info": func([]string) (any, error) {
 			return FetchDriveInfo()
-		}),
-		"get_smart_info": ipc.WrapSimpleHandler(func(args []string) (any, error) {
+		},
+		"get_smart_info": func(args []string) (any, error) {
 			if len(args) < 1 {
 				return nil, fmt.Errorf("missing device argument")
 			}
 			return FetchSmartInfo(args[0])
-		}),
-		"get_nvme_power": ipc.WrapSimpleHandler(func(args []string) (any, error) {
+		},
+		"get_nvme_power": func(args []string) (any, error) {
 			if len(args) < 1 {
 				return nil, fmt.Errorf("missing device argument")
 			}
 			return GetNVMePowerState(args[0])
-		}),
+		},
 	}
 }
