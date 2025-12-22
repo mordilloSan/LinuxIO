@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -16,17 +15,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-)
-
-const (
-	// Time allowed to write a message to the peer
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
 )
 
 // Stream flags for WebSocket binary protocol
@@ -92,22 +80,6 @@ func WebSocketRelayHandler(c *gin.Context) {
 	defer relay.closeAll()
 	logger.Infof("[WSRelay] Connected: user=%s", sess.User.Username)
 
-	// Set up pong handler to reset read deadline
-	if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-		logger.Debugf("[WSRelay] set read deadline failed: %v", err)
-	}
-	conn.SetPongHandler(func(string) error {
-		if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-			logger.Debugf("[WSRelay] set read deadline failed: %v", err)
-			return err
-		}
-		return nil
-	})
-
-	// Start ping goroutine to keep connection alive
-	done := make(chan struct{})
-	go relay.pingLoop(done)
-
 	// Read binary messages from WebSocket
 	for {
 		messageType, data, err := conn.ReadMessage()
@@ -149,37 +121,7 @@ func WebSocketRelayHandler(c *gin.Context) {
 		}
 	}
 
-	close(done)
 	logger.Infof("[WSRelay] Disconnected: user=%s", sess.User.Username)
-}
-
-// pingLoop sends ping messages periodically to keep the connection alive
-func (r *streamRelay) pingLoop(done <-chan struct{}) {
-	ticker := time.NewTicker(pingPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-done:
-			return
-		case <-ticker.C:
-			if atomic.LoadUint32(&r.closed) == 1 {
-				return
-			}
-			r.wsMu.Lock()
-			if err := r.ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
-				r.wsMu.Unlock()
-				logger.Debugf("[WSRelay] set write deadline failed: %v", err)
-				return
-			}
-			err := r.ws.WriteMessage(websocket.PingMessage, nil)
-			r.wsMu.Unlock()
-			if err != nil {
-				logger.Debugf("[WSRelay] ping failed: %v", err)
-				return
-			}
-		}
-	}
 }
 
 // handleSYN opens a new yamux stream and starts relaying

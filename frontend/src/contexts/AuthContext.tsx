@@ -22,12 +22,7 @@ import {
   clearIndexerAvailabilityFlag,
   setIndexerAvailabilityFlag,
 } from "@/utils/indexerAvailability";
-import {
-  initStreamMux,
-  closeStreamMux,
-  isStreamMuxHealthy,
-  reconnectStreamMux,
-} from "@/utils/StreamMultiplexer";
+import { initStreamMux, closeStreamMux } from "@/utils/StreamMultiplexer";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -125,30 +120,19 @@ function AuthProvider({ children }: AuthProviderProps) {
     initialize();
   }, [initialize]);
 
-  // Subscribe to visibility/focus to re-check session and reconnect WebSocket
+  // Subscribe to visibility/focus to re-check session
   useEffect(() => {
-    if (!state.isInitialized || !state.isAuthenticated) return;
-
-    const handle = async () => {
-      if (document.visibilityState === "visible") {
-        // Check session validity
-        checkSession();
-
-        // Reconnect WebSocket if connection is stale
-        if (!isStreamMuxHealthy()) {
-          console.log("[Auth] Tab visible, reconnecting WebSocket...");
-          await reconnectStreamMux();
-        }
-      }
+    if (!state.isInitialized) return;
+    const handle = () => {
+      if (document.visibilityState === "visible") checkSession();
     };
-
     window.addEventListener("visibilitychange", handle);
     window.addEventListener("focus", handle);
     return () => {
       window.removeEventListener("visibilitychange", handle);
       window.removeEventListener("focus", handle);
     };
-  }, [checkSession, state.isInitialized, state.isAuthenticated]);
+  }, [checkSession, state.isInitialized]);
 
   // Cross-tab logout via localStorage
   useEffect(() => {
