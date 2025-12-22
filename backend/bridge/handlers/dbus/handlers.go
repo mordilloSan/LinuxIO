@@ -19,7 +19,14 @@ func DbusHandlers() map[string]ipc.HandlerFunc {
 		"PowerOff": ipc.WrapSimpleHandler(func([]string) (any, error) { return nil, CallLogin1Action("PowerOff") }),
 
 		// Updates management
-		"GetUpdates":     ipc.WrapSimpleHandler(func([]string) (any, error) { return GetUpdatesWithDetails() }),
+		"GetUpdates":      ipc.WrapSimpleHandler(func([]string) (any, error) { return GetUpdatesWithDetails() }),
+		"GetUpdatesBasic": ipc.WrapSimpleHandler(func([]string) (any, error) { return GetUpdatesBasic() }),
+		"GetUpdateDetail": ipc.WrapSimpleHandler(func(args []string) (any, error) {
+			if len(args) == 0 {
+				return nil, fmt.Errorf("GetUpdateDetail requires package ID")
+			}
+			return GetSingleUpdateDetail(args[0])
+		}),
 		"InstallPackage": ipc.WrapSimpleHandler(func(args []string) (any, error) { return nil, InstallPackage(args[0]) }),
 		"GetAutoUpdates": ipc.WrapSimpleHandler(func([]string) (any, error) { return getAutoUpdates() }),
 		"SetAutoUpdates": ipc.WrapSimpleHandler(func(args []string) (any, error) {
