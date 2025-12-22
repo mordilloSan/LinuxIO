@@ -1,40 +1,11 @@
 import { alpha, useTheme } from "@mui/material/styles";
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { useDirectorySize } from "@/hooks/useDirectorySize";
 import { formatFileSize } from "@/utils/formaters";
 
-const glowAnimation = `
-  @keyframes sizeGlow {
-    0% {
-      opacity: 0.5;
-    }
-    25% {
-      opacity: 0.7;
-    }
-    50% {
-      opacity: 1;
-    }
-    75% {
-      opacity: 0.7;
-    }
-    100% {
-      opacity: 0.5;
-    }
-  }
-`;
-
-// Inject styles
-if (
-  typeof document !== "undefined" &&
-  !document.getElementById("sizeGlowStyles")
-) {
-  const style = document.createElement("style");
-  style.id = "sizeGlowStyles";
-  style.textContent = glowAnimation;
-  document.head.appendChild(style);
-}
+// Styles are injected by FileCard.tsx (shared animation)
 
 export interface FileListRowProps {
   name: string;
@@ -78,10 +49,8 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     onDoubleClick,
     onContextMenu,
     borderRadius,
-    disableHover = false,
   }) => {
     const theme = useTheme();
-    const [hovered, setHovered] = useState(false);
 
     // For search results (showFullPath=true), fetch individual directory sizes
     const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
@@ -152,16 +121,6 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
       return hidden ? alpha(bg, 0.5) : bg;
     }, [selected, theme, hidden]);
 
-    const hoverBg = useMemo(() => {
-      if (selected) {
-        return alpha(theme.palette.primary.main, 0.4);
-      }
-      const bg = theme.palette.mode === "dark" ? "#42505e" : "#f5f5f5";
-      return hidden ? alpha(bg, 0.5) : bg;
-    }, [selected, theme, hidden]);
-
-    const bgColor = hovered ? hoverBg : baseBg;
-
     const resolvedBorderRadius = borderRadius ?? theme.shape.borderRadius;
 
     return (
@@ -171,14 +130,11 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={onContextMenu}
-        onMouseEnter={() => !disableHover && setHovered(true)}
-        onMouseLeave={() => !disableHover && setHovered(false)}
         style={{
           display: "grid",
           gridTemplateColumns: COLUMN_TEMPLATE,
           alignItems: "center",
-
-          backgroundColor: bgColor,
+          backgroundColor: baseBg,
           cursor: "pointer",
           transition: "background-color 0.15s ease",
           borderRadius: resolvedBorderRadius,

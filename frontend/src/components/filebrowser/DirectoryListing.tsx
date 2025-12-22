@@ -254,13 +254,19 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     [clearSelection],
   );
 
-  const handleFolderClick = (event: React.MouseEvent, path: string) => {
-    handleItemSelection(event, path);
-  };
+  const handleFolderClick = useCallback(
+    (event: React.MouseEvent, path: string) => {
+      handleItemSelection(event, path);
+    },
+    [handleItemSelection],
+  );
 
-  const handleFileClick = (event: React.MouseEvent, path: string) => {
-    handleItemSelection(event, path);
-  };
+  const handleFileClick = useCallback(
+    (event: React.MouseEvent, path: string) => {
+      handleItemSelection(event, path);
+    },
+    [handleItemSelection],
+  );
 
   if (!folders.length && !files.length) {
     return <EmptyState />;

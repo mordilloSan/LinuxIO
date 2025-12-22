@@ -1,5 +1,5 @@
 // src/contexts/AuthContext.tsx
-import React, {
+import {
   createContext,
   useEffect,
   useReducer,
@@ -22,12 +22,7 @@ import {
   clearIndexerAvailabilityFlag,
   setIndexerAvailabilityFlag,
 } from "@/utils/indexerAvailability";
-import {
-  initStreamMux,
-  closeStreamMux,
-  isStreamMuxHealthy,
-  reconnectStreamMux,
-} from "@/utils/StreamMultiplexer";
+import { initStreamMux, closeStreamMux } from "@/utils/StreamMultiplexer";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -125,29 +120,36 @@ function AuthProvider({ children }: AuthProviderProps) {
     initialize();
   }, [initialize]);
 
-  // Subscribe to visibility/focus to re-check session and reconnect WebSocket
+  // Subscribe to visibility/focus to re-check session
   useEffect(() => {
-    if (!state.isInitialized || !state.isAuthenticated) return;
-
-    const handle = async () => {
-      if (document.visibilityState === "visible") {
-        // Check session validity
-        checkSession();
-
-        // Reconnect WebSocket if connection is stale
-        if (!isStreamMuxHealthy()) {
-          console.log("[Auth] Tab visible, reconnecting WebSocket...");
-          await reconnectStreamMux();
-        }
-      }
+    if (!state.isInitialized) return;
+    const handle = () => {
+      if (document.visibilityState === "visible") checkSession();
     };
-
     window.addEventListener("visibilitychange", handle);
     window.addEventListener("focus", handle);
     return () => {
       window.removeEventListener("visibilitychange", handle);
       window.removeEventListener("focus", handle);
     };
+  }, [checkSession, state.isInitialized]);
+
+  // Periodic session check while authenticated (every 1 minute for testing, increase in production)
+  // This detects session expiry even if user is just watching the dashboard
+  useEffect(() => {
+    if (!state.isInitialized || !state.isAuthenticated) return;
+
+    const interval = setInterval(
+      () => {
+        // Only check if tab is visible (don't waste resources in background)
+        if (document.visibilityState === "visible") {
+          checkSession();
+        }
+      },
+      5 * 60 * 1000,
+    );
+
+    return () => clearInterval(interval);
   }, [checkSession, state.isInitialized, state.isAuthenticated]);
 
   // Cross-tab logout via localStorage
@@ -163,13 +165,24 @@ function AuthProvider({ children }: AuthProviderProps) {
   }, [doLocalSignOut]);
 
   // Initialize stream multiplexer when authenticated
+  // Also listen for unexpected WebSocket closure to trigger session check
   useEffect(() => {
     if (state.isAuthenticated) {
-      initStreamMux();
+      const mux = initStreamMux();
+      // Listen for WebSocket closure - could indicate session expiry
+      const unsubscribe = mux.addStatusListener((status) => {
+        if (status === "closed" || status === "error") {
+          console.log(
+            "[AuthContext] Stream mux closed/error, checking session...",
+          );
+          checkSession();
+        }
+      });
+      return () => unsubscribe();
     } else {
       closeStreamMux();
     }
-  }, [state.isAuthenticated]);
+  }, [state.isAuthenticated, checkSession]);
 
   const signIn = useCallback(
     async (username: string, password: string) => {
