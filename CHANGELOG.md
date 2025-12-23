@@ -1,4 +1,17 @@
 
+## v0.5.7 — 2025-12-23
+
+### 🔧 Chores
+
+* chore: installation improvements and documentation updates ([31e61c9](https://github.com/mordilloSan/LinuxIO/commit/31e61c9)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.6...v0.5.7
+
+
 ## v0.5.6 — 2025-12-22
 
 ### 🐛 Bug Fixes
