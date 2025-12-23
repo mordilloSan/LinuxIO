@@ -10,6 +10,8 @@
 
 7 - ARCHITECTURE_REFACTOR.md
 
+8 - Improve the app update feature to give more feedback (like unraid)
+
 Remove gin - DONE
 use quantum filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE
