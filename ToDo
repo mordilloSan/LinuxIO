@@ -8,11 +8,9 @@
 
 6 - Notifications!!!! See notifications.md
 
-7 - linuxio.service
+7 - ARCHITECTURE_REFACTOR.md
 
-"DynamicUser=yes
-RuntimeDirectory=linuxio
-RuntimeDirectoryMode=0755"
+8 - Improve the app update feature to give more feedback (like unraid)
 
 Remove gin - DONE
 use quantum filebrowser as our main navigator - DONE
