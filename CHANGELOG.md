@@ -1,4 +1,23 @@
 
+## v0.5.8 — 2025-12-23
+
+### 📚 Documentation
+
+* docs: updated ToDo ([fcc0693](https://github.com/mordilloSan/LinuxIO/commit/fcc0693)) by @MordilloSan
+* docs: improved ToDo to reflect next update cycle ([e7860e7](https://github.com/mordilloSan/LinuxIO/commit/e7860e7)) by @MordilloSan
+* docs: update readme versioning ([50c03be](https://github.com/mordilloSan/LinuxIO/commit/50c03be)) by @MordilloSan
+
+### 🔧 Chores
+
+* chore: Sync toolchain versions and cache setup in release workflow ([14323d8](https://github.com/mordilloSan/LinuxIO/commit/14323d8)) by @MordilloSan
+
+### 👥 Contributors
+
+* @MordilloSan
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.7...v0.5.8
+
+
 ## v0.5.7 — 2025-12-23
 
 ### 🔧 Chores
