@@ -5,6 +5,9 @@
   "private": true,
   "type": "module",
   "license": "Apache License v2.0",
+  "engines": {
+    "node": "24"
+  },
   "scripts": {},
   "browserslist": [
     "> 0.5%",
