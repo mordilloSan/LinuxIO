@@ -16,7 +16,6 @@ Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes furthe
 - **Docker management** (like Portainer)
 - **WireGuard VPN** configuration
 - **File management** (FileBrowser Quantum inspired)
-- **System monitoring** (CPU, RAM, disk, network)
 
 **Goal:** One tool to manage your homelab without juggling multiple UIs.
 

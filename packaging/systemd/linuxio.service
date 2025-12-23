@@ -6,7 +6,6 @@ After=linuxio.socket network-online.target
 [Service]
 User=linuxio
 Group=linuxio
-SupplementaryGroups=docker
 
 # Create /run/linuxio at start as root:linuxio with setgid and o+x
 PermissionsStartOnly=true
