@@ -191,7 +191,7 @@ make merge-release     # Merge PR and trigger release
 
 ### Frontend
 
-- **React 18** with TypeScript
+- **React 19** with TypeScript
 - **Vite** for blazing fast builds
 - **Material-UI** (Mira theme)
 - **TanStack Query** for data fetching

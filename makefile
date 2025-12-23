@@ -3,9 +3,18 @@ VITE_DEV_PORT = 3000
 SERVER_PORT   = 18090
 VERBOSE      ?= true
 
-# Go and Node.js versions
-GO_VERSION   = 1.25.5
-NODE_VERSION = 24
+# --- Go project root autodetection ---
+BACKEND_DIR := $(shell \
+  if [ -f backend/go.mod ]; then echo backend; \
+  elif [ -f go.mod ]; then echo .; \
+  else echo ""; fi )
+ifeq ($(BACKEND_DIR),)
+$(error Could not find go.mod in backend/ or project root)
+endif
+
+# Toolchain versions (sourced from repo files)
+GO_VERSION ?= $(shell awk '/^go / {print $$2; exit}' "$(BACKEND_DIR)/go.mod")
+NODE_VERSION ?= $(shell python3 -c "import json, pathlib; data=json.loads(pathlib.Path('frontend/package.json').read_text()); print((data.get('engines') or {}).get('node',''))" 2>/dev/null)
 CC ?= cc
 
 # Helpers
@@ -26,15 +35,6 @@ COLOR_RED    := \033[1;31m
 
 PRINTC := printf '%b\n'
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
-
-# --- Go project root autodetection ---
-BACKEND_DIR := $(shell \
-  if [ -f backend/go.mod ]; then echo backend; \
-  elif [ -f go.mod ]; then echo .; \
-  else echo ""; fi )
-ifeq ($(BACKEND_DIR),)
-$(error Could not find go.mod in backend/ or project root)
-endif
 
 MODULE_PATH = $(shell cd "$(BACKEND_DIR)" && go list -m 2>/dev/null || echo "github.com/mordilloSan/LinuxIO")
 
@@ -153,6 +153,19 @@ LDFLAGS := $(HARDEN_LDFLAGS) $(SIZELDFLAGS) $(LTOFLAGS)
 SHELL := /bin/bash
 
 default: help
+
+print-toolchain-versions:
+	@set -euo pipefail; \
+	if [ -z "$(GO_VERSION)" ]; then \
+	  echo "ERROR: GO_VERSION is empty; check $(BACKEND_DIR)/go.mod" >&2; \
+	  exit 1; \
+	fi; \
+	if [ -z "$(NODE_VERSION)" ]; then \
+	  echo "ERROR: NODE_VERSION is empty; check frontend/package.json engines.node" >&2; \
+	  exit 1; \
+	fi; \
+	echo "go=$(GO_VERSION)"; \
+	echo "node=$(NODE_VERSION)"
 
 ensure-node:
 	@echo ""
