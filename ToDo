@@ -8,11 +8,7 @@
 
 6 - Notifications!!!! See notifications.md
 
-7 - linuxio.service
-
-"DynamicUser=yes
-RuntimeDirectory=linuxio
-RuntimeDirectoryMode=0755"
+7 - ARCHITECTURE_REFACTOR.md
 
 Remove gin - DONE
 use quantum filebrowser as our main navigator - DONE
