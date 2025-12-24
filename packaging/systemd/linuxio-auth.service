@@ -1,0 +1,44 @@
+[Unit]
+Description=LinuxIO Authentication Service
+Documentation=https://github.com/mordilloSan/LinuxIO
+Requires=linuxio-auth.socket
+After=linuxio-auth.socket
+
+[Service]
+ExecStart=/usr/local/bin/linuxio-auth-helper
+Restart=on-failure
+RestartSec=5s
+
+# Runs as root (required for PAM authentication)
+# But with security hardening where possible
+PrivateTmp=true
+ProtectHome=no
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictRealtime=true
+UMask=0027
+RemoveIPC=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+
+# Only allow Unix sockets (for IPC)
+RestrictAddressFamilies=AF_UNIX
+
+# Only allow native architecture syscalls
+SystemCallArchitectures=native
+
+# Block dangerous syscalls (but allow setuid/setgid for user switching)
+SystemCallFilter=~@clock @cpu-emulation @debug @keyring @module @mount @obsolete @raw-io @reboot @swap
+SystemCallErrorNumber=EPERM
+
+# Note: Cannot use NoNewPrivileges=yes here because we need to
+# spawn bridge processes as different users via setuid/setgid
+
+[Install]
+WantedBy=multi-user.target

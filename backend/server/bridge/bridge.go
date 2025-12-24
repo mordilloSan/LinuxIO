@@ -73,7 +73,8 @@ func validateBridgeHash(bridgePath string) error {
 	return nil
 }
 
-// StartBridge launches linuxio-bridge via the setuid helper.
+// StartBridge launches linuxio-bridge via the auth daemon or setuid helper.
+// Tries the auth daemon first (if available), falls back to exec mode.
 // Returns (privilegedMode, error). privilegedMode reflects the helper's decision.
 func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
 	// Resolve bridge binary (helper also validates)
@@ -89,13 +90,41 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		return false, fmt.Errorf("bridge security validation failed: %w", err)
 	}
 
+	// Try auth daemon first (new architecture)
+	if DaemonAvailable() {
+		logger.Debugf("Auth daemon available, using socket-based auth")
+		req := BuildRequest(
+			sess.User.Username,
+			password,
+			sess.SessionID,
+			sess.SocketPath,
+			sess.BridgeSecret,
+			bridgeBinary,
+			strings.ToLower(envMode),
+			verbose,
+		)
+		privileged, err := Authenticate(req)
+		if err == nil {
+			logger.InfoKV("bridge launch via daemon acknowledged", "user", sess.User.Username, "privileged", privileged)
+			return privileged, nil
+		}
+		// Log the daemon error and fall back to exec mode
+		logger.WarnKV("auth daemon failed, falling back to exec mode", "error", err)
+	}
+
+	// Fall back to exec-based auth helper (legacy mode)
+	return startBridgeExec(sess, password, envMode, verbose, bridgeBinary)
+}
+
+// startBridgeExec launches linuxio-bridge via exec of the setuid helper (legacy mode).
+func startBridgeExec(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
 	helperPath := getAuthHelperPath()
 	if helperPath == "" {
 		return false, fmt.Errorf("auth helper not found; expected %s or LINUXIO_PAM_HELPER override", config.AuthHelperPath)
 	}
 
 	logger.Debugf("Using bridge binary: %s", bridgeBinary)
-	logger.Debugf("Using auth helper: %s", helperPath)
+	logger.Debugf("Using auth helper (exec mode): %s", helperPath)
 
 	// Create pipe for bridge logs in development mode
 	var logPipeR, logPipeW *os.File
@@ -289,7 +318,7 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		logPipeW.Close()
 	}
 
-	logger.InfoKV("bridge launch acknowledged", "user", sess.User.Username, "privileged", privileged)
+	logger.InfoKV("bridge launch acknowledged (exec mode)", "user", sess.User.Username, "privileged", privileged)
 	return privileged, nil
 }
 

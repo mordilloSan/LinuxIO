@@ -1,7 +1,11 @@
-// /usr/local/bin/linuxio-auth-helper  (install 4755 root:root)
+// /usr/local/bin/linuxio-auth-helper  (install 0755 root:root, runs via systemd)
+// Daemon mode: listen on /run/linuxio/auth.sock for JSON auth requests
+// Dev mode: set LINUXIO_AUTH_SOCKET env var for custom socket path
 #define __STDC_WANT_LIB_EXT1__ 1
 #define _GNU_SOURCE
 #include <security/pam_appl.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <pwd.h>
 #include <grp.h>
 #include <errno.h>
@@ -39,7 +43,20 @@
 #include <systemd/sd-journal.h>
 #define HAVE_SD_JOURNAL 1
 #endif
+#if __has_include(<systemd/sd-daemon.h>)
+#include <systemd/sd-daemon.h>
+#define HAVE_SD_DAEMON 1
 #endif
+#endif
+
+// Socket activation constants (fallback if no sd-daemon.h)
+#ifndef SD_LISTEN_FDS_START
+#define SD_LISTEN_FDS_START 3
+#endif
+
+// Auth socket path
+#define AUTH_SOCKET_PATH "/run/linuxio/auth.sock"
+#define AUTH_SOCKET_DIR "/run/linuxio"
 
 #ifndef AT_EMPTY_PATH
 #define AT_EMPTY_PATH 0x1000
@@ -398,12 +415,15 @@ static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid)
     journal_errorf("runtime: stat %s failed", base);
     goto cleanup;
   }
-  if (st.st_uid != 0 || (st.st_mode & S_IWOTH))
+  /* Check for world-writable (unsafe), but allow non-root ownership
+   * since DynamicUser=yes creates directories owned by ephemeral user.
+   * We'll fix ownership below with fchown anyway. */
+  if (st.st_mode & S_IWOTH)
   {
-    journal_errorf("runtime: %s unsafe perms", base);
+    journal_errorf("runtime: %s is world-writable (unsafe)", base);
     goto cleanup;
   }
-  /* base directory ownership */
+  /* base directory ownership - fix to root:linuxio */
   if (fchown(base_fd, 0, linuxio_gid) != 0)
   {
     journal_errorf("runtime: fchown(base_fd, 0, %u) failed: %m", (unsigned)linuxio_gid);
@@ -878,16 +898,615 @@ static int valid_socket_path_for_uid(const char *p, uid_t uid)
   return 1;
 }
 
-// -------- main ----------
-int main(void)
+// ============================================================================
+// DAEMON MODE - Socket-based authentication service
+// ============================================================================
+
+// Simple JSON field extractor (finds "key":"value" pattern)
+static char *json_get_string(const char *json, const char *key, char *buf, size_t bufsz)
 {
+  if (!json || !key || !buf || bufsz == 0)
+    return NULL;
+  buf[0] = '\0';
+
+  // Build pattern: "key":"
+  char pattern[128];
+  safe_snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
+
+  const char *start = strstr(json, pattern);
+  if (!start)
+    return NULL;
+
+  start += strlen(pattern);
+  const char *end = start;
+
+  // Find closing quote, handling escapes
+  size_t i = 0;
+  while (*end && *end != '"' && i < bufsz - 1)
+  {
+    if (*end == '\\' && *(end + 1))
+    {
+      end++; // skip escape
+      switch (*end)
+      {
+      case 'n':
+        buf[i++] = '\n';
+        break;
+      case 'r':
+        buf[i++] = '\r';
+        break;
+      case 't':
+        buf[i++] = '\t';
+        break;
+      case '\\':
+        buf[i++] = '\\';
+        break;
+      case '"':
+        buf[i++] = '"';
+        break;
+      default:
+        buf[i++] = *end;
+      }
+    }
+    else
+    {
+      buf[i++] = *end;
+    }
+    end++;
+  }
+  buf[i] = '\0';
+  return buf;
+}
+
+// Get number of socket-activated file descriptors from systemd
+static int get_systemd_fds(void)
+{
+#ifdef HAVE_SD_DAEMON
+  return sd_listen_fds(0);
+#else
+  // Manual implementation
+  const char *pid_str = getenv("LISTEN_PID");
+  const char *fds_str = getenv("LISTEN_FDS");
+  if (!pid_str || !fds_str)
+    return 0;
+
+  pid_t expected_pid = (pid_t)atoi(pid_str);
+  if (expected_pid != getpid())
+    return 0;
+
+  int n = atoi(fds_str);
+  return (n > 0) ? n : 0;
+#endif
+}
+
+// Create auth socket for dev mode (when not using systemd activation)
+static int create_auth_socket(const char *socket_path)
+{
+  // Check if socket_path directory exists
+  char dir[MAX_PATH_LEN];
+  strncpy(dir, socket_path, sizeof(dir) - 1);
+  dir[sizeof(dir) - 1] = '\0';
+  char *slash = strrchr(dir, '/');
+  if (slash)
+  {
+    *slash = '\0';
+    struct stat st;
+    if (stat(dir, &st) < 0)
+    {
+      // Create directory
+      if (mkdir(dir, 0755) < 0 && errno != EEXIST)
+      {
+        journal_errorf("failed to create socket directory %s: %s", dir, strerror(errno));
+        return -1;
+      }
+    }
+  }
+
+  // Remove existing socket
+  unlink(socket_path);
+
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd < 0)
+  {
+    journal_errorf("socket() failed: %s", strerror(errno));
+    return -1;
+  }
+
+  struct sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+
+  if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+  {
+    journal_errorf("bind(%s) failed: %s", socket_path, strerror(errno));
+    close(fd);
+    return -1;
+  }
+
+  // Dev mode: world accessible (0666)
+  chmod(socket_path, 0666);
+
+  if (listen(fd, 16) < 0)
+  {
+    journal_errorf("listen() failed: %s", strerror(errno));
+    close(fd);
+    return -1;
+  }
+
+  return fd;
+}
+
+// Send JSON response to client
+static void send_response(int fd, const char *status, const char *error, const char *mode, const char *socket_path)
+{
+  char buf[2048];
+  char err_escaped[512] = "";
+  char sock_escaped[512] = "";
+
+  if (error && *error)
+    json_escape_string(err_escaped, sizeof(err_escaped), error);
+  if (socket_path && *socket_path)
+    json_escape_string(sock_escaped, sizeof(sock_escaped), socket_path);
+
+  int len;
+  if (error && *error)
+  {
+    len = safe_snprintf(buf, sizeof(buf),
+                        "{\"status\":\"%s\",\"error\":\"%s\"}\n",
+                        status, err_escaped);
+  }
+  else if (mode && socket_path)
+  {
+    len = safe_snprintf(buf, sizeof(buf),
+                        "{\"status\":\"%s\",\"mode\":\"%s\",\"socket_path\":\"%s\"}\n",
+                        status, mode, sock_escaped);
+  }
+  else
+  {
+    len = safe_snprintf(buf, sizeof(buf), "{\"status\":\"%s\"}\n", status);
+  }
+
+  if (len > 0)
+    (void)write_all(fd, buf, (size_t)len);
+}
+
+// Handle a single client connection
+static void handle_client(int client_fd)
+{
+  // Read request (newline-terminated JSON)
+  char reqbuf[8192];
+  ssize_t total = 0;
+  while (total < (ssize_t)sizeof(reqbuf) - 1)
+  {
+    ssize_t n = read(client_fd, reqbuf + total, sizeof(reqbuf) - 1 - (size_t)total);
+    if (n <= 0)
+      break;
+    total += n;
+    // Check for newline
+    if (memchr(reqbuf, '\n', (size_t)total))
+      break;
+  }
+  reqbuf[total] = '\0';
+
+  if (total == 0)
+  {
+    send_response(client_fd, "error", "empty request", NULL, NULL);
+    return;
+  }
+
+  // Parse JSON fields
+  char user[MAX_USERNAME_LEN] = "";
+  char password[MAX_ENV_VALUE_LEN] = "";
+  char session_id[256] = "";
+  char socket_path[MAX_PATH_LEN] = "";
+  char bridge_path[MAX_PATH_LEN] = "";
+  char env_mode[128] = "";
+  char verbose_str[16] = "";
+  char secret[MAX_ENV_VALUE_LEN] = "";
+  char server_base_url[MAX_ENV_VALUE_LEN] = "";
+  char server_cert[MAX_ENV_VALUE_LEN] = "";
+
+  json_get_string(reqbuf, "user", user, sizeof(user));
+  json_get_string(reqbuf, "password", password, sizeof(password));
+  json_get_string(reqbuf, "session_id", session_id, sizeof(session_id));
+  json_get_string(reqbuf, "socket_path", socket_path, sizeof(socket_path));
+  json_get_string(reqbuf, "bridge_path", bridge_path, sizeof(bridge_path));
+  json_get_string(reqbuf, "env", env_mode, sizeof(env_mode));
+  json_get_string(reqbuf, "verbose", verbose_str, sizeof(verbose_str));
+  json_get_string(reqbuf, "secret", secret, sizeof(secret));
+  json_get_string(reqbuf, "server_base_url", server_base_url, sizeof(server_base_url));
+  json_get_string(reqbuf, "server_cert", server_cert, sizeof(server_cert));
+
+  // Validate required fields
+  if (!user[0] || !session_id[0] || !socket_path[0])
+  {
+    send_response(client_fd, "error", "missing required fields", NULL, NULL);
+    secure_bzero(password, sizeof(password));
+    return;
+  }
+
+  // PAM authentication
+  struct pam_conv conv = {pam_conv_func, (void *)password};
+  pam_handle_t *pamh = NULL;
+  int rc = pam_start("linuxio", user, &conv, &pamh);
+  if (rc != PAM_SUCCESS)
+  {
+    send_response(client_fd, "error", pam_strerror(NULL, rc), NULL, NULL);
+    secure_bzero(password, sizeof(password));
+    return;
+  }
+
+  (void)pam_set_item(pamh, PAM_RHOST, "web");
+  rc = pam_authenticate(pamh, 0);
+  if (rc == PAM_SUCCESS)
+    rc = pam_acct_mgmt(pamh, 0);
+  if (rc == PAM_SUCCESS)
+    rc = pam_setcred(pamh, PAM_ESTABLISH_CRED);
+
+  if (rc != PAM_SUCCESS)
+  {
+    const char *err = pam_strerror(pamh, rc);
+    send_response(client_fd, "error", err, NULL, NULL);
+    pam_end(pamh, rc);
+    secure_bzero(password, sizeof(password));
+    return;
+  }
+
+  // Get user info
+  struct passwd *pw = getpwnam(user);
+  if (!pw)
+  {
+    send_response(client_fd, "error", "user lookup failed", NULL, NULL);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    secure_bzero(password, sizeof(password));
+    return;
+  }
+
+  journal_infof("daemon: PAM auth success for user '%s' (uid=%u)", user, (unsigned)pw->pw_uid);
+
+  // Validate socket path
+  if (!valid_socket_path_for_uid(socket_path, pw->pw_uid))
+  {
+    send_response(client_fd, "error", "invalid socket path for user", NULL, NULL);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    secure_bzero(password, sizeof(password));
+    return;
+  }
+
+  // Ensure runtime directories
+  gid_t linuxio_gid = 0;
+  if (ensure_runtime_dirs(pw, &linuxio_gid) != 0)
+  {
+    send_response(client_fd, "error", "failed to create runtime dirs", NULL, NULL);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    secure_bzero(password, sizeof(password));
+    return;
+  }
+
+  // Check sudo capability
+  int nopasswd = 0;
+  int want_privileged = user_has_sudo(pw, password, &nopasswd) ? 1 : 0;
+
+  // Clear password from memory
+  secure_bzero(password, sizeof(password));
+
+  const char *mode_str = want_privileged ? "privileged" : "unprivileged";
+  const char *envmode = (env_mode[0]) ? env_mode : "production";
+
+  // Validate and open bridge binary
+  const char *bridge_bin = bridge_path[0] ? bridge_path : "/usr/local/bin/linuxio-bridge";
+  int bridge_fd = -1;
+  if (open_and_validate_bridge(bridge_bin, 0, &bridge_fd) != 0)
+  {
+    send_response(client_fd, "error", "bridge validation failed", NULL, NULL);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    return;
+  }
+
+  // Fork nanny process to manage bridge
+  pid_t nanny = fork();
+  if (nanny < 0)
+  {
+    send_response(client_fd, "error", "fork failed", NULL, NULL);
+    close(bridge_fd);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    return;
+  }
+
+  if (nanny == 0)
+  {
+    // Nanny child - will spawn and monitor bridge
+    (void)prctl(PR_SET_PDEATHSIG, SIGTERM);
+    close(client_fd);
+
+    // Open PAM session
+    if (pam_open_session(pamh, 0) != PAM_SUCCESS)
+    {
+      journal_errorf("pam_open_session failed");
+      _exit(1);
+    }
+
+    // Create two pipes:
+    // 1. bootstrap_pipe: nanny writes JSON -> bridge reads on FD 3
+    // 2. response_pipe: bridge writes OK -> nanny reads
+    int bootstrap_pipe[2];
+    int response_pipe[2];
+    if (pipe(bootstrap_pipe) < 0 || pipe(response_pipe) < 0)
+    {
+      journal_errorf("pipe() failed: %s", strerror(errno));
+      pam_close_session(pamh, 0);
+      pam_setcred(pamh, PAM_DELETE_CRED);
+      pam_end(pamh, 0);
+      _exit(1);
+    }
+
+    pid_t bridge_pid = fork();
+    if (bridge_pid < 0)
+    {
+      journal_errorf("fork bridge failed: %s", strerror(errno));
+      close(bootstrap_pipe[0]);
+      close(bootstrap_pipe[1]);
+      close(response_pipe[0]);
+      close(response_pipe[1]);
+      pam_close_session(pamh, 0);
+      pam_setcred(pamh, PAM_DELETE_CRED);
+      pam_end(pamh, 0);
+      _exit(1);
+    }
+
+    if (bridge_pid == 0)
+    {
+      // Bridge child
+      close(bootstrap_pipe[1]); // Close write end of bootstrap
+      close(response_pipe[0]);  // Close read end of response
+
+      // Dup bootstrap read end to FD 3 (what bridge expects)
+      if (bootstrap_pipe[0] != 3)
+      {
+        dup2(bootstrap_pipe[0], 3);
+        close(bootstrap_pipe[0]);
+      }
+
+      // Redirect output based on env mode
+      (void)redirect_bridge_output(pw->pw_uid, linuxio_gid, session_id);
+
+      // Drop to user
+      drop_to_user(pw);
+
+      // Set up environment
+      char *empty_env[] = {NULL};
+      environ = empty_env;
+
+      char home_env[MAX_PATH_LEN], user_env[256], path_env[512];
+      char socket_env[MAX_PATH_LEN], session_env[256], secret_env[MAX_ENV_VALUE_LEN];
+      char verbose_env[32], env_mode_env[128];
+      char server_base_env[MAX_ENV_VALUE_LEN], server_cert_env[MAX_ENV_VALUE_LEN];
+      char boot_fd_env[32], linuxio_env[32];
+
+      safe_snprintf(home_env, sizeof(home_env), "HOME=%s", pw->pw_dir);
+      safe_snprintf(user_env, sizeof(user_env), "USER=%s", user);
+      safe_snprintf(path_env, sizeof(path_env), "PATH=/usr/local/bin:/usr/bin:/bin");
+      safe_snprintf(socket_env, sizeof(socket_env), "LINUXIO_SOCKET_PATH=%s", socket_path);
+      safe_snprintf(session_env, sizeof(session_env), "LINUXIO_SESSION_ID=%s", session_id);
+      safe_snprintf(secret_env, sizeof(secret_env), "LINUXIO_BRIDGE_SECRET=%s", secret);
+      safe_snprintf(verbose_env, sizeof(verbose_env), "LINUXIO_VERBOSE=%s", verbose_str[0] ? verbose_str : "0");
+      safe_snprintf(env_mode_env, sizeof(env_mode_env), "LINUXIO_ENV=%s", envmode);
+      safe_snprintf(linuxio_env, sizeof(linuxio_env), "LINUXIO_BRIDGE=1");
+      safe_snprintf(boot_fd_env, sizeof(boot_fd_env), "LINUXIO_BOOT_FD=%d", response_pipe[1]);
+
+      putenv(home_env);
+      putenv(user_env);
+      putenv(path_env);
+      putenv(socket_env);
+      putenv(session_env);
+      putenv(secret_env);
+      putenv(verbose_env);
+      putenv(env_mode_env);
+      putenv(linuxio_env);
+      putenv(boot_fd_env);
+
+      if (server_base_url[0])
+      {
+        safe_snprintf(server_base_env, sizeof(server_base_env), "LINUXIO_SERVER_BASE_URL=%s", server_base_url);
+        putenv(server_base_env);
+      }
+      if (server_cert[0])
+      {
+        safe_snprintf(server_cert_env, sizeof(server_cert_env), "LINUXIO_SERVER_CERT=%s", server_cert);
+        putenv(server_cert_env);
+      }
+
+      if (want_privileged)
+      {
+        putenv("LINUXIO_PRIVILEGED=1");
+      }
+
+      // Set resource limits
+      set_resource_limits();
+
+      // Exec bridge
+      const char *argv[] = {bridge_bin, NULL};
+      (void)exec_bridge_via_fd(bridge_fd, bridge_bin, argv);
+      journal_errorf("exec bridge failed: %s", strerror(errno));
+      _exit(127);
+    }
+
+    // Nanny continues here
+    close(bootstrap_pipe[0]); // Close read end of bootstrap
+    close(response_pipe[1]);  // Close write end of response
+    close(bridge_fd);
+
+    // Write bootstrap JSON to bridge via FD 3
+    char bootstrap_json[4096];
+    char escaped_socket[1024], escaped_secret[2048], escaped_session[512];
+    json_escape_string(escaped_socket, sizeof(escaped_socket), socket_path);
+    json_escape_string(escaped_secret, sizeof(escaped_secret), secret);
+    json_escape_string(escaped_session, sizeof(escaped_session), session_id);
+
+    int json_len = safe_snprintf(bootstrap_json, sizeof(bootstrap_json),
+                                  "{\"socket_path\":\"%s\",\"secret\":\"%s\",\"session_id\":\"%s\"}\n",
+                                  escaped_socket, escaped_secret, escaped_session);
+    if (json_len > 0)
+    {
+      (void)write_all(bootstrap_pipe[1], bootstrap_json, (size_t)json_len);
+    }
+    close(bootstrap_pipe[1]);
+
+    // Wait for bridge bootstrap response
+    char boot_msg[64];
+    ssize_t n = read(response_pipe[0], boot_msg, sizeof(boot_msg) - 1);
+    close(response_pipe[0]);
+
+    if (n <= 0 || strncmp(boot_msg, "OK", 2) != 0)
+    {
+      journal_errorf("bridge bootstrap failed");
+      kill(bridge_pid, SIGTERM);
+      waitpid(bridge_pid, NULL, 0);
+      pam_close_session(pamh, 0);
+      pam_setcred(pamh, PAM_DELETE_CRED);
+      pam_end(pamh, 0);
+      _exit(1);
+    }
+
+    // Wait for bridge to exit
+    int status;
+    struct rusage ru;
+    memset(&ru, 0, sizeof(ru));
+    while (wait4(bridge_pid, &status, 0, &ru) < 0 && errno == EINTR)
+      ;
+
+    if (WIFSIGNALED(status))
+    {
+      journal_errorf("bridge killed by signal %d", WTERMSIG(status));
+    }
+    else if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+    {
+      journal_errorf("bridge exited with status %d", WEXITSTATUS(status));
+    }
+
+    pam_close_session(pamh, 0);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    _exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
+  }
+
+  // Parent daemon - send success response and continue
+  close(bridge_fd);
+
+  // Don't manage PAM in parent - nanny handles it
+  // But we need to clean up parent's PAM handle
+  pam_end(pamh, PAM_SUCCESS);
+
+  // Send success response
+  send_response(client_fd, "ok", NULL, mode_str, socket_path);
+  journal_infof("daemon: bridge spawned for user '%s' mode=%s socket=%s",
+                user, mode_str, socket_path);
+}
+
+// Main daemon loop
+static int run_daemon_mode(void)
+{
+  journal_infof("linuxio-auth-helper starting in daemon mode");
+
+  int listen_fd = -1;
+  int dev_mode = 0;
+
+  // Check for systemd socket activation
+  int n_fds = get_systemd_fds();
+  if (n_fds > 0)
+  {
+    listen_fd = SD_LISTEN_FDS_START;
+    journal_infof("using socket-activated fd from systemd");
+  }
+  else
+  {
+    // Check for custom socket path (dev mode)
+    char *custom_socket = safe_getenv_strdup("LINUXIO_AUTH_SOCKET", MAX_PATH_LEN);
+    const char *socket_path = custom_socket ? custom_socket : AUTH_SOCKET_PATH;
+    dev_mode = (custom_socket != NULL);
+
+    listen_fd = create_auth_socket(socket_path);
+    if (listen_fd < 0)
+    {
+      journal_errorf("failed to create auth socket at %s", socket_path);
+      free(custom_socket);
+      return 1;
+    }
+    journal_infof("listening on %s%s", socket_path, dev_mode ? " (dev mode)" : "");
+    free(custom_socket);
+  }
+
+  // Accept loop
+  for (;;)
+  {
+    struct sockaddr_un client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    int client_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &client_len);
+    if (client_fd < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      journal_errorf("accept() failed: %s", strerror(errno));
+      continue;
+    }
+
+    // Handle client synchronously (could be forked for concurrency)
+    handle_client(client_fd);
+    close(client_fd);
+  }
+
+  // Not reached
+  return 0;
+}
+
+// -------- main ----------
+int main(int argc, char *argv[])
+{
+  (void)argc;
+  (void)argv;
+
   if (geteuid() != 0)
   {
-    log_stderrf("must be setuid root");
+    log_stderrf("must run as root (via systemd or sudo)");
     return 126;
   }
   (void)prctl(PR_SET_DUMPABLE, 0);
 
+  // Always run daemon mode (socket-activated or creates own socket)
+  return run_daemon_mode();
+}
+
+// write_all - needed by log_stderrf and send_response
+static int write_all(int fd, const void *buf, size_t len)
+{
+  const unsigned char *p = (const unsigned char *)buf;
+  while (len > 0)
+  {
+    ssize_t n = write(fd, p, len);
+    if (n < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      return -1;
+    }
+    p += (size_t)n;
+    len -= (size_t)n;
+  }
+  return 0;
+}
+
+// ============================================================================
+// LEGACY SINGLE-SHOT MODE (kept for reference, not used)
+// ============================================================================
+#if 0
+static int run_single_shot_mode(void)
+{
   char *user = safe_getenv_strdup("LINUXIO_SESSION_USER", MAX_USERNAME_LEN);
   if (!user)
   {
@@ -1448,3 +2067,5 @@ static int write_all(int fd, const void *buf, size_t len)
   }
   return 0;
 }
+
+#endif // LEGACY SINGLE-SHOT MODE
