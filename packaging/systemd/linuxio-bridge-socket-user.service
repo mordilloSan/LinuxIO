@@ -1,0 +1,12 @@
+[Unit]
+Description=Dynamic user for LinuxIO bridge sockets
+Documentation=https://github.com/mordilloSan/LinuxIO
+BindsTo=linuxio.service
+
+[Service]
+DynamicUser=yes
+User=linuxio-bridge-socket
+Group=linuxio-bridge-socket
+Type=oneshot
+ExecStart=/bin/true
+RemainAfterExit=yes

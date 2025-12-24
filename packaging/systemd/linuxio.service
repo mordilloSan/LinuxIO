@@ -1,10 +1,11 @@
 [Unit]
 Description=LinuxIO Web Server
-Requires=linuxio.socket
-After=linuxio.socket network-online.target
+Requires=linuxio.socket linuxio-bridge-socket-user.service
+After=linuxio.socket linuxio-bridge-socket-user.service network-online.target
 
 [Service]
 DynamicUser=yes
+Group=linuxio-bridge-socket
 ExecStart=/usr/local/bin/linuxio run
 Restart=on-failure
 RestartSec=5s
@@ -20,7 +21,7 @@ ProtectClock=true
 ProtectHostname=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-RestrictNamespaces=false
+RestrictNamespaces=true
 RestrictRealtime=true
 DevicePolicy=closed
 PrivateDevices=true

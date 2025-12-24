@@ -383,7 +383,7 @@ static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid)
   int ret = -1;
 
   gid_t linuxio_gid = 0;
-  struct group *gr = getgrnam("linuxio");
+  struct group *gr = getgrnam("linuxio-bridge-socket");
   if (gr)
     linuxio_gid = gr->gr_gid;
   if (out_linuxio_gid)
@@ -644,6 +644,81 @@ static int redirect_bridge_output(uid_t owner_uid, gid_t linuxio_gid, const char
     return 0;
   }
   return -1;
+}
+
+// Write bootstrap JSON to a file descriptor
+// Returns number of bytes written, or -1 on error
+static int write_bootstrap_json(
+    int fd,
+    const char *session_id,
+    const char *username,
+    uid_t uid,
+    gid_t gid,
+    const char *secret,
+    const char *socket_path,
+    const char *server_base_url,
+    const char *server_cert,
+    int verbose,
+    int log_fd)
+{
+  char json[16384];
+  char sess_id_esc[1024], username_esc[1024], secret_esc[16384];
+  char server_base_esc[16384], socket_esc[8192];
+
+  json_escape_string(sess_id_esc, sizeof(sess_id_esc), session_id ? session_id : "");
+  json_escape_string(username_esc, sizeof(username_esc), username ? username : "");
+  json_escape_string(secret_esc, sizeof(secret_esc), secret ? secret : "");
+  json_escape_string(server_base_esc, sizeof(server_base_esc), server_base_url ? server_base_url : "");
+  json_escape_string(socket_esc, sizeof(socket_esc), socket_path ? socket_path : "");
+
+  if (server_cert && *server_cert)
+  {
+    char cert_esc[16384];
+    json_escape_string(cert_esc, sizeof(cert_esc), server_cert);
+
+    safe_snprintf(json, sizeof(json),
+                  "{"
+                  "\"session_id\":\"%s\","
+                  "\"username\":\"%s\","
+                  "\"uid\":\"%u\","
+                  "\"gid\":\"%u\","
+                  "\"secret\":\"%s\","
+                  "\"server_base_url\":\"%s\","
+                  "\"server_cert\":\"%s\","
+                  "\"socket_path\":\"%s\","
+                  "\"verbose\":\"%s\","
+                  "\"log_fd\":%d"
+                  "}",
+                  sess_id_esc, username_esc,
+                  (unsigned)uid, (unsigned)gid,
+                  secret_esc, server_base_esc, cert_esc,
+                  socket_esc, verbose ? "1" : "0", log_fd);
+  }
+  else
+  {
+    safe_snprintf(json, sizeof(json),
+                  "{"
+                  "\"session_id\":\"%s\","
+                  "\"username\":\"%s\","
+                  "\"uid\":\"%u\","
+                  "\"gid\":\"%u\","
+                  "\"secret\":\"%s\","
+                  "\"server_base_url\":\"%s\","
+                  "\"server_cert\":null,"
+                  "\"socket_path\":\"%s\","
+                  "\"verbose\":\"%s\","
+                  "\"log_fd\":%d"
+                  "}",
+                  sess_id_esc, username_esc,
+                  (unsigned)uid, (unsigned)gid,
+                  secret_esc, server_base_esc,
+                  socket_esc, verbose ? "1" : "0", log_fd);
+  }
+
+  size_t len = strlen(json);
+  if (write_all(fd, json, len) != 0)
+    return -1;
+  return (int)len;
 }
 
 // sudo probing
@@ -1276,9 +1351,6 @@ static void handle_client(int client_fd)
       // Redirect output based on env mode
       (void)redirect_bridge_output(pw->pw_uid, linuxio_gid, session_id);
 
-      // Drop to user
-      drop_to_user(pw);
-
       // Set up environment
       char *empty_env[] = {NULL};
       environ = empty_env;
@@ -1289,9 +1361,32 @@ static void handle_client(int client_fd)
       char server_base_env[MAX_ENV_VALUE_LEN], server_cert_env[MAX_ENV_VALUE_LEN];
       char boot_fd_env[32], linuxio_env[32];
 
-      safe_snprintf(home_env, sizeof(home_env), "HOME=%s", pw->pw_dir);
-      safe_snprintf(user_env, sizeof(user_env), "USER=%s", user);
-      safe_snprintf(path_env, sizeof(path_env), "PATH=/usr/local/bin:/usr/bin:/bin");
+      if (want_privileged)
+      {
+        // Privileged mode: stay as root for full system access
+        // (WireGuard, D-Bus system operations, etc.)
+        if (setgroups(0, NULL) != 0)
+          _exit(127);
+        if (setresgid(0, 0, 0) != 0)
+          _exit(127);
+        if (setresuid(0, 0, 0) != 0)
+          _exit(127);
+
+        safe_snprintf(home_env, sizeof(home_env), "HOME=/root");
+        safe_snprintf(user_env, sizeof(user_env), "USER=root");
+        safe_snprintf(path_env, sizeof(path_env), "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
+        putenv("LINUXIO_PRIVILEGED=1");
+      }
+      else
+      {
+        // Unprivileged mode: drop to user
+        drop_to_user(pw);
+
+        safe_snprintf(home_env, sizeof(home_env), "HOME=%s", pw->pw_dir);
+        safe_snprintf(user_env, sizeof(user_env), "USER=%s", user);
+        safe_snprintf(path_env, sizeof(path_env), "PATH=/usr/local/bin:/usr/bin:/bin");
+      }
+
       safe_snprintf(socket_env, sizeof(socket_env), "LINUXIO_SOCKET_PATH=%s", socket_path);
       safe_snprintf(session_env, sizeof(session_env), "LINUXIO_SESSION_ID=%s", session_id);
       safe_snprintf(secret_env, sizeof(secret_env), "LINUXIO_BRIDGE_SECRET=%s", secret);
@@ -1322,11 +1417,6 @@ static void handle_client(int client_fd)
         putenv(server_cert_env);
       }
 
-      if (want_privileged)
-      {
-        putenv("LINUXIO_PRIVILEGED=1");
-      }
-
       // Set resource limits
       set_resource_limits();
 
@@ -1343,19 +1433,11 @@ static void handle_client(int client_fd)
     close(bridge_fd);
 
     // Write bootstrap JSON to bridge via FD 3
-    char bootstrap_json[4096];
-    char escaped_socket[1024], escaped_secret[2048], escaped_session[512];
-    json_escape_string(escaped_socket, sizeof(escaped_socket), socket_path);
-    json_escape_string(escaped_secret, sizeof(escaped_secret), secret);
-    json_escape_string(escaped_session, sizeof(escaped_session), session_id);
-
-    int json_len = safe_snprintf(bootstrap_json, sizeof(bootstrap_json),
-                                  "{\"socket_path\":\"%s\",\"secret\":\"%s\",\"session_id\":\"%s\"}\n",
-                                  escaped_socket, escaped_secret, escaped_session);
-    if (json_len > 0)
-    {
-      (void)write_all(bootstrap_pipe[1], bootstrap_json, (size_t)json_len);
-    }
+    int verbose_flag = (verbose_str[0] == '1' || verbose_str[0] == 't' || verbose_str[0] == 'T');
+    (void)write_bootstrap_json(bootstrap_pipe[1],
+                               session_id, user, pw->pw_uid, pw->pw_gid,
+                               secret, socket_path, server_base_url, server_cert,
+                               verbose_flag, -1);
     close(bootstrap_pipe[1]);
 
     // Wait for bridge bootstrap response
@@ -1906,62 +1988,11 @@ static int run_single_shot_mode(void)
       sock = sockbuf;
     }
 
-    // JSON with proper escaping for all fields
-    char json[16384]; // Increased size for escaped content
-    char sess_id_esc[1024], sess_user_esc[1024], secret_esc[16384];
-    char server_base_esc[16384], sock_esc[8192];
-
-    json_escape_string(sess_id_esc, sizeof(sess_id_esc), sess_id ? sess_id : "");
-    json_escape_string(sess_user_esc, sizeof(sess_user_esc), sess_user ? sess_user : "");
-    json_escape_string(secret_esc, sizeof(secret_esc), sess_secret ? sess_secret : "");
-    json_escape_string(server_base_esc, sizeof(server_base_esc), server_base ? server_base : "");
-    json_escape_string(sock_esc, sizeof(sock_esc), sock);
-
-    if (server_cert && *server_cert)
-    {
-      char cert_esc[16384];
-      json_escape_string(cert_esc, sizeof(cert_esc), server_cert);
-
-      safe_snprintf(json, sizeof(json),
-                    "{"
-                    "\"session_id\":\"%s\","
-                    "\"username\":\"%s\","
-                    "\"uid\":\"%u\","
-                    "\"gid\":\"%u\","
-                    "\"secret\":\"%s\","
-                    "\"server_base_url\":\"%s\","
-                    "\"server_cert\":\"%s\","
-                    "\"socket_path\":\"%s\","
-                    "\"verbose\":\"%s\","
-                    "\"log_fd\":%d"
-                    "}",
-                    sess_id_esc, sess_user_esc,
-                    (unsigned)pw->pw_uid, (unsigned)pw->pw_gid,
-                    secret_esc, server_base_esc, cert_esc,
-                    sock_esc, verbose ? "1" : "0", log_fd);
-    }
-    else
-    {
-      safe_snprintf(json, sizeof(json),
-                    "{"
-                    "\"session_id\":\"%s\","
-                    "\"username\":\"%s\","
-                    "\"uid\":\"%u\","
-                    "\"gid\":\"%u\","
-                    "\"secret\":\"%s\","
-                    "\"server_base_url\":\"%s\","
-                    "\"server_cert\":null,"
-                    "\"socket_path\":\"%s\","
-                    "\"verbose\":\"%s\","
-                    "\"log_fd\":%d"
-                    "}",
-                    sess_id_esc, sess_user_esc,
-                    (unsigned)pw->pw_uid, (unsigned)pw->pw_gid,
-                    secret_esc, server_base_esc,
-                    sock_esc, verbose ? "1" : "0", log_fd);
-    }
-
-    (void)write_all(boot_pipe[1], json, strlen(json));
+    // Write bootstrap JSON to bridge via FD 3
+    (void)write_bootstrap_json(boot_pipe[1],
+                               sess_id, sess_user, pw->pw_uid, pw->pw_gid,
+                               sess_secret, sock, server_base, server_cert,
+                               verbose, log_fd);
     close(boot_pipe[1]);
     close(bridge_fd);
 
