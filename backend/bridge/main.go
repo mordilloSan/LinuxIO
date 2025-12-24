@@ -603,7 +603,7 @@ func createAndOwnSocket(socketPath, uidStr string) (net.Listener, error) {
 	}
 	logger.Debugf("[socket] chmod 0660 OK: %s", socketPath)
 
-	// If running as root, chown socket to <uid>:linuxio so server (group linuxio) can connect.
+	// If running as root, chown socket to <uid>:linuxio-bridge-socket so server can connect.
 	if os.Geteuid() == 0 {
 		uid, err := strconv.Atoi(uidStr)
 		if err != nil {
@@ -627,7 +627,7 @@ func createAndOwnSocket(socketPath, uidStr string) (net.Listener, error) {
 }
 
 func resolveLinuxioGID() int {
-	grp, err := user.LookupGroup("linuxio")
+	grp, err := user.LookupGroup("linuxio-bridge-socket")
 	if err != nil {
 		return 0
 	}
