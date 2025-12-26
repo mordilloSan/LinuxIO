@@ -8,12 +8,9 @@ After=linuxio-auth.socket
 ExecStart=/usr/local/bin/linuxio-auth-helper
 Restart=on-failure
 RestartSec=5s
-
-# Runs as root (required for PAM authentication)
-# Minimal hardening like cockpit-session@.service because:
-# - Child bridge processes inherit restrictions
-# - Bridge needs full network/system access for WireGuard, etc.
-# - Security comes from: PAM auth, per-user bridge isolation, socket permissions
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/run/linuxio
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+#!/bin/bash
+# LinuxIO issue banner generator - shows access URLs at SSH login
+# Called by linuxio.socket via ExecStartPost
+
+set -euo pipefail
+
+# Extract port from linuxio.socket unit file
+# Check in order: env var, /etc, /usr/lib, /lib
+if [[ -n "${SOCKET_FILE:-}" && -f "$SOCKET_FILE" ]]; then
+    : # Use env var if set
+elif [[ -f "/etc/systemd/system/linuxio.socket" ]]; then
+    SOCKET_FILE="/etc/systemd/system/linuxio.socket"
+elif [[ -f "/usr/lib/systemd/system/linuxio.socket" ]]; then
+    SOCKET_FILE="/usr/lib/systemd/system/linuxio.socket"
+elif [[ -f "/lib/systemd/system/linuxio.socket" ]]; then
+    SOCKET_FILE="/lib/systemd/system/linuxio.socket"
+else
+    SOCKET_FILE=""
+fi
+
+PORT=8090  # Default fallback
+
+if [[ -n "$SOCKET_FILE" && -f "$SOCKET_FILE" ]]; then
+    # Parse ListenStream=0.0.0.0:PORT or ListenStream=PORT
+    LISTEN_STREAM=$(grep -E '^ListenStream=' "$SOCKET_FILE" | head -1 | sed 's/^ListenStream=//' | xargs || echo "")
+
+    # Extract port: either "IP:PORT" or just "PORT"
+    if [[ "$LISTEN_STREAM" =~ :([0-9]+)$ ]]; then
+        # Format: IP:PORT
+        PORT="${BASH_REMATCH[1]}"
+    elif [[ "$LISTEN_STREAM" =~ ^([0-9]+)$ ]]; then
+        # Format: PORT only
+        PORT="${BASH_REMATCH[1]}"
+    fi
+fi
+
+# Build the banner similar to Cockpit's format
+HOSTNAME=$(hostname 2>/dev/null || echo "localhost")
+URLS=()
+
+# Add hostname URL first
+URLS+=("https://${HOSTNAME}:${PORT}/")
+
+# Add first IPv4 address only
+FIRST_IPV4=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1 || true)
+if [[ -n "$FIRST_IPV4" ]]; then
+    URLS+=("https://${FIRST_IPV4}:${PORT}/")
+fi
+
+# Join URLs with " or "
+OUTPUT="LinuxIO: "
+FIRST=1
+for url in "${URLS[@]}"; do
+    if [[ $FIRST -eq 1 ]]; then
+        OUTPUT+="${url}"
+        FIRST=0
+    else
+        OUTPUT+=" or ${url}"
+    fi
+done
+
+# Write to file if running from systemd, otherwise print to stdout
+OUTPUT_FILE="${OUTPUT_FILE:-/run/linuxio/issue}"
+
+if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" != "-" ]]; then
+    # Ensure directory exists
+    mkdir -p "$(dirname "${OUTPUT_FILE}")" 2>/dev/null || true
+    # Write to file
+    echo "${OUTPUT}" > "${OUTPUT_FILE}"
+else
+    # Print to stdout for manual testing
+    echo "${OUTPUT}"
+    echo ""
+fi
