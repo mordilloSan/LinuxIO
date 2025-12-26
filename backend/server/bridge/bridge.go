@@ -1,7 +1,6 @@
 package bridge
 
 import (
-	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -73,9 +72,8 @@ func validateBridgeHash(bridgePath string) error {
 	return nil
 }
 
-// StartBridge launches linuxio-bridge via the auth daemon or setuid helper.
-// Tries the auth daemon first (if available), falls back to exec mode.
-// Returns (privilegedMode, error). privilegedMode reflects the helper's decision.
+// StartBridge launches linuxio-bridge via the auth daemon.
+// Returns (privilegedMode, error). privilegedMode reflects the daemon's decision.
 func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
 	// Resolve bridge binary (helper also validates)
 	if bridgeBinary == "" {
@@ -90,235 +88,27 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		return false, fmt.Errorf("bridge security validation failed: %w", err)
 	}
 
-	// Try auth daemon first (new architecture)
-	if DaemonAvailable() {
-		logger.Debugf("Auth daemon available, using socket-based auth")
-		req := BuildRequest(
-			sess.User.Username,
-			password,
-			sess.SessionID,
-			sess.SocketPath,
-			sess.BridgeSecret,
-			bridgeBinary,
-			strings.ToLower(envMode),
-			verbose,
-		)
-		privileged, err := Authenticate(req)
-		if err == nil {
-			logger.InfoKV("bridge launch via daemon acknowledged", "user", sess.User.Username, "privileged", privileged)
-			return privileged, nil
-		}
-		// Log the daemon error and fall back to exec mode
-		logger.WarnKV("auth daemon failed, falling back to exec mode", "error", err)
+	if !DaemonAvailable() {
+		return false, errors.New("auth daemon not available")
 	}
 
-	// Fall back to exec-based auth helper (legacy mode)
-	return startBridgeExec(sess, password, envMode, verbose, bridgeBinary)
-}
-
-// startBridgeExec launches linuxio-bridge via exec of the setuid helper (legacy mode).
-func startBridgeExec(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
-	helperPath := getAuthHelperPath()
-	if helperPath == "" {
-		return false, fmt.Errorf("auth helper not found; expected %s or LINUXIO_AUTH_PATH override", config.AuthHelperPath)
-	}
-
-	logger.Debugf("Using bridge binary: %s", bridgeBinary)
-	logger.Debugf("Using auth helper (exec mode): %s", helperPath)
-
-	// Create pipe for bridge logs in development mode
-	var logPipeR, logPipeW *os.File
-	if strings.ToLower(envMode) == config.EnvDevelopment {
-		var err error
-		logPipeR, logPipeW, err = os.Pipe()
-		if err != nil {
-			logger.Warnf("Failed to create log pipe: %v (falling back to file logging)", err)
-		} else {
-			// Start goroutine to read bridge logs and display them
-			go func() {
-				defer logPipeR.Close()
-				scanner := bufio.NewScanner(logPipeR)
-				for scanner.Scan() {
-					fmt.Printf("[bridge] %s\n", scanner.Text())
-				}
-				if err := scanner.Err(); err != nil {
-					logger.Debugf("Bridge log pipe scanner error: %v", err)
-				}
-			}()
-		}
-	}
-
-	// Build env for the helper (helper now decides privilege itself)
-	env := append(os.Environ(),
-		"LINUXIO_ENV="+strings.ToLower(envMode),
-		"LINUXIO_BRIDGE_BIN="+bridgeBinary,
-		"LINUXIO_SESSION_ID="+sess.SessionID,
-		"LINUXIO_SESSION_USER="+sess.User.Username,
-		"LINUXIO_BRIDGE_SECRET="+sess.BridgeSecret,
-		"LINUXIO_SOCKET_PATH="+sess.SocketPath,
+	logger.Debugf("Auth daemon available, using socket-based auth")
+	req := BuildRequest(
+		sess.User.Username,
+		password,
+		sess.SessionID,
+		sess.SocketPath,
+		sess.BridgeSecret,
+		bridgeBinary,
+		strings.ToLower(envMode),
+		verbose,
 	)
-	if verbose {
-		env = append(env, "LINUXIO_VERBOSE=1")
-	}
-	if v := os.Getenv("LINUXIO_SERVER_BASE_URL"); v != "" {
-		env = append(env, "LINUXIO_SERVER_BASE_URL="+v)
-	}
-	if v := os.Getenv("LINUXIO_SERVER_CERT"); v != "" {
-		env = append(env, "LINUXIO_SERVER_CERT="+v)
-	}
-	// Pass log pipe FD if available
-	// ExtraFiles start at FD 3, so logPipeW will be FD 3 in the auth-helper
-	// Auth-helper will dup it to a higher FD before using FD 3 for bootstrap
-	if logPipeW != nil {
-		env = append(env, "LINUXIO_LOG_FD=3")
-	}
-
-	cmd := exec.Command(helperPath)
-	cmd.Env = env
-	// Pass the log pipe as an extra file descriptor (becomes FD 3 in auth-helper)
-	if logPipeW != nil {
-		cmd.ExtraFiles = []*os.File{logPipeW}
-	}
-
-	stdout, err := cmd.StdoutPipe()
+	privileged, err := Authenticate(req)
 	if err != nil {
-		return false, fmt.Errorf("helper stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return false, fmt.Errorf("helper stderr pipe: %w", err)
-	}
-	// If your helper expects one line of password (or an empty line), just:
-	if password == "" {
-		cmd.Stdin = strings.NewReader("\n") // harmless if helper ignores it
-	} else {
-		cmd.Stdin = strings.NewReader(password + "\n")
+		return false, fmt.Errorf("auth daemon failed: %w", err)
 	}
 
-	if err := cmd.Start(); err != nil {
-		if logPipeW != nil {
-			logPipeW.Close()
-		}
-		return false, fmt.Errorf("start helper: %w", err)
-	}
-
-	// Setup cleanup for log pipe on error paths
-	var bridgeStarted bool
-	defer func() {
-		if !bridgeStarted && logPipeW != nil {
-			logPipeW.Close()
-		}
-	}()
-
-	// Read first line = MODE=...
-	br := bufio.NewReader(stdout)
-
-	readLine := func(timeout time.Duration) (string, error) {
-		type res struct {
-			s string
-			e error
-		}
-		ch := make(chan res, 1)
-		go func() {
-			line, e := br.ReadString('\n')
-			ch <- res{line, e}
-		}()
-		select {
-		case r := <-ch:
-			return strings.TrimSpace(r.s), r.e
-		case <-time.After(timeout):
-			return "", fmt.Errorf("timeout waiting for helper line")
-		}
-	}
-
-	// capture stderr for diagnostics (non-blocking)
-	seCh := make(chan string, 1)
-	go func() {
-		b, _ := io.ReadAll(stderr)
-		seCh <- strings.TrimSpace(string(b))
-	}()
-
-	// Expect MODE line, then OK
-	modeLine, e1 := readLine(2 * time.Second)
-	if e1 != nil && e1 != io.EOF {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		var serr string
-		select {
-		case serr = <-seCh:
-		default:
-		}
-		if serr != "" {
-			return false, fmt.Errorf("helper mode read error: %v (%s)", e1, serr)
-		}
-		return false, fmt.Errorf("helper mode read error: %v", e1)
-	}
-
-	privileged := false
-	if strings.HasPrefix(modeLine, "MODE=") {
-		if strings.EqualFold(modeLine, "MODE=privileged") {
-			privileged = true
-		} else {
-			privileged = false
-		}
-		// read the next line for OK
-		okLine, e2 := readLine(2 * time.Second)
-		if e2 != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			var serr string
-			select {
-			case serr = <-seCh:
-			default:
-			}
-			if serr != "" {
-				return false, fmt.Errorf("helper did not confirm OK: %v (%s)", e2, serr)
-			}
-			return false, fmt.Errorf("helper did not confirm OK: %v", e2)
-		}
-		if okLine != "OK" {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			var serr string
-			select {
-			case serr = <-seCh:
-			default:
-			}
-			if serr != "" {
-				return false, fmt.Errorf("helper did not confirm: %q (%s)", okLine, serr)
-			}
-			return false, fmt.Errorf("helper did not confirm: %q", okLine)
-		}
-	} else {
-		// Unexpected first line
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		var serr string
-		select {
-		case serr = <-seCh:
-		default:
-		}
-		if serr != "" {
-			return false, fmt.Errorf("unexpected helper output: %q (%s)", modeLine, serr)
-		}
-		return false, fmt.Errorf("unexpected helper output: %q", modeLine)
-	}
-
-	// Reap the parent helper (nanny owns bridge)
-	if err := cmd.Wait(); err != nil {
-		logger.WarnKV("auth helper exited non-zero after OK", "error", err)
-	}
-
-	// Mark bridge as successfully started before closing our copy of the log pipe FD
-	bridgeStarted = true
-
-	// Close the write end of the log pipe now that the bridge has inherited it
-	// This ensures the pipe reader will get EOF when the bridge exits
-	if logPipeW != nil {
-		logPipeW.Close()
-	}
-
-	logger.InfoKV("bridge launch acknowledged (exec mode)", "user", sess.User.Username, "privileged", privileged)
+	logger.InfoKV("bridge launch via daemon acknowledged", "user", sess.User.Username, "privileged", privileged)
 	return privileged, nil
 }
 
@@ -558,17 +348,4 @@ func isExec(p string) bool {
 		return false
 	}
 	return st.Mode()&0o111 != 0
-}
-
-func getAuthHelperPath() string {
-	if v := os.Getenv("LINUXIO_AUTH_PATH"); v != "" && isExec(v) {
-		return v
-	}
-	if isExec(config.AuthHelperPath) {
-		return config.AuthHelperPath
-	}
-	if p, err := exec.LookPath("linuxio-auth"); err == nil && isExec(p) {
-		return p
-	}
-	return ""
 }
