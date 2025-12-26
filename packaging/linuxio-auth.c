@@ -1,4 +1,4 @@
-// /usr/local/bin/linuxio-auth-helper  (install 0755 root:root, runs via systemd)
+// /usr/local/bin/linuxio-auth  (install 0755 root:root, runs via systemd)
 // Daemon mode: listen on /run/linuxio/auth.sock for JSON auth requests
 // Dev mode: set LINUXIO_AUTH_SOCKET env var for custom socket path
 #define __STDC_WANT_LIB_EXT1__ 1
@@ -121,9 +121,9 @@ static void journal_errorf(const char *fmt, ...)
   va_end(ap);
 #ifdef HAVE_SD_JOURNAL
   (void)sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_ERR,
-                        "SYSLOG_IDENTIFIER=linuxio-auth-helper", NULL);
+                        "SYSLOG_IDENTIFIER=linuxio-auth", NULL);
 #else
-  openlog("linuxio-auth-helper", LOG_PID, LOG_AUTHPRIV);
+  openlog("linuxio-auth", LOG_PID, LOG_AUTHPRIV);
   syslog(LOG_ERR, "%s", buf);
   closelog();
 #endif
@@ -138,9 +138,9 @@ static void journal_infof(const char *fmt, ...)
   va_end(ap);
 #ifdef HAVE_SD_JOURNAL
   (void)sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_INFO,
-                        "SYSLOG_IDENTIFIER=linuxio-auth-helper", NULL);
+                        "SYSLOG_IDENTIFIER=linuxio-auth", NULL);
 #else
-  openlog("linuxio-auth-helper", LOG_PID, LOG_AUTHPRIV);
+  openlog("linuxio-auth", LOG_PID, LOG_AUTHPRIV);
   syslog(LOG_INFO, "%s", buf);
   closelog();
 #endif
@@ -1494,7 +1494,7 @@ static void handle_client(int client_fd)
 // Main daemon loop
 static int run_daemon_mode(void)
 {
-  journal_infof("linuxio-auth-helper starting in daemon mode");
+  journal_infof("linuxio-auth starting in daemon mode");
 
   int listen_fd = -1;
   int dev_mode = 0;

@@ -14,7 +14,7 @@ const (
 // Installation paths (production)
 const (
 	BinDir         = "/usr/local/bin"
-	AuthHelperPath = BinDir + "/linuxio-auth-helper"
+	AuthHelperPath = BinDir + "/linuxio-auth"
 )
 
 // Development paths

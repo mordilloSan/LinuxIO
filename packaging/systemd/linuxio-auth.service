@@ -5,7 +5,7 @@ Requires=linuxio-auth.socket
 After=linuxio-auth.socket
 
 [Service]
-ExecStart=/usr/local/bin/linuxio-auth-helper
+ExecStart=/usr/local/bin/linuxio-auth
 Restart=on-failure
 RestartSec=5s
 PrivateTmp=true

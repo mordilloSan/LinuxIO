@@ -50,7 +50,7 @@ download_binaries() {
     local files=(
         "linuxio"
         "linuxio-bridge"
-        "linuxio-auth-helper"
+        "linuxio-auth"
         "SHA256SUMS"
     )
 
@@ -116,11 +116,11 @@ install_binaries() {
     mkdir -p "$BIN_DIR"
 
     # Define binaries with their permissions
-    # linuxio-auth-helper needs setuid (4755) to run as root
+    # linuxio-auth needs setuid (4755) to run as root
     local -A binaries=(
         ["linuxio"]="0755"
         ["linuxio-bridge"]="0755"
-        ["linuxio-auth-helper"]="4755"
+        ["linuxio-auth"]="4755"
     )
 
     for binary in "${!binaries[@]}"; do
@@ -382,11 +382,11 @@ verify_installation() {
     fi
 
     # Check setuid bit on auth-helper
-    local auth_helper="${BIN_DIR}/linuxio-auth-helper"
+    local auth_helper="${BIN_DIR}/linuxio-auth"
     if [[ -u "$auth_helper" ]]; then
-        log_ok "linuxio-auth-helper: setuid bit is set"
+        log_ok "linuxio-auth: setuid bit is set"
     else
-        log_warn "linuxio-auth-helper: setuid bit NOT set (may affect authentication)"
+        log_warn "linuxio-auth: setuid bit NOT set (may affect authentication)"
     fi
 
     # Check systemd services
@@ -564,11 +564,11 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  • Binaries:     /usr/local/bin/linuxio, linuxio-bridge, linuxio-auth-helper
+  • Binaries:     /usr/local/bin/linuxio, linuxio-bridge, linuxio-auth
   • Systemd:      /etc/systemd/system/linuxio.service, linuxio.socket
   • PAM:          /etc/pam.d/linuxio
   • Config:       /etc/linuxio/disallowed-users
-  • Account:      linuxio system user and group (for service and auth-helper)
+  • Account:      linuxio system user and group (for service and auth)
 
 Examples:
   $(basename "$0")                 # Install latest release

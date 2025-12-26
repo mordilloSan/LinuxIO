@@ -120,7 +120,7 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 func startBridgeExec(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
 	helperPath := getAuthHelperPath()
 	if helperPath == "" {
-		return false, fmt.Errorf("auth helper not found; expected %s or LINUXIO_PAM_HELPER override", config.AuthHelperPath)
+		return false, fmt.Errorf("auth helper not found; expected %s or LINUXIO_AUTH_PATH override", config.AuthHelperPath)
 	}
 
 	logger.Debugf("Using bridge binary: %s", bridgeBinary)
@@ -561,13 +561,13 @@ func isExec(p string) bool {
 }
 
 func getAuthHelperPath() string {
-	if v := os.Getenv("LINUXIO_PAM_HELPER"); v != "" && isExec(v) {
+	if v := os.Getenv("LINUXIO_AUTH_PATH"); v != "" && isExec(v) {
 		return v
 	}
 	if isExec(config.AuthHelperPath) {
 		return config.AuthHelperPath
 	}
-	if p, err := exec.LookPath("linuxio-auth-helper"); err == nil && isExec(p) {
+	if p, err := exec.LookPath("linuxio-auth"); err == nil && isExec(p) {
 		return p
 	}
 	return ""

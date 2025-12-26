@@ -68,7 +68,7 @@ sudo -u "$BUILD_USER" env -i \
   make -C "$SRC_DIR" build-bridge build-auth-helper
 
 # Ensure artifacts exist in repo root
-for f in linuxio-bridge linuxio-auth-helper; do
+for f in linuxio-bridge linuxio-auth; do
   [[ -f "$SRC_DIR/$f" ]] || { echo "Missing after build: $SRC_DIR/$f"; exit 1; }
 done
 
@@ -79,16 +79,16 @@ $SUDO_CMD chown root:root "$SECURE_DEV_DIR"
 $SUDO_CMD chmod 0755 "$SECURE_DEV_DIR"
 
 echo "==> Installing dev bridge + helper to system location"
-$SUDO_CMD install -o root -g root -m 0755 "$SRC_DIR/linuxio-bridge"      "$SECURE_DEV_DIR/linuxio-bridge"
-$SUDO_CMD install -o root -g root -m 4755 "$SRC_DIR/linuxio-auth-helper" "$SECURE_DEV_DIR/linuxio-auth-helper"
+$SUDO_CMD install -o root -g root -m 0755 "$SRC_DIR/linuxio-bridge"  "$SECURE_DEV_DIR/linuxio-bridge"
+$SUDO_CMD install -o root -g root -m 4755 "$SRC_DIR/linuxio-auth"    "$SECURE_DEV_DIR/linuxio-auth"
 
 echo "==> System enclave contents:"
-ls -l "$SECURE_DEV_DIR/linuxio-bridge" "$SECURE_DEV_DIR/linuxio-auth-helper"
+ls -l "$SECURE_DEV_DIR/linuxio-bridge" "$SECURE_DEV_DIR/linuxio-auth"
 
 # Cleanup build artifacts in repo root (keep /tmp/linuxio/dev copies)
 if [[ "${KEEP_ARTIFACTS:-0}" != "1" ]]; then
   echo "==> Removing repo-root build artifacts"
-  for f in linuxio-bridge linuxio-auth-helper; do
+  for f in linuxio-bridge linuxio-auth; do
     p="$SRC_DIR/$f"
     if [[ -f "$p" ]]; then
       rm -f -- "$p"
