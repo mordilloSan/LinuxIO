@@ -308,34 +308,6 @@ static void drop_to_user(const struct passwd *pw)
   }
 }
 
-// -------- read line from stdin - (with optional timeout)
-static char *readline_stdin(size_t max)
-{
-  char *buf = malloc(max);
-  if (!buf)
-    return NULL;
-  size_t i = 0;
-  int c;
-  while (i + 1 < max && (c = fgetc(stdin)) != EOF && c != '\n')
-    buf[i++] = (char)c;
-  buf[i] = '\0';
-  return buf;
-}
-
-static char *readline_stdin_timeout(size_t max, int timeout_sec)
-{
-  if (timeout_sec <= 0)
-    return readline_stdin(max);
-  fd_set fds;
-  FD_ZERO(&fds);
-  FD_SET(STDIN_FILENO, &fds);
-  struct timeval tv = {.tv_sec = timeout_sec, .tv_usec = 0};
-  int r = select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
-  if (r <= 0)
-    return NULL;
-  return readline_stdin(max);
-}
-
 static int env_get_int(const char *name, int defval, int minv, int maxv)
 {
   const char *s = getenv(name);
@@ -797,41 +769,6 @@ static int run_cmd_as_user_with_input(const struct passwd *pw, const char *const
   return -1;
 }
 
-// Lock password memory
-static char *get_password_locked(int *locked_out)
-{
-  char *password = NULL;
-  *locked_out = 0;
-
-  const char *env_pw = getenv("LINUXIO_PASSWORD");
-  if (env_pw && *env_pw)
-  {
-    password = safe_getenv_strdup("LINUXIO_PASSWORD", 1024);
-    unsetenv("LINUXIO_PASSWORD");
-  }
-  else
-  {
-    int pw_to = env_get_int("LINUXIO_PASSWORD_TIMEOUT", 10, 1, 60);
-    password = readline_stdin_timeout(1024, pw_to);
-  }
-
-  if (password)
-  {
-    // Lock memory to prevent swapping
-    if (mlock(password, strlen(password)) != 0)
-    {
-      // Not fatal, but log it
-      journal_errorf("mlock password failed: %m");
-    }
-    else
-    {
-      *locked_out = 1;
-    }
-  }
-
-  return password;
-}
-
 static int user_has_sudo(const struct passwd *pw, const char *password, int *out_nopasswd)
 {
   // We don't currently differentiate NOPASSWD vs PASSWD in the rest of the code,
@@ -867,46 +804,6 @@ static int user_has_sudo(const struct passwd *pw, const char *password, int *out
   }
 
   return 0;
-}
-
-// Remount all read-only filesystems as read-write
-// Parses /proc/mounts to find ro mounts and remounts them rw
-static void remount_all_rw(void)
-{
-  FILE *f = fopen("/proc/mounts", "r");
-  if (!f)
-    return;
-
-  char line[4096];
-  while (fgets(line, sizeof(line), f))
-  {
-    // Format: device mountpoint fstype options ...
-    char device[512], mountpoint[512], fstype[64], options[1024];
-    if (sscanf(line, "%511s %511s %63s %1023s", device, mountpoint, fstype, options) < 4)
-      continue;
-
-    // Skip special filesystems
-    if (strcmp(fstype, "proc") == 0 || strcmp(fstype, "sysfs") == 0 ||
-        strcmp(fstype, "devtmpfs") == 0 || strcmp(fstype, "devpts") == 0 ||
-        strcmp(fstype, "tmpfs") == 0 || strcmp(fstype, "cgroup") == 0 ||
-        strcmp(fstype, "cgroup2") == 0 || strcmp(fstype, "securityfs") == 0 ||
-        strcmp(fstype, "debugfs") == 0 || strcmp(fstype, "tracefs") == 0 ||
-        strcmp(fstype, "fusectl") == 0 || strcmp(fstype, "configfs") == 0 ||
-        strcmp(fstype, "pstore") == 0 || strcmp(fstype, "bpf") == 0 ||
-        strcmp(fstype, "hugetlbfs") == 0 || strcmp(fstype, "mqueue") == 0 ||
-        strcmp(fstype, "efivarfs") == 0)
-      continue;
-
-    // Check if mounted read-only
-    if (strstr(options, "ro,") != NULL || strstr(options, ",ro,") != NULL ||
-        strstr(options, ",ro") != NULL || strcmp(options, "ro") == 0)
-    {
-      // Remount as read-write (best effort)
-      (void)mount(NULL, mountpoint, NULL, MS_REMOUNT | MS_BIND, NULL);
-    }
-  }
-
-  fclose(f);
 }
 
 // Resource limits for the bridge
@@ -1167,6 +1064,7 @@ static void handle_client(int client_fd)
   if (total == 0)
   {
     send_response(client_fd, "error", "empty request", NULL, NULL);
+    secure_bzero(reqbuf, sizeof(reqbuf));
     return;
   }
 
@@ -1192,6 +1090,7 @@ static void handle_client(int client_fd)
   json_get_string(reqbuf, "secret", secret, sizeof(secret));
   json_get_string(reqbuf, "server_base_url", server_base_url, sizeof(server_base_url));
   json_get_string(reqbuf, "server_cert", server_cert, sizeof(server_cert));
+  secure_bzero(reqbuf, sizeof(reqbuf));
 
   // Validate required fields
   if (!user[0] || !session_id[0] || !socket_path[0])
@@ -1465,11 +1364,41 @@ static void handle_client(int client_fd)
 
     if (WIFSIGNALED(status))
     {
-      journal_errorf("bridge killed by signal %d", WTERMSIG(status));
+      int sig = WTERMSIG(status);
+      const char *sig_name = strsignal(sig);
+      char limit_reason_buf[256];
+      const char *limit_reason = limit_reason_for_signal(sig, limit_reason_buf, sizeof(limit_reason_buf));
+
+      if (limit_reason)
+      {
+        journal_errorf(
+            "bridge killed by signal %d (%s): %s; "
+            "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
+            sig, sig_name ? sig_name : "unknown", limit_reason,
+            (long long)ru.ru_maxrss,
+            (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
+            (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
+      }
+      else
+      {
+        journal_errorf(
+            "bridge killed by signal %d (%s); "
+            "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
+            sig, sig_name ? sig_name : "unknown",
+            (long long)ru.ru_maxrss,
+            (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
+            (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
+      }
     }
     else if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
     {
-      journal_errorf("bridge exited with status %d", WEXITSTATUS(status));
+      journal_errorf(
+          "bridge exited with status %d; "
+          "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
+          WEXITSTATUS(status),
+          (long long)ru.ru_maxrss,
+          (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
+          (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
     }
 
     pam_close_session(pamh, 0);
@@ -1582,521 +1511,3 @@ static int write_all(int fd, const void *buf, size_t len)
   }
   return 0;
 }
-
-// ============================================================================
-// LEGACY SINGLE-SHOT MODE (kept for reference, not used)
-// ============================================================================
-#if 0
-static int run_single_shot_mode(void)
-{
-  char *user = safe_getenv_strdup("LINUXIO_SESSION_USER", MAX_USERNAME_LEN);
-  if (!user)
-  {
-    log_stderrf("missing or invalid LINUXIO_SESSION_USER");
-    return 2;
-  }
-
-  // FIX #6: Get password with memory locking
-  int pw_locked = 0;
-  char *password = get_password_locked(&pw_locked);
-  if (!password || !*password)
-  {
-    log_stderrf("missing password");
-    if (password)
-    {
-      if (pw_locked)
-        munlock(password, strlen(password));
-      secure_bzero(password, strlen(password));
-      free(password);
-    }
-    free(user);
-    return 2;
-  }
-
-  // PAM auth
-  struct pam_conv conv = {pam_conv_func, (void *)password};
-  pam_handle_t *pamh = NULL;
-  int rc = pam_start("linuxio", user, &conv, &pamh);
-  if (rc != PAM_SUCCESS)
-  {
-    log_stderrf("pam_start: %s", pam_strerror(NULL, rc));
-    if (pw_locked)
-      munlock(password, strlen(password));
-    secure_bzero(password, strlen(password));
-    free(password);
-    free(user);
-    return 5;
-  }
-  (void)pam_set_item(pamh, PAM_RHOST, "web");
-  rc = pam_authenticate(pamh, 0);
-  if (rc == PAM_SUCCESS)
-    rc = pam_acct_mgmt(pamh, 0);
-  if (rc == PAM_SUCCESS)
-    rc = pam_setcred(pamh, PAM_ESTABLISH_CRED);
-  if (rc != PAM_SUCCESS)
-  {
-    log_stderrf("%s", pam_strerror(pamh, rc));
-    pam_end(pamh, rc);
-    if (pw_locked)
-      munlock(password, strlen(password));
-    secure_bzero(password, strlen(password));
-    free(password);
-    free(user);
-    return 1;
-  }
-
-  // NOTE: Don't open session yet - will do in nanny child
-
-  struct passwd *pw = getpwnam(user);
-  if (!pw)
-  {
-    perror("getpwnam");
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    if (pw_locked)
-      munlock(password, strlen(password));
-    secure_bzero(password, strlen(password));
-    free(password);
-    free(user);
-    return 5;
-  }
-
-  journal_infof("PAM authentication successful for user '%s' (uid=%u, gid=%u)",
-                user, (unsigned)pw->pw_uid, (unsigned)pw->pw_gid);
-
-  gid_t linuxio_gid = 0;
-  if (ensure_runtime_dirs(pw, &linuxio_gid) != 0)
-  {
-    log_stderrf("prepare runtime dir failed");
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    if (pw_locked)
-      munlock(password, strlen(password));
-    secure_bzero(password, strlen(password));
-    free(password);
-    free(user);
-    return 5;
-  }
-
-  int want_privileged = 0, nopasswd = 0;
-  want_privileged = user_has_sudo(pw, password, &nopasswd) ? 1 : 0;
-
-  // Read env inputs (bounded)
-  char *envmode_in = safe_getenv_strdup("LINUXIO_ENV", 128);
-  char *bridge_in = safe_getenv_strdup("LINUXIO_BRIDGE_BIN", MAX_PATH_LEN);
-  char *sess_id = safe_getenv_strdup("LINUXIO_SESSION_ID", 256);
-  char *sess_user = safe_getenv_strdup("LINUXIO_SESSION_USER", MAX_USERNAME_LEN);
-  char *sess_secret = safe_getenv_strdup("LINUXIO_BRIDGE_SECRET", MAX_ENV_VALUE_LEN);
-  char *server_base = safe_getenv_strdup("LINUXIO_SERVER_BASE_URL", MAX_ENV_VALUE_LEN);
-  char *server_cert = safe_getenv_strdup("LINUXIO_SERVER_CERT", MAX_ENV_VALUE_LEN);
-  char *verbose_in = safe_getenv_strdup("LINUXIO_VERBOSE", 16);
-  char *socket_path_env = safe_getenv_strdup("LINUXIO_SOCKET_PATH", MAX_PATH_LEN);
-  char *log_fd_str = safe_getenv_strdup("LINUXIO_LOG_FD", 16);
-
-  const char *envmode = (envmode_in && *envmode_in) ? envmode_in : "production";
-  int log_fd = -1;
-  if (log_fd_str && *log_fd_str)
-  {
-    char *end = NULL;
-    long fd_val = strtol(log_fd_str, &end, 10);
-    if (end && !*end && fd_val >= 0 && fd_val < 1024)
-    {
-      log_fd = (int)fd_val;
-      // Move log FD to a higher number (FD 10) so FD 3 is available for bootstrap
-      int new_log_fd = dup(log_fd);
-      if (new_log_fd >= 0)
-      {
-        close(log_fd);
-        log_fd = new_log_fd;
-        // Remove CLOEXEC so it survives fork/exec
-        int flags = fcntl(log_fd, F_GETFD);
-        if (flags >= 0)
-        {
-          fcntl(log_fd, F_SETFD, flags & ~FD_CLOEXEC);
-        }
-      }
-    }
-  }
-  const char *bridge_path = (bridge_in && *bridge_in) ? bridge_in : "/usr/local/bin/linuxio-bridge";
-  if (bridge_path[0] != '/')
-  {
-    log_stderrf("bridge path must be absolute");
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    if (pw_locked)
-      munlock(password, strlen(password));
-    secure_bzero(password, strlen(password));
-    free(password);
-    free(user);
-    free(envmode_in);
-    free(bridge_in);
-    free(sess_id);
-    free(sess_user);
-    free(sess_secret);
-    free(server_base);
-    free(server_cert);
-    free(verbose_in);
-    free(socket_path_env);
-    free(log_fd_str);
-    return 5;
-  }
-
-  // Wipe password after sudo probe
-  if (pw_locked)
-    munlock(password, strlen(password));
-  secure_bzero(password, strlen(password));
-  free(password);
-  password = NULL;
-
-  int verbose = 0;
-  if (verbose_in && *verbose_in)
-  {
-    if (!strcasecmp(verbose_in, "1") || !strcasecmp(verbose_in, "true") ||
-        !strcasecmp(verbose_in, "yes") || !strcasecmp(verbose_in, "on"))
-      verbose = 1;
-  }
-
-  // Bridge validation
-  int bridge_fd = -1;
-  if (!want_privileged)
-  {
-    if (open_and_validate_bridge(bridge_path, pw->pw_uid, &bridge_fd) != 0)
-    {
-      if (open_and_validate_bridge(bridge_path, 0, &bridge_fd) != 0)
-      {
-        log_stderrf("bridge validation failed");
-        pam_setcred(pamh, PAM_DELETE_CRED);
-        pam_end(pamh, 0);
-        free(user);
-        free(envmode_in);
-        free(bridge_in);
-        free(sess_id);
-        free(sess_user);
-        free(sess_secret);
-        free(server_base);
-        free(server_cert);
-        free(verbose_in);
-        free(socket_path_env);
-    free(log_fd_str);
-        return 5;
-      }
-    }
-  }
-  else
-  {
-    if (open_and_validate_bridge(bridge_path, 0, &bridge_fd) != 0)
-    {
-      log_stderrf("bridge validation failed");
-      pam_setcred(pamh, PAM_DELETE_CRED);
-      pam_end(pamh, 0);
-      free(user);
-      free(envmode_in);
-      free(bridge_in);
-      free(sess_id);
-      free(sess_user);
-      free(sess_secret);
-      free(server_base);
-      free(server_cert);
-      free(verbose_in);
-      free(socket_path_env);
-    free(log_fd_str);
-      return 5;
-    }
-  }
-
-  // Tell parent our mode
-  const char *mode = want_privileged ? "MODE=privileged\n" : "MODE=unprivileged\n";
-  (void)write_all(STDOUT_FILENO, mode, strlen(mode));
-
-  int boot_pipe[2];
-  if (pipe(boot_pipe) != 0)
-  {
-    perror("pipe");
-    close(bridge_fd);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    free(user);
-    free(envmode_in);
-    free(bridge_in);
-    free(sess_id);
-    free(sess_user);
-    free(sess_secret);
-    free(server_base);
-    free(server_cert);
-    free(verbose_in);
-    free(socket_path_env);
-    free(log_fd_str);
-    return 5;
-  }
-
-  pid_t nanny = fork();
-  if (nanny < 0)
-  {
-    perror("fork nanny");
-    close(bridge_fd);
-    close(boot_pipe[0]);
-    close(boot_pipe[1]);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    free(user);
-    free(envmode_in);
-    free(bridge_in);
-    free(sess_id);
-    free(sess_user);
-    free(sess_secret);
-    free(server_base);
-    free(server_cert);
-    free(verbose_in);
-    free(socket_path_env);
-    free(log_fd_str);
-    return 5;
-  }
-
-  if (nanny == 0)
-  {
-    // Open PAM session in nanny child
-    rc = pam_open_session(pamh, 0);
-    if (rc != PAM_SUCCESS)
-    {
-      log_stderrf("open_session: %s", pam_strerror(pamh, rc));
-      pam_setcred(pamh, PAM_DELETE_CRED);
-      pam_end(pamh, 0);
-      _exit(5);
-    }
-
-    pid_t child = fork();
-    if (child < 0)
-    {
-      perror("fork bridge");
-      close(bridge_fd);
-      pam_close_session(pamh, 0);
-      pam_setcred(pamh, PAM_DELETE_CRED);
-      pam_end(pamh, 0);
-      _exit(5);
-    }
-
-    if (child == 0)
-    {
-      // Bridge child
-      close(boot_pipe[1]);
-      if (dup2(boot_pipe[0], 3) < 0)
-        _exit(127);
-      if (fcntl(3, F_SETFD, 0) < 0)
-        _exit(127);
-      close(boot_pipe[0]);
-
-      umask(077);
-
-      // Apply resource limits here in bridge child
-      set_resource_limits();
-
-      if (want_privileged)
-      {
-        // Escape parent's mount namespace (systemd's ProtectSystem=strict)
-        // This gives the privileged bridge full filesystem access
-        if (unshare(CLONE_NEWNS) != 0)
-        {
-          log_stderrf("unshare(CLONE_NEWNS) failed: %m");
-          _exit(127);
-        }
-
-        // Make mount tree private so our changes don't propagate to parent
-        if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0)
-        {
-          log_stderrf("mount MS_PRIVATE failed: %m");
-          _exit(127);
-        }
-
-        // Remount all read-only paths as read-write to escape ProtectSystem=strict
-        remount_all_rw();
-
-        clearenv();
-        setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
-        setenv("LANG", "C", 1);
-        setenv("LC_ALL", "C", 1);
-        setenv("HOME", "/root", 1);
-        setenv("USER", "root", 1);
-        setenv("LOGNAME", "root", 1);
-        if (setgroups(0, NULL) != 0)
-          _exit(127);
-        if (setresgid(0, 0, 0) != 0)
-          _exit(127);
-        if (setresuid(0, 0, 0) != 0)
-          _exit(127);
-      }
-      else
-      {
-        drop_to_user(pw);
-        clearenv();
-        setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
-        setenv("LANG", "C", 1);
-        setenv("LC_ALL", "C", 1);
-        if (pw)
-        {
-          setenv("HOME", pw->pw_dir, 1);
-          setenv("USER", pw->pw_name, 1);
-          setenv("LOGNAME", pw->pw_name, 1);
-          char xdg[64];
-          safe_snprintf(xdg, sizeof(xdg), "/run/user/%u", (unsigned)pw->pw_uid);
-          setenv("XDG_RUNTIME_DIR", xdg, 1);
-        }
-        if (chdir(pw->pw_dir) != 0)
-        {
-          log_stderrf("chdir(%s) failed: %m", pw->pw_dir);
-          _exit(127);
-        }
-      }
-
-      // Re-enable core dumps for the bridge process now that we're running
-      // under the target user. The helper disables dumpability early on to
-      // avoid leaking credentials, so we have to opt-in again here.
-      (void)prctl(PR_SET_DUMPABLE, 1);
-
-      if (verbose)
-        setenv("LINUXIO_VERBOSE", "1", 1);
-
-      // Redirect bridge output (bridge will use log_fd from bootstrap JSON if available)
-      (void)redirect_bridge_output(pw->pw_uid, linuxio_gid, sess_id);
-
-      const char *argv_child[5];
-      int ai = 0;
-      argv_child[ai++] = bridge_path;
-      argv_child[ai++] = "--env";
-      argv_child[ai++] = envmode;
-      if (verbose)
-        argv_child[ai++] = "--verbose";
-      argv_child[ai++] = NULL;
-
-      if (exec_bridge_via_fd(bridge_fd, bridge_path, argv_child) != 0)
-      {
-        perror("exec linuxio-bridge");
-      }
-      _exit(127);
-    }
-
-    // Nanny: build socket path
-    const char *sock = NULL;
-    char sockbuf[PATH_MAX];
-    if (valid_socket_path_for_uid(socket_path_env, pw->pw_uid))
-    {
-      sock = socket_path_env;
-    }
-    else
-    {
-      safe_snprintf(sockbuf, sizeof(sockbuf), "/run/linuxio/%u/linuxio-bridge-%s.sock",
-                    (unsigned)pw->pw_uid, (sess_id && *sess_id) ? sess_id : "nosessid");
-      sock = sockbuf;
-    }
-
-    // Write bootstrap JSON to bridge via FD 3
-    (void)write_bootstrap_json(boot_pipe[1],
-                               sess_id, sess_user, pw->pw_uid, pw->pw_gid,
-                               sess_secret, sock, server_base, server_cert,
-                               verbose, log_fd);
-    close(boot_pipe[1]);
-    close(bridge_fd);
-
-    int status = 0;
-    struct rusage ru;
-    memset(&ru, 0, sizeof(ru));
-
-    /* Wait for bridge child and capture resource usage */
-    while (wait4(child, &status, 0, &ru) < 0 && errno == EINTR)
-    {
-    }
-
-    if (WIFSIGNALED(status))
-    {
-      int sig = WTERMSIG(status);
-      const char *sigName = strsignal(sig);
-      char limit_reason_buf[256];
-      const char *limit_reason = limit_reason_for_signal(sig, limit_reason_buf, sizeof(limit_reason_buf));
-
-      if (limit_reason)
-      {
-        journal_errorf(
-            "bridge child killed by signal %d (%s): %s; "
-            "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
-            sig, sigName ? sigName : "unknown", limit_reason,
-            (long long)ru.ru_maxrss,
-            (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
-            (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
-      }
-      else
-      {
-        journal_errorf(
-            "bridge child killed by signal %d (%s); "
-            "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
-            sig, sigName ? sigName : "unknown",
-            (long long)ru.ru_maxrss,
-            (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
-            (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
-      }
-    }
-    else if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
-    {
-      journal_errorf(
-          "bridge child exited with status %d; "
-          "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
-          WEXITSTATUS(status),
-          (long long)ru.ru_maxrss,
-          (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
-          (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
-    }
-
-    int exitcode = WIFEXITED(status)
-                       ? WEXITSTATUS(status)
-                       : (WIFSIGNALED(status) ? 128 + WTERMSIG(status) : 1);
-
-    // Clean PAM session properly in nanny
-    (void)pam_close_session(pamh, 0);
-    (void)pam_setcred(pamh, PAM_DELETE_CRED);
-    (void)pam_end(pamh, 0);
-    _exit(exitcode);
-  }
-
-  // Original parent - close everything and exit
-  close(boot_pipe[0]);
-  close(boot_pipe[1]);
-  close(bridge_fd);
-  (void)write_all(STDOUT_FILENO, "OK\n", 3);
-  (void)close(STDIN_FILENO);
-  (void)close(STDOUT_FILENO);
-  (void)close(STDERR_FILENO);
-
-  // Cleanup
-  free(user);
-  free(envmode_in);
-  free(bridge_in);
-  free(sess_id);
-  free(sess_user);
-  free(sess_secret);
-  free(server_base);
-  free(server_cert);
-  free(verbose_in);
-  free(socket_path_env);
-    free(log_fd_str);
-
-  // Parent doesn't manage PAM anymore
-  _exit(0);
-}
-
-static int write_all(int fd, const void *buf, size_t len)
-{
-  const unsigned char *p = (const unsigned char *)buf;
-  while (len > 0)
-  {
-    ssize_t n = write(fd, p, len);
-    if (n < 0)
-    {
-      if (errno == EINTR)
-        continue;
-      return -1;
-    }
-    p += (size_t)n;
-    len -= (size_t)n;
-  }
-  return 0;
-}
-
-#endif // LEGACY SINGLE-SHOT MODE
