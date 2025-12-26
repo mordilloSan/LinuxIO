@@ -297,7 +297,7 @@ find_available_port() {
 install_systemd_files() {
     log_info "Installing systemd service files..."
 
-    for file in linuxio.socket linuxio.service; do
+    for file in linuxio.socket linuxio.service linuxio-issue.service; do
         log_info "Downloading ${file}..."
         if ! curl -fsSL "${RAW_BASE}/systemd/${file}" -o "${SYSTEMD_DIR}/${file}"; then
             log_error "Failed to download ${file}"
@@ -313,6 +313,22 @@ install_systemd_files() {
         log_warn "Port 8090 is in use, using port ${SELECTED_PORT} instead"
         sed -i "s/ListenStream=0.0.0.0:8090/ListenStream=0.0.0.0:${SELECTED_PORT}/" "${SYSTEMD_DIR}/linuxio.socket"
         log_ok "Updated socket to use port ${SELECTED_PORT}"
+    fi
+
+    # Install SSH login banner support
+    log_info "Installing SSH login banner support..."
+    mkdir -p /usr/share/linuxio/issue
+    if ! curl -fsSL "${RAW_BASE}/scripts/update-issue" -o /usr/share/linuxio/issue/update-issue; then
+        log_warn "Failed to download issue script (non-critical)"
+    else
+        chmod 0755 /usr/share/linuxio/issue/update-issue
+        # Create symlink for SSH login banner (motd.d)
+        if [[ -d /etc/motd.d ]]; then
+            ln -sf ../../run/linuxio/issue /etc/motd.d/linuxio 2>/dev/null || true
+            log_ok "SSH login banner configured"
+        else
+            log_info "No /etc/motd.d found, skipping login banner setup"
+        fi
     fi
 
     # Reload systemd

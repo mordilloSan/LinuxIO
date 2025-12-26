@@ -12,8 +12,8 @@ RestartSec=5s
 
 # Security hardening
 PrivateTmp=true
-ProtectSystem=full
-ProtectHome=no
+ProtectSystem=strict
+ProtectHome=yes
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
@@ -30,6 +30,8 @@ UMask=0027
 RemoveIPC=true
 SystemCallFilter=~@keyring @cpu-emulation @debug @module @obsolete @raw-io @reboot @swap
 SystemCallErrorNumber=EPERM
+PrivateIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target

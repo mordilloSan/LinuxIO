@@ -1,7 +1,9 @@
 [Unit]
 Description=Dynamic user for LinuxIO bridge sockets
 Documentation=https://github.com/mordilloSan/LinuxIO
-BindsTo=linuxio.service
+# PartOf provides stop propagation without circular dependency
+# (when linuxio.service stops, this unit stops too)
+PartOf=linuxio.service
 
 [Service]
 DynamicUser=yes
