@@ -1,4 +1,4 @@
-// Package authclient provides a client for the linuxio-auth-helper daemon.
+// Package authclient provides a client for the linuxio-auth daemon.
 package bridge
 
 import (
@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	// DefaultAuthSocketPath is the Unix socket where linuxio-auth-helper daemon listens
+	// DefaultAuthSocketPath is the Unix socket where linuxio-auth daemon listens
 	DefaultAuthSocketPath = "/run/linuxio/auth.sock"
 
 	// Timeouts for auth daemon communication

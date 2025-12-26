@@ -405,14 +405,14 @@ build-auth-helper:
 	  echo "⚠️  libsystemd-dev not found - bridge logs will go to /dev/null"; \
 	  echo "   Install with: sudo apt-get install libsystemd-dev"; \
 	fi; \
-	$(CC) $(CFLAGS) -o linuxio-auth-helper packaging/linuxio-auth-helper.c $(LDFLAGS) $$LIBS; \
-	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth-helper; fi; \
+	$(CC) $(CFLAGS) -o linuxio-auth packaging/linuxio-auth.c $(LDFLAGS) $$LIBS; \
+	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth; fi; \
 	echo "✅ Session helper built successfully!"; \
-	echo "📄 Path: $$PWD/linuxio-auth-helper"; \
-	echo "📊 Size: $$(du -h linuxio-auth-helper | cut -f1)"; \
-	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth-helper | awk '{ print $$1 }')"; \
+	echo "📄 Path: $$PWD/linuxio-auth"; \
+	echo "📊 Size: $$(du -h linuxio-auth | cut -f1)"; \
+	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth | awk '{ print $$1 }')"; \
 	if command -v checksec >/dev/null 2>&1; then \
-	  echo "🔎 checksec:"; checksec --file=linuxio-auth-helper || true; \
+	  echo "🔎 checksec:"; checksec --file=linuxio-auth || true; \
 	fi
 
 dev-prep:
@@ -450,7 +450,7 @@ dev: setup dev-prep devinstall
 	( \
 	  cd "$(BACKEND_DIR)"; \
 	  LINUXIO_ENV=development \
-	  LINUXIO_PAM_HELPER=/tmp/linuxio/dev/linuxio-auth-helper \
+	  LINUXIO_AUTH_PATH=/tmp/linuxio/dev/linuxio-auth \
 	  LINUXIO_BRIDGE_BIN=/tmp/linuxio/dev/linuxio-bridge \
 	  go run -ldflags "\
 	    -X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
@@ -507,13 +507,13 @@ devinstall:
 	@SECURE_DEV_DIR="/tmp/linuxio/dev"; \
 	NEED_INSTALL=0; \
 	\
-	if [ ! -f "$$SECURE_DEV_DIR/linuxio-bridge" ] || [ ! -f "$$SECURE_DEV_DIR/linuxio-auth-helper" ]; then \
+	if [ ! -f "$$SECURE_DEV_DIR/linuxio-bridge" ] || [ ! -f "$$SECURE_DEV_DIR/linuxio-auth" ]; then \
 	  echo "⚠️  Dev binaries not found in $$SECURE_DEV_DIR"; \
 	  NEED_INSTALL=1; \
-	elif [ ! -u "$$SECURE_DEV_DIR/linuxio-auth-helper" ]; then \
+	elif [ ! -u "$$SECURE_DEV_DIR/linuxio-auth" ]; then \
 	  echo "⚠️  Auth helper missing setuid bit"; \
 	  NEED_INSTALL=1; \
-	elif [ "packaging/linuxio-auth-helper.c" -nt "$$SECURE_DEV_DIR/linuxio-auth-helper" ]; then \
+	elif [ "packaging/linuxio-auth.c" -nt "$$SECURE_DEV_DIR/linuxio-auth" ]; then \
 	  echo "⚠️  Auth helper source is newer than installed binary"; \
 	  NEED_INSTALL=1; \
 	elif [ -d "$(BACKEND_DIR)" ] && find "$(BACKEND_DIR)" -name "*.go" -newer "$$SECURE_DEV_DIR/linuxio-bridge" 2>/dev/null | grep -q .; then \
@@ -548,7 +548,7 @@ run:
 clean:
 	@rm -f ./linuxio || true
 	@rm -f ./linuxio-bridge || true
-	@rm -f ./linuxio-auth-helper || true
+	@rm -f ./linuxio-auth || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
 	@rm -rf /tmp/linuxio/dev || true
