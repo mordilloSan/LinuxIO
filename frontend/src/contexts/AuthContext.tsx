@@ -215,23 +215,6 @@ function AuthProvider({ children }: AuthProviderProps) {
 
       // Show welcome message
       toast.success(`Welcome, ${username}!`);
-
-      // Display MOTD if present
-      if (data.motd) {
-        // Split MOTD into lines and show each as a separate toast
-        const motdLines = data.motd
-          .trim()
-          .split("\n")
-          .filter((line) => line.trim());
-        motdLines.forEach((line, index) => {
-          setTimeout(
-            () => {
-              toast.info(line, { duration: 8000 });
-            },
-            (index + 1) * 100,
-          ); // Stagger by 100ms
-        });
-      }
     },
     [fetchUser],
   );

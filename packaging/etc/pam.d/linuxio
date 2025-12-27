@@ -18,3 +18,5 @@ session    optional     pam_keyinit.so force revoke
 session    include      common-session-noninteractive
 session    required     pam_env.so
 session    required     pam_env.so user_readenv=1 envfile=/etc/default/locale
+session    optional     pam_motd.so motd=/run/motd.dynamic
+session    optional     pam_motd.so noupdate
