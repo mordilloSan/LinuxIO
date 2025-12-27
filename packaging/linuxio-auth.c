@@ -274,6 +274,8 @@ static int env_get_int(const char *name, int defval, int minv, int maxv)
 }
 
 // Ensure /run/linuxio/<uid> exists and perms sane for bridge sockets
+// Returns the validated user_fd for openat() operations, or -1 on error
+// Caller must close the returned fd
 static int ensure_runtime_dirs(const struct passwd *pw)
 {
   if (!pw)
@@ -292,7 +294,6 @@ static int ensure_runtime_dirs(const struct passwd *pw)
 
   mode_t old_umask = umask(0);
   int run_fd = -1, base_fd = -1, user_fd = -1;
-  int ret = -1;
 
   run_fd = open("/run", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
   if (run_fd < 0)
@@ -376,7 +377,13 @@ static int ensure_runtime_dirs(const struct passwd *pw)
     goto cleanup;
   }
 
-  ret = 0;
+  // Success - close temporary fds but return user_fd to caller
+  if (base_fd >= 0)
+    close(base_fd);
+  if (run_fd >= 0)
+    close(run_fd);
+  umask(old_umask);
+  return user_fd;  // Caller must close this
 
 cleanup:
   if (user_fd >= 0)
@@ -386,7 +393,7 @@ cleanup:
   if (run_fd >= 0)
     close(run_fd);
   umask(old_umask);
-  return ret;
+  return -1;
 }
 
 // ---- bridge binary validation ----
@@ -747,6 +754,54 @@ static void drop_to_user(const struct passwd *pw)
   if (setuid(0) == 0)
     _exit(127);
 }
+// Locale validation - only allow safe locale strings
+static int valid_locale(const char *s)
+{
+  if (!s || !*s)
+    return 0;
+
+  size_t len = strlen(s);
+  if (len > 64)  // Reasonable max for locale strings
+    return 0;
+
+  // Allow [A-Za-z0-9_.-@] for locale strings like "en_US.UTF-8" or "C.UTF-8"
+  for (size_t i = 0; i < len; i++)
+  {
+    char c = s[i];
+    if (!((c >= 'A' && c <= 'Z') ||
+          (c >= 'a' && c <= 'z') ||
+          (c >= '0' && c <= '9') ||
+          c == '_' || c == '-' || c == '.' || c == '@'))
+      return 0;
+  }
+
+  return 1;
+}
+
+// Session ID validation - only allow safe characters
+static int valid_session_id(const char *s)
+{
+  if (!s || !*s)
+    return 0;
+
+  size_t len = strlen(s);
+  if (len == 0 || len > 64)  // Max 64 chars
+    return 0;
+
+  // Only allow [A-Za-z0-9_-]
+  for (size_t i = 0; i < len; i++)
+  {
+    char c = s[i];
+    if (!((c >= 'A' && c <= 'Z') ||
+          (c >= 'a' && c <= 'z') ||
+          (c >= '0' && c <= '9') ||
+          c == '_' || c == '-'))
+      return 0;
+  }
+
+  return 1;
+}
+
 // Socket path validation
 static int valid_socket_path_for_uid(const char *p, uid_t uid)
 {
@@ -890,7 +945,7 @@ static void send_response(int fd, const char *status, const char *error, const c
 static pid_t spawn_bridge_process(
     const struct passwd *pw,
     int want_privileged,
-    const char *bridge_bin,
+    int bridge_fd,
     const char *env_mode,
     int verbose,
     const char *bootstrap_path,
@@ -915,10 +970,39 @@ static pid_t spawn_bridge_process(
   umask(077);
   set_resource_limits();
 
+  // Preserve and validate environment variables before clearenv()
+  const char *preserve_lang = getenv("LANG");
+  const char *preserve_term = getenv("TERM");
+
+  // Save validated copies
+  char safe_lang[128] = "C.UTF-8";  // Default to UTF-8 instead of plain C
+  char safe_term[128] = "xterm-256color";
+
+  if (preserve_lang && valid_locale(preserve_lang))
+  {
+    safe_snprintf(safe_lang, sizeof(safe_lang), "%s", preserve_lang);
+  }
+
+  if (preserve_term && *preserve_term)
+  {
+    // TERM should be simple and safe - just alphanumeric and dash
+    int valid = 1;
+    for (const char *p = preserve_term; *p && valid; p++)
+    {
+      char c = *p;
+      if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') || c == '-'))
+        valid = 0;
+    }
+    if (valid && strlen(preserve_term) < sizeof(safe_term))
+      safe_snprintf(safe_term, sizeof(safe_term), "%s", preserve_term);
+  }
+
   clearenv();
   setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
-  setenv("LANG", "C", 1);
-  setenv("LC_ALL", "C", 1);
+  setenv("LANG", safe_lang, 1);
+  setenv("LC_ALL", safe_lang, 1);
+  setenv("TERM", safe_term, 1);
 
   if (want_privileged)
   {
@@ -963,16 +1047,40 @@ static pid_t spawn_bridge_process(
 
   (void)prctl(PR_SET_DUMPABLE, 1);
 
+  // Close all file descriptors except stdin(0), stdout(1), stderr(2), and bridge_fd
+  // Uses close_range() syscall (Linux 5.9+) for maximum efficiency
+#ifndef __NR_close_range
+  #define __NR_close_range 436
+#endif
+  // Close all FDs except 0,1,2 and bridge_fd
+  if (bridge_fd > 2)
+  {
+    // Close FDs 3 to bridge_fd-1
+    if (bridge_fd > 3)
+      (void)syscall(__NR_close_range, 3, bridge_fd - 1, 0);
+    // Close FDs bridge_fd+1 to max
+    (void)syscall(__NR_close_range, bridge_fd + 1, ~0U, 0);
+  }
+  else
+  {
+    // bridge_fd is 0, 1, or 2 - just close everything after 2
+    (void)syscall(__NR_close_range, 3, ~0U, 0);
+  }
+
   const char *argv_child[5];
   int ai = 0;
-  argv_child[ai++] = bridge_bin;
+  argv_child[ai++] = "linuxio-bridge";  // argv[0] for process name
   argv_child[ai++] = "--env";
   argv_child[ai++] = env_mode ? env_mode : "production";
   if (verbose)
     argv_child[ai++] = "--verbose";
   argv_child[ai++] = NULL;
 
-  execv(bridge_bin, ARGV_UNCONST(argv_child));
+  // Execute the validated bridge binary via fd (prevents TOCTOU)
+#ifndef __NR_execveat
+  #define __NR_execveat 322
+#endif
+  syscall(__NR_execveat, bridge_fd, "", ARGV_UNCONST(argv_child), environ, AT_EMPTY_PATH);
   _exit(127);
 }
 
@@ -1033,6 +1141,14 @@ static int handle_client(int input_fd, int output_fd)
     return 1;
   }
 
+  // Validate session_id (defense against path injection)
+  if (!valid_session_id(session_id))
+  {
+    send_response(output_fd, "error", "invalid session_id format", NULL, NULL);
+    secure_bzero(password, sizeof(password));
+    return 1;
+  }
+
   // PAM authentication
   struct pam_conv conv = {pam_conv_func, (void *)password};
   pam_handle_t *pamh = NULL;
@@ -1048,6 +1164,19 @@ static int handle_client(int input_fd, int output_fd)
   rc = pam_authenticate(pamh, 0);
   if (rc == PAM_SUCCESS)
     rc = pam_acct_mgmt(pamh, 0);
+
+  // Handle password expiration
+  if (rc == PAM_NEW_AUTHTOK_REQD)
+  {
+    journal_infof("auth: password expired for user '%s'", user);
+    send_response(output_fd, "error",
+                  "Password has expired. Please change it via SSH or console.",
+                  NULL, NULL);
+    pam_end(pamh, rc);
+    secure_bzero(password, sizeof(password));
+    return 1;
+  }
+
   if (rc == PAM_SUCCESS)
     rc = pam_setcred(pamh, PAM_ESTABLISH_CRED);
 
@@ -1083,7 +1212,9 @@ static int handle_client(int input_fd, int output_fd)
     return 1;
   }
 
-  if (ensure_runtime_dirs(pw) != 0)
+  // Prepare runtime directories and get validated user_fd for openat() operations
+  int user_fd = ensure_runtime_dirs(pw);
+  if (user_fd < 0)
   {
     send_response(output_fd, "error", "failed to prepare runtime directory", NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
@@ -1102,26 +1233,45 @@ static int handle_client(int input_fd, int output_fd)
   const char *mode_str = want_privileged ? "privileged" : "unprivileged";
   const char *envmode = (env_mode[0]) ? env_mode : "production";
 
-  // Validate bridge binary (just check it exists, systemd will exec it)
+  // Validate bridge binary and keep fd open (prevents TOCTOU)
   const char *bridge_bin = bridge_path[0] ? bridge_path : "/usr/local/bin/linuxio-bridge";
   int bridge_fd = -1;
   if (open_and_validate_bridge(bridge_bin, 0, &bridge_fd) != 0)
   {
     send_response(output_fd, "error", "bridge validation failed", NULL, NULL);
+    close(user_fd);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
   }
-  close(bridge_fd); // Don't need to keep it open before exec
+  // Keep bridge_fd open - we'll exec it directly to prevent TOCTOU
 
-  // Prepare bootstrap file (bridge reads this at startup)
-  char bootstrap_path[MAX_PATH_LEN] = "";
-  safe_snprintf(bootstrap_path, sizeof(bootstrap_path), "/run/linuxio/%u/bootstrap-%s.json",
-                (unsigned)pw->pw_uid, session_id);
-  int boot_fd = open(bootstrap_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+  // Prepare bootstrap file using openat() to prevent path injection
+  // File is always created as "bootstrap.json" in the validated user directory
+  char bootstrap_filename[128];
+  safe_snprintf(bootstrap_filename, sizeof(bootstrap_filename), "bootstrap-%s.json", session_id);
+
+  int boot_fd = openat(user_fd, bootstrap_filename,
+                       O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
   if (boot_fd < 0)
   {
     journal_errorf("failed to create bootstrap file: %m");
+    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
+    close(bridge_fd);
+    close(user_fd);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    return 1;
+  }
+
+  // Ownership already correct (created by root in user's dir), just ensure mode
+  if (fchmod(boot_fd, 0600) != 0)
+  {
+    journal_errorf("failed to chmod bootstrap file: %m");
+    close(boot_fd);
+    unlinkat(user_fd, bootstrap_filename, 0);
+    close(bridge_fd);
+    close(user_fd);
     send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1131,17 +1281,9 @@ static int handle_client(int input_fd, int output_fd)
   {
     journal_errorf("failed to chown bootstrap file: %m");
     close(boot_fd);
-    unlink(bootstrap_path);
-    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
-  }
-  if (fchmod(boot_fd, 0600) != 0)
-  {
-    journal_errorf("failed to chmod bootstrap file: %m");
-    close(boot_fd);
-    unlink(bootstrap_path);
+    unlinkat(user_fd, bootstrap_filename, 0);
+    close(bridge_fd);
+    close(user_fd);
     send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1166,18 +1308,29 @@ static int handle_client(int input_fd, int output_fd)
   if (bytes_written < 0)
   {
     journal_errorf("failed to write bootstrap JSON to file");
-    unlink(bootstrap_path);
+    close(boot_fd);
+    unlinkat(user_fd, bootstrap_filename, 0);
+    close(bridge_fd);
+    close(user_fd);
     send_response(output_fd, "error", "bootstrap communication failed", NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
   }
 
+  // Build full path for environment variable (bridge needs to know path)
+  char bootstrap_path[MAX_PATH_LEN];
+  safe_snprintf(bootstrap_path, sizeof(bootstrap_path), "/run/linuxio/%u/%s",
+                (unsigned)pw->pw_uid, bootstrap_filename);
+
   rc = pam_open_session(pamh, 0);
   if (rc != PAM_SUCCESS)
   {
     const char *err = pam_strerror(pamh, rc);
-    unlink(bootstrap_path);
+    close(boot_fd);
+    unlinkat(user_fd, bootstrap_filename, 0);
+    close(bridge_fd);
+    close(user_fd);
     send_response(output_fd, "error", err, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1187,7 +1340,7 @@ static int handle_client(int input_fd, int output_fd)
   pid_t child = spawn_bridge_process(
       pw,
       want_privileged,
-      bridge_bin,
+      bridge_fd,
       envmode,
       verbose_flag,
       bootstrap_path,
@@ -1196,7 +1349,9 @@ static int handle_client(int input_fd, int output_fd)
 
   if (child < 0)
   {
-    unlink(bootstrap_path);
+    unlinkat(user_fd, bootstrap_filename, 0);
+    close(bridge_fd);
+    close(user_fd);
     send_response(output_fd, "error", "failed to spawn bridge", NULL, NULL);
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
@@ -1204,11 +1359,15 @@ static int handle_client(int input_fd, int output_fd)
     return 1;
   }
 
+  // Close fds we don't need anymore (bridge_fd was dup'd by child, user_fd no longer needed)
+  close(bridge_fd);
+  close(user_fd);
+
   int wait_ms = env_get_int("LINUXIO_BRIDGE_START_TIMEOUT_MS", BRIDGE_START_TIMEOUT_MS, 1000, 30000);
   if (wait_for_bridge_socket(socket_path, wait_ms) != 0)
   {
     journal_errorf("bridge did not create socket in time");
-    unlink(bootstrap_path);
+    // Can't use unlinkat here, user_fd already closed - bootstrap cleanup happens on bridge exit
     send_response(output_fd, "error", "bridge startup failed", NULL, NULL);
     kill(child, SIGTERM);
     (void)waitpid(child, NULL, 0);

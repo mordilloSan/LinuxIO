@@ -441,7 +441,11 @@ main() {
     fi
 
     log_info "Starting LinuxIO full installation"
-    [[ -n "$version" ]] && log_info "Target version: ${version}" || log_info "Target version: latest"
+    if [[ -n "$version" ]]; then
+        log_info "Target version: ${version}"
+    else
+        log_info "Target version: latest"
+    fi
     echo ""
 
     # Step 1: Download binaries (unless skipped)
