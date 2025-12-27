@@ -30,7 +30,7 @@ func TestManager_CreateGetSetDelete(t *testing.T) {
 	m := newTestManager(t)
 	defer m.Close()
 
-	u := User{Username: "alice", UID: "1000", GID: "1000"}
+	u := User{Username: "alice", UID: 1000, GID: 1000}
 	s, err := m.CreateSession(u, false)
 	if err != nil {
 		t.Fatalf("CreateSession error: %v", err)
@@ -73,7 +73,7 @@ func TestManager_RefreshUpdatesIdle(t *testing.T) {
 	m := newTestManager(t)
 	defer m.Close()
 
-	u := User{Username: "bob", UID: "1001", GID: "1001"}
+	u := User{Username: "bob", UID: 1001, GID: 1001}
 	s, err := m.CreateSession(u, false)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
@@ -96,7 +96,7 @@ func TestManager_WriteAndValidateCookie(t *testing.T) {
 	m := newTestManager(t)
 	defer m.Close()
 
-	u := User{Username: "carl", UID: "1002", GID: "1002"}
+	u := User{Username: "carl", UID: 1002, GID: 1002}
 	s, err := m.CreateSession(u, false)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)

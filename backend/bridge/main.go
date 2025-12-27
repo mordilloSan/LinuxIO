@@ -38,10 +38,10 @@ import (
 type envConfig struct {
 	SessionID     string
 	Username      string
-	UID           string
-	GID           string
+	UID           uint32
+	GID           uint32
 	Secret        string
-	Verbose       string
+	Verbose       bool
 	SocketPath    string
 	ServerBaseURL string
 	ServerCert    string
@@ -51,13 +51,13 @@ type envConfig struct {
 type boot struct {
 	SessionID     string `json:"session_id"`
 	Username      string `json:"username"`
-	UID           string `json:"uid"`
-	GID           string `json:"gid"`
+	UID           uint32 `json:"uid"`
+	GID           uint32 `json:"gid"`
 	Secret        string `json:"secret"`
 	ServerBaseURL string `json:"server_base_url,omitempty"`
 	ServerCert    string `json:"server_cert,omitempty"`
 	SocketPath    string `json:"socket_path,omitempty"`
-	Verbose       string `json:"verbose,omitempty"`
+	Verbose       bool   `json:"verbose,omitempty"`
 	LogFD         int    `json:"log_fd,omitempty"` // FD for piped logging in dev mode
 }
 
@@ -165,7 +165,7 @@ func readBootstrap() (*boot, error) {
 
 func initEnvCfg() envConfig {
 	if b, err := readBootstrap(); err == nil && b != nil {
-		cfg := envConfig{
+		return envConfig{
 			SessionID:     b.SessionID,
 			Username:      b.Username,
 			UID:           b.UID,
@@ -177,7 +177,6 @@ func initEnvCfg() envConfig {
 			ServerCert:    b.ServerCert,
 			LogFD:         b.LogFD,
 		}
-		return cfg
 	}
 	logger.Warnf("Failed to read bootstrap info")
 	return envConfig{}
@@ -216,12 +215,7 @@ func main() {
 
 	// If --verbose wasn't passed, check our saved environment config
 	if !pflag.Lookup("verbose").Changed {
-		if s := strings.TrimSpace(envCfg.Verbose); s != "" {
-			switch strings.ToLower(s) {
-			case "1", "true", "yes", "on":
-				verbose = true
-			}
-		}
+		verbose = envCfg.Verbose
 	}
 
 	// accept BOTH: ./linuxio-bridge --version  AND  ./linuxio-bridge version
@@ -270,7 +264,7 @@ func main() {
 	// In production, C auth-helper redirects to journal or /dev/null
 	logger.InitWithFile(envMode, verbose, "")
 
-	logger.Infof("[bridge] boot: euid=%d uid=%s gid=%s socket=%s (environment cleared for security)",
+	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d socket=%s (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
 
 	// Use saved server cert from environment config
@@ -673,7 +667,7 @@ func listenerFromSystemd() (net.Listener, bool, error) {
 	return l, true, nil
 }
 
-func listenBridge(socketPath, uidStr string) (net.Listener, error) {
+func listenBridge(socketPath string, uid uint32) (net.Listener, error) {
 	if l, ok, err := listenerFromSystemd(); ok {
 		if err != nil {
 			return nil, err
@@ -681,10 +675,10 @@ func listenBridge(socketPath, uidStr string) (net.Listener, error) {
 		logger.Infof("[socket] using systemd socket activation on %s", socketPath)
 		return l, nil
 	}
-	return createAndOwnSocket(socketPath, uidStr)
+	return createAndOwnSocket(socketPath, uid)
 }
 
-func createAndOwnSocket(socketPath, uidStr string) (net.Listener, error) {
+func createAndOwnSocket(socketPath string, uid uint32) (net.Listener, error) {
 	logger.Debugf("[socket] unlink-if-exists %s", socketPath)
 	_ = os.Remove(socketPath)
 
@@ -720,15 +714,8 @@ func createAndOwnSocket(socketPath, uidStr string) (net.Listener, error) {
 
 	// If running as root, chown socket to <uid>:linuxio-bridge-socket so server can connect.
 	if os.Geteuid() == 0 {
-		uid, err := strconv.Atoi(uidStr)
-		if err != nil {
-			logger.Errorf("[socket] atoi uid FAILED (%q): %v", uidStr, err)
-			_ = l.Close()
-			_ = os.Remove(socketPath)
-			return nil, fmt.Errorf("atoi uid: %w", err)
-		}
 		gid := resolveLinuxioGID()
-		if err := os.Chown(socketPath, uid, gid); err != nil {
+		if err := os.Chown(socketPath, int(uid), gid); err != nil {
 			logger.Errorf("[socket] chown %s to %d:%d FAILED: %v", socketPath, uid, gid, err)
 			_ = l.Close()
 			_ = os.Remove(socketPath)

@@ -73,23 +73,23 @@ func validateBridgeHash(bridgePath string) error {
 }
 
 // StartBridge launches linuxio-bridge via the auth daemon.
-// Returns (privilegedMode, error). privilegedMode reflects the daemon's decision.
-func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, error) {
+// Returns (privilegedMode, motd, error). privilegedMode reflects the daemon's decision.
+func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, string, error) {
 	// Resolve bridge binary (helper also validates)
 	if bridgeBinary == "" {
 		bridgeBinary = GetBridgeBinaryPath("")
 	}
 	if bridgeBinary == "" {
-		return false, errors.New("bridge binary not found (looked beside server and in PATH)")
+		return false, "", errors.New("bridge binary not found (looked beside server and in PATH)")
 	}
 
 	// Validate bridge binary hash before proceeding
 	if err := validateBridgeHash(bridgeBinary); err != nil {
-		return false, fmt.Errorf("bridge security validation failed: %w", err)
+		return false, "", fmt.Errorf("bridge security validation failed: %w", err)
 	}
 
 	if !DaemonAvailable() {
-		return false, errors.New("auth daemon not available")
+		return false, "", errors.New("auth daemon not available")
 	}
 
 	logger.Debugf("Auth daemon available, using socket-based auth")
@@ -103,13 +103,13 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 		strings.ToLower(envMode),
 		verbose,
 	)
-	privileged, err := Authenticate(req)
+	privileged, motd, err := Authenticate(req)
 	if err != nil {
-		return false, fmt.Errorf("auth daemon failed: %w", err)
+		return false, "", fmt.Errorf("auth daemon failed: %w", err)
 	}
 
 	logger.InfoKV("bridge launch via daemon acknowledged", "user", sess.User.Username, "privileged", privileged)
-	return privileged, nil
+	return privileged, motd, nil
 }
 
 // ============================================================================
