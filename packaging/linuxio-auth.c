@@ -938,6 +938,10 @@ static char *json_get_string(const char *json, const char *key, char *buf, size_
 
   jsmn_init(&parser);
   int r = jsmn_parse(&parser, json, strlen(json), tokens, sizeof(tokens) / sizeof(tokens[0]));
+
+  // Check for parse errors (JSMN_ERROR_NOMEM=-1, JSMN_ERROR_INVAL=-2, JSMN_ERROR_PART=-3)
+  if (r < 0)
+    return NULL;
   if (r < 1 || tokens[0].type != JSMN_OBJECT)
     return NULL;
 
@@ -950,6 +954,17 @@ static char *json_get_string(const char *json, const char *key, char *buf, size_
       i++;
       if (i >= r)
         return NULL;
+
+      // Handle JSON null - treat as unset/missing
+      if (tokens[i].type == JSMN_PRIMITIVE)
+      {
+        int token_len = tokens[i].end - tokens[i].start;
+        if (token_len == 4 && strncmp(json + tokens[i].start, "null", 4) == 0)
+        {
+          buf[0] = '\0';
+          return NULL;
+        }
+      }
 
       int len = tokens[i].end - tokens[i].start;
       if (len >= (int)bufsz)
@@ -1118,23 +1133,44 @@ static pid_t spawn_bridge_process(
     (void)prctl(PR_SET_DUMPABLE, 1);
 
   // Close all file descriptors except stdin(0), stdout(1), stderr(2), and bridge_fd
-  // Uses close_range() syscall (Linux 5.9+) for maximum efficiency
+  // Uses close_range() syscall (Linux 5.9+) with fallback for older kernels
 #ifndef __NR_close_range
   #define __NR_close_range 436
 #endif
-  // Close all FDs except 0,1,2 and bridge_fd
+  // Try close_range first; fallback to manual loop on ENOSYS (kernel < 5.9)
+  int close_range_failed = 0;
   if (bridge_fd > 2)
   {
     // Close FDs 3 to bridge_fd-1
     if (bridge_fd > 3)
-      (void)syscall(__NR_close_range, 3, bridge_fd - 1, 0);
+    {
+      if (syscall(__NR_close_range, 3, bridge_fd - 1, 0) == -1 && errno == ENOSYS)
+        close_range_failed = 1;
+    }
     // Close FDs bridge_fd+1 to max
-    (void)syscall(__NR_close_range, bridge_fd + 1, ~0U, 0);
+    if (syscall(__NR_close_range, bridge_fd + 1, ~0U, 0) == -1 && errno == ENOSYS)
+      close_range_failed = 1;
   }
   else
   {
     // bridge_fd is 0, 1, or 2 - just close everything after 2
-    (void)syscall(__NR_close_range, 3, ~0U, 0);
+    if (syscall(__NR_close_range, 3, ~0U, 0) == -1 && errno == ENOSYS)
+      close_range_failed = 1;
+  }
+
+  // Fallback: manual loop for older kernels without close_range
+  if (close_range_failed)
+  {
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_NOFILE, &rl) == 0)
+    {
+      int max_fd = (rl.rlim_cur < 4096) ? (int)rl.rlim_cur : 4096;
+      for (int fd = 3; fd < max_fd; fd++)
+      {
+        if (fd != bridge_fd)
+          (void)close(fd);
+      }
+    }
   }
 
   const char *argv_child[5];
@@ -1147,10 +1183,29 @@ static pid_t spawn_bridge_process(
   argv_child[ai++] = NULL;
 
   // Execute the validated bridge binary via fd (prevents TOCTOU)
+  // Try execveat first (Linux 3.19+); fallback to fexecve on ENOSYS
 #ifndef __NR_execveat
   #define __NR_execveat 322
 #endif
-  syscall(__NR_execveat, bridge_fd, "", ARGV_UNCONST(argv_child), environ, AT_EMPTY_PATH);
+  long ret = syscall(__NR_execveat, bridge_fd, "", ARGV_UNCONST(argv_child), environ, AT_EMPTY_PATH);
+
+  // Fallback for kernels without execveat (< 3.19)
+  if (ret == -1 && errno == ENOSYS)
+  {
+    // Read the real path from /proc/self/fd/bridge_fd
+    char fdpath[64], realpath_buf[PATH_MAX];
+    safe_snprintf(fdpath, sizeof(fdpath), "/proc/self/fd/%d", bridge_fd);
+    ssize_t len = readlink(fdpath, realpath_buf, sizeof(realpath_buf) - 1);
+    if (len > 0)
+    {
+      realpath_buf[len] = '\0';
+      // Close bridge_fd before exec (no longer needed)
+      close(bridge_fd);
+      // Use the real path we validated earlier
+      execv(realpath_buf, ARGV_UNCONST(argv_child));
+    }
+  }
+
   _exit(127);
 }
 
