@@ -94,7 +94,7 @@ sudo apt install -y libpam0g-dev libsystemd-dev
 sudo dnf install -y pam-devel systemd-devel
 ```
 
-> Note: `libsystemd-dev` is optional but recommended - without it, auth-helper logs go to `/dev/null` instead of journald.
+> Note: `libsystemd-dev` is optional but recommended - without it, auth worker logs fall back to syslog instead of journald.
 
 ### Setup
 
@@ -121,12 +121,16 @@ make build
 # Or build components individually
 make build-backend      # Go backend binary
 make build-bridge       # Go bridge binary
-make build-auth-helper  # PAM authentication helper
+make build-auth-helper  # PAM authentication worker
 make build-vite         # Frontend static assets
 
 # Run locally
 make run
 ```
+
+### Upgrade
+
+See `docs/UPGRADE_CHECKLIST.md` for the socket-activated auth worker upgrade steps.
 
 ### Available Commands
 
@@ -159,11 +163,11 @@ make test-backend      # Run Go unit tests in backend
 **Building:**
 
 ```bash
-make build             # Build everything (frontend + backend + bridge + auth-helper)
+make build             # Build everything (frontend + backend + bridge + auth worker)
 make build-vite        # Build frontend only
 make build-backend     # Build backend only
 make build-bridge      # Build bridge only
-make build-auth-helper # Build PAM helper only
+make build-auth-helper # Build PAM worker only
 ```
 
 **Running & Cleaning:**
@@ -215,7 +219,7 @@ make merge-release     # Merge PR and trigger release
 
 - PAM-based authentication
 - Session-based auth with secure cookies
-- Setuid helper for privilege management
+- Socket-activated auth worker (no setuid)
 - Isolated bridge processes per user
 - TLS support with self-signed certificates
 

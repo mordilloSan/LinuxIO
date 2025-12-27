@@ -426,21 +426,6 @@ dev-prep:
 dev: setup dev-prep devinstall
 	@echo ""
 	@echo "🚀 Starting dev mode (frontend + backend)..."
-
-	# --- HARD STOP if current shell doesn't have the 'linuxio' group ---
-	@if ! id -nG | tr ' ' '\n' | grep -qx linuxio; then \
-		echo "🛑 Current shell does not have the 'linuxio' group."; \
-		echo "   Please log out/in or run:  newgrp linuxio"; \
-		exit 0; \
-	fi
-
-	# --- Optional: also honor a marker that dev_install.sh creates when it adds the group ---
-	@if [ -f /tmp/linuxio/dev/.just-added-linuxio-group-`id -un` ]; then \
-		echo "🛑 You were just added to 'linuxio'. Refresh your session first."; \
-		echo "   Run: newgrp linuxio"; \
-		rm -f /tmp/linuxio/dev/.just-added-linuxio-group-`id -un` || true; \
-		exit 1; \
-	fi
 	set -euo pipefail
 
 	# TTY polish
@@ -499,9 +484,6 @@ build: test build-vite build-bridge
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
 	@$(MAKE) --no-print-directory build-auth-helper
-
-localinstall:
-	./packaging/scripts/local_install.sh
 
 devinstall:
 	@SECURE_DEV_DIR="/tmp/linuxio/dev"; \
@@ -569,6 +551,24 @@ clean-dev:
 
 clean-all: clean clean-dev
 	@echo "✨ Everything cleaned!"
+
+# ========== Installation Targets ==========
+
+uninstall:
+	@echo ""
+	@echo "🗑️  Uninstalling LinuxIO..."
+	@sudo ./packaging/scripts/uninstall.sh
+
+localinstall: build
+	@echo ""
+	@echo "📦 Installing LinuxIO from local build..."
+	@sudo ./packaging/scripts/localinstall.sh
+
+reinstall: uninstall localinstall
+	@echo ""
+	@echo "✅ LinuxIO reinstalled successfully!"
+
+# ==========================================
 
 start-dev:
 	@$(call _require_clean)

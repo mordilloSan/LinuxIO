@@ -7,7 +7,6 @@ SRC_DIR="$(cd -- "$SCRIPT_DIR/../.." &>/dev/null && pwd)"
 
 SECURE_DEV_DIR="/tmp/linuxio/dev"
 SUDOERS_FILE="/etc/sudoers.d/linuxio-dev"
-GROUP_NAME="linuxio"
 
 # Figure out the real (non-root) user to build as
 if [[ -n "${SUDO_USER:-}" && "${EUID}" -eq 0 ]]; then
@@ -25,33 +24,13 @@ fi
 echo "==> Repo root: $SRC_DIR"
 echo "==> Building as $BUILD_USER"
 
-# Determine how we'll run privileged operations early (needed for group mgmt)
+# Determine how we'll run privileged operations
 SUDO_CMD=""
 if [[ "${EUID}" -ne 0 ]]; then
   if ! command -v sudo >/dev/null 2>&1; then
     echo "This step needs root. Install sudo or run this script with sudo."; exit 1
   fi
   SUDO_CMD="sudo"
-fi
-
-# ================= ensure 'linuxio' group and membership =================
-ACCOUNT_HAS_LINUXIO=0
-GROUP_JUST_ADDED=0
-
-# Create the group if it doesn't exist
-if ! getent group "$GROUP_NAME" >/dev/null; then
-  echo "==> Creating group '$GROUP_NAME' (system group)"
-  $SUDO_CMD groupadd -r "$GROUP_NAME"
-fi
-
-# Check if BUILD_USER is already in the group
-if id -nG "$BUILD_USER" | tr ' ' '\n' | grep -qx "$GROUP_NAME"; then
-  ACCOUNT_HAS_LINUXIO=1
-else
-  echo "==> Adding user '$BUILD_USER' to '$GROUP_NAME' group"
-  $SUDO_CMD usermod -aG "$GROUP_NAME" "$BUILD_USER"
-  GROUP_JUST_ADDED=1
-  echo "   ✓ Added. NOTE: You'll need to log out/in or run 'newgrp $GROUP_NAME' to activate it."
 fi
 
 # ================= build as non-root with clean env =================
@@ -78,9 +57,9 @@ $SUDO_CMD mkdir -p "$SECURE_DEV_DIR"
 $SUDO_CMD chown root:root "$SECURE_DEV_DIR"
 $SUDO_CMD chmod 0755 "$SECURE_DEV_DIR"
 
-echo "==> Installing dev bridge + helper to system location"
+echo "==> Installing dev bridge + auth worker to system location"
 $SUDO_CMD install -o root -g root -m 0755 "$SRC_DIR/linuxio-bridge"  "$SECURE_DEV_DIR/linuxio-bridge"
-$SUDO_CMD install -o root -g root -m 4755 "$SRC_DIR/linuxio-auth"    "$SECURE_DEV_DIR/linuxio-auth"
+$SUDO_CMD install -o root -g root -m 0755 "$SRC_DIR/linuxio-auth"    "$SECURE_DEV_DIR/linuxio-auth"
 
 echo "==> System enclave contents:"
 ls -l "$SECURE_DEV_DIR/linuxio-bridge" "$SECURE_DEV_DIR/linuxio-auth"
@@ -149,16 +128,4 @@ fi
 
 echo ""
 echo "✅ Done. Dev binaries installed to: $SECURE_DEV_DIR"
-
-# Only warn if we JUST added the group this run
-if [[ "$GROUP_JUST_ADDED" -eq 1 ]]; then
-  echo ""
-  echo "⚠️  IMPORTANT: You were just added to the '$GROUP_NAME' group."
-  echo "   Your current shell won't see this change until you:"
-  echo "   • Log out and back in (recommended)"
-  echo "   • OR run: newgrp $GROUP_NAME"
-  echo ""
-  echo "   After refreshing your session, run 'make dev' again."
-fi
-
 echo "   The Makefile 'dev' target will automatically use these binaries."
