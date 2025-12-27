@@ -44,6 +44,11 @@
 #endif
 #endif
 
+// jsmn: minimal JSON parser
+#define JSMN_STATIC
+#define JSMN_PARENT_LINKS
+#include "jsmn.h"
+
 // Socket timeouts (seconds)
 #define SOCKET_READ_TIMEOUT 30
 #define SOCKET_WRITE_TIMEOUT 10
@@ -910,59 +915,52 @@ static int valid_socket_path_for_uid(const char *p, uid_t uid)
 // ============================================================================
 
 // Simple JSON field extractor (finds "key":"value" pattern)
+// Helper: compare JSON token string with key
+static int jsoneq(const char *json, jsmntok_t *tok, const char *s)
+{
+  if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
+      strncmp(json + tok->start, s, tok->end - tok->start) == 0)
+  {
+    return 0;
+  }
+  return -1;
+}
+
+// Get string value for a key from parsed JSON
 static char *json_get_string(const char *json, const char *key, char *buf, size_t bufsz)
 {
   if (!json || !key || !buf || bufsz == 0)
     return NULL;
   buf[0] = '\0';
 
-  // Build pattern: "key":"
-  char pattern[128];
-  safe_snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
+  jsmn_parser parser;
+  jsmntok_t tokens[128];
 
-  const char *start = strstr(json, pattern);
-  if (!start)
+  jsmn_init(&parser);
+  int r = jsmn_parse(&parser, json, strlen(json), tokens, sizeof(tokens) / sizeof(tokens[0]));
+  if (r < 1 || tokens[0].type != JSMN_OBJECT)
     return NULL;
 
-  start += strlen(pattern);
-  const char *end = start;
-
-  // Find closing quote, handling escapes
-  size_t i = 0;
-  while (*end && *end != '"' && i < bufsz - 1)
+  // Iterate over object keys
+  for (int i = 1; i < r; i++)
   {
-    if (*end == '\\' && *(end + 1))
+    if (jsoneq(json, &tokens[i], key) == 0)
     {
-      end++; // skip escape
-      switch (*end)
-      {
-      case 'n':
-        buf[i++] = '\n';
-        break;
-      case 'r':
-        buf[i++] = '\r';
-        break;
-      case 't':
-        buf[i++] = '\t';
-        break;
-      case '\\':
-        buf[i++] = '\\';
-        break;
-      case '"':
-        buf[i++] = '"';
-        break;
-      default:
-        buf[i++] = *end;
-      }
+      // Found key, next token is the value
+      i++;
+      if (i >= r)
+        return NULL;
+
+      int len = tokens[i].end - tokens[i].start;
+      if (len >= (int)bufsz)
+        len = bufsz - 1;
+
+      memcpy(buf, json + tokens[i].start, len);
+      buf[len] = '\0';
+      return buf;
     }
-    else
-    {
-      buf[i++] = *end;
-    }
-    end++;
   }
-  buf[i] = '\0';
-  return buf;
+  return NULL;
 }
 
 // Send JSON response to client
