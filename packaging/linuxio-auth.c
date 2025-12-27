@@ -344,7 +344,7 @@ static int ensure_runtime_dirs(const struct passwd *pw)
     goto cleanup;
   }
 
-  if (mkdirat(run_fd, "linuxio", 0775) != 0 && errno != EEXIST)
+  if (mkdirat(run_fd, "linuxio", 0755) != 0 && errno != EEXIST)
   {
     journal_errorf("runtime: mkdir /run/linuxio failed: %m");
     goto cleanup;
@@ -363,17 +363,18 @@ static int ensure_runtime_dirs(const struct passwd *pw)
     journal_errorf("runtime: stat /run/linuxio failed");
     goto cleanup;
   }
-  if (st.st_mode & S_IWOTH)
+  // Base directory must not be group or world writable (only root writes here)
+  if ((st.st_mode & S_IWGRP) || (st.st_mode & S_IWOTH))
   {
-    journal_errorf("runtime: /run/linuxio is world-writable (unsafe)");
+    journal_errorf("runtime: /run/linuxio is group/world-writable (unsafe)");
     goto cleanup;
   }
 
-  if ((st.st_mode & 0777) != 0775)
+  if ((st.st_mode & 0777) != 0755)
   {
-    if (fchmod(base_fd, 0775) != 0)
+    if (fchmod(base_fd, 0755) != 0)
     {
-      journal_errorf("runtime: fchmod(/run/linuxio, 0775) failed: %m");
+      journal_errorf("runtime: fchmod(/run/linuxio, 0755) failed: %m");
       goto cleanup;
     }
   }
@@ -1113,7 +1114,10 @@ static pid_t spawn_bridge_process(
   if (verbose)
     setenv("LINUXIO_VERBOSE", "1", 1);
 
-  (void)prctl(PR_SET_DUMPABLE, 1);
+  // Only enable core dumps in development mode
+  // In production, keep dumpable off to prevent leaking secrets
+  if (env_mode && strcmp(env_mode, "development") == 0)
+    (void)prctl(PR_SET_DUMPABLE, 1);
 
   // Close all file descriptors except stdin(0), stdout(1), stderr(2), and bridge_fd
   // Uses close_range() syscall (Linux 5.9+) for maximum efficiency
