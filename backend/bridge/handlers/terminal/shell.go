@@ -26,7 +26,7 @@ func StartTerminal(sess *session.Session) error {
 		return nil
 	}
 
-	u, err := user.LookupId(sess.User.UID)
+	u, err := user.LookupId(strconv.FormatUint(uint64(sess.User.UID), 10))
 	if err != nil {
 		logger.Errorf("lookup user %s failed: %v", sess.User.Username, err)
 		return fmt.Errorf("lookup user %s: %w", sess.User.Username, err)
@@ -62,23 +62,9 @@ func StartTerminal(sess *session.Session) error {
 	// This keeps privileged abilities in the bridge for API calls while the interactive shell
 	// runs as the actual user (expected username in prompt). Users can still sudo as needed.
 	if os.Geteuid() == 0 {
-		if uid, uerr := strconv.Atoi(sess.User.UID); uerr == nil {
-			// Validate UID is within valid range for uint32
-			if uid < 0 || uid > 4294967295 {
-				return errors.New("invalid UID: must be between 0 and 4294967295")
-			}
-
-			if gid, gerr := strconv.Atoi(sess.User.GID); gerr == nil {
-				// Validate GID is within valid range for uint32
-				if gid < 0 || gid > 4294967295 {
-					return errors.New("invalid GID: must be between 0 and 4294967295")
-				}
-
-				sysAttr.Credential = &syscall.Credential{
-					Uid: uint32(uid),
-					Gid: uint32(gid),
-				}
-			}
+		sysAttr.Credential = &syscall.Credential{
+			Uid: sess.User.UID,
+			Gid: sess.User.GID,
 		}
 	}
 	cmd.SysProcAttr = sysAttr
@@ -94,7 +80,7 @@ func StartTerminal(sess *session.Session) error {
 	setMain(sess.SessionID, ts)
 
 	go pumpPTY(ts)
-	logger.Infof("Started terminal for user=%s uid=%s", sess.User.Username, sess.User.UID)
+	logger.Infof("Started terminal for user=%s uid=%d", sess.User.Username, sess.User.UID)
 	return nil
 }
 

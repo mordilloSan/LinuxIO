@@ -50,6 +50,7 @@ type Response struct {
 	Error      string `json:"error,omitempty"`
 	Mode       string `json:"mode,omitempty"`        // "privileged" or "unprivileged"
 	SocketPath string `json:"socket_path,omitempty"` // bridge socket path
+	Motd       string `json:"motd,omitempty"`        // Message of the day from PAM
 }
 
 // DaemonAvailable checks if the auth daemon socket exists and is connectable
@@ -66,39 +67,39 @@ func DaemonAvailable() bool {
 }
 
 // Authenticate sends an auth request to the auth daemon.
-// Returns (privileged, error). If the daemon is not available or fails,
+// Returns (privileged, motd, error). If the daemon is not available or fails,
 // returns an error so the caller can fall back to exec mode.
-func Authenticate(req *Request) (privileged bool, err error) {
+func Authenticate(req *Request) (privileged bool, motd string, err error) {
 	if !DaemonAvailable() {
-		return false, errors.New("auth daemon not available")
+		return false, "", errors.New("auth daemon not available")
 	}
 
 	// Connect to daemon
 	conn, err := net.DialTimeout("unix", GetAuthSocketPath(), authDialTimeout)
 	if err != nil {
-		return false, fmt.Errorf("failed to connect to auth daemon: %w", err)
+		return false, "", fmt.Errorf("failed to connect to auth daemon: %w", err)
 	}
 	defer conn.Close()
 
 	// Set timeouts
 	if dearlineErr := conn.SetWriteDeadline(time.Now().Add(authWriteTimeout)); dearlineErr != nil {
-		return false, fmt.Errorf("failed to set write deadline: %w", dearlineErr)
+		return false, "", fmt.Errorf("failed to set write deadline: %w", dearlineErr)
 	}
 
 	// Encode and send request (newline-terminated)
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
-		return false, fmt.Errorf("failed to marshal auth request: %w", err)
+		return false, "", fmt.Errorf("failed to marshal auth request: %w", err)
 	}
 	reqBytes = append(reqBytes, '\n')
 
 	if _, err := conn.Write(reqBytes); err != nil {
-		return false, fmt.Errorf("failed to send auth request: %w", err)
+		return false, "", fmt.Errorf("failed to send auth request: %w", err)
 	}
 
 	// Read response
 	if err := conn.SetReadDeadline(time.Now().Add(authReadTimeout)); err != nil {
-		return false, fmt.Errorf("failed to set read deadline: %w", err)
+		return false, "", fmt.Errorf("failed to set read deadline: %w", err)
 	}
 
 	// Read until newline or EOF
@@ -126,13 +127,13 @@ func Authenticate(req *Request) (privileged bool, err error) {
 	}
 
 	if total == 0 {
-		return false, errors.New("empty response from auth daemon")
+		return false, "", errors.New("empty response from auth daemon")
 	}
 
 	// Parse response
 	var resp Response
 	if err := json.Unmarshal(buf[:total], &resp); err != nil {
-		return false, fmt.Errorf("failed to parse auth response: %w (raw: %q)", err, string(buf[:total]))
+		return false, "", fmt.Errorf("failed to parse auth response: %w (raw: %q)", err, string(buf[:total]))
 	}
 
 	if resp.Status != "ok" {
@@ -140,7 +141,7 @@ func Authenticate(req *Request) (privileged bool, err error) {
 		if errMsg == "" {
 			errMsg = "authentication failed"
 		}
-		return false, fmt.Errorf("auth daemon error: %s", errMsg)
+		return false, "", fmt.Errorf("auth daemon error: %s", errMsg)
 	}
 
 	privileged = resp.Mode == "privileged"
@@ -149,7 +150,7 @@ func Authenticate(req *Request) (privileged bool, err error) {
 		"privileged", privileged,
 		"socket_path", resp.SocketPath)
 
-	return privileged, nil
+	return privileged, resp.Motd, nil
 }
 
 // BuildRequest creates a Request from session info and environment

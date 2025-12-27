@@ -40,7 +40,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bridgeBinary := getBridgeBinary(h.BridgeBinaryOverride)
-	privileged, err := startBridge(sess, req.Password, h.Env, h.Verbose, bridgeBinary)
+	privileged, motd, err := startBridge(sess, req.Password, h.Env, h.Verbose, bridgeBinary)
 	if err != nil {
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
 
@@ -93,6 +93,11 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	response := map[string]any{
 		"success":    true,
 		"privileged": privileged,
+	}
+
+	// Include MOTD if present
+	if motd != "" {
+		response["motd"] = motd
 	}
 
 	// Only check for updates if user is privileged
@@ -150,11 +155,10 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 // ---- internals ----
 
 func (h *Handlers) createUserSession(req LoginRequest) (*session.Session, error) {
-	sysu, err := lookupUser(req.Username)
+	u, err := lookupUser(req.Username)
 	if err != nil {
 		return nil, err
 	}
-	u := session.User{Username: req.Username, UID: sysu.Uid, GID: sysu.Gid}
 
 	// Always create as non-privileged; helper decides real mode.
 	sess, err := h.SM.CreateSession(u, false)

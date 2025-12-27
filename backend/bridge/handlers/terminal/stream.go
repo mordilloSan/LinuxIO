@@ -52,7 +52,7 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 	}
 
 	// Look up user for environment setup
-	u, err := user.LookupId(sess.User.UID)
+	u, err := user.LookupId(strconv.FormatUint(uint64(sess.User.UID), 10))
 	if err != nil {
 		logger.Errorf("[StreamTerminal] lookup user %s failed: %v", sess.User.Username, err)
 		sendStreamClose(stream, 1) // streamID 1 for terminal
@@ -83,17 +83,9 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 
 	// Drop privileges if running as root
 	if os.Geteuid() == 0 {
-		if uid, uerr := strconv.Atoi(sess.User.UID); uerr == nil {
-			if uid >= 0 && uid <= 4294967295 {
-				if gid, gerr := strconv.Atoi(sess.User.GID); gerr == nil {
-					if gid >= 0 && gid <= 4294967295 {
-						sysAttr.Credential = &syscall.Credential{
-							Uid: uint32(uid),
-							Gid: uint32(gid),
-						}
-					}
-				}
-			}
+		sysAttr.Credential = &syscall.Credential{
+			Uid: sess.User.UID,
+			Gid: sess.User.GID,
 		}
 	}
 	cmd.SysProcAttr = sysAttr

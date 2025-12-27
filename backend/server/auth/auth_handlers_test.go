@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os/user"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
@@ -63,20 +62,20 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		startBridge, callBridgeWithSess, getBridgeBinary, lookupUser = oldStart, oldCall, oldGet, oldLookup
 	}()
 
-	lookupUser = func(username string) (*user.User, error) {
-		return &user.User{Username: username, Uid: "1000", Gid: "1000"}, nil
+	lookupUser = func(username string) (session.User, error) {
+		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
 	getBridgeBinary = func(override string) string {
 		_ = override
 		return "/fake/bridge"
 	}
-	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, error) {
+	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, string, error) {
 		_ = sess
 		_ = password
 		_ = env
 		_ = verbose
 		_ = bin
-		return true, nil // privileged
+		return true, "Welcome to LinuxIO!", nil // privileged
 	}
 	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess
@@ -139,16 +138,16 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	oldStart, oldCall, oldLookup := startBridge, callBridgeWithSess, lookupUser
 	defer func() { startBridge, callBridgeWithSess, lookupUser = oldStart, oldCall, oldLookup }()
 
-	lookupUser = func(username string) (*user.User, error) {
-		return &user.User{Username: username, Uid: "1000", Gid: "1000"}, nil
+	lookupUser = func(username string) (session.User, error) {
+		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, error) {
+	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, string, error) {
 		_ = sess
 		_ = password
 		_ = env
 		_ = verbose
 		_ = bin
-		return false, fmt.Errorf("authentication failed: bad credentials")
+		return false, "", fmt.Errorf("authentication failed: bad credentials")
 	}
 	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess
@@ -181,16 +180,16 @@ func TestLogin_BridgeStartsButPingFails_MapsTo500_AndSessionRemoved(t *testing.T
 	oldStart, oldCall, oldLookup := startBridge, callBridgeWithSess, lookupUser
 	defer func() { startBridge, callBridgeWithSess, lookupUser = oldStart, oldCall, oldLookup }()
 
-	lookupUser = func(username string) (*user.User, error) {
-		return &user.User{Username: username, Uid: "1000", Gid: "1000"}, nil
+	lookupUser = func(username string) (session.User, error) {
+		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, error) {
+	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, string, error) {
 		_ = sess
 		_ = password
 		_ = env
 		_ = verbose
 		_ = bin
-		return false, nil // started ok (non-privileged)
+		return false, "", nil // started ok (non-privileged)
 	}
 	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess
@@ -229,16 +228,16 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	oldStart, oldCall, oldLookup := startBridge, callBridgeWithSess, lookupUser
 	defer func() { startBridge, callBridgeWithSess, lookupUser = oldStart, oldCall, oldLookup }()
 
-	lookupUser = func(username string) (*user.User, error) {
-		return &user.User{Username: username, Uid: "1000", Gid: "1000"}, nil
+	lookupUser = func(username string) (session.User, error) {
+		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, error) {
+	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, string, error) {
 		_ = sess
 		_ = password
 		_ = env
 		_ = verbose
 		_ = bin
-		return false, nil
+		return false, "", nil
 	}
 	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
 		_ = sess

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -68,8 +67,8 @@ var DefaultConfig = SessionConfig{
 
 type User struct {
 	Username string `json:"username"`
-	UID      string `json:"uid"`
-	GID      string `json:"gid"`
+	UID      uint32 `json:"uid"`
+	GID      uint32 `json:"gid"`
 }
 
 type Timing struct {
@@ -304,12 +303,8 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 		},
 	}
 
-	// 🔧 NEW: generate and set the per-session socket path
-	uid64, err := strconv.ParseUint(user.UID, 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("parse uid %q: %w", user.UID, err)
-	}
-	sp, err := SocketPath(uint32(uid64))
+	// Generate and set the per-session socket path
+	sp, err := SocketPath(user.UID)
 	if err != nil {
 		return nil, fmt.Errorf("new socket path: %w", err)
 	}

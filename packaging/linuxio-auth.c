@@ -165,7 +165,7 @@ static void secure_bzero(void *p, size_t n)
 }
 #endif
 
-// -------- JSON escaping (FIX #1) --------
+// -------- JSON escaping --------
 static int json_escape_string(char *dst, size_t dstsz, const char *src)
 {
   if (!dst || dstsz == 0)
@@ -228,26 +228,68 @@ static int json_escape_string(char *dst, size_t dstsz, const char *src)
 }
 
 // -------- PAM conversation ----
+struct pam_appdata {
+  const char *password;
+  char motd[4096];
+  size_t motd_len;
+};
+
 static int pam_conv_func(int n, const struct pam_message **msg, struct pam_response **resp, void *appdata_ptr)
 {
-  const char *password = (const char *)appdata_ptr;
+  struct pam_appdata *appdata = (struct pam_appdata *)appdata_ptr;
   if (n <= 0 || n > 32)
     return PAM_CONV_ERR;
   struct pam_response *r = calloc((size_t)n, sizeof(*r));
   if (!r)
     return PAM_CONV_ERR;
+
   for (int i = 0; i < n; i++)
   {
-    if (msg[i]->msg_style == PAM_PROMPT_ECHO_OFF && password)
+    switch (msg[i]->msg_style)
     {
-      r[i].resp = strdup(password);
-      if (!r[i].resp)
+    case PAM_PROMPT_ECHO_OFF:
+      if (appdata && appdata->password)
       {
-        for (int j = 0; j < i; j++)
-          free(r[j].resp);
-        free(r);
-        return PAM_CONV_ERR;
+        r[i].resp = strdup(appdata->password);
+        if (!r[i].resp)
+        {
+          for (int j = 0; j < i; j++)
+            free(r[j].resp);
+          free(r);
+          return PAM_CONV_ERR;
+        }
       }
+      break;
+
+    case PAM_TEXT_INFO:
+    case PAM_ERROR_MSG:
+      // Collect MOTD and informational messages
+      if (appdata && msg[i]->msg && *msg[i]->msg)
+      {
+        size_t msg_len = strlen(msg[i]->msg);
+        size_t space_left = sizeof(appdata->motd) - appdata->motd_len - 1;
+
+        if (space_left > 0)
+        {
+          // Append message
+          size_t copy_len = (msg_len < space_left) ? msg_len : space_left;
+          memcpy(appdata->motd + appdata->motd_len, msg[i]->msg, copy_len);
+          appdata->motd_len += copy_len;
+
+          // Add newline if there's space
+          if (appdata->motd_len < sizeof(appdata->motd) - 1)
+          {
+            appdata->motd[appdata->motd_len++] = '\n';
+          }
+
+          appdata->motd[appdata->motd_len] = '\0';
+        }
+      }
+      break;
+
+    default:
+      // Ignore other message types
+      break;
     }
   }
   *resp = r;
@@ -343,7 +385,7 @@ static int ensure_runtime_dirs(const struct passwd *pw)
 
   char uid_str[32];
   safe_snprintf(uid_str, sizeof(uid_str), "%u", (unsigned)pw->pw_uid);
-  if (mkdirat(base_fd, uid_str, 0770) != 0 && errno != EEXIST)
+  if (mkdirat(base_fd, uid_str, 02710) != 0 && errno != EEXIST)
   {
     journal_errorf("runtime: mkdir /run/linuxio/%s failed: %m", uid_str);
     goto cleanup;
@@ -362,11 +404,11 @@ static int ensure_runtime_dirs(const struct passwd *pw)
     goto cleanup;
   }
 
-  if ((st.st_mode & 0777) != 0770)
+  if ((st.st_mode & 07777) != 02710)
   {
-    if (fchmod(user_fd, 0770) != 0)
+    if (fchmod(user_fd, 02710) != 0)
     {
-      journal_errorf("runtime: fchmod(/run/linuxio/%s, 0770) failed: %m", uid_str);
+      journal_errorf("runtime: fchmod(/run/linuxio/%s, 02710) failed: %m", uid_str);
       goto cleanup;
     }
   }
@@ -587,19 +629,19 @@ static int write_bootstrap_json(
                   "{"
                   "\"session_id\":\"%s\","
                   "\"username\":\"%s\","
-                  "\"uid\":\"%u\","
-                  "\"gid\":\"%u\","
+                  "\"uid\":%u,"
+                  "\"gid\":%u,"
                   "\"secret\":\"%s\","
                   "\"server_base_url\":\"%s\","
                   "\"server_cert\":\"%s\","
                   "\"socket_path\":\"%s\","
-                  "\"verbose\":\"%s\","
+                  "\"verbose\":%s,"
                   "\"log_fd\":%d"
                   "}",
                   sess_id_esc, username_esc,
                   (unsigned)uid, (unsigned)gid,
                   secret_esc, server_base_esc, cert_esc,
-                  socket_esc, verbose ? "1" : "0", log_fd);
+                  socket_esc, verbose ? "true" : "false", log_fd);
   }
   else
   {
@@ -607,19 +649,19 @@ static int write_bootstrap_json(
                   "{"
                   "\"session_id\":\"%s\","
                   "\"username\":\"%s\","
-                  "\"uid\":\"%u\","
-                  "\"gid\":\"%u\","
+                  "\"uid\":%u,"
+                  "\"gid\":%u,"
                   "\"secret\":\"%s\","
                   "\"server_base_url\":\"%s\","
                   "\"server_cert\":null,"
                   "\"socket_path\":\"%s\","
-                  "\"verbose\":\"%s\","
+                  "\"verbose\":%s,"
                   "\"log_fd\":%d"
                   "}",
                   sess_id_esc, username_esc,
                   (unsigned)uid, (unsigned)gid,
                   secret_esc, server_base_esc,
-                  socket_esc, verbose ? "1" : "0", log_fd);
+                  socket_esc, verbose ? "true" : "false", log_fd);
   }
 
   size_t len = strlen(json);
@@ -802,6 +844,20 @@ static int valid_session_id(const char *s)
   return 1;
 }
 
+// Environment mode validation - whitelist valid modes
+static int valid_env_mode(const char *s)
+{
+  if (!s || !*s)
+    return 1;  // Empty is ok, defaults to "production"
+
+  // Whitelist allowed environment modes
+  if (strcmp(s, "production") == 0)
+    return 1;
+  if (strcmp(s, "development") == 0)
+    return 1;
+  return 0;  // Reject anything else
+}
+
 // Socket path validation
 static int valid_socket_path_for_uid(const char *p, uid_t uid)
 {
@@ -909,16 +965,19 @@ static char *json_get_string(const char *json, const char *key, char *buf, size_
 }
 
 // Send JSON response to client
-static void send_response(int fd, const char *status, const char *error, const char *mode, const char *socket_path)
+static void send_response(int fd, const char *status, const char *error, const char *mode, const char *socket_path, const char *motd)
 {
-  char buf[2048];
+  char buf[8192];
   char err_escaped[512] = "";
   char sock_escaped[512] = "";
+  char motd_escaped[4096] = "";
 
   if (error && *error)
     json_escape_string(err_escaped, sizeof(err_escaped), error);
   if (socket_path && *socket_path)
     json_escape_string(sock_escaped, sizeof(sock_escaped), socket_path);
+  if (motd && *motd)
+    json_escape_string(motd_escaped, sizeof(motd_escaped), motd);
 
   int len;
   if (error && *error)
@@ -929,9 +988,18 @@ static void send_response(int fd, const char *status, const char *error, const c
   }
   else if (mode && socket_path)
   {
-    len = safe_snprintf(buf, sizeof(buf),
-                        "{\"status\":\"%s\",\"mode\":\"%s\",\"socket_path\":\"%s\"}\n",
-                        status, mode, sock_escaped);
+    if (motd && *motd)
+    {
+      len = safe_snprintf(buf, sizeof(buf),
+                          "{\"status\":\"%s\",\"mode\":\"%s\",\"socket_path\":\"%s\",\"motd\":\"%s\"}\n",
+                          status, mode, sock_escaped, motd_escaped);
+    }
+    else
+    {
+      len = safe_snprintf(buf, sizeof(buf),
+                          "{\"status\":\"%s\",\"mode\":\"%s\",\"socket_path\":\"%s\"}\n",
+                          status, mode, sock_escaped);
+    }
   }
   else
   {
@@ -1097,14 +1165,20 @@ static int handle_client(int input_fd, int output_fd)
       break;
     total += n;
     // Check for newline
-    if (memchr(reqbuf, '\n', (size_t)total))
+    char *nl = memchr(reqbuf, '\n', (size_t)total);
+    if (nl)
+    {
+      // Truncate at newline to prevent request smuggling
+      *nl = '\0';
+      total = nl - reqbuf;
       break;
+    }
   }
   reqbuf[total] = '\0';
 
   if (total == 0)
   {
-    send_response(output_fd, "error", "empty request", NULL, NULL);
+    send_response(output_fd, "error", "empty request", NULL, NULL, NULL);
     secure_bzero(reqbuf, sizeof(reqbuf));
     return 1;
   }
@@ -1136,7 +1210,7 @@ static int handle_client(int input_fd, int output_fd)
   // Validate required fields
   if (!user[0] || !session_id[0] || !socket_path[0])
   {
-    send_response(output_fd, "error", "missing required fields", NULL, NULL);
+    send_response(output_fd, "error", "missing required fields", NULL, NULL, NULL);
     secure_bzero(password, sizeof(password));
     return 1;
   }
@@ -1144,18 +1218,27 @@ static int handle_client(int input_fd, int output_fd)
   // Validate session_id (defense against path injection)
   if (!valid_session_id(session_id))
   {
-    send_response(output_fd, "error", "invalid session_id format", NULL, NULL);
+    send_response(output_fd, "error", "invalid session_id format", NULL, NULL, NULL);
+    secure_bzero(password, sizeof(password));
+    return 1;
+  }
+
+  // Validate env_mode (whitelist valid environment modes)
+  if (!valid_env_mode(env_mode))
+  {
+    send_response(output_fd, "error", "invalid environment mode", NULL, NULL, NULL);
     secure_bzero(password, sizeof(password));
     return 1;
   }
 
   // PAM authentication
-  struct pam_conv conv = {pam_conv_func, (void *)password};
+  struct pam_appdata appdata = {.password = password, .motd = {0}, .motd_len = 0};
+  struct pam_conv conv = {pam_conv_func, &appdata};
   pam_handle_t *pamh = NULL;
   int rc = pam_start("linuxio", user, &conv, &pamh);
   if (rc != PAM_SUCCESS)
   {
-    send_response(output_fd, "error", pam_strerror(NULL, rc), NULL, NULL);
+    send_response(output_fd, "error", pam_strerror(NULL, rc), NULL, NULL, NULL);
     secure_bzero(password, sizeof(password));
     return 1;
   }
@@ -1171,7 +1254,7 @@ static int handle_client(int input_fd, int output_fd)
     journal_infof("auth: password expired for user '%s'", user);
     send_response(output_fd, "error",
                   "Password has expired. Please change it via SSH or console.",
-                  NULL, NULL);
+                  NULL, NULL, NULL);
     pam_end(pamh, rc);
     secure_bzero(password, sizeof(password));
     return 1;
@@ -1183,7 +1266,7 @@ static int handle_client(int input_fd, int output_fd)
   if (rc != PAM_SUCCESS)
   {
     const char *err = pam_strerror(pamh, rc);
-    send_response(output_fd, "error", err, NULL, NULL);
+    send_response(output_fd, "error", err, NULL, NULL, NULL);
     pam_end(pamh, rc);
     secure_bzero(password, sizeof(password));
     return 1;
@@ -1193,7 +1276,7 @@ static int handle_client(int input_fd, int output_fd)
   struct passwd *pw = getpwnam(user);
   if (!pw)
   {
-    send_response(output_fd, "error", "user lookup failed", NULL, NULL);
+    send_response(output_fd, "error", "user lookup failed", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
@@ -1205,7 +1288,7 @@ static int handle_client(int input_fd, int output_fd)
   // Validate socket path
   if (!valid_socket_path_for_uid(socket_path, pw->pw_uid))
   {
-    send_response(output_fd, "error", "invalid socket path for user", NULL, NULL);
+    send_response(output_fd, "error", "invalid socket path for user", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
@@ -1216,7 +1299,7 @@ static int handle_client(int input_fd, int output_fd)
   int user_fd = ensure_runtime_dirs(pw);
   if (user_fd < 0)
   {
-    send_response(output_fd, "error", "failed to prepare runtime directory", NULL, NULL);
+    send_response(output_fd, "error", "failed to prepare runtime directory", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
@@ -1238,7 +1321,7 @@ static int handle_client(int input_fd, int output_fd)
   int bridge_fd = -1;
   if (open_and_validate_bridge(bridge_bin, 0, &bridge_fd) != 0)
   {
-    send_response(output_fd, "error", "bridge validation failed", NULL, NULL);
+    send_response(output_fd, "error", "bridge validation failed", NULL, NULL, NULL);
     close(user_fd);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1256,7 +1339,7 @@ static int handle_client(int input_fd, int output_fd)
   if (boot_fd < 0)
   {
     journal_errorf("failed to create bootstrap file: %m");
-    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
+    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL, NULL);
     close(bridge_fd);
     close(user_fd);
     pam_setcred(pamh, PAM_DELETE_CRED);
@@ -1272,7 +1355,7 @@ static int handle_client(int input_fd, int output_fd)
     unlinkat(user_fd, bootstrap_filename, 0);
     close(bridge_fd);
     close(user_fd);
-    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
+    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
@@ -1284,7 +1367,7 @@ static int handle_client(int input_fd, int output_fd)
     unlinkat(user_fd, bootstrap_filename, 0);
     close(bridge_fd);
     close(user_fd);
-    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
+    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
@@ -1304,15 +1387,16 @@ static int handle_client(int input_fd, int output_fd)
       verbose_flag,
       -1);
   close(boot_fd);
+  boot_fd = -1;  // Prevent double-close in error paths below
 
   if (bytes_written < 0)
   {
     journal_errorf("failed to write bootstrap JSON to file");
-    close(boot_fd);
+    // boot_fd already closed above, don't double-close
     unlinkat(user_fd, bootstrap_filename, 0);
     close(bridge_fd);
     close(user_fd);
-    send_response(output_fd, "error", "bootstrap communication failed", NULL, NULL);
+    send_response(output_fd, "error", "bootstrap communication failed", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
@@ -1327,11 +1411,11 @@ static int handle_client(int input_fd, int output_fd)
   if (rc != PAM_SUCCESS)
   {
     const char *err = pam_strerror(pamh, rc);
-    close(boot_fd);
+    // boot_fd already closed and set to -1, don't double-close
     unlinkat(user_fd, bootstrap_filename, 0);
     close(bridge_fd);
     close(user_fd);
-    send_response(output_fd, "error", err, NULL, NULL);
+    send_response(output_fd, "error", err, NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
@@ -1352,7 +1436,7 @@ static int handle_client(int input_fd, int output_fd)
     unlinkat(user_fd, bootstrap_filename, 0);
     close(bridge_fd);
     close(user_fd);
-    send_response(output_fd, "error", "failed to spawn bridge", NULL, NULL);
+    send_response(output_fd, "error", "failed to spawn bridge", NULL, NULL, NULL);
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1368,7 +1452,7 @@ static int handle_client(int input_fd, int output_fd)
   {
     journal_errorf("bridge did not create socket in time");
     // Can't use unlinkat here, user_fd already closed - bootstrap cleanup happens on bridge exit
-    send_response(output_fd, "error", "bridge startup failed", NULL, NULL);
+    send_response(output_fd, "error", "bridge startup failed", NULL, NULL, NULL);
     kill(child, SIGTERM);
     (void)waitpid(child, NULL, 0);
     pam_close_session(pamh, 0);
@@ -1377,7 +1461,14 @@ static int handle_client(int input_fd, int output_fd)
     return 1;
   }
 
-  send_response(output_fd, "ok", NULL, mode_str, socket_path);
+  // Trim trailing newline from MOTD if present
+  if (appdata.motd_len > 0 && appdata.motd[appdata.motd_len - 1] == '\n')
+  {
+    appdata.motd[appdata.motd_len - 1] = '\0';
+  }
+
+  send_response(output_fd, "ok", NULL, mode_str, socket_path,
+                appdata.motd_len > 0 ? appdata.motd : NULL);
   if (input_fd >= 0)
     close(input_fd);
   if (output_fd >= 0 && output_fd != input_fd)
