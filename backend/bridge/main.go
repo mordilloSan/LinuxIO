@@ -61,29 +61,110 @@ type boot struct {
 	LogFD         int    `json:"log_fd,omitempty"` // FD for piped logging in dev mode
 }
 
-func readBootstrapFromFD3() (*boot, error) {
-	f := os.NewFile(uintptr(3), "bootstrapfd")
-	if f == nil {
-		return nil, os.ErrNotExist
+// systemdListenFDs returns the number of systemd socket-activation FDs.
+func systemdListenFDs() int {
+	nStr := strings.TrimSpace(os.Getenv("LISTEN_FDS"))
+	if nStr == "" {
+		return 0
 	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, 64*1024))
+	pidStr := strings.TrimSpace(os.Getenv("LISTEN_PID"))
+	if pidStr == "" {
+		return 0
+	}
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil || pid != os.Getpid() {
+		return 0
+	}
+	n, err := strconv.Atoi(nStr)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+// readBootstrapFromFD reads bootstrap JSON from the provided FD.
+// The FD is a socketpair created by the auth daemon, so we can read and write to it.
+func readBootstrapFromFD(fd uintptr) (*boot, error) {
+	bootstrapFile := os.NewFile(fd, "bootstrap")
+	if bootstrapFile == nil {
+		return nil, fmt.Errorf("failed to open bootstrap FD %d", fd)
+	}
+	defer bootstrapFile.Close()
+
+	b, err := io.ReadAll(io.LimitReader(bootstrapFile, 64*1024))
 	if err != nil || len(b) == 0 {
-		return nil, err
+		if err == nil {
+			err = io.EOF
+		}
+		return nil, fmt.Errorf("failed to read bootstrap from FD %d: %w", fd, err)
 	}
+
 	var v boot
 	if err := json.Unmarshal(b, &v); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal bootstrap JSON: %w", err)
 	}
+
 	if v.Secret == "" || v.SessionID == "" {
-		return nil, io.ErrUnexpectedEOF
+		return nil, fmt.Errorf("bootstrap missing required fields (secret or session_id)")
 	}
+
+	// Write "OK" acknowledgment back to auth daemon via the socketpair.
+	if _, err := bootstrapFile.Write([]byte("OK")); err != nil {
+		// Log but don't fail - bootstrap data is valid.
+		fmt.Fprintf(os.Stderr, "warning: failed to write bootstrap acknowledgment: %v\n", err)
+	}
+
 	return &v, nil
 }
 
+func readBootstrapFromFile(path string) (*boot, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open bootstrap file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	b, err := io.ReadAll(io.LimitReader(f, 64*1024))
+	if err != nil || len(b) == 0 {
+		if err == nil {
+			err = io.EOF
+		}
+		return nil, fmt.Errorf("failed to read bootstrap file %s: %w", path, err)
+	}
+
+	var v boot
+	if err := json.Unmarshal(b, &v); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal bootstrap JSON: %w", err)
+	}
+
+	if v.Secret == "" || v.SessionID == "" {
+		return nil, fmt.Errorf("bootstrap missing required fields (secret or session_id)")
+	}
+
+	if err := os.Remove(path); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to remove bootstrap file %s: %v\n", path, err)
+	}
+
+	return &v, nil
+}
+
+func readBootstrap() (*boot, error) {
+	if path := strings.TrimSpace(os.Getenv("LINUXIO_BOOTSTRAP_FILE")); path != "" {
+		if b, err := readBootstrapFromFile(path); err == nil {
+			return b, nil
+		}
+	}
+	if systemdListenFDs() > 0 {
+		return readBootstrapFromFD(0)
+	}
+	if b, err := readBootstrapFromFD(3); err == nil {
+		return b, nil
+	}
+	return readBootstrapFromFD(0)
+}
+
 func initEnvCfg() envConfig {
-	if b, err := readBootstrapFromFD3(); err == nil && b != nil {
-		// prefer FD3 path
+	if b, err := readBootstrap(); err == nil && b != nil {
 		cfg := envConfig{
 			SessionID:     b.SessionID,
 			Username:      b.Username,
@@ -98,7 +179,7 @@ func initEnvCfg() envConfig {
 		}
 		return cfg
 	}
-	logger.Warnf("Failed to read bootstrap info from FD3")
+	logger.Warnf("Failed to read bootstrap info")
 	return envConfig{}
 }
 
@@ -155,7 +236,7 @@ func main() {
 	socketPath := strings.TrimSpace(envCfg.SocketPath)
 	if socketPath == "" {
 		// logger isn't initialized yet; print to stderr and exit
-		fmt.Fprintln(os.Stderr, "bridge bootstrap error: empty socket path in FD3 JSON")
+		fmt.Fprintln(os.Stderr, "bridge bootstrap error: empty socket path in bootstrap JSON")
 		os.Exit(1)
 	}
 
@@ -204,7 +285,7 @@ func main() {
 	_ = syscall.Umask(0o077)
 	logger.Infof("[bridge] starting (uid=%d) sock=%s", os.Geteuid(), socketPath)
 
-	listener, err := createAndOwnSocket(socketPath, Sess.User.UID)
+	listener, err := listenBridge(socketPath, Sess.User.UID)
 	if err != nil {
 		logger.Errorf("create socket: %v", err)
 		os.Exit(1)
@@ -567,6 +648,40 @@ func handleBinaryStream(conn net.Conn, id string) {
 			StreamID: frame.StreamID,
 		})
 	}
+}
+
+func listenerFromSystemd() (net.Listener, bool, error) {
+	n := systemdListenFDs()
+	if n <= 0 {
+		return nil, false, nil
+	}
+	if n != 1 {
+		return nil, true, fmt.Errorf("expected 1 systemd listen FD, got %d", n)
+	}
+
+	f := os.NewFile(uintptr(3), "systemd-listen")
+	if f == nil {
+		return nil, true, fmt.Errorf("failed to open systemd listen FD 3")
+	}
+	defer f.Close()
+
+	l, err := net.FileListener(f)
+	if err != nil {
+		return nil, true, fmt.Errorf("systemd listen FD 3: %w", err)
+	}
+
+	return l, true, nil
+}
+
+func listenBridge(socketPath, uidStr string) (net.Listener, error) {
+	if l, ok, err := listenerFromSystemd(); ok {
+		if err != nil {
+			return nil, err
+		}
+		logger.Infof("[socket] using systemd socket activation on %s", socketPath)
+		return l, nil
+	}
+	return createAndOwnSocket(socketPath, uidStr)
 }
 
 func createAndOwnSocket(socketPath, uidStr string) (net.Listener, error) {

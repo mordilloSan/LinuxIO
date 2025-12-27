@@ -1,6 +1,5 @@
 // /usr/local/bin/linuxio-auth  (install 0755 root:root, runs via systemd)
-// Daemon mode: listen on /run/linuxio/auth.sock for JSON auth requests
-// Dev mode: set LINUXIO_AUTH_SOCKET env var for custom socket path
+// Single-shot mode: read one JSON auth request from stdin (socket-activated)
 #define __STDC_WANT_LIB_EXT1__ 1
 #define _GNU_SOURCE
 #include <security/pam_appl.h>
@@ -43,20 +42,12 @@
 #include <systemd/sd-journal.h>
 #define HAVE_SD_JOURNAL 1
 #endif
-#if __has_include(<systemd/sd-daemon.h>)
-#include <systemd/sd-daemon.h>
-#define HAVE_SD_DAEMON 1
-#endif
 #endif
 
-// Socket activation constants (fallback if no sd-daemon.h)
-#ifndef SD_LISTEN_FDS_START
-#define SD_LISTEN_FDS_START 3
-#endif
-
-// Auth socket path
-#define AUTH_SOCKET_PATH "/run/linuxio/auth.sock"
-#define AUTH_SOCKET_DIR "/run/linuxio"
+// Socket timeouts (seconds)
+#define SOCKET_READ_TIMEOUT 30
+#define SOCKET_WRITE_TIMEOUT 10
+#define BRIDGE_START_TIMEOUT_MS 5000
 
 #ifndef AT_EMPTY_PATH
 #define AT_EMPTY_PATH 0x1000
@@ -174,21 +165,6 @@ static void secure_bzero(void *p, size_t n)
 }
 #endif
 
-static const char *limit_reason_for_signal(int sig, char *buf, size_t buflen)
-{
-  switch (sig)
-  {
-  case SIGXCPU:
-    return "exceeded RLIMIT_CPU (CPU time limit)";
-  // You could add SIGKILL+SIGXCPU hard-limit heuristics here if you ever use different cur/max
-  default:
-    break;
-  }
-  (void)buf;
-  (void)buflen;
-  return NULL;
-}
-
 // -------- JSON escaping (FIX #1) --------
 static int json_escape_string(char *dst, size_t dstsz, const char *src)
 {
@@ -279,34 +255,7 @@ static int pam_conv_func(int n, const struct pam_message **msg, struct pam_respo
 }
 
 // -------- privilege drop -------
-static void drop_to_user(const struct passwd *pw)
-{
-  if (setgroups(0, NULL) != 0)
-  {
-    perror("setgroups");
-    _exit(127);
-  }
-  if (initgroups(pw->pw_name, pw->pw_gid) != 0)
-  {
-    perror("initgroups");
-    _exit(127);
-  }
-  if (setgid(pw->pw_gid) != 0)
-  {
-    perror("setgid");
-    _exit(127);
-  }
-  if (setuid(pw->pw_uid) != 0)
-  {
-    perror("setuid");
-    _exit(127);
-  }
-  if (setuid(0) == 0)
-  {
-    log_stderrf("SECURITY: privilege drop failed");
-    _exit(127);
-  }
-}
+
 
 static int env_get_int(const char *name, int defval, int minv, int maxv)
 {
@@ -324,42 +273,26 @@ static int env_get_int(const char *name, int defval, int minv, int maxv)
   return (int)v;
 }
 
-// Validate env var length and dup it
-static char *safe_getenv_strdup(const char *name, size_t max_len)
-{
-  const char *val = getenv(name);
-  if (!val || !*val)
-    return NULL;
-
-  size_t len = strnlen(val, max_len + 1);
-  if (len > max_len)
-  {
-    journal_errorf("env var %s too long", name);
-    return NULL;
-  }
-
-  return strdup(val);
-}
-
-// Ensure /run/linuxio/<uid> exists and perms sane (FIX #4 - proper cleanup)
-static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid)
+// Ensure /run/linuxio/<uid> exists and perms sane for bridge sockets
+static int ensure_runtime_dirs(const struct passwd *pw)
 {
   if (!pw)
   {
     journal_errorf("runtime: no passwd");
     return -1;
   }
-  const char *base = "/run/linuxio";
+
+  struct group *gr = getgrnam("linuxio-bridge-socket");
+  if (!gr)
+  {
+    journal_errorf("runtime: group linuxio-bridge-socket not found");
+    return -1;
+  }
+  gid_t linuxio_gid = gr->gr_gid;
+
   mode_t old_umask = umask(0);
   int run_fd = -1, base_fd = -1, user_fd = -1;
   int ret = -1;
-
-  gid_t linuxio_gid = 0;
-  struct group *gr = getgrnam("linuxio-bridge-socket");
-  if (gr)
-    linuxio_gid = gr->gr_gid;
-  if (out_linuxio_gid)
-    *out_linuxio_gid = linuxio_gid;
 
   run_fd = open("/run", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
   if (run_fd < 0)
@@ -368,75 +301,78 @@ static int ensure_runtime_dirs(const struct passwd *pw, gid_t *out_linuxio_gid)
     goto cleanup;
   }
 
-  if (mkdirat(run_fd, "linuxio", 02771) != 0 && errno != EEXIST)
+  if (mkdirat(run_fd, "linuxio", 0775) != 0 && errno != EEXIST)
   {
-    journal_errorf("runtime: mkdir %s failed: %m", base);
+    journal_errorf("runtime: mkdir /run/linuxio failed: %m");
     goto cleanup;
   }
 
   base_fd = openat(run_fd, "linuxio", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
   if (base_fd < 0)
   {
-    journal_errorf("runtime: open %s failed: %m", base);
+    journal_errorf("runtime: open /run/linuxio failed: %m");
     goto cleanup;
   }
 
   struct stat st;
   if (fstat(base_fd, &st) != 0 || !S_ISDIR(st.st_mode))
   {
-    journal_errorf("runtime: stat %s failed", base);
+    journal_errorf("runtime: stat /run/linuxio failed");
     goto cleanup;
   }
-  /* Check for world-writable (unsafe), but allow non-root ownership
-   * since DynamicUser=yes creates directories owned by ephemeral user.
-   * We'll fix ownership below with fchown anyway. */
   if (st.st_mode & S_IWOTH)
   {
-    journal_errorf("runtime: %s is world-writable (unsafe)", base);
+    journal_errorf("runtime: /run/linuxio is world-writable (unsafe)");
     goto cleanup;
   }
-  /* base directory ownership - fix to root:linuxio */
+
+  if ((st.st_mode & 0777) != 0775)
+  {
+    if (fchmod(base_fd, 0775) != 0)
+    {
+      journal_errorf("runtime: fchmod(/run/linuxio, 0775) failed: %m");
+      goto cleanup;
+    }
+  }
   if (fchown(base_fd, 0, linuxio_gid) != 0)
   {
-    journal_errorf("runtime: fchown(base_fd, 0, %u) failed: %m", (unsigned)linuxio_gid);
-    goto cleanup;
-  }
-  if (fchmod(base_fd, 02771) != 0)
-  {
-    journal_errorf("runtime: fchmod(base_fd, 02771) failed: %m");
+    journal_errorf("runtime: fchown(/run/linuxio, 0, %u) failed: %m", (unsigned)linuxio_gid);
     goto cleanup;
   }
 
   char uid_str[32];
   safe_snprintf(uid_str, sizeof(uid_str), "%u", (unsigned)pw->pw_uid);
-  if (mkdirat(base_fd, uid_str, 02770) != 0 && errno != EEXIST)
+  if (mkdirat(base_fd, uid_str, 0770) != 0 && errno != EEXIST)
   {
-    journal_errorf("runtime: mkdir %s/%s failed: %m", base, uid_str);
+    journal_errorf("runtime: mkdir /run/linuxio/%s failed: %m", uid_str);
     goto cleanup;
   }
 
   user_fd = openat(base_fd, uid_str, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
   if (user_fd < 0)
   {
-    journal_errorf("runtime: open %s/%s failed: %m", base, uid_str);
+    journal_errorf("runtime: open /run/linuxio/%s failed: %m", uid_str);
     goto cleanup;
   }
 
   if (fstat(user_fd, &st) != 0 || !S_ISDIR(st.st_mode))
   {
-    journal_errorf("runtime: userdir stat failed");
+    journal_errorf("runtime: stat /run/linuxio/%s failed", uid_str);
     goto cleanup;
   }
-  /* user directory ownership */
+
+  if ((st.st_mode & 0777) != 0770)
+  {
+    if (fchmod(user_fd, 0770) != 0)
+    {
+      journal_errorf("runtime: fchmod(/run/linuxio/%s, 0770) failed: %m", uid_str);
+      goto cleanup;
+    }
+  }
   if (fchown(user_fd, pw->pw_uid, linuxio_gid) != 0)
   {
-    journal_errorf("runtime: fchown(user_fd, %u, %u) failed: %m",
-                   (unsigned)pw->pw_uid, (unsigned)linuxio_gid);
-    goto cleanup;
-  }
-  if (fchmod(user_fd, 02770) != 0)
-  {
-    journal_errorf("runtime: fchmod(user_fd, 02770) failed: %m");
+    journal_errorf("runtime: fchown(/run/linuxio/%s, %u, %u) failed: %m",
+                   uid_str, (unsigned)pw->pw_uid, (unsigned)linuxio_gid);
     goto cleanup;
   }
 
@@ -506,6 +442,55 @@ static int validate_parent_dir_via_fd(int dfd, uid_t file_owner, uid_t user_uid)
   return validate_parent_dir_policy(&ds, file_owner, user_uid);
 }
 
+// Resource limits for the bridge process
+static void set_resource_limits(void)
+{
+  struct rlimit rl;
+  rl.rlim_cur = rl.rlim_max = 10UL * 60;
+  (void)setrlimit(RLIMIT_CPU, &rl);
+
+  rl.rlim_cur = rl.rlim_max = 2048;
+  (void)setrlimit(RLIMIT_NOFILE, &rl);
+
+  int nproc_limit = env_get_int("LINUXIO_RLIMIT_NPROC", 1024, 10, 4096);
+  rl.rlim_cur = rl.rlim_max = nproc_limit;
+  (void)setrlimit(RLIMIT_NPROC, &rl);
+
+  rl.rlim_cur = rl.rlim_max = 16UL * 1024 * 1024 * 1024;
+  (void)setrlimit(RLIMIT_AS, &rl);
+}
+
+static int wait_for_bridge_socket(const char *socket_path, int timeout_ms)
+{
+  if (!socket_path || !*socket_path)
+    return -1;
+  if (strlen(socket_path) >= sizeof(((struct sockaddr_un *)0)->sun_path))
+    return -1;
+
+  const int step_ms = 50;
+  int elapsed_ms = 0;
+  while (elapsed_ms < timeout_ms)
+  {
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd >= 0)
+    {
+      struct sockaddr_un addr;
+      memset(&addr, 0, sizeof(addr));
+      addr.sun_family = AF_UNIX;
+      memcpy(addr.sun_path, socket_path, strlen(socket_path) + 1);
+      if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0)
+      {
+        close(fd);
+        return 0;
+      }
+      close(fd);
+    }
+    usleep(step_ms * 1000);
+    elapsed_ms += step_ms;
+  }
+  return -1;
+}
+
 static int open_and_validate_bridge(const char *bridge_path, uid_t required_owner, int *out_fd)
 {
   int fd = open(bridge_path, O_PATH | O_CLOEXEC | O_NOFOLLOW);
@@ -559,63 +544,6 @@ static int open_and_validate_bridge(const char *bridge_path, uid_t required_owne
 
   *out_fd = fd;
   return 0;
-}
-
-// Prefer execveat(); fall back to execv() on EACCES/EPERM/ENOSYS for compatibility.
-static int exec_bridge_via_fd(int fd, const char *bridge_path, const char *const argv[])
-{
-#if defined(SYS_execveat)
-  if (syscall(SYS_execveat, fd, "", ARGV_UNCONST(argv), environ, AT_EMPTY_PATH) == -1)
-  {
-    int saved = errno;
-    if (saved == EACCES || saved == EPERM || saved == ENOSYS)
-    {
-      execv(bridge_path, ARGV_UNCONST(argv));
-      return -1; // if execv also fails
-    }
-    errno = saved;
-    return -1;
-  }
-#else
-  execv(bridge_path, ARGV_UNCONST(argv));
-  return -1;
-#endif
-  return -1;
-}
-
-// Redirect bridge stdout/stderr (best effort)
-static int redirect_bridge_output(uid_t owner_uid, gid_t linuxio_gid, const char *sess_id)
-{
-#ifdef HAVE_SD_JOURNAL
-  int jfd = sd_journal_stream_fd("linuxio-bridge", LOG_INFO, 1);
-  if (jfd >= 0)
-  {
-    if (dup2(jfd, STDOUT_FILENO) < 0)
-    {
-      close(jfd);
-      return -1;
-    }
-    if (dup2(jfd, STDERR_FILENO) < 0)
-    {
-      close(jfd);
-      return -1;
-    }
-    close(jfd);
-    return 0;
-  }
-#endif
-  (void)sess_id;
-  (void)owner_uid;
-  (void)linuxio_gid;
-  int devnull = open("/dev/null", O_WRONLY | O_CLOEXEC);
-  if (devnull >= 0)
-  {
-    (void)dup2(devnull, STDOUT_FILENO);
-    (void)dup2(devnull, STDERR_FILENO);
-    close(devnull);
-    return 0;
-  }
-  return -1;
 }
 
 // Write bootstrap JSON to a file descriptor
@@ -806,24 +734,19 @@ static int user_has_sudo(const struct passwd *pw, const char *password, int *out
   return 0;
 }
 
-// Resource limits for the bridge
-static void set_resource_limits(void)
+static void drop_to_user(const struct passwd *pw)
 {
-  struct rlimit rl;
-  rl.rlim_cur = rl.rlim_max = 10UL * 60;
-  (void)setrlimit(RLIMIT_CPU, &rl);
-
-  rl.rlim_cur = rl.rlim_max = 2048;
-  (void)setrlimit(RLIMIT_NOFILE, &rl);
-
-  int nproc_limit = env_get_int("LINUXIO_RLIMIT_NPROC", 1024, 10, 4096);
-  rl.rlim_cur = rl.rlim_max = nproc_limit;
-  (void)setrlimit(RLIMIT_NPROC, &rl);
-
-  rl.rlim_cur = rl.rlim_max = 16UL * 1024 * 1024 * 1024;
-  (void)setrlimit(RLIMIT_AS, &rl);
+  if (setgroups(0, NULL) != 0)
+    _exit(127);
+  if (initgroups(pw->pw_name, pw->pw_gid) != 0)
+    _exit(127);
+  if (setgid(pw->pw_gid) != 0)
+    _exit(127);
+  if (setuid(pw->pw_uid) != 0)
+    _exit(127);
+  if (setuid(0) == 0)
+    _exit(127);
 }
-
 // Socket path validation
 static int valid_socket_path_for_uid(const char *p, uid_t uid)
 {
@@ -871,7 +794,7 @@ static int valid_socket_path_for_uid(const char *p, uid_t uid)
 }
 
 // ============================================================================
-// DAEMON MODE - Socket-based authentication service
+// Single-shot mode - socket-activated worker
 // ============================================================================
 
 // Simple JSON field extractor (finds "key":"value" pattern)
@@ -930,85 +853,6 @@ static char *json_get_string(const char *json, const char *key, char *buf, size_
   return buf;
 }
 
-// Get number of socket-activated file descriptors from systemd
-static int get_systemd_fds(void)
-{
-#ifdef HAVE_SD_DAEMON
-  return sd_listen_fds(0);
-#else
-  // Manual implementation
-  const char *pid_str = getenv("LISTEN_PID");
-  const char *fds_str = getenv("LISTEN_FDS");
-  if (!pid_str || !fds_str)
-    return 0;
-
-  pid_t expected_pid = (pid_t)atoi(pid_str);
-  if (expected_pid != getpid())
-    return 0;
-
-  int n = atoi(fds_str);
-  return (n > 0) ? n : 0;
-#endif
-}
-
-// Create auth socket for dev mode (when not using systemd activation)
-static int create_auth_socket(const char *socket_path)
-{
-  // Check if socket_path directory exists
-  char dir[MAX_PATH_LEN];
-  strncpy(dir, socket_path, sizeof(dir) - 1);
-  dir[sizeof(dir) - 1] = '\0';
-  char *slash = strrchr(dir, '/');
-  if (slash)
-  {
-    *slash = '\0';
-    struct stat st;
-    if (stat(dir, &st) < 0)
-    {
-      // Create directory
-      if (mkdir(dir, 0755) < 0 && errno != EEXIST)
-      {
-        journal_errorf("failed to create socket directory %s: %s", dir, strerror(errno));
-        return -1;
-      }
-    }
-  }
-
-  // Remove existing socket
-  unlink(socket_path);
-
-  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (fd < 0)
-  {
-    journal_errorf("socket() failed: %s", strerror(errno));
-    return -1;
-  }
-
-  struct sockaddr_un addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
-
-  if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-  {
-    journal_errorf("bind(%s) failed: %s", socket_path, strerror(errno));
-    close(fd);
-    return -1;
-  }
-
-  // Dev mode: world accessible (0666)
-  chmod(socket_path, 0666);
-
-  if (listen(fd, 16) < 0)
-  {
-    journal_errorf("listen() failed: %s", strerror(errno));
-    close(fd);
-    return -1;
-  }
-
-  return fd;
-}
-
 // Send JSON response to client
 static void send_response(int fd, const char *status, const char *error, const char *mode, const char *socket_path)
 {
@@ -1043,15 +887,104 @@ static void send_response(int fd, const char *status, const char *error, const c
     (void)write_all(fd, buf, (size_t)len);
 }
 
-// Handle a single client connection
-static void handle_client(int client_fd)
+static pid_t spawn_bridge_process(
+    const struct passwd *pw,
+    int want_privileged,
+    const char *bridge_bin,
+    const char *env_mode,
+    int verbose,
+    const char *bootstrap_path,
+    const char *session_id,
+    const char *socket_path)
+{
+  pid_t pid = fork();
+  if (pid < 0)
+    return -1;
+  if (pid > 0)
+    return pid;
+
+  int devnull = open("/dev/null", O_RDONLY | O_CLOEXEC);
+  if (devnull >= 0)
+  {
+    (void)dup2(devnull, STDIN_FILENO);
+    close(devnull);
+  }
+
+  (void)dup2(STDERR_FILENO, STDOUT_FILENO);
+
+  umask(077);
+  set_resource_limits();
+
+  clearenv();
+  setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
+  setenv("LANG", "C", 1);
+  setenv("LC_ALL", "C", 1);
+
+  if (want_privileged)
+  {
+    setenv("HOME", "/root", 1);
+    setenv("USER", "root", 1);
+    setenv("LOGNAME", "root", 1);
+    if (setgroups(0, NULL) != 0)
+      _exit(127);
+    if (setresgid(0, 0, 0) != 0)
+      _exit(127);
+    if (setresuid(0, 0, 0) != 0)
+      _exit(127);
+    setenv("LINUXIO_PRIVILEGED", "1", 1);
+  }
+  else
+  {
+    drop_to_user(pw);
+    if (pw)
+    {
+      setenv("HOME", pw->pw_dir, 1);
+      setenv("USER", pw->pw_name, 1);
+      setenv("LOGNAME", pw->pw_name, 1);
+      char xdg[64];
+      safe_snprintf(xdg, sizeof(xdg), "/run/user/%u", (unsigned)pw->pw_uid);
+      setenv("XDG_RUNTIME_DIR", xdg, 1);
+      if (chdir(pw->pw_dir) != 0)
+        _exit(127);
+    }
+  }
+
+  if (env_mode && *env_mode)
+    setenv("LINUXIO_ENV", env_mode, 1);
+  if (bootstrap_path && *bootstrap_path)
+    setenv("LINUXIO_BOOTSTRAP_FILE", bootstrap_path, 1);
+  if (session_id && *session_id)
+    setenv("LINUXIO_SESSION_ID", session_id, 1);
+  if (socket_path && *socket_path)
+    setenv("LINUXIO_SOCKET_PATH", socket_path, 1);
+  setenv("LINUXIO_BRIDGE", "1", 1);
+  if (verbose)
+    setenv("LINUXIO_VERBOSE", "1", 1);
+
+  (void)prctl(PR_SET_DUMPABLE, 1);
+
+  const char *argv_child[5];
+  int ai = 0;
+  argv_child[ai++] = bridge_bin;
+  argv_child[ai++] = "--env";
+  argv_child[ai++] = env_mode ? env_mode : "production";
+  if (verbose)
+    argv_child[ai++] = "--verbose";
+  argv_child[ai++] = NULL;
+
+  execv(bridge_bin, ARGV_UNCONST(argv_child));
+  _exit(127);
+}
+
+// Handle a single client request
+static int handle_client(int input_fd, int output_fd)
 {
   // Read request (newline-terminated JSON)
   char reqbuf[8192];
   ssize_t total = 0;
   while (total < (ssize_t)sizeof(reqbuf) - 1)
   {
-    ssize_t n = read(client_fd, reqbuf + total, sizeof(reqbuf) - 1 - (size_t)total);
+    ssize_t n = read(input_fd, reqbuf + total, sizeof(reqbuf) - 1 - (size_t)total);
     if (n <= 0)
       break;
     total += n;
@@ -1063,9 +996,9 @@ static void handle_client(int client_fd)
 
   if (total == 0)
   {
-    send_response(client_fd, "error", "empty request", NULL, NULL);
+    send_response(output_fd, "error", "empty request", NULL, NULL);
     secure_bzero(reqbuf, sizeof(reqbuf));
-    return;
+    return 1;
   }
 
   // Parse JSON fields
@@ -1095,9 +1028,9 @@ static void handle_client(int client_fd)
   // Validate required fields
   if (!user[0] || !session_id[0] || !socket_path[0])
   {
-    send_response(client_fd, "error", "missing required fields", NULL, NULL);
+    send_response(output_fd, "error", "missing required fields", NULL, NULL);
     secure_bzero(password, sizeof(password));
-    return;
+    return 1;
   }
 
   // PAM authentication
@@ -1106,9 +1039,9 @@ static void handle_client(int client_fd)
   int rc = pam_start("linuxio", user, &conv, &pamh);
   if (rc != PAM_SUCCESS)
   {
-    send_response(client_fd, "error", pam_strerror(NULL, rc), NULL, NULL);
+    send_response(output_fd, "error", pam_strerror(NULL, rc), NULL, NULL);
     secure_bzero(password, sizeof(password));
-    return;
+    return 1;
   }
 
   (void)pam_set_item(pamh, PAM_RHOST, "web");
@@ -1121,44 +1054,42 @@ static void handle_client(int client_fd)
   if (rc != PAM_SUCCESS)
   {
     const char *err = pam_strerror(pamh, rc);
-    send_response(client_fd, "error", err, NULL, NULL);
+    send_response(output_fd, "error", err, NULL, NULL);
     pam_end(pamh, rc);
     secure_bzero(password, sizeof(password));
-    return;
+    return 1;
   }
 
   // Get user info
   struct passwd *pw = getpwnam(user);
   if (!pw)
   {
-    send_response(client_fd, "error", "user lookup failed", NULL, NULL);
+    send_response(output_fd, "error", "user lookup failed", NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
-    return;
+    return 1;
   }
 
-  journal_infof("daemon: PAM auth success for user '%s' (uid=%u)", user, (unsigned)pw->pw_uid);
+  journal_infof("auth: PAM auth success for user '%s' (uid=%u)", user, (unsigned)pw->pw_uid);
 
   // Validate socket path
   if (!valid_socket_path_for_uid(socket_path, pw->pw_uid))
   {
-    send_response(client_fd, "error", "invalid socket path for user", NULL, NULL);
+    send_response(output_fd, "error", "invalid socket path for user", NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
-    return;
+    return 1;
   }
 
-  // Ensure runtime directories
-  gid_t linuxio_gid = 0;
-  if (ensure_runtime_dirs(pw, &linuxio_gid) != 0)
+  if (ensure_runtime_dirs(pw) != 0)
   {
-    send_response(client_fd, "error", "failed to create runtime dirs", NULL, NULL);
+    send_response(output_fd, "error", "failed to prepare runtime directory", NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
-    return;
+    return 1;
   }
 
   // Check sudo capability
@@ -1171,309 +1102,157 @@ static void handle_client(int client_fd)
   const char *mode_str = want_privileged ? "privileged" : "unprivileged";
   const char *envmode = (env_mode[0]) ? env_mode : "production";
 
-  // Validate and open bridge binary
+  // Validate bridge binary (just check it exists, systemd will exec it)
   const char *bridge_bin = bridge_path[0] ? bridge_path : "/usr/local/bin/linuxio-bridge";
   int bridge_fd = -1;
   if (open_and_validate_bridge(bridge_bin, 0, &bridge_fd) != 0)
   {
-    send_response(client_fd, "error", "bridge validation failed", NULL, NULL);
+    send_response(output_fd, "error", "bridge validation failed", NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
-    return;
+    return 1;
   }
+  close(bridge_fd); // Don't need to keep it open before exec
 
-  // Fork nanny process to manage bridge
-  pid_t nanny = fork();
-  if (nanny < 0)
+  // Prepare bootstrap file (bridge reads this at startup)
+  char bootstrap_path[MAX_PATH_LEN] = "";
+  safe_snprintf(bootstrap_path, sizeof(bootstrap_path), "/run/linuxio/%u/bootstrap-%s.json",
+                (unsigned)pw->pw_uid, session_id);
+  int boot_fd = open(bootstrap_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+  if (boot_fd < 0)
   {
-    send_response(client_fd, "error", "fork failed", NULL, NULL);
-    close(bridge_fd);
+    journal_errorf("failed to create bootstrap file: %m");
+    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
-    return;
+    return 1;
+  }
+  if (fchown(boot_fd, pw->pw_uid, pw->pw_gid) != 0)
+  {
+    journal_errorf("failed to chown bootstrap file: %m");
+    close(boot_fd);
+    unlink(bootstrap_path);
+    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    return 1;
+  }
+  if (fchmod(boot_fd, 0600) != 0)
+  {
+    journal_errorf("failed to chmod bootstrap file: %m");
+    close(boot_fd);
+    unlink(bootstrap_path);
+    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    return 1;
   }
 
-  if (nanny == 0)
+  int verbose_flag = (verbose_str[0] == '1' || verbose_str[0] == 't' || verbose_str[0] == 'T');
+  int bytes_written = write_bootstrap_json(
+      boot_fd,
+      session_id,
+      user,
+      pw->pw_uid,
+      pw->pw_gid,
+      secret,
+      socket_path,
+      server_base_url,
+      server_cert,
+      verbose_flag,
+      -1);
+  close(boot_fd);
+
+  if (bytes_written < 0)
   {
-    // Nanny child - will spawn and monitor bridge
-    (void)prctl(PR_SET_PDEATHSIG, SIGTERM);
-    close(client_fd);
+    journal_errorf("failed to write bootstrap JSON to file");
+    unlink(bootstrap_path);
+    send_response(output_fd, "error", "bootstrap communication failed", NULL, NULL);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    return 1;
+  }
 
-    // Open PAM session
-    if (pam_open_session(pamh, 0) != PAM_SUCCESS)
-    {
-      journal_errorf("pam_open_session failed");
-      _exit(1);
-    }
+  rc = pam_open_session(pamh, 0);
+  if (rc != PAM_SUCCESS)
+  {
+    const char *err = pam_strerror(pamh, rc);
+    unlink(bootstrap_path);
+    send_response(output_fd, "error", err, NULL, NULL);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    return 1;
+  }
 
-    // Create two pipes:
-    // 1. bootstrap_pipe: nanny writes JSON -> bridge reads on FD 3
-    // 2. response_pipe: bridge writes OK -> nanny reads
-    int bootstrap_pipe[2];
-    int response_pipe[2];
-    if (pipe(bootstrap_pipe) < 0 || pipe(response_pipe) < 0)
-    {
-      journal_errorf("pipe() failed: %s", strerror(errno));
-      pam_close_session(pamh, 0);
-      pam_setcred(pamh, PAM_DELETE_CRED);
-      pam_end(pamh, 0);
-      _exit(1);
-    }
+  pid_t child = spawn_bridge_process(
+      pw,
+      want_privileged,
+      bridge_bin,
+      envmode,
+      verbose_flag,
+      bootstrap_path,
+      session_id,
+      socket_path);
 
-    pid_t bridge_pid = fork();
-    if (bridge_pid < 0)
-    {
-      journal_errorf("fork bridge failed: %s", strerror(errno));
-      close(bootstrap_pipe[0]);
-      close(bootstrap_pipe[1]);
-      close(response_pipe[0]);
-      close(response_pipe[1]);
-      pam_close_session(pamh, 0);
-      pam_setcred(pamh, PAM_DELETE_CRED);
-      pam_end(pamh, 0);
-      _exit(1);
-    }
-
-    if (bridge_pid == 0)
-    {
-      // Bridge child
-      close(bootstrap_pipe[1]); // Close write end of bootstrap
-      close(response_pipe[0]);  // Close read end of response
-
-      // Dup bootstrap read end to FD 3 (what bridge expects)
-      if (bootstrap_pipe[0] != 3)
-      {
-        dup2(bootstrap_pipe[0], 3);
-        close(bootstrap_pipe[0]);
-      }
-
-      // Redirect output based on env mode
-      (void)redirect_bridge_output(pw->pw_uid, linuxio_gid, session_id);
-
-      // Set up environment
-      char *empty_env[] = {NULL};
-      environ = empty_env;
-
-      char home_env[MAX_PATH_LEN], user_env[256], path_env[512];
-      char socket_env[MAX_PATH_LEN], session_env[256], secret_env[MAX_ENV_VALUE_LEN];
-      char verbose_env[32], env_mode_env[128];
-      char server_base_env[MAX_ENV_VALUE_LEN], server_cert_env[MAX_ENV_VALUE_LEN];
-      char boot_fd_env[32], linuxio_env[32];
-
-      if (want_privileged)
-      {
-        // Privileged mode: stay as root for full system access
-        // (WireGuard, D-Bus system operations, etc.)
-        if (setgroups(0, NULL) != 0)
-          _exit(127);
-        if (setresgid(0, 0, 0) != 0)
-          _exit(127);
-        if (setresuid(0, 0, 0) != 0)
-          _exit(127);
-
-        safe_snprintf(home_env, sizeof(home_env), "HOME=/root");
-        safe_snprintf(user_env, sizeof(user_env), "USER=root");
-        safe_snprintf(path_env, sizeof(path_env), "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-        putenv("LINUXIO_PRIVILEGED=1");
-      }
-      else
-      {
-        // Unprivileged mode: drop to user
-        drop_to_user(pw);
-
-        safe_snprintf(home_env, sizeof(home_env), "HOME=%s", pw->pw_dir);
-        safe_snprintf(user_env, sizeof(user_env), "USER=%s", user);
-        safe_snprintf(path_env, sizeof(path_env), "PATH=/usr/local/bin:/usr/bin:/bin");
-      }
-
-      safe_snprintf(socket_env, sizeof(socket_env), "LINUXIO_SOCKET_PATH=%s", socket_path);
-      safe_snprintf(session_env, sizeof(session_env), "LINUXIO_SESSION_ID=%s", session_id);
-      safe_snprintf(secret_env, sizeof(secret_env), "LINUXIO_BRIDGE_SECRET=%s", secret);
-      safe_snprintf(verbose_env, sizeof(verbose_env), "LINUXIO_VERBOSE=%s", verbose_str[0] ? verbose_str : "0");
-      safe_snprintf(env_mode_env, sizeof(env_mode_env), "LINUXIO_ENV=%s", envmode);
-      safe_snprintf(linuxio_env, sizeof(linuxio_env), "LINUXIO_BRIDGE=1");
-      safe_snprintf(boot_fd_env, sizeof(boot_fd_env), "LINUXIO_BOOT_FD=%d", response_pipe[1]);
-
-      putenv(home_env);
-      putenv(user_env);
-      putenv(path_env);
-      putenv(socket_env);
-      putenv(session_env);
-      putenv(secret_env);
-      putenv(verbose_env);
-      putenv(env_mode_env);
-      putenv(linuxio_env);
-      putenv(boot_fd_env);
-
-      if (server_base_url[0])
-      {
-        safe_snprintf(server_base_env, sizeof(server_base_env), "LINUXIO_SERVER_BASE_URL=%s", server_base_url);
-        putenv(server_base_env);
-      }
-      if (server_cert[0])
-      {
-        safe_snprintf(server_cert_env, sizeof(server_cert_env), "LINUXIO_SERVER_CERT=%s", server_cert);
-        putenv(server_cert_env);
-      }
-
-      // Set resource limits
-      set_resource_limits();
-
-      // Exec bridge
-      const char *argv[] = {bridge_bin, NULL};
-      (void)exec_bridge_via_fd(bridge_fd, bridge_bin, argv);
-      journal_errorf("exec bridge failed: %s", strerror(errno));
-      _exit(127);
-    }
-
-    // Nanny continues here
-    close(bootstrap_pipe[0]); // Close read end of bootstrap
-    close(response_pipe[1]);  // Close write end of response
-    close(bridge_fd);
-
-    // Write bootstrap JSON to bridge via FD 3
-    int verbose_flag = (verbose_str[0] == '1' || verbose_str[0] == 't' || verbose_str[0] == 'T');
-    (void)write_bootstrap_json(bootstrap_pipe[1],
-                               session_id, user, pw->pw_uid, pw->pw_gid,
-                               secret, socket_path, server_base_url, server_cert,
-                               verbose_flag, -1);
-    close(bootstrap_pipe[1]);
-
-    // Wait for bridge bootstrap response
-    char boot_msg[64];
-    ssize_t n = read(response_pipe[0], boot_msg, sizeof(boot_msg) - 1);
-    close(response_pipe[0]);
-
-    if (n <= 0 || strncmp(boot_msg, "OK", 2) != 0)
-    {
-      journal_errorf("bridge bootstrap failed");
-      kill(bridge_pid, SIGTERM);
-      waitpid(bridge_pid, NULL, 0);
-      pam_close_session(pamh, 0);
-      pam_setcred(pamh, PAM_DELETE_CRED);
-      pam_end(pamh, 0);
-      _exit(1);
-    }
-
-    // Wait for bridge to exit
-    int status;
-    struct rusage ru;
-    memset(&ru, 0, sizeof(ru));
-    while (wait4(bridge_pid, &status, 0, &ru) < 0 && errno == EINTR)
-      ;
-
-    if (WIFSIGNALED(status))
-    {
-      int sig = WTERMSIG(status);
-      const char *sig_name = strsignal(sig);
-      char limit_reason_buf[256];
-      const char *limit_reason = limit_reason_for_signal(sig, limit_reason_buf, sizeof(limit_reason_buf));
-
-      if (limit_reason)
-      {
-        journal_errorf(
-            "bridge killed by signal %d (%s): %s; "
-            "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
-            sig, sig_name ? sig_name : "unknown", limit_reason,
-            (long long)ru.ru_maxrss,
-            (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
-            (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
-      }
-      else
-      {
-        journal_errorf(
-            "bridge killed by signal %d (%s); "
-            "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
-            sig, sig_name ? sig_name : "unknown",
-            (long long)ru.ru_maxrss,
-            (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
-            (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
-      }
-    }
-    else if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
-    {
-      journal_errorf(
-          "bridge exited with status %d; "
-          "usage: maxrss=%lld KB, utime=%lld.%06llds, stime=%lld.%06llds",
-          WEXITSTATUS(status),
-          (long long)ru.ru_maxrss,
-          (long long)ru.ru_utime.tv_sec, (long long)ru.ru_utime.tv_usec,
-          (long long)ru.ru_stime.tv_sec, (long long)ru.ru_stime.tv_usec);
-    }
-
+  if (child < 0)
+  {
+    unlink(bootstrap_path);
+    send_response(output_fd, "error", "failed to spawn bridge", NULL, NULL);
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
-    _exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
+    return 1;
   }
 
-  // Parent daemon - send success response and continue
-  close(bridge_fd);
+  int wait_ms = env_get_int("LINUXIO_BRIDGE_START_TIMEOUT_MS", BRIDGE_START_TIMEOUT_MS, 1000, 30000);
+  if (wait_for_bridge_socket(socket_path, wait_ms) != 0)
+  {
+    journal_errorf("bridge did not create socket in time");
+    unlink(bootstrap_path);
+    send_response(output_fd, "error", "bridge startup failed", NULL, NULL);
+    kill(child, SIGTERM);
+    (void)waitpid(child, NULL, 0);
+    pam_close_session(pamh, 0);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    return 1;
+  }
 
-  // Don't manage PAM in parent - nanny handles it
-  // But we need to clean up parent's PAM handle
-  pam_end(pamh, PAM_SUCCESS);
+  send_response(output_fd, "ok", NULL, mode_str, socket_path);
+  if (input_fd >= 0)
+    close(input_fd);
+  if (output_fd >= 0 && output_fd != input_fd)
+    close(output_fd);
 
-  // Send success response
-  send_response(client_fd, "ok", NULL, mode_str, socket_path);
-  journal_infof("daemon: bridge spawned for user '%s' mode=%s socket=%s",
+  journal_infof("auth: bridge spawned for user '%s' mode=%s socket=%s",
                 user, mode_str, socket_path);
-}
 
-// Main daemon loop
-static int run_daemon_mode(void)
-{
-  journal_infof("linuxio-auth starting in daemon mode");
+  // Wipe sensitive data
+  secure_bzero(secret, sizeof(secret));
+  secure_bzero(server_base_url, sizeof(server_base_url));
+  secure_bzero(server_cert, sizeof(server_cert));
 
-  int listen_fd = -1;
-  int dev_mode = 0;
-
-  // Check for systemd socket activation
-  int n_fds = get_systemd_fds();
-  if (n_fds > 0)
+  int status = 0;
+  while (waitpid(child, &status, 0) < 0 && errno == EINTR)
   {
-    listen_fd = SD_LISTEN_FDS_START;
-    journal_infof("using socket-activated fd from systemd");
-  }
-  else
-  {
-    // Check for custom socket path (dev mode)
-    char *custom_socket = safe_getenv_strdup("LINUXIO_AUTH_SOCKET", MAX_PATH_LEN);
-    const char *socket_path = custom_socket ? custom_socket : AUTH_SOCKET_PATH;
-    dev_mode = (custom_socket != NULL);
-
-    listen_fd = create_auth_socket(socket_path);
-    if (listen_fd < 0)
-    {
-      journal_errorf("failed to create auth socket at %s", socket_path);
-      free(custom_socket);
-      return 1;
-    }
-    journal_infof("listening on %s%s", socket_path, dev_mode ? " (dev mode)" : "");
-    free(custom_socket);
   }
 
-  // Accept loop
-  for (;;)
-  {
-    struct sockaddr_un client_addr;
-    socklen_t client_len = sizeof(client_addr);
-    int client_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &client_len);
-    if (client_fd < 0)
-    {
-      if (errno == EINTR)
-        continue;
-      journal_errorf("accept() failed: %s", strerror(errno));
-      continue;
-    }
+  int exitcode = 1;
+  if (WIFEXITED(status))
+    exitcode = WEXITSTATUS(status);
+  else if (WIFSIGNALED(status))
+    exitcode = 128 + WTERMSIG(status);
 
-    // Handle client synchronously (could be forked for concurrency)
-    handle_client(client_fd);
-    close(client_fd);
+  if (exitcode != 0)
+  {
+    journal_errorf("bridge exited with status %d", exitcode);
   }
 
-  // Not reached
-  return 0;
+  pam_close_session(pamh, 0);
+  pam_setcred(pamh, PAM_DELETE_CRED);
+  pam_end(pamh, 0);
+
+  return exitcode;
 }
 
 // -------- main ----------
@@ -1489,8 +1268,19 @@ int main(int argc, char *argv[])
   }
   (void)prctl(PR_SET_DUMPABLE, 0);
 
-  // Always run daemon mode (socket-activated or creates own socket)
-  return run_daemon_mode();
+  if (isatty(STDIN_FILENO))
+  {
+    log_stderrf("this command is not meant to be run from the console");
+    return 2;
+  }
+
+  // Best-effort socket timeouts (stdin/stdout are the accepted socket)
+  struct timeval tv_read = {.tv_sec = SOCKET_READ_TIMEOUT, .tv_usec = 0};
+  struct timeval tv_write = {.tv_sec = SOCKET_WRITE_TIMEOUT, .tv_usec = 0};
+  (void)setsockopt(STDIN_FILENO, SOL_SOCKET, SO_RCVTIMEO, &tv_read, sizeof(tv_read));
+  (void)setsockopt(STDOUT_FILENO, SOL_SOCKET, SO_SNDTIMEO, &tv_write, sizeof(tv_write));
+
+  return handle_client(STDIN_FILENO, STDOUT_FILENO);
 }
 
 // write_all - needed by log_stderrf and send_response
