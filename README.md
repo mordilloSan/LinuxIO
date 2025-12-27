@@ -39,6 +39,8 @@ Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes furthe
 
 ## 📦 Installation
 
+LinuxIO supports Linux kernels 5.9+.
+
 ### Quick Install (Recommended)
 
 ```bash
