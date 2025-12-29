@@ -46,10 +46,16 @@ func RunServer(cfg ServerConfig) {
 		},
 	})
 	sm.RegisterOnDelete(func(sess *session.Session, reason session.DeleteReason) {
-		if sess.User.Username != "" {
-			if err := bridge.CallTypedWithSession(sess, "control", "shutdown", []string{string(reason)}, nil); err != nil {
-				logger.WarnKV("bridge shutdown failed", "user", sess.User.Username, "reason", reason, "error", err)
-			}
+		if sess.User.Username == "" {
+			return
+		}
+		// Only try shutdown if bridge was actually started (yamux session exists)
+		if _, err := bridge.GetYamuxSession(sess.SessionID); err != nil {
+			// No yamux session - bridge was never started, just clean up
+			return
+		}
+		if err := bridge.CallTypedWithSession(sess, "control", "shutdown", []string{string(reason)}, nil); err != nil {
+			logger.WarnKV("bridge shutdown failed", "user", sess.User.Username, "reason", reason, "error", err)
 		}
 	})
 
