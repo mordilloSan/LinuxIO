@@ -86,21 +86,6 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check if indexer daemon is available
-	var indexerStatusResult struct {
-		Available bool   `json:"available"`
-		Error     string `json:"error,omitempty"`
-	}
-	if err := callBridgeWithSess(sess, "filebrowser", "indexer_status", nil, &indexerStatusResult); err != nil {
-		logger.Debugf("[auth.login] failed to check indexer status: %v", err)
-		// Don't fail login if indexer check fails, just log it
-	} else {
-		response["indexer_available"] = indexerStatusResult.Available
-		if indexerStatusResult.Error != "" {
-			logger.Debugf("[auth.login] indexer check returned error: %s", indexerStatusResult.Error)
-		}
-	}
-
 	web.WriteJSON(w, http.StatusOK, response)
 }
 

@@ -20,6 +20,7 @@ import (
 
 	"github.com/mordilloSan/go_logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 )
@@ -28,6 +29,8 @@ var (
 	indexerAvailable      atomic.Bool
 	errIndexerUnavailable = errors.New("indexer unavailable")
 )
+
+const indexerServiceName = "linuxio-indexer.service"
 
 func init() {
 	indexerAvailable.Store(true)
@@ -466,62 +469,35 @@ func deleteFromIndexer(path string) error {
 	return nil
 }
 
-// checkIndexerStatus checks if the indexer daemon is running by calling GET /status.
-// Returns true if the indexer is available and responsive.
+// checkIndexerStatus checks if the indexer daemon is running via systemd.
+// Returns true if the service is active.
 func checkIndexerStatus() (bool, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/status", nil)
-	if err != nil {
-		setIndexerAvailability(false)
-		return false, fmt.Errorf("failed to build indexer status request: %w", err)
-	}
-
-	resp, err := indexerHTTPClient.Do(req)
+	info, err := dbus.GetServiceInfo(indexerServiceName)
 	if err != nil {
 		setIndexerAvailability(false)
 		return false, err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode >= http.StatusInternalServerError {
-			setIndexerAvailability(false)
+	activeState, ok := info["ActiveState"].(string)
+	if !ok || activeState == "" {
+		setIndexerAvailability(false)
+		return false, fmt.Errorf("indexer service state unavailable")
+	}
+
+	subState, _ := info["SubState"].(string)
+	if activeState != "active" {
+		setIndexerAvailability(false)
+		if subState != "" {
+			return false, fmt.Errorf("indexer service inactive: %s (%s)", activeState, subState)
 		}
-		return false, fmt.Errorf("indexer status returned status %s", resp.Status)
-	}
-
-	var status struct {
-		Status       string `json:"status"`
-		NumDirs      int64  `json:"num_dirs,omitempty"`
-		NumFiles     int64  `json:"num_files,omitempty"`
-		TotalSize    int64  `json:"total_size,omitempty"`
-		LastIndexed  string `json:"last_indexed,omitempty"`
-		TotalIndexes int    `json:"total_indexes,omitempty"`
-		TotalEntries int64  `json:"total_entries,omitempty"`
-		DatabaseSize int64  `json:"database_size,omitempty"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
-		setIndexerAvailability(false)
-		return false, fmt.Errorf("failed to decode indexer status: %w", err)
-	}
-
-	// Status should be "idle" or "running"
-	if status.Status != "idle" && status.Status != "running" {
-		setIndexerAvailability(false)
-		return false, fmt.Errorf("unexpected indexer status: %s", status.Status)
+		return false, fmt.Errorf("indexer service inactive: %s", activeState)
 	}
 
 	setIndexerAvailability(true)
-
-	// Log successful indexer connection with details
-	if status.Status == "idle" {
-		logger.InfoKV("indexer daemon available",
-			"status", status.Status,
-			"num_dirs", status.NumDirs,
-			"num_files", status.NumFiles,
-			"total_size", status.TotalSize,
-			"last_indexed", status.LastIndexed)
+	if subState != "" {
+		logger.InfoKV("indexer service active", "active_state", activeState, "sub_state", subState)
 	} else {
-		logger.InfoKV("indexer daemon available", "status", status.Status)
+		logger.InfoKV("indexer service active", "active_state", activeState)
 	}
 
 	return true, nil

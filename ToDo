@@ -14,6 +14,7 @@
 
 9 - right now hash can be reproduced if build from same code base. We need to make this time and machine specific??????
 
+10 - fix indexer status check and calls.
 
 Remove gin - DONE
 use quantum filebrowser as our main navigator - DONE
