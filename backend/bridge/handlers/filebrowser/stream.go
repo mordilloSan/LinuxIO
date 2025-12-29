@@ -36,6 +36,14 @@ const (
 	progressIntervalUpload = 512 * 1024
 )
 
+// FileProgress represents progress for file transfer operations.
+type FileProgress struct {
+	Bytes int64  `json:"bytes"`           // Bytes transferred so far
+	Total int64  `json:"total"`           // Total bytes (0 if unknown)
+	Pct   int    `json:"pct"`             // Percentage (0-100)
+	Phase string `json:"phase,omitempty"` // Optional phase description
+}
+
 // HandleFilebrowserStream handles a yamux stream for filebrowser operations.
 // streamType is one of: fb-download, fb-upload, fb-archive, fb-compress, fb-extract
 // args contains operation-specific parameters
@@ -90,7 +98,7 @@ func handleDownload(stream net.Conn, args []string) error {
 	totalSize := stat.Size()
 
 	// Send initial progress with total size
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "starting",
 	})
@@ -129,7 +137,7 @@ func handleDownload(stream net.Conn, args []string) error {
 				if totalSize > 0 {
 					pct = int(bytesRead * 100 / totalSize)
 				}
-				_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+				_ = ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesRead,
 					Total: totalSize,
 					Pct:   pct,
@@ -227,7 +235,7 @@ func handleUpload(stream net.Conn, args []string) error {
 	}()
 
 	// Send initial progress with total size
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: expectedSize,
 		Phase: "starting",
 	})
@@ -271,7 +279,7 @@ readLoop:
 					if expectedSize > 0 {
 						pct = int(bytesWritten * 100 / expectedSize)
 					}
-					_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+					_ = ipc.WriteProgress(stream, 0, FileProgress{
 						Bytes: bytesWritten,
 						Total: expectedSize,
 						Pct:   pct,
@@ -370,7 +378,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
 	})
@@ -396,7 +404,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 			if pct > 100 {
 				pct = 100
 			}
-			_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+			_ = ipc.WriteProgress(stream, 0, FileProgress{
 				Bytes: bytesProcessed,
 				Total: totalSize,
 				Pct:   pct,
@@ -432,7 +440,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	archiveSize := archiveStat.Size()
 
 	// Update progress for streaming phase
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: archiveSize,
 		Phase: "streaming",
 	})
@@ -460,7 +468,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 				if archiveSize > 0 {
 					pct = int(bytesSent * 100 / archiveSize)
 				}
-				_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+				_ = ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesSent,
 					Total: archiveSize,
 					Pct:   pct,
@@ -573,7 +581,7 @@ func handleCompress(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
 	})
@@ -588,7 +596,7 @@ func handleCompress(stream net.Conn, args []string) error {
 			if pct > 100 {
 				pct = 100
 			}
-			_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+			_ = ipc.WriteProgress(stream, 0, FileProgress{
 				Bytes: bytesProcessed,
 				Total: totalSize,
 				Pct:   pct,
@@ -677,7 +685,7 @@ func handleExtract(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
 	})
@@ -692,7 +700,7 @@ func handleExtract(stream net.Conn, args []string) error {
 			if pct > 100 {
 				pct = 100
 			}
-			_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+			_ = ipc.WriteProgress(stream, 0, FileProgress{
 				Bytes: bytesProcessed,
 				Total: totalSize,
 				Pct:   pct,
