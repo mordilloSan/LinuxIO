@@ -93,16 +93,7 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	}
 
 	logger.Debugf("Auth daemon available, using socket-based auth")
-	req := BuildRequest(
-		sess.User.Username,
-		password,
-		sess.SessionID,
-		sess.SocketPath,
-		sess.BridgeSecret,
-		bridgeBinary,
-		strings.ToLower(envMode),
-		verbose,
-	)
+	req := BuildRequest(sess, password, bridgeBinary, strings.ToLower(envMode), verbose)
 	privileged, motd, err := Authenticate(req)
 	if err != nil {
 		return false, "", fmt.Errorf("auth daemon failed: %w", err)

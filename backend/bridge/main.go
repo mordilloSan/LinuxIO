@@ -30,23 +30,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
-// Bootstrap holds the configuration passed from auth daemon via stdin
-type Bootstrap struct {
-	SessionID     string `json:"session_id"`
-	Username      string `json:"username"`
-	UID           uint32 `json:"uid"`
-	GID           uint32 `json:"gid"`
-	Secret        string `json:"secret"`
-	ServerBaseURL string `json:"server_base_url,omitempty"`
-	ServerCert    string `json:"server_cert,omitempty"`
-	SocketPath    string `json:"socket_path,omitempty"`
-	Verbose       bool   `json:"verbose,omitempty"`
-	LogFD         int    `json:"log_fd,omitempty"`
-}
+// Bootstrap is the configuration passed from auth daemon via stdin
+type Bootstrap = protocol.Bootstrap
 
 // systemdListenFDs returns the number of systemd socket-activation FDs.
 func systemdListenFDs() int {
