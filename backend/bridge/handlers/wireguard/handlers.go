@@ -1,9 +1,7 @@
 package wireguard
 
-import "github.com/mordilloSan/LinuxIO/backend/common/ipc"
-
-func WireguardHandlers() map[string]ipc.HandlerFunc {
-	return map[string]ipc.HandlerFunc{
+func WireguardHandlers() map[string]func([]string) (any, error) {
+	return map[string]func([]string) (any, error){
 		"list_interfaces":      ListInterfaces,
 		"add_interface":        AddInterface,
 		"remove_interface":     RemoveInterface,

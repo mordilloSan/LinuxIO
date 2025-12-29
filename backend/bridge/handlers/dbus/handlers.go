@@ -5,15 +5,13 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 // Needed to make sure one d-bus call at a time!
 var systemDBusMu sync.Mutex
 
-func DbusHandlers() map[string]ipc.HandlerFunc {
-	return map[string]ipc.HandlerFunc{
+func DbusHandlers() map[string]func([]string) (any, error) {
+	return map[string]func([]string) (any, error){
 		// System control
 		"Reboot":   func([]string) (any, error) { return nil, CallLogin1Action("Reboot") },
 		"PowerOff": func([]string) (any, error) { return nil, CallLogin1Action("PowerOff") },
