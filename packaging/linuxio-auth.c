@@ -1030,7 +1030,7 @@ static pid_t spawn_bridge_process(
     int bridge_fd,
     const char *env_mode,
     int verbose,
-    const char *bootstrap_path,
+    int bootstrap_pipe_read,  // Pipe read end for bootstrap JSON (will be stdin)
     const char *session_id,
     const char *socket_path)
 {
@@ -1040,11 +1040,11 @@ static pid_t spawn_bridge_process(
   if (pid > 0)
     return pid;
 
-  int devnull = open("/dev/null", O_RDONLY | O_CLOEXEC);
-  if (devnull >= 0)
+  // Child: set up stdin from bootstrap pipe
+  if (bootstrap_pipe_read >= 0)
   {
-    (void)dup2(devnull, STDIN_FILENO);
-    close(devnull);
+    (void)dup2(bootstrap_pipe_read, STDIN_FILENO);
+    close(bootstrap_pipe_read);
   }
 
   (void)dup2(STDERR_FILENO, STDOUT_FILENO);
@@ -1117,8 +1117,7 @@ static pid_t spawn_bridge_process(
 
   if (env_mode && *env_mode)
     setenv("LINUXIO_ENV", env_mode, 1);
-  if (bootstrap_path && *bootstrap_path)
-    setenv("LINUXIO_BOOTSTRAP_FILE", bootstrap_path, 1);
+  // Bootstrap is now passed via stdin pipe, no file path needed
   if (session_id && *session_id)
     setenv("LINUXIO_SESSION_ID", session_id, 1);
   if (socket_path && *socket_path)
@@ -1386,90 +1385,27 @@ static int handle_client(int input_fd, int output_fd)
   }
   // Keep bridge_fd open - we'll exec it directly to prevent TOCTOU
 
-  // Prepare bootstrap file using openat() to prevent path injection
-  // File is always created as "bootstrap.json" in the validated user directory
-  char bootstrap_filename[128];
-  safe_snprintf(bootstrap_filename, sizeof(bootstrap_filename), "bootstrap-%s.json", session_id);
-
-  int boot_fd = openat(user_fd, bootstrap_filename,
-                       O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
-  if (boot_fd < 0)
-  {
-    journal_errorf("failed to create bootstrap file: %m");
-    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL, NULL);
-    close(bridge_fd);
-    close(user_fd);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
-  }
-
-  // Ownership already correct (created by root in user's dir), just ensure mode
-  if (fchmod(boot_fd, 0600) != 0)
-  {
-    journal_errorf("failed to chmod bootstrap file: %m");
-    close(boot_fd);
-    unlinkat(user_fd, bootstrap_filename, 0);
-    close(bridge_fd);
-    close(user_fd);
-    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL, NULL);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
-  }
-  if (fchown(boot_fd, pw->pw_uid, pw->pw_gid) != 0)
-  {
-    journal_errorf("failed to chown bootstrap file: %m");
-    close(boot_fd);
-    unlinkat(user_fd, bootstrap_filename, 0);
-    close(bridge_fd);
-    close(user_fd);
-    send_response(output_fd, "error", "failed to prepare bootstrap file", NULL, NULL, NULL);
-    pam_setcred(pamh, PAM_DELETE_CRED);
-    pam_end(pamh, 0);
-    return 1;
-  }
-
   int verbose_flag = (verbose_str[0] == '1' || verbose_str[0] == 't' || verbose_str[0] == 'T');
-  int bytes_written = write_bootstrap_json(
-      boot_fd,
-      session_id,
-      user,
-      pw->pw_uid,
-      pw->pw_gid,
-      secret,
-      socket_path,
-      server_base_url,
-      server_cert,
-      verbose_flag,
-      -1);
-  close(boot_fd);
-  boot_fd = -1;  // Prevent double-close in error paths below
 
-  if (bytes_written < 0)
+  // Create pipe for bootstrap data (secrets never touch filesystem)
+  int bootstrap_pipe[2];
+  if (pipe(bootstrap_pipe) != 0)
   {
-    journal_errorf("failed to write bootstrap JSON to file");
-    // boot_fd already closed above, don't double-close
-    unlinkat(user_fd, bootstrap_filename, 0);
+    journal_errorf("failed to create bootstrap pipe: %m");
+    send_response(output_fd, "error", "failed to prepare bootstrap", NULL, NULL, NULL);
     close(bridge_fd);
     close(user_fd);
-    send_response(output_fd, "error", "bootstrap communication failed", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
   }
-
-  // Build full path for environment variable (bridge needs to know path)
-  char bootstrap_path[MAX_PATH_LEN];
-  safe_snprintf(bootstrap_path, sizeof(bootstrap_path), "/run/linuxio/%u/%s",
-                (unsigned)pw->pw_uid, bootstrap_filename);
 
   rc = pam_open_session(pamh, 0);
   if (rc != PAM_SUCCESS)
   {
     const char *err = pam_strerror(pamh, rc);
-    // boot_fd already closed and set to -1, don't double-close
-    unlinkat(user_fd, bootstrap_filename, 0);
+    close(bootstrap_pipe[0]);
+    close(bootstrap_pipe[1]);
     close(bridge_fd);
     close(user_fd);
     send_response(output_fd, "error", err, NULL, NULL, NULL);
@@ -1484,16 +1420,48 @@ static int handle_client(int input_fd, int output_fd)
       bridge_fd,
       envmode,
       verbose_flag,
-      bootstrap_path,
+      bootstrap_pipe[0],  // Pass pipe read end to child (will be stdin)
       session_id,
       socket_path);
 
+  // Parent: close pipe read end (child has it)
+  close(bootstrap_pipe[0]);
+
   if (child < 0)
   {
-    unlinkat(user_fd, bootstrap_filename, 0);
+    close(bootstrap_pipe[1]);
     close(bridge_fd);
     close(user_fd);
     send_response(output_fd, "error", "failed to spawn bridge", NULL, NULL, NULL);
+    pam_close_session(pamh, 0);
+    pam_setcred(pamh, PAM_DELETE_CRED);
+    pam_end(pamh, 0);
+    return 1;
+  }
+
+  // Parent: write bootstrap JSON to pipe, then close to signal EOF
+  int bytes_written = write_bootstrap_json(
+      bootstrap_pipe[1],
+      session_id,
+      user,
+      pw->pw_uid,
+      pw->pw_gid,
+      secret,
+      socket_path,
+      server_base_url,
+      server_cert,
+      verbose_flag,
+      -1);
+  close(bootstrap_pipe[1]);
+
+  if (bytes_written < 0)
+  {
+    journal_errorf("failed to write bootstrap JSON to pipe");
+    close(bridge_fd);
+    close(user_fd);
+    send_response(output_fd, "error", "bootstrap communication failed", NULL, NULL, NULL);
+    kill(child, SIGTERM);
+    (void)waitpid(child, NULL, 0);
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1508,7 +1476,6 @@ static int handle_client(int input_fd, int output_fd)
   if (wait_for_bridge_socket(socket_path, wait_ms) != 0)
   {
     journal_errorf("bridge did not create socket in time");
-    // Can't use unlinkat here, user_fd already closed - bootstrap cleanup happens on bridge exit
     send_response(output_fd, "error", "bridge startup failed", NULL, NULL, NULL);
     kill(child, SIGTERM);
     (void)waitpid(child, NULL, 0);
