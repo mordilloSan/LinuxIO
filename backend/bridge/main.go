@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -239,18 +238,7 @@ func printBridgeVersion() {
 	fmt.Printf("linuxio-bridge %s\n", appconfig.Version)
 }
 
-// bufferedConn wraps a net.Conn with a buffered reader for protocol detection
-type bufferedConn struct {
-	net.Conn
-	r *bufio.Reader
-}
-
-func (bc *bufferedConn) Read(p []byte) (int, error) {
-	return bc.r.Read(p)
-}
-
-// handleMainRequest processes incoming bridge requests.
-// Auto-detects legacy JSON protocol vs new framed protocol.
+// handleMainRequest sets up a yamux session for the client connection.
 func handleMainRequest(conn net.Conn, id string) {
 	wg.Add(1)
 	defer wg.Done()
@@ -264,23 +252,7 @@ func handleMainRequest(conn net.Conn, id string) {
 		}
 	}()
 
-	// Peek at first byte to detect protocol
-	peekable := bufio.NewReader(conn)
-	firstByte, err := peekable.Peek(1)
-	if err != nil {
-		logger.WarnKV("failed to peek connection", "conn_id", id, "error", err)
-		return
-	}
-
-	// Wrap connection to include buffered data
-	wrappedConn := &bufferedConn{Conn: conn, r: peekable}
-
-	// Only yamux protocol is supported (starts with version byte 0x00)
-	if ipc.IsYamuxConnection(firstByte[0]) {
-		handleYamuxSession(wrappedConn, id)
-	} else {
-		logger.WarnKV("unknown protocol (expected yamux)", "conn_id", id, "first_byte", fmt.Sprintf("0x%02x", firstByte[0]))
-	}
+	handleYamuxSession(conn, id)
 }
 
 // handleYamuxSession handles a yamux multiplexed connection.
@@ -337,122 +309,10 @@ waitForStreams:
 }
 
 // handleYamuxStream handles a single stream within a yamux session.
-// Supports both JSON-encoded RPC and binary stream protocol.
+// All streams use the binary frame protocol (OpStreamOpen, OpStreamData, etc.)
 func handleYamuxStream(stream net.Conn, sessionID, streamID string) {
 	id := fmt.Sprintf("%s/%s", sessionID, streamID)
-
-	// Peek first byte to detect protocol
-	peekable := bufio.NewReader(stream)
-	firstByte, err := peekable.Peek(1)
-	if err != nil {
-		if err == io.EOF {
-			logger.DebugKV("yamux stream closed", "stream_id", id)
-		} else {
-			logger.WarnKV("failed to peek yamux stream", "stream_id", id, "error", err)
-		}
-		return
-	}
-
-	// Check if this is a binary stream frame (0x80+)
-	if ipc.IsStreamFrame(firstByte[0]) {
-		handleBinaryStream(&bufferedConn{Conn: stream, r: peekable}, id)
-		return
-	}
-
-	// Read the JSON-encoded request
-	req, err := ipc.ReadRequest(peekable)
-	if err != nil {
-		if err == io.EOF {
-			logger.DebugKV("yamux stream closed", "stream_id", id)
-		} else {
-			logger.WarnKV("failed to read yamux request", "stream_id", id, "error", err)
-			_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "invalid request"})
-		}
-		return
-	}
-
-	// Validate request
-	if req.Secret != Sess.BridgeSecret {
-		logger.WarnKV("invalid bridge secret", "stream_id", id)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "invalid secret"})
-		return
-	}
-	if req.SessionID != Sess.SessionID {
-		logger.WarnKV("session mismatch", "stream_id", id)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "session mismatch"})
-		return
-	}
-	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
-		logger.WarnKV("invalid characters in request", "stream_id", id, "req_type", req.Type, "command", req.Command)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "invalid characters in command/type"})
-		return
-	}
-
-	logger.DebugKV("yamux request received", "stream_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
-
-	group, found := handlers.HandlersByType[req.Type]
-	if !found || group == nil {
-		logger.WarnKV("unknown request type", "stream_id", id, "req_type", req.Type)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
-		return
-	}
-	handler, ok := group[req.Command]
-	if !ok {
-		logger.WarnKV("unknown request command", "stream_id", id, "req_type", req.Type, "command", req.Command)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
-		return
-	}
-
-	type result struct {
-		out any
-		err error
-	}
-	done := make(chan result, 1)
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.ErrorKV("handler panic", "stream_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
-				done <- result{nil, fmt.Errorf("panic: %v", r)}
-			}
-		}()
-		out, err := handler(req.Args)
-		done <- result{out, err}
-	}()
-
-	select {
-	case r := <-done:
-		if r.err != nil {
-			logger.ErrorKV("handler error", "stream_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
-			_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: r.err.Error()})
-			return
-		}
-
-		// Marshal handler output to JSON once (stored as RawMessage, no double-encoding)
-		var output json.RawMessage
-		if r.out != nil {
-			var err error
-			output, err = json.Marshal(r.out)
-			if err != nil {
-				logger.ErrorKV("failed to marshal handler output", "stream_id", id, "error", err)
-				_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "marshal error"})
-				return
-			}
-		}
-
-		if err := ipc.WriteResponse(stream, &ipc.Response{Status: "ok", Output: output}); err != nil {
-			logger.WarnKV("failed to send yamux response", "stream_id", id, "error", err)
-			return
-		}
-		logger.DebugKV("yamux response sent", "stream_id", id, "req_type", req.Type, "command", req.Command)
-
-	case <-bridgeClosing:
-		_ = ipc.WriteResponse(stream, &ipc.Response{
-			Status: "error",
-			Error:  "canceled: bridge shutting down",
-		})
-		return
-	}
+	handleBinaryStream(stream, id)
 }
 
 // handleBinaryStream handles binary stream protocol (terminal streaming, etc.)
