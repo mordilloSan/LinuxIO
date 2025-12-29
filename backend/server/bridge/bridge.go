@@ -7,13 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/mordilloSan/go_logger/logger"
 
@@ -22,7 +20,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// yamuxSessions manages persistent yamux sessions per socket path
+// yamuxSessions manages persistent yamux sessions per session ID
 var yamuxSessions = struct {
 	sync.RWMutex
 	sessions map[string]*ipc.YamuxSession
@@ -73,6 +71,7 @@ func validateBridgeHash(bridgePath string) error {
 }
 
 // StartBridge launches linuxio-bridge via the auth daemon.
+// On success, creates a yamux session for the bridge connection and stores it.
 // Returns (privilegedMode, motd, error). privilegedMode reflects the daemon's decision.
 func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, string, error) {
 	// Resolve bridge binary (helper also validates)
@@ -94,104 +93,77 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 
 	logger.Debugf("Auth daemon available, using socket-based auth")
 	req := BuildRequest(sess, password, bridgeBinary, strings.ToLower(envMode), verbose)
-	privileged, motd, err := Authenticate(req)
+	result, err := Authenticate(req)
 	if err != nil {
 		return false, "", fmt.Errorf("auth daemon failed: %w", err)
 	}
 
-	logger.InfoKV("bridge launch via daemon acknowledged", "user", sess.User.Username, "privileged", privileged)
-	return privileged, motd, nil
+	// Create yamux client session from the connection
+	// (auth daemon forked bridge and passed our FD to it via dup2)
+	yamuxSession, err := ipc.NewYamuxClient(result.Conn)
+	if err != nil {
+		result.Conn.Close()
+		return false, "", fmt.Errorf("failed to create yamux session: %w", err)
+	}
+
+	// Store the session keyed by session ID
+	yamuxSessions.Lock()
+	// Clean up old session if exists
+	if old, exists := yamuxSessions.sessions[sess.SessionID]; exists {
+		old.Close()
+	}
+	yamuxSession.SetOnClose(func() {
+		yamuxSessions.Lock()
+		delete(yamuxSessions.sessions, sess.SessionID)
+		yamuxSessions.Unlock()
+		logger.DebugKV("yamux session closed and removed", "session_id", sess.SessionID)
+	})
+	yamuxSessions.sessions[sess.SessionID] = yamuxSession
+	yamuxSessions.Unlock()
+
+	logger.InfoKV("bridge launch via daemon acknowledged",
+		"user", sess.User.Username,
+		"privileged", result.Privileged,
+		"session_id", sess.SessionID)
+
+	return result.Privileged, result.Motd, nil
 }
 
 // ============================================================================
 // Comunication with the bridge
 // ============================================================================
 
-// GetOrCreateYamuxSession returns an existing yamux session or creates a new one
-func GetOrCreateYamuxSession(socketPath string) (*ipc.YamuxSession, error) {
-	// Check for existing session
+// GetYamuxSession returns an existing yamux session for the given session ID.
+// The session must have been created by StartBridge.
+func GetYamuxSession(sessionID string) (*ipc.YamuxSession, error) {
 	yamuxSessions.RLock()
-	session, exists := yamuxSessions.sessions[socketPath]
+	session, exists := yamuxSessions.sessions[sessionID]
 	yamuxSessions.RUnlock()
 
-	if exists && !session.IsClosed() {
-		return session, nil
+	if !exists {
+		return nil, fmt.Errorf("no yamux session for session %s", sessionID)
 	}
 
-	// Create new session
-	yamuxSessions.Lock()
-	defer yamuxSessions.Unlock()
-
-	// Double-check after acquiring write lock
-	if session, exists = yamuxSessions.sessions[socketPath]; exists && !session.IsClosed() {
-		return session, nil
-	}
-
-	// Clean up old session if exists
-	if exists {
-		delete(yamuxSessions.sessions, socketPath)
-	}
-
-	// Dial the bridge
-	conn, err := dialBridgeRaw(socketPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create yamux client session
-	session, err = ipc.NewYamuxClient(conn)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to create yamux session: %w", err)
-	}
-
-	// Set cleanup callback
-	session.SetOnClose(func() {
+	if session.IsClosed() {
+		// Clean up stale entry
 		yamuxSessions.Lock()
-		delete(yamuxSessions.sessions, socketPath)
+		delete(yamuxSessions.sessions, sessionID)
 		yamuxSessions.Unlock()
-		logger.DebugKV("yamux session closed and removed", "socket_path", socketPath)
-	})
-
-	yamuxSessions.sessions[socketPath] = session
-	logger.InfoKV("yamux session established", "socket_path", socketPath)
+		return nil, fmt.Errorf("yamux session for %s is closed", sessionID)
+	}
 
 	return session, nil
 }
 
-// CloseYamuxSession closes the yamux session for a socket path
-func CloseYamuxSession(socketPath string) {
+// CloseYamuxSession closes the yamux session for a session ID
+func CloseYamuxSession(sessionID string) {
 	yamuxSessions.Lock()
 	defer yamuxSessions.Unlock()
 
-	if session, exists := yamuxSessions.sessions[socketPath]; exists {
+	if session, exists := yamuxSessions.sessions[sessionID]; exists {
 		session.Close()
-		delete(yamuxSessions.sessions, socketPath)
-		logger.DebugKV("yamux session closed", "socket_path", socketPath)
-	}
-}
-
-// dialBridgeRaw creates a raw connection to the bridge socket
-func dialBridgeRaw(socketPath string) (net.Conn, error) {
-	const (
-		totalWait   = 2 * time.Second
-		step        = 100 * time.Millisecond
-		dialTimeout = 500 * time.Millisecond
-	)
-
-	var conn net.Conn
-	var err error
-	deadline := time.Now().Add(totalWait)
-
-	for {
-		conn, err = net.DialTimeout("unix", socketPath, dialTimeout)
-		if err == nil {
-			return conn, nil
-		}
-		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("failed to connect to bridge (%s): %w", socketPath, err)
-		}
-		time.Sleep(step)
+		delete(yamuxSessions.sessions, sessionID)
+		logger.DebugKV("yamux session closed", "session_id", sessionID)
 	}
 }
 
@@ -204,21 +176,12 @@ func CallTypedWithSession(sess *session.Session, reqType, command string, args [
 		"command", command,
 		"args", fmt.Sprintf("%v", args))
 
-	socketPath := sess.SocketPath
-	if socketPath == "" {
-		err := fmt.Errorf("empty session.SocketPath")
-		logger.ErrorKV("bridge call failed: invalid socket path",
-			"user", sess.User.Username,
-			"error", err)
-		terminateSessionOnBridgeFailure(sess)
-		return err
-	}
-
-	// Get or create yamux session
-	yamuxSession, err := GetOrCreateYamuxSession(socketPath)
+	// Get yamux session (created by StartBridge)
+	yamuxSession, err := GetYamuxSession(sess.SessionID)
 	if err != nil {
 		logger.ErrorKV("bridge call failed: yamux session error",
 			"user", sess.User.Username,
+			"session_id", sess.SessionID,
 			"command", command,
 			"error", err)
 		terminateSessionOnBridgeFailure(sess)
@@ -232,8 +195,8 @@ func CallTypedWithSession(sess *session.Session, reqType, command string, args [
 			"user", sess.User.Username,
 			"command", command,
 			"error", err)
-		// Session might be dead, close it so next call creates a new one
-		CloseYamuxSession(socketPath)
+		// Session might be dead, close it
+		CloseYamuxSession(sess.SessionID)
 		terminateSessionOnBridgeFailure(sess)
 		return fmt.Errorf("failed to open yamux stream: %w", err)
 	}

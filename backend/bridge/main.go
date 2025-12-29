@@ -9,9 +9,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"os/user"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -37,27 +34,6 @@ import (
 
 // Bootstrap is the configuration passed from auth daemon via stdin
 type Bootstrap = protocol.Bootstrap
-
-// systemdListenFDs returns the number of systemd socket-activation FDs.
-func systemdListenFDs() int {
-	nStr := strings.TrimSpace(os.Getenv("LISTEN_FDS"))
-	if nStr == "" {
-		return 0
-	}
-	pidStr := strings.TrimSpace(os.Getenv("LISTEN_PID"))
-	if pidStr == "" {
-		return 0
-	}
-	pid, err := strconv.Atoi(pidStr)
-	if err != nil || pid != os.Getpid() {
-		return 0
-	}
-	n, err := strconv.Atoi(nStr)
-	if err != nil || n <= 0 {
-		return 0
-	}
-	return n
-}
 
 // readBootstrap reads bootstrap JSON from stdin.
 // The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
@@ -94,7 +70,6 @@ var Sess = &session.Session{
 		GID:      bootCfg.GID,
 	},
 	BridgeSecret: bootCfg.Secret,
-	SocketPath:   bootCfg.SocketPath,
 }
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
@@ -126,14 +101,6 @@ func main() {
 
 	envMode = strings.ToLower(envMode)
 
-	// Use saved socket path from environment config
-	socketPath := strings.TrimSpace(bootCfg.SocketPath)
-	if socketPath == "" {
-		// logger isn't initialized yet; print to stderr and exit
-		fmt.Fprintln(os.Stderr, "bridge bootstrap error: empty socket path in bootstrap JSON")
-		os.Exit(1)
-	}
-
 	// Initialize logger ASAP
 	// If we have a log FD in dev mode, redirect stdout/stderr to it for piped logging
 	// (dev mode logger uses stdout for colored output)
@@ -164,8 +131,8 @@ func main() {
 	// In production, C auth-helper redirects to journal or /dev/null
 	logger.InitWithFile(envMode, verbose, "")
 
-	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d socket=%s (environment cleared for security)",
-		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
+	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
+		os.Geteuid(), Sess.User.UID, Sess.User.GID)
 
 	// Use saved server cert from environment config
 	if pem := strings.TrimSpace(bootCfg.ServerCert); pem != "" {
@@ -177,14 +144,22 @@ func main() {
 	}
 
 	_ = syscall.Umask(0o077)
-	logger.Infof("[bridge] starting (uid=%d) sock=%s", os.Geteuid(), socketPath)
+	logger.Infof("[bridge] starting (uid=%d)", os.Geteuid())
 
-	listener, err := listenBridge(socketPath, Sess.User.UID)
-	if err != nil {
-		logger.Errorf("create socket: %v", err)
+	// Get the client connection from FD 3 (inherited from auth daemon)
+	const clientConnFD = 3
+	clientFile := os.NewFile(uintptr(clientConnFD), "client-conn")
+	if clientFile == nil {
+		logger.Errorf("failed to open client connection FD %d", clientConnFD)
 		os.Exit(1)
 	}
-	logger.Infof("[bridge] LISTENING on %s", socketPath)
+	clientConn, err := net.FileConn(clientFile)
+	clientFile.Close() // Close our reference; the net.Conn now owns the FD
+	if err != nil {
+		logger.Errorf("failed to create net.Conn from FD %d: %v", clientConnFD, err)
+		os.Exit(1)
+	}
+	logger.Infof("[bridge] connected via inherited FD %d", clientConnFD)
 
 	// Ensure per-user config exists and is valid
 	config.EnsureConfigReady(Sess.User.Username)
@@ -209,23 +184,17 @@ func main() {
 		}
 	}()
 
-	acceptDone := make(chan struct{})
+	// Handle the single client connection (no accept loop needed)
+	connDone := make(chan struct{})
 	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				select {
-				case <-acceptDone:
-					return
-				default:
-					logger.WarnKV("accept failed", "error", err)
-					time.Sleep(50 * time.Millisecond) // avoid tight loop during teardown
-				}
-				continue
-			}
-			id := uuid.NewString()
-			go handleMainRequest(conn, id)
+		id := uuid.NewString()
+		handleMainRequest(clientConn, id)
+		// Connection closed - trigger shutdown
+		select {
+		case ShutdownChan <- "client disconnected":
+		default: // already shutting down
 		}
+		close(connDone)
 	}()
 
 	cleanupDone := make(chan struct{}, 1)
@@ -238,10 +207,9 @@ func main() {
 		// Signal all goroutines that shutdown started
 		close(bridgeClosing)
 
-		// Stop accepting new connections and close listener
-		close(acceptDone)
-		if err := listener.Close(); err != nil {
-			logger.WarnKV("listener close failed", "error", err)
+		// Close the client connection to unblock any reads
+		if err := clientConn.Close(); err != nil {
+			logger.DebugKV("client conn close", "error", err)
 		}
 
 		// Bounded wait for in-flight requests; do not block forever
@@ -542,99 +510,6 @@ func handleBinaryStream(conn net.Conn, id string) {
 			StreamID: frame.StreamID,
 		})
 	}
-}
-
-func listenerFromSystemd() (net.Listener, bool, error) {
-	n := systemdListenFDs()
-	if n <= 0 {
-		return nil, false, nil
-	}
-	if n != 1 {
-		return nil, true, fmt.Errorf("expected 1 systemd listen FD, got %d", n)
-	}
-
-	f := os.NewFile(uintptr(3), "systemd-listen")
-	if f == nil {
-		return nil, true, fmt.Errorf("failed to open systemd listen FD 3")
-	}
-	defer f.Close()
-
-	l, err := net.FileListener(f)
-	if err != nil {
-		return nil, true, fmt.Errorf("systemd listen FD 3: %w", err)
-	}
-
-	return l, true, nil
-}
-
-func listenBridge(socketPath string, uid uint32) (net.Listener, error) {
-	if l, ok, err := listenerFromSystemd(); ok {
-		if err != nil {
-			return nil, err
-		}
-		logger.Infof("[socket] using systemd socket activation on %s", socketPath)
-		return l, nil
-	}
-	return createAndOwnSocket(socketPath, uid)
-}
-
-func createAndOwnSocket(socketPath string, uid uint32) (net.Listener, error) {
-	logger.Debugf("[socket] unlink-if-exists %s", socketPath)
-	_ = os.Remove(socketPath)
-
-	// Sanity-check parent directory exists (fail fast with a clear error)
-	parent := filepath.Dir(socketPath)
-	if st, err := os.Stat(parent); err != nil {
-		logger.Errorf("[socket] parent dir not accessible: %s: %v", parent, err)
-		return nil, fmt.Errorf("parent dir %s not accessible: %w", parent, err)
-	} else if !st.IsDir() {
-		logger.Errorf("[socket] parent is not a directory: %s", parent)
-		return nil, fmt.Errorf("parent path %s is not a directory", parent)
-	}
-
-	logger.Debugf("[socket] net.Listen(unix, %s)", socketPath)
-	l, err := net.Listen("unix", socketPath)
-	if err != nil {
-		logger.Errorf("[socket] listen FAILED on %s: %v", socketPath, err)
-		return nil, fmt.Errorf("failed to listen on socket: %w", err)
-	}
-	logger.Debugf("[socket] listen OK: %s", socketPath)
-
-	if ul, ok := l.(*net.UnixListener); ok {
-		ul.SetUnlinkOnClose(true)
-	}
-
-	if err := os.Chmod(socketPath, 0o660); err != nil {
-		logger.Errorf("[socket] chmod 0660 FAILED on %s: %v", socketPath, err)
-		_ = l.Close()
-		_ = os.Remove(socketPath)
-		return nil, fmt.Errorf("chmod: %w", err)
-	}
-	logger.Debugf("[socket] chmod 0660 OK: %s", socketPath)
-
-	// If running as root, chown socket to <uid>:linuxio-bridge-socket so server can connect.
-	if os.Geteuid() == 0 {
-		gid := resolveLinuxioGID()
-		if err := os.Chown(socketPath, int(uid), gid); err != nil {
-			logger.Errorf("[socket] chown %s to %d:%d FAILED: %v", socketPath, uid, gid, err)
-			_ = l.Close()
-			_ = os.Remove(socketPath)
-			return nil, fmt.Errorf("chown: %w", err)
-		}
-		logger.Debugf("[socket] chown OK (uid=%d gid=%d): %s", uid, gid, socketPath)
-	}
-
-	logger.Infof("[socket] LISTENING on %s", socketPath)
-	return l, nil
-}
-
-func resolveLinuxioGID() int {
-	grp, err := user.LookupGroup("linuxio-bridge-socket")
-	if err != nil {
-		return 0
-	}
-	gid, _ := strconv.Atoi(grp.Gid)
-	return gid
 }
 
 // HandleAPIStream handles a yamux stream for JSON API calls.

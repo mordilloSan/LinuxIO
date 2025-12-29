@@ -84,7 +84,6 @@ type Session struct {
 	User         User   `json:"user"`
 	Privileged   bool   `json:"privileged"`
 	BridgeSecret string `json:"bridge_secret"`
-	SocketPath   string `json:"socket_path"`
 	Timing       Timing `json:"timing"`
 
 	// Persistent bridge connection (not serialized)
@@ -302,13 +301,6 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 			AbsoluteUntil: abs,
 		},
 	}
-
-	// Generate and set the per-session socket path
-	sp, err := SocketPath(user.UID)
-	if err != nil {
-		return nil, fmt.Errorf("new socket path: %w", err)
-	}
-	sess.SocketPath = sp
 
 	// Enforce single-session-per-user
 	if m.cfg.SingleSessionPerUser {

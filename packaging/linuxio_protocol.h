@@ -19,7 +19,6 @@
 #define PROTO_MAX_PASSWORD       8192
 #define PROTO_MAX_SESSION_ID     64
 #define PROTO_MAX_SECRET         128
-#define PROTO_MAX_SOCKET_PATH    256
 #define PROTO_MAX_BRIDGE_PATH    4096
 #define PROTO_MAX_ENV_MODE       32
 #define PROTO_MAX_SERVER_URL     512
@@ -34,7 +33,6 @@
 #define FIELD_USER            "user"
 #define FIELD_PASSWORD        "password"
 #define FIELD_SESSION_ID      "session_id"
-#define FIELD_SOCKET_PATH     "socket_path"
 #define FIELD_BRIDGE_PATH     "bridge_path"
 #define FIELD_ENV             "env"
 #define FIELD_VERBOSE         "verbose"
@@ -73,7 +71,6 @@
  * ========================================================================== */
 
 #define ENV_SESSION_ID        "LINUXIO_SESSION_ID"
-#define ENV_SOCKET_PATH       "LINUXIO_SOCKET_PATH"
 #define ENV_ENV               "LINUXIO_ENV"
 #define ENV_VERBOSE           "LINUXIO_VERBOSE"
 #define ENV_BRIDGE            "LINUXIO_BRIDGE"

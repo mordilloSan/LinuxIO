@@ -8,7 +8,6 @@ const (
 	MaxPassword   = 8192
 	MaxSessionID  = 64
 	MaxSecret     = 128
-	MaxSocketPath = 256
 	MaxBridgePath = 4096
 	MaxEnvMode    = 32
 	MaxServerURL  = 512
@@ -22,7 +21,6 @@ const (
 	FieldUser          = "user"
 	FieldPassword      = "password"
 	FieldSessionID     = "session_id"
-	FieldSocketPath    = "socket_path"
 	FieldBridgePath    = "bridge_path"
 	FieldEnv           = "env"
 	FieldVerbose       = "verbose"
@@ -54,7 +52,6 @@ const (
 // Environment variable names
 const (
 	EnvSessionID  = "LINUXIO_SESSION_ID"
-	EnvSocketPath = "LINUXIO_SOCKET_PATH"
 	EnvEnv        = "LINUXIO_ENV"
 	EnvVerbose    = "LINUXIO_VERBOSE"
 	EnvBridge     = "LINUXIO_BRIDGE"
@@ -72,7 +69,6 @@ type AuthRequest struct {
 	User          string `json:"user"`
 	Password      string `json:"password"`
 	SessionID     string `json:"session_id"`
-	SocketPath    string `json:"socket_path"`
 	BridgePath    string `json:"bridge_path,omitempty"`
 	Env           string `json:"env,omitempty"`
 	Verbose       string `json:"verbose,omitempty"`
@@ -83,11 +79,10 @@ type AuthRequest struct {
 
 // AuthResponse is the JSON response from the auth daemon (Auth -> Server)
 type AuthResponse struct {
-	Status     string `json:"status"`
-	Error      string `json:"error,omitempty"`
-	Mode       string `json:"mode,omitempty"`
-	SocketPath string `json:"socket_path,omitempty"`
-	Motd       string `json:"motd,omitempty"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+	Mode   string `json:"mode,omitempty"`
+	Motd   string `json:"motd,omitempty"`
 }
 
 // Bootstrap is the configuration passed from auth daemon to bridge via stdin
@@ -99,7 +94,6 @@ type Bootstrap struct {
 	Secret        string `json:"secret"`
 	ServerBaseURL string `json:"server_base_url,omitempty"`
 	ServerCert    string `json:"server_cert,omitempty"`
-	SocketPath    string `json:"socket_path,omitempty"`
 	Verbose       bool   `json:"verbose,omitempty"`
 	LogFD         int    `json:"log_fd,omitempty"`
 }
