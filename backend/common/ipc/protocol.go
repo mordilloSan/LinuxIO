@@ -7,9 +7,6 @@ import (
 	"io"
 )
 
-// HandlerFunc is the bridge handler signature.
-type HandlerFunc func(args []string) (any, error)
-
 // Stream opcodes for the binary relay protocol.
 // Frame format: [opcode:1][streamID:4][length:4][payload:N]
 const (
@@ -98,16 +95,6 @@ func ParseStreamOpenPayload(payload []byte) (streamType string, args []string) {
 		return "", nil
 	}
 	return parts[0], parts[1:]
-}
-
-// BuildStreamOpenPayload creates a payload for OpStreamOpen.
-func BuildStreamOpenPayload(streamType string, args ...string) []byte {
-	result := []byte(streamType)
-	for _, arg := range args {
-		result = append(result, 0)
-		result = append(result, []byte(arg)...)
-	}
-	return result
 }
 
 // ResultFrame represents the final result of an operation.

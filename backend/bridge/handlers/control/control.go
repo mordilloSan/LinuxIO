@@ -15,7 +15,6 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 const InstallScriptURL = "https://raw.githubusercontent.com/" + config.RepoOwner + "/" + config.RepoName + "/main/packaging/scripts/install-linuxio-binaries.sh"
@@ -35,8 +34,8 @@ func logStream(r io.Reader, prefix string, isInfo bool) {
 	}
 }
 
-func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
-	return map[string]ipc.HandlerFunc{
+func ControlHandlers(shutdownChan chan string) map[string]func([]string) (any, error) {
+	return map[string]func([]string) (any, error){
 		"shutdown": func(args []string) (any, error) {
 			reason := "unknown"
 			if len(args) > 0 {
