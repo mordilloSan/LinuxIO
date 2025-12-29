@@ -178,8 +178,8 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 	}
 	r.mu.Unlock()
 
-	// Get yamux session for this user
-	yamuxSession, err := bridge.GetOrCreateYamuxSession(sess.SocketPath)
+	// Get yamux session for this user (created by StartBridge during login)
+	yamuxSession, err := bridge.GetYamuxSession(sess.SessionID)
 	if err != nil {
 		logger.Errorf("[WSRelay] failed to get yamux session: %v", err)
 		r.sendFrame(streamID, FlagRST, nil)
