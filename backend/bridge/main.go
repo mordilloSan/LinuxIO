@@ -34,21 +34,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
-// envConfig holds all environment values we need, captured at startup
-type envConfig struct {
-	SessionID     string
-	Username      string
-	UID           uint32
-	GID           uint32
-	Secret        string
-	Verbose       bool
-	SocketPath    string
-	ServerBaseURL string
-	ServerCert    string
-	LogFD         int
-}
-
-type boot struct {
+// Bootstrap holds the configuration passed from auth daemon via stdin
+type Bootstrap struct {
 	SessionID     string `json:"session_id"`
 	Username      string `json:"username"`
 	UID           uint32 `json:"uid"`
@@ -58,7 +45,7 @@ type boot struct {
 	ServerCert    string `json:"server_cert,omitempty"`
 	SocketPath    string `json:"socket_path,omitempty"`
 	Verbose       bool   `json:"verbose,omitempty"`
-	LogFD         int    `json:"log_fd,omitempty"` // FD for piped logging in dev mode
+	LogFD         int    `json:"log_fd,omitempty"`
 }
 
 // systemdListenFDs returns the number of systemd socket-activation FDs.
@@ -82,119 +69,42 @@ func systemdListenFDs() int {
 	return n
 }
 
-// readBootstrapFromFD reads bootstrap JSON from the provided FD.
-// The FD is a socketpair created by the auth daemon, so we can read and write to it.
-func readBootstrapFromFD(fd uintptr) (*boot, error) {
-	bootstrapFile := os.NewFile(fd, "bootstrap")
-	if bootstrapFile == nil {
-		return nil, fmt.Errorf("failed to open bootstrap FD %d", fd)
-	}
-	defer bootstrapFile.Close()
-
-	b, err := io.ReadAll(io.LimitReader(bootstrapFile, 64*1024))
+// readBootstrap reads bootstrap JSON from stdin.
+// The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
+func readBootstrap() *Bootstrap {
+	b, err := io.ReadAll(io.LimitReader(os.Stdin, 64*1024))
 	if err != nil || len(b) == 0 {
-		if err == nil {
-			err = io.EOF
-		}
-		return nil, fmt.Errorf("failed to read bootstrap from FD %d: %w", fd, err)
+		logger.Warnf("Failed to read bootstrap from stdin: %v", err)
+		return &Bootstrap{}
 	}
 
-	var v boot
+	var v Bootstrap
 	if err := json.Unmarshal(b, &v); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal bootstrap JSON: %w", err)
+		logger.Warnf("Failed to unmarshal bootstrap JSON: %v", err)
+		return &Bootstrap{}
 	}
 
 	if v.Secret == "" || v.SessionID == "" {
-		return nil, fmt.Errorf("bootstrap missing required fields (secret or session_id)")
+		logger.Warnf("Bootstrap missing required fields (secret or session_id)")
+		return &Bootstrap{}
 	}
 
-	// Write "OK" acknowledgment back to auth daemon via the socketpair.
-	if _, err := bootstrapFile.Write([]byte("OK")); err != nil {
-		// Log but don't fail - bootstrap data is valid.
-		fmt.Fprintf(os.Stderr, "warning: failed to write bootstrap acknowledgment: %v\n", err)
-	}
-
-	return &v, nil
+	return &v
 }
 
-func readBootstrapFromFile(path string) (*boot, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open bootstrap file %s: %w", path, err)
-	}
-	defer f.Close()
-
-	b, err := io.ReadAll(io.LimitReader(f, 64*1024))
-	if err != nil || len(b) == 0 {
-		if err == nil {
-			err = io.EOF
-		}
-		return nil, fmt.Errorf("failed to read bootstrap file %s: %w", path, err)
-	}
-
-	var v boot
-	if err := json.Unmarshal(b, &v); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal bootstrap JSON: %w", err)
-	}
-
-	if v.Secret == "" || v.SessionID == "" {
-		return nil, fmt.Errorf("bootstrap missing required fields (secret or session_id)")
-	}
-
-	if err := os.Remove(path); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to remove bootstrap file %s: %v\n", path, err)
-	}
-
-	return &v, nil
-}
-
-func readBootstrap() (*boot, error) {
-	if path := strings.TrimSpace(os.Getenv("LINUXIO_BOOTSTRAP_FILE")); path != "" {
-		if b, err := readBootstrapFromFile(path); err == nil {
-			return b, nil
-		}
-	}
-	if systemdListenFDs() > 0 {
-		return readBootstrapFromFD(0)
-	}
-	if b, err := readBootstrapFromFD(3); err == nil {
-		return b, nil
-	}
-	return readBootstrapFromFD(0)
-}
-
-func initEnvCfg() envConfig {
-	if b, err := readBootstrap(); err == nil && b != nil {
-		return envConfig{
-			SessionID:     b.SessionID,
-			Username:      b.Username,
-			UID:           b.UID,
-			GID:           b.GID,
-			Secret:        b.Secret,
-			Verbose:       b.Verbose,
-			SocketPath:    b.SocketPath,
-			ServerBaseURL: b.ServerBaseURL,
-			ServerCert:    b.ServerCert,
-			LogFD:         b.LogFD,
-		}
-	}
-	logger.Warnf("Failed to read bootstrap info")
-	return envConfig{}
-}
-
-// Capture config NOW (package init time)
-var envCfg = initEnvCfg()
+// Capture bootstrap config at package init time
+var bootCfg = readBootstrap()
 
 // Build minimal session object from our saved config
 var Sess = &session.Session{
-	SessionID: envCfg.SessionID,
+	SessionID: bootCfg.SessionID,
 	User: session.User{
-		Username: envCfg.Username,
-		UID:      envCfg.UID,
-		GID:      envCfg.GID,
+		Username: bootCfg.Username,
+		UID:      bootCfg.UID,
+		GID:      bootCfg.GID,
 	},
-	BridgeSecret: envCfg.Secret,
-	SocketPath:   envCfg.SocketPath,
+	BridgeSecret: bootCfg.Secret,
+	SocketPath:   bootCfg.SocketPath,
 }
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
@@ -215,7 +125,7 @@ func main() {
 
 	// If --verbose wasn't passed, check our saved environment config
 	if !pflag.Lookup("verbose").Changed {
-		verbose = envCfg.Verbose
+		verbose = bootCfg.Verbose
 	}
 
 	// accept BOTH: ./linuxio-bridge --version  AND  ./linuxio-bridge version
@@ -227,7 +137,7 @@ func main() {
 	envMode = strings.ToLower(envMode)
 
 	// Use saved socket path from environment config
-	socketPath := strings.TrimSpace(envCfg.SocketPath)
+	socketPath := strings.TrimSpace(bootCfg.SocketPath)
 	if socketPath == "" {
 		// logger isn't initialized yet; print to stderr and exit
 		fmt.Fprintln(os.Stderr, "bridge bootstrap error: empty socket path in bootstrap JSON")
@@ -237,8 +147,8 @@ func main() {
 	// Initialize logger ASAP
 	// If we have a log FD in dev mode, redirect stdout/stderr to it for piped logging
 	// (dev mode logger uses stdout for colored output)
-	if envMode == appconfig.EnvDevelopment && envCfg.LogFD > 0 {
-		logFile := os.NewFile(uintptr(envCfg.LogFD), "logpipe")
+	if envMode == appconfig.EnvDevelopment && bootCfg.LogFD > 0 {
+		logFile := os.NewFile(uintptr(bootCfg.LogFD), "logpipe")
 		if logFile != nil {
 			// Redirect both stdout and stderr to the log pipe
 			logFD := int(logFile.Fd())
@@ -252,7 +162,7 @@ func main() {
 				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stderr failed: %v\n", err)
 			}
 			// Close the original FD to avoid leaking
-			if envCfg.LogFD != stdoutFD && envCfg.LogFD != stderrFD {
+			if bootCfg.LogFD != stdoutFD && bootCfg.LogFD != stderrFD {
 				if err := logFile.Close(); err != nil {
 					fmt.Fprintf(os.Stderr, "bridge bootstrap error: close log fd failed: %v\n", err)
 				}
@@ -268,7 +178,7 @@ func main() {
 		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
 
 	// Use saved server cert from environment config
-	if pem := strings.TrimSpace(envCfg.ServerCert); pem != "" {
+	if pem := strings.TrimSpace(bootCfg.ServerCert); pem != "" {
 		if err := web.SetRootPoolFromPEM([]byte(pem)); err != nil {
 			logger.Warnf("failed to load LINUXIO_SERVER_CERT: %v", err)
 		} else {
