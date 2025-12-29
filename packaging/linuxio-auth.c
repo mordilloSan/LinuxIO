@@ -49,6 +49,9 @@
 #define JSMN_PARENT_LINKS
 #include "jsmn.h"
 
+// Protocol constants (field names, limits, env vars)
+#include "linuxio_protocol.h"
+
 // Socket timeouts (seconds)
 #define SOCKET_READ_TIMEOUT 30
 #define SOCKET_WRITE_TIMEOUT 10
@@ -63,10 +66,8 @@ extern char **environ;
 static int write_all(int fd, const void *buf, size_t len);
 static int env_get_int(const char *name, int defval, int minv, int maxv);
 
-// Max lengths
-#define MAX_USERNAME_LEN 256
+// Max lengths (use PROTO_MAX_* from linuxio_protocol.h, these are local convenience)
 #define MAX_PATH_LEN 4096
-#define MAX_ENV_VALUE_LEN 8192
 
 // -------- safe formatting helpers --------
 static int safe_vsnprintf(char *dst, size_t dstsz, const char *fmt, va_list ap)
@@ -628,21 +629,21 @@ static int write_bootstrap_json(
 
   if (server_cert && *server_cert)
   {
-    char cert_esc[16384];
+    char cert_esc[PROTO_MAX_SERVER_CERT];
     json_escape_string(cert_esc, sizeof(cert_esc), server_cert);
 
     safe_snprintf(json, sizeof(json),
                   "{"
-                  "\"session_id\":\"%s\","
-                  "\"username\":\"%s\","
-                  "\"uid\":%u,"
-                  "\"gid\":%u,"
-                  "\"secret\":\"%s\","
-                  "\"server_base_url\":\"%s\","
-                  "\"server_cert\":\"%s\","
-                  "\"socket_path\":\"%s\","
-                  "\"verbose\":%s,"
-                  "\"log_fd\":%d"
+                  "\"" FIELD_SESSION_ID "\":\"%s\","
+                  "\"" FIELD_USERNAME "\":\"%s\","
+                  "\"" FIELD_UID "\":%u,"
+                  "\"" FIELD_GID "\":%u,"
+                  "\"" FIELD_SECRET "\":\"%s\","
+                  "\"" FIELD_SERVER_BASE_URL "\":\"%s\","
+                  "\"" FIELD_SERVER_CERT "\":\"%s\","
+                  "\"" FIELD_SOCKET_PATH "\":\"%s\","
+                  "\"" FIELD_VERBOSE "\":%s,"
+                  "\"" FIELD_LOG_FD "\":%d"
                   "}",
                   sess_id_esc, username_esc,
                   (unsigned)uid, (unsigned)gid,
@@ -653,16 +654,16 @@ static int write_bootstrap_json(
   {
     safe_snprintf(json, sizeof(json),
                   "{"
-                  "\"session_id\":\"%s\","
-                  "\"username\":\"%s\","
-                  "\"uid\":%u,"
-                  "\"gid\":%u,"
-                  "\"secret\":\"%s\","
-                  "\"server_base_url\":\"%s\","
-                  "\"server_cert\":null,"
-                  "\"socket_path\":\"%s\","
-                  "\"verbose\":%s,"
-                  "\"log_fd\":%d"
+                  "\"" FIELD_SESSION_ID "\":\"%s\","
+                  "\"" FIELD_USERNAME "\":\"%s\","
+                  "\"" FIELD_UID "\":%u,"
+                  "\"" FIELD_GID "\":%u,"
+                  "\"" FIELD_SECRET "\":\"%s\","
+                  "\"" FIELD_SERVER_BASE_URL "\":\"%s\","
+                  "\"" FIELD_SERVER_CERT "\":null,"
+                  "\"" FIELD_SOCKET_PATH "\":\"%s\","
+                  "\"" FIELD_VERBOSE "\":%s,"
+                  "\"" FIELD_LOG_FD "\":%d"
                   "}",
                   sess_id_esc, username_esc,
                   (unsigned)uid, (unsigned)gid,
@@ -982,9 +983,9 @@ static char *json_get_string(const char *json, const char *key, char *buf, size_
 static void send_response(int fd, const char *status, const char *error, const char *mode, const char *socket_path, const char *motd)
 {
   char buf[8192];
-  char err_escaped[512] = "";
-  char sock_escaped[512] = "";
-  char motd_escaped[4096] = "";
+  char err_escaped[PROTO_MAX_ERROR] = "";
+  char sock_escaped[PROTO_MAX_SOCKET_PATH] = "";
+  char motd_escaped[PROTO_MAX_MOTD] = "";
 
   if (error && *error)
     json_escape_string(err_escaped, sizeof(err_escaped), error);
@@ -997,7 +998,7 @@ static void send_response(int fd, const char *status, const char *error, const c
   if (error && *error)
   {
     len = safe_snprintf(buf, sizeof(buf),
-                        "{\"status\":\"%s\",\"error\":\"%s\"}\n",
+                        "{\"" FIELD_STATUS "\":\"%s\",\"" FIELD_ERROR "\":\"%s\"}\n",
                         status, err_escaped);
   }
   else if (mode && socket_path)
@@ -1005,19 +1006,19 @@ static void send_response(int fd, const char *status, const char *error, const c
     if (motd && *motd)
     {
       len = safe_snprintf(buf, sizeof(buf),
-                          "{\"status\":\"%s\",\"mode\":\"%s\",\"socket_path\":\"%s\",\"motd\":\"%s\"}\n",
+                          "{\"" FIELD_STATUS "\":\"%s\",\"" FIELD_MODE "\":\"%s\",\"" FIELD_SOCKET_PATH "\":\"%s\",\"" FIELD_MOTD "\":\"%s\"}\n",
                           status, mode, sock_escaped, motd_escaped);
     }
     else
     {
       len = safe_snprintf(buf, sizeof(buf),
-                          "{\"status\":\"%s\",\"mode\":\"%s\",\"socket_path\":\"%s\"}\n",
+                          "{\"" FIELD_STATUS "\":\"%s\",\"" FIELD_MODE "\":\"%s\",\"" FIELD_SOCKET_PATH "\":\"%s\"}\n",
                           status, mode, sock_escaped);
     }
   }
   else
   {
-    len = safe_snprintf(buf, sizeof(buf), "{\"status\":\"%s\"}\n", status);
+    len = safe_snprintf(buf, sizeof(buf), "{\"" FIELD_STATUS "\":\"%s\"}\n", status);
   }
 
   if (len > 0)
@@ -1097,7 +1098,7 @@ static pid_t spawn_bridge_process(
       _exit(127);
     if (setresuid(0, 0, 0) != 0)
       _exit(127);
-    setenv("LINUXIO_PRIVILEGED", "1", 1);
+    setenv(ENV_PRIVILEGED, "1", 1);
   }
   else
   {
@@ -1116,19 +1117,19 @@ static pid_t spawn_bridge_process(
   }
 
   if (env_mode && *env_mode)
-    setenv("LINUXIO_ENV", env_mode, 1);
+    setenv(ENV_ENV, env_mode, 1);
   // Bootstrap is now passed via stdin pipe, no file path needed
   if (session_id && *session_id)
-    setenv("LINUXIO_SESSION_ID", session_id, 1);
+    setenv(ENV_SESSION_ID, session_id, 1);
   if (socket_path && *socket_path)
-    setenv("LINUXIO_SOCKET_PATH", socket_path, 1);
-  setenv("LINUXIO_BRIDGE", "1", 1);
+    setenv(ENV_SOCKET_PATH, socket_path, 1);
+  setenv(ENV_BRIDGE, "1", 1);
   if (verbose)
-    setenv("LINUXIO_VERBOSE", "1", 1);
+    setenv(ENV_VERBOSE, "1", 1);
 
   // Only enable core dumps in development mode
   // In production, keep dumpable off to prevent leaking secrets
-  if (env_mode && strcmp(env_mode, "development") == 0)
+  if (env_mode && strcmp(env_mode, ENV_MODE_DEVELOPMENT) == 0)
     (void)prctl(PR_SET_DUMPABLE, 1);
 
   // Close all file descriptors except stdin(0), stdout(1), stderr(2), and bridge_fd
@@ -1234,39 +1235,39 @@ static int handle_client(int input_fd, int output_fd)
 
   if (total == 0)
   {
-    send_response(output_fd, "error", "empty request", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "empty request", NULL, NULL, NULL);
     secure_bzero(reqbuf, sizeof(reqbuf));
     return 1;
   }
 
-  // Parse JSON fields
-  char user[MAX_USERNAME_LEN] = "";
-  char password[MAX_ENV_VALUE_LEN] = "";
-  char session_id[256] = "";
-  char socket_path[MAX_PATH_LEN] = "";
-  char bridge_path[MAX_PATH_LEN] = "";
-  char env_mode[128] = "";
+  // Parse JSON fields (sizes from linuxio_protocol.h)
+  char user[PROTO_MAX_USERNAME] = "";
+  char password[PROTO_MAX_PASSWORD] = "";
+  char session_id[PROTO_MAX_SESSION_ID] = "";
+  char socket_path[PROTO_MAX_SOCKET_PATH] = "";
+  char bridge_path[PROTO_MAX_BRIDGE_PATH] = "";
+  char env_mode[PROTO_MAX_ENV_MODE] = "";
   char verbose_str[16] = "";
-  char secret[MAX_ENV_VALUE_LEN] = "";
-  char server_base_url[MAX_ENV_VALUE_LEN] = "";
-  char server_cert[MAX_ENV_VALUE_LEN] = "";
+  char secret[PROTO_MAX_SECRET] = "";
+  char server_base_url[PROTO_MAX_SERVER_URL] = "";
+  char server_cert[PROTO_MAX_SERVER_CERT] = "";
 
-  json_get_string(reqbuf, "user", user, sizeof(user));
-  json_get_string(reqbuf, "password", password, sizeof(password));
-  json_get_string(reqbuf, "session_id", session_id, sizeof(session_id));
-  json_get_string(reqbuf, "socket_path", socket_path, sizeof(socket_path));
-  json_get_string(reqbuf, "bridge_path", bridge_path, sizeof(bridge_path));
-  json_get_string(reqbuf, "env", env_mode, sizeof(env_mode));
-  json_get_string(reqbuf, "verbose", verbose_str, sizeof(verbose_str));
-  json_get_string(reqbuf, "secret", secret, sizeof(secret));
-  json_get_string(reqbuf, "server_base_url", server_base_url, sizeof(server_base_url));
-  json_get_string(reqbuf, "server_cert", server_cert, sizeof(server_cert));
+  json_get_string(reqbuf, FIELD_USER, user, sizeof(user));
+  json_get_string(reqbuf, FIELD_PASSWORD, password, sizeof(password));
+  json_get_string(reqbuf, FIELD_SESSION_ID, session_id, sizeof(session_id));
+  json_get_string(reqbuf, FIELD_SOCKET_PATH, socket_path, sizeof(socket_path));
+  json_get_string(reqbuf, FIELD_BRIDGE_PATH, bridge_path, sizeof(bridge_path));
+  json_get_string(reqbuf, FIELD_ENV, env_mode, sizeof(env_mode));
+  json_get_string(reqbuf, FIELD_VERBOSE, verbose_str, sizeof(verbose_str));
+  json_get_string(reqbuf, FIELD_SECRET, secret, sizeof(secret));
+  json_get_string(reqbuf, FIELD_SERVER_BASE_URL, server_base_url, sizeof(server_base_url));
+  json_get_string(reqbuf, FIELD_SERVER_CERT, server_cert, sizeof(server_cert));
   secure_bzero(reqbuf, sizeof(reqbuf));
 
   // Validate required fields
   if (!user[0] || !session_id[0] || !socket_path[0])
   {
-    send_response(output_fd, "error", "missing required fields", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "missing required fields", NULL, NULL, NULL);
     secure_bzero(password, sizeof(password));
     return 1;
   }
@@ -1274,7 +1275,7 @@ static int handle_client(int input_fd, int output_fd)
   // Validate session_id (defense against path injection)
   if (!valid_session_id(session_id))
   {
-    send_response(output_fd, "error", "invalid session_id format", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "invalid session_id format", NULL, NULL, NULL);
     secure_bzero(password, sizeof(password));
     return 1;
   }
@@ -1282,7 +1283,7 @@ static int handle_client(int input_fd, int output_fd)
   // Validate env_mode (whitelist valid environment modes)
   if (!valid_env_mode(env_mode))
   {
-    send_response(output_fd, "error", "invalid environment mode", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "invalid environment mode", NULL, NULL, NULL);
     secure_bzero(password, sizeof(password));
     return 1;
   }
@@ -1294,7 +1295,7 @@ static int handle_client(int input_fd, int output_fd)
   int rc = pam_start("linuxio", user, &conv, &pamh);
   if (rc != PAM_SUCCESS)
   {
-    send_response(output_fd, "error", pam_strerror(NULL, rc), NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, pam_strerror(NULL, rc), NULL, NULL, NULL);
     secure_bzero(password, sizeof(password));
     return 1;
   }
@@ -1308,7 +1309,7 @@ static int handle_client(int input_fd, int output_fd)
   if (rc == PAM_NEW_AUTHTOK_REQD)
   {
     journal_infof("auth: password expired for user '%s'", user);
-    send_response(output_fd, "error",
+    send_response(output_fd, STATUS_ERROR,
                   "Password has expired. Please change it via SSH or console.",
                   NULL, NULL, NULL);
     pam_end(pamh, rc);
@@ -1322,7 +1323,7 @@ static int handle_client(int input_fd, int output_fd)
   if (rc != PAM_SUCCESS)
   {
     const char *err = pam_strerror(pamh, rc);
-    send_response(output_fd, "error", err, NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, err, NULL, NULL, NULL);
     pam_end(pamh, rc);
     secure_bzero(password, sizeof(password));
     return 1;
@@ -1332,7 +1333,7 @@ static int handle_client(int input_fd, int output_fd)
   struct passwd *pw = getpwnam(user);
   if (!pw)
   {
-    send_response(output_fd, "error", "user lookup failed", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "user lookup failed", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
@@ -1344,7 +1345,7 @@ static int handle_client(int input_fd, int output_fd)
   // Validate socket path
   if (!valid_socket_path_for_uid(socket_path, pw->pw_uid))
   {
-    send_response(output_fd, "error", "invalid socket path for user", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "invalid socket path for user", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
@@ -1355,7 +1356,7 @@ static int handle_client(int input_fd, int output_fd)
   int user_fd = ensure_runtime_dirs(pw);
   if (user_fd < 0)
   {
-    send_response(output_fd, "error", "failed to prepare runtime directory", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "failed to prepare runtime directory", NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     secure_bzero(password, sizeof(password));
@@ -1369,7 +1370,7 @@ static int handle_client(int input_fd, int output_fd)
   // Clear password from memory
   secure_bzero(password, sizeof(password));
 
-  const char *mode_str = want_privileged ? "privileged" : "unprivileged";
+  const char *mode_str = want_privileged ? MODE_PRIVILEGED : MODE_UNPRIVILEGED;
   const char *envmode = (env_mode[0]) ? env_mode : "production";
 
   // Validate bridge binary and keep fd open (prevents TOCTOU)
@@ -1377,7 +1378,7 @@ static int handle_client(int input_fd, int output_fd)
   int bridge_fd = -1;
   if (open_and_validate_bridge(bridge_bin, 0, &bridge_fd) != 0)
   {
-    send_response(output_fd, "error", "bridge validation failed", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "bridge validation failed", NULL, NULL, NULL);
     close(user_fd);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1392,7 +1393,7 @@ static int handle_client(int input_fd, int output_fd)
   if (pipe(bootstrap_pipe) != 0)
   {
     journal_errorf("failed to create bootstrap pipe: %m");
-    send_response(output_fd, "error", "failed to prepare bootstrap", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "failed to prepare bootstrap", NULL, NULL, NULL);
     close(bridge_fd);
     close(user_fd);
     pam_setcred(pamh, PAM_DELETE_CRED);
@@ -1408,7 +1409,7 @@ static int handle_client(int input_fd, int output_fd)
     close(bootstrap_pipe[1]);
     close(bridge_fd);
     close(user_fd);
-    send_response(output_fd, "error", err, NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, err, NULL, NULL, NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
     return 1;
@@ -1432,7 +1433,7 @@ static int handle_client(int input_fd, int output_fd)
     close(bootstrap_pipe[1]);
     close(bridge_fd);
     close(user_fd);
-    send_response(output_fd, "error", "failed to spawn bridge", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "failed to spawn bridge", NULL, NULL, NULL);
     pam_close_session(pamh, 0);
     pam_setcred(pamh, PAM_DELETE_CRED);
     pam_end(pamh, 0);
@@ -1459,7 +1460,7 @@ static int handle_client(int input_fd, int output_fd)
     journal_errorf("failed to write bootstrap JSON to pipe");
     close(bridge_fd);
     close(user_fd);
-    send_response(output_fd, "error", "bootstrap communication failed", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "bootstrap communication failed", NULL, NULL, NULL);
     kill(child, SIGTERM);
     (void)waitpid(child, NULL, 0);
     pam_close_session(pamh, 0);
@@ -1476,7 +1477,7 @@ static int handle_client(int input_fd, int output_fd)
   if (wait_for_bridge_socket(socket_path, wait_ms) != 0)
   {
     journal_errorf("bridge did not create socket in time");
-    send_response(output_fd, "error", "bridge startup failed", NULL, NULL, NULL);
+    send_response(output_fd, STATUS_ERROR, "bridge startup failed", NULL, NULL, NULL);
     kill(child, SIGTERM);
     (void)waitpid(child, NULL, 0);
     pam_close_session(pamh, 0);
@@ -1491,7 +1492,7 @@ static int handle_client(int input_fd, int output_fd)
     appdata.motd[appdata.motd_len - 1] = '\0';
   }
 
-  send_response(output_fd, "ok", NULL, mode_str, socket_path,
+  send_response(output_fd, STATUS_OK, NULL, mode_str, socket_path,
                 appdata.motd_len > 0 ? appdata.motd : NULL);
   if (input_fd >= 0)
     close(input_fd);

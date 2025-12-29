@@ -1,4 +1,4 @@
-// Package authclient provides a client for the linuxio-auth daemon.
+// Package bridge provides a client for the linuxio-auth daemon.
 package bridge
 
 import (
@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
 )
 
@@ -30,28 +32,9 @@ func GetAuthSocketPath() string {
 	return DefaultAuthSocketPath
 }
 
-// Request is the JSON request sent to the auth daemon
-type Request struct {
-	User          string `json:"user"`
-	Password      string `json:"password"`
-	SessionID     string `json:"session_id"`
-	SocketPath    string `json:"socket_path"`
-	BridgePath    string `json:"bridge_path,omitempty"`
-	Env           string `json:"env,omitempty"`
-	Verbose       string `json:"verbose,omitempty"`
-	ServerBaseURL string `json:"server_base_url,omitempty"`
-	ServerCert    string `json:"server_cert,omitempty"`
-	Secret        string `json:"secret,omitempty"`
-}
-
-// Response is the JSON response from the auth daemon
-type Response struct {
-	Status     string `json:"status"`
-	Error      string `json:"error,omitempty"`
-	Mode       string `json:"mode,omitempty"`        // "privileged" or "unprivileged"
-	SocketPath string `json:"socket_path,omitempty"` // bridge socket path
-	Motd       string `json:"motd,omitempty"`        // Message of the day from PAM
-}
+// Type aliases for backward compatibility
+type Request = protocol.AuthRequest
+type Response = protocol.AuthResponse
 
 // DaemonAvailable checks if the auth daemon socket exists and is connectable
 func DaemonAvailable() bool {
@@ -136,7 +119,7 @@ func Authenticate(req *Request) (privileged bool, motd string, err error) {
 		return false, "", fmt.Errorf("failed to parse auth response: %w (raw: %q)", err, string(buf[:total]))
 	}
 
-	if resp.Status != "ok" {
+	if !resp.IsOK() {
 		errMsg := resp.Error
 		if errMsg == "" {
 			errMsg = "authentication failed"
@@ -144,7 +127,7 @@ func Authenticate(req *Request) (privileged bool, motd string, err error) {
 		return false, "", fmt.Errorf("auth daemon error: %s", errMsg)
 	}
 
-	privileged = resp.Mode == "privileged"
+	privileged = resp.IsPrivileged()
 	logger.InfoKV("auth daemon: bridge spawned",
 		"user", req.User,
 		"privileged", privileged,
@@ -153,20 +136,16 @@ func Authenticate(req *Request) (privileged bool, motd string, err error) {
 	return privileged, resp.Motd, nil
 }
 
-// BuildRequest creates a Request from session info and environment
-func BuildRequest(
-	username, password, sessionID, socketPath, bridgeSecret string,
-	bridgePath, envMode string,
-	verbose bool,
-) *Request {
+// BuildRequest creates a Request from a session and additional auth parameters
+func BuildRequest(sess *session.Session, password, bridgePath, envMode string, verbose bool) *Request {
 	req := &Request{
-		User:       username,
+		User:       sess.User.Username,
 		Password:   password,
-		SessionID:  sessionID,
-		SocketPath: socketPath,
+		SessionID:  sess.SessionID,
+		SocketPath: sess.SocketPath,
 		BridgePath: bridgePath,
 		Env:        envMode,
-		Secret:     bridgeSecret,
+		Secret:     sess.BridgeSecret,
 	}
 
 	if verbose {
