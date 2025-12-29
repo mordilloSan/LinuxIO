@@ -32,27 +32,24 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
-// Bootstrap is the configuration passed from auth daemon via stdin
-type Bootstrap = protocol.Bootstrap
-
 // readBootstrap reads bootstrap JSON from stdin.
 // The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
-func readBootstrap() *Bootstrap {
+func readBootstrap() *protocol.Bootstrap {
 	b, err := io.ReadAll(io.LimitReader(os.Stdin, 64*1024))
 	if err != nil || len(b) == 0 {
 		logger.Warnf("Failed to read bootstrap from stdin: %v", err)
-		return &Bootstrap{}
+		return &protocol.Bootstrap{}
 	}
 
-	var v Bootstrap
+	var v protocol.Bootstrap
 	if err := json.Unmarshal(b, &v); err != nil {
 		logger.Warnf("Failed to unmarshal bootstrap JSON: %v", err)
-		return &Bootstrap{}
+		return &protocol.Bootstrap{}
 	}
 
 	if v.Secret == "" || v.SessionID == "" {
 		logger.Warnf("Bootstrap missing required fields (secret or session_id)")
-		return &Bootstrap{}
+		return &protocol.Bootstrap{}
 	}
 
 	return &v

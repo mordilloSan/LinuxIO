@@ -32,10 +32,6 @@ func GetAuthSocketPath() string {
 	return DefaultAuthSocketPath
 }
 
-// Type aliases for backward compatibility
-type Request = protocol.AuthRequest
-type Response = protocol.AuthResponse
-
 // DaemonAvailable checks if the auth daemon socket exists and is connectable
 func DaemonAvailable() bool {
 	info, err := os.Stat(GetAuthSocketPath())
@@ -60,7 +56,7 @@ type AuthResult struct {
 // On success, returns the connection which is now connected to the forked bridge
 // process (the auth daemon passed our FD to the bridge via dup2).
 // The caller owns the connection and must close it.
-func Authenticate(req *Request) (*AuthResult, error) {
+func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 	if !DaemonAvailable() {
 		return nil, errors.New("auth daemon not available")
 	}
@@ -126,7 +122,7 @@ func Authenticate(req *Request) (*AuthResult, error) {
 	}
 
 	// Parse response
-	var resp Response
+	var resp protocol.AuthResponse
 	if err := json.Unmarshal(buf[:total], &resp); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to parse auth response: %w (raw: %q)", err, string(buf[:total]))
@@ -157,8 +153,8 @@ func Authenticate(req *Request) (*AuthResult, error) {
 }
 
 // BuildRequest creates a Request from a session and additional auth parameters
-func BuildRequest(sess *session.Session, password, bridgePath, envMode string, verbose bool) *Request {
-	req := &Request{
+func BuildRequest(sess *session.Session, password, bridgePath, envMode string, verbose bool) *protocol.AuthRequest {
+	req := &protocol.AuthRequest{
 		User:       sess.User.Username,
 		Password:   password,
 		SessionID:  sess.SessionID,
