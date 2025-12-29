@@ -3,7 +3,6 @@ package bridge
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -157,120 +156,24 @@ func GetYamuxSession(sessionID string) (*ipc.YamuxSession, error) {
 
 // CloseYamuxSession closes the yamux session for a session ID
 func CloseYamuxSession(sessionID string) {
+	// Remove from map first, then close OUTSIDE the lock.
+	// This prevents deadlock: Close() triggers OnClose callback which tries to Lock().
 	yamuxSessions.Lock()
-	defer yamuxSessions.Unlock()
-
-	if session, exists := yamuxSessions.sessions[sessionID]; exists {
-		session.Close()
+	session, exists := yamuxSessions.sessions[sessionID]
+	if exists {
 		delete(yamuxSessions.sessions, sessionID)
+	}
+	yamuxSessions.Unlock()
+
+	if exists {
+		session.Close()
 		logger.DebugKV("yamux session closed", "session_id", sessionID)
 	}
-}
-
-// CallTypedWithSession makes a bridge call and decodes the response directly into result.
-// Uses JSON encoding for IPC.
-func CallTypedWithSession(sess *session.Session, reqType, command string, args []string, result any) error {
-	logger.DebugKV("bridge call initiated (yamux)",
-		"user", sess.User.Username,
-		"type", reqType,
-		"command", command,
-		"args", fmt.Sprintf("%v", args))
-
-	// Get yamux session (created by StartBridge)
-	yamuxSession, err := GetYamuxSession(sess.SessionID)
-	if err != nil {
-		logger.ErrorKV("bridge call failed: yamux session error",
-			"user", sess.User.Username,
-			"session_id", sess.SessionID,
-			"command", command,
-			"error", err)
-		terminateSessionOnBridgeFailure(sess)
-		return err
-	}
-
-	// Open a new stream for this request
-	stream, err := yamuxSession.Open()
-	if err != nil {
-		logger.ErrorKV("bridge call failed: stream open error",
-			"user", sess.User.Username,
-			"command", command,
-			"error", err)
-		// Session might be dead, close it
-		CloseYamuxSession(sess.SessionID)
-		terminateSessionOnBridgeFailure(sess)
-		return fmt.Errorf("failed to open yamux stream: %w", err)
-	}
-	defer stream.Close()
-
-	// Build request
-	req := ipc.Request{
-		Type:      reqType,
-		Command:   command,
-		Secret:    sess.BridgeSecret,
-		Args:      args,
-		SessionID: sess.SessionID,
-	}
-
-	// Send request using JSON encoding
-	if err = ipc.WriteRequest(stream, &req); err != nil {
-		logger.ErrorKV("bridge call failed: write error",
-			"user", sess.User.Username,
-			"type", reqType,
-			"command", command,
-			"error", err)
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-
-	// Read JSON-encoded response
-	resp, err := ipc.ReadResponse(stream)
-	if err != nil {
-		logger.ErrorKV("bridge call failed: read error",
-			"user", sess.User.Username,
-			"type", reqType,
-			"command", command,
-			"error", err)
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	logger.DebugKV("bridge call completed (yamux)",
-		"user", sess.User.Username,
-		"type", reqType,
-		"command", command)
-
-	if resp.Status != "ok" {
-		return fmt.Errorf("bridge error: %s", resp.Error)
-	}
-
-	if result == nil {
-		return nil
-	}
-
-	if len(resp.Output) == 0 {
-		return ipc.ErrEmptyBridgeOutput
-	}
-
-	// Directly unmarshal RawMessage into result (no double-encoding)
-	if err := json.Unmarshal(resp.Output, result); err != nil {
-		return fmt.Errorf("decode output: %w", err)
-	}
-
-	return nil
 }
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-func terminateSessionOnBridgeFailure(sess *session.Session) {
-	if sess == nil {
-		return
-	}
-	if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
-		logger.WarnKV("failed to terminate session after bridge failure",
-			"user", sess.User.Username,
-			"error", err)
-	}
-}
 
 // GetBridgeBinaryPath returns an absolute or name-only path for the bridge.
 func GetBridgeBinaryPath(override string) string {

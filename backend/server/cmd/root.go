@@ -23,7 +23,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/auth"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
@@ -49,14 +48,7 @@ func RunServer(cfg ServerConfig) {
 		if sess.User.Username == "" {
 			return
 		}
-		// Only try shutdown if bridge was actually started (yamux session exists)
-		if _, err := bridge.GetYamuxSession(sess.SessionID); err != nil {
-			// No yamux session - bridge was never started, just clean up
-			return
-		}
-		if err := bridge.CallTypedWithSession(sess, "control", "shutdown", []string{string(reason)}, nil); err != nil {
-			logger.WarnKV("bridge shutdown failed", "user", sess.User.Username, "reason", reason, "error", err)
-		}
+		bridge.CloseYamuxSession(sess.SessionID)
 	})
 
 	// -------------------------------------------------------------------------
@@ -246,8 +238,12 @@ func RunServer(cfg ServerConfig) {
 		logger.Infof("HTTP server closed")
 	}
 
-	// Tell bridges to quit before sessions close
-	cleanup.ShutdownAllBridges(sm, "server_quit")
+	// Close yamux sessions to trigger bridge shutdown
+	if sessions, err := sm.ActiveSessions(); err == nil {
+		for _, sess := range sessions {
+			bridge.CloseYamuxSession(sess.SessionID)
+		}
+	}
 
 	// Close sessions
 	sm.Close()

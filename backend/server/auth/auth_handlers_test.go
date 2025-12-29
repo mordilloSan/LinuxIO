@@ -57,9 +57,9 @@ func extractCookie(t *testing.T, w *httptest.ResponseRecorder, name string) *htt
 
 func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	// Arrange seams
-	oldStart, oldCall, oldGet, oldLookup := startBridge, callBridgeWithSess, getBridgeBinary, lookupUser
+	oldStart, oldGet, oldLookup := startBridge, getBridgeBinary, lookupUser
 	defer func() {
-		startBridge, callBridgeWithSess, getBridgeBinary, lookupUser = oldStart, oldCall, oldGet, oldLookup
+		startBridge, getBridgeBinary, lookupUser = oldStart, oldGet, oldLookup
 	}()
 
 	lookupUser = func(username string) (session.User, error) {
@@ -77,29 +77,6 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		_ = bin
 		return true, "Welcome to LinuxIO!", nil // privileged
 	}
-	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
-		_ = sess
-		_ = args
-		if group == "control" && cmd == "ping" {
-			if result != nil {
-				if err := json.Unmarshal([]byte(`{"type":"pong"}`), result); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		if group == "filebrowser" && cmd == "indexer_status" {
-			if result != nil {
-				if err := json.Unmarshal([]byte(`{"available":true}`), result); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		t.Fatalf("unexpected bridge call %s.%s", group, cmd)
-		return nil
-	}
-
 	// Manager + handlers
 	sm := session.NewManager(session.New(), session.SessionConfig{})
 	h := &Handlers{SM: sm, Env: config.EnvDevelopment, Verbose: true}
@@ -135,8 +112,8 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 }
 
 func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
-	oldStart, oldCall, oldLookup := startBridge, callBridgeWithSess, lookupUser
-	defer func() { startBridge, callBridgeWithSess, lookupUser = oldStart, oldCall, oldLookup }()
+	oldStart, oldLookup := startBridge, lookupUser
+	defer func() { startBridge, lookupUser = oldStart, oldLookup }()
 
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
@@ -149,15 +126,6 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 		_ = bin
 		return false, "", fmt.Errorf("authentication failed: bad credentials")
 	}
-	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
-		_ = sess
-		_ = group
-		_ = cmd
-		_ = args
-		t.Fatal("should not be called when startBridge fails")
-		return nil
-	}
-
 	sm := session.NewManager(session.New(), session.SessionConfig{})
 	h := &Handlers{SM: sm, Env: config.EnvDevelopment}
 	r := newRouterForTests(h)
@@ -176,48 +144,6 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	}
 }
 
-func TestLogin_BridgeStartsButPingFails_MapsTo500_AndSessionRemoved(t *testing.T) {
-	oldStart, oldCall, oldLookup := startBridge, callBridgeWithSess, lookupUser
-	defer func() { startBridge, callBridgeWithSess, lookupUser = oldStart, oldCall, oldLookup }()
-
-	lookupUser = func(username string) (session.User, error) {
-		return session.User{Username: username, UID: 1000, GID: 1000}, nil
-	}
-	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, string, error) {
-		_ = sess
-		_ = password
-		_ = env
-		_ = verbose
-		_ = bin
-		return false, "", nil // started ok (non-privileged)
-	}
-	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
-		_ = sess
-		_ = group
-		_ = cmd
-		_ = args
-		_ = result
-		return fmt.Errorf("socket not ready")
-	}
-
-	sm := session.NewManager(session.New(), session.SessionConfig{})
-	h := &Handlers{SM: sm, Env: config.EnvDevelopment}
-	r := newRouterForTests(h)
-
-	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "pw"})
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("want 500, got %d: %s", w.Code, w.Body.String())
-	}
-	// No session cookie since we delete the session on failure:
-	if ck := w.Result().Cookies(); len(ck) > 0 {
-		for _, c := range ck {
-			if c.Name == sm.CookieName() {
-				t.Fatalf("session cookie should not be set if ping fails, got %v", c)
-			}
-		}
-	}
-}
-
 func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	// Minimal happy path to get a session cookie:
 	sm := session.NewManager(session.New(), session.SessionConfig{})
@@ -225,8 +151,8 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	r := newRouterForTests(h)
 
 	// Stub seams for login:
-	oldStart, oldCall, oldLookup := startBridge, callBridgeWithSess, lookupUser
-	defer func() { startBridge, callBridgeWithSess, lookupUser = oldStart, oldCall, oldLookup }()
+	oldStart, oldLookup := startBridge, lookupUser
+	defer func() { startBridge, lookupUser = oldStart, oldLookup }()
 
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
@@ -239,28 +165,6 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 		_ = bin
 		return false, "", nil
 	}
-	callBridgeWithSess = func(sess *session.Session, group, cmd string, args []string, result interface{}) error {
-		_ = sess
-		_ = args
-		if group == "control" && cmd == "ping" {
-			if result != nil {
-				if err := json.Unmarshal([]byte(`{"type":"pong"}`), result); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		if group == "filebrowser" && cmd == "indexer_status" {
-			if result != nil {
-				if err := json.Unmarshal([]byte(`{"available":true}`), result); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		return nil
-	}
-
 	// Login to get cookie
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "pw"})
 	if w.Code != 200 {

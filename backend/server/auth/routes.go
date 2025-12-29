@@ -35,10 +35,9 @@ func createSessionUser(username string) (session.User, error) {
 
 // --- test seams (overridden in tests) ---
 var (
-	startBridge        = bridge.StartBridge
-	callBridgeWithSess = bridge.CallTypedWithSession
-	getBridgeBinary    = bridge.GetBridgeBinaryPath
-	lookupUser         = createSessionUser
+	startBridge     = bridge.StartBridge
+	getBridgeBinary = bridge.GetBridgeBinaryPath
+	lookupUser      = createSessionUser
 )
 
 // RegisterAuthRoutes wires public and private auth endpoints under /auth.
