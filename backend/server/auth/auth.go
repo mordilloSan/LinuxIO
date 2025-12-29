@@ -60,27 +60,6 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify bridge socket is ready with ping/pong
-	var pingResult struct {
-		Type string `json:"type"`
-	}
-	if err := callBridgeWithSess(sess, "control", "ping", nil, &pingResult); err != nil {
-		logger.Errorf("[auth.login] bridge socket not ready after start: %v", err)
-		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
-		web.WriteError(w, http.StatusInternalServerError, "bridge initialization failed")
-		return
-	}
-
-	// Ensure the response is a pong
-	if pingResult.Type != "pong" {
-		logger.Errorf("[auth.login] unexpected ping response type: %s", pingResult.Type)
-		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
-		web.WriteError(w, http.StatusInternalServerError, "bridge initialization failed")
-		return
-	}
-
-	logger.Debugf("[auth.login] bridge confirmed ready (pong received)")
-
 	// Persist actual mode (informational)
 	_ = h.SM.SetPrivileged(sess.SessionID, privileged)
 
