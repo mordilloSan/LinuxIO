@@ -17,7 +17,7 @@ const (
 	OpStreamData     byte = 0x81 // Binary data: payload = raw bytes
 	OpStreamClose    byte = 0x82 // Close stream: payload = empty
 	OpStreamResize   byte = 0x83 // Terminal resize: payload = [cols:2][rows:2]
-	OpStreamProgress byte = 0x84 // Progress update: payload = JSON ProgressFrame
+	OpStreamProgress byte = 0x84 // Progress update: payload = handler-defined JSON
 	OpStreamResult   byte = 0x85 // Final result: payload = JSON ResultFrame
 )
 
@@ -110,15 +110,6 @@ func BuildStreamOpenPayload(streamType string, args ...string) []byte {
 	return result
 }
 
-// ProgressFrame represents a progress update for long-running operations.
-// Used with OpStreamProgress (0x84).
-type ProgressFrame struct {
-	Bytes int64  `json:"bytes"`           // Bytes transferred so far
-	Total int64  `json:"total"`           // Total bytes (0 if unknown)
-	Pct   int    `json:"pct"`             // Percentage (0-100)
-	Phase string `json:"phase,omitempty"` // Optional phase description
-}
-
 // ResultFrame represents the final result of an operation.
 // Used with OpStreamResult (0x85).
 type ResultFrame struct {
@@ -128,9 +119,10 @@ type ResultFrame struct {
 	Data   json.RawMessage `json:"data,omitempty"`  // Optional result data
 }
 
-// WriteProgressFrame writes a progress update to the stream.
-func WriteProgressFrame(w io.Writer, streamID uint32, p *ProgressFrame) error {
-	payload, err := json.Marshal(p)
+// WriteProgress writes a progress update to the stream.
+// The data parameter can be any JSON-serializable struct defined by the handler.
+func WriteProgress(w io.Writer, streamID uint32, data any) error {
+	payload, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("marshal progress: %w", err)
 	}
