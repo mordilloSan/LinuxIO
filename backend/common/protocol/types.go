@@ -58,12 +58,6 @@ const (
 	EnvPrivileged = "LINUXIO_PRIVILEGED"
 )
 
-// Environment mode values
-const (
-	EnvModeProduction  = "production"
-	EnvModeDevelopment = "development"
-)
-
 // AuthRequest is the JSON request sent to the auth daemon (Server -> Auth)
 type AuthRequest struct {
 	User          string `json:"user"`
