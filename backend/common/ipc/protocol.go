@@ -3,8 +3,23 @@ package ipc
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+)
+
+// Common errors for stream operations.
+var (
+	ErrAborted            = errors.New("operation aborted")
+	ErrNotFound           = errors.New("not found")
+	ErrPermissionDenied   = errors.New("permission denied")
+	ErrInvalidRequest     = errors.New("invalid request")
+	ErrUnsupportedFormat  = errors.New("unsupported format")
+	ErrAlreadyExists      = errors.New("already exists")
+	ErrIsDirectory        = errors.New("is a directory")
+	ErrNotDirectory       = errors.New("not a directory")
+	ErrConnectionClosed   = errors.New("connection closed")
+	ErrTimeout            = errors.New("operation timed out")
 )
 
 // Stream opcodes for the binary relay protocol.
@@ -16,6 +31,7 @@ const (
 	OpStreamResize   byte = 0x83 // Terminal resize: payload = [cols:2][rows:2]
 	OpStreamProgress byte = 0x84 // Progress update: payload = handler-defined JSON
 	OpStreamResult   byte = 0x85 // Final result: payload = JSON ResultFrame
+	OpStreamAbort    byte = 0x86 // Abort operation: client requests cancellation
 )
 
 // StreamFrame represents a framed message for the relay protocol.
@@ -164,4 +180,82 @@ func WriteStreamClose(w io.Writer, streamID uint32) error {
 		Opcode:   OpStreamClose,
 		StreamID: streamID,
 	})
+}
+
+// CancelFunc returns true if the operation should be cancelled.
+type CancelFunc func() bool
+
+// ProgressFunc is called with the number of bytes processed.
+type ProgressFunc func(bytes int64)
+
+// CompleteFunc is called when an item is completed (e.g., file extracted).
+type CompleteFunc func(path string)
+
+// OperationCallbacks provides common callbacks for long-running operations.
+// All fields are optional - nil callbacks are safely ignored.
+type OperationCallbacks struct {
+	Progress   ProgressFunc // Called with bytes processed
+	Cancel     CancelFunc   // Returns true if operation should abort
+	OnComplete CompleteFunc // Called when an item completes
+}
+
+// ReportProgress safely calls the progress callback if set.
+func (o *OperationCallbacks) ReportProgress(bytes int64) {
+	if o != nil && o.Progress != nil {
+		o.Progress(bytes)
+	}
+}
+
+// IsCancelled safely checks the cancel function if set.
+func (o *OperationCallbacks) IsCancelled() bool {
+	if o != nil && o.Cancel != nil {
+		return o.Cancel()
+	}
+	return false
+}
+
+// ReportComplete safely calls the completion callback if set.
+func (o *OperationCallbacks) ReportComplete(path string) {
+	if o != nil && o.OnComplete != nil {
+		o.OnComplete(path)
+	}
+}
+
+// AbortMonitor monitors a stream for abort signals (OpStreamAbort).
+// Returns a cancel function that returns true when abort is received.
+func AbortMonitor(r io.Reader) (cancelFn CancelFunc, cleanup func()) {
+	aborted := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		for {
+			frame, err := ReadRelayFrame(r)
+			if err != nil {
+				return
+			}
+			if frame.Opcode == OpStreamAbort {
+				close(aborted)
+				return
+			}
+		}
+	}()
+
+	cancelFn = func() bool {
+		select {
+		case <-aborted:
+			return true
+		default:
+			return false
+		}
+	}
+
+	cleanup = func() {
+		select {
+		case <-done:
+		default:
+		}
+	}
+
+	return cancelFn, cleanup
 }
