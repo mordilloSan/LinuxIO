@@ -1,86 +1,111 @@
 /*
- * linuxio_protocol.h - Protocol constants for LinuxIO auth communication
+ * linuxio_protocol.h - Binary protocol constants for LinuxIO auth/bridge communication
  *
- * This header defines JSON field names and limits shared between:
+ * This header defines the binary protocol shared between:
  *   - linuxio-auth (C)
  *   - linuxio server/bridge (Go)
  *
- * Keep in sync with backend/common/protocol/types.go
+ * Keep in sync with backend/common/protocol/
  */
 
 #ifndef LINUXIO_PROTOCOL_H
 #define LINUXIO_PROTOCOL_H
 
 /* ==========================================================================
- * Max lengths for fields
+ * Protocol Magic and Version
  * ========================================================================== */
 
-#define PROTO_MAX_USERNAME       256
-#define PROTO_MAX_PASSWORD       8192
-#define PROTO_MAX_SESSION_ID     64
-#define PROTO_MAX_SECRET         128
-#define PROTO_MAX_BRIDGE_PATH    4096
-#define PROTO_MAX_ENV_MODE       32
-#define PROTO_MAX_SERVER_URL     512
-#define PROTO_MAX_SERVER_CERT    16384
-#define PROTO_MAX_MOTD           4096
-#define PROTO_MAX_ERROR          256
+#define PROTO_MAGIC_0            'L'
+#define PROTO_MAGIC_1            'I'
+#define PROTO_MAGIC_2            'O'
+#define PROTO_VERSION            1
 
 /* ==========================================================================
- * Auth Request fields (Server -> Auth Daemon)
+ * Auth Request Protocol (Server -> Auth via Unix socket)
+ *
+ * Format:
+ *   [magic:4][flags:1][env:1][reserved:2]  (8 bytes fixed header)
+ *   [len:2][user]
+ *   [len:2][password]
+ *   [len:2][session_id]
+ *   [len:2][bridge_path]
+ *   [len:2][secret]
+ *   [len:2][server_base_url]
+ *   [len:2][server_cert]
+ *
+ * All multi-byte integers are big-endian.
  * ========================================================================== */
 
-#define FIELD_USER            "user"
-#define FIELD_PASSWORD        "password"
-#define FIELD_SESSION_ID      "session_id"
-#define FIELD_BRIDGE_PATH     "bridge_path"
-#define FIELD_ENV             "env"
-#define FIELD_VERBOSE         "verbose"
-#define FIELD_SECRET          "secret"
-#define FIELD_SERVER_BASE_URL "server_base_url"
-#define FIELD_SERVER_CERT     "server_cert"
+#define PROTO_AUTH_REQ_HEADER_SIZE   8
+
+/* Request flags byte */
+#define PROTO_REQ_FLAG_VERBOSE       0x01
 
 /* ==========================================================================
- * Auth Response fields (Auth Daemon -> Server)
+ * Auth Response Protocol (Auth -> Server via Unix socket)
+ *
+ * Format:
+ *   [magic:4][status:1][mode:1][reserved:2]  (8 bytes fixed header)
+ *   [len:2][error]      (only if status == error)
+ *   [len:2][motd]       (only if status == ok)
+ *
+ * All multi-byte integers are big-endian.
  * ========================================================================== */
 
-#define FIELD_STATUS          "status"
-#define FIELD_ERROR           "error"
-#define FIELD_MODE            "mode"
-#define FIELD_MOTD            "motd"
+#define PROTO_AUTH_RESP_HEADER_SIZE  8
 
-/* Status values */
-#define STATUS_OK             "ok"
-#define STATUS_ERROR          "error"
+/* Status byte values */
+#define PROTO_STATUS_OK              0
+#define PROTO_STATUS_ERROR           1
 
-/* Mode values */
-#define MODE_PRIVILEGED       "privileged"
-#define MODE_UNPRIVILEGED     "unprivileged"
+/* Mode byte values */
+#define PROTO_MODE_UNPRIVILEGED      0
+#define PROTO_MODE_PRIVILEGED        1
 
 /* ==========================================================================
- * Bootstrap fields (Auth Daemon -> Bridge via stdin)
+ * Bootstrap Protocol (Auth -> Bridge via stdin pipe)
+ *
+ * Format:
+ *   [magic:4][uid:4][gid:4][flags:1][env:1][log_fd:4]  (18 bytes fixed header)
+ *   [len:2][session_id]
+ *   [len:2][username]
+ *   [len:2][secret]
+ *   [len:2][server_base_url]
+ *   [len:2][server_cert]
+ *
+ * All multi-byte integers are big-endian.
  * ========================================================================== */
 
-#define FIELD_USERNAME        "username"
-#define FIELD_UID             "uid"
-#define FIELD_GID             "gid"
-#define FIELD_LOG_FD          "log_fd"
+#define PROTO_HEADER_SIZE            18
+
+/* Bootstrap flags byte (bit field) */
+#define PROTO_FLAG_VERBOSE           0x01
+#define PROTO_FLAG_PRIVILEGED        0x02
+
+/* Environment mode values (used in both request and bootstrap) */
+#define PROTO_ENV_PRODUCTION         0
+#define PROTO_ENV_DEVELOPMENT        1
 
 /* ==========================================================================
- * Environment variables
+ * Max lengths for variable fields
  * ========================================================================== */
 
-#define ENV_SESSION_ID        "LINUXIO_SESSION_ID"
-#define ENV_ENV               "LINUXIO_ENV"
-#define ENV_VERBOSE           "LINUXIO_VERBOSE"
-#define ENV_BRIDGE            "LINUXIO_BRIDGE"
-#define ENV_PRIVILEGED        "LINUXIO_PRIVILEGED"
+#define PROTO_MAX_USERNAME           256
+#define PROTO_MAX_PASSWORD           2048
+#define PROTO_MAX_SESSION_ID         64
+#define PROTO_MAX_SECRET             128
+#define PROTO_MAX_BRIDGE_PATH        4096
+#define PROTO_MAX_ENV_MODE           32
+#define PROTO_MAX_SERVER_URL         512
+#define PROTO_MAX_SERVER_CERT        16384
+#define PROTO_MAX_MOTD               4096
+#define PROTO_MAX_ERROR              256
 
 /* ==========================================================================
- * Environment mode values
+ * Legacy string constants (for mode_str in response - used internally)
  * ========================================================================== */
 
-#define ENV_MODE_PRODUCTION   "production"
-#define ENV_MODE_DEVELOPMENT  "development"
+#define MODE_PRIVILEGED              "privileged"
+#define MODE_UNPRIVILEGED            "unprivileged"
 
 #endif /* LINUXIO_PROTOCOL_H */

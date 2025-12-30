@@ -10,16 +10,16 @@ import (
 
 // Common errors for stream operations.
 var (
-	ErrAborted            = errors.New("operation aborted")
-	ErrNotFound           = errors.New("not found")
-	ErrPermissionDenied   = errors.New("permission denied")
-	ErrInvalidRequest     = errors.New("invalid request")
-	ErrUnsupportedFormat  = errors.New("unsupported format")
-	ErrAlreadyExists      = errors.New("already exists")
-	ErrIsDirectory        = errors.New("is a directory")
-	ErrNotDirectory       = errors.New("not a directory")
-	ErrConnectionClosed   = errors.New("connection closed")
-	ErrTimeout            = errors.New("operation timed out")
+	ErrAborted           = errors.New("operation aborted")
+	ErrNotFound          = errors.New("not found")
+	ErrPermissionDenied  = errors.New("permission denied")
+	ErrInvalidRequest    = errors.New("invalid request")
+	ErrUnsupportedFormat = errors.New("unsupported format")
+	ErrAlreadyExists     = errors.New("already exists")
+	ErrIsDirectory       = errors.New("is a directory")
+	ErrNotDirectory      = errors.New("not a directory")
+	ErrConnectionClosed  = errors.New("connection closed")
+	ErrTimeout           = errors.New("operation timed out")
 )
 
 // Stream opcodes for the binary relay protocol.

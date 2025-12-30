@@ -13,7 +13,6 @@ require (
 	github.com/mordilloSan/go_logger v1.6.0
 	github.com/shirou/gopsutil/v4 v4.25.11
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sys v0.39.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
