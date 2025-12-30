@@ -246,8 +246,20 @@ SELECTED_PORT=8090
 
 is_port_in_use() {
     local port="$1"
-    # Check if port is in use by any process
-    ss -tlnH "sport = :${port}" 2>/dev/null | grep -q .
+    # Check if port is in use by a process OTHER than linuxio
+    # If linuxio is already using the port, that's fine (we're reinstalling/upgrading)
+    local proc
+    proc=$(ss -tlnpH "sport = :${port}" 2>/dev/null)
+
+    # Port not in use at all
+    [[ -z "$proc" ]] && return 1
+
+    # Port in use - check if it's owned by linuxio
+    if echo "$proc" | grep -qE '"linuxio"'; then
+        return 1  # linuxio owns it, consider it available
+    fi
+
+    return 0  # Some other process owns it
 }
 
 find_available_port() {
@@ -347,17 +359,17 @@ verify_installation() {
     log_info "Running post-installation checks..."
 
     # Check that binaries can execute
-    if "${BIN_DIR}/linuxio" --version >/dev/null 2>&1; then
+    if "${BIN_DIR}/linuxio" >/dev/null 2>&1; then
         local version
-        version=$("${BIN_DIR}/linuxio" --version 2>&1 || echo "unknown")
-        log_ok "linuxio: ${version}"
+        version=$("${BIN_DIR}/linuxio" 2>&1 | head -n1 || echo "unknown")
+        log_ok "${version}"
     else
         log_warn "linuxio did not run successfully (may be arch mismatch)"
     fi
 
-    if "${BIN_DIR}/linuxio-bridge" --version >/dev/null 2>&1; then
+    if "${BIN_DIR}/linuxio-bridge" >/dev/null 2>&1; then
         local version
-        version=$("${BIN_DIR}/linuxio-bridge" --version 2>&1 || echo "unknown")
+        version=$("${BIN_DIR}/linuxio-bridge" 2>&1 | head -n1 || echo "unknown")
         log_ok "linuxio-bridge: ${version}"
     else
         log_warn "linuxio-bridge did not run successfully"
