@@ -483,7 +483,6 @@ static int write_bootstrap_binary(
     const char *username,
     uid_t uid,
     gid_t gid,
-    const char *secret,
     const char *server_base_url,
     const char *server_cert,
     int verbose,
@@ -531,8 +530,6 @@ static int write_bootstrap_binary(
   if (write_lenstr(fd, session_id) != 0)
     return -1;
   if (write_lenstr(fd, username) != 0)
-    return -1;
-  if (write_lenstr(fd, secret) != 0)
     return -1;
   if (write_lenstr(fd, server_base_url) != 0)
     return -1;
@@ -1191,7 +1188,6 @@ static int handle_client(int input_fd, int output_fd)
   char password[PROTO_MAX_PASSWORD] = "";
   char session_id[PROTO_MAX_SESSION_ID] = "";
   char bridge_path[PROTO_MAX_BRIDGE_PATH] = "";
-  char secret[PROTO_MAX_SECRET] = "";
   char server_base_url[PROTO_MAX_SERVER_URL] = "";
   char server_cert[PROTO_MAX_SERVER_CERT] = "";
 
@@ -1199,7 +1195,6 @@ static int handle_client(int input_fd, int output_fd)
       read_lenstr(input_fd, password, sizeof(password)) != 0 ||
       read_lenstr(input_fd, session_id, sizeof(session_id)) != 0 ||
       read_lenstr(input_fd, bridge_path, sizeof(bridge_path)) != 0 ||
-      read_lenstr(input_fd, secret, sizeof(secret)) != 0 ||
       read_lenstr(input_fd, server_base_url, sizeof(server_base_url)) != 0 ||
       read_lenstr(input_fd, server_cert, sizeof(server_cert)) != 0)
   {
@@ -1208,8 +1203,8 @@ static int handle_client(int input_fd, int output_fd)
     return 1;
   }
 
-  // Validate required fields (secret is needed to prevent session spoofing)
-  if (!user[0] || !session_id[0] || !secret[0])
+  // Validate required fields
+  if (!user[0] || !session_id[0])
   {
     send_response(output_fd, PROTO_STATUS_ERROR, 0, "missing required fields", NULL);
     secure_bzero(password, sizeof(password));
@@ -1393,7 +1388,6 @@ static int handle_client(int input_fd, int output_fd)
       user,
       pw->pw_uid,
       pw->pw_gid,
-      secret,
       server_base_url,
       server_cert,
       verbose_flag,
@@ -1509,7 +1503,6 @@ static int handle_client(int input_fd, int output_fd)
                 mode == PROTO_MODE_PRIVILEGED ? "privileged" : "unprivileged");
 
   // Wipe sensitive data
-  secure_bzero(secret, sizeof(secret));
   secure_bzero(server_base_url, sizeof(server_base_url));
   secure_bzero(server_cert, sizeof(server_cert));
 

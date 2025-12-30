@@ -302,5 +302,4 @@ The old `/ws` WebSocket system has been fully removed:
 
 1. **Authentication**: WebSocket upgrade requires valid session cookie
 2. **Stream isolation**: Each stream tied to authenticated session
-3. **Bridge secret**: Validated per yamux session
 4. **Payload opacity**: Server never inspects content

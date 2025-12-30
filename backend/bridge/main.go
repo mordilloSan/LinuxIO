@@ -41,8 +41,8 @@ func readBootstrap() *protocol.Bootstrap {
 		os.Exit(1)
 	}
 
-	if b.Secret == "" || b.SessionID == "" {
-		fmt.Fprintf(os.Stderr, "bridge bootstrap error: missing required fields (secret or session_id)\n")
+	if b.SessionID == "" {
+		fmt.Fprintf(os.Stderr, "bridge bootstrap error: missing required session_id)\n")
 		os.Exit(1)
 	}
 
@@ -60,7 +60,6 @@ var Sess = &session.Session{
 		UID:      bootCfg.UID,
 		GID:      bootCfg.GID,
 	},
-	BridgeSecret: bootCfg.Secret,
 }
 
 // Global shutdown signal for all handlers: closed when shutdown starts.

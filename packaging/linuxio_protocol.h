@@ -29,7 +29,6 @@
  *   [len:2][password]
  *   [len:2][session_id]
  *   [len:2][bridge_path]
- *   [len:2][secret]
  *   [len:2][server_base_url]
  *   [len:2][server_cert]
  *
@@ -69,7 +68,6 @@
  *   [magic:4][uid:4][gid:4][flags:1][env:1][log_fd:4]  (18 bytes fixed header)
  *   [len:2][session_id]
  *   [len:2][username]
- *   [len:2][secret]
  *   [len:2][server_base_url]
  *   [len:2][server_cert]
  *
@@ -93,7 +91,6 @@
 #define PROTO_MAX_USERNAME           256
 #define PROTO_MAX_PASSWORD           2048
 #define PROTO_MAX_SESSION_ID         64
-#define PROTO_MAX_SECRET             128
 #define PROTO_MAX_BRIDGE_PATH        4096
 #define PROTO_MAX_ENV_MODE           32
 #define PROTO_MAX_SERVER_URL         512

@@ -74,13 +74,13 @@ func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 	}
 
 	// Write binary request
-	if err := protocol.WriteAuthRequest(conn, req); err != nil {
+	if err = protocol.WriteAuthRequest(conn, req); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to send auth request: %w", err)
 	}
 
 	// Read response
-	if err := conn.SetReadDeadline(time.Now().Add(authReadTimeout)); err != nil {
+	if err = conn.SetReadDeadline(time.Now().Add(authReadTimeout)); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to set read deadline: %w", err)
 	}
@@ -130,7 +130,6 @@ func BuildRequest(sess *session.Session, password, bridgePath, envMode string, v
 		BridgePath: bridgePath,
 		EnvMode:    envModeBin,
 		Verbose:    verbose,
-		Secret:     sess.BridgeSecret,
 	}
 
 	// Pass server URL and cert for bridge callback
