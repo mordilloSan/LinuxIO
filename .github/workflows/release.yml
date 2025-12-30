@@ -156,16 +156,21 @@ jobs:
 
       - name: Verify binaries before release
         run: |
-          for bin in linuxio linuxio-bridge; do
-            chmod +x "$bin"
-            ./"$bin" --version || { echo "$bin verification failed"; exit 1; }
-          done
+          # Verify linuxio runs correctly
+          chmod +x linuxio
+          ./linuxio help || { echo "linuxio verification failed"; exit 1; }
+          echo "✓ linuxio runs correctly"
 
-          # Verify auth helper is a valid ELF executable
-          file linuxio-auth | grep -q "ELF.*executable" || {
-            echo "linuxio-auth is not a valid executable"
-            exit 1
-          }
+          # Verify linuxio-bridge and linuxio-auth are valid ELF executables
+          # (they require special input/privileges to actually run)
+          for bin in linuxio-bridge linuxio-auth; do
+            chmod +x "$bin"
+            file "$bin" | grep -q "ELF.*executable" || {
+              echo "$bin is not a valid executable"
+              exit 1
+            }
+            echo "✓ $bin is a valid ELF executable"
+          done
 
       - name: Generate changelog from commits
         id: changelog
