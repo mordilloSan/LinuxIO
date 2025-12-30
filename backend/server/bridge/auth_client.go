@@ -8,10 +8,10 @@ import (
 	"os"
 	"time"
 
-	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
+	"github.com/mordilloSan/go_logger/logger"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 const (
@@ -116,29 +116,13 @@ func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 }
 
 // BuildRequest creates a Request from a session and additional auth parameters
-func BuildRequest(sess *session.Session, password, bridgePath, envMode string, verbose bool) *protocol.AuthRequest {
-	// Convert envMode string to binary value
-	var envModeBin uint8 = protocol.ProtoEnvProduction
-	if envMode == appconfig.EnvDevelopment {
-		envModeBin = protocol.ProtoEnvDevelopment
-	}
+func BuildRequest(sess *session.Session, password, bridgePath string, verbose bool) *protocol.AuthRequest {
 
-	req := &protocol.AuthRequest{
+	return &protocol.AuthRequest{
 		User:       sess.User.Username,
 		Password:   password,
 		SessionID:  sess.SessionID,
 		BridgePath: bridgePath,
-		EnvMode:    envModeBin,
 		Verbose:    verbose,
 	}
-
-	// Pass server URL and cert for bridge callback
-	if v := os.Getenv("LINUXIO_SERVER_BASE_URL"); v != "" {
-		req.ServerBaseURL = v
-	}
-	if v := os.Getenv("LINUXIO_SERVER_CERT"); v != "" {
-		req.ServerCert = v
-	}
-
-	return req
 }

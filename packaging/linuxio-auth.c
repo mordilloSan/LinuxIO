@@ -448,12 +448,6 @@ static void write_u16_be(uint8_t *buf, uint16_t v)
   buf[1] = (uint8_t)(v);
 }
 
-static int write_i32_be(uint8_t *buf, int32_t v)
-{
-  write_u32_be(buf, (uint32_t)v);
-  return 0;
-}
-
 // Write a length-prefixed string (2-byte length + data)
 static int write_lenstr(int fd, const char *s)
 {
@@ -483,12 +477,8 @@ static int write_bootstrap_binary(
     const char *username,
     uid_t uid,
     gid_t gid,
-    const char *server_base_url,
-    const char *server_cert,
     int verbose,
-    int privileged,
-    uint8_t env_mode,
-    int log_fd)
+    int privileged)
 {
   uint8_t header[PROTO_HEADER_SIZE];
   int pos = 0;
@@ -515,13 +505,6 @@ static int write_bootstrap_binary(
     flags |= PROTO_FLAG_PRIVILEGED;
   header[pos++] = flags;
 
-  // Environment mode (1 byte)
-  header[pos++] = env_mode;
-
-  // Log FD (4 bytes, signed)
-  write_i32_be(header + pos, (int32_t)log_fd);
-  pos += 4;
-
   // Write fixed header
   if (write_all(fd, header, PROTO_HEADER_SIZE) != 0)
     return -1;
@@ -530,10 +513,6 @@ static int write_bootstrap_binary(
   if (write_lenstr(fd, session_id) != 0)
     return -1;
   if (write_lenstr(fd, username) != 0)
-    return -1;
-  if (write_lenstr(fd, server_base_url) != 0)
-    return -1;
-  if (write_lenstr(fd, server_cert) != 0)
     return -1;
 
   return 0;
@@ -880,7 +859,6 @@ static pid_t spawn_bridge_process(
     const struct passwd *pw,
     int want_privileged,
     int bridge_fd,
-    uint8_t env_mode,
     int bootstrap_pipe_read,  // Pipe read end for bootstrap binary (will be stdin)
     int client_fd,            // Client connection FD (will be dup'd to FD 3 for Yamux)
     int exec_status_fd)       // Write end of exec-status pipe (CLOEXEC) - write on exec failure
@@ -1080,11 +1058,6 @@ static pid_t spawn_bridge_process(
 
   // All config is passed via binary bootstrap on stdin - no env vars needed
 
-  // Only enable core dumps in development mode
-  // In production, keep dumpable off to prevent leaking secrets
-  if (env_mode == PROTO_ENV_DEVELOPMENT)
-    (void)prctl(PR_SET_DUMPABLE, 1);
-
   // Close all file descriptors >= 6 (keeping 0-5 as set up above)
   // Uses close_range() syscall (Linux 5.9+) with fallback for older kernels
 #ifndef __NR_close_range
@@ -1173,30 +1146,18 @@ static int handle_client(int input_fd, int output_fd)
 
   // Parse header fields
   uint8_t req_flags = header[4];
-  uint8_t env_mode_bin = header[5];
   int verbose_flag = (req_flags & PROTO_REQ_FLAG_VERBOSE) != 0;
-
-  // Validate env_mode
-  if (env_mode_bin != PROTO_ENV_PRODUCTION && env_mode_bin != PROTO_ENV_DEVELOPMENT)
-  {
-    send_response(output_fd, PROTO_STATUS_ERROR, 0, "invalid environment mode", NULL);
-    return 1;
-  }
 
   // Read variable-length fields
   char user[PROTO_MAX_USERNAME] = "";
   char password[PROTO_MAX_PASSWORD] = "";
   char session_id[PROTO_MAX_SESSION_ID] = "";
   char bridge_path[PROTO_MAX_BRIDGE_PATH] = "";
-  char server_base_url[PROTO_MAX_SERVER_URL] = "";
-  char server_cert[PROTO_MAX_SERVER_CERT] = "";
 
   if (read_lenstr(input_fd, user, sizeof(user)) != 0 ||
       read_lenstr(input_fd, password, sizeof(password)) != 0 ||
       read_lenstr(input_fd, session_id, sizeof(session_id)) != 0 ||
-      read_lenstr(input_fd, bridge_path, sizeof(bridge_path)) != 0 ||
-      read_lenstr(input_fd, server_base_url, sizeof(server_base_url)) != 0 ||
-      read_lenstr(input_fd, server_cert, sizeof(server_cert)) != 0)
+      read_lenstr(input_fd, bridge_path, sizeof(bridge_path)) != 0)
   {
     send_response(output_fd, PROTO_STATUS_ERROR, 0, "failed to read request fields", NULL);
     secure_bzero(password, sizeof(password));
@@ -1360,7 +1321,6 @@ static int handle_client(int input_fd, int output_fd)
       pw,
       want_privileged,
       bridge_fd,
-      env_mode_bin,
       bootstrap_pipe[0],    // Pass pipe read end to child (will be stdin)
       input_fd,             // Pass client connection FD (will be dup'd to FD 3 for Yamux)
       exec_status_pipe[1]); // Write end of exec-status pipe (CLOEXEC)
@@ -1388,12 +1348,8 @@ static int handle_client(int input_fd, int output_fd)
       user,
       pw->pw_uid,
       pw->pw_gid,
-      server_base_url,
-      server_cert,
       verbose_flag,
-      want_privileged,
-      env_mode_bin,
-      -1);
+      want_privileged);
   close(bootstrap_pipe[1]);
 
   if (rc_bootstrap != 0)
@@ -1501,10 +1457,6 @@ static int handle_client(int input_fd, int output_fd)
 
   journal_infof("auth: bridge spawned for user '%s' mode=%s", user,
                 mode == PROTO_MODE_PRIVILEGED ? "privileged" : "unprivileged");
-
-  // Wipe sensitive data
-  secure_bzero(server_base_url, sizeof(server_base_url));
-  secure_bzero(server_cert, sizeof(server_cert));
 
   int status = 0;
   while (waitpid(child, &status, 0) < 0 && errno == EINTR)

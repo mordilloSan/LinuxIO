@@ -15,9 +15,6 @@ const (
 	MaxPassword   = 8192
 	MaxSessionID  = 64
 	MaxBridgePath = 4096
-	MaxEnvMode    = 32
-	MaxServerURL  = 512
-	MaxServerCert = 16384
 	MaxMotd       = 4096
 	MaxError      = 256
 )
@@ -41,14 +38,11 @@ const (
 
 // AuthRequest is the binary request sent to the auth daemon (Server -> Auth)
 type AuthRequest struct {
-	Verbose       bool
-	EnvMode       uint8 // ProtoEnvProduction or ProtoEnvDevelopment
-	User          string
-	Password      string
-	SessionID     string
-	BridgePath    string
-	ServerBaseURL string
-	ServerCert    string
+	Verbose    bool
+	User       string
+	Password   string
+	SessionID  string
+	BridgePath string
 }
 
 // AuthResponse is the binary response from the auth daemon (Auth -> Server)
@@ -73,7 +67,7 @@ func WriteAuthRequest(w io.Writer, req *AuthRequest) error {
 		flags |= ReqFlagVerbose
 	}
 	header[4] = flags
-	header[5] = req.EnvMode
+	header[5] = 0 // reserved
 	header[6] = 0 // reserved
 	header[7] = 0 // reserved
 
@@ -93,12 +87,6 @@ func WriteAuthRequest(w io.Writer, req *AuthRequest) error {
 	}
 	if err := writeLenStr(w, req.BridgePath); err != nil {
 		return fmt.Errorf("write bridge_path: %w", err)
-	}
-	if err := writeLenStr(w, req.ServerBaseURL); err != nil {
-		return fmt.Errorf("write server_base_url: %w", err)
-	}
-	if err := writeLenStr(w, req.ServerCert); err != nil {
-		return fmt.Errorf("write server_cert: %w", err)
 	}
 
 	return nil

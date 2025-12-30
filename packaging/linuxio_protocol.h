@@ -24,13 +24,11 @@
  * Auth Request Protocol (Server -> Auth via Unix socket)
  *
  * Format:
- *   [magic:4][flags:1][env:1][reserved:2]  (8 bytes fixed header)
+ *   [magic:4][flags:1][reserved:3]  (8 bytes fixed header)
  *   [len:2][user]
  *   [len:2][password]
  *   [len:2][session_id]
  *   [len:2][bridge_path]
- *   [len:2][server_base_url]
- *   [len:2][server_cert]
  *
  * All multi-byte integers are big-endian.
  * ========================================================================== */
@@ -65,24 +63,18 @@
  * Bootstrap Protocol (Auth -> Bridge via stdin pipe)
  *
  * Format:
- *   [magic:4][uid:4][gid:4][flags:1][env:1][log_fd:4]  (18 bytes fixed header)
+ *   [magic:4][uid:4][gid:4][flags:1]  (13 bytes fixed header)
  *   [len:2][session_id]
  *   [len:2][username]
- *   [len:2][server_base_url]
- *   [len:2][server_cert]
  *
  * All multi-byte integers are big-endian.
  * ========================================================================== */
 
-#define PROTO_HEADER_SIZE            18
+#define PROTO_HEADER_SIZE            13
 
 /* Bootstrap flags byte (bit field) */
 #define PROTO_FLAG_VERBOSE           0x01
 #define PROTO_FLAG_PRIVILEGED        0x02
-
-/* Environment mode values (used in both request and bootstrap) */
-#define PROTO_ENV_PRODUCTION         0
-#define PROTO_ENV_DEVELOPMENT        1
 
 /* ==========================================================================
  * Max lengths for variable fields
@@ -92,9 +84,6 @@
 #define PROTO_MAX_PASSWORD           2048
 #define PROTO_MAX_SESSION_ID         64
 #define PROTO_MAX_BRIDGE_PATH        4096
-#define PROTO_MAX_ENV_MODE           32
-#define PROTO_MAX_SERVER_URL         512
-#define PROTO_MAX_SERVER_CERT        16384
 #define PROTO_MAX_MOTD               4096
 #define PROTO_MAX_ERROR              256
 

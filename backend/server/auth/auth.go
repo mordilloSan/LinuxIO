@@ -40,7 +40,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bridgeBinary := getBridgeBinary(h.BridgeBinaryOverride)
-	privileged, motd, err := startBridge(sess, req.Password, h.Env, h.Verbose, bridgeBinary)
+	privileged, motd, err := startBridge(sess, req.Password, h.Verbose, bridgeBinary)
 	if err != nil {
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
 
