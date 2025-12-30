@@ -116,13 +116,11 @@ func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 }
 
 // BuildRequest creates a Request from a session and additional auth parameters
-func BuildRequest(sess *session.Session, password, bridgePath string, verbose bool) *protocol.AuthRequest {
-
+func BuildRequest(sess *session.Session, password string, verbose bool) *protocol.AuthRequest {
 	return &protocol.AuthRequest{
-		User:       sess.User.Username,
-		Password:   password,
-		SessionID:  sess.SessionID,
-		BridgePath: bridgePath,
-		Verbose:    verbose,
+		User:      sess.User.Username,
+		Password:  password,
+		SessionID: sess.SessionID,
+		Verbose:   verbose,
 	}
 }

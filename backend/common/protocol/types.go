@@ -11,12 +11,11 @@ import (
 
 // Max lengths for fields (used for validation)
 const (
-	MaxUsername   = 256
-	MaxPassword   = 8192
-	MaxSessionID  = 64
-	MaxBridgePath = 4096
-	MaxMotd       = 4096
-	MaxError      = 256
+	MaxUsername  = 256
+	MaxPassword  = 8192
+	MaxSessionID = 64
+	MaxMotd      = 4096
+	MaxError     = 256
 )
 
 // Auth request/response protocol constants
@@ -38,11 +37,10 @@ const (
 
 // AuthRequest is the binary request sent to the auth daemon (Server -> Auth)
 type AuthRequest struct {
-	Verbose    bool
-	User       string
-	Password   string
-	SessionID  string
-	BridgePath string
+	Verbose   bool
+	User      string
+	Password  string
+	SessionID string
 }
 
 // AuthResponse is the binary response from the auth daemon (Auth -> Server)
@@ -84,9 +82,6 @@ func WriteAuthRequest(w io.Writer, req *AuthRequest) error {
 	}
 	if err := writeLenStr(w, req.SessionID); err != nil {
 		return fmt.Errorf("write session_id: %w", err)
-	}
-	if err := writeLenStr(w, req.BridgePath); err != nil {
-		return fmt.Errorf("write bridge_path: %w", err)
 	}
 
 	return nil

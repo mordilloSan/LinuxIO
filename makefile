@@ -1,6 +1,5 @@
 # Main flags
 VITE_DEV_PORT = 3000
-SERVER_PORT   = 18090
 VERBOSE      ?= true
 
 # --- Go project root autodetection ---
@@ -423,59 +422,13 @@ dev-prep:
 	@touch "$(BACKEND_DIR)/server/web/frontend/favicon-1.png"
 	@touch "$(BACKEND_DIR)/server/web/frontend/assets/index-mock.js"
 
-dev: setup dev-prep devinstall
+dev: setup dev-prep
 	@echo ""
-	@echo "🚀 Starting dev mode (frontend + backend)..."
-	set -euo pipefail
-
-	# TTY polish
-	if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echoctl; fi
-
-	# Backend with inline env vars
-	( \
-	  cd "$(BACKEND_DIR)"; \
-	  LINUXIO_ENV=development \
-	  LINUXIO_AUTH_PATH=/tmp/linuxio/dev/linuxio-auth \
-	  LINUXIO_BRIDGE_BIN=/tmp/linuxio/dev/linuxio-bridge \
-	  go run -ldflags "\
-	    -X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
-	    -X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
-	    -X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
-	  . run \
-	    -env development \
-	    -verbose=$(VERBOSE) \
-	    -vite-port=$(VITE_DEV_PORT) \
-	    -port=$(SERVER_PORT); \
-	) &
-
-	BACK_PID=$$!
-
-	@timeout 60s bash -c 'until ss -ltn "sport = :$(SERVER_PORT)" | grep -q LISTEN; do sleep 0.2; done' \
-	  || { echo "❌ Backend port :$(SERVER_PORT) did not open in time"; cleanup; exit 1; }
-
-	cleanup_done=0
-	cleanup() {
-	  [[ "$$cleanup_done" -eq 1 ]] && return
-	  cleanup_done=1
-	  kill -INT "$$BACK_PID" 2>/dev/null || true
-	  ( sleep 10; kill -KILL "$$BACK_PID" 2>/dev/null || true ) &
-	  WATCH_PID=$$!
-	  wait "$$BACK_PID" 2>/dev/null || true
-	  kill -TERM "$$WATCH_PID" 2>/dev/null || true
-	  wait "$$WATCH_PID" 2>/dev/null || true
-	}
-	trap 'trap - INT TERM; cleanup; stty "$$SAVED_STTY" 2>/dev/null || true; exit 0' INT TERM
-
-	# Frontend
-	cd frontend
-	VITE_API_URL="http://localhost:$(SERVER_PORT)" npx vite --port $(VITE_DEV_PORT)
-	STATUS=$$?
-
-	# Always clean up
-	cleanup
-	stty "$$SAVED_STTY" 2>/dev/null || true
-	[[ "$$STATUS" -eq 130 ]] && STATUS=0
-	exit "$$STATUS"
+	@echo "🚀 Starting frontend dev server..."
+	@echo "   Backend must be running via: sudo systemctl start linuxio"
+	@echo "   Vite proxies /ws and /auth to https://localhost:8090"
+	@echo ""
+	cd frontend && npx vite --port $(VITE_DEV_PORT)
 
 build: test build-vite build-bridge
 	@echo ""
@@ -485,47 +438,11 @@ build: test build-vite build-bridge
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
 	@$(MAKE) --no-print-directory build-auth-helper
 
-devinstall:
-	@SECURE_DEV_DIR="/tmp/linuxio/dev"; \
-	NEED_INSTALL=0; \
-	\
-	if [ ! -f "$$SECURE_DEV_DIR/linuxio-bridge" ] || [ ! -f "$$SECURE_DEV_DIR/linuxio-auth" ]; then \
-	  echo "⚠️  Dev binaries not found in $$SECURE_DEV_DIR"; \
-	  NEED_INSTALL=1; \
-	elif [ ! -u "$$SECURE_DEV_DIR/linuxio-auth" ]; then \
-	  echo "⚠️  Auth helper missing setuid bit"; \
-	  NEED_INSTALL=1; \
-	elif [ "packaging/linuxio-auth.c" -nt "$$SECURE_DEV_DIR/linuxio-auth" ]; then \
-	  echo "⚠️  Auth helper source is newer than installed binary"; \
-	  NEED_INSTALL=1; \
-	elif [ -d "$(BACKEND_DIR)" ] && find "$(BACKEND_DIR)" -name "*.go" -newer "$$SECURE_DEV_DIR/linuxio-bridge" 2>/dev/null | grep -q .; then \
-	  echo "⚠️  Go source files changed since bridge was built"; \
-	  NEED_INSTALL=1; \
-	elif [ "$(BACKEND_DIR)/go.mod" -nt "$$SECURE_DEV_DIR/linuxio-bridge" ] || [ "$(BACKEND_DIR)/go.sum" -nt "$$SECURE_DEV_DIR/linuxio-bridge" ]; then \
-	  echo "⚠️  Go dependencies changed (go.mod/go.sum updated)"; \
-	  NEED_INSTALL=1; \
-	fi; \
-	\
-	if [ $$NEED_INSTALL -eq 1 ]; then \
-	  echo "🔧 Running dev installation (requires sudo)..."; \
-	  sudo ./packaging/scripts/dev_install.sh; \
-	else \
-	  echo "✅ Dev binaries are up-to-date in $$SECURE_DEV_DIR"; \
-	fi
-
-devinstall-force:
-	@echo "🔧 Force reinstalling dev binaries..."
-	@sudo ./packaging/scripts/dev_install.sh
-
 generate:
 	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
 
 run:
-	@./linuxio run \
-	  -env production \
-	  -verbose=$(VERBOSE) \
-	  -vite-port=$(VITE_DEV_PORT) \
-	  -port=$(SERVER_PORT)
+	@./linuxio run -verbose=$(VERBOSE)
 
 clean:
 	@rm -f ./linuxio || true
@@ -533,24 +450,8 @@ clean:
 	@rm -f ./linuxio-auth || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
-	@rm -rf /tmp/linuxio/dev || true
 	@find "$(BACKEND_DIR)/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
-	@echo "💡 Run 'make clean-dev' to also remove dev binaries and sudo config"
-
-clean-dev:
-	@if [ -d /tmp/linuxio/dev ]; then \
-		echo "Removing dev binaries from /tmp/linuxio/dev..."; \
-		sudo rm -rf /tmp/linuxio/dev; \
-	fi
-	@if [ -f /etc/sudoers.d/linuxio-dev ]; then \
-		echo "Removing passwordless sudo configuration..."; \
-		sudo rm -f /etc/sudoers.d/linuxio-dev; \
-	fi
-	@echo "🧹 Dev environment cleaned."
-
-clean-all: clean clean-dev
-	@echo "✨ Everything cleaned!"
 
 # ========== Installation Targets ==========
 
@@ -1042,8 +943,6 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go        $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go 1.25)"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
-	@$(PRINTC) "$(COLOR_GREEN)    make devinstall       $(COLOR_RESET) Install dev binaries (only if needed)"
-	@$(PRINTC) "$(COLOR_GREEN)    make devinstall-force $(COLOR_RESET) Force reinstall dev binaries"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint (frontend)"
@@ -1053,7 +952,7 @@ help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"
-	@$(PRINTC) "$(COLOR_YELLOW)    make dev              $(COLOR_RESET) Start backend (Go) + frontend (Vite) with live reload"
+	@$(PRINTC) "$(COLOR_YELLOW)    make dev              $(COLOR_RESET) Start frontend (Vite) dev server (backend via systemd)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Build$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
@@ -1065,8 +964,6 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_RED)    make run              $(COLOR_RESET) Run production backend server"
 	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
-	@$(PRINTC) "$(COLOR_RED)    make clean-dev        $(COLOR_RESET) Remove dev binaries and sudo config (sudo required)"
-	@$(PRINTC) "$(COLOR_RED)    make clean-all        $(COLOR_RESET) Full cleanup: workspace + dev environment"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Release flow$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> from main (pushes upstream)"
@@ -1076,9 +973,9 @@ help:
 	@$(PRINTC) ""
 
 .PHONY: \
-  default help clean clean-dev clean-all run \
+  default help clean run \
   build build-vite build-backend build-bridge build-auth-helper \
-	dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
-	ensure-node ensure-go ensure-golint \
-	generate devinstall devinstall-force rebuild-changelog \
-	start-dev open-pr merge-release version-debug changelog
+  dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
+  ensure-node ensure-go ensure-golint \
+  generate rebuild-changelog localinstall reinstall uninstall \
+  start-dev open-pr merge-release version-debug changelog

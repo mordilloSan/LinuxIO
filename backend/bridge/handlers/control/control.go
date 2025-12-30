@@ -233,7 +233,7 @@ func runInstallScript(version string) error {
 }
 
 func getInstalledVersion() string {
-	cmd := exec.Command(config.BinPath, "--version")
+	cmd := exec.Command(config.BinDir+"/linuxio", "--version")
 	output, err := cmd.Output()
 	if err != nil {
 		// Fall back to compiled-in version (useful in dev mode where binary doesn't exist)

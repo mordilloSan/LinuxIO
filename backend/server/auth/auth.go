@@ -14,10 +14,9 @@ import (
 
 // Handlers bundles dependencies (no global state).
 type Handlers struct {
-	SM                   *session.Manager
-	Env                  string
-	Verbose              bool
-	BridgeBinaryOverride string
+	SM      *session.Manager
+	Env     string
+	Verbose bool
 }
 
 type LoginRequest struct {
@@ -39,8 +38,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bridgeBinary := getBridgeBinary(h.BridgeBinaryOverride)
-	privileged, motd, err := startBridge(sess, req.Password, h.Verbose, bridgeBinary)
+	privileged, motd, err := startBridge(sess, req.Password, h.Verbose)
 	if err != nil {
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
 

@@ -28,7 +28,6 @@
  *   [len:2][user]
  *   [len:2][password]
  *   [len:2][session_id]
- *   [len:2][bridge_path]
  *
  * All multi-byte integers are big-endian.
  * ========================================================================== */
@@ -83,7 +82,6 @@
 #define PROTO_MAX_USERNAME           256
 #define PROTO_MAX_PASSWORD           2048
 #define PROTO_MAX_SESSION_ID         64
-#define PROTO_MAX_BRIDGE_PATH        4096
 #define PROTO_MAX_MOTD               4096
 #define PROTO_MAX_ERROR              256
 
