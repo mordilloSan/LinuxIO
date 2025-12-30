@@ -7,17 +7,14 @@ import (
 
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 // Handlers bundles dependencies (no global state).
 type Handlers struct {
-	SM                   *session.Manager
-	Env                  string
-	Verbose              bool
-	BridgeBinaryOverride string
+	SM      *session.Manager
+	Verbose bool
 }
 
 type LoginRequest struct {
@@ -39,8 +36,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bridgeBinary := getBridgeBinary(h.BridgeBinaryOverride)
-	privileged, err := startBridge(sess, req.Password, h.Env, h.Verbose, bridgeBinary)
+	privileged, err := startBridge(sess, req.Password, h.Verbose)
 	if err != nil {
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
 
@@ -60,34 +56,9 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify bridge socket is ready with ping/pong
-	var pingResult struct {
-		Type string `json:"type"`
-	}
-	if err := callBridgeWithSess(sess, "control", "ping", nil, &pingResult); err != nil {
-		logger.Errorf("[auth.login] bridge socket not ready after start: %v", err)
-		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
-		web.WriteError(w, http.StatusInternalServerError, "bridge initialization failed")
-		return
-	}
-
-	// Ensure the response is a pong
-	if pingResult.Type != "pong" {
-		logger.Errorf("[auth.login] unexpected ping response type: %s", pingResult.Type)
-		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
-		web.WriteError(w, http.StatusInternalServerError, "bridge initialization failed")
-		return
-	}
-
-	logger.Debugf("[auth.login] bridge confirmed ready (pong received)")
-
 	// Persist actual mode (informational)
 	_ = h.SM.SetPrivileged(sess.SessionID, privileged)
 
-	secure := (h.Env == config.EnvProduction) && (r.TLS != nil)
-	if !secure && h.Env == config.EnvProduction {
-		logger.Warnf("[auth.login] insecure cookie write under production env (no TLS detected)")
-	}
 	h.SM.WriteCookie(w, sess.SessionID)
 
 	response := map[string]any{
@@ -99,21 +70,6 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	if privileged {
 		if updateInfo := CheckForUpdate(); updateInfo != nil {
 			response["update"] = updateInfo
-		}
-	}
-
-	// Check if indexer daemon is available
-	var indexerStatusResult struct {
-		Available bool   `json:"available"`
-		Error     string `json:"error,omitempty"`
-	}
-	if err := callBridgeWithSess(sess, "filebrowser", "indexer_status", nil, &indexerStatusResult); err != nil {
-		logger.Debugf("[auth.login] failed to check indexer status: %v", err)
-		// Don't fail login if indexer check fails, just log it
-	} else {
-		response["indexer_available"] = indexerStatusResult.Available
-		if indexerStatusResult.Error != "" {
-			logger.Debugf("[auth.login] indexer check returned error: %s", indexerStatusResult.Error)
 		}
 	}
 
@@ -150,11 +106,10 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 // ---- internals ----
 
 func (h *Handlers) createUserSession(req LoginRequest) (*session.Session, error) {
-	sysu, err := lookupUser(req.Username)
+	u, err := lookupUser(req.Username)
 	if err != nil {
 		return nil, err
 	}
-	u := session.User{Username: req.Username, UID: sysu.Uid, GID: sysu.Gid}
 
 	// Always create as non-privileged; helper decides real mode.
 	sess, err := h.SM.CreateSession(u, false)

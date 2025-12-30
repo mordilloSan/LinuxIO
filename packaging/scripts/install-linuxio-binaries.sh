@@ -14,7 +14,6 @@ readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly PAM_DIR="/etc/pam.d"
 readonly CONFIG_DIR="/etc/linuxio"
 readonly STAGING="/tmp/linuxio-install-$$"
-readonly SERVICE_GROUP="linuxio"
 readonly RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"
 
 # ---------- Logging Functions ----------
@@ -50,7 +49,7 @@ download_binaries() {
     local files=(
         "linuxio"
         "linuxio-bridge"
-        "linuxio-auth-helper"
+        "linuxio-auth"
         "SHA256SUMS"
     )
 
@@ -116,11 +115,11 @@ install_binaries() {
     mkdir -p "$BIN_DIR"
 
     # Define binaries with their permissions
-    # linuxio-auth-helper needs setuid (4755) to run as root
+    # linuxio-auth runs via systemd socket activation (no setuid needed)
     local -A binaries=(
         ["linuxio"]="0755"
         ["linuxio-bridge"]="0755"
-        ["linuxio-auth-helper"]="4755"
+        ["linuxio-auth"]="0755"
     )
 
     for binary in "${!binaries[@]}"; do
@@ -165,7 +164,7 @@ install_binaries() {
             return 1
         fi
 
-        # Double-check final permissions (important for setuid)
+        # Double-check final permissions
         chmod "$mode" "$dst" || log_warn "Failed to re-apply permissions to ${dst}"
 
         log_ok "Installed ${binary} (mode: ${mode})"
@@ -182,32 +181,6 @@ install_binaries() {
     done
 
     log_ok "All binaries installed successfully"
-    return 0
-}
-
-# ---------- Account Functions ----------
-
-create_service_account() {
-    log_info "Setting up service account..."
-
-    # Create group if it doesn't exist
-    if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
-        log_info "Creating group '${SERVICE_GROUP}'..."
-        groupadd -r "$SERVICE_GROUP"
-        log_ok "Created group '${SERVICE_GROUP}'"
-    else
-        log_ok "Group '${SERVICE_GROUP}' already exists"
-    fi
-
-    # Create user if it doesn't exist
-    if ! getent passwd "$SERVICE_GROUP" >/dev/null 2>&1; then
-        log_info "Creating user '${SERVICE_GROUP}'..."
-        useradd -r -g "$SERVICE_GROUP" -s /usr/sbin/nologin -M "$SERVICE_GROUP"
-        log_ok "Created user '${SERVICE_GROUP}'"
-    else
-        log_ok "User '${SERVICE_GROUP}' already exists"
-    fi
-
     return 0
 }
 
@@ -297,7 +270,10 @@ find_available_port() {
 install_systemd_files() {
     log_info "Installing systemd service files..."
 
-    for file in linuxio.socket linuxio.service; do
+    for file in linuxio.socket linuxio.service \
+        linuxio-auth.socket linuxio-auth@.service \
+        linuxio-bridge-socket-user.service \
+        linuxio-issue.service; do
         log_info "Downloading ${file}..."
         if ! curl -fsSL "${RAW_BASE}/systemd/${file}" -o "${SYSTEMD_DIR}/${file}"; then
             log_error "Failed to download ${file}"
@@ -313,6 +289,22 @@ install_systemd_files() {
         log_warn "Port 8090 is in use, using port ${SELECTED_PORT} instead"
         sed -i "s/ListenStream=0.0.0.0:8090/ListenStream=0.0.0.0:${SELECTED_PORT}/" "${SYSTEMD_DIR}/linuxio.socket"
         log_ok "Updated socket to use port ${SELECTED_PORT}"
+    fi
+
+    # Install SSH login banner support
+    log_info "Installing SSH login banner support..."
+    mkdir -p /usr/share/linuxio/issue
+    if ! curl -fsSL "${RAW_BASE}/scripts/update-issue" -o /usr/share/linuxio/issue/update-issue; then
+        log_warn "Failed to download issue script (non-critical)"
+    else
+        chmod 0755 /usr/share/linuxio/issue/update-issue
+        # Create symlink for SSH login banner (motd.d)
+        if [[ -d /etc/motd.d ]]; then
+            ln -sf ../../run/linuxio/issue /etc/motd.d/linuxio 2>/dev/null || true
+            log_ok "SSH login banner configured"
+        else
+            log_info "No /etc/motd.d found, skipping login banner setup"
+        fi
     fi
 
     # Reload systemd
@@ -331,6 +323,12 @@ enable_services() {
         log_ok "Enabled linuxio.socket"
     else
         log_warn "Failed to enable linuxio.socket"
+    fi
+
+    if systemctl enable linuxio-auth.socket >/dev/null 2>&1; then
+        log_ok "Enabled linuxio-auth.socket"
+    else
+        log_warn "Failed to enable linuxio-auth.socket"
     fi
 
     # Enable the service
@@ -365,12 +363,12 @@ verify_installation() {
         log_warn "linuxio-bridge did not run successfully"
     fi
 
-    # Check setuid bit on auth-helper
-    local auth_helper="${BIN_DIR}/linuxio-auth-helper"
-    if [[ -u "$auth_helper" ]]; then
-        log_ok "linuxio-auth-helper: setuid bit is set"
+    # Check auth helper is executable
+    local auth_helper="${BIN_DIR}/linuxio-auth"
+    if [[ -x "$auth_helper" ]]; then
+        log_ok "linuxio-auth: executable"
     else
-        log_warn "linuxio-auth-helper: setuid bit NOT set (may affect authentication)"
+        log_warn "linuxio-auth: not executable"
     fi
 
     # Check systemd services
@@ -380,17 +378,16 @@ verify_installation() {
         log_warn "linuxio.socket is not enabled"
     fi
 
+    if systemctl is-enabled linuxio-auth.socket >/dev/null 2>&1; then
+        log_ok "linuxio-auth.socket is enabled"
+    else
+        log_warn "linuxio-auth.socket is not enabled"
+    fi
+
     if systemctl is-enabled linuxio.service >/dev/null 2>&1; then
         log_ok "linuxio.service is enabled"
     else
         log_warn "linuxio.service is not enabled"
-    fi
-
-    # Check group
-    if getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
-        log_ok "Service group '${SERVICE_GROUP}' exists"
-    else
-        log_warn "Service group '${SERVICE_GROUP}' not found"
     fi
 
     # Check PAM config
@@ -444,47 +441,43 @@ main() {
     fi
 
     log_info "Starting LinuxIO full installation"
-    [[ -n "$version" ]] && log_info "Target version: ${version}" || log_info "Target version: latest"
-    echo ""
-
-    # Step 1: Create service account
-    log_info "=== Step 1/6: Creating service account ==="
-    if ! create_service_account; then
-        log_error "Failed to create service account"
-        exit 1
+    if [[ -n "$version" ]]; then
+        log_info "Target version: ${version}"
+    else
+        log_info "Target version: latest"
     fi
     echo ""
 
-    # Step 2: Download binaries (unless skipped)
+    # Step 1: Download binaries (unless skipped)
     if [[ $skip_binaries -eq 0 ]]; then
-        log_info "=== Step 2/6: Downloading binaries ==="
+        log_info "=== Step 1/5: Downloading binaries ==="
         if ! download_binaries "$version"; then
             log_error "Download failed"
             exit 1
         fi
         echo ""
 
-        # Step 3: Verify checksums
-        log_info "=== Step 3/6: Verifying checksums ==="
+        # Step 2: Verify checksums
+        log_info "=== Step 2/5: Verifying checksums ==="
         if ! verify_checksums; then
             log_error "Checksum verification failed"
             exit 1
         fi
         echo ""
 
-        # Step 4: Install binaries
-        log_info "=== Step 4/6: Installing binaries ==="
+        # Step 3: Install binaries
+        log_info "=== Step 3/5: Installing binaries ==="
         if ! install_binaries; then
             log_error "Binary installation failed"
             exit 1
         fi
     else
-        log_info "=== Steps 2-4: Skipping binary installation ==="
+        log_info "=== Steps 1-3: Skipping binary installation ==="
     fi
     echo ""
 
-    # Step 5: Install configuration files
-    log_info "=== Step 5/6: Installing configuration ==="
+    # Step 4: Install configuration files
+    log_info "=== Step 4/5: Installing configuration ==="
     if ! install_config_files; then
         log_error "Config installation failed"
         exit 1
@@ -496,8 +489,8 @@ main() {
     fi
     echo ""
 
-    # Step 6: Install systemd files
-    log_info "=== Step 6/6: Installing systemd services ==="
+    # Step 5: Install systemd files
+    log_info "=== Step 5/5: Installing systemd services ==="
     if ! install_systemd_files; then
         log_error "Systemd installation failed"
         exit 1
@@ -548,11 +541,12 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  • Binaries:     /usr/local/bin/linuxio, linuxio-bridge, linuxio-auth-helper
+  • Binaries:     /usr/local/bin/linuxio, linuxio-bridge, linuxio-auth
   • Systemd:      /etc/systemd/system/linuxio.service, linuxio.socket
   • PAM:          /etc/pam.d/linuxio
   • Config:       /etc/linuxio/disallowed-users
-  • Account:      linuxio system user and group (for service and auth-helper)
+
+Note: LinuxIO uses systemd DynamicUser, no static accounts are created.
 
 Examples:
   $(basename "$0")                 # Install latest release

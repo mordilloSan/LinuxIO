@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	config "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
@@ -10,12 +10,12 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// Map of type -> (command -> handler)
-var HandlersByType = map[string]map[string]ipc.HandlerFunc{}
+// HandlersByType is the registry for bridge request handlers.
+// Usage: HandlersByType[handlerType][command](args)
+var HandlersByType = map[string]map[string]func([]string) (any, error){}
 
 func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	HandlersByType["dbus"] = dbus.DbusHandlers()

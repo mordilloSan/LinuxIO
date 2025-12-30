@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -10,15 +9,12 @@ import (
 
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // Config holds router configuration.
 type Config struct {
-	Env            string
 	Verbose        bool
-	VitePort       int
 	UI             fs.FS
 	RegisterRoutes func(mux *http.ServeMux) // Called to register API routes
 }
@@ -29,12 +25,6 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 
 	// Apply middleware chain
 	var handler http.Handler = mux
-
-	// CORS only in development
-	if cfg.Env == config.EnvDevelopment {
-		handler = CorsMiddleware(cfg.VitePort)(handler)
-	}
-
 	handler = LoggerMiddleware(handler)
 	handler = RecoveryMiddleware(handler)
 
@@ -46,17 +36,8 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 	// WebSocket relay (protected)
 	mux.Handle("GET /ws", sm.RequireSession(http.HandlerFunc(WebSocketRelayHandler)))
 
-	// Frontend
-	if cfg.Env == config.EnvDevelopment {
-		// Redirect to Vite dev server
-		viteURL := fmt.Sprintf("http://localhost:%d/", cfg.VitePort)
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, viteURL+strings.TrimPrefix(r.URL.Path, "/"), http.StatusTemporaryRedirect)
-		})
-	} else {
-		// Serve embedded SPA
-		mountProductionSPA(mux, cfg.UI)
-	}
+	// Serve embedded SPA
+	mountProductionSPA(mux, cfg.UI)
 
 	return handler
 }

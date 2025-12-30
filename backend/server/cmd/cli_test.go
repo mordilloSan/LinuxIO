@@ -84,14 +84,14 @@ func TestStartLinuxIO_Run_InvokesRunServer(t *testing.T) {
 	}
 	defer func() { runServerFunc = old }()
 
-	withArgs([]string{"linuxio", "run", "-env", "development", "-port", "18090", "-verbose"}, func() {
+	withArgs([]string{"linuxio", "run", "-port", "18090", "-verbose"}, func() {
 		StartLinuxIO()
 	})
 
 	if !called {
 		t.Fatal("expected runServerFunc to be called")
 	}
-	if gotCfg.Env != config.EnvDevelopment || gotCfg.Port != 18090 || !gotCfg.Verbose {
+	if gotCfg.Port != 18090 || !gotCfg.Verbose {
 		t.Fatalf("unexpected cfg: %+v", gotCfg)
 	}
 }

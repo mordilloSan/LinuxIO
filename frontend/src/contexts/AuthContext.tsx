@@ -212,6 +212,8 @@ function AuthProvider({ children }: AuthProviderProps) {
 
       const user = await fetchUser();
       dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
+
+      // Show welcome message
       toast.success(`Welcome, ${username}!`);
     },
     [fetchUser],

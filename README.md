@@ -39,6 +39,8 @@ Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes furthe
 
 ## 📦 Installation
 
+LinuxIO supports Linux kernels 5.9+.
+
 ### Quick Install (Recommended)
 
 ```bash
@@ -94,39 +96,57 @@ sudo apt install -y libpam0g-dev libsystemd-dev
 sudo dnf install -y pam-devel systemd-devel
 ```
 
-> Note: `libsystemd-dev` is optional but recommended - without it, auth-helper logs go to `/dev/null` instead of journald.
+> Note: `libsystemd-dev` is optional but recommended - without it, auth worker logs fall back to syslog instead of journald.
 
-### Setup
+### Initial Setup
 
 ```bash
 # Clone repository
 git clone https://github.com/mordilloSan/LinuxIO
 cd LinuxIO
 
-# Install dependencies
-make setup
+# Build everything (backend, bridge, auth-helper, frontend)
+make build
 
-# Start development server
+# Install to system (installs binaries + systemd services)
+sudo make localinstall
+```
+
+### Frontend Development
+
+Once installed, frontend development uses hot reload while the backend runs via systemd:
+
+```bash
+# Start frontend dev server (vite with hot reload)
 make dev
 ```
 
-The frontend runs on `http://localhost:3000` with API proxy to `:18090`
+- Frontend runs on `http://localhost:3000`
+- Vite proxies `/ws` and `/auth` to the backend on `:8090`
+- Backend must be running via systemd (`sudo systemctl start linuxio`)
 
-### Build from Source
+### Backend/Bridge Changes
+
+If you modify Go code (backend, bridge, or auth-helper), rebuild and reinstall:
 
 ```bash
-# Build everything (includes linting)
 make build
+sudo make localinstall
+sudo systemctl restart linuxio
+```
 
-# Or build components individually
+### Build Components Individually
+
+```bash
 make build-backend      # Go backend binary
 make build-bridge       # Go bridge binary
-make build-auth-helper  # PAM authentication helper
+make build-auth-helper  # PAM authentication worker
 make build-vite         # Frontend static assets
-
-# Run locally
-make run
 ```
+
+### Upgrade
+
+See `docs/UPGRADE_CHECKLIST.md` for the socket-activated auth worker upgrade steps.
 
 ### Available Commands
 
@@ -136,13 +156,12 @@ make run
 make ensure-node       # Install/activate Node.js 24 via nvm
 make ensure-go         # Install Go 1.25 (user-local, no sudo)
 make setup             # Install frontend dependencies (npm install)
-make devinstall        # Install dev binaries (auto-detects if needed)
 ```
 
 **Development:**
 
 ```bash
-make dev               # Start dev mode with hot reload
+make dev               # Start frontend dev server (requires backend via systemd)
 make dev-prep          # Create placeholder assets for dev server
 ```
 
@@ -159,21 +178,28 @@ make test-backend      # Run Go unit tests in backend
 **Building:**
 
 ```bash
-make build             # Build everything (frontend + backend + bridge + auth-helper)
+make build             # Build everything (frontend + backend + bridge + auth worker)
 make build-vite        # Build frontend only
 make build-backend     # Build backend only
 make build-bridge      # Build bridge only
-make build-auth-helper # Build PAM helper only
+make build-auth-helper # Build PAM worker only
+```
+
+**Installation:**
+
+```bash
+make localinstall      # Install binaries + systemd services (requires sudo)
+make reinstall         # Uninstall + rebuild + install
+make uninstall         # Remove LinuxIO from system
 ```
 
 **Running & Cleaning:**
 
 ```bash
-make run               # Run production server
 make clean             # Remove build artifacts
-make clean-dev         # Remove dev binaries and sudo config
-make clean-all         # Full cleanup (workspace + dev environment)
 ```
+
+> **Note:** The server runs via systemd. Use `sudo systemctl start/stop/restart linuxio` to manage it.
 
 **Release Workflow:**
 
@@ -215,7 +241,7 @@ make merge-release     # Merge PR and trigger release
 
 - PAM-based authentication
 - Session-based auth with secure cookies
-- Setuid helper for privilege management
+- Socket-activated auth worker (no setuid)
 - Isolated bridge processes per user
 - TLS support with self-signed certificates
 

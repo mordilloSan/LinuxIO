@@ -1,9 +1,7 @@
 package docker
 
-import "github.com/mordilloSan/LinuxIO/backend/common/ipc"
-
-func DockerHandlers() map[string]ipc.HandlerFunc {
-	return map[string]ipc.HandlerFunc{
+func DockerHandlers() map[string]func([]string) (any, error) {
+	return map[string]func([]string) (any, error){
 		"list_containers":    func([]string) (any, error) { return ListContainers() },
 		"start_container":    func(args []string) (any, error) { return StartContainer(args[0]) },
 		"stop_container":     func(args []string) (any, error) { return StopContainer(args[0]) },

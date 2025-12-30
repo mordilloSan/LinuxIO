@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
@@ -19,22 +18,19 @@ import (
 	"github.com/coreos/go-systemd/activation"
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/auth"
 	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/server/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
-	// Env + logging (from flags)
+	// Logging (from flags)
 	// -------------------------------------------------------------------------
-	envMode := cfg.Env // already validated and lowercased by CLI
 	verbose := cfg.Verbose
-	logger.Init(envMode, verbose)
-	logger.InfoKV("server starting", "env", envMode, "verbose", verbose)
+	logger.Init("production", verbose)
+	logger.InfoKV("server starting", "verbose", verbose)
 
 	// -------------------------------------------------------------------------
 	// Sessions + cleanup hooks
@@ -42,15 +38,14 @@ func RunServer(cfg ServerConfig) {
 	ms := session.New()
 	sm := session.NewManager(ms, session.SessionConfig{
 		Cookie: session.CookieConfig{
-			Secure: envMode == config.EnvProduction,
+			Secure: true,
 		},
 	})
 	sm.RegisterOnDelete(func(sess *session.Session, reason session.DeleteReason) {
-		if sess.User.Username != "" {
-			if err := bridge.CallTypedWithSession(sess, "control", "shutdown", []string{string(reason)}, nil); err != nil {
-				logger.WarnKV("bridge shutdown failed", "user", sess.User.Username, "reason", reason, "error", err)
-			}
+		if sess.User.Username == "" {
+			return
 		}
+		bridge.CloseYamuxSession(sess.SessionID)
 	})
 
 	// -------------------------------------------------------------------------
@@ -66,12 +61,10 @@ func RunServer(cfg ServerConfig) {
 	// Router
 	// -------------------------------------------------------------------------
 	router := web.BuildRouter(web.Config{
-		Env:      envMode,
-		Verbose:  verbose,
-		VitePort: cfg.ViteDevPort,
-		UI:       ui,
+		Verbose: verbose,
+		UI:      ui,
 		RegisterRoutes: func(mux *http.ServeMux) {
-			auth.RegisterAuthRoutes(mux, sm, envMode, verbose, "")
+			auth.RegisterAuthRoutes(mux, sm, verbose)
 		},
 	}, sm)
 
@@ -118,49 +111,25 @@ func RunServer(cfg ServerConfig) {
 			servStopped := make(chan struct{})
 			stop := func() { stopOnce.Do(func() { close(servStopped) }) }
 
-			if envMode == config.EnvProduction {
-				cert, cErr := web.GenerateSelfSignedCert()
-				if cErr != nil {
-					logger.Errorf("Failed to generate cert: %v", cErr)
-				}
-				srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-				web.SetRootPoolFromServerCert(cert)
-
-				// Export base URL and cert for children (bridge, etc.)
-				_ = os.Setenv("LINUXIO_SERVER_BASE_URL", "https://localhost:8090")
-				if len(cert.Certificate) > 0 {
-					pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
-					if len(pemBytes) > 0 {
-						_ = os.Setenv("LINUXIO_SERVER_CERT", string(pemBytes))
-					}
-				}
-
-				for _, l := range listeners {
-					tlsLis := tls.NewListener(l, srv.TLSConfig)
-					go func(lis net.Listener) {
-						if e := srv.Serve(lis); e != nil && e != http.ErrServerClosed {
-							logger.Errorf("server error (TLS): %v", e)
-							os.Exit(1)
-						}
-						stop()
-					}(tlsLis)
-				}
-				logger.Infof("Socket-activated HTTPS server listening on inherited sockets")
-			} else {
-				// Plain HTTP for dev
-				for _, l := range listeners {
-					go func(lis net.Listener) {
-						if e := srv.Serve(lis); e != nil && e != http.ErrServerClosed {
-							logger.Errorf("server error: %v", e)
-							os.Exit(1)
-						}
-						stop()
-					}(l)
-				}
-				logger.Infof("Socket-activated HTTP server listening on inherited sockets")
+			cert, cErr := web.GenerateSelfSignedCert()
+			if cErr != nil {
+				logger.Errorf("Failed to generate cert: %v", cErr)
 			}
+			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 
-			// 🔻 Start idle-exit only in socket-activation mode
+			for _, l := range listeners {
+				tlsLis := tls.NewListener(l, srv.TLSConfig)
+				go func(lis net.Listener) {
+					if e := srv.Serve(lis); e != nil && e != http.ErrServerClosed {
+						logger.Errorf("server error (TLS): %v", e)
+						os.Exit(1)
+					}
+					stop()
+				}(tlsLis)
+			}
+			logger.Infof("Socket-activated HTTPS server listening on inherited sockets")
+
+			// Start idle-exit only in socket-activation mode
 			const idleGrace = 90 * time.Second
 			const checkEvery = 15 * time.Second
 			startSocketIdleExitWatcher(
@@ -175,35 +144,19 @@ func RunServer(cfg ServerConfig) {
 			return
 		}
 
-		// -------- fallback: self-bind (dev / manual runs) ----------
+		// -------- fallback: self-bind (manual runs) ----------
 		addr := fmt.Sprintf(":%d", cfg.Port)
 		srv.Addr = addr
-		if envMode == config.EnvProduction {
-			cert, cErr := web.GenerateSelfSignedCert()
-			if cErr != nil {
-				logger.Errorf("Failed to generate cert: %v", cErr)
-				os.Exit(1)
-			}
-			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-			web.SetRootPoolFromServerCert(cert)
 
-			baseURL := fmt.Sprintf("https://localhost:%d", cfg.Port)
-			_ = os.Setenv("LINUXIO_SERVER_BASE_URL", baseURL)
-			if len(cert.Certificate) > 0 {
-				pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
-				if len(pemBytes) > 0 {
-					_ = os.Setenv("LINUXIO_SERVER_CERT", string(pemBytes))
-				}
-			}
-
-			logger.Infof("HTTPS server (self-bound) at %s", baseURL)
-			err = srv.ListenAndServeTLS("", "")
-		} else {
-			baseURL := fmt.Sprintf("http://localhost:%d", cfg.Port)
-			_ = os.Setenv("LINUXIO_SERVER_BASE_URL", baseURL)
-			logger.Infof("HTTP server (self-bound) at %s", baseURL)
-			err = srv.ListenAndServe()
+		cert, cErr := web.GenerateSelfSignedCert()
+		if cErr != nil {
+			logger.Errorf("Failed to generate cert: %v", cErr)
+			os.Exit(1)
 		}
+		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+
+		logger.Infof("HTTPS server (self-bound) at https://localhost:%d", cfg.Port)
+		err = srv.ListenAndServeTLS("", "")
 
 		if err != nil && err != http.ErrServerClosed {
 			logger.Errorf("server error: %v", err)
@@ -240,15 +193,17 @@ func RunServer(cfg ServerConfig) {
 		logger.Infof("HTTP server closed")
 	}
 
-	// Tell bridges to quit before sessions close
-	cleanup.ShutdownAllBridges(sm, "server_quit")
+	// Close yamux sessions to trigger bridge shutdown
+	if sessions, err := sm.ActiveSessions(); err == nil {
+		for _, sess := range sessions {
+			bridge.CloseYamuxSession(sess.SessionID)
+		}
+	}
 
 	// Close sessions
 	sm.Close()
 
-	if envMode == config.EnvProduction {
-		fmt.Println("Server stopped.")
-	}
+	fmt.Println("Server stopped.")
 	logger.Infof("Server stopped.")
 }
 

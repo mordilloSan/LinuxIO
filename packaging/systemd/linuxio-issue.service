@@ -1,0 +1,9 @@
+[Unit]
+Description=LinuxIO issue updater service
+Documentation=https://github.com/mordilloSan/LinuxIO
+Wants=network-online.target
+After=network-online.target linuxio.socket
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/share/linuxio/issue/update-issue
