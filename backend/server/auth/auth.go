@@ -7,7 +7,6 @@ import (
 
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
@@ -15,7 +14,6 @@ import (
 // Handlers bundles dependencies (no global state).
 type Handlers struct {
 	SM      *session.Manager
-	Env     string
 	Verbose bool
 }
 
@@ -61,10 +59,6 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	// Persist actual mode (informational)
 	_ = h.SM.SetPrivileged(sess.SessionID, privileged)
 
-	secure := (h.Env == config.EnvProduction) && (r.TLS != nil)
-	if !secure && h.Env == config.EnvProduction {
-		logger.Warnf("[auth.login] insecure cookie write under production env (no TLS detected)")
-	}
 	h.SM.WriteCookie(w, sess.SessionID)
 
 	response := map[string]any{

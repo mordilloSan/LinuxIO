@@ -81,7 +81,7 @@ func main() {
 	verbose := bootCfg.Verbose
 
 	// Initialize logger (stdout/stderr → systemd journal)
-	logger.Init(appconfig.EnvProduction, verbose)
+	logger.Init("production", verbose)
 
 	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID)

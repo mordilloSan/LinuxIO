@@ -2,48 +2,26 @@
 package bridge
 
 import (
-	"errors"
 	"fmt"
 	"net"
-	"os"
 	"time"
 
 	"github.com/mordilloSan/go_logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const (
 	// DefaultAuthSocketPath is the Unix socket where linuxio-auth daemon listens
-	DefaultAuthSocketPath = "/run/linuxio/auth.sock"
+	DefaultAuthSocketPath = config.BinDir + "/auth.sock"
 
 	// Timeouts for auth daemon communication
 	authDialTimeout  = 5 * time.Second
 	authReadTimeout  = 30 * time.Second // sudo check can take time
 	authWriteTimeout = 5 * time.Second
 )
-
-// GetAuthSocketPath returns the auth socket path from env var or default
-func GetAuthSocketPath() string {
-	if path := os.Getenv("LINUXIO_AUTH_SOCKET"); path != "" {
-		return path
-	}
-	return DefaultAuthSocketPath
-}
-
-// DaemonAvailable checks if the auth daemon socket exists and is connectable
-func DaemonAvailable() bool {
-	info, err := os.Stat(GetAuthSocketPath())
-	if err != nil {
-		return false
-	}
-	// Check it's a socket
-	if info.Mode()&os.ModeSocket == 0 {
-		return false
-	}
-	return true
-}
 
 // AuthResult contains the result of a successful authentication
 type AuthResult struct {
@@ -57,12 +35,8 @@ type AuthResult struct {
 // process (the auth daemon passed our FD to the bridge via dup2).
 // The caller owns the connection and must close it.
 func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
-	if !DaemonAvailable() {
-		return nil, errors.New("auth daemon not available")
-	}
-
 	// Connect to daemon
-	conn, err := net.DialTimeout("unix", GetAuthSocketPath(), authDialTimeout)
+	conn, err := net.DialTimeout("unix", DefaultAuthSocketPath, authDialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to auth daemon: %w", err)
 	}

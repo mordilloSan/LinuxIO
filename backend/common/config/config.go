@@ -1,15 +1,8 @@
 package config
 
-// Environment modes
+// Installation paths
 const (
-	EnvDevelopment = "development"
-	EnvProduction  = "production"
-)
-
-// Installation paths (production)
-const (
-	BinDir         = "/usr/local/bin"
-	AuthHelperPath = BinDir + "/linuxio-auth"
+	BinDir = "/usr/local/bin"
 )
 
 // GitHub repository
