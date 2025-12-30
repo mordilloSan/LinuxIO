@@ -16,6 +16,8 @@
 
 10 - fix indexer status check and calls.
 
+11 - tls on socket?
+
 Remove gin - DONE
 use quantum filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE

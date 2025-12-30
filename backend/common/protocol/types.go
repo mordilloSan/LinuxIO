@@ -2,7 +2,14 @@
 // Keep in sync with packaging/linuxio_protocol.h
 package protocol
 
-// Max lengths for fields
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"io"
+)
+
+// Max lengths for fields (used for validation)
 const (
 	MaxUsername   = 256
 	MaxPassword   = 8192
@@ -16,80 +23,146 @@ const (
 	MaxError      = 256
 )
 
-// JSON field names - keep in sync with C header FIELD_* constants
+// Auth request/response protocol constants
 const (
-	FieldUser          = "user"
-	FieldPassword      = "password"
-	FieldSessionID     = "session_id"
-	FieldBridgePath    = "bridge_path"
-	FieldEnv           = "env"
-	FieldVerbose       = "verbose"
-	FieldSecret        = "secret"
-	FieldServerBaseURL = "server_base_url"
-	FieldServerCert    = "server_cert"
-	FieldStatus        = "status"
-	FieldError         = "error"
-	FieldMode          = "mode"
-	FieldMotd          = "motd"
-	FieldUsername      = "username"
-	FieldUID           = "uid"
-	FieldGID           = "gid"
-	FieldLogFD         = "log_fd"
+	AuthReqHeaderSize  = 8
+	AuthRespHeaderSize = 8
+
+	// Request flags
+	ReqFlagVerbose = 0x01
+
+	// Status values
+	StatusOK    = 0
+	StatusError = 1
+
+	// Mode values
+	ModeUnprivileged = 0
+	ModePrivileged   = 1
 )
 
-// Status values
-const (
-	StatusOK    = "ok"
-	StatusError = "error"
-)
-
-// Mode values
-const (
-	ModePrivileged   = "privileged"
-	ModeUnprivileged = "unprivileged"
-)
-
-// Environment variable names
-const (
-	EnvSessionID  = "LINUXIO_SESSION_ID"
-	EnvEnv        = "LINUXIO_ENV"
-	EnvVerbose    = "LINUXIO_VERBOSE"
-	EnvBridge     = "LINUXIO_BRIDGE"
-	EnvPrivileged = "LINUXIO_PRIVILEGED"
-)
-
-// AuthRequest is the JSON request sent to the auth daemon (Server -> Auth)
+// AuthRequest is the binary request sent to the auth daemon (Server -> Auth)
 type AuthRequest struct {
-	User          string `json:"user"`
-	Password      string `json:"password"`
-	SessionID     string `json:"session_id"`
-	BridgePath    string `json:"bridge_path,omitempty"`
-	Env           string `json:"env,omitempty"`
-	Verbose       string `json:"verbose,omitempty"`
-	ServerBaseURL string `json:"server_base_url,omitempty"`
-	ServerCert    string `json:"server_cert,omitempty"`
-	Secret        string `json:"secret,omitempty"`
+	Verbose       bool
+	EnvMode       uint8 // ProtoEnvProduction or ProtoEnvDevelopment
+	User          string
+	Password      string
+	SessionID     string
+	BridgePath    string
+	Secret        string
+	ServerBaseURL string
+	ServerCert    string
 }
 
-// AuthResponse is the JSON response from the auth daemon (Auth -> Server)
+// AuthResponse is the binary response from the auth daemon (Auth -> Server)
 type AuthResponse struct {
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
-	Mode   string `json:"mode,omitempty"`
-	Motd   string `json:"motd,omitempty"`
+	Status uint8
+	Mode   uint8
+	Error  string
+	Motd   string
 }
 
-// Bootstrap is the configuration passed from auth daemon to bridge via stdin
-type Bootstrap struct {
-	SessionID     string `json:"session_id"`
-	Username      string `json:"username"`
-	UID           uint32 `json:"uid"`
-	GID           uint32 `json:"gid"`
-	Secret        string `json:"secret"`
-	ServerBaseURL string `json:"server_base_url,omitempty"`
-	ServerCert    string `json:"server_cert,omitempty"`
-	Verbose       bool   `json:"verbose,omitempty"`
-	LogFD         int    `json:"log_fd,omitempty"`
+// WriteAuthRequest writes a binary auth request to the writer.
+func WriteAuthRequest(w io.Writer, req *AuthRequest) error {
+	// Write header
+	var header [AuthReqHeaderSize]byte
+	header[0] = ProtoMagic0
+	header[1] = ProtoMagic1
+	header[2] = ProtoMagic2
+	header[3] = ProtoVersion
+
+	var flags uint8
+	if req.Verbose {
+		flags |= ReqFlagVerbose
+	}
+	header[4] = flags
+	header[5] = req.EnvMode
+	header[6] = 0 // reserved
+	header[7] = 0 // reserved
+
+	if _, err := w.Write(header[:]); err != nil {
+		return fmt.Errorf("write header: %w", err)
+	}
+
+	// Write variable-length fields
+	if err := writeLenStr(w, req.User); err != nil {
+		return fmt.Errorf("write user: %w", err)
+	}
+	if err := writeLenStr(w, req.Password); err != nil {
+		return fmt.Errorf("write password: %w", err)
+	}
+	if err := writeLenStr(w, req.SessionID); err != nil {
+		return fmt.Errorf("write session_id: %w", err)
+	}
+	if err := writeLenStr(w, req.BridgePath); err != nil {
+		return fmt.Errorf("write bridge_path: %w", err)
+	}
+	if err := writeLenStr(w, req.Secret); err != nil {
+		return fmt.Errorf("write secret: %w", err)
+	}
+	if err := writeLenStr(w, req.ServerBaseURL); err != nil {
+		return fmt.Errorf("write server_base_url: %w", err)
+	}
+	if err := writeLenStr(w, req.ServerCert); err != nil {
+		return fmt.Errorf("write server_cert: %w", err)
+	}
+
+	return nil
+}
+
+// ReadAuthResponse reads a binary auth response from the reader.
+func ReadAuthResponse(r io.Reader) (*AuthResponse, error) {
+	var header [AuthRespHeaderSize]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		return nil, fmt.Errorf("read header: %w", err)
+	}
+
+	// Validate magic
+	if header[0] != ProtoMagic0 || header[1] != ProtoMagic1 ||
+		header[2] != ProtoMagic2 || header[3] != ProtoVersion {
+		return nil, errors.New("invalid response magic")
+	}
+
+	resp := &AuthResponse{
+		Status: header[4],
+		Mode:   header[5],
+	}
+
+	// Read error or motd based on status
+	switch resp.Status {
+	case StatusError:
+		errStr, err := readLenStr(r)
+		if err != nil {
+			return nil, fmt.Errorf("read error: %w", err)
+		}
+		resp.Error = errStr
+	case StatusOK:
+		motd, err := readLenStr(r)
+		if err != nil {
+			return nil, fmt.Errorf("read motd: %w", err)
+		}
+		resp.Motd = motd
+	}
+
+	return resp, nil
+}
+
+// writeLenStr writes a length-prefixed string (2-byte length + data).
+func writeLenStr(w io.Writer, s string) error {
+	length := len(s)
+	if length > 0xFFFF {
+		length = 0xFFFF
+	}
+	var lenBuf [2]byte
+	binary.BigEndian.PutUint16(lenBuf[:], uint16(length))
+	if _, err := w.Write(lenBuf[:]); err != nil {
+		return err
+	}
+	if length > 0 {
+		if _, err := w.Write([]byte(s[:length])); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // IsPrivileged returns true if the mode indicates privileged access

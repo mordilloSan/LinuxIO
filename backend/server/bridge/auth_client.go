@@ -2,13 +2,13 @@
 package bridge
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"time"
 
+	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
@@ -68,20 +68,13 @@ func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 	}
 
 	// Set timeouts
-	if dearlineErr := conn.SetWriteDeadline(time.Now().Add(authWriteTimeout)); dearlineErr != nil {
+	if deadlineErr := conn.SetWriteDeadline(time.Now().Add(authWriteTimeout)); deadlineErr != nil {
 		conn.Close()
-		return nil, fmt.Errorf("failed to set write deadline: %w", dearlineErr)
+		return nil, fmt.Errorf("failed to set write deadline: %w", deadlineErr)
 	}
 
-	// Encode and send request (newline-terminated)
-	reqBytes, err := json.Marshal(req)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to marshal auth request: %w", err)
-	}
-	reqBytes = append(reqBytes, '\n')
-
-	if _, err := conn.Write(reqBytes); err != nil {
+	// Write binary request
+	if err := protocol.WriteAuthRequest(conn, req); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to send auth request: %w", err)
 	}
@@ -92,40 +85,10 @@ func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 		return nil, fmt.Errorf("failed to set read deadline: %w", err)
 	}
 
-	// Read until newline or EOF
-	buf := make([]byte, 4096)
-	total := 0
-	for total < len(buf)-1 {
-		n, err := conn.Read(buf[total:])
-		if n > 0 {
-			total += n
-			// Check for newline
-			for i := 0; i < total; i++ {
-				if buf[i] == '\n' {
-					total = i + 1
-					break
-				}
-			}
-		}
-		if err != nil {
-			break
-		}
-		// Check if we found newline
-		if total > 0 && buf[total-1] == '\n' {
-			break
-		}
-	}
-
-	if total == 0 {
+	resp, err := protocol.ReadAuthResponse(conn)
+	if err != nil {
 		conn.Close()
-		return nil, errors.New("empty response from auth daemon")
-	}
-
-	// Parse response
-	var resp protocol.AuthResponse
-	if err := json.Unmarshal(buf[:total], &resp); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to parse auth response: %w (raw: %q)", err, string(buf[:total]))
+		return nil, fmt.Errorf("failed to read auth response: %w", err)
 	}
 
 	if !resp.IsOK() {
@@ -154,17 +117,20 @@ func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 
 // BuildRequest creates a Request from a session and additional auth parameters
 func BuildRequest(sess *session.Session, password, bridgePath, envMode string, verbose bool) *protocol.AuthRequest {
+	// Convert envMode string to binary value
+	var envModeBin uint8 = protocol.ProtoEnvProduction
+	if envMode == appconfig.EnvDevelopment {
+		envModeBin = protocol.ProtoEnvDevelopment
+	}
+
 	req := &protocol.AuthRequest{
 		User:       sess.User.Username,
 		Password:   password,
 		SessionID:  sess.SessionID,
 		BridgePath: bridgePath,
-		Env:        envMode,
+		EnvMode:    envModeBin,
+		Verbose:    verbose,
 		Secret:     sess.BridgeSecret,
-	}
-
-	if verbose {
-		req.Verbose = "1"
 	}
 
 	// Pass server URL and cert for bridge callback

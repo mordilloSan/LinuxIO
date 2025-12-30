@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mordilloSan/go_logger/logger"
-	"github.com/spf13/pflag"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
@@ -31,27 +29,24 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
-// readBootstrap reads bootstrap JSON from stdin.
+// readBootstrap reads binary bootstrap from stdin.
 // The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
+// FAIL-FAST: If bootstrap is invalid, exit immediately with code 1.
+// This ensures the auth daemon's exec-status pipe detects failure.
 func readBootstrap() *protocol.Bootstrap {
-	b, err := io.ReadAll(io.LimitReader(os.Stdin, 64*1024))
-	if err != nil || len(b) == 0 {
-		logger.Warnf("Failed to read bootstrap from stdin: %v", err)
-		return &protocol.Bootstrap{}
+	b, err := protocol.ReadBootstrap(os.Stdin)
+	if err != nil {
+		// Write to stderr before logger init (stderr goes to journal via dup2)
+		fmt.Fprintf(os.Stderr, "bridge bootstrap error: failed to read: %v\n", err)
+		os.Exit(1)
 	}
 
-	var v protocol.Bootstrap
-	if err := json.Unmarshal(b, &v); err != nil {
-		logger.Warnf("Failed to unmarshal bootstrap JSON: %v", err)
-		return &protocol.Bootstrap{}
+	if b.Secret == "" || b.SessionID == "" {
+		fmt.Fprintf(os.Stderr, "bridge bootstrap error: missing required fields (secret or session_id)\n")
+		os.Exit(1)
 	}
 
-	if v.Secret == "" || v.SessionID == "" {
-		logger.Warnf("Bootstrap missing required fields (secret or session_id)")
-		return &protocol.Bootstrap{}
-	}
-
-	return &v
+	return b
 }
 
 // Capture bootstrap config at package init time
@@ -75,27 +70,21 @@ var bridgeClosing = make(chan struct{})
 var wg sync.WaitGroup
 
 func main() {
-	var envMode string
-	var verbose bool
-	var showVersion bool
-
-	pflag.StringVar(&envMode, "env", appconfig.EnvProduction, "environment (development|production)")
-	pflag.BoolVar(&verbose, "verbose", false, "enable verbose logs")
-	pflag.BoolVar(&showVersion, "version", false, "print version and exit")
-	pflag.Parse()
-
-	// If --verbose wasn't passed, check our saved environment config
-	if !pflag.Lookup("verbose").Changed {
-		verbose = bootCfg.Verbose
+	// Check for version flag (standalone invocation)
+	if len(os.Args) > 1 {
+		arg := os.Args[1]
+		if arg == "version" || arg == "--version" || arg == "-version" || arg == "-v" {
+			printBridgeVersion()
+			return
+		}
 	}
 
-	// accept BOTH: ./linuxio-bridge --version  AND  ./linuxio-bridge version
-	if showVersion || (len(pflag.Args()) > 0 && (pflag.Args()[0] == "version" || pflag.Args()[0] == "-version" || pflag.Args()[0] == "-v")) {
-		printBridgeVersion()
-		return
+	// All config comes from binary bootstrap on stdin
+	verbose := bootCfg.Verbose
+	envMode := appconfig.EnvProduction
+	if bootCfg.IsDevelopment() {
+		envMode = appconfig.EnvDevelopment
 	}
-
-	envMode = strings.ToLower(envMode)
 
 	// Initialize logger ASAP
 	// If we have a log FD in dev mode, redirect stdout/stderr to it for piped logging
@@ -115,7 +104,7 @@ func main() {
 				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stderr failed: %v\n", err)
 			}
 			// Close the original FD to avoid leaking
-			if bootCfg.LogFD != stdoutFD && bootCfg.LogFD != stderrFD {
+			if int(bootCfg.LogFD) != stdoutFD && int(bootCfg.LogFD) != stderrFD {
 				if err := logFile.Close(); err != nil {
 					fmt.Fprintf(os.Stderr, "bridge bootstrap error: close log fd failed: %v\n", err)
 				}
@@ -130,12 +119,12 @@ func main() {
 	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID)
 
-	// Use saved server cert from environment config
+	// Use server cert from bootstrap
 	if pem := strings.TrimSpace(bootCfg.ServerCert); pem != "" {
 		if err := web.SetRootPoolFromPEM([]byte(pem)); err != nil {
-			logger.Warnf("failed to load LINUXIO_SERVER_CERT: %v", err)
+			logger.Warnf("failed to load server cert: %v", err)
 		} else {
-			logger.Debugf("Loaded server cert from saved environment config")
+			logger.Debugf("Loaded server cert from bootstrap")
 		}
 	}
 
