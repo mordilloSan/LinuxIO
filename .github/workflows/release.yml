@@ -127,13 +127,16 @@ jobs:
         working-directory: backend
         run: go mod download
 
-      - name: Build Go backend
-        env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-backend
-
       - name: Build Go bridge
         env: { GOOS: linux, GOARCH: amd64 }
         run: make build-bridge
+
+      - name: Build Go backend (with bridge hash)
+        env: { GOOS: linux, GOARCH: amd64 }
+        run: |
+          BRIDGE_HASH=$(sha256sum linuxio-bridge | awk '{ print $1 }')
+          echo "Bridge SHA256: $BRIDGE_HASH"
+          make build-backend BRIDGE_SHA256=$BRIDGE_HASH
 
       - name: Build Go auth helper
         env: { GOOS: linux, GOARCH: amd64 }
