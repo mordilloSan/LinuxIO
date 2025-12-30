@@ -194,6 +194,8 @@ static uint16_t read_u16_be(const uint8_t *buf)
 
 // Read a length-prefixed string from fd into buf (max bufsz-1 chars + null).
 // Returns 0 on success, -1 on error (oversized fields are rejected).
+// Uses a temporary buffer for the read to minimize sensitive data exposure -
+// the temp buffer is securely cleared immediately after copying to the caller's buffer.
 static int read_lenstr(int fd, char *buf, size_t bufsz)
 {
   if (!buf || bufsz == 0)
@@ -212,9 +214,25 @@ static int read_lenstr(int fd, char *buf, size_t bufsz)
   if (len >= bufsz)
     return -1;
 
-  if (read_all(fd, buf, len) != 0)
+  // Read into a temporary buffer first so we can securely wipe it afterwards.
+  unsigned char *tmp = (unsigned char *)malloc(len);
+  if (!tmp)
     return -1;
+
+  if (read_all(fd, tmp, len) != 0)
+  {
+    secure_bzero(tmp, len);
+    free(tmp);
+    return -1;
+  }
+
+  // Copy to caller's buffer and null-terminate.
+  memcpy(buf, tmp, len);
   buf[len] = '\0';
+
+  // Wipe and free the temporary buffer to avoid leaving sensitive data in memory.
+  secure_bzero(tmp, len);
+  free(tmp);
 
   return 0;
 }
