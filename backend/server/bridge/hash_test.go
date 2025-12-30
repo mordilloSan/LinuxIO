@@ -8,26 +8,14 @@ import (
 )
 
 func TestValidateBridgeHash_NoEmbeddedHash(t *testing.T) {
-	// When no hash is embedded, validation should be skipped
+	// When no hash is embedded, validation should fail
 	orig := config.BridgeSHA256
 	config.BridgeSHA256 = ""
 	defer func() { config.BridgeSHA256 = orig }()
 
-	// Create a temp file to act as the bridge binary
-	f, err := os.CreateTemp("", "bridge-test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(f.Name())
-	if _, err = f.WriteString("test binary content"); err != nil {
-		t.Fatalf("write temp file: %v", err)
-	}
-	f.Close()
-
-	// Should return nil (skip validation in dev mode)
-	err = validateBridgeHash(f.Name())
-	if err != nil {
-		t.Errorf("expected nil error with empty hash (dev mode), got: %v", err)
+	err := validateBridgeHash("/any/path")
+	if err == nil {
+		t.Error("expected error when no hash embedded, got nil")
 	}
 }
 

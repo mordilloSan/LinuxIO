@@ -36,6 +36,14 @@ const (
 	progressIntervalUpload = 512 * 1024
 )
 
+// FileProgress represents progress for file transfer operations.
+type FileProgress struct {
+	Bytes int64  `json:"bytes"`           // Bytes transferred so far
+	Total int64  `json:"total"`           // Total bytes (0 if unknown)
+	Pct   int    `json:"pct"`             // Percentage (0-100)
+	Phase string `json:"phase,omitempty"` // Optional phase description
+}
+
 // HandleFilebrowserStream handles a yamux stream for filebrowser operations.
 // streamType is one of: fb-download, fb-upload, fb-archive, fb-compress, fb-extract
 // args contains operation-specific parameters
@@ -84,13 +92,13 @@ func handleDownload(stream net.Conn, args []string) error {
 	if stat.IsDir() {
 		_ = ipc.WriteResultError(stream, 0, "path is a directory, use fb-archive instead", 400)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("path is a directory")
+		return ipc.ErrIsDirectory
 	}
 
 	totalSize := stat.Size()
 
 	// Send initial progress with total size
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "starting",
 	})
@@ -129,7 +137,7 @@ func handleDownload(stream net.Conn, args []string) error {
 				if totalSize > 0 {
 					pct = int(bytesRead * 100 / totalSize)
 				}
-				_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+				_ = ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesRead,
 					Total: totalSize,
 					Pct:   pct,
@@ -227,7 +235,7 @@ func handleUpload(stream net.Conn, args []string) error {
 	}()
 
 	// Send initial progress with total size
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: expectedSize,
 		Phase: "starting",
 	})
@@ -271,7 +279,7 @@ readLoop:
 					if expectedSize > 0 {
 						pct = int(bytesWritten * 100 / expectedSize)
 					}
-					_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+					_ = ipc.WriteProgress(stream, 0, FileProgress{
 						Bytes: bytesWritten,
 						Total: expectedSize,
 						Pct:   pct,
@@ -359,8 +367,12 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	default:
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("unsupported format: %s", format), 400)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("unsupported format: %s", format)
+		return ipc.ErrUnsupportedFormat
 	}
+
+	// Set up abort monitoring
+	cancelFn, cleanup := ipc.AbortMonitor(stream)
+	defer cleanup()
 
 	// Compute total size for progress
 	totalSize, err := services.ComputeArchiveSize(paths)
@@ -370,7 +382,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
 	})
@@ -386,32 +398,41 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	tempFile.Close()
 	defer os.Remove(tempPath)
 
-	// Create archive with progress callback
+	// Create archive with callbacks
 	var bytesProcessed int64
 	var lastProgress int64
-	progressCb := func(n int64) {
-		bytesProcessed += n
-		if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-			pct := int(bytesProcessed * 100 / totalSize)
-			if pct > 100 {
-				pct = 100
+	opts := &ipc.OperationCallbacks{
+		Progress: func(n int64) {
+			bytesProcessed += n
+			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
+				pct := int(bytesProcessed * 100 / totalSize)
+				if pct > 100 {
+					pct = 100
+				}
+				_ = ipc.WriteProgress(stream, 0, FileProgress{
+					Bytes: bytesProcessed,
+					Total: totalSize,
+					Pct:   pct,
+					Phase: "compressing",
+				})
+				lastProgress = bytesProcessed
 			}
-			_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
-				Bytes: bytesProcessed,
-				Total: totalSize,
-				Pct:   pct,
-				Phase: "compressing",
-			})
-			lastProgress = bytesProcessed
-		}
+		},
+		Cancel: cancelFn,
 	}
 
 	// Create archive
 	switch format {
 	case "zip":
-		err = services.CreateZip(tempPath, progressCb, tempPath, paths...)
+		err = services.CreateZip(tempPath, opts, tempPath, paths...)
 	case "tar.gz":
-		err = services.CreateTarGz(tempPath, progressCb, tempPath, paths...)
+		err = services.CreateTarGz(tempPath, opts, tempPath, paths...)
+	}
+	if err == ipc.ErrAborted {
+		logger.Infof("[FBStream] Archive download aborted")
+		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("archive download aborted")
 	}
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("archive creation failed: %v", err), 500)
@@ -432,7 +453,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	archiveSize := archiveStat.Size()
 
 	// Update progress for streaming phase
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: archiveSize,
 		Phase: "streaming",
 	})
@@ -460,7 +481,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 				if archiveSize > 0 {
 					pct = int(bytesSent * 100 / archiveSize)
 				}
-				_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+				_ = ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesSent,
 					Total: archiveSize,
 					Pct:   pct,
@@ -526,7 +547,7 @@ func handleCompress(stream net.Conn, args []string) error {
 	default:
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("unsupported format: %s", format), 400)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("unsupported format: %s", format)
+		return ipc.ErrUnsupportedFormat
 	}
 
 	// Ensure destination has correct extension
@@ -565,6 +586,10 @@ func handleCompress(stream net.Conn, args []string) error {
 		return fmt.Errorf("create parent dir: %w", err)
 	}
 
+	// Set up abort monitoring
+	cancelFn, cleanup := ipc.AbortMonitor(stream)
+	defer cleanup()
+
 	// Compute total size for progress
 	totalSize, err := services.ComputeArchiveSize(paths)
 	if err != nil {
@@ -573,39 +598,50 @@ func handleCompress(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
 	})
 
-	// Create progress callback
+	// Create callbacks
 	var bytesProcessed int64
 	var lastProgress int64
-	progressCb := func(n int64) {
-		bytesProcessed += n
-		if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-			pct := int(bytesProcessed * 100 / totalSize)
-			if pct > 100 {
-				pct = 100
+	opts := &ipc.OperationCallbacks{
+		Progress: func(n int64) {
+			bytesProcessed += n
+			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
+				pct := int(bytesProcessed * 100 / totalSize)
+				if pct > 100 {
+					pct = 100
+				}
+				_ = ipc.WriteProgress(stream, 0, FileProgress{
+					Bytes: bytesProcessed,
+					Total: totalSize,
+					Pct:   pct,
+					Phase: "compressing",
+				})
+				lastProgress = bytesProcessed
 			}
-			_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
-				Bytes: bytesProcessed,
-				Total: totalSize,
-				Pct:   pct,
-				Phase: "compressing",
-			})
-			lastProgress = bytesProcessed
-		}
+		},
+		Cancel: cancelFn,
 	}
 
 	// Create archive
 	switch format {
 	case "zip":
-		err = services.CreateZip(targetPath, progressCb, targetPath, paths...)
+		err = services.CreateZip(targetPath, opts, targetPath, paths...)
 	case "tar.gz":
-		err = services.CreateTarGz(targetPath, progressCb, targetPath, paths...)
+		err = services.CreateTarGz(targetPath, opts, targetPath, paths...)
+	}
+	if err == ipc.ErrAborted {
+		logger.Infof("[FBStream] Compress aborted, cleaning up: %s", targetPath)
+		os.Remove(targetPath)
+		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("compression aborted")
 	}
 	if err != nil {
+		os.Remove(targetPath) // Clean up partial file on error
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("compression failed: %v", err), 500)
 		_ = ipc.WriteStreamClose(stream, 0)
 		return fmt.Errorf("create archive: %w", err)
@@ -666,8 +702,12 @@ func handleExtract(stream net.Conn, args []string) error {
 	if archiveStat.IsDir() {
 		_ = ipc.WriteResultError(stream, 0, "path is a directory, not an archive", 400)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("path is a directory")
+		return ipc.ErrIsDirectory
 	}
+
+	// Set up abort monitoring
+	cancelFn, cleanup := ipc.AbortMonitor(stream)
+	defer cleanup()
 
 	// Compute total size for progress (uncompressed size)
 	totalSize, err := services.ComputeExtractSize(archivePath)
@@ -677,33 +717,43 @@ func handleExtract(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
 	})
 
-	// Create progress callback
+	// Create callbacks
 	var bytesProcessed int64
 	var lastProgress int64
-	progressCb := func(n int64) {
-		bytesProcessed += n
-		if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-			pct := int(bytesProcessed * 100 / totalSize)
-			if pct > 100 {
-				pct = 100
+	opts := &ipc.OperationCallbacks{
+		Progress: func(n int64) {
+			bytesProcessed += n
+			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
+				pct := int(bytesProcessed * 100 / totalSize)
+				if pct > 100 {
+					pct = 100
+				}
+				_ = ipc.WriteProgress(stream, 0, FileProgress{
+					Bytes: bytesProcessed,
+					Total: totalSize,
+					Pct:   pct,
+					Phase: "extracting",
+				})
+				lastProgress = bytesProcessed
 			}
-			_ = ipc.WriteProgressFrame(stream, 0, &ipc.ProgressFrame{
-				Bytes: bytesProcessed,
-				Total: totalSize,
-				Pct:   pct,
-				Phase: "extracting",
-			})
-			lastProgress = bytesProcessed
-		}
+		},
+		Cancel: cancelFn,
 	}
 
 	// Extract archive
-	if err := services.ExtractArchive(archivePath, destination, progressCb); err != nil {
+	err = services.ExtractArchive(archivePath, destination, opts)
+	if err == ipc.ErrAborted {
+		logger.Infof("[FBStream] Extract aborted")
+		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("extraction aborted")
+	}
+	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("extraction failed: %v", err), 500)
 		_ = ipc.WriteStreamClose(stream, 0)
 		return fmt.Errorf("extract archive: %w", err)

@@ -84,9 +84,3 @@ func (s *YamuxSession) IsClosed() bool {
 	defer s.mu.Unlock()
 	return s.closed || s.Session.IsClosed()
 }
-
-// IsYamuxConnection checks if the first byte indicates a yamux connection.
-// Yamux protocol starts with version byte 0x00.
-func IsYamuxConnection(firstByte byte) bool {
-	return firstByte == 0x00
-}

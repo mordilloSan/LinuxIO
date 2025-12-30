@@ -12,6 +12,12 @@
 
 8 - Improve the app update feature to give more feedback (like unraid)
 
+9 - right now hash can be reproduced if build from same code base. We need to make this time and machine specific??????
+
+10 - fix indexer status check and calls.
+
+11 - tls on socket?
+
 Remove gin - DONE
 use quantum filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE

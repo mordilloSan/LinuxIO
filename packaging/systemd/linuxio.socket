@@ -1,6 +1,7 @@
 [Unit]
 Description=LinuxIO Web Server (TCP socket)
 PartOf=linuxio.service
+Wants=linuxio-issue.service
 
 [Socket]
 ListenStream=0.0.0.0:8090

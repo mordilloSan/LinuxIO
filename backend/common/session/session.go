@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -68,8 +67,8 @@ var DefaultConfig = SessionConfig{
 
 type User struct {
 	Username string `json:"username"`
-	UID      string `json:"uid"`
-	GID      string `json:"gid"`
+	UID      uint32 `json:"uid"`
+	GID      uint32 `json:"gid"`
 }
 
 type Timing struct {
@@ -81,12 +80,10 @@ type Timing struct {
 }
 
 type Session struct {
-	SessionID    string `json:"session_id"`
-	User         User   `json:"user"`
-	Privileged   bool   `json:"privileged"`
-	BridgeSecret string `json:"bridge_secret"`
-	SocketPath   string `json:"socket_path"`
-	Timing       Timing `json:"timing"`
+	SessionID  string `json:"session_id"`
+	User       User   `json:"user"`
+	Privileged bool   `json:"privileged"`
+	Timing     Timing `json:"timing"`
 
 	// Persistent bridge connection (not serialized)
 	bridgeConn   net.Conn
@@ -95,6 +92,9 @@ type Session struct {
 	// Termination handler (not serialized)
 	terminateFunc func(DeleteReason) error
 	terminateMu   sync.Mutex
+
+	// MOTD from PAM login (bridge-only, not serialized)
+	Motd string `json:"-"`
 }
 
 // -----------------------------------------------------------------------------
@@ -253,12 +253,6 @@ func randID(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func generateSecret(n int) string {
-	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
 func expiredIdle(s *Session, now time.Time) bool     { return now.After(s.Timing.IdleUntil) }
 func expiredAbsolute(s *Session, now time.Time) bool { return now.After(s.Timing.AbsoluteUntil) }
 
@@ -291,10 +285,9 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 	}
 
 	sess := &Session{
-		SessionID:    id,
-		User:         user,
-		Privileged:   privileged,
-		BridgeSecret: generateSecret(32),
+		SessionID:  id,
+		User:       user,
+		Privileged: privileged,
 		Timing: Timing{
 			CreatedAt:     now,
 			LastAccess:    now,
@@ -303,17 +296,6 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 			AbsoluteUntil: abs,
 		},
 	}
-
-	// 🔧 NEW: generate and set the per-session socket path
-	uid64, err := strconv.ParseUint(user.UID, 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("parse uid %q: %w", user.UID, err)
-	}
-	sp, err := SocketPath(uint32(uid64))
-	if err != nil {
-		return nil, fmt.Errorf("new socket path: %w", err)
-	}
-	sess.SocketPath = sp
 
 	// Enforce single-session-per-user
 	if m.cfg.SingleSessionPerUser {

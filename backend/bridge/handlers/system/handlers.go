@@ -1,11 +1,7 @@
 package system
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-)
-
-func SystemHandlers() map[string]ipc.HandlerFunc {
-	return map[string]ipc.HandlerFunc{
+func SystemHandlers() map[string]func([]string) (any, error) {
+	return map[string]func([]string) (any, error){
 		"get_cpu_info": func([]string) (any, error) {
 			return FetchCPUInfo()
 		},

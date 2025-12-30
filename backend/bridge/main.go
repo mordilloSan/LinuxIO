@@ -1,17 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/signal"
-	"os/user"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -19,7 +14,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mordilloSan/go_logger/logger"
-	"github.com/spf13/pflag"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
@@ -30,92 +24,33 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
-// envConfig holds all environment values we need, captured at startup
-type envConfig struct {
-	SessionID     string
-	Username      string
-	UID           string
-	GID           string
-	Secret        string
-	Verbose       string
-	SocketPath    string
-	ServerBaseURL string
-	ServerCert    string
-	LogFD         int
+// readBootstrap reads binary bootstrap from stdin.
+// The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
+// FAIL-FAST: If bootstrap is invalid, exit immediately with code 1.
+// This ensures the auth daemon's exec-status pipe detects failure.
+func readBootstrap() *protocol.Bootstrap {
+	b, err := protocol.ReadBootstrap(os.Stdin)
+	if err != nil {
+		// Write to stderr because logger is not yet iniated(systemd captures to journal)
+		fmt.Fprintf(os.Stderr, "bridge bootstrap error: failed to read: %v\n", err)
+		os.Exit(1)
+	}
+
+	if b.SessionID == "" {
+		fmt.Fprintf(os.Stderr, "bridge bootstrap error: missing required session_id)\n")
+		os.Exit(1)
+	}
+
+	return b
 }
 
-type boot struct {
-	SessionID     string `json:"session_id"`
-	Username      string `json:"username"`
-	UID           string `json:"uid"`
-	GID           string `json:"gid"`
-	Secret        string `json:"secret"`
-	ServerBaseURL string `json:"server_base_url,omitempty"`
-	ServerCert    string `json:"server_cert,omitempty"`
-	SocketPath    string `json:"socket_path,omitempty"`
-	Verbose       string `json:"verbose,omitempty"`
-	LogFD         int    `json:"log_fd,omitempty"` // FD for piped logging in dev mode
-}
-
-func readBootstrapFromFD3() (*boot, error) {
-	f := os.NewFile(uintptr(3), "bootstrapfd")
-	if f == nil {
-		return nil, os.ErrNotExist
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, 64*1024))
-	if err != nil || len(b) == 0 {
-		return nil, err
-	}
-	var v boot
-	if err := json.Unmarshal(b, &v); err != nil {
-		return nil, err
-	}
-	if v.Secret == "" || v.SessionID == "" {
-		return nil, io.ErrUnexpectedEOF
-	}
-	return &v, nil
-}
-
-func initEnvCfg() envConfig {
-	if b, err := readBootstrapFromFD3(); err == nil && b != nil {
-		// prefer FD3 path
-		cfg := envConfig{
-			SessionID:     b.SessionID,
-			Username:      b.Username,
-			UID:           b.UID,
-			GID:           b.GID,
-			Secret:        b.Secret,
-			Verbose:       b.Verbose,
-			SocketPath:    b.SocketPath,
-			ServerBaseURL: b.ServerBaseURL,
-			ServerCert:    b.ServerCert,
-			LogFD:         b.LogFD,
-		}
-		return cfg
-	}
-	logger.Warnf("Failed to read bootstrap info from FD3")
-	return envConfig{}
-}
-
-// Capture config NOW (package init time)
-var envCfg = initEnvCfg()
-
-// Build minimal session object from our saved config
-var Sess = &session.Session{
-	SessionID: envCfg.SessionID,
-	User: session.User{
-		Username: envCfg.Username,
-		UID:      envCfg.UID,
-		GID:      envCfg.GID,
-	},
-	BridgeSecret: envCfg.Secret,
-	SocketPath:   envCfg.SocketPath,
-}
+// Bootstrap config and session - initialized in main() after CLI checks
+var bootCfg *protocol.Bootstrap
+var Sess *session.Session
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
 var bridgeClosing = make(chan struct{})
@@ -124,92 +59,51 @@ var bridgeClosing = make(chan struct{})
 var wg sync.WaitGroup
 
 func main() {
-	var envMode string
-	var verbose bool
-	var showVersion bool
-
-	pflag.StringVar(&envMode, "env", appconfig.EnvProduction, "environment (development|production)")
-	pflag.BoolVar(&verbose, "verbose", false, "enable verbose logs")
-	pflag.BoolVar(&showVersion, "version", false, "print version and exit")
-	pflag.Parse()
-
-	// If --verbose wasn't passed, check our saved environment config
-	if !pflag.Lookup("verbose").Changed {
-		if s := strings.TrimSpace(envCfg.Verbose); s != "" {
-			switch strings.ToLower(s) {
-			case "1", "true", "yes", "on":
-				verbose = true
-			}
-		}
-	}
-
-	// accept BOTH: ./linuxio-bridge --version  AND  ./linuxio-bridge version
-	if showVersion || (len(pflag.Args()) > 0 && (pflag.Args()[0] == "version" || pflag.Args()[0] == "-version" || pflag.Args()[0] == "-v")) {
+	// If stdin is a terminal, user ran this directly - show version and exit
+	if fileInfo, _ := os.Stdin.Stat(); (fileInfo.Mode() & os.ModeCharDevice) != 0 {
 		printBridgeVersion()
+		fmt.Println("(to be spawned by auth daemon, not for direct use)")
 		return
 	}
 
-	envMode = strings.ToLower(envMode)
-
-	// Use saved socket path from environment config
-	socketPath := strings.TrimSpace(envCfg.SocketPath)
-	if socketPath == "" {
-		// logger isn't initialized yet; print to stderr and exit
-		fmt.Fprintln(os.Stderr, "bridge bootstrap error: empty socket path in FD3 JSON")
-		os.Exit(1)
+	// Read bootstrap from stdin (auth daemon pipes this)
+	bootCfg = readBootstrap()
+	Sess = &session.Session{
+		SessionID: bootCfg.SessionID,
+		User: session.User{
+			Username: bootCfg.Username,
+			UID:      bootCfg.UID,
+			GID:      bootCfg.GID,
+		},
+		Motd: bootCfg.Motd,
 	}
 
-	// Initialize logger ASAP
-	// If we have a log FD in dev mode, redirect stdout/stderr to it for piped logging
-	// (dev mode logger uses stdout for colored output)
-	if envMode == appconfig.EnvDevelopment && envCfg.LogFD > 0 {
-		logFile := os.NewFile(uintptr(envCfg.LogFD), "logpipe")
-		if logFile != nil {
-			// Redirect both stdout and stderr to the log pipe
-			logFD := int(logFile.Fd())
-			stdoutFD := int(os.Stdout.Fd())
-			stderrFD := int(os.Stderr.Fd())
+	// All config comes from binary bootstrap on stdin
+	verbose := bootCfg.Verbose
 
-			if err := syscall.Dup2(logFD, stdoutFD); err != nil {
-				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stdout failed: %v\n", err)
-			}
-			if err := syscall.Dup2(logFD, stderrFD); err != nil {
-				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stderr failed: %v\n", err)
-			}
-			// Close the original FD to avoid leaking
-			if envCfg.LogFD != stdoutFD && envCfg.LogFD != stderrFD {
-				if err := logFile.Close(); err != nil {
-					fmt.Fprintf(os.Stderr, "bridge bootstrap error: close log fd failed: %v\n", err)
-				}
-			}
-		}
-	}
+	// Initialize logger (stdout/stderr → systemd journal)
+	logger.Init("production", verbose)
 
-	// Initialize logger - in dev mode with pipe, stdout/stderr already point to the pipe
-	// In production, C auth-helper redirects to journal or /dev/null
-	logger.InitWithFile(envMode, verbose, "")
-
-	logger.Infof("[bridge] boot: euid=%d uid=%s gid=%s socket=%s (environment cleared for security)",
-		os.Geteuid(), Sess.User.UID, Sess.User.GID, socketPath)
-
-	// Use saved server cert from environment config
-	if pem := strings.TrimSpace(envCfg.ServerCert); pem != "" {
-		if err := web.SetRootPoolFromPEM([]byte(pem)); err != nil {
-			logger.Warnf("failed to load LINUXIO_SERVER_CERT: %v", err)
-		} else {
-			logger.Debugf("Loaded server cert from saved environment config")
-		}
-	}
+	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
+		os.Geteuid(), Sess.User.UID, Sess.User.GID)
 
 	_ = syscall.Umask(0o077)
-	logger.Infof("[bridge] starting (uid=%d) sock=%s", os.Geteuid(), socketPath)
+	logger.Infof("[bridge] starting (uid=%d)", os.Geteuid())
 
-	listener, err := createAndOwnSocket(socketPath, Sess.User.UID)
-	if err != nil {
-		logger.Errorf("create socket: %v", err)
+	// Get the client connection from FD 3 (inherited from auth daemon)
+	const clientConnFD = 3
+	clientFile := os.NewFile(uintptr(clientConnFD), "client-conn")
+	if clientFile == nil {
+		logger.Errorf("failed to open client connection FD %d", clientConnFD)
 		os.Exit(1)
 	}
-	logger.Infof("[bridge] LISTENING on %s", socketPath)
+	clientConn, err := net.FileConn(clientFile)
+	clientFile.Close() // Close our reference; the net.Conn now owns the FD
+	if err != nil {
+		logger.Errorf("failed to create net.Conn from FD %d: %v", clientConnFD, err)
+		os.Exit(1)
+	}
+	logger.Infof("[bridge] connected via inherited FD %d", clientConnFD)
 
 	// Ensure per-user config exists and is valid
 	config.EnsureConfigReady(Sess.User.Username)
@@ -234,23 +128,17 @@ func main() {
 		}
 	}()
 
-	acceptDone := make(chan struct{})
+	// Handle the single client connection (no accept loop needed)
+	connDone := make(chan struct{})
 	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				select {
-				case <-acceptDone:
-					return
-				default:
-					logger.WarnKV("accept failed", "error", err)
-					time.Sleep(50 * time.Millisecond) // avoid tight loop during teardown
-				}
-				continue
-			}
-			id := uuid.NewString()
-			go handleMainRequest(conn, id)
+		id := uuid.NewString()
+		handleMainRequest(clientConn, id)
+		// Connection closed - trigger shutdown
+		select {
+		case ShutdownChan <- "client disconnected":
+		default: // already shutting down
 		}
+		close(connDone)
 	}()
 
 	cleanupDone := make(chan struct{}, 1)
@@ -263,10 +151,9 @@ func main() {
 		// Signal all goroutines that shutdown started
 		close(bridgeClosing)
 
-		// Stop accepting new connections and close listener
-		close(acceptDone)
-		if err := listener.Close(); err != nil {
-			logger.WarnKV("listener close failed", "error", err)
+		// Close the client connection to unblock any reads
+		if err := clientConn.Close(); err != nil {
+			logger.DebugKV("client conn close", "error", err)
 		}
 
 		// Bounded wait for in-flight requests; do not block forever
@@ -296,21 +183,10 @@ func main() {
 }
 
 func printBridgeVersion() {
-	fmt.Printf("linuxio-bridge %s\n", appconfig.Version)
+	fmt.Printf("LinuxIO Bridge %s\n", appconfig.Version)
 }
 
-// bufferedConn wraps a net.Conn with a buffered reader for protocol detection
-type bufferedConn struct {
-	net.Conn
-	r *bufio.Reader
-}
-
-func (bc *bufferedConn) Read(p []byte) (int, error) {
-	return bc.r.Read(p)
-}
-
-// handleMainRequest processes incoming bridge requests.
-// Auto-detects legacy JSON protocol vs new framed protocol.
+// handleMainRequest sets up a yamux session for the client connection.
 func handleMainRequest(conn net.Conn, id string) {
 	wg.Add(1)
 	defer wg.Done()
@@ -324,23 +200,7 @@ func handleMainRequest(conn net.Conn, id string) {
 		}
 	}()
 
-	// Peek at first byte to detect protocol
-	peekable := bufio.NewReader(conn)
-	firstByte, err := peekable.Peek(1)
-	if err != nil {
-		logger.WarnKV("failed to peek connection", "conn_id", id, "error", err)
-		return
-	}
-
-	// Wrap connection to include buffered data
-	wrappedConn := &bufferedConn{Conn: conn, r: peekable}
-
-	// Only yamux protocol is supported (starts with version byte 0x00)
-	if ipc.IsYamuxConnection(firstByte[0]) {
-		handleYamuxSession(wrappedConn, id)
-	} else {
-		logger.WarnKV("unknown protocol (expected yamux)", "conn_id", id, "first_byte", fmt.Sprintf("0x%02x", firstByte[0]))
-	}
+	handleYamuxSession(conn, id)
 }
 
 // handleYamuxSession handles a yamux multiplexed connection.
@@ -397,122 +257,10 @@ waitForStreams:
 }
 
 // handleYamuxStream handles a single stream within a yamux session.
-// Supports both JSON-encoded RPC and binary stream protocol.
+// All streams use the binary frame protocol (OpStreamOpen, OpStreamData, etc.)
 func handleYamuxStream(stream net.Conn, sessionID, streamID string) {
 	id := fmt.Sprintf("%s/%s", sessionID, streamID)
-
-	// Peek first byte to detect protocol
-	peekable := bufio.NewReader(stream)
-	firstByte, err := peekable.Peek(1)
-	if err != nil {
-		if err == io.EOF {
-			logger.DebugKV("yamux stream closed", "stream_id", id)
-		} else {
-			logger.WarnKV("failed to peek yamux stream", "stream_id", id, "error", err)
-		}
-		return
-	}
-
-	// Check if this is a binary stream frame (0x80+)
-	if ipc.IsStreamFrame(firstByte[0]) {
-		handleBinaryStream(&bufferedConn{Conn: stream, r: peekable}, id)
-		return
-	}
-
-	// Read the JSON-encoded request
-	req, err := ipc.ReadRequest(peekable)
-	if err != nil {
-		if err == io.EOF {
-			logger.DebugKV("yamux stream closed", "stream_id", id)
-		} else {
-			logger.WarnKV("failed to read yamux request", "stream_id", id, "error", err)
-			_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "invalid request"})
-		}
-		return
-	}
-
-	// Validate request
-	if req.Secret != Sess.BridgeSecret {
-		logger.WarnKV("invalid bridge secret", "stream_id", id)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "invalid secret"})
-		return
-	}
-	if req.SessionID != Sess.SessionID {
-		logger.WarnKV("session mismatch", "stream_id", id)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "session mismatch"})
-		return
-	}
-	if strings.ContainsAny(req.Type, "./\\") || strings.ContainsAny(req.Command, "./\\") {
-		logger.WarnKV("invalid characters in request", "stream_id", id, "req_type", req.Type, "command", req.Command)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "invalid characters in command/type"})
-		return
-	}
-
-	logger.DebugKV("yamux request received", "stream_id", id, "req_type", req.Type, "command", req.Command, "args", req.Args)
-
-	group, found := handlers.HandlersByType[req.Type]
-	if !found || group == nil {
-		logger.WarnKV("unknown request type", "stream_id", id, "req_type", req.Type)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown type: %s", req.Type)})
-		return
-	}
-	handler, ok := group[req.Command]
-	if !ok {
-		logger.WarnKV("unknown request command", "stream_id", id, "req_type", req.Type, "command", req.Command)
-		_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: fmt.Sprintf("unknown command: %s", req.Command)})
-		return
-	}
-
-	type result struct {
-		out any
-		err error
-	}
-	done := make(chan result, 1)
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.ErrorKV("handler panic", "stream_id", id, "req_type", req.Type, "command", req.Command, "panic", r)
-				done <- result{nil, fmt.Errorf("panic: %v", r)}
-			}
-		}()
-		out, err := handler(req.Args)
-		done <- result{out, err}
-	}()
-
-	select {
-	case r := <-done:
-		if r.err != nil {
-			logger.ErrorKV("handler error", "stream_id", id, "req_type", req.Type, "command", req.Command, "error", r.err)
-			_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: r.err.Error()})
-			return
-		}
-
-		// Marshal handler output to JSON once (stored as RawMessage, no double-encoding)
-		var output json.RawMessage
-		if r.out != nil {
-			var err error
-			output, err = json.Marshal(r.out)
-			if err != nil {
-				logger.ErrorKV("failed to marshal handler output", "stream_id", id, "error", err)
-				_ = ipc.WriteResponse(stream, &ipc.Response{Status: "error", Error: "marshal error"})
-				return
-			}
-		}
-
-		if err := ipc.WriteResponse(stream, &ipc.Response{Status: "ok", Output: output}); err != nil {
-			logger.WarnKV("failed to send yamux response", "stream_id", id, "error", err)
-			return
-		}
-		logger.DebugKV("yamux response sent", "stream_id", id, "req_type", req.Type, "command", req.Command)
-
-	case <-bridgeClosing:
-		_ = ipc.WriteResponse(stream, &ipc.Response{
-			Status: "error",
-			Error:  "canceled: bridge shutting down",
-		})
-		return
-	}
+	handleBinaryStream(stream, id)
 }
 
 // handleBinaryStream handles binary stream protocol (terminal streaming, etc.)
@@ -567,72 +315,6 @@ func handleBinaryStream(conn net.Conn, id string) {
 			StreamID: frame.StreamID,
 		})
 	}
-}
-
-func createAndOwnSocket(socketPath, uidStr string) (net.Listener, error) {
-	logger.Debugf("[socket] unlink-if-exists %s", socketPath)
-	_ = os.Remove(socketPath)
-
-	// Sanity-check parent directory exists (fail fast with a clear error)
-	parent := filepath.Dir(socketPath)
-	if st, err := os.Stat(parent); err != nil {
-		logger.Errorf("[socket] parent dir not accessible: %s: %v", parent, err)
-		return nil, fmt.Errorf("parent dir %s not accessible: %w", parent, err)
-	} else if !st.IsDir() {
-		logger.Errorf("[socket] parent is not a directory: %s", parent)
-		return nil, fmt.Errorf("parent path %s is not a directory", parent)
-	}
-
-	logger.Debugf("[socket] net.Listen(unix, %s)", socketPath)
-	l, err := net.Listen("unix", socketPath)
-	if err != nil {
-		logger.Errorf("[socket] listen FAILED on %s: %v", socketPath, err)
-		return nil, fmt.Errorf("failed to listen on socket: %w", err)
-	}
-	logger.Debugf("[socket] listen OK: %s", socketPath)
-
-	if ul, ok := l.(*net.UnixListener); ok {
-		ul.SetUnlinkOnClose(true)
-	}
-
-	if err := os.Chmod(socketPath, 0o660); err != nil {
-		logger.Errorf("[socket] chmod 0660 FAILED on %s: %v", socketPath, err)
-		_ = l.Close()
-		_ = os.Remove(socketPath)
-		return nil, fmt.Errorf("chmod: %w", err)
-	}
-	logger.Debugf("[socket] chmod 0660 OK: %s", socketPath)
-
-	// If running as root, chown socket to <uid>:linuxio so server (group linuxio) can connect.
-	if os.Geteuid() == 0 {
-		uid, err := strconv.Atoi(uidStr)
-		if err != nil {
-			logger.Errorf("[socket] atoi uid FAILED (%q): %v", uidStr, err)
-			_ = l.Close()
-			_ = os.Remove(socketPath)
-			return nil, fmt.Errorf("atoi uid: %w", err)
-		}
-		gid := resolveLinuxioGID()
-		if err := os.Chown(socketPath, uid, gid); err != nil {
-			logger.Errorf("[socket] chown %s to %d:%d FAILED: %v", socketPath, uid, gid, err)
-			_ = l.Close()
-			_ = os.Remove(socketPath)
-			return nil, fmt.Errorf("chown: %w", err)
-		}
-		logger.Debugf("[socket] chown OK (uid=%d gid=%d): %s", uid, gid, socketPath)
-	}
-
-	logger.Infof("[socket] LISTENING on %s", socketPath)
-	return l, nil
-}
-
-func resolveLinuxioGID() int {
-	grp, err := user.LookupGroup("linuxio")
-	if err != nil {
-		return 0
-	}
-	gid, _ := strconv.Atoi(grp.Gid)
-	return gid
 }
 
 // HandleAPIStream handles a yamux stream for JSON API calls.

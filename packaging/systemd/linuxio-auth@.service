@@ -1,0 +1,16 @@
+[Unit]
+Description=LinuxIO Authentication Worker %I
+Documentation=https://github.com/mordilloSan/LinuxIO
+Requires=linuxio-auth.socket
+After=linuxio-auth.socket
+
+[Service]
+ExecStart=/usr/local/bin/linuxio-auth
+StandardInput=socket
+StandardOutput=inherit
+StandardError=journal
+User=root
+Group=root
+SuccessExitStatus=1 5 126 127
+Restart=no
+

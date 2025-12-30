@@ -1,13 +1,9 @@
 package drive
 
-import (
-	"fmt"
+import "fmt"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-)
-
-func DriveHandlers() map[string]ipc.HandlerFunc {
-	return map[string]ipc.HandlerFunc{
+func DriveHandlers() map[string]func([]string) (any, error) {
+	return map[string]func([]string) (any, error){
 		"get_drive_info": func([]string) (any, error) {
 			return FetchDriveInfo()
 		},

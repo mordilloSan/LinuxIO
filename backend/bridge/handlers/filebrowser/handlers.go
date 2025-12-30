@@ -1,11 +1,7 @@
 package filebrowser
 
-import (
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-)
-
-func FilebrowserHandlers() map[string]ipc.HandlerFunc {
-	return map[string]ipc.HandlerFunc{
+func FilebrowserHandlers() map[string]func([]string) (any, error) {
+	return map[string]func([]string) (any, error){
 		"resource_get":          resourceGet,
 		"resource_stat":         resourceStat,
 		"resource_delete":       resourceDelete,

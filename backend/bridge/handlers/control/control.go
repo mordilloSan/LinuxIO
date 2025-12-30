@@ -15,7 +15,6 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 const InstallScriptURL = "https://raw.githubusercontent.com/" + config.RepoOwner + "/" + config.RepoName + "/main/packaging/scripts/install-linuxio-binaries.sh"
@@ -35,8 +34,8 @@ func logStream(r io.Reader, prefix string, isInfo bool) {
 	}
 }
 
-func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
-	return map[string]ipc.HandlerFunc{
+func ControlHandlers(shutdownChan chan string) map[string]func([]string) (any, error) {
+	return map[string]func([]string) (any, error){
 		"shutdown": func(args []string) (any, error) {
 			reason := "unknown"
 			if len(args) > 0 {
@@ -48,10 +47,6 @@ func ControlHandlers(shutdownChan chan string) map[string]ipc.HandlerFunc {
 			default:
 			}
 			return "Bridge shutting down", nil
-		},
-		"ping": func(args []string) (any, error) {
-			_ = args
-			return map[string]string{"type": "pong"}, nil
 		},
 		"version": func(args []string) (any, error) {
 			_ = args
@@ -238,7 +233,7 @@ func runInstallScript(version string) error {
 }
 
 func getInstalledVersion() string {
-	cmd := exec.Command(config.BinPath, "--version")
+	cmd := exec.Command(config.BinDir+"/linuxio", "--version")
 	output, err := cmd.Output()
 	if err != nil {
 		// Fall back to compiled-in version (useful in dev mode where binary doesn't exist)

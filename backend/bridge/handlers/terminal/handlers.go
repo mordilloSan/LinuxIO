@@ -3,7 +3,6 @@ package terminal
 import (
 	"strconv"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -20,8 +19,8 @@ import (
 // - input_container [containerID data]
 // - resize_container [containerID cols rows]
 // - close_container [containerID]
-func TerminalHandlers(sess *session.Session) map[string]ipc.HandlerFunc {
-	return map[string]ipc.HandlerFunc{
+func TerminalHandlers(sess *session.Session) map[string]func([]string) (any, error) {
+	return map[string]func([]string) (any, error){
 		"start_main": func(_ []string) (any, error) {
 			return map[string]bool{"started": true}, StartTerminal(sess)
 		},

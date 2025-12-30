@@ -7,7 +7,6 @@ import (
 
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -19,10 +18,10 @@ type themePayload struct {
 	ShowHiddenFiles     *bool   `json:"showHiddenFiles"`
 }
 
-func ThemeHandlers(sess *session.Session) map[string]ipc.HandlerFunc {
+func ThemeHandlers(sess *session.Session) map[string]func([]string) (any, error) {
 	username := sess.User.Username
 
-	return map[string]ipc.HandlerFunc{
+	return map[string]func([]string) (any, error){
 		"theme_get": func(args []string) (any, error) {
 			cfg, cfgPath, err := Load(username)
 			if err != nil {
