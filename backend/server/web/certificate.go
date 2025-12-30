@@ -6,10 +6,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"math/big"
 	"net"
-	"sync/atomic"
 	"time"
 )
 
@@ -41,35 +39,4 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
 	return tls.X509KeyPair(certPEM, keyPEM)
-}
-
-var pool atomic.Pointer[x509.CertPool]
-
-func SetRootPoolFromServerCert(tc tls.Certificate) {
-	cp := x509.NewCertPool()
-	if len(tc.Certificate) > 0 {
-		if leaf, err := x509.ParseCertificate(tc.Certificate[0]); err == nil {
-			cp.AddCert(leaf)
-		}
-	}
-	pool.Store(cp)
-}
-
-func GetRootPool() *x509.CertPool {
-	if p := pool.Load(); p != nil {
-		return p
-	}
-	if sys, err := x509.SystemCertPool(); err == nil {
-		return sys
-	}
-	return x509.NewCertPool()
-}
-
-func SetRootPoolFromPEM(pemData []byte) error {
-	cp := x509.NewCertPool()
-	if ok := cp.AppendCertsFromPEM(pemData); !ok {
-		return fmt.Errorf("invalid CA PEM")
-	}
-	pool.Store(cp)
-	return nil
 }

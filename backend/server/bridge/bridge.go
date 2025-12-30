@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/mordilloSan/go_logger/logger"
@@ -72,7 +71,7 @@ func validateBridgeHash(bridgePath string) error {
 // StartBridge launches linuxio-bridge via the auth daemon.
 // On success, creates a yamux session for the bridge connection and stores it.
 // Returns (privilegedMode, motd, error). privilegedMode reflects the daemon's decision.
-func StartBridge(sess *session.Session, password string, envMode string, verbose bool, bridgeBinary string) (bool, string, error) {
+func StartBridge(sess *session.Session, password string, verbose bool, bridgeBinary string) (bool, string, error) {
 	// Resolve bridge binary (helper also validates)
 	if bridgeBinary == "" {
 		bridgeBinary = GetBridgeBinaryPath("")
@@ -91,7 +90,7 @@ func StartBridge(sess *session.Session, password string, envMode string, verbose
 	}
 
 	logger.Debugf("Auth daemon available, using socket-based auth")
-	req := BuildRequest(sess, password, bridgeBinary, strings.ToLower(envMode), verbose)
+	req := BuildRequest(sess, password, bridgeBinary, verbose)
 	result, err := Authenticate(req)
 	if err != nil {
 		return false, "", fmt.Errorf("auth daemon failed: %w", err)

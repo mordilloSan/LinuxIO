@@ -69,10 +69,9 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		_ = override
 		return "/fake/bridge"
 	}
-	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, string, error) {
+	startBridge = func(sess *session.Session, password string, verbose bool, bin string) (bool, string, error) {
 		_ = sess
 		_ = password
-		_ = env
 		_ = verbose
 		_ = bin
 		return true, "Welcome to LinuxIO!", nil // privileged
@@ -118,10 +117,9 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, string, error) {
+	startBridge = func(sess *session.Session, password string, verbose bool, bin string) (bool, string, error) {
 		_ = sess
 		_ = password
-		_ = env
 		_ = verbose
 		_ = bin
 		return false, "", fmt.Errorf("authentication failed: bad credentials")
@@ -157,10 +155,9 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password, env string, verbose bool, bin string) (bool, string, error) {
+	startBridge = func(sess *session.Session, password string, verbose bool, bin string) (bool, string, error) {
 		_ = sess
 		_ = password
-		_ = env
 		_ = verbose
 		_ = bin
 		return false, "", nil

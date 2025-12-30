@@ -17,40 +17,27 @@ const (
 	ProtoMagic2  = 'O'
 	ProtoVersion = 1
 
-	// Fixed header size: magic(4) + uid(4) + gid(4) + flags(1) + env(1) + log_fd(4) = 18
-	ProtoHeaderSize = 18
+	// Fixed header size: magic(4) + uid(4) + gid(4) + flags(1) = 13
+	ProtoHeaderSize = 13
 
 	// Flags byte
 	ProtoFlagVerbose    = 0x01
 	ProtoFlagPrivileged = 0x02
-
-	// Environment mode values
-	ProtoEnvProduction  = 0
-	ProtoEnvDevelopment = 1
 )
 
 // Bootstrap is the configuration passed from auth daemon to bridge via stdin.
 // This replaces the previous JSON-based bootstrap.
 type Bootstrap struct {
-	UID           uint32
-	GID           uint32
-	Verbose       bool
-	Privileged    bool
-	EnvMode       uint8 // ProtoEnvProduction or ProtoEnvDevelopment
-	LogFD         int32
-	SessionID     string
-	Username      string
-	ServerBaseURL string
-	ServerCert    string
-}
-
-// IsDevelopment returns true if running in development mode.
-func (b *Bootstrap) IsDevelopment() bool {
-	return b.EnvMode == ProtoEnvDevelopment
+	UID        uint32
+	GID        uint32
+	Verbose    bool
+	Privileged bool
+	SessionID  string
+	Username   string
 }
 
 // ReadBootstrap reads a binary bootstrap from the given reader.
-// Format: [magic:4][uid:4][gid:4][flags:1][env:1][log_fd:4][len:2][session_id]...
+// Format: [magic:4][uid:4][gid:4][flags:1][len:2][session_id]...
 func ReadBootstrap(r io.Reader) (*Bootstrap, error) {
 	// Read fixed header
 	var hdr [ProtoHeaderSize]byte
@@ -71,8 +58,6 @@ func ReadBootstrap(r io.Reader) (*Bootstrap, error) {
 		GID:        binary.BigEndian.Uint32(hdr[8:12]),
 		Verbose:    hdr[12]&ProtoFlagVerbose != 0,
 		Privileged: hdr[12]&ProtoFlagPrivileged != 0,
-		EnvMode:    hdr[13],
-		LogFD:      int32(binary.BigEndian.Uint32(hdr[14:18])),
 	}
 
 	// Read variable-length fields
@@ -82,12 +67,6 @@ func ReadBootstrap(r io.Reader) (*Bootstrap, error) {
 	}
 	if b.Username, err = readLenStr(r); err != nil {
 		return nil, fmt.Errorf("read username: %w", err)
-	}
-	if b.ServerBaseURL, err = readLenStr(r); err != nil {
-		return nil, fmt.Errorf("read server_base_url: %w", err)
-	}
-	if b.ServerCert, err = readLenStr(r); err != nil {
-		return nil, fmt.Errorf("read server_cert: %w", err)
 	}
 
 	return b, nil

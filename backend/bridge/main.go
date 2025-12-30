@@ -26,7 +26,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/server/web"
 )
 
 // readBootstrap reads binary bootstrap from stdin.
@@ -36,7 +35,7 @@ import (
 func readBootstrap() *protocol.Bootstrap {
 	b, err := protocol.ReadBootstrap(os.Stdin)
 	if err != nil {
-		// Write to stderr before logger init (stderr goes to journal via dup2)
+		// Write to stderr because logger is not yet iniated(systemd captures to journal)
 		fmt.Fprintf(os.Stderr, "bridge bootstrap error: failed to read: %v\n", err)
 		os.Exit(1)
 	}
@@ -80,52 +79,12 @@ func main() {
 
 	// All config comes from binary bootstrap on stdin
 	verbose := bootCfg.Verbose
-	envMode := appconfig.EnvProduction
-	if bootCfg.IsDevelopment() {
-		envMode = appconfig.EnvDevelopment
-	}
 
-	// Initialize logger ASAP
-	// If we have a log FD in dev mode, redirect stdout/stderr to it for piped logging
-	// (dev mode logger uses stdout for colored output)
-	if envMode == appconfig.EnvDevelopment && bootCfg.LogFD > 0 {
-		logFile := os.NewFile(uintptr(bootCfg.LogFD), "logpipe")
-		if logFile != nil {
-			// Redirect both stdout and stderr to the log pipe
-			logFD := int(logFile.Fd())
-			stdoutFD := int(os.Stdout.Fd())
-			stderrFD := int(os.Stderr.Fd())
-
-			if err := syscall.Dup2(logFD, stdoutFD); err != nil {
-				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stdout failed: %v\n", err)
-			}
-			if err := syscall.Dup2(logFD, stderrFD); err != nil {
-				fmt.Fprintf(os.Stderr, "bridge bootstrap error: redirect stderr failed: %v\n", err)
-			}
-			// Close the original FD to avoid leaking
-			if int(bootCfg.LogFD) != stdoutFD && int(bootCfg.LogFD) != stderrFD {
-				if err := logFile.Close(); err != nil {
-					fmt.Fprintf(os.Stderr, "bridge bootstrap error: close log fd failed: %v\n", err)
-				}
-			}
-		}
-	}
-
-	// Initialize logger - in dev mode with pipe, stdout/stderr already point to the pipe
-	// In production, C auth-helper redirects to journal or /dev/null
-	logger.InitWithFile(envMode, verbose, "")
+	// Initialize logger (stdout/stderr → systemd journal)
+	logger.Init(appconfig.EnvProduction, verbose)
 
 	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID)
-
-	// Use server cert from bootstrap
-	if pem := strings.TrimSpace(bootCfg.ServerCert); pem != "" {
-		if err := web.SetRootPoolFromPEM([]byte(pem)); err != nil {
-			logger.Warnf("failed to load server cert: %v", err)
-		} else {
-			logger.Debugf("Loaded server cert from bootstrap")
-		}
-	}
 
 	_ = syscall.Umask(0o077)
 	logger.Infof("[bridge] starting (uid=%d)", os.Geteuid())

@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
@@ -122,16 +121,6 @@ func RunServer(cfg ServerConfig) {
 					logger.Errorf("Failed to generate cert: %v", cErr)
 				}
 				srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-				web.SetRootPoolFromServerCert(cert)
-
-				// Export base URL and cert for children (bridge, etc.)
-				_ = os.Setenv("LINUXIO_SERVER_BASE_URL", "https://localhost:8090")
-				if len(cert.Certificate) > 0 {
-					pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
-					if len(pemBytes) > 0 {
-						_ = os.Setenv("LINUXIO_SERVER_CERT", string(pemBytes))
-					}
-				}
 
 				for _, l := range listeners {
 					tlsLis := tls.NewListener(l, srv.TLSConfig)
@@ -158,7 +147,7 @@ func RunServer(cfg ServerConfig) {
 				logger.Infof("Socket-activated HTTP server listening on inherited sockets")
 			}
 
-			// 🔻 Start idle-exit only in socket-activation mode
+			// Start idle-exit only in socket-activation mode
 			const idleGrace = 90 * time.Second
 			const checkEvery = 15 * time.Second
 			startSocketIdleExitWatcher(
@@ -183,23 +172,11 @@ func RunServer(cfg ServerConfig) {
 				os.Exit(1)
 			}
 			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-			web.SetRootPoolFromServerCert(cert)
 
-			baseURL := fmt.Sprintf("https://localhost:%d", cfg.Port)
-			_ = os.Setenv("LINUXIO_SERVER_BASE_URL", baseURL)
-			if len(cert.Certificate) > 0 {
-				pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
-				if len(pemBytes) > 0 {
-					_ = os.Setenv("LINUXIO_SERVER_CERT", string(pemBytes))
-				}
-			}
-
-			logger.Infof("HTTPS server (self-bound) at %s", baseURL)
+			logger.Infof("HTTPS server (self-bound) at https://localhost:%d", cfg.Port)
 			err = srv.ListenAndServeTLS("", "")
 		} else {
-			baseURL := fmt.Sprintf("http://localhost:%d", cfg.Port)
-			_ = os.Setenv("LINUXIO_SERVER_BASE_URL", baseURL)
-			logger.Infof("HTTP server (self-bound) at %s", baseURL)
+			logger.Infof("HTTP server (self-bound) at http://localhost:%d", cfg.Port)
 			err = srv.ListenAndServe()
 		}
 
