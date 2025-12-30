@@ -244,6 +244,18 @@ install_pam_config() {
 # Global variable to store the selected port
 SELECTED_PORT=8090
 
+stop_existing_services() {
+    # Stop existing linuxio services before updating
+    # This frees up the port and allows clean binary replacement
+    if systemctl is-active linuxio.service >/dev/null 2>&1 || \
+       systemctl is-active linuxio.socket >/dev/null 2>&1; then
+        log_info "Stopping existing LinuxIO services..."
+        systemctl stop linuxio.service linuxio.socket 2>/dev/null || true
+        systemctl stop linuxio-auth.socket 2>/dev/null || true
+        log_ok "Existing services stopped"
+    fi
+}
+
 is_port_in_use() {
     local port="$1"
     # Check if port is in use by a process OTHER than linuxio
@@ -459,6 +471,9 @@ main() {
         log_info "Target version: latest"
     fi
     echo ""
+
+    # Stop existing services first to free up port and allow clean updates
+    stop_existing_services
 
     # Step 1: Download binaries (unless skipped)
     if [[ $skip_binaries -eq 0 ]]; then
