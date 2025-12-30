@@ -63,10 +63,9 @@ func RunServer(cfg ServerConfig) {
 	// Router
 	// -------------------------------------------------------------------------
 	router := web.BuildRouter(web.Config{
-		Env:      envMode,
-		Verbose:  verbose,
-		VitePort: cfg.ViteDevPort,
-		UI:       ui,
+		Env:     envMode,
+		Verbose: verbose,
+		UI:      ui,
 		RegisterRoutes: func(mux *http.ServeMux) {
 			auth.RegisterAuthRoutes(mux, sm, envMode, verbose)
 		},
