@@ -13,11 +13,9 @@ import (
 
 // ServerConfig is the minimal runtime config passed to the server.
 type ServerConfig struct {
-	Port             int
-	BridgeBinaryPath string
-	Env              string // EnvDevelopment | EnvProduction
-	Verbose          bool
-	ViteDevPort      int // used only for dev CORS allowance
+	Port    int
+	Env     string // EnvDevelopment | EnvProduction
+	Verbose bool
 }
 
 // test seams (override in tests)
@@ -49,10 +47,8 @@ func StartLinuxIO() {
 		var detach bool
 
 		runCmd.IntVar(&cfg.Port, "port", 8090, "HTTP server port (1-65535)")
-		runCmd.StringVar(&cfg.BridgeBinaryPath, "bridge-binary", "", "path to linuxio-bridge binary")
 		runCmd.StringVar(&cfg.Env, "env", config.EnvProduction, "environment: development|production")
 		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "enable verbose logging")
-		runCmd.IntVar(&cfg.ViteDevPort, "vite-port", 3000, "vite dev server port (dev CORS only)")
 		runCmd.BoolVar(&detach, "detach", false, "run in background (daemonize)")
 
 		runCmd.Usage = func() {
@@ -108,8 +104,7 @@ Commands:
 
 Examples:
   linuxio run
-  linuxio run -env development -port 18090 -verbose
-  linuxio run -bridge-binary /usr/local/bin/linuxio-bridge
+  linuxio run -port 8090 -verbose
   linuxio run -detach
 
 Use "linuxio <command> -h" for more info about a command.

@@ -11,33 +11,6 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 )
 
-// CorsMiddleware returns middleware that handles CORS for development.
-func CorsMiddleware(vitePort int) func(http.Handler) http.Handler {
-	devLocalhost := fmt.Sprintf("http://localhost:%d", vitePort)
-	dev127 := fmt.Sprintf("http://127.0.0.1:%d", vitePort)
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			origin := r.Header.Get("Origin")
-			if origin == devLocalhost || origin == dev127 {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Vary", "Origin")
-				w.Header().Set("Access-Control-Allow-Credentials", "true")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			} else if origin != "" {
-				logger.Debugf("CORS denied: %s %s", r.Method, origin)
-			}
-
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 // RecoveryMiddleware returns middleware that recovers from panics.
 func RecoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
