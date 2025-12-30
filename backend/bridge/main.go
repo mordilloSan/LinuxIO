@@ -48,19 +48,9 @@ func readBootstrap() *protocol.Bootstrap {
 	return b
 }
 
-// Capture bootstrap config at package init time
-var bootCfg = readBootstrap()
-
-// Build minimal session object from our saved config
-var Sess = &session.Session{
-	SessionID: bootCfg.SessionID,
-	User: session.User{
-		Username: bootCfg.Username,
-		UID:      bootCfg.UID,
-		GID:      bootCfg.GID,
-	},
-	Motd: bootCfg.Motd,
-}
+// Bootstrap config and session - initialized in main() after CLI checks
+var bootCfg *protocol.Bootstrap
+var Sess *session.Session
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
 var bridgeClosing = make(chan struct{})
@@ -69,13 +59,23 @@ var bridgeClosing = make(chan struct{})
 var wg sync.WaitGroup
 
 func main() {
-	// Check for version flag (standalone invocation)
-	if len(os.Args) > 1 {
-		arg := os.Args[1]
-		if arg == "version" || arg == "--version" || arg == "-version" || arg == "-v" {
-			printBridgeVersion()
-			return
-		}
+	// If stdin is a terminal, user ran this directly - show version and exit
+	if fileInfo, _ := os.Stdin.Stat(); (fileInfo.Mode() & os.ModeCharDevice) != 0 {
+		printBridgeVersion()
+		fmt.Println("(to be spawned by auth daemon, not for direct use)")
+		return
+	}
+
+	// Read bootstrap from stdin (auth daemon pipes this)
+	bootCfg = readBootstrap()
+	Sess = &session.Session{
+		SessionID: bootCfg.SessionID,
+		User: session.User{
+			Username: bootCfg.Username,
+			UID:      bootCfg.UID,
+			GID:      bootCfg.GID,
+		},
+		Motd: bootCfg.Motd,
 	}
 
 	// All config comes from binary bootstrap on stdin
@@ -183,7 +183,7 @@ func main() {
 }
 
 func printBridgeVersion() {
-	fmt.Printf("linuxio-bridge %s\n", appconfig.Version)
+	fmt.Printf("LinuxIO Bridge %s\n", appconfig.Version)
 }
 
 // handleMainRequest sets up a yamux session for the client connection.
