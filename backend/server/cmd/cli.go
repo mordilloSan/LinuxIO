@@ -14,7 +14,6 @@ import (
 // ServerConfig is the minimal runtime config passed to the server.
 type ServerConfig struct {
 	Port    int
-	Env     string // EnvDevelopment | EnvProduction
 	Verbose bool
 }
 
@@ -47,7 +46,6 @@ func StartLinuxIO() {
 		var detach bool
 
 		runCmd.IntVar(&cfg.Port, "port", 8090, "HTTP server port (1-65535)")
-		runCmd.StringVar(&cfg.Env, "env", config.EnvProduction, "environment: development|production")
 		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "enable verbose logging")
 		runCmd.BoolVar(&detach, "detach", false, "run in background (daemonize)")
 
@@ -64,13 +62,6 @@ func StartLinuxIO() {
 		// Validate port (reject 0: server needs a fixed, known port for clients)
 		if cfg.Port <= 0 || cfg.Port > 65535 {
 			fmt.Fprintln(os.Stderr, "invalid -port: must be between 1 and 65535 (port 0 not supported)")
-			os.Exit(2)
-		}
-
-		// Validate environment
-		cfg.Env = strings.ToLower(cfg.Env)
-		if cfg.Env != config.EnvDevelopment && cfg.Env != config.EnvProduction {
-			fmt.Fprintf(os.Stderr, "invalid -env: must be %q or %q\n", config.EnvDevelopment, config.EnvProduction)
 			os.Exit(2)
 		}
 

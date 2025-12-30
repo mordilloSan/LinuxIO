@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -73,7 +72,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}
 	// Manager + handlers
 	sm := session.NewManager(session.New(), session.SessionConfig{})
-	h := &Handlers{SM: sm, Env: config.EnvDevelopment, Verbose: true}
+	h := &Handlers{SM: sm, Verbose: true}
 	r := newRouterForTests(h)
 
 	// Act
@@ -119,7 +118,7 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 		return false, "", fmt.Errorf("authentication failed: bad credentials")
 	}
 	sm := session.NewManager(session.New(), session.SessionConfig{})
-	h := &Handlers{SM: sm, Env: config.EnvDevelopment}
+	h := &Handlers{SM: sm}
 	r := newRouterForTests(h)
 
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "bad"})
@@ -139,7 +138,7 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	// Minimal happy path to get a session cookie:
 	sm := session.NewManager(session.New(), session.SessionConfig{})
-	h := &Handlers{SM: sm, Env: config.EnvDevelopment}
+	h := &Handlers{SM: sm}
 	r := newRouterForTests(h)
 
 	// Stub seams for login:

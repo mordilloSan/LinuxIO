@@ -14,7 +14,6 @@ import (
 
 // Config holds router configuration.
 type Config struct {
-	Env            string
 	Verbose        bool
 	UI             fs.FS
 	RegisterRoutes func(mux *http.ServeMux) // Called to register API routes

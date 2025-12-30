@@ -3,7 +3,6 @@ package bridge
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,49 +24,38 @@ var yamuxSessions = struct {
 }
 
 // validateBridgeHash computes SHA256 of the bridge binary and compares to expected.
-// Returns nil if hash matches or no hash is embedded (development mode).
-// Returns error if hash mismatch (security violation).
+// Returns error if no hash embedded, hash mismatch, or file cannot be read.
 func validateBridgeHash(bridgePath string) error {
 	expectedHash := config.BridgeSHA256
-
-	// Skip validation in development (no hash embedded)
 	if expectedHash == "" {
-		logger.Debugf("Bridge hash validation skipped (no embedded hash - development mode?)")
-		return nil
+		return fmt.Errorf("bridge hash not embedded at build time")
 	}
 
-	// Open the bridge binary
 	f, err := os.Open(bridgePath)
 	if err != nil {
-		return fmt.Errorf("failed to open bridge binary for hash validation: %w", err)
+		return fmt.Errorf("failed to open bridge binary: %w", err)
 	}
 	defer f.Close()
 
-	// Compute SHA256
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return fmt.Errorf("failed to read bridge binary for hash: %w", err)
+		return fmt.Errorf("failed to read bridge binary: %w", err)
 	}
 	actualHash := hex.EncodeToString(h.Sum(nil))
 
-	// Compare hashes
 	if actualHash != expectedHash {
-		logger.ErrorKV("bridge binary hash mismatch - possible tampering detected",
+		logger.ErrorKV("bridge binary hash mismatch - possible tampering",
 			"expected", expectedHash,
 			"actual", actualHash,
 			"path", bridgePath)
-		return fmt.Errorf("bridge binary integrity check failed: hash mismatch (expected %s..., got %s...)",
-			expectedHash[:16], actualHash[:16])
+		return fmt.Errorf("bridge integrity check failed: hash mismatch")
 	}
 
-	logger.DebugKV("bridge binary hash validated",
-		"hash", actualHash[:16]+"...",
-		"path", bridgePath)
+	logger.DebugKV("bridge hash validated", "hash", actualHash[:16]+"...")
 	return nil
 }
 
-// Bridge binary path (hardcoded for production)
-const bridgeBinaryPath = "/usr/local/bin/linuxio-bridge"
+const bridgeBinaryPath = config.BinDir + "/linuxio-bridge"
 
 // StartBridge launches linuxio-bridge via the auth daemon.
 // On success, creates a yamux session for the bridge connection and stores it.
@@ -77,11 +65,6 @@ func StartBridge(sess *session.Session, password string, verbose bool) (bool, st
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
 		return false, "", fmt.Errorf("bridge security validation failed: %w", err)
 	}
-
-	if !DaemonAvailable() {
-		return false, "", errors.New("auth daemon not available")
-	}
-
 	logger.Debugf("Auth daemon available, using socket-based auth")
 	req := BuildRequest(sess, password, verbose)
 	result, err := Authenticate(req)

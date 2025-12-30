@@ -40,10 +40,9 @@ var (
 )
 
 // RegisterAuthRoutes wires public and private auth endpoints under /auth.
-func RegisterAuthRoutes(mux *http.ServeMux, sm *session.Manager, env string, verbose bool) {
+func RegisterAuthRoutes(mux *http.ServeMux, sm *session.Manager, verbose bool) {
 	h := &Handlers{
 		SM:      sm,
-		Env:     env,
 		Verbose: verbose,
 	}
 
