@@ -79,6 +79,12 @@ func StartTerminal(sess *session.Session) error {
 	ts := &TerminalSession{PTY: ptmx, Cmd: cmd, Open: true, notify: make(chan struct{}, 1)}
 	setMain(sess.SessionID, ts)
 
+	// Write MOTD to terminal output buffer before starting pump
+	// This displays the PAM login messages like a real login session
+	if sess.Motd != "" {
+		ts.appendOutput([]byte(sess.Motd + "\n"))
+	}
+
 	go pumpPTY(ts)
 	logger.Infof("Started terminal for user=%s uid=%d", sess.User.Username, sess.User.UID)
 	return nil

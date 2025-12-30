@@ -59,6 +59,7 @@ var Sess = &session.Session{
 		UID:      bootCfg.UID,
 		GID:      bootCfg.GID,
 	},
+	Motd: bootCfg.Motd,
 }
 
 // Global shutdown signal for all handlers: closed when shutdown starts.

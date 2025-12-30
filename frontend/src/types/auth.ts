@@ -87,7 +87,6 @@ export interface UpdateInfo {
 export interface LoginResponse {
   success: boolean;
   privileged: boolean;
-  motd?: string;
   update?: UpdateInfo;
   indexer_available?: boolean;
 }

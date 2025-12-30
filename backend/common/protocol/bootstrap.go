@@ -34,6 +34,7 @@ type Bootstrap struct {
 	Privileged bool
 	SessionID  string
 	Username   string
+	Motd       string
 }
 
 // ReadBootstrap reads a binary bootstrap from the given reader.
@@ -67,6 +68,9 @@ func ReadBootstrap(r io.Reader) (*Bootstrap, error) {
 	}
 	if b.Username, err = readLenStr(r); err != nil {
 		return nil, fmt.Errorf("read username: %w", err)
+	}
+	if b.Motd, err = readLenStr(r); err != nil {
+		return nil, fmt.Errorf("read motd: %w", err)
 	}
 
 	return b, nil
