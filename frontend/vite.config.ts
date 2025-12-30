@@ -11,7 +11,9 @@ export default defineConfig(({ command }) => {
     ? reactBabel({ babel: { plugins: ["babel-plugin-react-compiler"] } })
     : reactSwc();
 
-  const devApi = process.env.VITE_API_URL;
+  // PROXY_TARGET is for vite's proxy (not exposed to frontend)
+  // VITE_DEV_PORT is for the dev server port
+  const proxyTarget = process.env.PROXY_TARGET || "https://localhost:8090";
   const devPort = Number(process.env.VITE_DEV_PORT || 3000);
 
   const plugins = [reactPlugin, tsconfigPaths()];
@@ -31,7 +33,8 @@ export default defineConfig(({ command }) => {
       port: devPort,
       strictPort: false,
       proxy: {
-        "/ws": { target: devApi, changeOrigin: true, ws: true },
+        "/ws": { target: proxyTarget, changeOrigin: true, ws: true, secure: false },
+        "/auth": { target: proxyTarget, changeOrigin: true, secure: false },
       },
     },
     build: {

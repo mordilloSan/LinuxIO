@@ -57,23 +57,18 @@ func extractCookie(t *testing.T, w *httptest.ResponseRecorder, name string) *htt
 
 func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	// Arrange seams
-	oldStart, oldGet, oldLookup := startBridge, getBridgeBinary, lookupUser
+	oldStart, oldLookup := startBridge, lookupUser
 	defer func() {
-		startBridge, getBridgeBinary, lookupUser = oldStart, oldGet, oldLookup
+		startBridge, lookupUser = oldStart, oldLookup
 	}()
 
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	getBridgeBinary = func(override string) string {
-		_ = override
-		return "/fake/bridge"
-	}
-	startBridge = func(sess *session.Session, password string, verbose bool, bin string) (bool, string, error) {
+	startBridge = func(sess *session.Session, password string, verbose bool) (bool, string, error) {
 		_ = sess
 		_ = password
 		_ = verbose
-		_ = bin
 		return true, "Welcome to LinuxIO!", nil // privileged
 	}
 	// Manager + handlers
@@ -117,11 +112,10 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password string, verbose bool, bin string) (bool, string, error) {
+	startBridge = func(sess *session.Session, password string, verbose bool) (bool, string, error) {
 		_ = sess
 		_ = password
 		_ = verbose
-		_ = bin
 		return false, "", fmt.Errorf("authentication failed: bad credentials")
 	}
 	sm := session.NewManager(session.New(), session.SessionConfig{})
@@ -155,11 +149,10 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password string, verbose bool, bin string) (bool, string, error) {
+	startBridge = func(sess *session.Session, password string, verbose bool) (bool, string, error) {
 		_ = sess
 		_ = password
 		_ = verbose
-		_ = bin
 		return false, "", nil
 	}
 	// Login to get cookie

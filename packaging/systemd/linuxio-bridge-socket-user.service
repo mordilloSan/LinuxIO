@@ -1,7 +1,7 @@
 [Unit]
 Description=Dynamic user for LinuxIO bridge sockets
 Documentation=https://github.com/mordilloSan/LinuxIO
-BindsTo=linuxio-auth.socket
+PartOf=linuxio-auth.socket
 
 [Service]
 DynamicUser=yes

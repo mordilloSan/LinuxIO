@@ -35,18 +35,16 @@ func createSessionUser(username string) (session.User, error) {
 
 // --- test seams (overridden in tests) ---
 var (
-	startBridge     = bridge.StartBridge
-	getBridgeBinary = bridge.GetBridgeBinaryPath
-	lookupUser      = createSessionUser
+	startBridge = bridge.StartBridge
+	lookupUser  = createSessionUser
 )
 
 // RegisterAuthRoutes wires public and private auth endpoints under /auth.
-func RegisterAuthRoutes(mux *http.ServeMux, sm *session.Manager, env string, verbose bool, bridgeBinaryOverride string) {
+func RegisterAuthRoutes(mux *http.ServeMux, sm *session.Manager, env string, verbose bool) {
 	h := &Handlers{
-		SM:                   sm,
-		Env:                  env,
-		Verbose:              verbose,
-		BridgeBinaryOverride: bridgeBinaryOverride,
+		SM:      sm,
+		Env:     env,
+		Verbose: verbose,
 	}
 
 	// public

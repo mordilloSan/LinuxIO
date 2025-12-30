@@ -68,7 +68,7 @@ func RunServer(cfg ServerConfig) {
 		VitePort: cfg.ViteDevPort,
 		UI:       ui,
 		RegisterRoutes: func(mux *http.ServeMux) {
-			auth.RegisterAuthRoutes(mux, sm, envMode, verbose, "")
+			auth.RegisterAuthRoutes(mux, sm, envMode, verbose)
 		},
 	}, sm)
 

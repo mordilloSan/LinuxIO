@@ -1152,12 +1152,10 @@ static int handle_client(int input_fd, int output_fd)
   char user[PROTO_MAX_USERNAME] = "";
   char password[PROTO_MAX_PASSWORD] = "";
   char session_id[PROTO_MAX_SESSION_ID] = "";
-  char bridge_path[PROTO_MAX_BRIDGE_PATH] = "";
 
   if (read_lenstr(input_fd, user, sizeof(user)) != 0 ||
       read_lenstr(input_fd, password, sizeof(password)) != 0 ||
-      read_lenstr(input_fd, session_id, sizeof(session_id)) != 0 ||
-      read_lenstr(input_fd, bridge_path, sizeof(bridge_path)) != 0)
+      read_lenstr(input_fd, session_id, sizeof(session_id)) != 0)
   {
     send_response(output_fd, PROTO_STATUS_ERROR, 0, "failed to read request fields", NULL);
     secure_bzero(password, sizeof(password));
@@ -1243,9 +1241,8 @@ static int handle_client(int input_fd, int output_fd)
   uint8_t mode = want_privileged ? PROTO_MODE_PRIVILEGED : PROTO_MODE_UNPRIVILEGED;
 
   // Validate bridge binary and keep fd open (prevents TOCTOU)
-  const char *bridge_bin = bridge_path[0] ? bridge_path : "/usr/local/bin/linuxio-bridge";
   int bridge_fd = -1;
-  if (open_and_validate_bridge(bridge_bin, 0, &bridge_fd) != 0)
+  if (open_and_validate_bridge("/usr/local/bin/linuxio-bridge", 0, &bridge_fd) != 0)
   {
     send_response(output_fd, PROTO_STATUS_ERROR, 0, "bridge validation failed", NULL);
     pam_setcred(pamh, PAM_DELETE_CRED);

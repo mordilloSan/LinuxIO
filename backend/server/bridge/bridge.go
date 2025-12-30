@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"sync"
 
 	"github.com/mordilloSan/go_logger/logger"
@@ -68,20 +66,15 @@ func validateBridgeHash(bridgePath string) error {
 	return nil
 }
 
+// Bridge binary path (hardcoded for production)
+const bridgeBinaryPath = "/usr/local/bin/linuxio-bridge"
+
 // StartBridge launches linuxio-bridge via the auth daemon.
 // On success, creates a yamux session for the bridge connection and stores it.
 // Returns (privilegedMode, motd, error). privilegedMode reflects the daemon's decision.
-func StartBridge(sess *session.Session, password string, verbose bool, bridgeBinary string) (bool, string, error) {
-	// Resolve bridge binary (helper also validates)
-	if bridgeBinary == "" {
-		bridgeBinary = GetBridgeBinaryPath("")
-	}
-	if bridgeBinary == "" {
-		return false, "", errors.New("bridge binary not found (looked beside server and in PATH)")
-	}
-
+func StartBridge(sess *session.Session, password string, verbose bool) (bool, string, error) {
 	// Validate bridge binary hash before proceeding
-	if err := validateBridgeHash(bridgeBinary); err != nil {
+	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
 		return false, "", fmt.Errorf("bridge security validation failed: %w", err)
 	}
 
@@ -90,7 +83,7 @@ func StartBridge(sess *session.Session, password string, verbose bool, bridgeBin
 	}
 
 	logger.Debugf("Auth daemon available, using socket-based auth")
-	req := BuildRequest(sess, password, bridgeBinary, verbose)
+	req := BuildRequest(sess, password, verbose)
 	result, err := Authenticate(req)
 	if err != nil {
 		return false, "", fmt.Errorf("auth daemon failed: %w", err)
@@ -168,40 +161,4 @@ func CloseYamuxSession(sessionID string) {
 		session.Close()
 		logger.DebugKV("yamux session closed", "session_id", sessionID)
 	}
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-// GetBridgeBinaryPath returns an absolute or name-only path for the bridge.
-func GetBridgeBinaryPath(override string) string {
-	const binaryName = "linuxio-bridge"
-
-	if override != "" && isExec(override) {
-		return override
-	}
-	if v := os.Getenv("LINUXIO_BRIDGE_BIN"); v != "" && isExec(v) {
-		return v
-	}
-
-	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), binaryName)
-		if isExec(candidate) {
-			return candidate
-		}
-	}
-	if path, err := exec.LookPath(binaryName); err == nil && isExec(path) {
-		return path
-	}
-	logger.Debugf("[bridge.GetBridgeBinaryPath] %s not found beside server, or in user $PATH; consider installing into a well-known path or setting LINUXIO_BRIDGE_BIN.", binaryName)
-	return ""
-}
-
-func isExec(p string) bool {
-	st, err := os.Stat(p)
-	if err != nil || st.IsDir() {
-		return false
-	}
-	return st.Mode()&0o111 != 0
 }
