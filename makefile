@@ -786,6 +786,10 @@ open-pr: generate
 	    if [ $$CHECK_STATUS -eq 0 ]; then \
 	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
 	    else \
+	      echo "⚠️  gh pr checks exited with code $$CHECK_STATUS"; \
+	      echo "   Re-checking final status..."; \
+	      gh pr checks $(call _repo_flag) "$$PRNUM" || true; \
+	      echo ""; \
 	      echo "❌ Checks failed or monitoring was interrupted"; \
 	    fi; \
 	  fi; \
