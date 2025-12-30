@@ -1,6 +1,8 @@
 [Unit]
 Description=Dynamic user for LinuxIO bridge sockets
 Documentation=https://github.com/mordilloSan/LinuxIO
+DefaultDependencies=no
+Before=sockets.target
 PartOf=linuxio-auth.socket
 
 [Service]

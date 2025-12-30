@@ -8,14 +8,13 @@ import (
 
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const (
 	// DefaultAuthSocketPath is the Unix socket where linuxio-auth daemon listens
-	DefaultAuthSocketPath = config.BinDir + "/auth.sock"
+	DefaultAuthSocketPath = "/run/linuxio/auth.sock"
 
 	// Timeouts for auth daemon communication
 	authDialTimeout  = 5 * time.Second
