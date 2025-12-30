@@ -60,16 +60,16 @@ const bridgeBinaryPath = config.BinDir + "/linuxio-bridge"
 // StartBridge launches linuxio-bridge via the auth daemon.
 // On success, creates a yamux session for the bridge connection and stores it.
 // Returns (privilegedMode, motd, error). privilegedMode reflects the daemon's decision.
-func StartBridge(sess *session.Session, password string, verbose bool) (bool, string, error) {
+func StartBridge(sess *session.Session, password string, verbose bool) (bool, error) {
 	// Validate bridge binary hash before proceeding
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
-		return false, "", fmt.Errorf("bridge security validation failed: %w", err)
+		return false, fmt.Errorf("bridge security validation failed: %w", err)
 	}
 	logger.Debugf("Auth daemon available, using socket-based auth")
 	req := BuildRequest(sess, password, verbose)
 	result, err := Authenticate(req)
 	if err != nil {
-		return false, "", fmt.Errorf("auth daemon failed: %w", err)
+		return false, fmt.Errorf("auth daemon failed: %w", err)
 	}
 
 	// Create yamux client session from the connection
@@ -77,7 +77,7 @@ func StartBridge(sess *session.Session, password string, verbose bool) (bool, st
 	yamuxSession, err := ipc.NewYamuxClient(result.Conn)
 	if err != nil {
 		result.Conn.Close()
-		return false, "", fmt.Errorf("failed to create yamux session: %w", err)
+		return false, fmt.Errorf("failed to create yamux session: %w", err)
 	}
 
 	// Store the session keyed by session ID
@@ -100,7 +100,7 @@ func StartBridge(sess *session.Session, password string, verbose bool) (bool, st
 		"privileged", result.Privileged,
 		"session_id", sess.SessionID)
 
-	return result.Privileged, result.Motd, nil
+	return result.Privileged, nil
 }
 
 // ============================================================================

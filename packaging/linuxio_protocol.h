@@ -65,6 +65,7 @@
  *   [magic:4][uid:4][gid:4][flags:1]  (13 bytes fixed header)
  *   [len:2][session_id]
  *   [len:2][username]
+ *   [len:2][motd]
  *
  * All multi-byte integers are big-endian.
  * ========================================================================== */

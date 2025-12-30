@@ -64,11 +64,11 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password string, verbose bool) (bool, string, error) {
+	startBridge = func(sess *session.Session, password string, verbose bool) (bool, error) {
 		_ = sess
 		_ = password
 		_ = verbose
-		return true, "Welcome to LinuxIO!", nil // privileged
+		return true, nil // privileged
 	}
 	// Manager + handlers
 	sm := session.NewManager(session.New(), session.SessionConfig{})
@@ -111,11 +111,11 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password string, verbose bool) (bool, string, error) {
+	startBridge = func(sess *session.Session, password string, verbose bool) (bool, error) {
 		_ = sess
 		_ = password
 		_ = verbose
-		return false, "", fmt.Errorf("authentication failed: bad credentials")
+		return false, fmt.Errorf("authentication failed: bad credentials")
 	}
 	sm := session.NewManager(session.New(), session.SessionConfig{})
 	h := &Handlers{SM: sm}
@@ -148,11 +148,11 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password string, verbose bool) (bool, string, error) {
+	startBridge = func(sess *session.Session, password string, verbose bool) (bool, error) {
 		_ = sess
 		_ = password
 		_ = verbose
-		return false, "", nil
+		return false, nil
 	}
 	// Login to get cookie
 	w := doJSON(r, "POST", "/auth/login", LoginRequest{Username: "miguel", Password: "pw"})

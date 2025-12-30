@@ -36,7 +36,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	privileged, motd, err := startBridge(sess, req.Password, h.Verbose)
+	privileged, err := startBridge(sess, req.Password, h.Verbose)
 	if err != nil {
 		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
 
@@ -64,11 +64,6 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	response := map[string]any{
 		"success":    true,
 		"privileged": privileged,
-	}
-
-	// Include MOTD if present
-	if motd != "" {
-		response["motd"] = motd
 	}
 
 	// Only check for updates if user is privileged

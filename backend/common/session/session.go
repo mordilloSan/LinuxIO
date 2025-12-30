@@ -92,6 +92,9 @@ type Session struct {
 	// Termination handler (not serialized)
 	terminateFunc func(DeleteReason) error
 	terminateMu   sync.Mutex
+
+	// MOTD from PAM login (bridge-only, not serialized)
+	Motd string `json:"-"`
 }
 
 // -----------------------------------------------------------------------------

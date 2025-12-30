@@ -475,6 +475,7 @@ static int write_bootstrap_binary(
     int fd,
     const char *session_id,
     const char *username,
+    const char *motd,
     uid_t uid,
     gid_t gid,
     int verbose,
@@ -513,6 +514,8 @@ static int write_bootstrap_binary(
   if (write_lenstr(fd, session_id) != 0)
     return -1;
   if (write_lenstr(fd, username) != 0)
+    return -1;
+  if (write_lenstr(fd, motd) != 0)
     return -1;
 
   return 0;
@@ -1343,6 +1346,7 @@ static int handle_client(int input_fd, int output_fd)
       bootstrap_pipe[1],
       session_id,
       user,
+      appdata.motd_len > 0 ? appdata.motd : NULL,
       pw->pw_uid,
       pw->pw_gid,
       verbose_flag,
