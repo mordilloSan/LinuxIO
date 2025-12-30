@@ -11,22 +11,9 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
-
-// ProgressCallback is invoked with the number of bytes processed.
-type ProgressCallback func(processed int64)
-
-// ExtractOptions allows callers to receive per-entry notifications and progress callbacks.
-type ExtractOptions struct {
-	ProgressCb  ProgressCallback
-	OnExtracted func(path string)
-}
-
-func (o ExtractOptions) report(path string) {
-	if o.OnExtracted != nil {
-		o.OnExtracted(path)
-	}
-}
 
 // ComputeArchiveSize calculates the estimated size of files/directories for archiving
 func ComputeArchiveSize(fileList []string) (int64, error) {
@@ -116,13 +103,14 @@ func ComputeExtractSize(archivePath string) (int64, error) {
 		return total, nil
 
 	default:
-		return 0, fmt.Errorf("unsupported archive format")
+		return 0, ipc.ErrUnsupportedFormat
 	}
 }
 
-// CreateZip creates a zip archive from the provided file list
+// CreateZip creates a zip archive from the provided file list.
 // skipPath allows excluding the archive itself if it lives inside the source tree.
-func CreateZip(tmpDirPath string, cb ProgressCallback, skipPath string, filenames ...string) error {
+// opts is optional - pass nil if callbacks are not needed.
+func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string, filenames ...string) error {
 	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
@@ -137,7 +125,11 @@ func CreateZip(tmpDirPath string, cb ProgressCallback, skipPath string, filename
 	zipWriter := zip.NewWriter(file)
 
 	for _, fname := range filenames {
-		if addErr := addFile(fname, nil, zipWriter, false, cb, skipPath); addErr != nil {
+		if opts.IsCancelled() {
+			zipWriter.Close()
+			return ipc.ErrAborted
+		}
+		if addErr := addFile(fname, nil, zipWriter, false, opts, skipPath); addErr != nil {
 			logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
 			zipWriter.Close() // Best-effort close on error
 			return addErr
@@ -159,9 +151,10 @@ func CreateZip(tmpDirPath string, cb ProgressCallback, skipPath string, filename
 	return os.Chmod(tmpDirPath, PermFile)
 }
 
-// CreateTarGz creates a tar.gz archive from the provided file list
+// CreateTarGz creates a tar.gz archive from the provided file list.
 // skipPath allows excluding the archive itself if it lives inside the source tree.
-func CreateTarGz(tmpDirPath string, cb ProgressCallback, skipPath string, filenames ...string) error {
+// opts is optional - pass nil if callbacks are not needed.
+func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string, filenames ...string) error {
 	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
@@ -177,7 +170,12 @@ func CreateTarGz(tmpDirPath string, cb ProgressCallback, skipPath string, filena
 	tarWriter := tar.NewWriter(gzWriter)
 
 	for _, fname := range filenames {
-		if addErr := addFile(fname, tarWriter, nil, false, cb, skipPath); addErr != nil {
+		if opts.IsCancelled() {
+			tarWriter.Close()
+			gzWriter.Close()
+			return ipc.ErrAborted
+		}
+		if addErr := addFile(fname, tarWriter, nil, false, opts, skipPath); addErr != nil {
 			logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
 			tarWriter.Close() // Best-effort close on error
 			gzWriter.Close()
@@ -203,12 +201,8 @@ func CreateTarGz(tmpDirPath string, cb ProgressCallback, skipPath string, filena
 }
 
 // ExtractArchive extracts supported archive types (zip, tar.gz, tgz) into the destination directory.
-func ExtractArchive(archivePath, destination string, cb ProgressCallback) error {
-	return ExtractArchiveWithOptions(archivePath, destination, ExtractOptions{ProgressCb: cb})
-}
-
-// ExtractArchiveWithOptions extracts supported archives (zip, tar.gz, tgz) and reports progress/extracted paths.
-func ExtractArchiveWithOptions(archivePath, destination string, opts ExtractOptions) error {
+// opts is optional - pass nil if callbacks are not needed.
+func ExtractArchive(archivePath, destination string, opts *ipc.OperationCallbacks) error {
 	archivePath = filepath.Join(archivePath)
 	destination = filepath.Join(destination)
 
@@ -226,11 +220,11 @@ func ExtractArchiveWithOptions(archivePath, destination string, opts ExtractOpti
 	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
 		return extractTarGz(archivePath, destination, opts)
 	default:
-		return fmt.Errorf("unsupported archive format")
+		return ipc.ErrUnsupportedFormat
 	}
 }
 
-func extractZip(archivePath, destination string, opts ExtractOptions) error {
+func extractZip(archivePath, destination string, opts *ipc.OperationCallbacks) error {
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return err
@@ -238,6 +232,9 @@ func extractZip(archivePath, destination string, opts ExtractOptions) error {
 	defer reader.Close()
 
 	for _, file := range reader.File {
+		if opts.IsCancelled() {
+			return ipc.ErrAborted
+		}
 		if err := extractZipEntry(file, destination, opts); err != nil {
 			return err
 		}
@@ -246,7 +243,7 @@ func extractZip(archivePath, destination string, opts ExtractOptions) error {
 	return nil
 }
 
-func extractZipEntry(file *zip.File, destination string, opts ExtractOptions) error {
+func extractZipEntry(file *zip.File, destination string, opts *ipc.OperationCallbacks) error {
 	targetPath := filepath.Join(destination, file.Name)
 	if !isWithinBase(destination, targetPath) {
 		return fmt.Errorf("illegal file path in archive: %s", file.Name)
@@ -259,7 +256,7 @@ func extractZipEntry(file *zip.File, destination string, opts ExtractOptions) er
 		if err := os.Chmod(targetPath, PermDir); err != nil {
 			return err
 		}
-		opts.report(targetPath)
+		opts.ReportComplete(targetPath)
 		return nil
 	}
 
@@ -279,18 +276,18 @@ func extractZipEntry(file *zip.File, destination string, opts ExtractOptions) er
 	}
 	defer writer.Close()
 
-	if err := copyWithProgress(writer, reader, opts.ProgressCb); err != nil {
+	if err := copyWithCallbacks(writer, reader, opts); err != nil {
 		return err
 	}
 
 	if err := os.Chmod(targetPath, PermFile); err != nil {
 		return err
 	}
-	opts.report(targetPath)
+	opts.ReportComplete(targetPath)
 	return nil
 }
 
-func extractTarGz(archivePath, destination string, opts ExtractOptions) error {
+func extractTarGz(archivePath, destination string, opts *ipc.OperationCallbacks) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return err
@@ -306,6 +303,10 @@ func extractTarGz(archivePath, destination string, opts ExtractOptions) error {
 	tarReader := tar.NewReader(gzipReader)
 
 	for {
+		if opts.IsCancelled() {
+			return ipc.ErrAborted
+		}
+
 		header, err := tarReader.Next()
 		if err == io.EOF {
 			break
@@ -322,7 +323,7 @@ func extractTarGz(archivePath, destination string, opts ExtractOptions) error {
 	return nil
 }
 
-func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination string, opts ExtractOptions) error {
+func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination string, opts *ipc.OperationCallbacks) error {
 	targetPath := filepath.Join(destination, header.Name)
 	if !isWithinBase(destination, targetPath) {
 		return fmt.Errorf("illegal file path in archive: %s", header.Name)
@@ -336,7 +337,7 @@ func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination stri
 		if err := os.Chmod(targetPath, PermDir); err != nil {
 			return err
 		}
-		opts.report(targetPath)
+		opts.ReportComplete(targetPath)
 		return nil
 	case tar.TypeReg:
 		if err := os.MkdirAll(filepath.Dir(targetPath), PermDir); err != nil {
@@ -346,7 +347,7 @@ func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination stri
 		if err != nil {
 			return err
 		}
-		if err := copyWithProgress(outFile, tarReader, opts.ProgressCb); err != nil {
+		if err := copyWithCallbacks(outFile, tarReader, opts); err != nil {
 			outFile.Close()
 			return err
 		}
@@ -356,7 +357,7 @@ func extractTarEntry(header *tar.Header, tarReader *tar.Reader, destination stri
 		if err := os.Chmod(targetPath, PermFile); err != nil {
 			return err
 		}
-		opts.report(targetPath)
+		opts.ReportComplete(targetPath)
 		return nil
 	case tar.TypeSymlink, tar.TypeLink:
 		// Skip symlinks/hardlinks for safety
@@ -378,7 +379,7 @@ func isWithinBase(baseDir, targetPath string) bool {
 }
 
 // addFile adds a file or directory to an archive (zip or tar.gz)
-func addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, cb ProgressCallback, skipPath string) error {
+func addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *ipc.OperationCallbacks, skipPath string) error {
 	// Direct filesystem access
 	realPath := filepath.Join(path)
 
@@ -399,6 +400,10 @@ func addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten 
 		return filepath.Walk(realPath, func(filePath string, fileInfo os.FileInfo, err error) error {
 			if err != nil {
 				return err
+			}
+
+			if opts.IsCancelled() {
+				return ipc.ErrAborted
 			}
 
 			if skipPath != "" && filepath.Clean(filePath) == filepath.Clean(skipPath) {
@@ -441,16 +446,16 @@ func addFile(path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten 
 				}
 				return nil
 			}
-			return addSingleFile(filePath, relPath, zipWriter, tarWriter, cb)
+			return addSingleFile(filePath, relPath, zipWriter, tarWriter, opts)
 		})
 	} else {
 		// For a single file, use the base name as the archive path
-		return addSingleFile(realPath, baseName, zipWriter, tarWriter, cb)
+		return addSingleFile(realPath, baseName, zipWriter, tarWriter, opts)
 	}
 }
 
 // addSingleFile adds a single file to an archive
-func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, cb ProgressCallback) error {
+func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *ipc.OperationCallbacks) error {
 	file, err := os.Open(realPath)
 	if err != nil {
 		// If we get "is a directory" error, this is likely a symlink to a directory
@@ -481,7 +486,7 @@ func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWrite
 		if err = tarWriter.WriteHeader(header); err != nil {
 			return err
 		}
-		return copyWithProgress(tarWriter, file, cb)
+		return copyWithCallbacks(tarWriter, file, opts)
 	}
 
 	if zipWriter != nil {
@@ -496,21 +501,22 @@ func addSingleFile(realPath, archivePath string, zipWriter *zip.Writer, tarWrite
 		if err != nil {
 			return err
 		}
-		return copyWithProgress(writer, file, cb)
+		return copyWithCallbacks(writer, file, opts)
 	}
 
 	return nil
 }
 
-// copyWithProgress writes from src to dst, invoking cb after each chunk.
-func copyWithProgress(dst io.Writer, src io.Reader, cb ProgressCallback) error {
+// copyWithCallbacks writes from src to dst using the provided callbacks.
+func copyWithCallbacks(dst io.Writer, src io.Reader, opts *ipc.OperationCallbacks) error {
 	buf := make([]byte, 8*1024)
 	for {
+		if opts.IsCancelled() {
+			return ipc.ErrAborted
+		}
 		n, rerr := src.Read(buf)
 		if n > 0 {
-			if cb != nil {
-				cb(int64(n))
-			}
+			opts.ReportProgress(int64(n))
 			if _, werr := dst.Write(buf[:n]); werr != nil {
 				return werr
 			}
