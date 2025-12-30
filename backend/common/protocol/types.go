@@ -14,7 +14,6 @@ const (
 	MaxUsername   = 256
 	MaxPassword   = 8192
 	MaxSessionID  = 64
-	MaxSecret     = 128
 	MaxBridgePath = 4096
 	MaxEnvMode    = 32
 	MaxServerURL  = 512
@@ -48,7 +47,6 @@ type AuthRequest struct {
 	Password      string
 	SessionID     string
 	BridgePath    string
-	Secret        string
 	ServerBaseURL string
 	ServerCert    string
 }
@@ -95,9 +93,6 @@ func WriteAuthRequest(w io.Writer, req *AuthRequest) error {
 	}
 	if err := writeLenStr(w, req.BridgePath); err != nil {
 		return fmt.Errorf("write bridge_path: %w", err)
-	}
-	if err := writeLenStr(w, req.Secret); err != nil {
-		return fmt.Errorf("write secret: %w", err)
 	}
 	if err := writeLenStr(w, req.ServerBaseURL); err != nil {
 		return fmt.Errorf("write server_base_url: %w", err)

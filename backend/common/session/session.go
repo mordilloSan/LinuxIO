@@ -80,11 +80,10 @@ type Timing struct {
 }
 
 type Session struct {
-	SessionID    string `json:"session_id"`
-	User         User   `json:"user"`
-	Privileged   bool   `json:"privileged"`
-	BridgeSecret string `json:"bridge_secret"`
-	Timing       Timing `json:"timing"`
+	SessionID  string `json:"session_id"`
+	User       User   `json:"user"`
+	Privileged bool   `json:"privileged"`
+	Timing     Timing `json:"timing"`
 
 	// Persistent bridge connection (not serialized)
 	bridgeConn   net.Conn
@@ -251,12 +250,6 @@ func randID(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func generateSecret(n int) string {
-	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
 func expiredIdle(s *Session, now time.Time) bool     { return now.After(s.Timing.IdleUntil) }
 func expiredAbsolute(s *Session, now time.Time) bool { return now.After(s.Timing.AbsoluteUntil) }
 
@@ -289,10 +282,9 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 	}
 
 	sess := &Session{
-		SessionID:    id,
-		User:         user,
-		Privileged:   privileged,
-		BridgeSecret: generateSecret(32),
+		SessionID:  id,
+		User:       user,
+		Privileged: privileged,
 		Timing: Timing{
 			CreatedAt:     now,
 			LastAccess:    now,

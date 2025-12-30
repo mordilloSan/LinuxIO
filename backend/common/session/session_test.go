@@ -38,9 +38,6 @@ func TestManager_CreateGetSetDelete(t *testing.T) {
 	if s.SessionID == "" {
 		t.Fatalf("CreateSession returned empty SessionID")
 	}
-	if s.BridgeSecret == "" || len(s.BridgeSecret) < 64 {
-		t.Fatalf("BridgeSecret not set or too short: %q", s.BridgeSecret)
-	}
 	if s.Timing.IdleUntil.After(s.Timing.AbsoluteUntil) {
 		t.Fatalf("IdleUntil should not be after AbsoluteUntil")
 	}

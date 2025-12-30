@@ -40,7 +40,6 @@ type Bootstrap struct {
 	LogFD         int32
 	SessionID     string
 	Username      string
-	Secret        string
 	ServerBaseURL string
 	ServerCert    string
 }
@@ -83,9 +82,6 @@ func ReadBootstrap(r io.Reader) (*Bootstrap, error) {
 	}
 	if b.Username, err = readLenStr(r); err != nil {
 		return nil, fmt.Errorf("read username: %w", err)
-	}
-	if b.Secret, err = readLenStr(r); err != nil {
-		return nil, fmt.Errorf("read secret: %w", err)
 	}
 	if b.ServerBaseURL, err = readLenStr(r); err != nil {
 		return nil, fmt.Errorf("read server_base_url: %w", err)
