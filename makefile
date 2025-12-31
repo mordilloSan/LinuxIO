@@ -102,7 +102,7 @@ endef
 CC       ?= gcc
 UNAME_S  := $(shell uname -s)
 
-# ---- toggles (override on CLI: make build-auth-helper LTO=0 STRIP=0 WERROR=1)
+# ---- toggles (override on CLI: make build-auth LTO=0 STRIP=0 WERROR=1)
 LTO      ?= 1          # enable link-time optimization
 STRIP    ?= 1          # strip unneeded symbols after build
 WERROR   ?= 0          # treat warnings as errors (good in CI)
@@ -389,7 +389,7 @@ build-bridge: ensure-go
 	echo "📊 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
-build-auth-helper:
+build-auth:
 	@echo ""
 	@echo "🛡️  Building Session helper (C)..."
 	@set -euo pipefail; \
@@ -452,7 +452,7 @@ build: test build-vite build-bridge
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
-	@$(MAKE) --no-print-directory build-auth-helper
+	@$(MAKE) --no-print-directory build-auth
 	@$(MAKE) --no-print-directory build-cli
 
 fastbuild:  build-bridge
@@ -461,7 +461,7 @@ fastbuild:  build-bridge
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
-	@$(MAKE) --no-print-directory build-auth-helper
+	@$(MAKE) --no-print-directory build-auth
 	@$(MAKE) --no-print-directory build-cli
 
 generate:
@@ -944,7 +944,7 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth-helper $(COLOR_RESET) Build the PAM authentication helper"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Build frontend + backend + bridge"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
@@ -960,7 +960,7 @@ help:
 
 .PHONY: \
   default help clean run \
-  build build-vite build-backend build-bridge build-auth-helper build-cli \
+  build build-vite build-backend build-bridge build-auth build-cli \
   dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate rebuild-changelog localinstall reinstall uninstall \

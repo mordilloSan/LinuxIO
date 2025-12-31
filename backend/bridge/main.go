@@ -58,9 +58,22 @@ var bridgeClosing = make(chan struct{})
 var wg sync.WaitGroup
 
 func main() {
+	// Handle CLI arguments first
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "--version", "-v":
+			printBridgeVersion()
+			return
+		default:
+			// Any other argument - show usage
+			printBridgeVersion()
+			fmt.Println("(to be spawned by auth daemon, not for direct use)")
+			return
+		}
+	}
+
 	// If stdin is a terminal, user ran this directly - show version and exit
 	if fileInfo, _ := os.Stdin.Stat(); (fileInfo.Mode() & os.ModeCharDevice) != 0 {
-		printBridgeVersion()
 		fmt.Println("(to be spawned by auth daemon, not for direct use)")
 		return
 	}
