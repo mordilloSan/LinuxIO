@@ -415,9 +415,6 @@ fastbuild: build-bridge _build-binaries
 generate:
 	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
 
-run:
-	@./linuxio-webserver run -verbose=$(VERBOSE)
-
 clean:
 	@rm -f ./linuxio || true
 	@rm -f ./linuxio-webserver || true
@@ -465,17 +462,27 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint + backend tests (optimized)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev              $(COLOR_RESET) Start frontend (Vite) dev server (backend via systemd)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make generate         $(COLOR_RESET) Run go generate on config handlers"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Build$(COLOR_RESET)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Full build (test + frontend + all binaries)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make fastbuild        $(COLOR_RESET) Quick build (skip tests)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth $(COLOR_RESET) Build the PAM authentication helper"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Build frontend + backend + bridge"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth       $(COLOR_RESET) Build the PAM authentication helper"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-cli        $(COLOR_RESET) Build the CLI tool"
+	@$(PRINTC) ""
+	@$(PRINTC) "$(COLOR_CYAN)  Install / Uninstall$(COLOR_RESET)"
+	@$(PRINTC) "$(COLOR_RED)    make localinstall     $(COLOR_RESET) Install from local build"
+	@$(PRINTC) "$(COLOR_RED)    make reinstall        $(COLOR_RESET) Uninstall + fastbuild + install"
+	@$(PRINTC) "$(COLOR_RED)    make fullinstall      $(COLOR_RESET) Uninstall + fastbuild + install from GitHub"
+	@$(PRINTC) "$(COLOR_RED)    make uninstall        $(COLOR_RESET) Remove LinuxIO installation"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_RED)    make run              $(COLOR_RESET) Run production backend server"
@@ -485,6 +492,6 @@ help:
 .PHONY: \
   default help clean run \
   build fastbuild _build-binaries build-vite build-backend build-bridge build-auth build-cli \
-  dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
+  dev dev-prep setup test test-backend lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
-  generate localinstall reinstall uninstall version-debug
+  generate localinstall reinstall fullinstall uninstall print-toolchain-versions
