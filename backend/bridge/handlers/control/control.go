@@ -234,7 +234,7 @@ func runInstallScript(version string) error {
 
 func getInstalledVersion() string {
 	// Run linuxio with no args - it prints help (with version) to stderr
-	cmd := exec.Command(config.BinDir + "/linuxio")
+	cmd := exec.Command(config.BinDir + "/linuxio-webserver version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Fall back to compiled-in version (useful in dev mode where binary doesn't exist)

@@ -358,7 +358,7 @@ build-backend: ensure-go
 		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)' \
 		-X '$(MODULE_PATH)/common/config.BridgeSHA256=$(BRIDGE_SHA256)'" \
-	-o ../linuxio-webserver ./ && \
+	-o ../linuxio-webserver ./webserver/ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
@@ -425,7 +425,7 @@ build-cli: ensure-go
 		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
-	-o ../linuxio ./cmd/linuxio && \
+	-o ../linuxio ./ && \
 	echo "✅ CLI built successfully!" && \
 	echo "📄 Path: $(PWD)/linuxio" && \
 	echo "📊 Size: $$(du -h ../linuxio | cut -f1)"
@@ -487,12 +487,12 @@ uninstall:
 	@echo "🗑️  Uninstalling LinuxIO..."
 	@sudo ./packaging/scripts/uninstall.sh
 
-localinstall: fastbuild
+localinstall:
 	@echo ""
 	@echo "📦 Installing LinuxIO from local build..."
 	@sudo ./packaging/scripts/localinstall.sh
 
-reinstall: uninstall localinstall
+reinstall: uninstall build localinstall
 	@echo ""
 	@echo "LinuxIO reinstalled successfully!"
 	@echo "⚠️  WARNING: Quick & dirty build - no tests executed!"
