@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
@@ -47,7 +48,7 @@ Usage: linuxio <command> [options]
 
 Commands:
   status     Show status of all LinuxIO services
-  logs       Tail logs [webserver|bridge|auth] (all by default)
+  logs       Tail logs [webserver|bridge|auth] [lines] (default: all, 100)
   start      Start LinuxIO services
   stop       Stop LinuxIO services
   restart    Restart LinuxIO services
@@ -142,26 +143,39 @@ func runStatus() {
 }
 
 func runLogs(args []string) {
-	var cmdArgs []string
-
-	// Default: all linuxio units
+	// Defaults
 	unit := "linuxio*"
+	lines := 100
 
-	// Check for specific service
-	if len(args) > 0 {
-		switch args[0] {
-		case "webserver", "web", "server":
-			unit = "linuxio-webserver.service"
-		case "bridge":
-			unit = "linuxio-bridge*"
-		case "auth":
-			unit = "linuxio-auth*"
+	// Parse args: can be [service] [lines] in any order
+	for _, arg := range args {
+		if n, err := strconv.Atoi(arg); err == nil && n > 0 {
+			lines = n
+		} else {
+			switch arg {
+			case "webserver", "web", "server":
+				unit = "linuxio-webserver.service"
+			case "bridge":
+				unit = "linuxio-bridge*"
+			case "auth":
+				unit = "linuxio-auth*"
+			}
 		}
 	}
 
-	cmdArgs = []string{"-u", unit, "-f", "--no-pager"}
+	// Pipe through awk to remove hostname (4th field) and colorize log levels
+	awkScript := `{
+		$4=""
+		gsub(/\[DEBUG\]/, "\033[36m[DEBUG]\033[0m")
+		gsub(/\[INFO\]/, "\033[32m[INFO]\033[0m")
+		gsub(/\[WARN\]/, "\033[33m[WARN]\033[0m")
+		gsub(/\[WARNING\]/, "\033[33m[WARNING]\033[0m")
+		gsub(/\[ERROR\]/, "\033[31m[ERROR]\033[0m")
+		print $0
+	}`
+	shellCmd := fmt.Sprintf("journalctl -u '%s' -f -n %d --no-pager | awk '%s'", unit, lines, awkScript)
 
-	cmd := exec.Command("journalctl", cmdArgs...)
+	cmd := exec.Command("sh", "-c", shellCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
