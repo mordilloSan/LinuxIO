@@ -358,14 +358,14 @@ build-backend: ensure-go
 		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)' \
 		-X '$(MODULE_PATH)/common/config.BridgeSHA256=$(BRIDGE_SHA256)'" \
-	-o ../linuxio ./ && \
+	-o ../linuxio-webserver ./ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
-	echo "📄 Path: $(PWD)/linuxio" && \
+	echo "📄 Path: $(PWD)/linuxio-webserver" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
-	echo "📊 Size: $$(du -h ../linuxio | cut -f1)" && \
-	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio | awk '{ print $$1 }')"
+	echo "📊 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
+	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
 
 build-bridge: ensure-go
 	@echo ""
@@ -442,10 +442,10 @@ generate:
 	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
 
 run:
-	@./linuxio run -verbose=$(VERBOSE)
+	@./linuxio-webserver run -verbose=$(VERBOSE)
 
 clean:
-	@rm -f ./linuxio || true
+	@rm -f ./linuxio-webserver || true
 	@rm -f ./linuxio-bridge || true
 	@rm -f ./linuxio-auth || true
 	@rm -rf frontend/node_modules || true

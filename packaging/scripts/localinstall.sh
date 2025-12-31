@@ -49,7 +49,7 @@ echo ""
 
 # Verify binaries exist (should be built by 'make build' already)
 MISSING_BINARIES=0
-for binary in linuxio linuxio-bridge linuxio-auth; do
+for binary in linuxio-webserver linuxio-bridge linuxio-auth; do
     if [[ ! -f "$REPO_ROOT/$binary" ]]; then
         echo -e "${RED}✗ Binary not found: $binary${NC}"
         MISSING_BINARIES=1
@@ -76,14 +76,14 @@ echo ""
 
 # Install binaries
 echo -e "${YELLOW}📦 Installing binaries to /usr/local/bin...${NC}"
-install -o root -g root -m 0755 "$REPO_ROOT/linuxio" /usr/local/bin/linuxio
+install -o root -g root -m 0755 "$REPO_ROOT/linuxio-webserver" /usr/local/bin/linuxio-webserver
 install -o root -g root -m 0755 "$REPO_ROOT/linuxio-bridge" /usr/local/bin/linuxio-bridge
 install -o root -g root -m 0755 "$REPO_ROOT/linuxio-auth" /usr/local/bin/linuxio-auth
 echo -e "${GREEN}✓ Binaries installed${NC}"
 
 # Install systemd files
 echo -e "${YELLOW}📦 Installing systemd service files...${NC}"
-for file in linuxio.service linuxio.socket \
+for file in linuxio.target linuxio-webserver.service linuxio-webserver.socket \
             linuxio-auth.socket linuxio-auth@.service \
             linuxio-bridge-socket-user.service \
             linuxio-issue.service; do
@@ -159,20 +159,17 @@ systemctl daemon-reload
 echo -e "${GREEN}✓ Systemd reloaded${NC}"
 
 echo -e "${YELLOW}✅ Enabling services...${NC}"
-systemctl enable linuxio.socket
-systemctl enable linuxio-auth.socket
-systemctl enable linuxio.service
+systemctl enable linuxio.target
 echo -e "${GREEN}✓ Services enabled${NC}"
 
 echo -e "${YELLOW}🚀 Starting LinuxIO...${NC}"
-systemctl start linuxio.socket
-systemctl start linuxio.service
+systemctl start linuxio.target
 
 # Wait a moment for service to start
 sleep 2
 
 # Check if service is running
-if systemctl is-active --quiet linuxio.service; then
+if systemctl is-active --quiet linuxio-webserver.service; then
     echo -e "${GREEN}✓ LinuxIO service started successfully${NC}"
 else
     echo -e "${YELLOW}⚠  Warning: Service may not have started properly${NC}"
@@ -185,7 +182,7 @@ echo -e "${GREEN}✅ Installation Complete!${NC}"
 echo -e "${GREEN}════════════════════════════════════════════${NC}"
 echo ""
 echo "Installed components:"
-echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-bridge,linuxio-auth}"
+echo "  • Binaries:        /usr/local/bin/{linuxio-webserver,linuxio-bridge,linuxio-auth}"
 echo "  • Systemd files:   /etc/systemd/system/linuxio*"
 echo "  • Configuration:   /etc/linuxio/"
 echo "  • PAM config:      /etc/pam.d/linuxio"
@@ -194,15 +191,15 @@ echo ""
 echo -e "${CYAN}🌐 Access LinuxIO at: http://localhost:${PORT}${NC}"
 echo ""
 echo "Useful commands:"
-echo "  • Check status:  sudo systemctl status linuxio.service"
-echo "  • View logs:     sudo journalctl -u linuxio.service -f"
-echo "  • Restart:       sudo systemctl restart linuxio.service"
-echo "  • Stop:          sudo systemctl stop linuxio.service"
+echo "  • Check status:  sudo systemctl list-units 'linuxio*'"
+echo "  • View logs:     sudo journalctl -u linuxio-webserver.service -f"
+echo "  • Restart:       sudo systemctl restart linuxio.target"
+echo "  • Stop:          sudo systemctl stop linuxio.target"
 echo ""
 
 # Show service status
 echo -e "${CYAN}════════════════════════════════════════════${NC}"
 echo -e "${CYAN}  Service Status${NC}"
 echo -e "${CYAN}════════════════════════════════════════════${NC}"
-systemctl status linuxio.service --no-pager -l || true
+systemctl status linuxio-webserver.service --no-pager -l || true
 echo ""

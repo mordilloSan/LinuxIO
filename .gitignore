@@ -4,6 +4,7 @@ backend/server/web/frontend/
 
 # Go Binaries
 linuxio
+linuxio-webserver
 linuxio-auth
 linuxio-bridge
 

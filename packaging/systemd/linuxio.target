@@ -1,0 +1,8 @@
+[Unit]
+Description=LinuxIO Application Stack
+Documentation=https://github.com/mordilloSan/LinuxIO
+After=network-online.target
+Wants=linuxio-webserver.socket linuxio-auth.socket
+
+[Install]
+WantedBy=multi-user.target

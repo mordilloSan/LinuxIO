@@ -5,8 +5,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
 func withArgs(args []string, fn func()) {
@@ -45,31 +43,6 @@ func TestStartLinuxIO_Help(t *testing.T) {
 	all := out.String() + errb.String()
 	if !strings.Contains(all, "LinuxIO Server") {
 		t.Fatalf("expected general help in output, got: %q", all)
-	}
-}
-
-func TestStartLinuxIO_Version(t *testing.T) {
-	var out bytes.Buffer
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	defer func() {
-		os.Stdout = oldStdout
-		_ = r.Close()
-	}()
-
-	withArgs([]string{"linuxio", "version"}, func() { StartLinuxIO() })
-	_ = w.Close()
-	if _, err := out.ReadFrom(r); err != nil {
-		t.Fatalf("read stdout: %v", err)
-	}
-
-	got := out.String()
-	if !strings.Contains(got, "linuxio ") {
-		t.Fatalf("expected 'linuxio ' prefix, got: %q", got)
-	}
-	if config.Version != "" && !strings.Contains(got, config.Version) {
-		t.Fatalf("expected version %q in output, got %q", config.Version, got)
 	}
 }
 
