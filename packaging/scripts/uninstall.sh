@@ -34,8 +34,6 @@ systemctl stop linuxio-auth.socket 2>/dev/null || true
 systemctl stop linuxio-auth@*.service 2>/dev/null || true
 systemctl stop linuxio-bridge-socket-user.service 2>/dev/null || true
 systemctl stop linuxio-issue.service 2>/dev/null || true
-systemctl stop linuxio-indexer.service 2>/dev/null || true
-systemctl stop linuxio-indexer.timer 2>/dev/null || true
 echo -e "${GREEN}✓ Services stopped${NC}"
 
 # ========== DISABLE SERVICES ==========
@@ -43,7 +41,6 @@ echo -e "${YELLOW}🛑 Disabling LinuxIO services...${NC}"
 systemctl disable linuxio.service 2>/dev/null || true
 systemctl disable linuxio.socket 2>/dev/null || true
 systemctl disable linuxio-auth.socket 2>/dev/null || true
-systemctl disable linuxio-indexer.timer 2>/dev/null || true
 echo -e "${GREEN}✓ Services disabled${NC}"
 
 # ========== REMOVE SYSTEMD FILES ==========
@@ -54,8 +51,6 @@ rm -f /etc/systemd/system/linuxio-auth.socket
 rm -f /etc/systemd/system/linuxio-auth@.service
 rm -f /etc/systemd/system/linuxio-bridge-socket-user.service
 rm -f /etc/systemd/system/linuxio-issue.service
-rm -f /etc/systemd/system/linuxio-indexer.service
-rm -f /etc/systemd/system/linuxio-indexer.timer
 
 # Also check /lib/systemd/system in case they were installed there
 rm -f /lib/systemd/system/linuxio.service
@@ -64,8 +59,6 @@ rm -f /lib/systemd/system/linuxio-auth.socket
 rm -f /lib/systemd/system/linuxio-auth@.service
 rm -f /lib/systemd/system/linuxio-bridge-socket-user.service
 rm -f /lib/systemd/system/linuxio-issue.service
-rm -f /lib/systemd/system/linuxio-indexer.service
-rm -f /lib/systemd/system/linuxio-indexer.timer
 
 echo -e "${GREEN}✓ Systemd files removed${NC}"
 
