@@ -19,9 +19,9 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/server/auth"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/server/web"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/auth"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
 
 func RunServer(cfg ServerConfig) {

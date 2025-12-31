@@ -1,6 +1,7 @@
 [Unit]
 Description=LinuxIO Authentication Socket
 Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
 Requires=linuxio-bridge-socket-user.service
 After=linuxio-bridge-socket-user.service
 
@@ -12,7 +13,6 @@ SocketMode=0660
 DirectoryMode=0755
 RemoveOnStop=yes
 Accept=yes
-Service=linuxio-auth@.service
 
 [Install]
-WantedBy=sockets.target
+WantedBy=linuxio.target

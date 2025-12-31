@@ -233,14 +233,15 @@ func runInstallScript(version string) error {
 }
 
 func getInstalledVersion() string {
-	cmd := exec.Command(config.BinDir+"/linuxio", "--version")
-	output, err := cmd.Output()
+	// Run linuxio with no args - it prints help (with version) to stderr
+	cmd := exec.Command(config.BinDir + "/linuxio")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Fall back to compiled-in version (useful in dev mode where binary doesn't exist)
 		if config.Version != "" && config.Version != "untracked" {
 			return config.Version
 		}
-		logger.Debugf("failed to run linuxio --version: %v", err)
+		logger.Debugf("failed to run linuxio: %v", err)
 		return "unknown"
 	}
 	version := parseVersionOutput(string(output))
@@ -250,8 +251,8 @@ func getInstalledVersion() string {
 
 func parseVersionOutput(output string) string {
 	output = strings.TrimSpace(output)
-	parts := strings.Fields(output)
-	for _, part := range parts {
+	parts := strings.FieldsSeq(output)
+	for part := range parts {
 		if strings.HasPrefix(part, "v") && strings.Contains(part, ".") {
 			return part
 		}

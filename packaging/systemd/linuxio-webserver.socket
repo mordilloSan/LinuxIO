@@ -1,6 +1,7 @@
 [Unit]
 Description=LinuxIO Web Server (TCP socket)
-PartOf=linuxio.service
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
 Wants=linuxio-issue.service
 
 [Socket]
@@ -14,4 +15,4 @@ ReusePort=false
 RemoveOnStop=true
 
 [Install]
-WantedBy=sockets.target
+WantedBy=linuxio.target

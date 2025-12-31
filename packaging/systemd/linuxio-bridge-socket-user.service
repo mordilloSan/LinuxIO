@@ -1,9 +1,9 @@
 [Unit]
-Description=Dynamic user for LinuxIO bridge sockets
+Description=LinuxIO Dynamic User Template
 Documentation=https://github.com/mordilloSan/LinuxIO
 DefaultDependencies=no
-Before=sockets.target
-PartOf=linuxio-auth.socket
+PartOf=linuxio.target
+Before=linuxio-auth.socket
 
 [Service]
 DynamicUser=yes
