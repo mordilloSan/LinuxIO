@@ -48,7 +48,7 @@ func mountProductionSPA(mux *http.ServeMux, ui fs.FS) {
 	mux.Handle("/assets/", http.FileServer(http.FS(ui)))
 
 	// Serve specific root files
-	rootFiles := []string{"manifest.json", "favicon.ico", "favicon-1.png", "favicon-2.png"}
+	rootFiles := []string{"manifest.json", "favicon-1.png", "favicon-2.png", "favicon-3.png", "favicon-4.png", "favicon-5.png", "favicon-6.png"}
 	for _, f := range rootFiles {
 		fileName := f
 		mux.HandleFunc("/"+fileName, func(w http.ResponseWriter, r *http.Request) {
