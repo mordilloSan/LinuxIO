@@ -1,14 +1,17 @@
+<div align="center">
+
 [![Release](https://img.shields.io/github/v/release/mordilloSan/LinuxIO)](https://github.com/mordilloSan/LinuxIO/releases/latest)
 [![CodeQL](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/mordilloSan/LinuxIO/actions/workflows/github-code-scanning/codeql)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mordilloSan/LinuxIO/backend)](https://goreportcard.com/report/github.com/mordilloSan/LinuxIO/backend)
 [![License](https://img.shields.io/github/license/mordilloSan/LinuxIO)](LICENSE)
 
-<h1 align="center">Linux <img src="frontend/public/Logo.png" alt="i/O" height="32" align="center" /></h1>
+<h1>Linux <img src="frontend/public/Logo.png" alt="i/O" height="32" align="center" /></h1>
 
 A modern web dashboard to manage your Linux system — Docker, WireGuard, updates, users, shares, sensors, and more — all from one unified interface.
 
----
+</div>
 
+---
 ## 🧠 Philosophy
 
 Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes further by integrating:
