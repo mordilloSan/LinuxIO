@@ -3,7 +3,7 @@
  *
  * This header defines the binary protocol shared between:
  *   - linuxio-auth (C)
- *   - linuxio server/bridge (Go)
+ *   - linuxio webserver/bridge (Go)
  *
  * Keep in sync with backend/common/protocol/
  */

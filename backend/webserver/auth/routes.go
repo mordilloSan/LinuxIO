@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 )
 
 // createSessionUser wraps os/user.Lookup and converts to session.User at the system boundary

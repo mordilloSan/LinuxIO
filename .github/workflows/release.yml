@@ -142,23 +142,32 @@ jobs:
         env: { GOOS: linux, GOARCH: amd64 }
         run: make build-auth-helper
 
+      - name: Build CLI
+        env: { GOOS: linux, GOARCH: amd64 }
+        run: make build-cli
+
       - name: Make artifacts executable
-        run: chmod +x linuxio-webserver linuxio-bridge linuxio-auth
+        run: chmod +x linuxio linuxio-webserver linuxio-bridge linuxio-auth
 
       - name: Create tarball
         id: create_tarball
         run: |
           TAR="linuxio-${{ steps.tag.outputs.tag }}-linux-amd64.tar.gz"
-          tar czvf "$TAR" linuxio-webserver linuxio-bridge linuxio-auth
+          tar czvf "$TAR" linuxio linuxio-webserver linuxio-bridge linuxio-auth
           echo "tarball=$TAR" >> "$GITHUB_OUTPUT"
 
       - name: Generate checksums
         run: |
-          sha256sum linuxio-webserver linuxio-bridge linuxio-auth *.tar.gz > SHA256SUMS
+          sha256sum linuxio linuxio-webserver linuxio-bridge linuxio-auth *.tar.gz > SHA256SUMS
           cat SHA256SUMS
 
       - name: Verify binaries before release
         run: |
+          # Verify linuxio CLI runs correctly
+          chmod +x linuxio
+          ./linuxio help || { echo "linuxio CLI verification failed"; exit 1; }
+          echo "✓ linuxio CLI runs correctly"
+
           # Verify linuxio-webserver runs correctly
           chmod +x linuxio-webserver
           ./linuxio-webserver help || { echo "linuxio-webserver verification failed"; exit 1; }
@@ -217,6 +226,7 @@ jobs:
           bodyFile: CHANGELOG.md
           artifacts: |
             ${{ steps.create_tarball.outputs.tarball }}
+            linuxio
             linuxio-webserver
             linuxio-bridge
             linuxio-auth

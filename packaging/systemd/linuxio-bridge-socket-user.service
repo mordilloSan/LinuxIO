@@ -1,5 +1,5 @@
 [Unit]
-Description=LinuxIO Dynamic user for bridge
+Description=LinuxIO Dynamic User Template
 Documentation=https://github.com/mordilloSan/LinuxIO
 DefaultDependencies=no
 PartOf=linuxio.target

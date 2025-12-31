@@ -1,5 +1,5 @@
 [Unit]
-Description=LinuxIO issue updater service
+Description=LinuxIO Message of the Day
 Documentation=https://github.com/mordilloSan/LinuxIO
 PartOf=linuxio.target
 Wants=network-online.target
