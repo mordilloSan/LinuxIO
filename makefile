@@ -268,30 +268,15 @@ setup:
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
 
-# Separate lint/tsc targets that include all prerequisites
+# Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
 lint: ensure-node setup
-	@echo "🔍 Running ESLint..."
-	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
+	@$(MAKE) --no-print-directory lint-only
 
 tsc: ensure-node setup
-	@echo "🔍 Running TypeScript type checks..."
-	@bash -c 'cd frontend && npx tsc && echo "✅ TypeScript Linting Ok!"'
+	@$(MAKE) --no-print-directory tsc-only
 
 golint: ensure-golint
-	@set -euo pipefail
-	@echo "📁 Linting Go module in: $(BACKEND_DIR)"
-	@echo "🔍 Running gofmt..."
-ifneq ($(CI),)
-	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
-	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
-else
-	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
-endif
-	@echo "🔍 Ensuring go.mod is tidy..."
-	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
-	@echo "🔍 Running golangci-lint..."
-	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
-	@echo "✅ Go Linting Ok!"
+	@$(MAKE) --no-print-directory golint-only
 
 # Optimized test target: runs setup ONCE, then parallelizes the actual checks
 test: ensure-node ensure-go ensure-golint setup dev-prep
@@ -303,7 +288,7 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 	  wait; \
 	} && $(MAKE) --no-print-directory test-backend
 
-# Internal targets (without prerequisites) for parallel execution
+# Core lint implementations (used by both individual targets and parallel test)
 lint-only:
 	@echo "🔍 Running ESLint..."
 	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
@@ -446,7 +431,8 @@ dev: setup dev-prep
 	@echo ""
 	cd frontend && npx vite --port $(VITE_DEV_PORT)
 
-build: test build-vite build-bridge
+# Internal target: build backend + auth + cli (requires bridge already built)
+_build-binaries:
 	@echo ""
 	@echo "🔐 Capturing bridge hash for backend build..."
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
@@ -455,14 +441,9 @@ build: test build-vite build-bridge
 	@$(MAKE) --no-print-directory build-auth
 	@$(MAKE) --no-print-directory build-cli
 
-fastbuild:  build-bridge
-	@echo ""
-	@echo "🔐 Capturing bridge hash for backend build..."
-	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
-	echo "   Hash: $$BRIDGE_HASH"; \
-	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
-	@$(MAKE) --no-print-directory build-auth
-	@$(MAKE) --no-print-directory build-cli
+build: test build-vite build-bridge _build-binaries
+
+fastbuild: build-bridge _build-binaries
 
 generate:
 	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
@@ -537,55 +518,16 @@ changelog:
 	  PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -v "^$$VERSION$$" | head -n1 || echo "")"; \
 	  if [ -n "$$PREV_TAG" ]; then \
 	    echo "📍 Changes since $$PREV_TAG"; \
-	    COMMITS="$$(git log $${PREV_TAG}..HEAD --pretty=format:'%s|%h|%an' --reverse)"; \
+	    COMMIT_RANGE="$${PREV_TAG}..HEAD"; \
 	  else \
 	    echo "📍 All commits (no previous tag found)"; \
-	    COMMITS="$$(git log --pretty=format:'%s|%h|%an' --reverse)"; \
+	    COMMIT_RANGE=""; \
 	  fi; \
-	  FEATURES=""; FIXES=""; DOCS=""; STYLE=""; REFACTOR=""; PERF=""; \
-	  TEST=""; BUILD=""; CI=""; CHORE=""; OTHER=""; \
-	  while IFS='|' read -r message hash author; do \
-	    [ -z "$$message" ] && continue; \
-	    [[ "$$author" == "github-actions[bot]" ]] && continue; \
-	    [[ "$$message" =~ ^[Cc]hangelog$$ ]] && continue;
-	    ENTRY="* $$message ([$${hash:0:7}](https://github.com/$$REPO/commit/$$hash)) by @$$author"; \
-	    if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^docs(\(.*\))?: ]]; then DOCS="$$DOCS$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^style(\(.*\))?: ]]; then STYLE="$$STYLE$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^refactor(\(.*\))?: ]]; then REFACTOR="$$REFACTOR$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^perf(\(.*\))?: ]]; then PERF="$$PERF$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^test(\(.*\))?: ]]; then TEST="$$TEST$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^build(\(.*\))?: ]]; then BUILD="$$BUILD$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^ci(\(.*\))?: ]]; then CI="$$CI$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^chore(\(.*\))?: ]]; then CHORE="$$CHORE$$ENTRY"$$'\n'; \
-	    else OTHER="$$OTHER$$ENTRY"$$'\n'; fi; \
-	  done <<< "$$COMMITS"; \
 	  BODY_FILE="$$(mktemp)"; \
-	  { \
-	    [ -n "$$FEATURES" ] && printf "### 🚀 Features\n\n%b\n" "$$FEATURES"; \
-	    [ -n "$$FIXES" ] && printf "### 🐛 Bug Fixes\n\n%b\n" "$$FIXES"; \
-	    [ -n "$$PERF" ] && printf "### ⚡ Performance\n\n%b\n" "$$PERF"; \
-	    [ -n "$$REFACTOR" ] && printf "### ♻️ Refactoring\n\n%b\n" "$$REFACTOR"; \
-	    [ -n "$$DOCS" ] && printf "### 📚 Documentation\n\n%b\n" "$$DOCS"; \
-	    [ -n "$$STYLE" ] && printf "### 💄 Style\n\n%b\n" "$$STYLE"; \
-	    [ -n "$$TEST" ] && printf "### 🧪 Tests\n\n%b\n" "$$TEST"; \
-	    [ -n "$$BUILD" ] && printf "### 🏗️ Build\n\n%b\n" "$$BUILD"; \
-	    [ -n "$$CI" ] && printf "### 🤖 CI/CD\n\n%b\n" "$$CI"; \
-	    [ -n "$$CHORE" ] && printf "### 🔧 Chores\n\n%b\n" "$$CHORE"; \
-	    [ -n "$$OTHER" ] && printf "### 🔄 Other Changes\n\n%b\n" "$$OTHER"; \
-	    printf "### 👥 Contributors\n\n"; \
-	    if [ -n "$$PREV_TAG" ]; then \
-	      git log $${PREV_TAG}..HEAD --pretty=format:'* @%an' | sort -u; \
-	    else \
-	      git log --pretty=format:'* @%an' | sort -u; \
-	    fi; \
-	    printf "\n**Full Changelog**: https://github.com/$$REPO/compare/$$PREV_TAG...$$VERSION\n"; \
-	  } > "$$BODY_FILE"; \
-	  HEADER="## $$VERSION — $$DATE"; \
+	  ./packaging/scripts/changelog-entry.sh "$$VERSION" "$$PREV_TAG" "$$COMMIT_RANGE" "$$REPO" > "$$BODY_FILE"; \
 	  { \
 	    echo ""; \
-	    echo "$$HEADER"; \
+	    echo "## $$VERSION — $$DATE"; \
 	    echo ""; \
 	    cat "$$BODY_FILE"; \
 	    echo ""; \
@@ -651,50 +593,14 @@ rebuild-changelog:
 	    PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -A1 "^$$VERSION$$" | tail -n1)"; \
 	    if [ "$$PREV_TAG" = "$$VERSION" ]; then PREV_TAG=""; fi; \
 	    if [ -n "$$PREV_TAG" ]; then \
-	      COMMITS="$$(git log $${PREV_TAG}..$$VERSION --pretty=format:'%s|%h|%an' --reverse)"; \
+	      COMMIT_RANGE="$${PREV_TAG}..$$VERSION"; \
 	    else \
-	      COMMITS="$$(git log $$VERSION --pretty=format:'%s|%h|%an' --reverse)"; \
+	      COMMIT_RANGE="$$VERSION"; \
 	    fi; \
-	    FEATURES=""; FIXES=""; DOCS=""; STYLE=""; REFACTOR=""; PERF=""; \
-	    TEST=""; BUILD=""; CI=""; CHORE=""; OTHER=""; \
-	    while IFS='|' read -r message hash author; do \
-	      [ -z "$$message" ] && continue; \
-	      [[ "$$author" == "github-actions[bot]" ]] && continue; \
-	      [[ "$$message" =~ ^[Cc]hangelog$$ ]] && continue; \
-	      ENTRY="* $$message ([$${hash:0:7}](https://github.com/$$REPO/commit/$$hash)) by @$$author"; \
-	      if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^docs(\(.*\))?: ]]; then DOCS="$$DOCS$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^style(\(.*\))?: ]]; then STYLE="$$STYLE$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^refactor(\(.*\))?: ]]; then REFACTOR="$$REFACTOR$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^perf(\(.*\))?: ]]; then PERF="$$PERF$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^test(\(.*\))?: ]]; then TEST="$$TEST$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^build(\(.*\))?: ]]; then BUILD="$$BUILD$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^ci(\(.*\))?: ]]; then CI="$$CI$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^chore(\(.*\))?: ]]; then CHORE="$$CHORE$$ENTRY"$$'\n'; \
-	      else OTHER="$$OTHER$$ENTRY"$$'\n'; fi; \
-	    done <<< "$$COMMITS"; \
 	    echo "" >> CHANGELOG.md; \
 	    echo "## $$VERSION — $$DATE" >> CHANGELOG.md; \
 	    echo "" >> CHANGELOG.md; \
-	    [ -n "$$FEATURES" ] && printf "### 🚀 Features\n\n%b\n" "$$FEATURES" >> CHANGELOG.md; \
-	    [ -n "$$FIXES" ] && printf "### 🐛 Bug Fixes\n\n%b\n" "$$FIXES" >> CHANGELOG.md; \
-	    [ -n "$$PERF" ] && printf "### ⚡ Performance\n\n%b\n" "$$PERF" >> CHANGELOG.md; \
-	    [ -n "$$REFACTOR" ] && printf "### ♻️ Refactoring\n\n%b\n" "$$REFACTOR" >> CHANGELOG.md; \
-	    [ -n "$$DOCS" ] && printf "### 📚 Documentation\n\n%b\n" "$$DOCS" >> CHANGELOG.md; \
-	    [ -n "$$STYLE" ] && printf "### 💄 Style\n\n%b\n" "$$STYLE" >> CHANGELOG.md; \
-	    [ -n "$$TEST" ] && printf "### 🧪 Tests\n\n%b\n" "$$TEST" >> CHANGELOG.md; \
-	    [ -n "$$BUILD" ] && printf "### 🏗️ Build\n\n%b\n" "$$BUILD" >> CHANGELOG.md; \
-	    [ -n "$$CI" ] && printf "### 🤖 CI/CD\n\n%b\n" "$$CI" >> CHANGELOG.md; \
-	    [ -n "$$CHORE" ] && printf "### 🔧 Chores\n\n%b\n" "$$CHORE" >> CHANGELOG.md; \
-	    [ -n "$$OTHER" ] && printf "### 🔄 Other Changes\n\n%b\n" "$$OTHER" >> CHANGELOG.md; \
-	    printf "### 👥 Contributors\n\n" >> CHANGELOG.md; \
-	    if [ -n "$$PREV_TAG" ]; then \
-	      git log $${PREV_TAG}..$$VERSION --pretty=format:'* @%an' | sort -u >> CHANGELOG.md; \
-	    else \
-	      git log $$VERSION --pretty=format:'* @%an' | sort -u >> CHANGELOG.md; \
-	    fi; \
-	    printf "\n\n**Full Changelog**: https://github.com/$$REPO/compare/$$PREV_TAG...$$VERSION\n" >> CHANGELOG.md; \
+	    ./packaging/scripts/changelog-entry.sh "$$VERSION" "$$PREV_TAG" "$$COMMIT_RANGE" "$$REPO" >> CHANGELOG.md; \
 	  done; \
 	  echo ""; \
 	  echo "✅ Changelog rebuilt for all versions!"; \
@@ -960,7 +866,7 @@ help:
 
 .PHONY: \
   default help clean run \
-  build build-vite build-backend build-bridge build-auth build-cli \
+  build fastbuild _build-binaries build-vite build-backend build-bridge build-auth build-cli \
   dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate rebuild-changelog localinstall reinstall uninstall \
