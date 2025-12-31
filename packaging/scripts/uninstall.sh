@@ -26,40 +26,21 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# ========== STOP SERVICES ==========
-echo -e "${YELLOW}🛑 Stopping LinuxIO services...${NC}"
-systemctl stop linuxio.service 2>/dev/null || true
-systemctl stop linuxio.socket 2>/dev/null || true
-systemctl stop linuxio-auth.socket 2>/dev/null || true
-systemctl stop linuxio-auth@*.service 2>/dev/null || true
-systemctl stop linuxio-bridge-socket-user.service 2>/dev/null || true
-systemctl stop linuxio-issue.service 2>/dev/null || true
-echo -e "${GREEN}✓ Services stopped${NC}"
-
-# ========== DISABLE SERVICES ==========
-echo -e "${YELLOW}🛑 Disabling LinuxIO services...${NC}"
-systemctl disable linuxio.service 2>/dev/null || true
-systemctl disable linuxio.socket 2>/dev/null || true
-systemctl disable linuxio-auth.socket 2>/dev/null || true
-echo -e "${GREEN}✓ Services disabled${NC}"
+# ========== STOP AND DISABLE SERVICES ==========
+echo -e "${YELLOW}🛑 Stopping and disabling LinuxIO services...${NC}"
+systemctl stop linuxio.target 2>/dev/null || true
+# Stop all linuxio units
+systemctl stop 'linuxio*' 2>/dev/null || true
+# Disable all linuxio units
+systemctl disable 'linuxio*' 2>/dev/null || true
+echo -e "${GREEN}✓ Services stopped and disabled${NC}"
 
 # ========== REMOVE SYSTEMD FILES ==========
 echo -e "${YELLOW}🗑️  Removing systemd files...${NC}"
-rm -f /etc/systemd/system/linuxio.service
-rm -f /etc/systemd/system/linuxio.socket
-rm -f /etc/systemd/system/linuxio-auth.socket
-rm -f /etc/systemd/system/linuxio-auth@.service
-rm -f /etc/systemd/system/linuxio-bridge-socket-user.service
-rm -f /etc/systemd/system/linuxio-issue.service
-
-# Also check /lib/systemd/system in case they were installed there
-rm -f /lib/systemd/system/linuxio.service
-rm -f /lib/systemd/system/linuxio.socket
-rm -f /lib/systemd/system/linuxio-auth.socket
-rm -f /lib/systemd/system/linuxio-auth@.service
-rm -f /lib/systemd/system/linuxio-bridge-socket-user.service
-rm -f /lib/systemd/system/linuxio-issue.service
-
+rm -f /etc/systemd/system/linuxio*
+rm -f /lib/systemd/system/linuxio*
+# Remove any symlinks in target.wants directories
+rm -f /etc/systemd/system/*.wants/linuxio*
 echo -e "${GREEN}✓ Systemd files removed${NC}"
 
 # ========== RELOAD SYSTEMD ==========
@@ -70,9 +51,7 @@ echo -e "${GREEN}✓ Systemd reloaded${NC}"
 
 # ========== REMOVE BINARIES ==========
 echo -e "${YELLOW}🗑️  Removing binaries...${NC}"
-rm -f /usr/local/bin/linuxio
-rm -f /usr/local/bin/linuxio-bridge
-rm -f /usr/local/bin/linuxio-auth
+rm -f /usr/local/bin/linuxio*
 echo -e "${GREEN}✓ Binaries removed${NC}"
 
 # ========== REMOVE CONFIGURATION FILES ==========
@@ -127,7 +106,7 @@ echo -e "${YELLOW}🗑️  Cleaning build artifacts from repo...${NC}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -f "$REPO_ROOT/makefile" || -f "$REPO_ROOT/Makefile" ]]; then
     cd "$REPO_ROOT"
-    rm -f linuxio linuxio-bridge linuxio-auth 2>/dev/null || true
+    rm -f linuxio-webserver linuxio-bridge linuxio-auth 2>/dev/null || true
     echo -e "${GREEN}✓ Build artifacts cleaned${NC}"
 else
     echo -e "${YELLOW}⚠  Cannot find repo directory, skipping build artifact cleanup${NC}"

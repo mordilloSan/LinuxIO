@@ -1,6 +1,7 @@
 [Unit]
 Description=LinuxIO Authentication Worker %I
 Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
 Requires=linuxio-auth.socket
 After=linuxio-auth.socket
 
@@ -13,4 +14,3 @@ User=root
 Group=root
 SuccessExitStatus=1 5 126 127
 Restart=no
-
