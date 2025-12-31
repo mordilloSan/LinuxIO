@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/cleanup"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
@@ -170,10 +169,9 @@ func main() {
 			logger.WarnKV("in-flight handlers exceeded grace", "grace_period", grace)
 		}
 
-		// Cleanup artifacts regardless of handler state
-		if err := cleanup.FullCleanup(reason, Sess); err != nil {
-			logger.WarnKV("bridge cleanup failed", "reason", reason, "error", err)
-		}
+		logger.Debugf("Shutdown initiated: %s (user=%s, session=%s)",
+			reason, Sess.User.Username, Sess.SessionID)
+
 		cleanupDone <- struct{}{}
 	}()
 

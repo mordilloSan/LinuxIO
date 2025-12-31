@@ -1,12 +1,14 @@
 [Unit]
 Description=LinuxIO Web Server
-Requires=linuxio.socket linuxio-auth.socket
-After=linuxio.socket linuxio-auth.socket network-online.target
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
+Requires=linuxio-webserver.socket linuxio-auth.socket
+After=linuxio-webserver.socket linuxio-auth.socket network-online.target
 
 [Service]
 DynamicUser=yes
 Group=linuxio-bridge-socket
-ExecStart=/usr/local/bin/linuxio run
+ExecStart=/usr/local/bin/linuxio-webserver run
 Restart=on-failure
 RestartSec=5s
 
@@ -32,6 +34,3 @@ SystemCallFilter=~@keyring @cpu-emulation @debug @module @obsolete @raw-io @rebo
 SystemCallErrorNumber=EPERM
 PrivateIPC=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-
-[Install]
-WantedBy=multi-user.target

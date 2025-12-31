@@ -8,7 +8,7 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/server/web"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
 
 // Handlers bundles dependencies (no global state).

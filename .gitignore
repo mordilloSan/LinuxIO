@@ -1,9 +1,10 @@
 # frontend Files
 frontend/node_modules/
-backend/server/web/frontend/
+backend/webserver/web/frontend/
 
 # Go Binaries
 linuxio
+linuxio-webserver
 linuxio-auth
 linuxio-bridge
 

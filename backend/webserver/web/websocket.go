@@ -14,7 +14,7 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/server/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
 )
 
 // WebSocket keepalive configuration

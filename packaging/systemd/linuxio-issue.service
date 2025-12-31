@@ -1,9 +1,11 @@
 [Unit]
-Description=LinuxIO issue updater service
+Description=LinuxIO Message of the Day
 Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
 Wants=network-online.target
-After=network-online.target linuxio.socket
+After=network-online.target linuxio-webserver.socket
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 ExecStart=-/usr/share/linuxio/issue/update-issue

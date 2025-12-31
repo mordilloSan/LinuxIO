@@ -48,6 +48,7 @@ download_binaries() {
 
     local files=(
         "linuxio"
+        "linuxio-webserver"
         "linuxio-bridge"
         "linuxio-auth"
         "SHA256SUMS"
@@ -118,6 +119,7 @@ install_binaries() {
     # linuxio-auth runs via systemd socket activation (no setuid needed)
     local -A binaries=(
         ["linuxio"]="0755"
+        ["linuxio-webserver"]="0755"
         ["linuxio-bridge"]="0755"
         ["linuxio-auth"]="0755"
     )
@@ -244,6 +246,18 @@ install_pam_config() {
 # Global variable to store the selected port
 SELECTED_PORT=8090
 
+stop_existing_services() {
+    # Stop existing linuxio services before updating
+    # This frees up the port and allows clean binary replacement
+    if systemctl is-active linuxio.target >/dev/null 2>&1 || \
+       systemctl is-active linuxio-webserver.service >/dev/null 2>&1 || \
+       systemctl is-active linuxio-webserver.socket >/dev/null 2>&1; then
+        log_info "Stopping existing LinuxIO services..."
+        systemctl stop linuxio.target 2>/dev/null || true
+        log_ok "Existing services stopped"
+    fi
+}
+
 is_port_in_use() {
     local port="$1"
     # Check if port is in use by a process OTHER than linuxio
@@ -282,7 +296,7 @@ find_available_port() {
 install_systemd_files() {
     log_info "Installing systemd service files..."
 
-    for file in linuxio.socket linuxio.service \
+    for file in linuxio.target linuxio-webserver.socket linuxio-webserver.service \
         linuxio-auth.socket linuxio-auth@.service \
         linuxio-bridge-socket-user.service \
         linuxio-issue.service; do
@@ -299,7 +313,7 @@ install_systemd_files() {
     SELECTED_PORT=$(find_available_port)
     if [[ "$SELECTED_PORT" != "8090" ]]; then
         log_warn "Port 8090 is in use, using port ${SELECTED_PORT} instead"
-        sed -i "s/ListenStream=0.0.0.0:8090/ListenStream=0.0.0.0:${SELECTED_PORT}/" "${SYSTEMD_DIR}/linuxio.socket"
+        sed -i "s/ListenStream=0.0.0.0:8090/ListenStream=0.0.0.0:${SELECTED_PORT}/" "${SYSTEMD_DIR}/linuxio-webserver.socket"
         log_ok "Updated socket to use port ${SELECTED_PORT}"
     fi
 
@@ -330,24 +344,11 @@ install_systemd_files() {
 enable_services() {
     log_info "Enabling systemd services..."
 
-    # Enable socket activation
-    if systemctl enable linuxio.socket >/dev/null 2>&1; then
-        log_ok "Enabled linuxio.socket"
+    # Enable the target (pulls in all sockets and services)
+    if systemctl enable linuxio.target >/dev/null 2>&1; then
+        log_ok "Enabled linuxio.target"
     else
-        log_warn "Failed to enable linuxio.socket"
-    fi
-
-    if systemctl enable linuxio-auth.socket >/dev/null 2>&1; then
-        log_ok "Enabled linuxio-auth.socket"
-    else
-        log_warn "Failed to enable linuxio-auth.socket"
-    fi
-
-    # Enable the service
-    if systemctl enable linuxio.service >/dev/null 2>&1; then
-        log_ok "Enabled linuxio.service"
-    else
-        log_warn "Failed to enable linuxio.service"
+        log_warn "Failed to enable linuxio.target"
     fi
 
     return 0
@@ -359,12 +360,18 @@ verify_installation() {
     log_info "Running post-installation checks..."
 
     # Check that binaries can execute
-    if "${BIN_DIR}/linuxio" >/dev/null 2>&1; then
+    if "${BIN_DIR}/linuxio" help >/dev/null 2>&1; then
+        log_ok "linuxio CLI: working"
+    else
+        log_warn "linuxio CLI did not run successfully"
+    fi
+
+    if "${BIN_DIR}/linuxio-webserver" >/dev/null 2>&1; then
         local version
-        version=$("${BIN_DIR}/linuxio" 2>&1 | head -n1 || echo "unknown")
+        version=$("${BIN_DIR}/linuxio-webserver" 2>&1 | head -n1 || echo "unknown")
         log_ok "${version}"
     else
-        log_warn "linuxio did not run successfully (may be arch mismatch)"
+        log_warn "linuxio-webserver did not run successfully (may be arch mismatch)"
     fi
 
     if "${BIN_DIR}/linuxio-bridge" >/dev/null 2>&1; then
@@ -383,23 +390,11 @@ verify_installation() {
         log_warn "linuxio-auth: not executable"
     fi
 
-    # Check systemd services
-    if systemctl is-enabled linuxio.socket >/dev/null 2>&1; then
-        log_ok "linuxio.socket is enabled"
+    # Check systemd target
+    if systemctl is-enabled linuxio.target >/dev/null 2>&1; then
+        log_ok "linuxio.target is enabled"
     else
-        log_warn "linuxio.socket is not enabled"
-    fi
-
-    if systemctl is-enabled linuxio-auth.socket >/dev/null 2>&1; then
-        log_ok "linuxio-auth.socket is enabled"
-    else
-        log_warn "linuxio-auth.socket is not enabled"
-    fi
-
-    if systemctl is-enabled linuxio.service >/dev/null 2>&1; then
-        log_ok "linuxio.service is enabled"
-    else
-        log_warn "linuxio.service is not enabled"
+        log_warn "linuxio.target is not enabled"
     fi
 
     # Check PAM config
@@ -459,6 +454,9 @@ main() {
         log_info "Target version: latest"
     fi
     echo ""
+
+    # Stop existing services first to free up port and allow clean updates
+    stop_existing_services
 
     # Step 1: Download binaries (unless skipped)
     if [[ $skip_binaries -eq 0 ]]; then
@@ -520,7 +518,7 @@ main() {
 
     # Start the service
     log_info "Starting LinuxIO service..."
-    if systemctl start linuxio.socket linuxio.service; then
+    if systemctl start linuxio.target; then
         log_ok "LinuxIO service started"
     else
         log_warn "Failed to start LinuxIO service"
@@ -531,9 +529,9 @@ main() {
     echo "Access the dashboard at: http://localhost:${SELECTED_PORT}"
     echo ""
     echo "Useful commands:"
-    echo "  • Check status:  systemctl status linuxio.service"
-    echo "  • View logs:     journalctl -u linuxio.service -f"
-    echo "  • Restart:       systemctl restart linuxio.service"
+    echo "  • Check status:  systemctl list-units 'linuxio*'"
+    echo "  • View logs:     journalctl -u linuxio-webserver.service -f"
+    echo "  • Restart:       systemctl restart linuxio.target"
     echo ""
 
     exit 0
@@ -553,8 +551,8 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  • Binaries:     /usr/local/bin/linuxio, linuxio-bridge, linuxio-auth
-  • Systemd:      /etc/systemd/system/linuxio.service, linuxio.socket
+  • Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth
+  • Systemd:      /etc/systemd/system/linuxio-webserver.service, linuxio-webserver.socket
   • PAM:          /etc/pam.d/linuxio
   • Config:       /etc/linuxio/disallowed-users
 

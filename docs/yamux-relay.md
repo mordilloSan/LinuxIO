@@ -141,8 +141,8 @@ Browser                          Server                      Bridge
 - `backend/common/ipc/stream_relay.go` - StreamFrame protocol
 - `backend/bridge/main.go` - Yamux server with auto-detection
 - `backend/bridge/handlers/terminal/stream.go` - PTY streaming
-- `backend/server/bridge/bridge.go` - Yamux client session pool
-- `backend/server/web/websocket_relay.go` - Pure byte relay
+- `backend/webserver/bridge/bridge.go` - Yamux client session pool
+- `backend/webserver/web/websocket_relay.go` - Pure byte relay
 
 ### Frontend
 - `frontend/src/services/StreamMultiplexer.ts` - Singleton WebSocket mux
@@ -271,8 +271,8 @@ The old `/ws` WebSocket system has been fully removed:
 
 | Component | File |
 |-----------|------|
-| WebSocket relay | `backend/server/web/websocket_relay.go` |
-| Yamux session | `backend/server/bridge/bridge.go` |
+| WebSocket relay | `backend/webserver/web/websocket_relay.go` |
+| Yamux session | `backend/webserver/bridge/bridge.go` |
 | StreamFrame protocol | `backend/common/ipc/stream_relay.go` |
 | Yamux helpers | `backend/common/ipc/yamux.go` |
 | Bridge routing | `backend/bridge/main.go` |
