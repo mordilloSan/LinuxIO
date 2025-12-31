@@ -41,7 +41,7 @@ export default defineConfig(({ command }) => {
       target: "es2017",
       chunkSizeWarningLimit: 2000,
       manifest: true,
-      outDir: "../backend/server/web/frontend",
+      outDir: "../backend/webserver/web/frontend",
       emptyOutDir: true,
       minify: "esbuild",
     },

@@ -106,7 +106,7 @@ echo -e "${YELLOW}🗑️  Cleaning build artifacts from repo...${NC}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -f "$REPO_ROOT/makefile" || -f "$REPO_ROOT/Makefile" ]]; then
     cd "$REPO_ROOT"
-    rm -f linuxio-webserver linuxio-bridge linuxio-auth 2>/dev/null || true
+    rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth 2>/dev/null || true
     echo -e "${GREEN}✓ Build artifacts cleaned${NC}"
 else
     echo -e "${YELLOW}⚠  Cannot find repo directory, skipping build artifact cleanup${NC}"

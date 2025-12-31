@@ -13,7 +13,6 @@ SocketMode=0660
 DirectoryMode=0755
 RemoveOnStop=yes
 Accept=yes
-Service=linuxio-auth@.service
 
 [Install]
 WantedBy=linuxio.target

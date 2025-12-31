@@ -414,13 +414,29 @@ build-auth-helper:
 	  echo "🔎 checksec:"; checksec --file=linuxio-auth || true; \
 	fi
 
+build-cli: ensure-go
+	@echo ""
+	@echo "🖥️  Building CLI..."
+	@cd "$(BACKEND_DIR)" && \
+	GOFLAGS="-buildvcs=false" \
+	go build \
+	-ldflags "\
+		-s -w \
+		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
+		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
+		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
+	-o ../linuxio ./cmd/linuxio && \
+	echo "✅ CLI built successfully!" && \
+	echo "📄 Path: $(PWD)/linuxio" && \
+	echo "📊 Size: $$(du -h ../linuxio | cut -f1)"
+
 dev-prep:
-	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/assets"
-	@mkdir -p "$(BACKEND_DIR)/server/web/frontend/.vite"
-	@touch "$(BACKEND_DIR)/server/web/frontend/.vite/manifest.json"
-	@touch "$(BACKEND_DIR)/server/web/frontend/manifest.json"
-	@touch "$(BACKEND_DIR)/server/web/frontend/favicon-1.png"
-	@touch "$(BACKEND_DIR)/server/web/frontend/assets/index-mock.js"
+	@mkdir -p "$(BACKEND_DIR)/webserver/web/frontend/assets"
+	@mkdir -p "$(BACKEND_DIR)/webserver/web/frontend/.vite"
+	@touch "$(BACKEND_DIR)/webserver/web/frontend/.vite/manifest.json"
+	@touch "$(BACKEND_DIR)/webserver/web/frontend/manifest.json"
+	@touch "$(BACKEND_DIR)/webserver/web/frontend/favicon-1.png"
+	@touch "$(BACKEND_DIR)/webserver/web/frontend/assets/index-mock.js"
 
 dev: setup dev-prep
 	@echo ""
@@ -437,6 +453,7 @@ build: test build-vite build-bridge
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
 	@$(MAKE) --no-print-directory build-auth-helper
+	@$(MAKE) --no-print-directory build-cli
 
 generate:
 	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
@@ -445,12 +462,13 @@ run:
 	@./linuxio-webserver run -verbose=$(VERBOSE)
 
 clean:
+	@rm -f ./linuxio || true
 	@rm -f ./linuxio-webserver || true
 	@rm -f ./linuxio-bridge || true
 	@rm -f ./linuxio-auth || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
-	@find "$(BACKEND_DIR)/server/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@find "$(BACKEND_DIR)/webserver/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
 # ========== Installation Targets ==========
@@ -932,7 +950,7 @@ help:
 
 .PHONY: \
   default help clean run \
-  build build-vite build-backend build-bridge build-auth-helper \
+  build build-vite build-backend build-bridge build-auth-helper build-cli \
   dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate rebuild-changelog localinstall reinstall uninstall \

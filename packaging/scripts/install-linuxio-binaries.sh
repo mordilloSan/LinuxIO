@@ -47,6 +47,7 @@ download_binaries() {
     fi
 
     local files=(
+        "linuxio"
         "linuxio-webserver"
         "linuxio-bridge"
         "linuxio-auth"
@@ -117,6 +118,7 @@ install_binaries() {
     # Define binaries with their permissions
     # linuxio-auth runs via systemd socket activation (no setuid needed)
     local -A binaries=(
+        ["linuxio"]="0755"
         ["linuxio-webserver"]="0755"
         ["linuxio-bridge"]="0755"
         ["linuxio-auth"]="0755"
@@ -358,6 +360,12 @@ verify_installation() {
     log_info "Running post-installation checks..."
 
     # Check that binaries can execute
+    if "${BIN_DIR}/linuxio" help >/dev/null 2>&1; then
+        log_ok "linuxio CLI: working"
+    else
+        log_warn "linuxio CLI did not run successfully"
+    fi
+
     if "${BIN_DIR}/linuxio-webserver" >/dev/null 2>&1; then
         local version
         version=$("${BIN_DIR}/linuxio-webserver" 2>&1 | head -n1 || echo "unknown")
@@ -543,7 +551,7 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  • Binaries:     /usr/local/bin/linuxio-webserver, linuxio-bridge, linuxio-auth
+  • Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth
   • Systemd:      /etc/systemd/system/linuxio-webserver.service, linuxio-webserver.socket
   • PAM:          /etc/pam.d/linuxio
   • Config:       /etc/linuxio/disallowed-users

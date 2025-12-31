@@ -49,7 +49,7 @@ echo ""
 
 # Verify binaries exist (should be built by 'make build' already)
 MISSING_BINARIES=0
-for binary in linuxio-webserver linuxio-bridge linuxio-auth; do
+for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
     if [[ ! -f "$REPO_ROOT/$binary" ]]; then
         echo -e "${RED}✗ Binary not found: $binary${NC}"
         MISSING_BINARIES=1
@@ -76,6 +76,7 @@ echo ""
 
 # Install binaries
 echo -e "${YELLOW}📦 Installing binaries to /usr/local/bin...${NC}"
+install -o root -g root -m 0755 "$REPO_ROOT/linuxio" /usr/local/bin/linuxio
 install -o root -g root -m 0755 "$REPO_ROOT/linuxio-webserver" /usr/local/bin/linuxio-webserver
 install -o root -g root -m 0755 "$REPO_ROOT/linuxio-bridge" /usr/local/bin/linuxio-bridge
 install -o root -g root -m 0755 "$REPO_ROOT/linuxio-auth" /usr/local/bin/linuxio-auth
@@ -182,7 +183,7 @@ echo -e "${GREEN}✅ Installation Complete!${NC}"
 echo -e "${GREEN}════════════════════════════════════════════${NC}"
 echo ""
 echo "Installed components:"
-echo "  • Binaries:        /usr/local/bin/{linuxio-webserver,linuxio-bridge,linuxio-auth}"
+echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth}"
 echo "  • Systemd files:   /etc/systemd/system/linuxio*"
 echo "  • Configuration:   /etc/linuxio/"
 echo "  • PAM config:      /etc/pam.d/linuxio"
@@ -191,10 +192,10 @@ echo ""
 echo -e "${CYAN}🌐 Access LinuxIO at: http://localhost:${PORT}${NC}"
 echo ""
 echo "Useful commands:"
-echo "  • Check status:  sudo systemctl list-units 'linuxio*'"
-echo "  • View logs:     sudo journalctl -u linuxio-webserver.service -f"
-echo "  • Restart:       sudo systemctl restart linuxio.target"
-echo "  • Stop:          sudo systemctl stop linuxio.target"
+echo "  • Check status:  linuxio status"
+echo "  • View logs:     linuxio logs"
+echo "  • Restart:       sudo linuxio restart"
+echo "  • Stop:          sudo linuxio stop"
 echo ""
 
 # Show service status
