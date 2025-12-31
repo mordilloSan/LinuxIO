@@ -61,8 +61,8 @@ func showVersion() {
 	fmt.Println("\nInstalled components:")
 	fmt.Printf("  LinuxIO CLI %s\n", config.Version)
 
-	// Check linuxio-webserver (uses --help, version is on first line)
-	out, err := exec.Command("linuxio-webserver", "--help").CombinedOutput()
+	// Check linuxio-webserver
+	out, err := exec.Command("linuxio-webserver", "version").CombinedOutput()
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		if len(lines) > 0 {
