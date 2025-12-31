@@ -526,12 +526,12 @@ main() {
 
     log_ok "Installation complete!"
     echo ""
-    echo "Access the dashboard at: http://localhost:${SELECTED_PORT}"
+    echo "Access the dashboard at: https://localhost:${SELECTED_PORT}"
     echo ""
     echo "Useful commands:"
-    echo "  • Check status:  systemctl list-units 'linuxio*'"
-    echo "  • View logs:     journalctl -u linuxio-webserver.service -f"
-    echo "  • Restart:       systemctl restart linuxio.target"
+    echo "  • Check status:   linuxio status"
+    echo "  • View logs:      linuxio logs"
+    echo "  • All commands:   linuxio"
     echo ""
 
     exit 0
