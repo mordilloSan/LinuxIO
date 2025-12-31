@@ -102,7 +102,7 @@ endef
 CC       ?= gcc
 UNAME_S  := $(shell uname -s)
 
-# ---- toggles (override on CLI: make build-auth-helper LTO=0 STRIP=0 WERROR=1)
+# ---- toggles (override on CLI: make build-auth LTO=0 STRIP=0 WERROR=1)
 LTO      ?= 1          # enable link-time optimization
 STRIP    ?= 1          # strip unneeded symbols after build
 WERROR   ?= 0          # treat warnings as errors (good in CI)
@@ -358,7 +358,7 @@ build-backend: ensure-go
 		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)' \
 		-X '$(MODULE_PATH)/common/config.BridgeSHA256=$(BRIDGE_SHA256)'" \
-	-o ../linuxio-webserver ./ && \
+	-o ../linuxio-webserver ./webserver/ && \
 	echo "✅ Backend built successfully!" && \
 	echo "" && \
 	echo "Summary:" && \
@@ -389,7 +389,7 @@ build-bridge: ensure-go
 	echo "📊 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
-build-auth-helper:
+build-auth:
 	@echo ""
 	@echo "🛡️  Building Session helper (C)..."
 	@set -euo pipefail; \
@@ -404,7 +404,7 @@ build-auth-helper:
 	  echo "⚠️  libsystemd-dev not found - bridge logs will go to /dev/null"; \
 	  echo "   Install with: sudo apt-get install libsystemd-dev"; \
 	fi; \
-	$(CC) $(CFLAGS) -o linuxio-auth packaging/linuxio-auth.c $(LDFLAGS) $$LIBS; \
+	$(CC) $(CFLAGS) -DLINUXIO_VERSION=\"$(GIT_VERSION)\" -o linuxio-auth backend/auth/linuxio-auth.c $(LDFLAGS) $$LIBS; \
 	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth; fi; \
 	echo "✅ Session helper built successfully!"; \
 	echo "📄 Path: $$PWD/linuxio-auth"; \
@@ -425,7 +425,7 @@ build-cli: ensure-go
 		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
 		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
-	-o ../linuxio ./cmd/linuxio && \
+	-o ../linuxio ./ && \
 	echo "✅ CLI built successfully!" && \
 	echo "📄 Path: $(PWD)/linuxio" && \
 	echo "📊 Size: $$(du -h ../linuxio | cut -f1)"
@@ -452,7 +452,16 @@ build: test build-vite build-bridge
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
-	@$(MAKE) --no-print-directory build-auth-helper
+	@$(MAKE) --no-print-directory build-auth
+	@$(MAKE) --no-print-directory build-cli
+
+fastbuild:  build-bridge
+	@echo ""
+	@echo "🔐 Capturing bridge hash for backend build..."
+	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
+	echo "   Hash: $$BRIDGE_HASH"; \
+	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
+	@$(MAKE) --no-print-directory build-auth
 	@$(MAKE) --no-print-directory build-cli
 
 generate:
@@ -478,14 +487,15 @@ uninstall:
 	@echo "🗑️  Uninstalling LinuxIO..."
 	@sudo ./packaging/scripts/uninstall.sh
 
-localinstall: build
+localinstall:
 	@echo ""
 	@echo "📦 Installing LinuxIO from local build..."
 	@sudo ./packaging/scripts/localinstall.sh
 
-reinstall: uninstall localinstall
+reinstall: uninstall build localinstall
 	@echo ""
-	@echo "✅ LinuxIO reinstalled successfully!"
+	@echo "LinuxIO reinstalled successfully!"
+	@echo "⚠️  WARNING: Quick & dirty build - no tests executed!"
 
 # ==========================================
 
@@ -934,7 +944,7 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth-helper $(COLOR_RESET) Build the PAM authentication helper"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Build frontend + backend + bridge"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
@@ -950,7 +960,7 @@ help:
 
 .PHONY: \
   default help clean run \
-  build build-vite build-backend build-bridge build-auth-helper build-cli \
+  build build-vite build-backend build-bridge build-auth build-cli \
   dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate rebuild-changelog localinstall reinstall uninstall \

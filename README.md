@@ -108,7 +108,7 @@ sudo dnf install -y pam-devel systemd-devel
 git clone https://github.com/mordilloSan/LinuxIO
 cd LinuxIO
 
-# Build everything (backend, bridge, auth-helper, frontend)
+# Build everything (backend, bridge, auth, frontend)
 make build
 
 # Install to system (installs binaries + systemd services)
@@ -130,7 +130,7 @@ make dev
 
 ### Backend/Bridge Changes
 
-If you modify Go code (backend, bridge, or auth-helper), rebuild and reinstall:
+If you modify Go code (backend, bridge, or auth), rebuild and reinstall:
 
 ```bash
 make build
@@ -143,7 +143,7 @@ sudo systemctl restart linuxio
 ```bash
 make build-backend      # Go backend binary
 make build-bridge       # Go bridge binary
-make build-auth-helper  # PAM authentication worker
+make build-auth  # PAM authentication worker
 make build-vite         # Frontend static assets
 ```
 
@@ -185,7 +185,7 @@ make build             # Build everything (frontend + backend + bridge + auth wo
 make build-vite        # Build frontend only
 make build-backend     # Build backend only
 make build-bridge      # Build bridge only
-make build-auth-helper # Build PAM worker only
+make build-auth # Build PAM worker only
 ```
 
 **Installation:**

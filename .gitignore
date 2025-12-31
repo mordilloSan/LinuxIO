@@ -3,7 +3,7 @@ frontend/node_modules/
 backend/webserver/web/frontend/
 
 # Go Binaries
-linuxio
+/linuxio
 linuxio-webserver
 linuxio-auth
 linuxio-bridge

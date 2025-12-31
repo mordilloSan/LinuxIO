@@ -28,6 +28,9 @@ func StartLinuxIO() {
 	case "-h", "--help", "help":
 		printGeneralUsage()
 		return
+	case "version", "-v", "--version":
+		fmt.Printf("LinuxIO Web Server %s\n", config.Version)
+		return
 	case "run":
 		runCmd := flag.NewFlagSet("run", flag.ExitOnError)
 
@@ -36,7 +39,7 @@ func StartLinuxIO() {
 		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "enable verbose logging (default false)")
 
 		runCmd.Usage = func() {
-			fmt.Fprintf(os.Stderr, "LinuxIO Server %s\n", config.Version)
+			fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
 			fmt.Fprintln(os.Stderr, "\nUsage:")
 			fmt.Fprintln(os.Stderr, "  linuxio run [flags]")
 			fmt.Fprintln(os.Stderr, "\nFlags:")
@@ -58,26 +61,31 @@ func StartLinuxIO() {
 
 	default:
 		// Unknown subcommand → help
+		fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
 		fmt.Fprintf(os.Stderr, "unknown command: %q\n\n", os.Args[1])
-		printGeneralUsage()
+		printUsage()
 		return
 	}
 }
 
 func printGeneralUsage() {
-	fmt.Fprintf(os.Stderr, `LinuxIO Server %s
+	fmt.Fprintf(os.Stderr, "LinuxIO Web Server\n")
+	printUsage()
+}
 
-Usage:
+func printUsage() {
+	fmt.Fprintf(os.Stderr, `Usage:
   linuxio <command> [flags]
 
 Commands:
   run         Run the HTTP server
+  version     Show version information
   help        Show this help
 
 Examples:
   linuxio run
   linuxio run -port 8090 -verbose
 
-Use "linuxio <command> -h" for more info about a command.
-`, config.Version)
+Use "linuxio-webserver <command> -h" for more info about a command.
+`)
 }
