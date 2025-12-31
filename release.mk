@@ -266,9 +266,37 @@ merge-release:
 	  else \
 	    echo "✅ All checks passed."; \
 	  fi; \
+	  echo ""; \
+	  echo "📝 Add custom release notes? (opens editor)"; \
+	  read -p "   [y/N]: " ADD_NOTES; \
+	  MERGE_BODY=""; \
+	  if [ "$$ADD_NOTES" = "y" ] || [ "$$ADD_NOTES" = "Y" ]; then \
+	    NOTES_FILE="$$(mktemp)"; \
+	    echo "# Add your release notes below (lines starting with # are ignored)" > "$$NOTES_FILE"; \
+	    echo "# Save and close the editor to continue" >> "$$NOTES_FILE"; \
+	    echo "" >> "$$NOTES_FILE"; \
+	    $${EDITOR:-nano} "$$NOTES_FILE"; \
+	    MERGE_BODY="$$(grep -v '^#' "$$NOTES_FILE" | sed '/^[[:space:]]*$$/d')"; \
+	    rm -f "$$NOTES_FILE"; \
+	    if [ -n "$$MERGE_BODY" ]; then \
+	      echo "✅ Release notes added"; \
+	    else \
+	      echo "ℹ️  No notes added (empty)"; \
+	    fi; \
+	  fi; \
 	  TRIGGER_MARK=$$(( $$(date -u +%s) - 30 )); \
+	  echo ""; \
 	  echo "🔀 Merging PR #$$PRNUM…"; \
-	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --delete-branch; \
+	  MERGE_SUCCESS=0; \
+	  if [ -n "$$MERGE_BODY" ]; then \
+	    gh pr merge $(call _repo_flag) "$$PRNUM" --merge --body "$$MERGE_BODY" && MERGE_SUCCESS=1; \
+	  else \
+	    gh pr merge $(call _repo_flag) "$$PRNUM" --merge && MERGE_SUCCESS=1; \
+	  fi; \
+	  if [ $$MERGE_SUCCESS -eq 0 ]; then \
+	    echo "❌ Merge failed! Branch NOT deleted."; \
+	    exit 1; \
+	  fi; \
 	  echo "🔖 Tag to be released: $$VERSION"; \
 	  echo ""; \
 	  echo "🔍 Checking for release workflow..."; \
@@ -364,6 +392,13 @@ merge-release:
 	    echo "   • Take longer to start than expected"; \
 	    echo "💡 Check manually: gh run list --workflow=release.yml"; \
 	  fi; \
+	  echo ""; \
+	  echo "🗑️  Cleaning up: deleting branch $$BRANCH..."; \
+	  git checkout $(DEFAULT_BASE_BRANCH) 2>/dev/null || git checkout main; \
+	  git pull --ff-only; \
+	  git branch -d "$$BRANCH" 2>/dev/null || true; \
+	  git push origin --delete "$$BRANCH" 2>/dev/null || echo "   (remote branch already deleted)"; \
+	  echo "✅ Branch cleanup complete"; \
 	}
 
 .PHONY: start-dev changelog rebuild-changelog open-pr merge-release
