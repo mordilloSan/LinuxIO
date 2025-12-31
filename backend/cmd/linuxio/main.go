@@ -41,33 +41,24 @@ func main() {
 }
 
 func showHelp() {
-	fmt.Println(`LinuxIO - Manage LinuxIO services
-
+	fmt.Printf("\033[1mLinuxIO CLI - Manage LinuxIO services\033[0m\n")
+	fmt.Println(`
 Usage: linuxio <command> [options]
 
 Commands:
   status     Show status of all LinuxIO services
-  logs       Tail logs (use -a for all units)
+  logs       Tail logs [webserver|bridge|auth] (all by default)
   start      Start LinuxIO services
   stop       Stop LinuxIO services
   restart    Restart LinuxIO services
   version    Show version information
-  help       Show this help message
-
-Examples:
-  linuxio status              # Show all linuxio* units
-  linuxio logs                # Tail webserver logs
-  linuxio logs -a             # Tail all linuxio* logs
-  linuxio restart             # Restart all services`)
+  help       Show this help message`)
 }
 
 func showVersion() {
-	fmt.Printf("LinuxIO")
-	fmt.Printf("Built: %s\n", config.BuildTime)
-
-	// Also show installed component versions
+	fmt.Printf("\033[1mLinuxIO CLI - Manage LinuxIO services\033[0m\n")
 	fmt.Println("\nInstalled components:")
-	fmt.Printf("LinuxIO CLI %s\n", config.Version)
+	fmt.Printf("  LinuxIO CLI %s\n", config.Version)
 
 	// Check linuxio-webserver (uses --help, version is on first line)
 	out, err := exec.Command("linuxio-webserver", "--help").CombinedOutput()
@@ -128,13 +119,20 @@ func runStatus() {
 		}
 	}
 
-	// Print with header underlined to full width
+	// Print with header underlined to full width, add status dots
 	for i, line := range filtered {
 		if i == 0 {
 			padded := line + strings.Repeat(" ", maxWidth-len(line))
-			fmt.Printf("\033[4m%s\033[0m\n", padded)
+			fmt.Printf("  \033[4m%s\033[0m\n", padded)
 		} else {
-			fmt.Println(line)
+			// Add colored status dot based on ACTIVE column
+			dot := "○" // default: white circle
+			if strings.Contains(line, " active ") {
+				dot = "\033[32m●\033[0m" // green
+			} else if strings.Contains(line, " failed ") {
+				dot = "\033[31m●\033[0m" // red
+			}
+			fmt.Printf("%s %s\n", dot, strings.TrimLeft(line, " "))
 		}
 	}
 
@@ -146,21 +144,22 @@ func runStatus() {
 func runLogs(args []string) {
 	var cmdArgs []string
 
-	// Check for -a flag (all units)
-	allUnits := false
-	for _, arg := range args {
-		if arg == "-a" || arg == "--all" {
-			allUnits = true
+	// Default: all linuxio units
+	unit := "linuxio*"
+
+	// Check for specific service
+	if len(args) > 0 {
+		switch args[0] {
+		case "webserver", "web", "server":
+			unit = "linuxio-webserver.service"
+		case "bridge":
+			unit = "linuxio-bridge*"
+		case "auth":
+			unit = "linuxio-auth*"
 		}
 	}
 
-	if allUnits {
-		// Use glob pattern for all linuxio units
-		cmdArgs = []string{"-u", "linuxio*", "-f", "--no-pager"}
-	} else {
-		// Default: just the webserver
-		cmdArgs = []string{"-u", "linuxio-webserver.service", "-f", "--no-pager"}
-	}
+	cmdArgs = []string{"-u", unit, "-f", "--no-pager"}
 
 	cmd := exec.Command("journalctl", cmdArgs...)
 	cmd.Stdout = os.Stdout
@@ -183,7 +182,7 @@ func runSystemctl(action, target string) {
 
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to %s %s: %v\n", action, target, err)
-		fmt.Fprintln(os.Stderr, "Hint: This command may require sudo")
+		fmt.Fprintln(os.Stderr, "This command requires sudo")
 		os.Exit(1)
 	}
 

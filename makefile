@@ -455,6 +455,15 @@ build: test build-vite build-bridge
 	@$(MAKE) --no-print-directory build-auth-helper
 	@$(MAKE) --no-print-directory build-cli
 
+fastbuild:  build-bridge
+	@echo ""
+	@echo "🔐 Capturing bridge hash for backend build..."
+	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
+	echo "   Hash: $$BRIDGE_HASH"; \
+	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
+	@$(MAKE) --no-print-directory build-auth-helper
+	@$(MAKE) --no-print-directory build-cli
+
 generate:
 	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
 
@@ -478,14 +487,15 @@ uninstall:
 	@echo "🗑️  Uninstalling LinuxIO..."
 	@sudo ./packaging/scripts/uninstall.sh
 
-localinstall: build
+localinstall: fastbuild
 	@echo ""
 	@echo "📦 Installing LinuxIO from local build..."
 	@sudo ./packaging/scripts/localinstall.sh
 
 reinstall: uninstall localinstall
 	@echo ""
-	@echo "✅ LinuxIO reinstalled successfully!"
+	@echo "LinuxIO reinstalled successfully!"
+	@echo "⚠️  WARNING: Quick & dirty build - no tests executed!"
 
 # ==========================================
 
