@@ -1503,8 +1503,17 @@ static int handle_client(int input_fd, int output_fd)
 // -------- main ----------
 int main(int argc, char *argv[])
 {
-  (void)argc;
-  (void)argv;
+  // Handle --version before any other checks
+  if (argc == 2 && (strcmp(argv[0], "--version") == 0 || strcmp(argv[1], "--version") == 0 ||
+                    strcmp(argv[1], "version") == 0))
+  {
+#ifdef LINUXIO_VERSION
+    printf("LinuxIO Auth %s\n", LINUXIO_VERSION);
+#else
+    printf("LinuxIO Auth (version unknown)\n");
+#endif
+    return 0;
+  }
 
   if (geteuid() != 0)
   {

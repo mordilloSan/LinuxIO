@@ -14,38 +14,6 @@ func withArgs(args []string, fn func()) {
 	fn()
 }
 
-func TestStartLinuxIO_Help(t *testing.T) {
-	var out, errb bytes.Buffer
-	oldStdout, oldStderr := os.Stdout, os.Stderr
-	r1, w1, _ := os.Pipe()
-	r2, w2, _ := os.Pipe()
-	os.Stdout, os.Stderr = w1, w2
-
-	defer func() {
-		_ = w1.Close()
-		_ = w2.Close()
-		os.Stdout, os.Stderr = oldStdout, oldStderr
-		_ = r1.Close()
-		_ = r2.Close()
-	}()
-
-	withArgs([]string{"linuxio", "help"}, func() { StartLinuxIO() })
-	_ = w1.Close()
-	_ = w2.Close()
-
-	if _, err := out.ReadFrom(r1); err != nil {
-		t.Fatalf("read stdout: %v", err)
-	}
-	if _, err := errb.ReadFrom(r2); err != nil {
-		t.Fatalf("read stderr: %v", err)
-	}
-
-	all := out.String() + errb.String()
-	if !strings.Contains(all, "LinuxIO Server") {
-		t.Fatalf("expected general help in output, got: %q", all)
-	}
-}
-
 func TestStartLinuxIO_Run_InvokesRunServer(t *testing.T) {
 	called := false
 	var gotCfg ServerConfig

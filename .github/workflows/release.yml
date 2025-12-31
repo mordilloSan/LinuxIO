@@ -140,7 +140,7 @@ jobs:
 
       - name: Build Go auth helper
         env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-auth-helper
+        run: make build-auth
 
       - name: Build CLI
         env: { GOOS: linux, GOARCH: amd64 }
