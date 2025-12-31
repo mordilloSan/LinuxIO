@@ -36,7 +36,7 @@ func StartLinuxIO() {
 		runCmd.BoolVar(&cfg.Verbose, "verbose", false, "enable verbose logging (default false)")
 
 		runCmd.Usage = func() {
-			fmt.Fprintf(os.Stderr, "LinuxIO Server %s\n", config.Version)
+			fmt.Fprintf(os.Stderr, "LinuxIO Web Server %s\n", config.Version)
 			fmt.Fprintln(os.Stderr, "\nUsage:")
 			fmt.Fprintln(os.Stderr, "  linuxio run [flags]")
 			fmt.Fprintln(os.Stderr, "\nFlags:")
@@ -65,7 +65,7 @@ func StartLinuxIO() {
 }
 
 func printGeneralUsage() {
-	fmt.Fprintf(os.Stderr, `LinuxIO Server %s
+	fmt.Fprintf(os.Stderr, `LinuxIO Web Server %s
 
 Usage:
   linuxio <command> [flags]
