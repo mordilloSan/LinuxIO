@@ -404,7 +404,7 @@ build-auth-helper:
 	  echo "⚠️  libsystemd-dev not found - bridge logs will go to /dev/null"; \
 	  echo "   Install with: sudo apt-get install libsystemd-dev"; \
 	fi; \
-	$(CC) $(CFLAGS) -o linuxio-auth packaging/linuxio-auth.c $(LDFLAGS) $$LIBS; \
+	$(CC) $(CFLAGS) -DLINUXIO_VERSION=\"$(GIT_VERSION)\" -o linuxio-auth packaging/linuxio-auth.c $(LDFLAGS) $$LIBS; \
 	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth; fi; \
 	echo "✅ Session helper built successfully!"; \
 	echo "📄 Path: $$PWD/linuxio-auth"; \
