@@ -3,7 +3,7 @@
 
 # Main flags
 VITE_DEV_PORT = 3000
-DEV_LOG_LINES ?= 50
+DEV_LOG_LINES ?= 25
 VITE_DEV_LOG  ?= frontend/.vite-dev.log
 VITE_DEV_PID  ?= frontend/.vite-dev.pid
 VERBOSE      ?= true
@@ -442,9 +442,9 @@ _build-binaries:
 	@$(MAKE) --no-print-directory build-auth
 	@$(MAKE) --no-print-directory build-cli
 
-build: test build-vite build-bridge _build-binaries
+build: generate test build-vite build-bridge _build-binaries
 
-fastbuild: build-bridge _build-binaries
+fastbuild: generate build-bridge _build-binaries
 
 generate:
 	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go

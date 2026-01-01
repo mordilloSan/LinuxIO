@@ -144,8 +144,8 @@ func runStatus() {
 
 func runLogs(args []string) {
 	// Defaults
-	unit := "linuxio*"
 	lines := 100
+	mode := "all"
 
 	// Parse args: can be [service] [lines] in any order
 	for _, arg := range args {
@@ -154,11 +154,11 @@ func runLogs(args []string) {
 		} else {
 			switch arg {
 			case "webserver", "web", "server":
-				unit = "linuxio-webserver.service"
+				mode = "webserver"
 			case "bridge":
-				unit = "linuxio-bridge*"
+				mode = "bridge"
 			case "auth":
-				unit = "linuxio-auth*"
+				mode = "auth"
 			}
 		}
 	}
@@ -173,7 +173,48 @@ func runLogs(args []string) {
 		gsub(/\[ERROR\]/, "\033[31m[ERROR]\033[0m")
 		print $0
 	}`
-	shellCmd := fmt.Sprintf("journalctl -u '%s' -f -n %d --no-pager | awk '%s'", unit, lines, awkScript)
+
+	allUnits := []string{
+		"_SYSTEMD_UNIT=linuxio.target",
+		"_SYSTEMD_UNIT=linuxio-webserver.service",
+		"_SYSTEMD_UNIT=linuxio-webserver.socket",
+		"_SYSTEMD_UNIT=linuxio-bridge-socket-user.service",
+		"_SYSTEMD_UNIT=linuxio-auth.socket",
+		"_SYSTEMD_UNIT=linuxio-auth@.service",
+		"_SYSTEMD_UNIT=linuxio-issue.service",
+	}
+	webserverUnits := []string{
+		"_SYSTEMD_UNIT=linuxio-webserver.service",
+		"_SYSTEMD_UNIT=linuxio-webserver.socket",
+	}
+	bridgeUnits := []string{
+		"_SYSTEMD_UNIT=linuxio-bridge-socket-user.service",
+	}
+	authUnits := []string{
+		"_SYSTEMD_UNIT=linuxio-auth.socket",
+		"_SYSTEMD_UNIT=linuxio-auth@.service",
+	}
+
+	journalTerms := allUnits
+	includeAuthTag := true
+	switch mode {
+	case "webserver":
+		journalTerms = webserverUnits
+		includeAuthTag = false
+	case "bridge":
+		journalTerms = bridgeUnits
+		includeAuthTag = false
+	case "auth":
+		journalTerms = authUnits
+		includeAuthTag = true
+	}
+	if includeAuthTag {
+		// Include syslog-tagged auth logs (e.g., when linuxio-auth logs via syslog)
+		journalTerms = append(journalTerms, "SYSLOG_IDENTIFIER=linuxio-auth")
+	}
+
+	journalMatch := strings.Join(journalTerms, " + ")
+	shellCmd := fmt.Sprintf("journalctl %s -f -n %d --no-pager | awk '%s'", journalMatch, lines, awkScript)
 
 	cmd := exec.Command("sh", "-c", shellCmd)
 	cmd.Stdout = os.Stdout

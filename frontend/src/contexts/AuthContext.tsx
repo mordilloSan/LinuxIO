@@ -8,8 +8,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { initStreamMux, closeStreamMux } from "@/api/linuxio";
-import useSessionChecker from "@/hooks/useSessionChecker";
+import { initStreamMux, closeStreamMux, MuxStatus } from "@/api/linuxio";
 import {
   AuthContextType,
   AuthState,
@@ -68,29 +67,43 @@ AuthContext.displayName = "AuthContext";
 function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  const fetchUser = useCallback(async (): Promise<AuthUser> => {
-    const res = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
-    if (!res.ok) throw new Error("Failed to fetch user");
-    const data: { user: AuthUser } = await res.json();
-    return data.user;
-  }, []);
-
-  const initialize = useCallback(async () => {
+  const initialize = useCallback(() => {
     dispatch({ type: AUTH_ACTIONS.INITIALIZE_START });
-    try {
-      const user = await fetchUser();
-      dispatch({ type: AUTH_ACTIONS.INITIALIZE_SUCCESS, payload: { user } });
-    } catch {
+
+    // Try to retrieve stored user from sessionStorage
+    const storedUsername = sessionStorage.getItem("auth_username");
+    if (!storedUsername) {
+      // No stored session, mark as initialized but not authenticated
       dispatch({ type: AUTH_ACTIONS.INITIALIZE_FAILURE });
+      return;
     }
-  }, [fetchUser]);
+
+    // Initialize WebSocket - if session is valid, it will connect successfully
+    const mux = initStreamMux();
+
+    // Listen for connection status to determine if session is valid
+    const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
+      if (status === "open") {
+        // WebSocket connected successfully - session is valid
+        const user: AuthUser = { id: storedUsername, name: storedUsername };
+        dispatch({ type: AUTH_ACTIONS.INITIALIZE_SUCCESS, payload: { user } });
+        unsubscribe();
+      } else if (status === "error" || status === "closed") {
+        // WebSocket failed to connect - session is invalid
+        sessionStorage.removeItem("auth_username");
+        dispatch({ type: AUTH_ACTIONS.INITIALIZE_FAILURE });
+        unsubscribe();
+      }
+    });
+  }, []);
 
   // One place to clear local state and redirect.
   // `broadcast` writes to localStorage so other tabs receive it.
   const doLocalSignOut = useCallback((broadcast: boolean) => {
-    // Clear update info on logout
+    // Clear update info and username on logout
     try {
       sessionStorage.removeItem("update_info");
+      sessionStorage.removeItem("auth_username");
     } catch {
       /* ignore */
     }
@@ -107,50 +120,10 @@ function AuthProvider({ children }: AuthProviderProps) {
     window.location.assign("/sign-in");
   }, []);
 
-  const checkSession = useSessionChecker(fetchUser, state, dispatch, {
-    onSignOut: () => {
-      toast.error("Session expired. Please sign in again.");
-      doLocalSignOut(false);
-    },
-    log: true,
-  });
-
   // Init on mount
   useEffect(() => {
     initialize();
   }, [initialize]);
-
-  // Subscribe to visibility/focus to re-check session
-  useEffect(() => {
-    if (!state.isInitialized) return;
-    const handle = () => {
-      if (document.visibilityState === "visible") checkSession();
-    };
-    window.addEventListener("visibilitychange", handle);
-    window.addEventListener("focus", handle);
-    return () => {
-      window.removeEventListener("visibilitychange", handle);
-      window.removeEventListener("focus", handle);
-    };
-  }, [checkSession, state.isInitialized]);
-
-  // Periodic session check while authenticated (every 1 minute for testing, increase in production)
-  // This detects session expiry even if user is just watching the dashboard
-  useEffect(() => {
-    if (!state.isInitialized || !state.isAuthenticated) return;
-
-    const interval = setInterval(
-      () => {
-        // Only check if tab is visible (don't waste resources in background)
-        if (document.visibilityState === "visible") {
-          checkSession();
-        }
-      },
-      5 * 60 * 1000,
-    );
-
-    return () => clearInterval(interval);
-  }, [checkSession, state.isInitialized, state.isAuthenticated]);
 
   // Cross-tab logout via localStorage
   useEffect(() => {
@@ -165,59 +138,64 @@ function AuthProvider({ children }: AuthProviderProps) {
   }, [doLocalSignOut]);
 
   // Initialize stream multiplexer when authenticated
-  // Also listen for unexpected WebSocket closure to trigger session check
+  // Also listen for unexpected WebSocket closure to handle session expiry
   useEffect(() => {
     if (state.isAuthenticated) {
       const mux = initStreamMux();
-      // Listen for WebSocket closure - could indicate session expiry
-      const unsubscribe = mux.addStatusListener((status) => {
+      // Listen for WebSocket closure - indicates session expiry
+      const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
         if (status === "closed" || status === "error") {
           console.log(
-            "[AuthContext] Stream mux closed/error, checking session...",
+            "[AuthContext] Stream mux closed/error, session expired",
           );
-          checkSession();
+          toast.error("Session expired. Please sign in again.");
+          doLocalSignOut(false);
         }
       });
       return () => unsubscribe();
     } else {
       closeStreamMux();
     }
-  }, [state.isAuthenticated, checkSession]);
+  }, [state.isAuthenticated, doLocalSignOut]);
 
-  const signIn = useCallback(
-    async (username: string, password: string) => {
-      // Login response may include update info
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Login failed");
+  const signIn = useCallback(async (username: string, password: string) => {
+    // Login response may include update info
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Login failed");
+    }
+    const data: LoginResponse = await res.json();
+
+    // Store update info if present
+    if (data.update) {
+      try {
+        sessionStorage.setItem("update_info", JSON.stringify(data.update));
+      } catch (error) {
+        console.error("Failed to store update info:", error);
       }
-      const data: LoginResponse = await res.json();
+    }
 
-      // Store update info if present
-      if (data.update) {
-        try {
-          sessionStorage.setItem("update_info", JSON.stringify(data.update));
-        } catch (error) {
-          console.error("Failed to store update info:", error);
-        }
-      }
+    setIndexerAvailabilityFlag(data.indexer_available ?? null);
 
-      setIndexerAvailabilityFlag(data.indexer_available ?? null);
+    // Store username and create user object
+    try {
+      sessionStorage.setItem("auth_username", username);
+    } catch (error) {
+      console.error("Failed to store username:", error);
+    }
 
-      const user = await fetchUser();
-      dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
+    const user: AuthUser = { id: username, name: username };
+    dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
 
-      // Show welcome message
-      toast.success(`Welcome, ${username}!`);
-    },
-    [fetchUser],
-  );
+    // Show welcome message
+    toast.success(`Welcome, ${username}!`);
+  }, []);
 
   const signOut = useCallback(async () => {
     try {

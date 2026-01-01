@@ -1,7 +1,13 @@
 // src/hooks/usePackageUpdater.ts
 import { useState, useCallback, useRef } from "react";
 
-import { linuxio, getStreamMux, Stream, encodeString } from "@/api/linuxio";
+import {
+  linuxio,
+  getStreamMux,
+  Stream,
+  ResultFrame,
+  encodeString,
+} from "@/api/linuxio";
 
 // Stream type for package updates (must match backend ipc.StreamTypePkgUpdate)
 const STREAM_TYPE_PKG_UPDATE = "pkg-update";
@@ -126,7 +132,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
           }
         };
 
-        stream.onResult = (result) => {
+        stream.onResult = (result: ResultFrame) => {
           streamRef.current = null;
 
           if (result.status === "ok") {
