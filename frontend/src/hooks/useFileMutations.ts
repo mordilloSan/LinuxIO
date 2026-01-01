@@ -6,7 +6,7 @@ import {
 import { toast } from "sonner";
 
 import { clearSubfoldersCache } from "@/hooks/useSubfolders";
-import { streamApi, StreamApiError } from "@/utils/streamApi";
+import { linuxio, LinuxIOError } from "@/api/linuxio";
 import { useFileTransfers } from "./useFileTransfers";
 
 type UseFileMutationsParams = {
@@ -60,7 +60,7 @@ export const useFileMutations = ({
   };
 
   const getErrorMessage = (error: unknown, fallback: string): string => {
-    if (error instanceof StreamApiError) {
+    if (error instanceof LinuxIOError) {
       return error.message || fallback;
     }
     if (error instanceof Error) {
@@ -73,7 +73,7 @@ export const useFileMutations = ({
     mutationFn: async (fileName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
       // Args: [path] - file path without trailing slash
-      await streamApi.get("filebrowser", "resource_post", [path]);
+      await linuxio.request("filebrowser", "resource_post", [path]);
     },
     onSuccess: () => {
       invalidateListing();
@@ -88,7 +88,7 @@ export const useFileMutations = ({
     mutationFn: async (folderName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
       // Args: [path] - directory path with trailing slash
-      await streamApi.get("filebrowser", "resource_post", [path]);
+      await linuxio.request("filebrowser", "resource_post", [path]);
     },
     onSuccess: () => {
       invalidateListing();
@@ -104,7 +104,7 @@ export const useFileMutations = ({
       await Promise.all(
         paths.map((path) =>
           // Args: [path]
-          streamApi.get("filebrowser", "resource_delete", [path]),
+          linuxio.request("filebrowser", "resource_delete", [path]),
         ),
       );
     },
@@ -174,7 +174,7 @@ export const useFileMutations = ({
       if (recursive) {
         args.push("true");
       }
-      await streamApi.get("filebrowser", "chmod", args);
+      await linuxio.request("filebrowser", "chmod", args);
     },
     onSuccess: () => {
       invalidateListing();
@@ -191,7 +191,7 @@ export const useFileMutations = ({
         throw new Error("Invalid rename parameters");
       }
       // Args: [action, from, destination]
-      await streamApi.get("filebrowser", "resource_patch", [
+      await linuxio.request("filebrowser", "resource_patch", [
         "rename",
         from,
         destination,
@@ -222,7 +222,7 @@ export const useFileMutations = ({
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
           // Args: [action, from, destination]
-          return streamApi.get("filebrowser", "resource_patch", [
+          return linuxio.request("filebrowser", "resource_patch", [
             "copy",
             sourcePath,
             destination,
@@ -255,7 +255,7 @@ export const useFileMutations = ({
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
           // Args: [action, from, destination]
-          return streamApi.get("filebrowser", "resource_patch", [
+          return linuxio.request("filebrowser", "resource_patch", [
             "move",
             sourcePath,
             destination,

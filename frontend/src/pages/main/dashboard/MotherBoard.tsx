@@ -2,8 +2,8 @@ import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Typography, Box } from "@mui/material";
 import React from "react";
 
+import { linuxio } from "@/api/linuxio";
 import GeneralCard from "@/components/cards/GeneralCard";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface MotherboardInfo {
   baseboard: {
@@ -20,11 +20,12 @@ interface MotherboardInfo {
 }
 
 const MotherBoardInfo: React.FC = () => {
-  const { data: motherboardInfo } = useStreamQuery<MotherboardInfo>({
-    handlerType: "system",
-    command: "get_motherboard_info",
-    refetchInterval: 50000,
-  });
+  const { data: motherboardInfo } = linuxio.call<MotherboardInfo>(
+    "system",
+    "get_motherboard_info",
+    [],
+    { refetchInterval: 50000 },
+  );
 
   const visibleDetails = motherboardInfo ? (
     <Box sx={{ display: "flex", gap: 1, flexDirection: "column" }}>

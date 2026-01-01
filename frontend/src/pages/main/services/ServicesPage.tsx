@@ -5,9 +5,8 @@ import React, { useState, useCallback } from "react";
 import ServiceLogsDrawer from "./ServiceLogsDrawer";
 import ServiceTable, { Service } from "./ServiceTable";
 
+import { linuxio } from "@/api/linuxio";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
-import { streamApi } from "@/utils/streamApi";
 
 const ServicesList: React.FC = () => {
   const queryClient = useQueryClient();
@@ -21,9 +20,7 @@ const ServicesList: React.FC = () => {
     isPending: isLoading,
     isError,
     error,
-  } = useStreamQuery<Service[]>({
-    handlerType: "dbus",
-    command: "ListServices",
+  } = linuxio.call<Service[]>("dbus", "ListServices", [], {
     refetchInterval: 2000,
   });
 
@@ -46,7 +43,7 @@ const ServicesList: React.FC = () => {
       setActionPending(true);
       setActionError(null);
       try {
-        await streamApi.get("dbus", command, [serviceName]);
+        await linuxio.request("dbus", command, [serviceName]);
         queryClient.invalidateQueries({
           queryKey: ["stream", "dbus", "ListServices"],
         });

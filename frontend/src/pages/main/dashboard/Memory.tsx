@@ -1,10 +1,10 @@
 import { Typography, Box } from "@mui/material";
 
+import { linuxio } from "@/api/linuxio";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 import { formatFileSize } from "@/utils/formaters";
 
 // Utility functions
@@ -26,9 +26,7 @@ const MemoryUsage = () => {
     data: memoryData,
     isPending,
     isError,
-  } = useStreamQuery<MemoryInfoResponse>({
-    handlerType: "system",
-    command: "get_memory_info",
+  } = linuxio.call<MemoryInfoResponse>("system", "get_memory_info", [], {
     refetchInterval: 2000,
   });
 

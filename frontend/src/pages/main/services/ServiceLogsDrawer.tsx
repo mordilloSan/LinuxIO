@@ -2,8 +2,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import { Drawer, Box, IconButton, Typography, Alert } from "@mui/material";
 import React from "react";
 
+import { linuxio } from "@/api/linuxio";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface ServiceLogsDrawerProps {
   open: boolean;
@@ -21,10 +21,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
     isPending: isLoading,
     isError,
     error,
-  } = useStreamQuery<string[]>({
-    handlerType: "dbus",
-    command: "GetServiceLogs",
-    args: [serviceName, "200"],
+  } = linuxio.call<string[]>("dbus", "GetServiceLogs", [serviceName, "200"], {
     enabled: open, // Only fetch when drawer is open
     refetchInterval: open ? 5000 : false, // Auto-refresh every 5 seconds when open
   });

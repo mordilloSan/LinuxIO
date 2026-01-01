@@ -15,9 +15,9 @@ import LucidePower from "lucide-react/dist/esm/icons/power";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { linuxio } from "@/api/linuxio";
 import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
-import { streamApi } from "@/utils/streamApi";
 
 function NavbarUserDropdown() {
   const ref = useRef(null);
@@ -54,9 +54,9 @@ function NavbarUserDropdown() {
 
     try {
       if (action === "reboot") {
-        await streamApi.post("dbus", "Reboot");
+        await linuxio.request("dbus", "Reboot");
       } else if (action === "poweroff") {
-        await streamApi.post("dbus", "PowerOff");
+        await linuxio.request("dbus", "PowerOff");
       }
     } catch {
       // Server may die before responding - this is expected

@@ -3,13 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useMultipleDirectoryDetails } from "@/hooks/useMultipleDirectoryDetails";
-import { useStreamMux } from "@/hooks/useStreamMux";
 import {
   ApiResource,
   FileResource,
   ResourceStatData,
 } from "@/types/filebrowser";
-import { streamApi, StreamApiError } from "@/utils/streamApi";
+import { linuxio, LinuxIOError } from "@/api/linuxio";
 
 type UseFileBrowserQueriesParams = {
   normalizedPath: string;
@@ -26,41 +25,40 @@ export const useFileBrowserQueries = ({
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
 }: UseFileBrowserQueriesParams) => {
-  const { isOpen } = useStreamMux();
-
   const {
-    data: resource,
+    data: resourceData,
     isPending,
     isError,
     error,
-  } = useQuery<FileResource>({
-    queryKey: ["stream", "filebrowser", "resource_get", normalizedPath],
-    queryFn: async () => {
-      // Args: [path]
-      const data = await streamApi.get<ApiResource>(
-        "filebrowser",
-        "resource_get",
-        [normalizedPath],
-      );
-      return normalizeResource(data);
+  } = linuxio.call<ApiResource>(
+    "filebrowser",
+    "resource_get",
+    [normalizedPath],
+    {
+      staleTime: 0,
     },
-    staleTime: 0,
-    enabled: isOpen,
-  });
+  );
+
+  const resource = useMemo(
+    () => (resourceData ? normalizeResource(resourceData) : undefined),
+    [resourceData],
+  );
 
   const errorMessage = useMemo(() => {
-    if (!isError) return null;
-    if (error instanceof StreamApiError) {
-      if (error.code === 403) {
+    if (!isError || error === null || error === undefined) return null;
+
+    const err = error as Error | LinuxIOError;
+    if (err instanceof LinuxIOError) {
+      if (err.code === 403) {
         return `Permission denied: You don't have access to "${normalizedPath}".`;
       }
-      if (error.code === 404 || error.code === 500) {
+      if (err.code === 404 || err.code === 500) {
         return `Path not found: "${normalizedPath}" does not exist.`;
       }
-      return error.message;
+      return err.message;
     }
-    if (error instanceof Error) {
-      return error.message;
+    if (err instanceof Error) {
+      return err.message;
     }
     return "Failed to load file information.";
   }, [error, isError, normalizedPath]);
@@ -69,46 +67,36 @@ export const useFileBrowserQueries = ({
     data: detailResource,
     isPending: isDetailPending,
     error: detailError,
-  } = useQuery<FileResource>({
-    queryKey: ["stream", "filebrowser", "resource_get_detail", detailTarget],
-    queryFn: async () => {
-      const currentDetailTarget = detailTarget;
-      if (!currentDetailTarget || currentDetailTarget.length !== 1) {
-        throw new Error("Invalid selection");
-      }
-      // Args: [path, "", getContent?]
-      const data = await streamApi.get<ApiResource>(
-        "filebrowser",
-        "resource_get",
-        [currentDetailTarget[0], "", "true"],
-      );
-      return data as FileResource;
+  } = linuxio.call<FileResource>(
+    "filebrowser",
+    "resource_get",
+    detailTarget && detailTarget.length === 1
+      ? [detailTarget[0], "", "true"]
+      : [],
+    {
+      enabled:
+        hasSingleDetailTarget &&
+        detailTarget !== null &&
+        detailTarget.length === 1,
     },
-    enabled: isOpen && hasSingleDetailTarget,
-  });
+  );
 
   const { data: statData, isPending: isStatPending } =
-    useQuery<ResourceStatData>({
-      queryKey: ["stream", "filebrowser", "resource_stat", detailTarget],
-      queryFn: async () => {
-        const currentDetailTarget = detailTarget;
-        if (!currentDetailTarget || currentDetailTarget.length !== 1) {
-          throw new Error("Invalid selection");
-        }
-        // Args: [path]
-        const data = await streamApi.get<ResourceStatData>(
-          "filebrowser",
-          "resource_stat",
-          [currentDetailTarget[0]],
-        );
-        return data;
+    linuxio.call<ResourceStatData>(
+      "filebrowser",
+      "resource_stat",
+      detailTarget && detailTarget.length === 1 ? [detailTarget[0]] : [],
+      {
+        enabled:
+          hasSingleDetailTarget &&
+          detailTarget !== null &&
+          detailTarget.length === 1,
       },
-      enabled: isOpen && hasSingleDetailTarget,
-    });
+    );
 
   const { data: multipleFileResources, isPending: isMultipleFilesPending } =
     useQuery<Record<string, FileResource>>({
-      queryKey: ["stream", "filebrowser", "resource_get_multi", detailTarget],
+      queryKey: ["linuxio", "filebrowser", "resource_get_multi", detailTarget],
       queryFn: async () => {
         const currentDetailTarget = detailTarget;
         if (!currentDetailTarget || currentDetailTarget.length <= 1) {
@@ -118,7 +106,7 @@ export const useFileBrowserQueries = ({
         await Promise.all(
           currentDetailTarget.map(async (path) => {
             // Args: [path]
-            const data = await streamApi.get<ApiResource>(
+            const data = await linuxio.request<ApiResource>(
               "filebrowser",
               "resource_get",
               [path],
@@ -128,7 +116,10 @@ export const useFileBrowserQueries = ({
         );
         return results;
       },
-      enabled: isOpen && hasMultipleDetailTargets,
+      enabled:
+        hasMultipleDetailTargets &&
+        detailTarget !== null &&
+        detailTarget.length > 1,
     });
 
   const fileResourceMap = useMemo(() => {
@@ -152,20 +143,14 @@ export const useFileBrowserQueries = ({
   );
 
   const { data: editingFileResource, isPending: isEditingFileLoading } =
-    useQuery<FileResource>({
-      queryKey: ["stream", "filebrowser", "resource_get_edit", editingPath],
-      queryFn: async () => {
-        if (!editingPath) throw new Error("No editing path");
-        // Args: [path, "", getContent?]
-        const data = await streamApi.get<ApiResource>(
-          "filebrowser",
-          "resource_get",
-          [editingPath, "", "true"],
-        );
-        return data as FileResource;
+    linuxio.call<FileResource>(
+      "filebrowser",
+      "resource_get",
+      editingPath ? [editingPath, "", "true"] : [],
+      {
+        enabled: !!editingPath,
       },
-      enabled: isOpen && !!editingPath,
-    });
+    );
 
   const shouldShowDetailLoader =
     (hasSingleDetailTarget && isDetailPending) ||

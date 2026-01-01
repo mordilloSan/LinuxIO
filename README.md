@@ -127,6 +127,7 @@ make dev
 - Frontend runs on `http://localhost:3000`
 - Vite proxies `/ws` and `/auth` to the backend on `:8090`
 - Backend must be running via systemd (`sudo systemctl start linuxio`)
+- `make dev` starts Vite detached (logs at `frontend/.vite-dev.log`) and tails `linuxio logs 50`
 
 ### Backend/Bridge Changes
 
