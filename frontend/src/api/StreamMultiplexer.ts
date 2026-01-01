@@ -351,10 +351,12 @@ export class StreamMultiplexer {
       this.notifyStatusChange("open");
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event: CloseEvent) => {
       this._status = "closed";
       this.notifyStatusChange("closed");
       this.closeAllStreams();
+      // Log close code for debugging
+      console.log(`[StreamMultiplexer] WebSocket closed: code=${event.code}, reason="${event.reason}"`);
     };
 
     this.ws.onerror = () => {

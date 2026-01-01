@@ -171,7 +171,7 @@ rebuild-changelog:
 	  echo ""; \
 	}
 
-open-pr: generate
+open-pr:
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
