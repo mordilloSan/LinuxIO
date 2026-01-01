@@ -21,6 +21,7 @@
     "baseUrl": "src/",
     "paths": {
       // Folders
+      "@/api/*": ["api/*"],
       "@/components/*": ["components/*"],
       "@/contexts/*": ["contexts/*"],
       "@/hooks/*": ["hooks/*"],

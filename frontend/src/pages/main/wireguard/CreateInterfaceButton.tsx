@@ -5,8 +5,7 @@ import { toast } from "sonner";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
-import { useStreamQuery } from "@/hooks/useStreamApi";
-import { streamApi } from "@/utils/streamApi";
+import { linuxio } from "@/api/linuxio";
 
 const wireguardToastMeta = {
   meta: { href: "/wireguard", label: "Open WireGuard" },
@@ -39,16 +38,15 @@ const CreateInterfaceButton = () => {
     data: networkData,
     isPending: networkLoading,
     error: networkError,
-  } = useStreamQuery<NetworkInterface[]>({
-    handlerType: "dbus",
-    command: "GetNetworkInfo",
-  });
+  } = linuxio.call<NetworkInterface[]>("dbus", "GetNetworkInfo", [], {});
 
   // Fetch existing WireGuard interfaces via stream API
-  const { data: wgInterfaces } = useStreamQuery<any[]>({
-    handlerType: "wireguard",
-    command: "list_interfaces",
-  });
+  const { data: wgInterfaces } = linuxio.call<any[]>(
+    "wireguard",
+    "list_interfaces",
+    [],
+    {},
+  );
 
   // Memoize WireGuard interfaces array
   const wgArray = useMemo(
@@ -184,7 +182,7 @@ const CreateInterfaceButton = () => {
         String(peers), // numPeers
       ];
 
-      await streamApi.get("wireguard", "add_interface", args);
+      await linuxio.request("wireguard", "add_interface", args);
 
       toast.success(
         `WireGuard interface '${serverName}' created`,

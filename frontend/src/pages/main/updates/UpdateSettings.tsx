@@ -14,8 +14,8 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { linuxio } from "@/api/linuxio";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { streamApi } from "@/utils/streamApi";
 
 type Frequency = "hourly" | "daily" | "weekly";
 type Scope = "security" | "updates" | "all";
@@ -58,8 +58,8 @@ const UpdateSettings: React.FC = () => {
   // -------- Load on mount --------
   useEffect(() => {
     let mounted = true;
-    streamApi
-      .get<AutoUpdateState>("dbus", "GetAutoUpdates")
+    linuxio
+      .request<AutoUpdateState>("dbus", "GetAutoUpdates")
       .then((payload) => {
         if (!mounted) return;
         if (!payload) {
@@ -109,7 +109,7 @@ const UpdateSettings: React.FC = () => {
           .filter(Boolean),
       };
       // SetAutoUpdates expects a single JSON arg
-      const result = await streamApi.get<AutoUpdateState>(
+      const result = await linuxio.request<AutoUpdateState>(
         "dbus",
         "SetAutoUpdates",
         [JSON.stringify(payload)],
@@ -133,7 +133,7 @@ const UpdateSettings: React.FC = () => {
   // -------- Apply at next reboot --------
   const handleApplyOffline = async () => {
     try {
-      const result = await streamApi.get<{ status?: string; error?: string }>(
+      const result = await linuxio.request<{ status?: string; error?: string }>(
         "dbus",
         "ApplyOfflineUpdates",
       );

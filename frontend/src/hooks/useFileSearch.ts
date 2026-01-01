@@ -1,7 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-
-import { useStreamMux } from "@/hooks/useStreamMux";
-import { streamApi } from "@/utils/streamApi";
+import { linuxio } from "@/api/linuxio";
 import { getIndexerAvailabilityFlag } from "@/utils/indexerAvailability";
 
 export interface SearchResult {
@@ -40,29 +37,23 @@ export const useFileSearch = ({
   basePath = "/",
   enabled = true,
 }: UseFileSearchOptions): UseFileSearchResult => {
-  const { isOpen } = useStreamMux();
   const indexerDisabled = getIndexerAvailabilityFlag() === false;
   const shouldSearch = query.trim().length >= 2; // Minimum 2 characters
-  const queryEnabled = isOpen && enabled && shouldSearch && !indexerDisabled;
+  const queryEnabled = enabled && shouldSearch && !indexerDisabled;
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["stream", "filebrowser", "search", query, limit, basePath],
-    queryFn: async () => {
-      // Args: [query, limit?, basePath?]
-      const data = await streamApi.get<SearchResponse>(
-        "filebrowser",
-        "search",
-        [query, String(limit), basePath],
-      );
-      return data;
+  const { data, isLoading, error } = linuxio.call<SearchResponse>(
+    "filebrowser",
+    "search",
+    [query, String(limit), basePath],
+    {
+      enabled: queryEnabled,
+      staleTime: 30000, // 30 seconds - search results stay fresh longer
+      gcTime: 5 * 60 * 1000, // 5 minutes
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      retry: 1,
     },
-    enabled: queryEnabled,
-    staleTime: 30000, // 30 seconds - search results stay fresh longer
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    retry: 1,
-  });
+  );
 
   const derivedError =
     indexerDisabled && shouldSearch

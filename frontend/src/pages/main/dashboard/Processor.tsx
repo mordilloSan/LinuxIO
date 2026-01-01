@@ -2,11 +2,11 @@ import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Box, Typography } from "@mui/material";
 import React from "react";
 
+import { linuxio } from "@/api/linuxio";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface CPUInfoResponse {
   vendorId: string;
@@ -29,9 +29,7 @@ const Processor: React.FC = () => {
     data: CPUInfo,
     isPending,
     isError,
-  } = useStreamQuery<CPUInfoResponse>({
-    handlerType: "system",
-    command: "get_cpu_info",
+  } = linuxio.call<CPUInfoResponse>("system", "get_cpu_info", [], {
     refetchInterval: 2000,
   });
 

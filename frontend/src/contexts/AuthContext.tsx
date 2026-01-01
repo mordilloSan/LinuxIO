@@ -8,6 +8,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+import { initStreamMux, closeStreamMux } from "@/api/linuxio";
 import useSessionChecker from "@/hooks/useSessionChecker";
 import {
   AuthContextType,
@@ -22,7 +23,6 @@ import {
   clearIndexerAvailabilityFlag,
   setIndexerAvailabilityFlag,
 } from "@/utils/indexerAvailability";
-import { initStreamMux, closeStreamMux } from "@/utils/StreamMultiplexer";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 

@@ -6,11 +6,10 @@ import { toast } from "sonner";
 
 import InterfaceDetails from "./InterfaceClients";
 
+import { linuxio } from "@/api/linuxio";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 import { WireGuardInterface } from "@/types/wireguard";
-import { streamApi } from "@/utils/streamApi";
 
 const wireguardToastMeta = {
   meta: { href: "/wireguard", label: "Open WireGuard" },
@@ -29,9 +28,7 @@ const WireGuardDashboard: React.FC = () => {
     isPending: isLoading,
     isError,
     refetch,
-  } = useStreamQuery<WireGuardInterface[]>({
-    handlerType: "wireguard",
-    command: "list_interfaces",
+  } = linuxio.call<WireGuardInterface[]>("wireguard", "list_interfaces", [], {
     refetchInterval: 10000,
   });
 
@@ -69,7 +66,7 @@ const WireGuardDashboard: React.FC = () => {
 
   const handleDelete = async (interfaceName: string) => {
     try {
-      await streamApi.get("wireguard", "remove_interface", [interfaceName]);
+      await linuxio.request("wireguard", "remove_interface", [interfaceName]);
       toast.success(
         `WireGuard interface '${interfaceName}' deleted`,
         wireguardToastMeta,
@@ -87,7 +84,7 @@ const WireGuardDashboard: React.FC = () => {
 
   const handleAddPeer = async (interfaceName: string) => {
     try {
-      await streamApi.get("wireguard", "add_peer", [interfaceName]);
+      await linuxio.request("wireguard", "add_peer", [interfaceName]);
       toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
       refetch();
       queryClient.invalidateQueries({
@@ -111,7 +108,7 @@ const WireGuardDashboard: React.FC = () => {
         throw new Error('Action must be either "up" or "down".');
       }
       const command = status === "up" ? "up_interface" : "down_interface";
-      await streamApi.get("wireguard", command, [interfaceName]);
+      await linuxio.request("wireguard", command, [interfaceName]);
       toast.success(
         `WireGuard interface "${interfaceName}" turned ${status === "up" ? "on" : "off"}.`,
         wireguardToastMeta,

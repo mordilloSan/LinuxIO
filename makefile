@@ -3,6 +3,9 @@
 
 # Main flags
 VITE_DEV_PORT = 3000
+DEV_LOG_LINES ?= 50
+VITE_DEV_LOG  ?= frontend/.vite-dev.log
+VITE_DEV_PID  ?= frontend/.vite-dev.pid
 VERBOSE      ?= true
 
 # --- Go project root autodetection ---
@@ -392,11 +395,42 @@ dev-prep:
 
 dev: setup dev-prep
 	@echo ""
-	@echo "🚀 Starting frontend dev server..."
+	@echo "🚀 Starting frontend dev server (detached)..."
 	@echo "   Backend must be running via: sudo systemctl start linuxio"
 	@echo "   Vite proxies /ws and /auth to https://localhost:8090"
+	@echo "   Vite log: $(VITE_DEV_LOG)"
 	@echo ""
-	cd frontend && npx vite --port $(VITE_DEV_PORT)
+	@STARTED_VITE=0
+	@cleanup() { \
+	  if [ "$$STARTED_VITE" = "1" ]; then \
+	    if [ -f "$(VITE_DEV_PID)" ]; then \
+	      pid="$$(cat "$(VITE_DEV_PID)")"; \
+	      if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+	        kill "$$pid" 2>/dev/null || true; \
+	      fi; \
+	      rm -f "$(VITE_DEV_PID)"; \
+	    fi; \
+	    rm -f "$(VITE_DEV_LOG)"; \
+	  fi; \
+	}
+	@if [ -f "$(VITE_DEV_PID)" ] && kill -0 "$$(cat "$(VITE_DEV_PID)")" 2>/dev/null; then \
+	  echo "⚠️  Vite already running (pid $$(cat "$(VITE_DEV_PID)"))"; \
+	else \
+	  rm -f "$(VITE_DEV_PID)"; \
+	  nohup bash -c 'cd frontend && exec npx vite --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
+	  echo $$! > "$(VITE_DEV_PID)"; \
+	  STARTED_VITE=1; \
+	fi
+	@if [ -f "$(VITE_DEV_PID)" ]; then \
+	  echo "✅ Vite started (pid $$(cat "$(VITE_DEV_PID)"))"; \
+	  echo "   Stop with: kill $$(cat "$(VITE_DEV_PID)")"; \
+	else \
+	  echo "❌ Failed to capture Vite PID. Check $(VITE_DEV_LOG) for details."; \
+	fi
+	@trap cleanup INT TERM EXIT
+	@echo ""
+	@echo "📜 Tailing LinuxIO logs (last $(DEV_LOG_LINES) lines)..."
+	@linuxio logs $(DEV_LOG_LINES)
 
 # Internal target: build backend + auth + cli (requires bridge already built)
 _build-binaries:
@@ -466,7 +500,7 @@ help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"
-	@$(PRINTC) "$(COLOR_YELLOW)    make dev              $(COLOR_RESET) Start frontend (Vite) dev server (backend via systemd)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make dev              $(COLOR_RESET) Start frontend dev server (detached) + tail LinuxIO logs"
 	@$(PRINTC) "$(COLOR_YELLOW)    make generate         $(COLOR_RESET) Run go generate on config handlers"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Build$(COLOR_RESET)"
