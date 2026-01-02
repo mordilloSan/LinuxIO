@@ -67,43 +67,36 @@ AuthContext.displayName = "AuthContext";
 function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  const initialize = useCallback(() => {
+  const initialize = useCallback(async () => {
     dispatch({ type: AUTH_ACTIONS.INITIALIZE_START });
 
-    // Try to retrieve stored user from sessionStorage
-    const storedUsername = sessionStorage.getItem("auth_username");
-    if (!storedUsername) {
-      // No stored session, mark as initialized but not authenticated
+    // Check if we have stored user info from a previous session
+    // The WebSocket connection will validate the session cookie
+    const storedUsername = localStorage.getItem("auth_username");
+    // Note: auth_privileged is also stored in localStorage for future UI features
+
+    if (storedUsername) {
+      // Optimistically set authenticated - WebSocket will validate
+      // If session is invalid, WebSocket will fail and trigger logout
+      const user: AuthUser = { id: storedUsername, name: storedUsername };
+      dispatch({
+        type: AUTH_ACTIONS.INITIALIZE_SUCCESS,
+        payload: { user },
+      });
+    } else {
+      // No stored username, not authenticated
       dispatch({ type: AUTH_ACTIONS.INITIALIZE_FAILURE });
-      return;
     }
-
-    // Initialize WebSocket - if session is valid, it will connect successfully
-    const mux = initStreamMux();
-
-    // Listen for connection status to determine if session is valid
-    const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
-      if (status === "open") {
-        // WebSocket connected successfully - session is valid
-        const user: AuthUser = { id: storedUsername, name: storedUsername };
-        dispatch({ type: AUTH_ACTIONS.INITIALIZE_SUCCESS, payload: { user } });
-        unsubscribe();
-      } else if (status === "error" || status === "closed") {
-        // WebSocket failed to connect - session is invalid
-        sessionStorage.removeItem("auth_username");
-        dispatch({ type: AUTH_ACTIONS.INITIALIZE_FAILURE });
-        unsubscribe();
-      }
-    });
   }, []);
 
   // One place to clear local state and redirect.
   // `broadcast` writes to localStorage so other tabs receive it.
   const doLocalSignOut = useCallback((broadcast: boolean) => {
-    // Clear update info and username on logout
+    // Clear update info and user data on logout
     try {
       sessionStorage.removeItem("update_info");
-      sessionStorage.removeItem("auth_username");
+      localStorage.removeItem("auth_username");
+      localStorage.removeItem("auth_privileged");
     } catch {
       /* ignore */
     }
@@ -138,16 +131,25 @@ function AuthProvider({ children }: AuthProviderProps) {
   }, [doLocalSignOut]);
 
   // Initialize stream multiplexer when authenticated
-  // Also listen for unexpected WebSocket closure to handle session expiry
+  // WebSocket connection validates session - if invalid, triggers logout
   useEffect(() => {
     if (state.isAuthenticated) {
       const mux = initStreamMux();
-      // Listen for WebSocket closure - indicates session expiry
+      // Listen for WebSocket status changes
       const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
-        if (status === "closed" || status === "error") {
-          console.log("[AuthContext] Stream mux closed/error, session expired");
+        if (status === "error") {
+          // "error" status means close code 1008 (session expired/invalid)
+          // or WebSocket connection failed (session cookie invalid)
+          console.log("[AuthContext] Session invalid or expired");
           toast.error("Session expired. Please sign in again.");
           doLocalSignOut(false);
+        } else if (status === "closed") {
+          // Network issue or tab closed - don't logout
+          // Session cookie might still be valid
+          console.log(
+            "[AuthContext] WebSocket closed (network issue or tab closed)",
+          );
+          // Don't logout - user can refresh to reconnect
         }
       });
       return () => unsubscribe();
@@ -181,11 +183,12 @@ function AuthProvider({ children }: AuthProviderProps) {
 
     setIndexerAvailabilityFlag(data.indexer_available ?? null);
 
-    // Store username and create user object
+    // Store username and privileged status in localStorage (persists across tab close)
     try {
-      sessionStorage.setItem("auth_username", username);
+      localStorage.setItem("auth_username", username);
+      localStorage.setItem("auth_privileged", String(data.privileged));
     } catch (error) {
-      console.error("Failed to store username:", error);
+      console.error("Failed to store user info:", error);
     }
 
     const user: AuthUser = { id: username, name: username };
