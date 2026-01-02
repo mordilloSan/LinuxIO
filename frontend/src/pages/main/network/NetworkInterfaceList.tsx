@@ -6,9 +6,9 @@ import { useState, useEffect, useMemo } from "react";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 
+import { linuxio } from "@/api/linuxio";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 
 export interface NetworkInterface {
   name: string;
@@ -55,13 +55,9 @@ const NetworkInterfaceList = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
-  const { data: rawInterfaces = [], isPending: isLoading } = useStreamQuery<
+  const { data: rawInterfaces = [], isPending: isLoading } = linuxio.useCall<
     NetworkInterface[]
-  >({
-    handlerType: "dbus",
-    command: "GetNetworkInfo",
-    refetchInterval: 1000,
-  });
+  >("dbus", "GetNetworkInfo", [], { refetchInterval: 1000 });
 
   // Transform data - filter veths and add type field
   const interfaces = useMemo(

@@ -10,8 +10,8 @@ import {
   Paper,
 } from "@mui/material";
 
+import { linuxio } from "@/api/linuxio";
 import CollapsibleTable from "@/components/tables/CollapsibleTable";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 import { CollapsibleColumn } from "@/types/collapsible";
 
 const formatNetworkRows = (networks: any[]) =>
@@ -144,10 +144,12 @@ function renderCollapseContent(row: any) {
 }
 
 export default function DockerNetworksTable() {
-  const { data = [] } = useStreamQuery<any[]>({
-    handlerType: "docker",
-    command: "list_networks",
-  });
+  const { data = [] } = linuxio.useCall<any[]>(
+    "docker",
+    "list_networks",
+    [],
+    {},
+  );
 
   const rows = formatNetworkRows(data);
 

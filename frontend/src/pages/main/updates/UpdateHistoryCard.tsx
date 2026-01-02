@@ -5,8 +5,8 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import React from "react";
 
+import { linuxio } from "@/api/linuxio";
 import CollapsibleTable from "@/components/tables/CollapsibleTable";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 import { CollapsibleColumn } from "@/types/tables";
 
 interface UpgradeItem {
@@ -29,10 +29,12 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 
 const UpdateHistoryCard: React.FC = () => {
-  const { data: rows = [] } = useStreamQuery<UpdateHistoryRow[]>({
-    handlerType: "dbus",
-    command: "GetUpdateHistory",
-  });
+  const { data: rows = [] } = linuxio.useCall<UpdateHistoryRow[]>(
+    "dbus",
+    "GetUpdateHistory",
+    [],
+    {},
+  );
 
   const renderCollapseContent = (row: UpdateHistoryRow) => {
     const chunked = chunkArray(row.upgrades, 5);

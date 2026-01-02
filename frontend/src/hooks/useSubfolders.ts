@@ -1,8 +1,7 @@
 import { useEffect, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
-import { useStreamMux } from "@/hooks/useStreamMux";
-import { streamApi, StreamApiError } from "@/utils/streamApi";
+import { linuxio, LinuxIOError } from "@/api/linuxio";
 import {
   getIndexerAvailabilityFlag,
   setIndexerAvailabilityFlag,
@@ -56,37 +55,30 @@ export const useSubfolders = (
   path: string,
   enabled: boolean = true,
 ): UseSubfoldersResult => {
-  const { isOpen } = useStreamMux();
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
   const indexerDisabled = getIndexerAvailabilityFlag() === false;
-  const queryEnabled =
-    isOpen && enabled && !!path && !shouldSkip && !indexerDisabled;
+  const queryEnabled = enabled && !!path && !shouldSkip && !indexerDisabled;
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["stream", "filebrowser", "subfolders", path],
-    queryFn: async () => {
-      // Args: [path]
-      const data = await streamApi.get<SubfoldersResponse>(
-        "filebrowser",
-        "subfolders",
-        [path],
-      );
-      return data;
+  const { data, isLoading, error } = linuxio.useCall<SubfoldersResponse>(
+    "filebrowser",
+    "subfolders",
+    [path],
+    {
+      enabled: queryEnabled,
+      staleTime: CACHE_DURATION,
+      gcTime: CACHE_PERSISTENCE,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      retry: (failureCount: number) => failureCount < MAX_RETRIES,
+      retryDelay: () => FAILED_RETRY_DELAY,
     },
-    enabled: queryEnabled,
-    staleTime: CACHE_DURATION,
-    gcTime: CACHE_PERSISTENCE,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    retry: (failureCount) => failureCount < MAX_RETRIES,
-    retryDelay: () => FAILED_RETRY_DELAY,
-  });
+  );
 
   useEffect(() => {
     if (!error) return;
     if (
-      error instanceof StreamApiError &&
+      error instanceof LinuxIOError &&
       error.message?.includes("indexer unavailable")
     ) {
       setIndexerAvailabilityFlag(false);

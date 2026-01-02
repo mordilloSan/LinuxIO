@@ -19,7 +19,7 @@ import {
 } from "@mui/material";
 import React, { useState, useCallback, useEffect } from "react";
 
-import { streamApi } from "@/utils/streamApi";
+import { linuxio } from "@/api/linuxio";
 
 interface PermissionsDialogProps {
   open: boolean;
@@ -139,7 +139,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
       const fetchUsersAndGroups = async () => {
         try {
           // Args: []
-          const data = await streamApi.get<{
+          const data = await linuxio.request<{
             users: string[];
             groups: string[];
           }>("filebrowser", "users_groups", []);

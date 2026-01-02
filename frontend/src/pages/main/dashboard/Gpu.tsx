@@ -2,8 +2,8 @@ import ThermostatIcon from "@mui/icons-material/Thermostat";
 import { Typography, Box } from "@mui/material";
 import React from "react";
 
+import { linuxio } from "@/api/linuxio";
 import GeneralCard from "@/components/cards/GeneralCard";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface GpuDevice {
   address: string;
@@ -22,9 +22,7 @@ const GpuInfo: React.FC = () => {
     data: gpus,
     isPending: isLoading,
     isError,
-  } = useStreamQuery<GpuDevice[]>({
-    handlerType: "system",
-    command: "get_gpu_info",
+  } = linuxio.useCall<GpuDevice[]>("system", "get_gpu_info", [], {
     refetchInterval: 50_000,
   });
 

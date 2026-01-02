@@ -6,9 +6,9 @@ import UpdateHistory from "./UpdateHistory";
 import UpdateSettings from "./UpdateSettings";
 import UpdateStatus from "./UpdateStatus";
 
+import { linuxio } from "@/api/linuxio";
 import TabSelector from "@/components/tabbar/TabSelector";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 import { Update } from "@/types/update";
 
 const tabOptions = [
@@ -26,9 +26,7 @@ const Updates: React.FC = () => {
     data: rawUpdates,
     isPending: isLoading,
     refetch,
-  } = useStreamQuery<Update[]>({
-    handlerType: "dbus",
-    command: "GetUpdatesBasic",
+  } = linuxio.useCall<Update[]>("dbus", "GetUpdatesBasic", [], {
     enabled: tab === "updates", // Only fetch when on updates tab
     refetchInterval: 50000,
   });

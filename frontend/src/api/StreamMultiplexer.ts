@@ -351,10 +351,24 @@ export class StreamMultiplexer {
       this.notifyStatusChange("open");
     };
 
-    this.ws.onclose = () => {
-      this._status = "closed";
-      this.notifyStatusChange("closed");
-      this.closeAllStreams();
+    this.ws.onclose = (event: CloseEvent) => {
+      console.log(
+        `[StreamMultiplexer] WebSocket closed: code=${event.code}, reason="${event.reason}"`,
+      );
+
+      // Close code 1008 = Policy Violation (session expired)
+      // This means the backend terminated the session - user must re-authenticate
+      if (event.code === 1008) {
+        this._status = "error";
+        this.notifyStatusChange("error");
+        this.closeAllStreams();
+      } else {
+        // Network error or normal closure - mark as closed
+        // Frontend can decide whether to show reconnect UI
+        this._status = "closed";
+        this.notifyStatusChange("closed");
+        this.closeAllStreams();
+      }
     };
 
     this.ws.onerror = () => {

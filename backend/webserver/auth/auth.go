@@ -91,18 +91,6 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
-	sess := session.SessionFromContext(r.Context())
-	if sess == nil {
-		web.WriteError(w, http.StatusUnauthorized, "no active session")
-		return
-	}
-	web.WriteJSON(w, http.StatusOK, map[string]any{
-		"user":       sess.User,
-		"privileged": sess.Privileged,
-	})
-}
-
 // ---- internals ----
 
 func (h *Handlers) createUserSession(req LoginRequest) (*session.Session, error) {

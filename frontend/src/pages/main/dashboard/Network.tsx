@@ -3,9 +3,9 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 
 import NetworkGraph from "./NetworkGraph";
 
+import { linuxio } from "@/api/linuxio";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface InterfaceStats {
   name: string;
@@ -17,13 +17,9 @@ interface InterfaceStats {
 }
 
 const NetworkInterfacesCard: React.FC = () => {
-  const { data: rawInterfaces = [], isPending: isLoading } = useStreamQuery<
+  const { data: rawInterfaces = [], isPending: isLoading } = linuxio.useCall<
     InterfaceStats[]
-  >({
-    handlerType: "system",
-    command: "get_network_info",
-    refetchInterval: 1000,
-  });
+  >("system", "get_network_info", [], { refetchInterval: 1000 });
 
   // Transform data to add type field
   const interfaces = useMemo(
