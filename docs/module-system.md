@@ -608,3 +608,9 @@ permissions:
 - `backend/cmd/linuxio-module/main.go` - Module CLI tool
 
 This creates a complete, extensible module system similar to VS Code extensions or browser add-ons!
+
+## Related Documentation
+
+- [Bridge Module System](./bridge-modules.md) - Complete guide to using the YAML-based module system
+- [Frontend API](./frontendAPI.md) - Frontend usage patterns
+- [Bridge Handler API](./bridge-handler-api.md) - Bridge architecture
