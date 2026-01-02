@@ -17,9 +17,9 @@ type CommandRegistry struct {
 type RegisteredCommand struct {
 	ModuleName  string
 	CommandName string
-	Template    string        // Command template with {{.argN}} or {{.argName}} placeholders
+	Template    string // Command template with {{.argN}} or {{.argName}} placeholders
 	Timeout     int
-	Args        []HandlerArg  // Argument definitions for proper substitution
+	Args        []HandlerArg // Argument definitions for proper substitution
 }
 
 // RegisteredDbus represents a whitelisted DBus call
