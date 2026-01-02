@@ -11,23 +11,25 @@ import (
 
 func CommandHandlers() map[string]func([]string) (any, error) {
 	return map[string]func([]string) (any, error){
-		"exec": execCommand,
+		// NOTE: Direct command execution is DISABLED for security
+		// Commands must be defined in module YAML files
+		// Use ExecCommandDirect() from module loader instead
+		"exec": disabledExecHandler,
 	}
 }
 
-func execCommand(args []string) (any, error) {
-	// args[0] = command string
-	// args[1] = timeout (optional, in seconds)
+// disabledExecHandler returns an error explaining that direct execution is disabled
+func disabledExecHandler(args []string) (any, error) {
+	return nil, fmt.Errorf("direct command execution is disabled - commands must be defined in module YAML files")
+}
 
-	if len(args) == 0 {
-		return nil, fmt.Errorf("no command provided")
-	}
-
-	command := args[0]
+// ExecCommandDirect executes a command directly (used by module loader)
+// This bypasses security checks and should only be called by whitelisted module handlers
+func ExecCommandDirect(command, timeoutStr string) (any, error) {
 	timeout := 10 * time.Second
 
-	if len(args) > 1 {
-		if t, err := strconv.Atoi(args[1]); err == nil {
+	if timeoutStr != "" {
+		if t, err := strconv.Atoi(timeoutStr); err == nil {
 			timeout = time.Duration(t) * time.Second
 		}
 	}
