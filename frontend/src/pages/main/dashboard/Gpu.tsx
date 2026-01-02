@@ -22,7 +22,7 @@ const GpuInfo: React.FC = () => {
     data: gpus,
     isPending: isLoading,
     isError,
-  } = linuxio.call<GpuDevice[]>("system", "get_gpu_info", [], {
+  } = linuxio.useCall<GpuDevice[]>("system", "get_gpu_info", [], {
     refetchInterval: 50_000,
   });
 

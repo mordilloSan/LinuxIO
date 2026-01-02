@@ -145,9 +145,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       // Listen for WebSocket closure - indicates session expiry
       const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
         if (status === "closed" || status === "error") {
-          console.log(
-            "[AuthContext] Stream mux closed/error, session expired",
-          );
+          console.log("[AuthContext] Stream mux closed/error, session expired");
           toast.error("Session expired. Please sign in again.");
           doLocalSignOut(false);
         }

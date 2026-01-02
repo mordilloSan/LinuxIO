@@ -29,7 +29,7 @@ const Processor: React.FC = () => {
     data: CPUInfo,
     isPending,
     isError,
-  } = linuxio.call<CPUInfoResponse>("system", "get_cpu_info", [], {
+  } = linuxio.useCall<CPUInfoResponse>("system", "get_cpu_info", [], {
     refetchInterval: 2000,
   });
 

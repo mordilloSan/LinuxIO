@@ -30,7 +30,7 @@ export const useFileBrowserQueries = ({
     isPending,
     isError,
     error,
-  } = linuxio.call<ApiResource>(
+  } = linuxio.useCall<ApiResource>(
     "filebrowser",
     "resource_get",
     [normalizedPath],
@@ -67,7 +67,7 @@ export const useFileBrowserQueries = ({
     data: detailResource,
     isPending: isDetailPending,
     error: detailError,
-  } = linuxio.call<FileResource>(
+  } = linuxio.useCall<FileResource>(
     "filebrowser",
     "resource_get",
     detailTarget && detailTarget.length === 1
@@ -82,7 +82,7 @@ export const useFileBrowserQueries = ({
   );
 
   const { data: statData, isPending: isStatPending } =
-    linuxio.call<ResourceStatData>(
+    linuxio.useCall<ResourceStatData>(
       "filebrowser",
       "resource_stat",
       detailTarget && detailTarget.length === 1 ? [detailTarget[0]] : [],
@@ -143,7 +143,7 @@ export const useFileBrowserQueries = ({
   );
 
   const { data: editingFileResource, isPending: isEditingFileLoading } =
-    linuxio.call<FileResource>(
+    linuxio.useCall<FileResource>(
       "filebrowser",
       "resource_get",
       editingPath ? [editingPath, "", "true"] : [],

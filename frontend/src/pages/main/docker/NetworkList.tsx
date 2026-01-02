@@ -144,7 +144,12 @@ function renderCollapseContent(row: any) {
 }
 
 export default function DockerNetworksTable() {
-  const { data = [] } = linuxio.call<any[]>("docker", "list_networks", [], {});
+  const { data = [] } = linuxio.useCall<any[]>(
+    "docker",
+    "list_networks",
+    [],
+    {},
+  );
 
   const rows = formatNetworkRows(data);
 

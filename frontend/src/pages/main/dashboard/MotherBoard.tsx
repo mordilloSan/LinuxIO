@@ -20,7 +20,7 @@ interface MotherboardInfo {
 }
 
 const MotherBoardInfo: React.FC = () => {
-  const { data: motherboardInfo } = linuxio.call<MotherboardInfo>(
+  const { data: motherboardInfo } = linuxio.useCall<MotherboardInfo>(
     "system",
     "get_motherboard_info",
     [],

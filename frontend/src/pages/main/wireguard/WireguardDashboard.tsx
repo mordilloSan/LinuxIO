@@ -28,9 +28,14 @@ const WireGuardDashboard: React.FC = () => {
     isPending: isLoading,
     isError,
     refetch,
-  } = linuxio.call<WireGuardInterface[]>("wireguard", "list_interfaces", [], {
-    refetchInterval: 10000,
-  });
+  } = linuxio.useCall<WireGuardInterface[]>(
+    "wireguard",
+    "list_interfaces",
+    [],
+    {
+      refetchInterval: 10000,
+    },
+  );
 
   const WGinterfaces = Array.isArray(interfaceData) ? interfaceData : [];
 

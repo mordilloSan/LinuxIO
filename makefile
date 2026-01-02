@@ -476,7 +476,7 @@ reinstall: uninstall fastbuild localinstall
 	@echo "LinuxIO reinstalled successfully!"
 	@echo "⚠️  WARNING: Quick & dirty build - no tests executed!"
 
-fullinstall: uninstall fastbuild localinstall
+fullinstall: uninstall
 	@echo ""
 	@echo "📦 Installing LinuxIO from GitHub repo..."
 	@sudo ./packaging/scripts/install-linuxio-binaries.sh

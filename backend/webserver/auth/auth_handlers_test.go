@@ -21,7 +21,6 @@ func newRouterForTests(h *Handlers) *http.ServeMux {
 
 	// private (with session middleware)
 	mux.Handle("POST /auth/logout", h.SM.RequireSession(http.HandlerFunc(h.Logout)))
-	mux.Handle("GET /auth/me", h.SM.RequireSession(http.HandlerFunc(h.Me)))
 
 	return mux
 }

@@ -17,7 +17,7 @@ interface InterfaceStats {
 }
 
 const NetworkInterfacesCard: React.FC = () => {
-  const { data: rawInterfaces = [], isPending: isLoading } = linuxio.call<
+  const { data: rawInterfaces = [], isPending: isLoading } = linuxio.useCall<
     InterfaceStats[]
   >("system", "get_network_info", [], { refetchInterval: 1000 });
 

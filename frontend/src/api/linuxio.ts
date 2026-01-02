@@ -6,7 +6,7 @@
  *
  * Usage:
  *   // API calls with React Query
- *   const { data, isLoading } = linuxio.call("system", "get_cpu_info");
+ *   const { data, isLoading } = linuxio.useCall("system", "get_cpu_info");
  *
  *   // Direct stream access
  *   const stream = linuxio.stream("terminal", { onData: handleData });
@@ -200,15 +200,15 @@ type CallOptions<T> = Omit<
  * Provides loading states, caching, refetching, etc.
  *
  * @example
- * const { data, isLoading, error, refetch } = linuxio.call("system", "get_cpu_info");
+ * const { data, isLoading, error, refetch } = linuxio.useCall("system", "get_cpu_info");
  *
  * @example
- * const { data } = linuxio.call("docker", "get_stats", ["container-123"], {
+ * const { data } = linuxio.useCall("docker", "get_stats", ["container-123"], {
  *   refetchInterval: 2000,
  *   staleTime: 1000,
  * });
  */
-export function call<T = unknown>(
+export function useCall<T = unknown>(
   handler: string,
   command: string,
   args: string[] = [],
@@ -238,16 +238,16 @@ type MutateOptions<TData, TVariables> = Omit<
  * Make a mutation (write operation) with React Query.
  *
  * @example
- * const { mutate, isPending } = linuxio.mutate("docker", "start_container");
+ * const { mutate, isPending } = linuxio.useMutate("docker", "start_container");
  * mutate("container-123");
  *
  * @example
- * const { mutate } = linuxio.mutate("docker", "create_container", {
+ * const { mutate } = linuxio.useMutate("docker", "create_container", {
  *   onSuccess: () => toast.success("Container created"),
  * });
  * mutate({ name: "my-container", image: "nginx" });
  */
-export function mutate<TData = unknown, TVariables = unknown>(
+export function useMutate<TData = unknown, TVariables = unknown>(
   handler: string,
   command: string,
   options?: MutateOptions<TData, TVariables>,
@@ -450,8 +450,8 @@ export type { Stream, ProgressFrame, ResultFrame, MuxStatus, StreamType };
 export const linuxio = {
   // React hooks
   useStreamMux,
-  call,
-  mutate,
+  useCall,
+  useMutate,
 
   // Direct stream access
   stream,

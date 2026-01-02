@@ -100,7 +100,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     isPending: isLoading,
     isError,
     refetch,
-  } = linuxio.call<Peer[] | { peers: Peer[] }>(
+  } = linuxio.useCall<Peer[] | { peers: Peer[] }>(
     "wireguard",
     "list_peers",
     [interfaceName],

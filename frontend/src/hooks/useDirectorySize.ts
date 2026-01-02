@@ -50,7 +50,7 @@ export const useDirectorySize = (
   const indexerDisabled = getIndexerAvailabilityFlag() === false;
   const queryEnabled = enabled && !!path && !shouldSkip && !indexerDisabled;
 
-  const { data, isLoading, error } = linuxio.call<DirectorySizeData>(
+  const { data, isLoading, error } = linuxio.useCall<DirectorySizeData>(
     "filebrowser",
     "dir_size",
     [path],

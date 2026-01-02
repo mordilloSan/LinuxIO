@@ -29,7 +29,7 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 
 const UpdateHistoryCard: React.FC = () => {
-  const { data: rows = [] } = linuxio.call<UpdateHistoryRow[]>(
+  const { data: rows = [] } = linuxio.useCall<UpdateHistoryRow[]>(
     "dbus",
     "GetUpdateHistory",
     [],

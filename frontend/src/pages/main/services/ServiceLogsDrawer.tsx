@@ -21,10 +21,15 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
     isPending: isLoading,
     isError,
     error,
-  } = linuxio.call<string[]>("dbus", "GetServiceLogs", [serviceName, "200"], {
-    enabled: open, // Only fetch when drawer is open
-    refetchInterval: open ? 5000 : false, // Auto-refresh every 5 seconds when open
-  });
+  } = linuxio.useCall<string[]>(
+    "dbus",
+    "GetServiceLogs",
+    [serviceName, "200"],
+    {
+      enabled: open, // Only fetch when drawer is open
+      refetchInterval: open ? 5000 : false, // Auto-refresh every 5 seconds when open
+    },
+  );
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose}>

@@ -26,7 +26,7 @@ const Updates: React.FC = () => {
     data: rawUpdates,
     isPending: isLoading,
     refetch,
-  } = linuxio.call<Update[]>("dbus", "GetUpdatesBasic", [], {
+  } = linuxio.useCall<Update[]>("dbus", "GetUpdatesBasic", [], {
     enabled: tab === "updates", // Only fetch when on updates tab
     refetchInterval: 50000,
   });

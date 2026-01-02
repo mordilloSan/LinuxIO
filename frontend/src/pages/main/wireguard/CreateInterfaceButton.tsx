@@ -38,10 +38,10 @@ const CreateInterfaceButton = () => {
     data: networkData,
     isPending: networkLoading,
     error: networkError,
-  } = linuxio.call<NetworkInterface[]>("dbus", "GetNetworkInfo", [], {});
+  } = linuxio.useCall<NetworkInterface[]>("dbus", "GetNetworkInfo", [], {});
 
   // Fetch existing WireGuard interfaces via stream API
-  const { data: wgInterfaces } = linuxio.call<any[]>(
+  const { data: wgInterfaces } = linuxio.useCall<any[]>(
     "wireguard",
     "list_interfaces",
     [],
