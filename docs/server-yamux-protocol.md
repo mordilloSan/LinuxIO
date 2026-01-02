@@ -473,6 +473,5 @@ log.Warn("Yamux session lost", "userID", userID)
 
 ## See Also
 
-- [Browser Stream API](./browser-stream-api.md) - Client-side implementation
+- [Frontend API](./frontendAPI.md) - Client-side implementation
 - [Bridge Handler API](./bridge-handler-api.md) - How bridge handles streams
-- [yamux-relay.md](./yamux-relay.md) - Complete architecture overview
