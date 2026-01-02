@@ -16,18 +16,21 @@ func init() {
 
 func DbusHandlers() map[string]func([]string) (any, error) {
 	return map[string]func([]string) (any, error){
-		"call": callDbusMethod,
+		// NOTE: Direct DBus calls are DISABLED for security
+		// DBus calls must be defined in module YAML files
+		// Use CallDbusMethodDirect() from module loader instead
+		"call": disabledDbusHandler,
 	}
 }
 
-func callDbusMethod(args []string) (any, error) {
-	// args[0] = bus ("system" or "session")
-	// args[1] = destination (e.g., "org.freedesktop.login1")
-	// args[2] = path (e.g., "/org/freedesktop/login1")
-	// args[3] = interface (e.g., "org.freedesktop.login1.Manager")
-	// args[4] = method (e.g., "Reboot")
-	// args[5+] = method arguments (optional)
+// disabledDbusHandler returns an error explaining that direct DBus calls are disabled
+func disabledDbusHandler(args []string) (any, error) {
+	return nil, fmt.Errorf("direct DBus calls are disabled - calls must be defined in module YAML files")
+}
 
+// CallDbusMethodDirect executes a DBus call directly (used by module loader)
+// This bypasses security checks and should only be called by whitelisted module handlers
+func CallDbusMethodDirect(args []string) (any, error) {
 	if len(args) < 5 {
 		return nil, fmt.Errorf("dbus call requires: bus, destination, path, interface, method")
 	}
