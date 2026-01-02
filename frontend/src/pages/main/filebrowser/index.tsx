@@ -32,6 +32,13 @@ import { useFileBrowserQueries } from "../../../hooks/useFileBrowserQueries";
 import { useFileMutations } from "../../../hooks/useFileMutations";
 import { useFileSearch } from "../../../hooks/useFileSearch";
 
+import {
+  linuxio,
+  getStreamMux,
+  encodeString,
+  STREAM_CHUNK_SIZE,
+  type ResultFrame,
+} from "@/api/linuxio";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
@@ -59,13 +66,6 @@ import { useConfigValue } from "@/hooks/useConfig";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { clearSubfoldersCache } from "@/hooks/useSubfolders";
 import { ViewMode, FileItem, ResourceStatData } from "@/types/filebrowser";
-import { streamApi } from "@/utils/streamApi";
-import {
-  getStreamMux,
-  encodeString,
-  STREAM_CHUNK_SIZE,
-  type ResultFrame,
-} from "@/utils/StreamMultiplexer";
 
 const viewModes: ViewMode[] = ["card", "list"];
 
@@ -594,7 +594,7 @@ const FileBrowser: React.FC = () => {
     try {
       // Fetch stat info to get current permissions (use first item as reference)
       // Args: [path]
-      const stat = await streamApi.get<ResourceStatData>(
+      const stat = await linuxio.request<ResourceStatData>(
         "filebrowser",
         "resource_stat",
         [selectedPath],

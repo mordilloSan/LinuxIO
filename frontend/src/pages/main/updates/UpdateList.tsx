@@ -9,10 +9,10 @@ import {
 } from "@mui/material";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
+import { linuxio } from "@/api/linuxio";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
-import { streamApi } from "@/utils/streamApi";
 
 interface Props {
   updates: Update[];
@@ -42,9 +42,11 @@ const UpdateList: React.FC<Props> = ({
 
       setLoadingChangelog(packageId);
       try {
-        const detail = await streamApi.get<Update>("dbus", "GetUpdateDetail", [
-          packageId,
-        ]);
+        const detail = await linuxio.request<Update>(
+          "dbus",
+          "GetUpdateDetail",
+          [packageId],
+        );
         setChangelogs((prev) => ({
           ...prev,
           [packageId]: detail.changelog || "No changelog available",

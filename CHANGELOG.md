@@ -1,3 +1,151 @@
+# Changelog
+
+
+## v0.5.13 — 2025-12-31
+
+### 🚀 Features
+
+* feat: Update CLI commands and improve version reporting for LinuxIO services ([e569fe9](https://github.com/mordilloSan/LinuxIO/commit/e569fe9)) by @MordilloSan
+* feat: Enhance CLI help and version display; add fastbuild target to makefile ([e69eae0](https://github.com/mordilloSan/LinuxIO/commit/e69eae0)) by @MordilloSan
+* feat: Enhance logs command to accept line count and improve output formatting ([2ecb681](https://github.com/mordilloSan/LinuxIO/commit/2ecb681)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: remove redundant help test from CLI tests ([6612337](https://github.com/mordilloSan/LinuxIO/commit/6612337)) by @MordilloSan
+* refactor: Rename auth-helper to auth in build scripts and documentation refactor: Made versioning in cli uniform in all binaries ([5d73a8c](https://github.com/mordilloSan/LinuxIO/commit/5d73a8c)) by @MordilloSan
+* refactor: Moved auth helper to its respective folder, according to binary distribution ([03898e1](https://github.com/mordilloSan/LinuxIO/commit/03898e1)) by @MordilloSan
+* refactor: folder structure reorganization ([a831901](https://github.com/mordilloSan/LinuxIO/commit/a831901)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* Merge pull request #66 from mordilloSan/dev/v0.5.13 ([a7ca87f](https://github.com/mordilloSan/LinuxIO/commit/a7ca87f)) by @mordillo
+
+### 👥 Contributors
+
+* @MordilloSan
+* @mordillo
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.12...v0.5.13
+
+## v0.5.12 — 2025-12-31
+
+### 🚀 Features
+
+* feat: add function to stop existing services before updates ([9196768](https://github.com/mordilloSan/LinuxIO/commit/9196768)) by @MordilloSan
+* feat: refactor LinuxIO services to use a unified target and introduce linuxio-webserver service ([e8b1520](https://github.com/mordilloSan/LinuxIO/commit/e8b1520)) by @MordilloSan
+* feat: Implement CLI for LinuxIO server with command handling and configuration ([612b354](https://github.com/mordilloSan/LinuxIO/commit/612b354)) by @MordilloSan
+* feat: Add CLI build process and update related scripts and documentation ([0934e26](https://github.com/mordilloSan/LinuxIO/commit/0934e26)) by @MordilloSan
+
+### 🐛 Bug Fixes
+
+* fix: update getInstalledVersion to handle version output correctly ([d3543e2](https://github.com/mordilloSan/LinuxIO/commit/d3543e2)) by @MordilloSan
+* fix: adjust README formatting for better alignment and readability ([7b71469](https://github.com/mordilloSan/LinuxIO/commit/7b71469)) by @MordilloSan
+* fix: remove linuxio-indexer service and timer from uninstall script and systemd files. these belong on their own Git repository ([690022b](https://github.com/mordilloSan/LinuxIO/commit/690022b)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* Merge pull request #65 from mordilloSan/dev/v0.5.12 ([749cb99](https://github.com/mordilloSan/LinuxIO/commit/749cb99)) by @mordillo
+
+### 👥 Contributors
+
+* @MordilloSan
+* @mordillo
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.11...v0.5.12
+
+## v0.5.11 — 2025-12-30
+
+### 🚀 Features
+
+* feat: improve port availability check and update version logging in installation script. fix: hash in bridge ([c1905ea](https://github.com/mordilloSan/LinuxIO/commit/c1905ea)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* Merge pull request #64 from mordilloSan/dev/v0.5.11 ([e5835f8](https://github.com/mordilloSan/LinuxIO/commit/e5835f8)) by @mordillo
+
+### 👥 Contributors
+
+* @MordilloSan
+* @mordillo
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.10...v0.5.11
+
+## v0.5.10 — 2025-12-30
+
+### 🚀 Features
+
+* feat: enhance release verification by adding checks for linuxio and validating ELF executables fix: resolves bug in release ([2663004](https://github.com/mordilloSan/LinuxIO/commit/2663004)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* Merge pull request #63 from mordilloSan/dev/v0.5.10 ([c437080](https://github.com/mordilloSan/LinuxIO/commit/c437080)) by @mordillo
+
+### 👥 Contributors
+
+* @MordilloSan
+* @mordillo
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.9...v0.5.10
+
+## v0.5.9 — 2025-12-30
+
+### 🚀 Features
+
+* feat: Implementes auth daemon systemd for linuxio-bridge and enhance security measures ([74ee3b6](https://github.com/mordilloSan/LinuxIO/commit/74ee3b6)) by @MordilloSan
+* feat: Update systemd service and socket configurations for enhanced security and user management ([f7f8f5d](https://github.com/mordilloSan/LinuxIO/commit/f7f8f5d)) by @MordilloSan
+* feat: Enhance systemd service configurations and add SSH login banner support ([21086db](https://github.com/mordilloSan/LinuxIO/commit/21086db)) by @MordilloSan
+* feat: integrate jsmn JSON parser for improved JSON handling in linuxio-auth ([d7d7e80](https://github.com/mordilloSan/LinuxIO/commit/d7d7e80)) by @MordilloSan
+* feat: enhance JSON parsing and process management with kernel compatibility fallbacks ([ec80949](https://github.com/mordilloSan/LinuxIO/commit/ec80949)) by @MordilloSan
+* feat: refactor bootstrap handling to use stdin pipe instead of file ([2e1da1e](https://github.com/mordilloSan/LinuxIO/commit/2e1da1e)) by @MordilloSan
+* feat: unify protocol constants and types for LinuxIO auth communication ([fadb887](https://github.com/mordilloSan/LinuxIO/commit/fadb887)) by @MordilloSan
+* feat: update protocol type usage for bootstrap and auth requests ([cb6acf5](https://github.com/mordilloSan/LinuxIO/commit/cb6acf5)) by @MordilloSan
+* feat: remove ping/pong verification from login process and improve shutdown handling ([e06bac9](https://github.com/mordilloSan/LinuxIO/commit/e06bac9)) by @MordilloSan
+* feat: refactor indexer status check and remove unused cleanup code ([335561e](https://github.com/mordilloSan/LinuxIO/commit/335561e)) by @MordilloSan
+* feat: streamline protocol handling by removing legacy JSON support and introducing binary frame protocol ([b1c197e](https://github.com/mordilloSan/LinuxIO/commit/b1c197e)) by @MordilloSan
+* feat: enhance file transfer progress reporting with handler-defined JSON structure ([71270b6](https://github.com/mordilloSan/LinuxIO/commit/71270b6)) by @MordilloSan
+* feat: replace ipc.HandlerFunc with handler-defined function signature across multiple handlers ([deb458f](https://github.com/mordilloSan/LinuxIO/commit/deb458f)) by @MordilloSan
+* feat: refactor archive operations to use handler-defined callbacks and improve abort handling ([bb6b758](https://github.com/mordilloSan/LinuxIO/commit/bb6b758)) by @MordilloSan
+* feat: remove secret field from bootstrap and session structures, updating related logic ([bb9b3d4](https://github.com/mordilloSan/LinuxIO/commit/bb9b3d4)) by @MordilloSan
+* feat: remove server URL and certificate from bootstrap and auth request, update protocol header size feat: remove dev/prod mode from bootstrap and auth request, update protocol header size ([1fbf31d](https://github.com/mordilloSan/LinuxIO/commit/1fbf31d)) by @MordilloSan
+* feat: update README for initial setup, streamline build process, and clarify frontend development instructions refactor: simplify bridge binary handling and remove unnecessary parameters in auth functions chore: clean up unused variables and constants in configuration and protocol files remove: delete obsolete dev installation script fix: adjust systemd service dependencies for bridge socket user ([59e348b](https://github.com/mordilloSan/LinuxIO/commit/59e348b)) by @MordilloSan
+* feat: simplify ServerConfig by removing unused fields and update related logic in CLI and router ([5d5eff7](https://github.com/mordilloSan/LinuxIO/commit/5d5eff7)) by @MordilloSan
+* feat: refactor environment handling by removing unused fields and updating related logic across the application ([58e6cb9](https://github.com/mordilloSan/LinuxIO/commit/58e6cb9)) by @MordilloSan
+* feat: add MOTD support to session and terminal, updating related structures and logic ([b578684](https://github.com/mordilloSan/LinuxIO/commit/b578684)) by @MordilloSan
+* feat: update auth client socket path and adjust systemd service dependencies ([b3290da](https://github.com/mordilloSan/LinuxIO/commit/b3290da)) by @MordilloSan
+* feat: refactor bootstrap and session initialization in main, update CLI help output ([9b26157](https://github.com/mordilloSan/LinuxIO/commit/9b26157)) by @MordilloSan
+* feat: enhance PR check output with additional status messages ([fe765ae](https://github.com/mordilloSan/LinuxIO/commit/fe765ae)) by @MordilloSan
+* feat: enhance security in read_lenstr by using a temporary buffer to minimize sensitive data exposure Fix: make open-pr simplifcation ([3ffb6b6](https://github.com/mordilloSan/LinuxIO/commit/3ffb6b6)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: Remove unnecessary comments in linuxio-bridge-socket-user.service ([fc923b8](https://github.com/mordilloSan/LinuxIO/commit/fc923b8)) by @MordilloSan
+* refactor: Remove unused functions and improve code clarity in linuxio-auth. Removed also one shot auth.service in favor of new daemon for systemd ([10cd931](https://github.com/mordilloSan/LinuxIO/commit/10cd931)) by @MordilloSan
+* refactor: clean up AuthProvider welcome message and adjust PAM configuration for MOTD ([4ecd506](https://github.com/mordilloSan/LinuxIO/commit/4ecd506)) by @MordilloSan
+
+### 📚 Documentation
+
+* docs: Update README to specify LinuxIO kernel support for 5.9+ refactor: Improve logging for installation script version handling fix: C code security improvements. Session ID validation - blocks dangerous characters openat(user_fd, ...)  limits to validated directory,  prevents symlink attacks, Add Better Environment Sanitization, password expiration detection ([db4cf51](https://github.com/mordilloSan/LinuxIO/commit/db4cf51)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* Refactor: - code structure for improved readability and maintainability in auth helper ([de7291f](https://github.com/mordilloSan/LinuxIO/commit/de7291f)) by @MordilloSan
+* Refactor LinuxIO installation and service management ([de02d49](https://github.com/mordilloSan/LinuxIO/commit/de02d49)) by @MordilloSan
+* Refactor user UID and GID handling to use uint32 type ([2b22fc1](https://github.com/mordilloSan/LinuxIO/commit/2b22fc1)) by @MordilloSan
+* Refactor session management and remove socket path handling ([99464db](https://github.com/mordilloSan/LinuxIO/commit/99464db)) by @MordilloSan
+* Refactor LinuxIO Protocol to Binary Format ([8382ed0](https://github.com/mordilloSan/LinuxIO/commit/8382ed0)) by @MordilloSan
+* Merge pull request #62 from mordilloSan/dev/v0.5.9 ([9853a0f](https://github.com/mordilloSan/LinuxIO/commit/9853a0f)) by @mordillo
+
+### 👥 Contributors
+
+* @MordilloSan
+* @mordillo
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.8...v0.5.9
 
 ## v0.5.8 — 2025-12-23
 
@@ -11,12 +159,17 @@
 
 * chore: Sync toolchain versions and cache setup in release workflow ([14323d8](https://github.com/mordilloSan/LinuxIO/commit/14323d8)) by @MordilloSan
 
+### 🔄 Other Changes
+
+* Merge pull request #61 from mordilloSan/dev/v0.5.8 ([72cb1ac](https://github.com/mordilloSan/LinuxIO/commit/72cb1ac)) by @mordillo
+
 ### 👥 Contributors
 
 * @MordilloSan
+* @mordillo
+
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.7...v0.5.8
-
 
 ## v0.5.7 — 2025-12-23
 
@@ -24,12 +177,17 @@
 
 * chore: installation improvements and documentation updates ([31e61c9](https://github.com/mordilloSan/LinuxIO/commit/31e61c9)) by @MordilloSan
 
+### 🔄 Other Changes
+
+* Merge pull request #60 from mordilloSan/dev/v0.5.7 ([d9e7cdf](https://github.com/mordilloSan/LinuxIO/commit/d9e7cdf)) by @mordillo
+
 ### 👥 Contributors
 
 * @MordilloSan
+* @mordillo
+
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.6...v0.5.7
-
 
 ## v0.5.6 — 2025-12-22
 
@@ -40,27 +198,15 @@
 ### 🔄 Other Changes
 
 * Merge pull request #58 from mordilloSan/dev/v0.5.5 ([59a6b9d](https://github.com/mordilloSan/LinuxIO/commit/59a6b9d)) by @mordillo
+* Merge pull request #59 from mordilloSan/dev/v0.5.6 ([c99b50b](https://github.com/mordilloSan/LinuxIO/commit/c99b50b)) by @mordillo
 
 ### 👥 Contributors
 
 * @MordilloSan
 * @mordillo
 
+
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.4...v0.5.6
-
-
-## v0.5.5 — 2025-12-22
-
-### 🐛 Bug Fixes
-
-* fix: - bug fix with namespace for auth-helper ([6bafdca](https://github.com/mordilloSan/LinuxIO/commit/6bafdca)) by @MordilloSan
-
-### 👥 Contributors
-
-* @MordilloSan
-
-**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.4...v0.5.5
-
 
 ## v0.5.4 — 2025-12-22
 
@@ -81,12 +227,39 @@
 * refactor: - update TODO ([35260f8](https://github.com/mordilloSan/LinuxIO/commit/35260f8)) by @MordilloSan
 * refactor: - update TODO fix: - bug fix on ws path ([b7899ba](https://github.com/mordilloSan/LinuxIO/commit/b7899ba)) by @MordilloSan
 
+### 🔄 Other Changes
+
+* Merge pull request #56 from mordilloSan/dev/v0.5.4 ([6b5f9c1](https://github.com/mordilloSan/LinuxIO/commit/6b5f9c1)) by @mordillo
+
 ### 👥 Contributors
 
 * @MordilloSan
+* @mordillo
+
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.3...v0.5.4
 
+## v0.5.3 — 2025-12-22
+
+### 🚀 Features
+
+* feat: - Make Updates more responsive with d-bus streaming. feat: - Improved debuging logging for keepalive ping/pong ([f418dfb](https://github.com/mordilloSan/LinuxIO/commit/f418dfb)) by @MordilloSan
+
+### ♻️ Refactoring
+
+* refactor: - update ToDo ([209c1f5](https://github.com/mordilloSan/LinuxIO/commit/209c1f5)) by @MordilloSan
+
+### 🔄 Other Changes
+
+* Merge pull request #55 from mordilloSan/dev/v0.5.3 ([1407bfa](https://github.com/mordilloSan/LinuxIO/commit/1407bfa)) by @mordillo
+
+### 👥 Contributors
+
+* @MordilloSan
+* @mordillo
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.2...v0.5.3
 
 ## v0.5.2 — 2025-12-22
 
@@ -105,12 +278,17 @@
 * refactor: - SidebarNavList.tsx - Added React.memo wrapper - SidebarContext.tsx - Removed hovered state from context (was causing entire page to re-render) - Sidebar.tsx - Made hover state local, only triggers when sidebar is collapsed ([807745e](https://github.com/mordilloSan/LinuxIO/commit/807745e)) by @MordilloSan
 * refactor: - linting and error checking ([fcfbc8b](https://github.com/mordilloSan/LinuxIO/commit/fcfbc8b)) by @MordilloSan
 
+### 🔄 Other Changes
+
+* Merge pull request #54 from mordilloSan/dev/v0.5.2 ([491cd6a](https://github.com/mordilloSan/LinuxIO/commit/491cd6a)) by @mordillo
+
 ### 👥 Contributors
 
 * @MordilloSan
+* @mordillo
+
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.1...v0.5.2
-
 
 ## v0.5.1 — 2025-12-22
 
@@ -129,14 +307,17 @@
 * refactor: - old IPC code cleanup fix: - bridge now allows sudo ([224d340](https://github.com/mordilloSan/LinuxIO/commit/224d340)) by @MordilloSan
 * refactor: - IPC code cleanup fix: - theming get bugfix ([a1c002d](https://github.com/mordilloSan/LinuxIO/commit/a1c002d)) by @MordilloSan
 
+### 🔄 Other Changes
+
+* Merge pull request #53 from mordilloSan/dev/v0.5.1 ([ebafba3](https://github.com/mordilloSan/LinuxIO/commit/ebafba3)) by @mordillo
+
 ### 👥 Contributors
 
 * @MordilloSan
+* @mordillo
+
 
 **Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.5.0...v0.5.1
-
-# Changelog
-
 
 ## v0.5.0 — 2025-12-22
 
@@ -1228,4 +1409,4 @@
 * @MordilloSan
 
 
-**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/...v0.1.0
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/releases/tag/v0.1.0

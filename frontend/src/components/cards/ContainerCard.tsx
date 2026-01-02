@@ -7,13 +7,12 @@ import ActionButton from "../../pages/main/docker/ActionButton";
 import LogsDialog from "../../pages/main/docker/LogsDialog";
 import ComponentLoader from "../loaders/ComponentLoader";
 
+import { linuxio } from "@/api/linuxio";
 import FrostedCard from "@/components/cards/RootCard";
 import MetricBar from "@/components/gauge/MetricBar";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
-import { streamApi } from "@/utils/streamApi";
 
 const getContainerIconUrl = (name: string) => {
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase();
@@ -75,7 +74,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       };
       setActionPending(true);
       try {
-        await streamApi.get("docker", commandMap[action], [container.Id]);
+        await linuxio.request("docker", commandMap[action], [container.Id]);
         // refresh list + logs
         queryClient.invalidateQueries({
           queryKey: ["stream", "docker", "list_containers"],
@@ -91,13 +90,15 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   );
 
   // ---- logs via stream API (fetch only when dialog is open) ----
-  const logsQuery = useStreamQuery<string>({
-    handlerType: "docker",
-    command: "get_container_logs",
-    args: [container.Id],
-    enabled: logDialogOpen,
-    refetchInterval: logDialogOpen ? 4000 : false,
-  });
+  const logsQuery = linuxio.useCall<string>(
+    "docker",
+    "get_container_logs",
+    [container.Id],
+    {
+      enabled: logDialogOpen,
+      refetchInterval: logDialogOpen ? 4000 : false,
+    },
+  );
 
   const handleLogsClick = () => setLogDialogOpen(true);
 

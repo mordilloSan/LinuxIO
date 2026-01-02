@@ -19,3 +19,4 @@ linuxio-bridge
 .claude/
 *.swp
 
+frontend/.vite-dev.pid

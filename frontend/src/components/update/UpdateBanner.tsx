@@ -3,7 +3,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import { Alert, Button, IconButton, Link, Stack } from "@mui/material";
 import { useState } from "react";
 
-import { streamApi } from "@/utils/streamApi";
+import { linuxio } from "@/api/linuxio";
 
 interface UpdateInfo {
   available: boolean;
@@ -35,7 +35,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
 
     setIsUpdating(true);
     try {
-      await streamApi.post("control", "update");
+      await linuxio.request("control", "update");
       sessionStorage.removeItem("update_info");
 
       // Wait before attempting reload

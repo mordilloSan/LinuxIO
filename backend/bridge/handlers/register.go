@@ -7,6 +7,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/drive"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/modules"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
@@ -27,4 +29,12 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	HandlersByType["system"] = system.SystemHandlers()
 	HandlersByType["filebrowser"] = filebrowser.FilebrowserHandlers()
 	HandlersByType["terminal"] = terminal.TerminalHandlers(sess)
+
+	// Generic handlers for modules
+	HandlersByType["command"] = generic.CommandHandlers()
+	HandlersByType["generic_dbus"] = generic.DbusHandlers()
+
+	// Load modules from YAML files
+	// Modules are optional - log errors but don't fail
+	_ = modules.LoadModules(HandlersByType)
 }

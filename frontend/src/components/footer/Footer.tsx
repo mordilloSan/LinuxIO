@@ -1,9 +1,9 @@
 import { Box, useTheme, Typography } from "@mui/material";
 import React from "react";
 
+import { linuxio } from "@/api/linuxio";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import FileNotifications from "@/components/filebrowser/FileNotifications";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 
 interface VersionResponse {
   checked_at: string;
@@ -15,9 +15,7 @@ interface VersionResponse {
 function Footer() {
   const theme = useTheme();
 
-  const { data } = useStreamQuery<VersionResponse>({
-    handlerType: "control",
-    command: "version",
+  const { data } = linuxio.useCall<VersionResponse>("control", "version", [], {
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: false, // Don't retry on failure for footer
   });

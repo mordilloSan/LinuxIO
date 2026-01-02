@@ -8,14 +8,13 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
+import { linuxio, LinuxIOError, waitForStreamMux } from "@/api/linuxio";
 import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
   ConfigContextType,
   ConfigProviderProps,
 } from "@/types/config";
-import { streamApi, StreamApiError } from "@/utils/streamApi";
-import { waitForStreamMux } from "@/utils/StreamMultiplexer";
 
 const defaultConfig: AppConfig = {
   theme: "DARK",
@@ -69,7 +68,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
           return;
         }
 
-        const data = await streamApi.get<AppConfig>("config", "theme_get");
+        const data = await linuxio.request<AppConfig>("config", "theme_get");
         if (!cancelled) {
           setConfig(applyDefaults(data));
           setCanSave(true); // Successfully loaded from backend, allow saves
@@ -79,7 +78,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
         if (cancelled) return;
 
         // Don't treat stream errors as auth errors - just use defaults
-        if (error instanceof StreamApiError && error.code === 503) {
+        if (error instanceof LinuxIOError && error.code === 503) {
           console.warn("Stream API unavailable, using default config");
           setLoaded(true);
           // canSave stays false
@@ -87,7 +86,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
         }
 
         // Only treat actual auth errors (401/403) as session expired
-        const code = error instanceof StreamApiError ? error.code : 500;
+        const code = error instanceof LinuxIOError ? error.code : 500;
         if (code === 401 || code === 403) {
           toast.error("Session expired. Please sign in again.");
           await signOut();
@@ -112,7 +111,9 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const save = useCallback(
     (cfg: AppConfig) => {
       if (!canSave) return; // Only save if we successfully loaded from backend
-      streamApi.post("config", "theme_set", cfg).catch(() => {});
+      linuxio
+        .request("config", "theme_set", [JSON.stringify(cfg)])
+        .catch(() => {});
     },
     [canSave],
   );

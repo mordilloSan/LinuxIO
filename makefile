@@ -1,5 +1,11 @@
+# Include private release automation
+-include release.mk
+
 # Main flags
 VITE_DEV_PORT = 3000
+DEV_LOG_LINES ?= 25
+VITE_DEV_LOG  ?= frontend/.vite-dev.log
+VITE_DEV_PID  ?= frontend/.vite-dev.pid
 VERBOSE      ?= true
 
 # --- Go project root autodetection ---
@@ -61,42 +67,6 @@ GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(s
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
-
-# -------- Release flow helpers (gh CLI) --------
-DEFAULT_BASE_BRANCH := main
-REPO ?=
-current_rel_branch = $(shell git branch --show-current)
-
-define _require_clean
-	@if ! git diff --quiet || ! git diff --cached --quiet; then \
-		echo "❌ Working tree not clean. Commit/stash changes first."; exit 1; \
-	fi
-endef
-
-define _require_gh
-	@if ! command -v gh >/dev/null 2>&1; then \
-		echo "❌ GitHub CLI (gh) not found. Install: https://cli.github.com/"; exit 1; \
-	fi
-endef
-
-define _read_and_validate_version
-	if [ -z "$(VERSION)" ]; then \
-	  read -p "Enter version (e.g. v1.2.3): " VERSION_INPUT; \
-	else \
-	  VERSION_INPUT="$(VERSION)"; \
-	fi; \
-	VERSION="$${VERSION_INPUT:-}"; \
-	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
-	if ! echo "$$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$'; then \
-	  echo "❌ VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
-	  exit 1; \
-	fi; \
-	REL_BRANCH="dev/$$VERSION"
-endef
-
-define _repo_flag
-$(if $(REPO),--repo $(REPO),)
-endef
 
 # ---- toolchain --------------------------------------------------------------
 CC       ?= gcc
@@ -268,30 +238,15 @@ setup:
 	@bash -c 'cd frontend && npm install --silent;'
 	@echo "✅ Frontend dependencies installed!"
 
-# Separate lint/tsc targets that include all prerequisites
+# Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
 lint: ensure-node setup
-	@echo "🔍 Running ESLint..."
-	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
+	@$(MAKE) --no-print-directory lint-only
 
 tsc: ensure-node setup
-	@echo "🔍 Running TypeScript type checks..."
-	@bash -c 'cd frontend && npx tsc && echo "✅ TypeScript Linting Ok!"'
+	@$(MAKE) --no-print-directory tsc-only
 
 golint: ensure-golint
-	@set -euo pipefail
-	@echo "📁 Linting Go module in: $(BACKEND_DIR)"
-	@echo "🔍 Running gofmt..."
-ifneq ($(CI),)
-	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
-	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
-else
-	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
-endif
-	@echo "🔍 Ensuring go.mod is tidy..."
-	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
-	@echo "🔍 Running golangci-lint..."
-	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
-	@echo "✅ Go Linting Ok!"
+	@$(MAKE) --no-print-directory golint-only
 
 # Optimized test target: runs setup ONCE, then parallelizes the actual checks
 test: ensure-node ensure-go ensure-golint setup dev-prep
@@ -303,7 +258,7 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 	  wait; \
 	} && $(MAKE) --no-print-directory test-backend
 
-# Internal targets (without prerequisites) for parallel execution
+# Core lint implementations (used by both individual targets and parallel test)
 lint-only:
 	@echo "🔍 Running ESLint..."
 	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
@@ -330,9 +285,11 @@ endif
 test-backend:
 	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
-		GOFLAGS="-buildvcs=false" \
-		go test ./... -count=1 -timeout 5m 2>&1 | grep -v '\[no test files\]'
-	@echo "✅ Backend tests passed!"
+		out="$$(GOFLAGS="-buildvcs=false" go test ./... -count=1 -timeout 5m 2>&1)"; \
+		status=$$?; \
+		echo "$$out" | grep -v '\[no test files\]' || true; \
+		exit $$status
+	
 
 build-vite:
 	@echo ""
@@ -440,13 +397,45 @@ dev-prep:
 
 dev: setup dev-prep
 	@echo ""
-	@echo "🚀 Starting frontend dev server..."
+	@echo "🚀 Starting frontend dev server (detached)..."
 	@echo "   Backend must be running via: sudo systemctl start linuxio"
 	@echo "   Vite proxies /ws and /auth to https://localhost:8090"
+	@echo "   Vite log: $(VITE_DEV_LOG)"
 	@echo ""
-	cd frontend && npx vite --port $(VITE_DEV_PORT)
+	@STARTED_VITE=0
+	@cleanup() { \
+	  if [ "$$STARTED_VITE" = "1" ]; then \
+	    if [ -f "$(VITE_DEV_PID)" ]; then \
+	      pid="$$(cat "$(VITE_DEV_PID)")"; \
+	      if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+	        kill "$$pid" 2>/dev/null || true; \
+	      fi; \
+	      rm -f "$(VITE_DEV_PID)"; \
+	    fi; \
+	    rm -f "$(VITE_DEV_LOG)"; \
+	  fi; \
+	}
+	@if [ -f "$(VITE_DEV_PID)" ] && kill -0 "$$(cat "$(VITE_DEV_PID)")" 2>/dev/null; then \
+	  echo "⚠️  Vite already running (pid $$(cat "$(VITE_DEV_PID)"))"; \
+	else \
+	  rm -f "$(VITE_DEV_PID)"; \
+	  nohup bash -c 'cd frontend && exec npx vite --port $(VITE_DEV_PORT)' > "$(VITE_DEV_LOG)" 2>&1 & \
+	  echo $$! > "$(VITE_DEV_PID)"; \
+	  STARTED_VITE=1; \
+	fi
+	@if [ -f "$(VITE_DEV_PID)" ]; then \
+	  echo "✅ Vite started (pid $$(cat "$(VITE_DEV_PID)"))"; \
+	  echo "   Stop with: kill $$(cat "$(VITE_DEV_PID)")"; \
+	else \
+	  echo "❌ Failed to capture Vite PID. Check $(VITE_DEV_LOG) for details."; \
+	fi
+	@trap cleanup INT TERM EXIT
+	@echo ""
+	@echo "📜 Tailing LinuxIO logs (last $(DEV_LOG_LINES) lines)..."
+	@linuxio logs $(DEV_LOG_LINES)
 
-build: test build-vite build-bridge
+# Internal target: build backend + auth + cli (requires bridge already built)
+_build-binaries:
 	@echo ""
 	@echo "🔐 Capturing bridge hash for backend build..."
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
@@ -455,20 +444,12 @@ build: test build-vite build-bridge
 	@$(MAKE) --no-print-directory build-auth
 	@$(MAKE) --no-print-directory build-cli
 
-fastbuild:  build-bridge
-	@echo ""
-	@echo "🔐 Capturing bridge hash for backend build..."
-	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
-	echo "   Hash: $$BRIDGE_HASH"; \
-	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
-	@$(MAKE) --no-print-directory build-auth
-	@$(MAKE) --no-print-directory build-cli
+build: generate test build-vite build-bridge _build-binaries
+
+fastbuild: generate build-bridge _build-binaries
 
 generate:
 	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
-
-run:
-	@./linuxio-webserver run -verbose=$(VERBOSE)
 
 clean:
 	@rm -f ./linuxio || true
@@ -492,434 +473,16 @@ localinstall:
 	@echo "📦 Installing LinuxIO from local build..."
 	@sudo ./packaging/scripts/localinstall.sh
 
-reinstall: uninstall build localinstall
+reinstall: uninstall fastbuild localinstall
 	@echo ""
 	@echo "LinuxIO reinstalled successfully!"
 	@echo "⚠️  WARNING: Quick & dirty build - no tests executed!"
 
-# ==========================================
-
-start-dev:
-	@$(call _require_clean)
-	@$(call _require_gh)
-	@{ \
-	  $(call _read_and_validate_version); \
-	  git fetch origin; \
-	  git checkout $(DEFAULT_BASE_BRANCH); \
-	  git pull --ff-only; \
-	  if git show-ref --verify --quiet "refs/heads/$$REL_BRANCH"; then \
-	    echo "ℹ️  Branch $$REL_BRANCH already exists, checking it out…"; \
-	    git checkout "$$REL_BRANCH"; \
-	  else \
-	    echo "Creating branch $$REL_BRANCH from $(DEFAULT_BASE_BRANCH)…"; \
-	    git checkout -b "$$REL_BRANCH" "$(DEFAULT_BASE_BRANCH)"; \
-	    git push -u origin "$$REL_BRANCH"; \
-	  fi; \
-	  echo "✅ Ready on branch $$REL_BRANCH"; \
-	}
-
-changelog:
-	@$(call _require_clean)
-	@{ \
-	  set -euo pipefail; \
-	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
-	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; \
-	    echo "💡 Run 'make start-dev VERSION=v1.2.3' first."; \
-	    exit 1; \
-	  fi; \
-	  VERSION="$${BRANCH#dev/}"; \
-	  DATE="$$(date -u +%Y-%m-%d)"; \
-	  REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
-	  echo "📝 Generating changelog for $$VERSION ($$DATE)..."; \
-	  echo "📦 Repository: $$REPO"; \
-	  echo ""; \
-	  PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -v "^$$VERSION$$" | head -n1 || echo "")"; \
-	  if [ -n "$$PREV_TAG" ]; then \
-	    echo "📍 Changes since $$PREV_TAG"; \
-	    COMMITS="$$(git log $${PREV_TAG}..HEAD --pretty=format:'%s|%h|%an' --reverse)"; \
-	  else \
-	    echo "📍 All commits (no previous tag found)"; \
-	    COMMITS="$$(git log --pretty=format:'%s|%h|%an' --reverse)"; \
-	  fi; \
-	  FEATURES=""; FIXES=""; DOCS=""; STYLE=""; REFACTOR=""; PERF=""; \
-	  TEST=""; BUILD=""; CI=""; CHORE=""; OTHER=""; \
-	  while IFS='|' read -r message hash author; do \
-	    [ -z "$$message" ] && continue; \
-	    [[ "$$author" == "github-actions[bot]" ]] && continue; \
-	    [[ "$$message" =~ ^[Cc]hangelog$$ ]] && continue;
-	    ENTRY="* $$message ([$${hash:0:7}](https://github.com/$$REPO/commit/$$hash)) by @$$author"; \
-	    if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^docs(\(.*\))?: ]]; then DOCS="$$DOCS$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^style(\(.*\))?: ]]; then STYLE="$$STYLE$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^refactor(\(.*\))?: ]]; then REFACTOR="$$REFACTOR$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^perf(\(.*\))?: ]]; then PERF="$$PERF$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^test(\(.*\))?: ]]; then TEST="$$TEST$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^build(\(.*\))?: ]]; then BUILD="$$BUILD$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^ci(\(.*\))?: ]]; then CI="$$CI$$ENTRY"$$'\n'; \
-	    elif [[ "$$message" =~ ^chore(\(.*\))?: ]]; then CHORE="$$CHORE$$ENTRY"$$'\n'; \
-	    else OTHER="$$OTHER$$ENTRY"$$'\n'; fi; \
-	  done <<< "$$COMMITS"; \
-	  BODY_FILE="$$(mktemp)"; \
-	  { \
-	    [ -n "$$FEATURES" ] && printf "### 🚀 Features\n\n%b\n" "$$FEATURES"; \
-	    [ -n "$$FIXES" ] && printf "### 🐛 Bug Fixes\n\n%b\n" "$$FIXES"; \
-	    [ -n "$$PERF" ] && printf "### ⚡ Performance\n\n%b\n" "$$PERF"; \
-	    [ -n "$$REFACTOR" ] && printf "### ♻️ Refactoring\n\n%b\n" "$$REFACTOR"; \
-	    [ -n "$$DOCS" ] && printf "### 📚 Documentation\n\n%b\n" "$$DOCS"; \
-	    [ -n "$$STYLE" ] && printf "### 💄 Style\n\n%b\n" "$$STYLE"; \
-	    [ -n "$$TEST" ] && printf "### 🧪 Tests\n\n%b\n" "$$TEST"; \
-	    [ -n "$$BUILD" ] && printf "### 🏗️ Build\n\n%b\n" "$$BUILD"; \
-	    [ -n "$$CI" ] && printf "### 🤖 CI/CD\n\n%b\n" "$$CI"; \
-	    [ -n "$$CHORE" ] && printf "### 🔧 Chores\n\n%b\n" "$$CHORE"; \
-	    [ -n "$$OTHER" ] && printf "### 🔄 Other Changes\n\n%b\n" "$$OTHER"; \
-	    printf "### 👥 Contributors\n\n"; \
-	    if [ -n "$$PREV_TAG" ]; then \
-	      git log $${PREV_TAG}..HEAD --pretty=format:'* @%an' | sort -u; \
-	    else \
-	      git log --pretty=format:'* @%an' | sort -u; \
-	    fi; \
-	    printf "\n**Full Changelog**: https://github.com/$$REPO/compare/$$PREV_TAG...$$VERSION\n"; \
-	  } > "$$BODY_FILE"; \
-	  HEADER="## $$VERSION — $$DATE"; \
-	  { \
-	    echo ""; \
-	    echo "$$HEADER"; \
-	    echo ""; \
-	    cat "$$BODY_FILE"; \
-	    echo ""; \
-	  } > new_entry.md; \
-	  if [ -f CHANGELOG.md ]; then \
-	    if grep -q "^## $$VERSION —" CHANGELOG.md; then \
-	      echo "⚠️  Version $$VERSION already exists in CHANGELOG.md, updating..."; \
-	      awk -v ver="$$VERSION" ' \
-	        /^## / { \
-	          if ($$2 == ver) { in_section=1; next } \
-	          else if (in_section) { in_section=0 } \
-	        } \
-	        !in_section { print } \
-	      ' CHANGELOG.md > CHANGELOG.tmp; \
-	      cat new_entry.md CHANGELOG.tmp > CHANGELOG.md; \
-	      rm CHANGELOG.tmp; \
-	    else \
-	      cat new_entry.md CHANGELOG.md > CHANGELOG.tmp; \
-	      mv CHANGELOG.tmp CHANGELOG.md; \
-	    fi; \
-	  else \
-	    echo "# Changelog" > CHANGELOG.md; \
-	    echo "" >> CHANGELOG.md; \
-	    cat new_entry.md >> CHANGELOG.md; \
-	  fi; \
-	  rm -f new_entry.md "$$BODY_FILE"; \
-	  echo ""; \
-	  echo "✅ CHANGELOG.md updated for $$VERSION"; \
-	  echo ""; \
-	  echo "📄 Preview:"; \
-	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
-	  head -n 30 CHANGELOG.md; \
-	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
-	  echo ""; \
-	  echo "📦 Committing changes..."; \
-	  git add CHANGELOG.md; \
-	  git commit -m "changelog"; \
-	  git push; \
-	  echo "✅ Changes committed"; \
-	  echo ""; \
-	}
-
-rebuild-changelog:
-	@echo "⚠️  WARNING: This will OVERWRITE your entire CHANGELOG.md file!"
-	@echo "   Press Ctrl+C to cancel, or Enter to continue..."
-	@read -r _
-	@{ \
-	  set -euo pipefail; \
-	  REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
-	  echo "📝 Rebuilding entire changelog history..."; \
-	  echo "📦 Repository: $$REPO"; \
-	  echo ""; \
-	  TAGS="$$(git tag --list 'v*' --sort=-v:refname)"; \
-	  if [ -z "$$TAGS" ]; then \
-	    echo "❌ No version tags found."; exit 1; \
-	  fi; \
-	  echo "# Changelog" > CHANGELOG.md; \
-	  echo "" >> CHANGELOG.md; \
-	  echo "$$TAGS" | while IFS= read -r VERSION; do \
-	    [ -z "$$VERSION" ] && continue; \
-	    echo "Processing $$VERSION..."; \
-	    DATE="$$(git log -1 --format=%ai "$$VERSION" | cut -d' ' -f1)"; \
-	    PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -A1 "^$$VERSION$$" | tail -n1)"; \
-	    if [ "$$PREV_TAG" = "$$VERSION" ]; then PREV_TAG=""; fi; \
-	    if [ -n "$$PREV_TAG" ]; then \
-	      COMMITS="$$(git log $${PREV_TAG}..$$VERSION --pretty=format:'%s|%h|%an' --reverse)"; \
-	    else \
-	      COMMITS="$$(git log $$VERSION --pretty=format:'%s|%h|%an' --reverse)"; \
-	    fi; \
-	    FEATURES=""; FIXES=""; DOCS=""; STYLE=""; REFACTOR=""; PERF=""; \
-	    TEST=""; BUILD=""; CI=""; CHORE=""; OTHER=""; \
-	    while IFS='|' read -r message hash author; do \
-	      [ -z "$$message" ] && continue; \
-	      [[ "$$author" == "github-actions[bot]" ]] && continue; \
-	      [[ "$$message" =~ ^[Cc]hangelog$$ ]] && continue; \
-	      ENTRY="* $$message ([$${hash:0:7}](https://github.com/$$REPO/commit/$$hash)) by @$$author"; \
-	      if [[ "$$message" =~ ^feat(\(.*\))?: ]]; then FEATURES="$$FEATURES$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^fix(\(.*\))?: ]]; then FIXES="$$FIXES$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^docs(\(.*\))?: ]]; then DOCS="$$DOCS$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^style(\(.*\))?: ]]; then STYLE="$$STYLE$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^refactor(\(.*\))?: ]]; then REFACTOR="$$REFACTOR$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^perf(\(.*\))?: ]]; then PERF="$$PERF$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^test(\(.*\))?: ]]; then TEST="$$TEST$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^build(\(.*\))?: ]]; then BUILD="$$BUILD$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^ci(\(.*\))?: ]]; then CI="$$CI$$ENTRY"$$'\n'; \
-	      elif [[ "$$message" =~ ^chore(\(.*\))?: ]]; then CHORE="$$CHORE$$ENTRY"$$'\n'; \
-	      else OTHER="$$OTHER$$ENTRY"$$'\n'; fi; \
-	    done <<< "$$COMMITS"; \
-	    echo "" >> CHANGELOG.md; \
-	    echo "## $$VERSION — $$DATE" >> CHANGELOG.md; \
-	    echo "" >> CHANGELOG.md; \
-	    [ -n "$$FEATURES" ] && printf "### 🚀 Features\n\n%b\n" "$$FEATURES" >> CHANGELOG.md; \
-	    [ -n "$$FIXES" ] && printf "### 🐛 Bug Fixes\n\n%b\n" "$$FIXES" >> CHANGELOG.md; \
-	    [ -n "$$PERF" ] && printf "### ⚡ Performance\n\n%b\n" "$$PERF" >> CHANGELOG.md; \
-	    [ -n "$$REFACTOR" ] && printf "### ♻️ Refactoring\n\n%b\n" "$$REFACTOR" >> CHANGELOG.md; \
-	    [ -n "$$DOCS" ] && printf "### 📚 Documentation\n\n%b\n" "$$DOCS" >> CHANGELOG.md; \
-	    [ -n "$$STYLE" ] && printf "### 💄 Style\n\n%b\n" "$$STYLE" >> CHANGELOG.md; \
-	    [ -n "$$TEST" ] && printf "### 🧪 Tests\n\n%b\n" "$$TEST" >> CHANGELOG.md; \
-	    [ -n "$$BUILD" ] && printf "### 🏗️ Build\n\n%b\n" "$$BUILD" >> CHANGELOG.md; \
-	    [ -n "$$CI" ] && printf "### 🤖 CI/CD\n\n%b\n" "$$CI" >> CHANGELOG.md; \
-	    [ -n "$$CHORE" ] && printf "### 🔧 Chores\n\n%b\n" "$$CHORE" >> CHANGELOG.md; \
-	    [ -n "$$OTHER" ] && printf "### 🔄 Other Changes\n\n%b\n" "$$OTHER" >> CHANGELOG.md; \
-	    printf "### 👥 Contributors\n\n" >> CHANGELOG.md; \
-	    if [ -n "$$PREV_TAG" ]; then \
-	      git log $${PREV_TAG}..$$VERSION --pretty=format:'* @%an' | sort -u >> CHANGELOG.md; \
-	    else \
-	      git log $$VERSION --pretty=format:'* @%an' | sort -u >> CHANGELOG.md; \
-	    fi; \
-	    printf "\n\n**Full Changelog**: https://github.com/$$REPO/compare/$$PREV_TAG...$$VERSION\n" >> CHANGELOG.md; \
-	  done; \
-	  echo ""; \
-	  echo "✅ Changelog rebuilt for all versions!"; \
-	  echo ""; \
-	  echo "📄 Preview:"; \
-	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
-	  head -n 50 CHANGELOG.md; \
-	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
-	  echo ""; \
-	}
-
-open-pr: generate
-	@$(call _require_clean)
-	@$(call _require_gh)
-	@{ \
-	  set -euo pipefail; \
-	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
-	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
-	  fi; \
-	  VERSION="$${BRANCH#dev/}"; \
-	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
-	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
-	  CREATED=0; \
-	  if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
-	    echo "ℹ️  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
-	  else \
-	    echo "🔁 Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
-	    PR_BODY_FILE="$$(mktemp)"; \
-	    awk -v ver="$$VERSION" ' \
-	      /^## / { \
-	        if ($$2 == ver) { in_section=1; print; next } \
-	        else if (in_section) { exit } \
-	      } \
-	      in_section { print } \
-	    ' CHANGELOG.md > "$$PR_BODY_FILE"; \
-	    gh pr create $(call _repo_flag) \
-	      --base "$$BASE_BRANCH" \
-	      --head "$$BRANCH" \
-	      --title "Release $$VERSION" \
-	      --body-file "$$PR_BODY_FILE"; \
-	    rm -f "$$PR_BODY_FILE"; \
-	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; \
-	    CREATED=1; \
-	  fi; \
-	  echo ""; \
-	  echo "🔍 Waiting for CI checks to register..."; \
-	  sleep 3; \
-	  for i in 1 2 3 4 5; do \
-	    CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
-	    if ! echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
-	      break; \
-	    fi; \
-	    if [ $$i -lt 5 ]; then \
-	      echo "  Retrying in 2s... (attempt $$i/5)"; \
-	      sleep 2; \
-	    fi; \
-	  done; \
-	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
-	    echo "⚠️  No CI checks detected after 15s. Skipping check wait."; \
-	    echo "💡 Checks might start later - monitor the PR manually."; \
-	  else \
-	    echo "⏳ Waiting for checks to complete on PR #$$PRNUM…"; \
-	    echo "   (Press Ctrl+C to cancel)"; \
-	    echo ""; \
-	    START_TIME=$$(date +%s); \
-	    gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
-	    CHECK_STATUS=$$?; \
-	    TOTAL_TIME=$$(( $$(date +%s) - $$START_TIME )); \
-	    echo ""; \
-	    if [ $$CHECK_STATUS -eq 0 ]; then \
-	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
-	    else \
-	      echo "⚠️  gh pr checks exited with code $$CHECK_STATUS"; \
-	      echo "   Re-checking final status..."; \
-	      gh pr checks $(call _repo_flag) "$$PRNUM" || true; \
-	      echo ""; \
-	      echo "❌ Checks failed or monitoring was interrupted"; \
-	    fi; \
-	  fi; \
-	  echo ""; \
-	  gh pr view $(call _repo_flag) "$$PRNUM" --web || true; \
-	}
-
-merge-release:
-	@$(call _require_gh)
-	@{ \
-	  set -euo pipefail; \
-	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
-	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo "❌ Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
-	  fi; \
-	  VERSION="$${BRANCH#dev/}"; \
-	  PRNUM="$${PR:-$$(gh pr list $(call _repo_flag) --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
-	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo "❌ No open PR from $$BRANCH to main."; exit 1; fi; \
-	  echo "🔍 Checking status of PR #$$PRNUM…"; \
-	  CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
-	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
-	    echo "⚠️  No CI checks configured. Proceeding with merge."; \
-	    echo "💡 Consider setting up GitHub Actions for automated testing."; \
-	  elif ! gh pr checks $(call _repo_flag) "$$PRNUM" > /dev/null 2>&1; then \
-	    echo "❌ Checks have not passed. Run 'make open-pr' to wait for checks."; \
-	    exit 1; \
-	  else \
-	    echo "✅ All checks passed."; \
-	  fi; \
-	  # Record mark BEFORE merging (30s backoff to catch immediate runs) \
-	  TRIGGER_MARK=$$(( $$(date -u +%s) - 30 )); \
-	  echo "🔀 Merging PR #$$PRNUM…"; \
-	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --delete-branch; \
-	  echo "🔖 Tag to be released: $$VERSION"; \
-	  echo ""; \
-	  echo "🔍 Checking for release workflow..."; \
-	  sleep 2; \
-	  WORKFLOW_RUN=""; \
-	  for i in $$(seq 1 10); do \
-	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --limit=20 \
-	      --json databaseId,status,conclusion,name,createdAt,displayTitle,headBranch,event \
-	      | jq -c --arg ver "$$VERSION" --arg main "main" --arg branch "$$BRANCH" --argjson t $$TRIGGER_MARK \
-	        '[ .[] \
-	           | select((.createdAt|fromdateiso8601) >= $$t) \
-	           | select((.headBranch == $$main) or (.headBranch == $$branch) or ((.displayTitle // .name) | test($$ver))) \
-	         ] \
-	         | .[0]')" ; \
-	    if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ]; then break; fi; \
-	    echo "  Waiting for workflow to start... (attempt $$i/10)"; \
-	    sleep 2; \
-	  done; \
-	  # Fallback: if nothing matched by branch/title, grab first run after TRIGGER_MARK \
-	  if [ -z "$$WORKFLOW_RUN" ] || [ "$$WORKFLOW_RUN" = "null" ]; then \
-	    WORKFLOW_RUN="$$(gh run list $(call _repo_flag) --workflow=release.yml --limit=20 \
-	      --json databaseId,status,conclusion,name,createdAt,displayTitle,headBranch,event \
-	      | jq -c --argjson t $$TRIGGER_MARK \
-	        '[ .[] | select((.createdAt|fromdateiso8601) >= $$t) ] | .[0]')" ; \
-	  fi; \
-	  if [ -n "$$WORKFLOW_RUN" ] && [ "$$WORKFLOW_RUN" != "null" ]; then \
-	    RUN_ID="$$(echo "$$WORKFLOW_RUN" | jq -r '.databaseId')"; \
-	    STATUS="$$(echo "$$WORKFLOW_RUN" | jq -r '.status')"; \
-	    CONCLUSION="$$(echo "$$WORKFLOW_RUN" | jq -r '.conclusion // "n/a"')"; \
-	    CREATED="$$(echo "$$WORKFLOW_RUN" | jq -r '.createdAt')"; \
-	    TITLE="$$(echo "$$WORKFLOW_RUN" | jq -r '.displayTitle // .name')"; \
-	    HBRANCH="$$(echo "$$WORKFLOW_RUN" | jq -r '.headBranch // "n/a"')"; \
-	    EVENT="$$(echo "$$WORKFLOW_RUN" | jq -r '.event // "n/a"')"; \
-	    echo "📊 Release workflow found"; \
-	    echo "   Run ID: #$$RUN_ID"; \
-	    echo "   Title: $$TITLE"; \
-	    echo "   Event: $$EVENT"; \
-	    echo "   Branch: $$HBRANCH"; \
-	    echo "   Status: $$STATUS"; \
-	    echo "   Started: $$CREATED"; \
-	    if [ "$$STATUS" = "in_progress" ] || [ "$$STATUS" = "queued" ] || [ "$$STATUS" = "waiting" ]; then \
-	      echo ""; \
-	      echo "⏳ Watching release workflow..."; \
-	      echo "   (Press Ctrl+C to cancel)"; \
-	      echo ""; \
-	      if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echo -icanon min 0 time 0; fi; \
-	      cleanup_workflow() { \
-	        [ -n "$$TIMER_PID" ] && kill $$TIMER_PID 2>/dev/null || true; \
-	        [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
-	        [ -n "$$WATCH_PID" ] && kill $$WATCH_PID 2>/dev/null || true; \
-	        [ -n "$$WATCH_PID" ] && wait $$WATCH_PID 2>/dev/null || true; \
-	        stty "$$SAVED_STTY" 2>/dev/null || true; \
-	        printf "\r\033[K"; \
-	      }; \
-	      trap 'cleanup_workflow; exit 130' INT TERM; \
-	      START_TIME=$$(date +%s); \
-	      TIMER_PID=""; WATCH_PID=""; \
-	      ( \
-	        while true; do \
-	          ELAPSED=$$(($$(date +%s) - START_TIME)); \
-	          RUN_INFO="$$(gh run view $(call _repo_flag) "$$RUN_ID" --json status,conclusion 2>/dev/null || echo '')"; \
-	          if [ -n "$$RUN_INFO" ]; then \
-	            CURRENT_STATUS="$$(echo "$$RUN_INFO" | jq -r '.status // "unknown"')"; \
-	            printf "\r⏱️  Elapsed: %02d:%02d | Status: %-15s" $$((ELAPSED/60)) $$((ELAPSED%60)) "$$CURRENT_STATUS"; \
-	          else \
-	            printf "\r⏱️  Elapsed: %02d:%02d | Status: checking...      " $$((ELAPSED/60)) $$((ELAPSED%60)); \
-	          fi; \
-	          sleep 2; \
-	        done \
-	      ) & \
-	      TIMER_PID=$$!; \
-	      ( gh run watch $(call _repo_flag) "$$RUN_ID" ) & \
-	      WATCH_PID=$$!; \
-	      wait $$WATCH_PID; \
-	      WATCH_STATUS=$$?; \
-	      cleanup_workflow; \
-	      trap - INT TERM; \
-	      TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
-	      if [ $$WATCH_STATUS -eq 0 ]; then \
-	        echo "✅ Release workflow completed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
-	      else \
-	        echo "❌ Release workflow failed or was cancelled"; \
-	      fi; \
-	      echo ""; \
-	      gh run view $(call _repo_flag) "$$RUN_ID"; \
-	    else \
-	      echo "   Workflow already completed: $$CONCLUSION"; \
-	      gh run view $(call _repo_flag) "$$RUN_ID"; \
-	    fi; \
-	  else \
-	    echo "⚠️  No release workflow found. The workflow may:"; \
-	    echo "   • Not exist (no .github/workflows/release.yml)"; \
-	    echo "   • Not be triggered by this merge"; \
-	    echo "   • Take longer to start than expected"; \
-	    echo "💡 Check manually: gh run list --workflow=release.yml"; \
-	  fi; \
-	}
-
-version-debug:
-	@echo "=== Version Debug Info ==="
-	@echo "BACKEND_DIR:      $(BACKEND_DIR)"
-	@echo "MODULE_PATH:      $(MODULE_PATH)"
-	@echo "GIT_VERSION:      $(GIT_VERSION)"
-	@echo "GIT_COMMIT_SHORT: $(GIT_COMMIT_SHORT)"
-	@echo "BUILD_TIME:       $(BUILD_TIME)"
+fullinstall: uninstall
 	@echo ""
-	@echo "=== Testing go list -m ==="
-	@cd "$(BACKEND_DIR)" && go list -m
-	@echo ""
-	@echo "=== Build command preview ==="
-	@echo "go build -ldflags \\"
-	@echo "  -X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \\"
-	@echo "  -X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \\"
-	@echo "  -X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'"
-	
+	@echo "📦 Installing LinuxIO from GitHub repo..."
+	@sudo ./packaging/scripts/install-linuxio-binaries.sh
+
 help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_BLUE)🛠️  Available commands:$(COLOR_RESET)"
@@ -935,33 +498,36 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint + backend tests (optimized)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"
-	@$(PRINTC) "$(COLOR_YELLOW)    make dev              $(COLOR_RESET) Start frontend (Vite) dev server (backend via systemd)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make dev              $(COLOR_RESET) Start frontend dev server (detached) + tail LinuxIO logs"
+	@$(PRINTC) "$(COLOR_YELLOW)    make generate         $(COLOR_RESET) Run go generate on config handlers"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Build$(COLOR_RESET)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Full build (test + frontend + all binaries)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make fastbuild        $(COLOR_RESET) Quick build (skip tests)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth $(COLOR_RESET) Build the PAM authentication helper"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Build frontend + backend + bridge"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth       $(COLOR_RESET) Build the PAM authentication helper"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-cli        $(COLOR_RESET) Build the CLI tool"
+	@$(PRINTC) ""
+	@$(PRINTC) "$(COLOR_CYAN)  Install / Uninstall$(COLOR_RESET)"
+	@$(PRINTC) "$(COLOR_RED)    make localinstall     $(COLOR_RESET) Install from local build"
+	@$(PRINTC) "$(COLOR_RED)    make reinstall        $(COLOR_RESET) Uninstall + fastbuild + install"
+	@$(PRINTC) "$(COLOR_RED)    make fullinstall      $(COLOR_RESET) Uninstall + fastbuild + install from GitHub"
+	@$(PRINTC) "$(COLOR_RED)    make uninstall        $(COLOR_RESET) Remove LinuxIO installation"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_RED)    make run              $(COLOR_RESET) Run production backend server"
 	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
 	@$(PRINTC) ""
-	@$(PRINTC) "$(COLOR_CYAN)  Release flow$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make start-dev        $(COLOR_RESET) Create and switch to dev/<version> from main (pushes upstream)"
-	@$(PRINTC) "$(COLOR_GREEN)    make changelog        $(COLOR_RESET) Generate CHANGELOG.md for current dev/<version> branch"
-	@$(PRINTC) "$(COLOR_GREEN)    make open-pr          $(COLOR_RESET) Open PR dev/<version> → main (uses gh)"
-	@$(PRINTC) "$(COLOR_GREEN)    make merge-release    $(COLOR_RESET) Wait for checks, merge PR to main, delete branch"
-	@$(PRINTC) ""
 
 .PHONY: \
   default help clean run \
-  build build-vite build-backend build-bridge build-auth build-cli \
-  dev dev-prep setup test lint tsc golint lint-only tsc-only golint-only \
+  build fastbuild _build-binaries build-vite build-backend build-bridge build-auth build-cli \
+  dev dev-prep setup test test-backend lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
-  generate rebuild-changelog localinstall reinstall uninstall \
-  start-dev open-pr merge-release version-debug changelog
+  generate localinstall reinstall fullinstall uninstall print-toolchain-versions

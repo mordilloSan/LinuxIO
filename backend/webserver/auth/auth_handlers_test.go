@@ -21,7 +21,6 @@ func newRouterForTests(h *Handlers) *http.ServeMux {
 
 	// private (with session middleware)
 	mux.Handle("POST /auth/logout", h.SM.RequireSession(http.HandlerFunc(h.Logout)))
-	mux.Handle("GET /auth/me", h.SM.RequireSession(http.HandlerFunc(h.Me)))
 
 	return mux
 }
@@ -97,10 +96,13 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		t.Fatalf("expected privileged=true, got %v", resp)
 	}
 
-	// Me works with cookie
-	w2 := doJSON(r, "GET", "/auth/me", nil, c)
-	if w2.Code != http.StatusOK {
-		t.Fatalf("me: want 200, got %d: %s", w2.Code, w2.Body.String())
+	// Session exists and is marked privileged (validated later by websocket)
+	sess, err := sm.GetSession(c.Value)
+	if err != nil {
+		t.Fatalf("expected session stored, got error: %v", err)
+	}
+	if !sess.Privileged {
+		t.Fatalf("expected session privileged=true, got %v", sess.Privileged)
 	}
 }
 
@@ -167,9 +169,14 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 		t.Fatalf("logout want 200, got %d: %s", w2.Code, w2.Body.String())
 	}
 
-	// Me should now be 401
-	w3 := doJSON(r, "GET", "/auth/me", nil, cookie)
-	if w3.Code != http.StatusUnauthorized {
-		t.Fatalf("/auth/me after logout should be 401, got %d", w3.Code)
+	// Cookie should be cleared
+	cleared := extractCookie(t, w2, sm.CookieName())
+	if cleared.Value != "" || cleared.MaxAge != -1 {
+		t.Fatalf("expected cleared cookie, got value=%q maxAge=%d", cleared.Value, cleared.MaxAge)
+	}
+
+	// Session should be deleted
+	if _, err := sm.GetSession(cookie.Value); err == nil {
+		t.Fatalf("expected session deleted after logout")
 	}
 }

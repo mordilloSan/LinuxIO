@@ -1,9 +1,9 @@
 import { Box, Typography } from "@mui/material";
 import React, { useState, useMemo } from "react";
 
+import { linuxio } from "@/api/linuxio";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 import { formatFileSize } from "@/utils/formaters";
 
 // --- API shape from /system/disk ---
@@ -66,10 +66,7 @@ const Drive: React.FC = () => {
     data: rawDrives = [],
     isPending: isLoading,
     isError,
-  } = useStreamQuery<ApiDisk[]>({
-    handlerType: "system",
-    command: "get_drive_info",
-  });
+  } = linuxio.useCall<ApiDisk[]>("system", "get_drive_info", [], {});
 
   // Normalize API → component shape
   const drives = useMemo<DriveInfo[]>(

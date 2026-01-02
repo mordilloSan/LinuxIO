@@ -1,8 +1,13 @@
 // src/hooks/usePackageUpdater.ts
 import { useState, useCallback, useRef } from "react";
 
-import { streamApi } from "@/utils/streamApi";
-import { getStreamMux, Stream, encodeString } from "@/utils/StreamMultiplexer";
+import {
+  linuxio,
+  getStreamMux,
+  Stream,
+  ResultFrame,
+  encodeString,
+} from "@/api/linuxio";
 
 // Stream type for package updates (must match backend ipc.StreamTypePkgUpdate)
 const STREAM_TYPE_PKG_UPDATE = "pkg-update";
@@ -37,7 +42,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       setStatus("Installing");
 
       try {
-        await streamApi.post("dbus", "InstallPackage", null, [pkg]);
+        await linuxio.request("dbus", "InstallPackage", [pkg]);
         await onComplete();
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : "Update failed";
@@ -127,7 +132,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
           }
         };
 
-        stream.onResult = (result) => {
+        stream.onResult = (result: ResultFrame) => {
           streamRef.current = null;
 
           if (result.status === "ok") {
@@ -171,7 +176,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
           setStatus("Installing");
 
           try {
-            await streamApi.post("dbus", "InstallPackage", null, [pkg]);
+            await linuxio.request("dbus", "InstallPackage", [pkg]);
             updated.add(pkg);
 
             const totalProcessed = updated.size + failedPackages.length;
@@ -179,10 +184,9 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
               updated.size + failedPackages.length + remaining.length - 1;
             setProgress((totalProcessed / totalPackages) * 100);
 
-            const freshUpdates = await streamApi.get<{ package_id: string }[]>(
-              "dbus",
-              "GetUpdatesBasic",
-            );
+            const freshUpdates = await linuxio.request<
+              { package_id: string }[]
+            >("dbus", "GetUpdatesBasic");
             const fresh = freshUpdates || [];
 
             remaining = fresh

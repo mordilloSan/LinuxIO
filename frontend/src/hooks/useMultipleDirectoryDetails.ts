@@ -2,7 +2,7 @@ import { useQueries } from "@tanstack/react-query";
 
 import { MultiStatsItem } from "@/types/filebrowser";
 import { getIndexerAvailabilityFlag } from "@/utils/indexerAvailability";
-import { streamApi } from "@/utils/streamApi";
+import { linuxio } from "@/api/linuxio";
 
 interface DirectoryDetailsData {
   path: string;
@@ -58,9 +58,11 @@ export const useMultipleDirectoryDetails = (
     queries: directoryPaths.map((path) => ({
       queryKey: ["directorySize", path],
       queryFn: async () => {
-        return streamApi.get<DirectoryDetailsData>("filebrowser", "dir_size", [
-          path,
-        ]);
+        return linuxio.request<DirectoryDetailsData>(
+          "filebrowser",
+          "dir_size",
+          [path],
+        );
       },
       staleTime: CACHE_DURATION,
       gcTime: CACHE_PERSISTENCE,

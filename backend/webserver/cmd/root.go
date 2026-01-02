@@ -45,7 +45,10 @@ func RunServer(cfg ServerConfig) {
 		if sess.User.Username == "" {
 			return
 		}
+		// Close yamux session (bridge connection)
 		bridge.CloseYamuxSession(sess.SessionID)
+		// Close WebSocket connection (frontend connection)
+		web.CloseWebSocketForSession(sess.SessionID)
 	})
 
 	// -------------------------------------------------------------------------

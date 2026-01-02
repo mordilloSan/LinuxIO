@@ -16,9 +16,8 @@ import {
 import React, { useState } from "react";
 import { toast } from "sonner";
 
+import { linuxio } from "@/api/linuxio";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
-import { streamApi } from "@/utils/streamApi";
 
 const wireguardToastMeta = {
   meta: { href: "/wireguard", label: "Open WireGuard" },
@@ -101,14 +100,16 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     isPending: isLoading,
     isError,
     refetch,
-  } = useStreamQuery<Peer[] | { peers: Peer[] }>({
-    handlerType: "wireguard",
-    command: "list_peers",
-    args: [interfaceName],
-    enabled: !!interfaceName,
-    // poll so bps updates
-    refetchInterval: 3000,
-  });
+  } = linuxio.useCall<Peer[] | { peers: Peer[] }>(
+    "wireguard",
+    "list_peers",
+    [interfaceName],
+    {
+      enabled: !!interfaceName,
+      // poll so bps updates
+      refetchInterval: 3000,
+    },
+  );
 
   // Normalize peers response
   const peers: Peer[] = peersData
@@ -119,7 +120,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
 
   const handleDeletePeer = async (peerName: string) => {
     try {
-      await streamApi.get("wireguard", "remove_peer", [
+      await linuxio.request("wireguard", "remove_peer", [
         interfaceName,
         peerName,
       ]);
@@ -135,7 +136,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
 
   const handleDownloadConfig = async (peername: string) => {
     try {
-      const result = await streamApi.get<{ config: string }>(
+      const result = await linuxio.request<{ config: string }>(
         "wireguard",
         "peer_config_download",
         [interfaceName, peername],
@@ -158,7 +159,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const handleViewQrCode = async (peername: string) => {
     setLoadingQr(true);
     try {
-      const result = await streamApi.get<{ qrcode: string }>(
+      const result = await linuxio.request<{ qrcode: string }>(
         "wireguard",
         "peer_qrcode",
         [interfaceName, peername],

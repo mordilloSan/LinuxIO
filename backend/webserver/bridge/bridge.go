@@ -91,6 +91,14 @@ func StartBridge(sess *session.Session, password string, verbose bool) (bool, er
 		delete(yamuxSessions.sessions, sess.SessionID)
 		yamuxSessions.Unlock()
 		logger.DebugKV("yamux session closed and removed", "session_id", sess.SessionID)
+
+		// Terminate the session when bridge dies
+		// This triggers session deletion which closes the WebSocket
+		if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
+			logger.WarnKV("failed to terminate session after bridge closure",
+				"session_id", sess.SessionID,
+				"error", err)
+		}
 	})
 	yamuxSessions.sessions[sess.SessionID] = yamuxSession
 	yamuxSessions.Unlock()

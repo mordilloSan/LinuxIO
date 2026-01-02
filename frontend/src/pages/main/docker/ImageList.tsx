@@ -3,8 +3,8 @@ import { useState } from "react";
 
 import CollapsibleCard from "./DockerImageCard"; // ← new import
 
+import { linuxio } from "@/api/linuxio";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useStreamQuery } from "@/hooks/useStreamApi";
 import { CollapsibleColumn } from "@/types/collapsible";
 
 const formatImageRows = (images: any[]) =>
@@ -112,10 +112,12 @@ function renderCollapseContent(row: any) {
 }
 
 export default function ImageList() {
-  const { data = [], isPending: isLoading } = useStreamQuery<any[]>({
-    handlerType: "docker",
-    command: "list_images",
-  });
+  const { data = [], isPending: isLoading } = linuxio.useCall<any[]>(
+    "docker",
+    "list_images",
+    [],
+    {},
+  );
 
   const rows = formatImageRows(data);
   const [selected, setSelected] = useState<Set<string>>(new Set());
