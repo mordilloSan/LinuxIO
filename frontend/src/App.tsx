@@ -3,13 +3,17 @@ import { useRoutes } from "react-router-dom";
 import { Toaster } from "sonner";
 
 import { AuthProvider } from "./contexts/AuthContext";
-import routes from "./routes";
+import { useAppRoutes } from "./routes";
 import ReactQueryProvider from "./utils/ReactQueryProvider";
 import { ToastHistorySync } from "./utils/toastHistory";
 
-function App() {
-  const content = useRoutes(routes);
+// Inner component that uses React Query hooks
+function AppRoutes() {
+  const routes = useAppRoutes();
+  return useRoutes(routes);
+}
 
+function App() {
   // Disable right-click globally except where explicitly allowed
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
@@ -29,7 +33,9 @@ function App() {
   return (
     <>
       <AuthProvider>
-        <ReactQueryProvider>{content}</ReactQueryProvider>
+        <ReactQueryProvider>
+          <AppRoutes />
+        </ReactQueryProvider>
       </AuthProvider>
       <ToastHistorySync />
       <Toaster

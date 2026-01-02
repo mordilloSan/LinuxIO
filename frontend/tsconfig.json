@@ -35,7 +35,8 @@
       // Files
       "@/constants": ["theme/constants"],
       "@/config": ["config"],
-      "@/theme": ["theme/index"]
+      "@/theme": ["theme/index"],
+      "@/routes": ["routes"]
     }
   },
   "include": ["src"]

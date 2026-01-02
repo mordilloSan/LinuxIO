@@ -8,11 +8,11 @@ import Footer from "@/components/footer/Footer";
 import PageLoader from "@/components/loaders/PageLoader";
 import Navbar from "@/components/navbar/Navbar";
 import Sidebar from "@/components/sidebar/Sidebar";
-import dashboardItems from "@/components/sidebar/SidebarItems";
 import UpdateBanner from "@/components/update/UpdateBanner";
 import { useConfigReady } from "@/hooks/useConfig";
 import useSidebar from "@/hooks/useSidebar";
 import { useUpdateInfo } from "@/hooks/useUpdateInfo";
+import { useSidebarItems } from "@/routes";
 
 const Dashboard: React.FC = () => {
   const location = useLocation();
@@ -21,6 +21,7 @@ const Dashboard: React.FC = () => {
   const { toggleMobileOpen, setMobileOpen, sidebarWidth, isDesktop } =
     useSidebar();
   const { updateInfo, dismissUpdate } = useUpdateInfo();
+  const sidebarItems = useSidebarItems();
 
   useEffect(() => {}, [updateInfo]);
 
@@ -35,7 +36,7 @@ const Dashboard: React.FC = () => {
     <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <CssBaseline />
       <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar items={dashboardItems} />
+        <Sidebar items={sidebarItems} />
         <Box
           sx={{
             flex: 1,
