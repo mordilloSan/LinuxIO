@@ -37,4 +37,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	// Load modules from YAML files
 	// Modules are optional - log errors but don't fail
 	_ = modules.LoadModules(HandlersByType)
+
+	// Register module management handlers
+	HandlersByType["modules"] = modules.ModuleHandlers()
 }

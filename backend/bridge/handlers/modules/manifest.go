@@ -87,3 +87,15 @@ type ModuleInfo struct {
 	Path     string // Path to module directory
 	Enabled  bool
 }
+
+// ModuleFrontendInfo is the subset of module data sent to frontend
+type ModuleFrontendInfo struct {
+	Name         string `json:"name"`
+	Title        string `json:"title"`
+	Description  string `json:"description"`
+	Version      string `json:"version"`
+	Route        string `json:"route"`
+	Icon         string `json:"icon"`
+	Position     int    `json:"position"`
+	ComponentURL string `json:"componentUrl"`
+}
