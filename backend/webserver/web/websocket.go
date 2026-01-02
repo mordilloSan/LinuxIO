@@ -60,6 +60,78 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
+// wsConnsBySession tracks all active WebSocket connections for each session.
+// Multiple tabs/windows can share the same session, each with their own WebSocket.
+// map[sessionID]*sync.Map[*websocket.Conn]struct{}
+var wsConnsBySession sync.Map
+
+// addWebSocketForSession registers a WebSocket connection for a session.
+func addWebSocketForSession(sessionID string, conn *websocket.Conn) {
+	connsInterface, _ := wsConnsBySession.LoadOrStore(sessionID, &sync.Map{})
+	connsMap, ok := connsInterface.(*sync.Map)
+	if !ok {
+		logger.Errorf("[WSRelay] Invalid type in wsConnsBySession for session: %s", sessionID)
+		return
+	}
+	connsMap.Store(conn, struct{}{})
+}
+
+// removeWebSocketForSession unregisters a WebSocket connection from a session.
+func removeWebSocketForSession(sessionID string, conn *websocket.Conn) {
+	if connsInterface, ok := wsConnsBySession.Load(sessionID); ok {
+		connsMap, ok := connsInterface.(*sync.Map)
+		if !ok {
+			logger.Errorf("[WSRelay] Invalid type in wsConnsBySession for session: %s", sessionID)
+			return
+		}
+		connsMap.Delete(conn)
+
+		// Clean up empty session entries
+		isEmpty := true
+		connsMap.Range(func(key, value interface{}) bool {
+			isEmpty = false
+			return false // Stop iteration after first element
+		})
+		if isEmpty {
+			wsConnsBySession.Delete(sessionID)
+		}
+	}
+}
+
+// CloseWebSocketForSession closes ALL WebSocket connections associated with a session.
+// Called when a session expires to immediately disconnect all tabs/windows.
+func CloseWebSocketForSession(sessionID string) {
+	if connsInterface, ok := wsConnsBySession.Load(sessionID); ok {
+		connsMap, ok := connsInterface.(*sync.Map)
+		if !ok {
+			logger.Errorf("[WSRelay] Invalid type in wsConnsBySession for session: %s", sessionID)
+			return
+		}
+		count := 0
+
+		connsMap.Range(func(key, value interface{}) bool {
+			conn, ok := key.(*websocket.Conn)
+			if !ok {
+				logger.Errorf("[WSRelay] Invalid WebSocket type in connection map for session: %s", sessionID)
+				return true // Continue to next connection
+			}
+
+			// Send close frame with code 1008 (Policy Violation) to indicate session expired
+			// This allows the frontend to distinguish session expiry from network errors
+			closeMsg := websocket.FormatCloseMessage(1008, "Session expired")
+			_ = conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(writeWait))
+
+			// Close the underlying connection
+			_ = conn.Close()
+			count++
+			return true // Continue iteration
+		})
+
+		wsConnsBySession.Delete(sessionID)
+		logger.Debugf("[WSRelay] Closed %d WebSocket(s) for expired session: %s", count, sessionID)
+	}
+}
+
 func isExpectedWSClose(err error) bool {
 	var ce *websocket.CloseError
 	if errors.As(err, &ce) {
@@ -95,7 +167,14 @@ func WebSocketRelayHandler(w http.ResponseWriter, r *http.Request) {
 		done:    make(chan struct{}),
 	}
 
-	defer relay.closeAll()
+	// Track this WebSocket by session ID for session expiry handling
+	// Multiple tabs/windows can share the same session
+	addWebSocketForSession(sess.SessionID, conn)
+	defer func() {
+		removeWebSocketForSession(sess.SessionID, conn)
+		relay.closeAll()
+	}()
+
 	logger.Infof("[WSRelay] Connected: user=%s", sess.User.Username)
 
 	// Set up pong handler - this resets the read deadline when pong is received
