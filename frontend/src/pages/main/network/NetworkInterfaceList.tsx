@@ -55,7 +55,7 @@ const NetworkInterfaceList = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
-  const { data: rawInterfaces = [], isPending: isLoading } = linuxio.call<
+  const { data: rawInterfaces = [], isPending: isLoading } = linuxio.useCall<
     NetworkInterface[]
   >("dbus", "GetNetworkInfo", [], { refetchInterval: 1000 });
 

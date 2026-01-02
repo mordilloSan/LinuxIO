@@ -26,7 +26,7 @@ const MemoryUsage = () => {
     data: memoryData,
     isPending,
     isError,
-  } = linuxio.call<MemoryInfoResponse>("system", "get_memory_info", [], {
+  } = linuxio.useCall<MemoryInfoResponse>("system", "get_memory_info", [], {
     refetchInterval: 2000,
   });
 

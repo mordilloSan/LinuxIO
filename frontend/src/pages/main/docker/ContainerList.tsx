@@ -7,7 +7,7 @@ import { linuxio } from "@/api/linuxio";
 import { ContainerInfo } from "@/types/container";
 
 const ContainerList: React.FC = () => {
-  const { data: containers = [] } = linuxio.call<ContainerInfo[]>(
+  const { data: containers = [] } = linuxio.useCall<ContainerInfo[]>(
     "docker",
     "list_containers",
     [],

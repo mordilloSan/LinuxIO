@@ -20,7 +20,7 @@ const ServicesList: React.FC = () => {
     isPending: isLoading,
     isError,
     error,
-  } = linuxio.call<Service[]>("dbus", "ListServices", [], {
+  } = linuxio.useCall<Service[]>("dbus", "ListServices", [], {
     refetchInterval: 2000,
   });
 

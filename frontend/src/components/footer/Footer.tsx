@@ -15,7 +15,7 @@ interface VersionResponse {
 function Footer() {
   const theme = useTheme();
 
-  const { data } = linuxio.call<VersionResponse>("control", "version", [], {
+  const { data } = linuxio.useCall<VersionResponse>("control", "version", [], {
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: false, // Don't retry on failure for footer
   });

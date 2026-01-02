@@ -10,7 +10,7 @@ import { FilesystemInfo } from "@/types/fs";
 import { formatFileSize } from "@/utils/formaters";
 
 const FsInfoCard: React.FC = () => {
-  const { data: fsInfo, isPending } = linuxio.call<FilesystemInfo[]>(
+  const { data: fsInfo, isPending } = linuxio.useCall<FilesystemInfo[]>(
     "system",
     "get_fs_info",
     [],

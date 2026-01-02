@@ -90,7 +90,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   );
 
   // ---- logs via stream API (fetch only when dialog is open) ----
-  const logsQuery = linuxio.call<string>(
+  const logsQuery = linuxio.useCall<string>(
     "docker",
     "get_container_logs",
     [container.Id],

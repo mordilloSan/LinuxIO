@@ -43,7 +43,7 @@ const SystemHealth = () => {
     data: updatesRaw,
     isPending: loadingHealth,
     isFetching: fetchingHealth,
-  } = linuxio.call<Update[] | SystemUpdatesResponse>(
+  } = linuxio.useCall<Update[] | SystemUpdatesResponse>(
     "system",
     "get_updates_fast",
     [],
@@ -58,7 +58,7 @@ const SystemHealth = () => {
     : undefined;
 
   // Services
-  const { data: servicesRaw } = linuxio.call<ServiceStatus[]>(
+  const { data: servicesRaw } = linuxio.useCall<ServiceStatus[]>(
     "system",
     "get_processes",
     [],
@@ -66,7 +66,7 @@ const SystemHealth = () => {
   );
 
   // Distro Info
-  const { data: distroInfo } = linuxio.call<DistroInfo>(
+  const { data: distroInfo } = linuxio.useCall<DistroInfo>(
     "system",
     "get_host_info",
     [],

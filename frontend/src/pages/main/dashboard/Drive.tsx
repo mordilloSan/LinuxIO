@@ -66,7 +66,7 @@ const Drive: React.FC = () => {
     data: rawDrives = [],
     isPending: isLoading,
     isError,
-  } = linuxio.call<ApiDisk[]>("system", "get_drive_info", [], {});
+  } = linuxio.useCall<ApiDisk[]>("system", "get_drive_info", [], {});
 
   // Normalize API → component shape
   const drives = useMemo<DriveInfo[]>(

@@ -41,7 +41,7 @@ export const useFileSearch = ({
   const shouldSearch = query.trim().length >= 2; // Minimum 2 characters
   const queryEnabled = enabled && shouldSearch && !indexerDisabled;
 
-  const { data, isLoading, error } = linuxio.call<SearchResponse>(
+  const { data, isLoading, error } = linuxio.useCall<SearchResponse>(
     "filebrowser",
     "search",
     [query, String(limit), basePath],

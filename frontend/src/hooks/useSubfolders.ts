@@ -60,7 +60,7 @@ export const useSubfolders = (
   const indexerDisabled = getIndexerAvailabilityFlag() === false;
   const queryEnabled = enabled && !!path && !shouldSkip && !indexerDisabled;
 
-  const { data, isLoading, error } = linuxio.call<SubfoldersResponse>(
+  const { data, isLoading, error } = linuxio.useCall<SubfoldersResponse>(
     "filebrowser",
     "subfolders",
     [path],
