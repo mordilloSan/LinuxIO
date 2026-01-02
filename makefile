@@ -285,9 +285,11 @@ endif
 test-backend:
 	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
-		GOFLAGS="-buildvcs=false" \
-		go test ./... -count=1 -timeout 5m 2>&1 | grep -v '\[no test files\]'
-	@echo "✅ Backend tests passed!"
+		out="$$(GOFLAGS="-buildvcs=false" go test ./... -count=1 -timeout 5m 2>&1)"; \
+		status=$$?; \
+		echo "$$out" | grep -v '\[no test files\]' || true; \
+		exit $$status
+	
 
 build-vite:
 	@echo ""
