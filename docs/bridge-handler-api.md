@@ -602,6 +602,5 @@ func streamFile(stream *yamux.Stream, path string) error {
 
 ## See Also
 
-- [Browser Stream API](./browser-stream-api.md) - Client-side implementation
+- [Frontend API](./frontendAPI.md) - Client-side implementation
 - [Server Yamux Protocol](./server-yamux-protocol.md) - Server relay implementation
-- [yamux-relay.md](./yamux-relay.md) - Complete architecture overview

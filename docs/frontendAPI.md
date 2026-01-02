@@ -15,7 +15,7 @@ The `linuxio` API provides a unified interface for all backend communication:
 import { linuxio } from "@/api/linuxio";
 
 // 1. API calls with React Query
-const { data, isLoading, refetch } = linuxio.call("system", "get_cpu_info");
+const { data, isLoading, refetch } = linuxio.useCall("system", "get_cpu_info");
 
 // 2. Direct stream access (terminals)
 const term = linuxio.stream("terminal", {
@@ -29,7 +29,7 @@ const upload = linuxio.stream("fb-upload", {
 });
 
 // 4. Mutations (write operations)
-const { mutate, isPending } = linuxio.mutate("docker", "start_container");
+const { mutate, isPending } = linuxio.useMutate("docker", "start_container");
 mutate("container-id");
 ```
 
@@ -38,7 +38,7 @@ mutate("container-id");
 ```
 ┌─────────────────────────────────────────────────────┐
 │ Application Layer (What you write)                  │
-│ - linuxio.call("system", "get_cpu_info")           │
+│ - linuxio.useCall("system", "get_cpu_info")           │
 │ - linuxio.stream("terminal", { onData })           │
 └────────────────────┬────────────────────────────────┘
                      │
@@ -76,7 +76,7 @@ mutate("container-id");
 
 ## API Reference
 
-### linuxio.call() - React Query Hook
+### linuxio.useCall() - React Query Hook
 
 Make API calls with full React Query integration.
 
@@ -102,13 +102,13 @@ function call<T>(
 
 ```typescript
 // Basic usage
-const { data, isLoading, error } = linuxio.call("system", "get_cpu_info");
+const { data, isLoading, error } = linuxio.useCall("system", "get_cpu_info");
 
 // With arguments
-const { data } = linuxio.call("docker", "get_container", ["container-123"]);
+const { data } = linuxio.useCall("docker", "get_container", ["container-123"]);
 
 // With React Query options
-const { data, refetch } = linuxio.call("system", "get_memory", [], {
+const { data, refetch } = linuxio.useCall("system", "get_memory", [], {
   refetchInterval: 2000,    // Auto-refresh every 2s
   staleTime: 1000,          // Consider fresh for 1s
   enabled: isVisible,       // Conditional fetching
@@ -118,7 +118,7 @@ const { data, refetch } = linuxio.call("system", "get_memory", [], {
 <button onClick={() => refetch()}>Refresh</button>
 ```
 
-### linuxio.mutate() - React Query Mutations
+### linuxio.useMutate() - React Query Mutations
 
 Execute write operations with React Query mutations.
 
@@ -134,18 +134,18 @@ function mutate<TData, TVariables>(
 
 ```typescript
 // Simple mutation with string argument
-const { mutate, isPending } = linuxio.mutate("docker", "start_container");
+const { mutate, isPending } = linuxio.useMutate("docker", "start_container");
 mutate("container-123");
 
 // With object body (auto-JSON stringified)
-const { mutate } = linuxio.mutate("docker", "create_container", {
+const { mutate } = linuxio.useMutate("docker", "create_container", {
   onSuccess: () => toast.success("Container created!"),
   onError: (error) => toast.error(error.message),
 });
 mutate({ name: "my-app", image: "nginx:latest" });
 
 // With array arguments
-const { mutate } = linuxio.mutate("filebrowser", "delete_file");
+const { mutate } = linuxio.useMutate("filebrowser", "delete_file");
 mutate(["file1.txt", "file2.txt"]);
 ```
 
@@ -454,7 +454,7 @@ try {
 
 ```typescript
 // Per-query error handling
-const { error } = linuxio.call("system", "cpu");
+const { error } = linuxio.useCall("system", "cpu");
 if (error) {
   console.error(error.message);
 }
@@ -523,7 +523,7 @@ The `linuxio` API is fully integrated with your React Query client:
 
 ```typescript
 // Global settings from ReactQueryProvider apply automatically
-const { data } = linuxio.call("system", "cpu");
+const { data } = linuxio.useCall("system", "cpu");
 
 // Benefits:
 // ✓ Automatic error toasts (via QueryCache.onError)
@@ -534,7 +534,7 @@ const { data } = linuxio.call("system", "cpu");
 // ✓ Shows in React Query DevTools
 
 // Override per-query
-const { data } = linuxio.call("system", "cpu", [], {
+const { data } = linuxio.useCall("system", "cpu", [], {
   staleTime: 5000,  // Override default
   retry: 3,         // Override default
 });
@@ -562,7 +562,7 @@ All communication uses yamux streams. The distinction between "API calls" and "s
 The `linuxio` namespace is the only API you need. All imports come from `/api/linuxio`.
 
 ### 3. React Query First
-Use `linuxio.call()` and `linuxio.mutate()` for all API operations. Get loading states, caching, and error handling for free.
+Use `linuxio.useCall()` and `linuxio.useMutate()` for all API operations. Get loading states, caching, and error handling for free.
 
 ### 4. Direct Access When Needed
 Use `linuxio.stream()` for bidirectional communication (terminals, file transfers).
@@ -587,7 +587,7 @@ const { data } = useStreamQuery({ handlerType: "system", command: "cpu" });
 import { linuxio } from "@/api/linuxio";
 
 const result = await linuxio.request("system", "cpu");
-const { data } = linuxio.call("system", "cpu");
+const { data } = linuxio.useCall("system", "cpu");
 ```
 
 ## File Location
@@ -599,4 +599,3 @@ const { data } = linuxio.call("system", "cpu");
 
 - [Server Yamux Protocol](./server-yamux-protocol.md) - Server implementation
 - [Bridge Handler API](./bridge-handler-api.md) - How bridge handles streams
-- [yamux-relay.md](./yamux-relay.md) - Complete architecture overview
