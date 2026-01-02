@@ -399,7 +399,7 @@ dev: setup dev-prep
 	@echo ""
 	@echo "🚀 Starting frontend dev server (detached)..."
 	@echo "   Backend must be running via: sudo systemctl start linuxio"
-	@echo "   Vite proxies /ws and /auth to https://localhost:8090"
+	@echo "   Vite proxies /ws and /auth to port 8090"
 	@echo "   Vite log: $(VITE_DEV_LOG)"
 	@echo ""
 	@STARTED_VITE=0
@@ -425,6 +425,7 @@ dev: setup dev-prep
 	fi
 	@if [ -f "$(VITE_DEV_PID)" ]; then \
 	  echo "✅ Vite started (pid $$(cat "$(VITE_DEV_PID)"))"; \
+	  echo "   ➜  Local:   http://localhost:$(VITE_DEV_PORT)/"; \
 	  echo "   Stop with: kill $$(cat "$(VITE_DEV_PID)")"; \
 	else \
 	  echo "❌ Failed to capture Vite PID. Check $(VITE_DEV_LOG) for details."; \
