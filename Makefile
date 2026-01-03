@@ -528,6 +528,8 @@ help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Modules$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make create-module MODULE=<name>      $(COLOR_RESET) Create new module from template"
+	@$(PRINTC) "$(COLOR_YELLOW)    make link-module MODULE=<name>        $(COLOR_RESET) Symlink module to /etc (dev mode with HMR)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make unlink-module MODULE=<name>      $(COLOR_RESET) Remove development symlink"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-module MODULE=<name>       $(COLOR_RESET) Build module (production)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make deploy-module MODULE=<name>      $(COLOR_RESET) Build + deploy module"
 	@$(PRINTC) "$(COLOR_YELLOW)    make list-modules                     $(COLOR_RESET) List all modules"
@@ -603,6 +605,61 @@ build-module:
 	@echo "Building $(MODULE) in production mode..."
 	@$(BUILD_SCRIPT) $(MODULE)
 
+# Link module to /etc for development (enables HMR)
+link-module:
+	@if [ -z "$(MODULE)" ]; then \
+		echo "Error: MODULE parameter required"; \
+		echo "Usage: make link-module MODULE=<name>"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(MODULE_DIR)" ]; then \
+		echo "Error: Module directory not found: $(MODULE_DIR)"; \
+		echo ""; \
+		echo "To create this module:"; \
+		echo "  make create-module MODULE=$(MODULE)"; \
+		exit 1; \
+	fi
+	@if [ -e "$(INSTALL_DIR)" ]; then \
+		if [ -L "$(INSTALL_DIR)" ]; then \
+			echo "⚠️  Symlink already exists: $(INSTALL_DIR)"; \
+			echo "   Points to: $$(readlink $(INSTALL_DIR))"; \
+		else \
+			echo "Error: $(INSTALL_DIR) already exists and is not a symlink"; \
+			echo "   Run 'make uninstall-module MODULE=$(MODULE)' first"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "🔗 Linking $(MODULE) for development..."; \
+		sudo ln -s "$(MODULE_DIR)" "$(INSTALL_DIR)"; \
+		echo "✅ Module linked to $(INSTALL_DIR)"; \
+		echo ""; \
+		echo "📝 Next steps:"; \
+		echo "  1. Restart LinuxIO: sudo systemctl restart linuxio.target"; \
+		echo "  2. Start dev server: make dev"; \
+		echo "  3. Edit $(MODULE_DIR)/src/index.tsx (HMR enabled)"; \
+		echo ""; \
+		echo "When done developing:"; \
+		echo "  make unlink-module MODULE=$(MODULE)"; \
+		echo "  make deploy-module MODULE=$(MODULE)"; \
+	fi
+
+# Unlink development module
+unlink-module:
+	@if [ -z "$(MODULE)" ]; then \
+		echo "Error: MODULE parameter required"; \
+		echo "Usage: make unlink-module MODULE=<name>"; \
+		exit 1; \
+	fi
+	@if [ ! -L "$(INSTALL_DIR)" ]; then \
+		echo "Error: $(INSTALL_DIR) is not a symlink"; \
+		echo "   Use 'make uninstall-module MODULE=$(MODULE)' for deployed modules"; \
+		exit 1; \
+	fi
+	@echo "🔗 Unlinking $(MODULE)..."
+	@sudo rm "$(INSTALL_DIR)"
+	@echo "✅ Module unlinked"
+	@echo "   To deploy for production: make deploy-module MODULE=$(MODULE)"
+
 # Build and deploy module to system
 deploy-module: build-module install-module
 	@echo ""
@@ -675,4 +732,4 @@ list-modules:
   dev dev-prep setup test test-backend lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
-  create-module build-module deploy-module install-module uninstall-module clean-module list-modules
+  create-module build-module link-module unlink-module deploy-module install-module uninstall-module clean-module list-modules
