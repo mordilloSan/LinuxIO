@@ -578,11 +578,23 @@ create-module:
 	@echo "   TypeScript config: $(MODULE_DIR)/tsconfig.json"
 	@echo "   Node modules: Symlinked to frontend/node_modules"
 	@echo ""
+	@# Auto-link module for development
+	@echo "🔗 Linking module for development (HMR enabled)..."
+	@sudo ln -s "$(MODULE_DIR)" "$(INSTALL_DIR)"
+	@echo "✅ Module linked to $(INSTALL_DIR)"
+	@echo ""
+	@# Auto-restart LinuxIO services
+	@echo "🔄 Restarting LinuxIO services..."
+	@sudo systemctl restart linuxio.target
+	@echo "✅ Services restarted"
+	@echo ""
 	@echo "📝 Next steps:"
-	@echo "  1. Edit $(MODULE_DIR)/module.yaml to configure your module"
-	@echo "  2. Add your React component in $(MODULE_DIR)/src/"
-	@echo "  3. Build: make build-module MODULE=$(MODULE)"
-	@echo "  4. Deploy: make deploy-module MODULE=$(MODULE)"
+	@echo "  1. Start dev server: make dev"
+	@echo "  2. Edit $(MODULE_DIR)/src/index.tsx (HMR enabled)"
+	@echo "  3. View at: http://localhost:8090/$(MODULE)"
+	@echo ""
+	@echo "When done developing:"
+	@echo "  make deploy-module MODULE=$(MODULE)"
 	@echo ""
 
 # Build module in production mode (optimized)
@@ -661,10 +673,34 @@ unlink-module:
 	@echo "   To deploy for production: make deploy-module MODULE=$(MODULE)"
 
 # Build and deploy module to system
-deploy-module: build-module install-module
+deploy-module:
+	@if [ -z "$(MODULE)" ]; then \
+		echo "Error: MODULE parameter required"; \
+		echo "Usage: make deploy-module MODULE=<name>"; \
+		exit 1; \
+	fi
+	@# Remove development symlink if it exists
+	@if [ -L "$(INSTALL_DIR)" ]; then \
+		echo "🔗 Unlinking development symlink..."; \
+		sudo rm "$(INSTALL_DIR)"; \
+		echo "✅ Development symlink removed"; \
+		echo ""; \
+	elif [ -e "$(INSTALL_DIR)" ]; then \
+		echo "⚠️  Warning: $(INSTALL_DIR) exists but is not a symlink"; \
+		echo "   This will be overwritten with the production build"; \
+		echo ""; \
+	fi
+	@# Build the module
+	@$(MAKE) build-module MODULE=$(MODULE)
+	@# Install the module
+	@$(MAKE) install-module MODULE=$(MODULE)
 	@echo ""
 	@echo "✅ $(MODULE) deployed successfully!"
-	@echo "   Restart LinuxIO: sudo systemctl restart linuxio.target"
+	@# Restart LinuxIO services
+	@echo "🔄 Restarting LinuxIO services..."
+	@sudo systemctl restart linuxio.target
+	@echo "✅ Services restarted"
+	@echo ""
 	@echo "   View module at: https://localhost:8090/$(MODULE)"
 
 # Install built module to system (requires sudo)
