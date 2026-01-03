@@ -1,5 +1,5 @@
 import { linuxio } from "@/api/linuxio";
-import { getIndexerAvailabilityFlag } from "@/utils/indexerAvailability";
+import useAuth from "@/hooks/useAuth";
 
 export interface SearchResult {
   path: string;
@@ -37,7 +37,8 @@ export const useFileSearch = ({
   basePath = "/",
   enabled = true,
 }: UseFileSearchOptions): UseFileSearchResult => {
-  const indexerDisabled = getIndexerAvailabilityFlag() === false;
+  const { indexerAvailable } = useAuth();
+  const indexerDisabled = indexerAvailable === false;
   const shouldSearch = query.trim().length >= 2; // Minimum 2 characters
   const queryEnabled = enabled && shouldSearch && !indexerDisabled;
 

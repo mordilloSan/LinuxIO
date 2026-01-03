@@ -1,5 +1,5 @@
-import React from "react";
-import { toast, useSonner, type ToastT } from "sonner";
+import React, { createContext, useState, useEffect, useCallback } from "react";
+import { toast, useSonner, Toaster, type ToastT } from "sonner";
 
 export type ToastMeta = {
   href?: string;
@@ -58,60 +58,13 @@ const parseStoredHistory = (): ToastHistoryItem[] => {
   }
 };
 
-let historyCache: ToastHistoryItem[] = parseStoredHistory();
-const listeners = new Set<(history: ToastHistoryItem[]) => void>();
-
-const notify = () => {
-  const snapshot = historyCache.slice();
-  listeners.forEach((listener) => listener(snapshot));
-};
-
-const persist = () => {
+const persist = (history: ToastHistoryItem[]) => {
   if (!isBrowser) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(historyCache));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
   } catch {
     // ignore storage failures
   }
-};
-
-const setHistory = (next: ToastHistoryItem[]) => {
-  historyCache = next;
-  persist();
-  notify();
-};
-
-export const subscribeToastHistory = (
-  listener: (history: ToastHistoryItem[]) => void,
-): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
-
-export const useToastHistory = (limit = 5) => {
-  const [items, setItems] = React.useState(() => historyCache.slice(0, limit));
-
-  React.useEffect(() => {
-    const unsubscribe = subscribeToastHistory((next) => {
-      setItems(next.slice(0, limit));
-    });
-    return unsubscribe;
-  }, [limit]);
-
-  return items;
-};
-
-export const clearToastHistory = () => {
-  const activeToasts = toast
-    .getHistory()
-    .filter((item): item is ToastT => !("dismiss" in item));
-  activeToasts.forEach((toastItem) => {
-    ignoredToastIds.add(`${sessionId}:${toastItem.id}`);
-  });
-  setHistory([]);
-  toast.dismiss();
 };
 
 const coerceText = (
@@ -133,12 +86,15 @@ const coerceText = (
   return "";
 };
 
-const buildHistorySnapshot = () => {
+const buildHistorySnapshot = (
+  currentHistory: ToastHistoryItem[],
+  toasts: ToastT[],
+): ToastHistoryItem[] => {
   const now = Date.now();
-  const existingById = new Map(historyCache.map((item) => [item.id, item]));
-  const fromSonner = toast
-    .getHistory()
-    .filter((item): item is ToastT => !("dismiss" in item));
+  const existingById = new Map(currentHistory.map((item) => [item.id, item]));
+  const fromSonner = toasts.filter(
+    (item): item is ToastT => !("dismiss" in item),
+  );
   const nextFromSonner = fromSonner.reduce<ToastHistoryItem[]>(
     (acc, toastItem, index) => {
       const recordId = `${sessionId}:${toastItem.id}`;
@@ -162,19 +118,57 @@ const buildHistorySnapshot = () => {
     [],
   );
   const nextIds = new Set(nextFromSonner.map((item) => item.id));
-  const carryOver = historyCache.filter((item) => !nextIds.has(item.id));
+  const carryOver = currentHistory.filter((item) => !nextIds.has(item.id));
   const merged = [...nextFromSonner, ...carryOver]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, MAX_STORED_TOASTS);
   return merged;
 };
 
-export function ToastHistorySync() {
+export interface ToastHistoryContextValue {
+  history: ToastHistoryItem[];
+  clearHistory: () => void;
+}
+
+export const ToastHistoryContext =
+  createContext<ToastHistoryContextValue | null>(null);
+
+export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [history, setHistory] = useState<ToastHistoryItem[]>(() =>
+    parseStoredHistory(),
+  );
   const { toasts } = useSonner();
 
-  React.useEffect(() => {
-    setHistory(buildHistorySnapshot());
+  // Sync toast history when toasts change
+  useEffect(() => {
+    const nextHistory = buildHistorySnapshot(history, toasts);
+    setHistory(nextHistory);
+    persist(nextHistory);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toasts]);
 
-  return null;
-}
+  const clearHistory = useCallback(() => {
+    const activeToasts = toast
+      .getHistory()
+      .filter((item): item is ToastT => !("dismiss" in item));
+    activeToasts.forEach((toastItem) => {
+      ignoredToastIds.add(`${sessionId}:${toastItem.id}`);
+    });
+    setHistory([]);
+    persist([]);
+    toast.dismiss();
+  }, []);
+
+  return (
+    <ToastHistoryContext.Provider value={{ history, clearHistory }}>
+      {children}
+      <Toaster
+        richColors
+        position="top-right"
+        toastOptions={{ duration: 1500 }}
+      />
+    </ToastHistoryContext.Provider>
+  );
+};

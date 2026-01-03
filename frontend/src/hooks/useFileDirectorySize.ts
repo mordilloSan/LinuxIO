@@ -7,7 +7,7 @@ import {
   isDirectorySizeUnavailable,
   shouldEnableDirectorySizeQuery,
   useIndexerAvailability,
-} from "./useDirectorySizeBase";
+} from "./useFileDirectorySizeBase";
 
 interface DirectorySizeData {
   path: string;
@@ -29,7 +29,7 @@ interface UseDirectorySizeResult {
  * @param enabled - Whether the query should run
  * @returns Directory size and loading/error states
  */
-export const useDirectorySize = (
+export const useFileDirectorySize = (
   path: string,
   enabled: boolean = true,
 ): UseDirectorySizeResult => {
