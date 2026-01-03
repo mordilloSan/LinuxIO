@@ -261,7 +261,7 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
 	@echo "🔍 Running ESLint..."
-	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix && echo "✅ frontend Linting Ok!"'
+	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix --concurrency=auto && echo "✅ frontend Linting Ok!"'
 
 tsc-only:
 	@echo "🔍 Running TypeScript type checks..."

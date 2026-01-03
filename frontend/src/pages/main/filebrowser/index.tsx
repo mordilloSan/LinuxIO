@@ -315,27 +315,30 @@ const FileBrowser: React.FC = () => {
 
   const handleCloseDetailDialog = useCallback(() => {
     setDetailTarget(null);
-  }, []);
+  }, [setDetailTarget]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
   }, []);
 
-  const handleSortChange = useCallback((field: SortField) => {
-    setSortField((currentField) => {
-      if (currentField === field) {
-        // Toggle sort order if clicking the same field
-        setSortOrder((currentOrder) =>
-          currentOrder === "asc" ? "desc" : "asc",
-        );
-        return field;
-      } else {
-        // Reset to ascending when changing fields
-        setSortOrder("asc");
-        return field;
-      }
-    });
-  }, []);
+  const handleSortChange = useCallback(
+    (field: SortField) => {
+      setSortField((currentField) => {
+        if (currentField === field) {
+          // Toggle sort order if clicking the same field
+          setSortOrder((currentOrder) =>
+            currentOrder === "asc" ? "desc" : "asc",
+          );
+          return field;
+        } else {
+          // Reset to ascending when changing fields
+          setSortOrder("asc");
+          return field;
+        }
+      });
+    },
+    [setSortField, setSortOrder],
+  );
 
   const handleOpenDirectory = useCallback(
     (path: string) => {
@@ -354,9 +357,12 @@ const FileBrowser: React.FC = () => {
     [navigate],
   );
 
-  const handleDoubleClickFile = useCallback((item: FileItem) => {
-    setDetailTarget([item.path]);
-  }, []);
+  const handleDoubleClickFile = useCallback(
+    (item: FileItem) => {
+      setDetailTarget([item.path]);
+    },
+    [setDetailTarget],
+  );
 
   const downloadPaths = useCallback(
     async (paths: string[]) => {
@@ -428,13 +434,16 @@ const FileBrowser: React.FC = () => {
     [downloadPaths],
   );
 
-  const handleContextMenu = useCallback((event: React.MouseEvent) => {
-    event.preventDefault();
-    setContextMenuPosition({
-      top: event.clientY,
-      left: event.clientX,
-    });
-  }, []);
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      setContextMenuPosition({
+        top: event.clientY,
+        left: event.clientX,
+      });
+    },
+    [setContextMenuPosition],
+  );
 
   const handleShowDetails = useCallback(() => {
     handleCloseContextMenu();
@@ -453,12 +462,12 @@ const FileBrowser: React.FC = () => {
   const handleCreateFile = useCallback(() => {
     handleCloseContextMenu();
     setCreateFileDialog(true);
-  }, [handleCloseContextMenu]);
+  }, [handleCloseContextMenu, setCreateFileDialog]);
 
   const handleCreateFolder = useCallback(() => {
     handleCloseContextMenu();
     setCreateFolderDialog(true);
-  }, [handleCloseContextMenu]);
+  }, [handleCloseContextMenu, setCreateFolderDialog]);
 
   const handleConfirmCreateFile = useCallback(
     (fileName: string) => {
@@ -513,7 +522,12 @@ const FileBrowser: React.FC = () => {
       console.error("Failed to fetch file stat:", error);
       toast.error("Failed to fetch file permissions");
     }
-  }, [handleCloseContextMenu, selectedPaths, selectedItems]);
+  }, [
+    handleCloseContextMenu,
+    selectedPaths,
+    selectedItems,
+    setPermissionsDialog,
+  ]);
 
   const handleRename = useCallback(() => {
     handleCloseContextMenu();
@@ -531,7 +545,13 @@ const FileBrowser: React.FC = () => {
       name: baseName,
       isDirectory,
     });
-  }, [getBaseName, handleCloseContextMenu, selectedItems, selectedPaths]);
+  }, [
+    getBaseName,
+    handleCloseContextMenu,
+    selectedItems,
+    selectedPaths,
+    setRenameDialog,
+  ]);
 
   const handleConfirmRename = useCallback(
     async (newName: string) => {
@@ -553,12 +573,12 @@ const FileBrowser: React.FC = () => {
         // errors handled by mutation toast
       }
     },
-    [getParentPath, renameDialog, renameItem],
+    [getParentPath, renameDialog, renameItem, setRenameDialog],
   );
 
   const handleCloseRenameDialog = useCallback(() => {
     setRenameDialog(null);
-  }, []);
+  }, [setRenameDialog]);
 
   const handleDelete = useCallback(() => {
     handleCloseContextMenu();
@@ -569,7 +589,12 @@ const FileBrowser: React.FC = () => {
     } else {
       toast.error("No items selected");
     }
-  }, [handleCloseContextMenu, selectedPaths]);
+  }, [
+    handleCloseContextMenu,
+    selectedPaths,
+    setDeleteDialog,
+    setPendingDeletePaths,
+  ]);
 
   const handleConfirmDelete = useCallback(() => {
     if (!pendingDeletePaths.length) {
@@ -577,12 +602,12 @@ const FileBrowser: React.FC = () => {
     }
     deleteItems(pendingDeletePaths);
     setPendingDeletePaths([]);
-  }, [deleteItems, pendingDeletePaths]);
+  }, [deleteItems, pendingDeletePaths, setPendingDeletePaths]);
 
   const handleCloseDeleteDialog = useCallback(() => {
     setDeleteDialog(false);
     setPendingDeletePaths([]);
-  }, []);
+  }, [setDeleteDialog, setPendingDeletePaths]);
 
   const handleDownloadSelected = useCallback(() => {
     handleCloseContextMenu();
@@ -595,7 +620,7 @@ const FileBrowser: React.FC = () => {
     handleCloseContextMenu();
     setUploadEntries([]);
     setUploadDialogOpen(true);
-  }, [handleCloseContextMenu]);
+  }, [handleCloseContextMenu, setUploadDialogOpen, setUploadEntries]);
 
   const handleCompressSelection = useCallback(async () => {
     handleCloseContextMenu();
@@ -677,7 +702,7 @@ const FileBrowser: React.FC = () => {
 
   const handleClosePermissionsDialog = useCallback(() => {
     setPermissionsDialog(null);
-  }, []);
+  }, [setPermissionsDialog]);
 
   const handleConfirmPermissions = useCallback(
     async (
@@ -705,13 +730,16 @@ const FileBrowser: React.FC = () => {
         // Errors are surfaced via toast in the mutation
       }
     },
-    [permissionsDialog, changePermissions],
+    [permissionsDialog, changePermissions, setPermissionsDialog],
   );
 
-  const handleEditFile = useCallback((filePath: string) => {
-    setEditingPath(filePath);
-    setDetailTarget(null); // Close the detail dialog
-  }, []);
+  const handleEditFile = useCallback(
+    (filePath: string) => {
+      setEditingPath(filePath);
+      setDetailTarget(null); // Close the detail dialog
+    },
+    [setDetailTarget, setEditingPath],
+  );
 
   const handleSaveFile = useCallback(async () => {
     if (!editorRef.current || !editingPath) return;
@@ -789,7 +817,7 @@ const FileBrowser: React.FC = () => {
     } finally {
       setIsSavingFile(false);
     }
-  }, [editingPath, queryClient]);
+  }, [editingPath, queryClient, editorRef, setIsEditorDirty, setIsSavingFile]);
 
   const handleCloseEditor = useCallback(() => {
     if (isEditorDirty) {
@@ -798,17 +826,17 @@ const FileBrowser: React.FC = () => {
       setEditingPath(null);
       setIsEditorDirty(false);
     }
-  }, [isEditorDirty]);
+  }, [isEditorDirty, setCloseEditorDialog, setEditingPath, setIsEditorDirty]);
 
   const handleKeepEditing = useCallback(() => {
     setCloseEditorDialog(false);
-  }, []);
+  }, [setCloseEditorDialog]);
 
   const handleDiscardAndExit = useCallback(() => {
     setEditingPath(null);
     setIsEditorDirty(false);
     setCloseEditorDialog(false);
-  }, []);
+  }, [setCloseEditorDialog, setEditingPath, setIsEditorDirty]);
 
   const handleSaveAndExit = useCallback(async () => {
     if (!editorRef.current || !editingPath) return;
@@ -885,7 +913,15 @@ const FileBrowser: React.FC = () => {
     } finally {
       setIsSavingFile(false);
     }
-  }, [editingPath, queryClient]);
+  }, [
+    editingPath,
+    queryClient,
+    editorRef,
+    setCloseEditorDialog,
+    setEditingPath,
+    setIsEditorDirty,
+    setIsSavingFile,
+  ]);
 
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
@@ -930,27 +966,27 @@ const FileBrowser: React.FC = () => {
       setUploadEntries((prev) => mergeDroppedEntries(prev, entries));
       event.target.value = "";
     },
-    [],
+    [setUploadEntries],
   );
 
   const handleCloseUploadDialog = useCallback(() => {
     if (isUploadProcessing) return;
     setUploadDialogOpen(false);
     setUploadEntries([]);
-  }, [isUploadProcessing]);
+  }, [isUploadProcessing, setUploadDialogOpen, setUploadEntries]);
 
   const handleClearUploadSelection = useCallback(() => {
     if (isUploadProcessing) return;
     setUploadEntries([]);
-  }, [isUploadProcessing]);
+  }, [isUploadProcessing, setUploadEntries]);
 
   const handlePickFiles = useCallback(() => {
     fileInputRef.current?.click();
-  }, []);
+  }, [fileInputRef]);
 
   const handlePickFolder = useCallback(() => {
     folderInputRef.current?.click();
-  }, []);
+  }, [folderInputRef]);
 
   const handleStartUpload = useCallback(async () => {
     if (uploadEntries.length === 0) {
@@ -986,6 +1022,9 @@ const FileBrowser: React.FC = () => {
     setOverwriteTargetsForDialog,
     startUpload,
     uploadEntries,
+    setIsUploadProcessing,
+    setUploadDialogOpen,
+    setUploadEntries,
   ]);
 
   return (

@@ -1,9 +1,10 @@
 // vite.config.ts
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import reactBabel from "@vitejs/plugin-react";
 import reactSwc from "@vitejs/plugin-react-swc";
 import tsconfigPaths from "vite-tsconfig-paths";
-import { compression } from 'vite-plugin-compression2'
+import { compression } from 'vite-plugin-compression2';
+import { analyzer } from 'vite-bundle-analyzer';
 
 export default defineConfig(({ command }) => {
   const isBuild = command === "build";
@@ -16,11 +17,15 @@ export default defineConfig(({ command }) => {
   const proxyTarget = process.env.PROXY_TARGET || "https://localhost:8090";
   const devPort = Number(process.env.VITE_DEV_PORT || 3000);
 
-  const plugins = [reactPlugin, tsconfigPaths()];
+  const plugins: (Plugin | Plugin[])[] = [reactPlugin, tsconfigPaths()];
   if (isBuild) {
     plugins.push(
       compression({
         algorithms: ["gzip"],
+      }),
+      analyzer({
+        analyzerMode: 'static',
+        openAnalyzer: false,
       }),
     );
   }
