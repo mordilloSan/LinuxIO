@@ -1,4 +1,4 @@
-import { Box, useTheme, alpha } from "@mui/material";
+import { Box, useTheme } from "@mui/material";
 import { motion } from "framer-motion";
 import React from "react";
 
@@ -48,10 +48,7 @@ function PageLoader() {
             position: "absolute",
             left: 0,
             top: 0,
-            background: `linear-gradient(90deg, ${color}, ${alpha(
-              color,
-              0.5,
-            )})`,
+            background: `linear-gradient(90deg, ${color}, color-mix(in srgb, ${color}, transparent 50%))`,
             filter: "blur(1px)",
             borderRadius: 3,
           }}
