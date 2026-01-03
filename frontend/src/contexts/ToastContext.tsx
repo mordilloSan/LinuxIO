@@ -1,4 +1,10 @@
-import React, { createContext, useState, useEffect, useCallback } from "react";
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import { toast, useSonner, Toaster, type ToastT } from "sonner";
 
 export type ToastMeta = {
@@ -89,9 +95,13 @@ const coerceText = (
 const buildHistorySnapshot = (
   currentHistory: ToastHistoryItem[],
   toasts: ToastT[],
+  minCreatedAt = 0,
 ): ToastHistoryItem[] => {
   const now = Date.now();
-  const existingById = new Map(currentHistory.map((item) => [item.id, item]));
+  const baseHistory = minCreatedAt
+    ? currentHistory.filter((item) => item.createdAt >= minCreatedAt)
+    : currentHistory;
+  const existingById = new Map(baseHistory.map((item) => [item.id, item]));
   const fromSonner = toasts.filter(
     (item): item is ToastT => !("dismiss" in item),
   );
@@ -118,7 +128,7 @@ const buildHistorySnapshot = (
     [],
   );
   const nextIds = new Set(nextFromSonner.map((item) => item.id));
-  const carryOver = currentHistory.filter((item) => !nextIds.has(item.id));
+  const carryOver = baseHistory.filter((item) => !nextIds.has(item.id));
   const merged = [...nextFromSonner, ...carryOver]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, MAX_STORED_TOASTS);
@@ -136,18 +146,17 @@ export const ToastHistoryContext =
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [history, setHistory] = useState<ToastHistoryItem[]>(() =>
-    parseStoredHistory(),
-  );
+  const [lastClearedAt, setLastClearedAt] = useState(0);
   const { toasts } = useSonner();
 
-  // Sync toast history when toasts change
+  const history = useMemo(() => {
+    const storedHistory = parseStoredHistory();
+    return buildHistorySnapshot(storedHistory, toasts, lastClearedAt);
+  }, [toasts, lastClearedAt]);
+
   useEffect(() => {
-    const nextHistory = buildHistorySnapshot(history, toasts);
-    setHistory(nextHistory);
-    persist(nextHistory);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toasts]);
+    persist(history);
+  }, [history]);
 
   const clearHistory = useCallback(() => {
     const activeToasts = toast
@@ -156,8 +165,8 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
     activeToasts.forEach((toastItem) => {
       ignoredToastIds.add(`${sessionId}:${toastItem.id}`);
     });
-    setHistory([]);
     persist([]);
+    setLastClearedAt(Date.now());
     toast.dismiss();
   }, []);
 
