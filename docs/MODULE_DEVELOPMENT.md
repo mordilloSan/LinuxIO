@@ -23,13 +23,13 @@ Write modules with JSX/TypeScript just like core LinuxIO components!
 
 ## Overview
 
-LinuxIO's module system allows you to extend functionality using the **same development experience as core components**:
+LinuxIO's module system allows you to extend functionality using the **same development experience as core components** with **Hot Module Replacement (HMR)** for instant feedback:
 
 ✅ **Modern React Development:**
 - Write JSX/TSX syntax
 - Use TypeScript for type safety
 - Import Material-UI components normally
-- Hot module replacement during development
+- **Hot Module Replacement (HMR)** - see changes instantly without rebuilding
 - Full ES6+ support
 
 ✅ **Seamless Integration:**
@@ -46,15 +46,18 @@ LinuxIO's module system allows you to extend functionality using the **same deve
 ### How It Works
 
 ```
-Development (Your Code)              Production (Deployed)
+Development (HMR)                     Production (Deployed)
 ┌────────────────────────┐          ┌─────────────────────┐
-│  src/index.tsx (JSX)   │          │  component.js       │
-│  import { Box } from   │  build   │  (Browser bundle)   │
-│  '@mui/material';      │  ─────>  │                     │
-│                        │          │  Uses window.React  │
-│  <Box sx={{ p: 4 }}>  │          │  Uses window.       │
-│    My Module           │          │    MaterialUI       │
+│  src/index.tsx (JSX)   │          │  src/index.tsx      │
+│  import { Box } from   │          │         ↓           │
+│  '@mui/material';      │          │  Vite build         │
+│                        │ link+dev │         ↓           │
+│  <Box sx={{ p: 4 }}>  │  ─────>  │  component.js       │
+│    My Module           │          │  (IIFE bundle)      │
 │  </Box>                │          │                     │
+│         ↓              │          │  Uses window.React  │
+│  Vite HMR (instant!)   │          │  Uses window.       │
+│  No build needed       │          │    MaterialUI       │
 └────────────────────────┘          └─────────────────────┘
 ```
 
@@ -62,28 +65,45 @@ Development (Your Code)              Production (Deployed)
 
 ## Quick Start
 
-### 1. Create Module From Template
+### Development with Hot Module Replacement (Recommended)
 
 ```bash
-# Navigate to LinuxIO repository
+# 1. Navigate to LinuxIO repository
 cd /path/to/LinuxIO
 
-# Copy the template
-cp -r module-template modules/my-module
+# 2. Create module (auto-links and restarts services)
+make create-module MODULE=my-dashboard
 
-# Edit your module
-cd modules/my-module
+# 3. Start Vite dev server
+make dev
 
-# No npm dependencies needed - uses LinuxIO's!
+# 4. Edit modules/my-dashboard/src/index.tsx
+#    → Changes reflect instantly with HMR! ⚡
+
+# 5. When done, deploy to production (auto-unlinks, builds, and restarts)
+make deploy-module MODULE=my-dashboard
 ```
 
-### 2. No Configuration Needed!
+### Production Deployment (Without HMR)
+
+```bash
+# Create and deploy directly (auto-links, builds, and restarts)
+make create-module MODULE=my-module
+# Edit modules/my-module/module.yaml and src/index.tsx
+make deploy-module MODULE=my-module
+```
+
+### No Configuration Needed!
 
 **Modules use the central build script** - no individual vite config needed!
 
-The LinuxIO project includes a `packaging/scripts/build-module.sh` script that handles all the build configuration automatically.
+The LinuxIO project includes:
+- `packaging/scripts/build-module.sh` - Central build script
+- Pre-configured TypeScript with path aliases
+- Symlinked dependencies to `frontend/node_modules`
+- Automatic HMR setup via `make link-module`
 
-### 3. Write Your Component
+### Write Your Component
 
 **`src/index.tsx`:**
 
@@ -91,12 +111,19 @@ The LinuxIO project includes a `packaging/scripts/build-module.sh` script that h
 import React, { useState } from 'react';
 import { Box, Typography, Button, useTheme } from '@mui/material';
 
-// Import LinuxIO components (default exports - note .tsx extension)
-import RootCard from '@/components/cards/RootCard.tsx';
-import MetricBar from '@/components/gauge/MetricBar.tsx';
+// Import LinuxIO components (default exports)
+import RootCard from '@/components/cards/RootCard';
+import MetricBar from '@/components/gauge/MetricBar';
 
-// Import utilities (named exports - note .ts extension)
-import { formatFileSize } from '@/utils/formaters.ts';
+// Import utilities (named exports)
+import { formatFileSize } from '@/utils/formaters';
+
+// Declare global type for production bundle mode
+declare global {
+  interface Window {
+    LinuxIOModules: Record<string, { default: React.ComponentType }>;
+  }
+}
 
 function MyModule() {
   const [message, setMessage] = useState('');
@@ -120,8 +147,7 @@ function MyModule() {
 
         <MetricBar
           label="Example Metric"
-          value={75}
-          max={100}
+          percent={75}
           color={theme.palette.primary.main}
         />
 
@@ -147,28 +173,31 @@ function MyModule() {
   );
 }
 
-// Export to global namespace (REQUIRED for module loading)
-declare global {
-  interface Window {
-    LinuxIOModules: Record<string, { default: React.ComponentType }>;
+// REQUIRED: Export default for both HMR (dev) and bundled (prod) loads
+export default MyModule;
+
+// Export to window.LinuxIOModules for IIFE bundle mode (production)
+// This runs only when loaded as a script tag, not when imported as ESM
+if (typeof window !== 'undefined') {
+  if (!window.LinuxIOModules) {
+    window.LinuxIOModules = {};
+  }
+  if (!window.LinuxIOModules['my-module']) {
+    window.LinuxIOModules['my-module'] = { default: MyModule };
+    console.log('✅ My Module loaded (bundle mode)');
   }
 }
-
-window.LinuxIOModules = window.LinuxIOModules || {};
-window.LinuxIOModules['my-module'] = { default: MyModule };
-
-console.log('✅ My Module loaded successfully');
-
-export default MyModule;
 ```
 
 **Important Notes:**
 
-1. **File Extensions Required:** Include `.tsx` or `.ts` in imports
-2. **Default vs Named Exports:**
+1. **No File Extensions:** Do NOT include `.tsx` or `.ts` in imports (TypeScript/Vite will resolve them)
+2. **Global Declaration Must Be First:** The `declare global` block must appear at the top of the file before any function declarations to avoid TypeScript ambient module errors
+3. **Default vs Named Exports:**
    - Most components use `export default` → import as `import ComponentName from '...'`
    - Utilities use named exports → import as `import { functionName } from '...'`
-3. **Module Name Must Match:** The key in `window.LinuxIOModules['my-module']` must exactly match the `name` field in `module.yaml`
+4. **Module Name Must Match:** The key in `window.LinuxIOModules['my-module']` must exactly match the `name` field in `module.yaml`
+5. **Dual Export Pattern:** Always export both `export default` (for HMR/ESM) and `window.LinuxIOModules` (for production IIFE bundles)
 
 ### 4. Create Manifest
 
@@ -196,33 +225,52 @@ handlers:
       timeout: 5
 ```
 
-### 5. Build and Deploy
+### 5. Development & Deployment
 
-**Using Make (Recommended):**
+**Two Development Modes:**
 
-Run make commands from the LinuxIO project root:
+**Option A: HMR Development (Recommended)**
+
+Instant updates without rebuilding - ideal for active development:
 
 ```bash
 # From LinuxIO project root
 cd /path/to/LinuxIO
 
+# Create module (auto-links and restarts)
+make create-module MODULE=my-module
+
+# Start Vite dev server with HMR
+make dev
+
+# Edit modules/my-module/src/index.tsx
+# → Changes appear instantly! ⚡
+
+# When done developing, deploy to production (auto-unlinks, builds, and restarts)
+make deploy-module MODULE=my-module
+```
+
+**Note:** If you already created the module, you can manually link it with:
+```bash
+make link-module MODULE=my-module
+sudo systemctl restart linuxio.target
+```
+
+**Option B: Production Build Testing**
+
+Test the optimized bundle (requires rebuild after changes):
+
+```bash
 # Production build (optimized, minified)
 make build-module MODULE=my-module
 
-# Development build (source maps, no minification)
-make build-module-dev MODULE=my-module
-
-# Watch mode (auto-rebuild on changes)
-make watch-module MODULE=my-module
-
-# Build + deploy to system
+# Build + deploy to system (auto-restarts)
 make deploy-module MODULE=my-module
 
-# Clean build artifacts
-make clean-module MODULE=my-module
-
-# List all modules
-make list-modules
+# Other commands:
+make clean-module MODULE=my-module    # Clean build artifacts
+make uninstall-module MODULE=my-module # Remove from system
+make list-modules                      # List project modules
 ```
 
 **Example output:**
@@ -300,17 +348,19 @@ LinuxIO/
 ├── packaging/
 │   └── scripts/
 │       └── build-module.sh  # ← Build script
-├── modules/                 # ← Your modules here (copy from template)
+├── modules/                 # ← Your modules here
+│   ├── .template/           # ← Template for creating new modules
+│   │   ├── src/index.tsx    # Reference implementation
+│   │   ├── module.yaml      # Manifest example
+│   │   ├── tsconfig.json    # Pre-configured TypeScript
+│   │   └── node_modules/    # → Symlink to ../../frontend/node_modules
 │   └── my-module/           # Your custom modules
 │       ├── src/
 │       │   └── index.tsx    # Import from @/components, @/theme, etc.
 │       ├── module.yaml      # Manifest
+│       ├── node_modules/    # → Symlink to shared dependencies
 │       └── dist/            # Build output (gitignored)
 │           └── component.js
-├── module-template/         # ← Template for creating new modules
-│   ├── src/index.tsx        # Reference implementation
-│   ├── module.yaml
-│   └── dist/
 └── backend/
 ```
 
@@ -318,9 +368,9 @@ LinuxIO/
 
 ✅ **Full Access to LinuxIO Components:**
 ```tsx
-import { RootCard } from '@/components/cards/RootCard';
-import { MetricBar } from '@/components/metrics/MetricBar';
-import { TabSelector } from '@/components/tabs/TabSelector';
+import RootCard from '@/components/cards/RootCard';
+import MetricBar from '@/components/gauge/MetricBar';
+import TabSelector from '@/components/tabs/TabSelector';
 ```
 
 ✅ **Access to Theme:**
@@ -331,7 +381,7 @@ import theme from '@/theme';
 
 ✅ **Access to Utilities:**
 ```tsx
-import { formatBytes } from '@/utils/formatters';
+import { formatFileSize } from '@/utils/formaters';
 import { linuxio } from '@/api/linuxio';
 ```
 
@@ -346,16 +396,16 @@ import { linuxio } from '@/api/linuxio';
 
 **Cards:**
 ```tsx
-import RootCard from '@/components/cards/RootCard.tsx';
-import GeneralCard from '@/components/cards/GeneralCard.tsx';
-import ContainerCard from '@/components/cards/ContainerCard.tsx';
-import WireguardInterfaceCard from '@/components/cards/WireguardInterfaceCard.tsx';
+import RootCard from '@/components/cards/RootCard';
+import GeneralCard from '@/components/cards/GeneralCard';
+import ContainerCard from '@/components/cards/ContainerCard';
+import WireguardInterfaceCard from '@/components/cards/WireguardInterfaceCard';
 ```
 
 **Gauges & Metrics:**
 ```tsx
-import MetricBar from '@/components/gauge/MetricBar.tsx';
-import CircularGauge from '@/components/gauge/CirularGauge.tsx';
+import MetricBar from '@/components/gauge/MetricBar';
+import CircularGauge from '@/components/gauge/CirularGauge';
 ```
 
 **Theme:**
@@ -380,7 +430,7 @@ function MyModule() {
 
 **Utilities (Named Exports):**
 ```tsx
-import { formatFileSize, formatDate } from '@/utils/formaters.ts';
+import { formatFileSize, formatDate } from '@/utils/formaters';
 
 // Format bytes: 1024 → "1 KB"
 const formatted = formatFileSize(1024);
@@ -407,7 +457,7 @@ toast('Notification', {
 
 **API Client:**
 ```tsx
-import { linuxio } from '@/api/linuxio.ts';
+import { linuxio } from '@/api/linuxio';
 
 // Call backend handlers (WebSocket-based)
 const result = await linuxio.call('system', 'GetHostname', []);
@@ -432,14 +482,14 @@ grep "export default" frontend/src/components/cards/RootCard.tsx
 import { Box, Typography, Button, Grid, Paper } from '@mui/material';
 
 // LinuxIO components (bundled into module - default exports)
-import RootCard from '@/components/cards/RootCard.tsx';
-import MetricBar from '@/components/gauge/MetricBar.tsx';
+import RootCard from '@/components/cards/RootCard';
+import MetricBar from '@/components/gauge/MetricBar';
 
 // LinuxIO utilities (bundled into module - named exports)
-import { formatFileSize } from '@/utils/formaters.ts';
+import { formatFileSize } from '@/utils/formaters';
 
 // LinuxIO API (bundled into module)
-import { linuxio } from '@/api/linuxio.ts';
+import { linuxio } from '@/api/linuxio';
 ```
 
 ### File Permissions
@@ -456,67 +506,80 @@ sudo chmod -R 755 /etc/linuxio/modules
 
 ## Development Workflow
 
-### Local Development
+### HMR Development Mode (Recommended)
 
-**Option 1: Hot Reload (Recommended)**
+**Hot Module Replacement** provides instant feedback during development without manual rebuilds:
 
 ```bash
-# Run Vite dev server
-npm run dev
+# From LinuxIO project root
+cd /path/to/LinuxIO
 
-# Opens http://localhost:5173
-# Edit src/index.tsx and see changes instantly
+# 1. Create module (auto-links and restarts)
+make create-module MODULE=my-module
+
+# 2. Start Vite dev server with HMR enabled
+make dev
+
+# 3. Edit modules/my-module/src/index.tsx
+#    → Browser updates instantly! ⚡
+
+# Access at: http://localhost:8090/my-module
 ```
 
-**Option 2: Watch Mode**
+**How HMR Works:**
+- `make create-module` creates module and symlinks to `/etc/linuxio/modules/my-module`
+- Backend reads `module.yaml` from linked location
+- Frontend loads module source via Vite's `import.meta.glob()`
+- Changes to `.tsx` files trigger instant updates
+- No rebuild required - full TypeScript support with IntelliSense
+
+**Switching to Production:**
 
 ```bash
-# Auto-rebuild on changes
-npm run build -- --watch
-
-# In another terminal
-while true; do
-  sudo cp dist/component.js /etc/linuxio/modules/my-module/ui/
-  sleep 2
-done
+# Build and deploy optimized bundle (auto-unlinks, builds, and restarts)
+make deploy-module MODULE=my-module
 ```
 
-### Deployment Workflow
+### Production Build Testing
 
-**Development:**
+Test the optimized bundle before deployment:
+
 ```bash
-~/.config/linuxio/modules/my-module/
+# From LinuxIO project root
+cd /path/to/LinuxIO
+
+# Build production bundle
+make build-module MODULE=my-module
+
+# Deploy to system (auto-restarts)
+make deploy-module MODULE=my-module
+
+# Access at: http://localhost:8090/my-module
 ```
 
-**Production:**
+**Differences from HMR:**
+- ❌ No instant updates (must rebuild after changes)
+- ✅ Tests minified/optimized bundle
+- ✅ Verifies production behavior
+- ✅ Smaller bundle size (~4-8 KB vs source files)
+
+### Manual Deployment
+
+If not using Makefile:
+
 ```bash
-/etc/linuxio/modules/my-module/
-```
+# Build
+cd /path/to/LinuxIO
+packaging/scripts/build-module.sh my-module
 
-**Deploy script** (`deploy.sh`):
-
-```bash
-#!/bin/bash
-set -e
-
-echo "🔨 Building module..."
-npm run build
-
-echo "📦 Deploying to /etc/linuxio/modules/my-module..."
+# Deploy
 sudo mkdir -p /etc/linuxio/modules/my-module/ui
-sudo cp module.yaml /etc/linuxio/modules/my-module/
-sudo cp dist/component.js /etc/linuxio/modules/my-module/ui/
+sudo cp modules/my-module/module.yaml /etc/linuxio/modules/my-module/
+sudo cp modules/my-module/dist/component.js /etc/linuxio/modules/my-module/ui/
 sudo chmod -R 755 /etc/linuxio/modules/my-module
 
-echo "🔄 Restarting LinuxIO..."
+# Restart
 sudo systemctl restart linuxio.target
-
-echo "✅ Module deployed! Open https://localhost:8090/my-module"
-```
-
-```bash
-chmod +x deploy.sh
-./deploy.sh
 ```
 
 ---
@@ -668,6 +731,13 @@ export default defineConfig({
 ```tsx
 // src/index.tsx
 
+// Declare global type for production bundle mode (MUST BE AT TOP)
+declare global {
+  interface Window {
+    LinuxIOModules: Record<string, { default: React.ComponentType }>;
+  }
+}
+
 import React from 'react';
 import { Box } from '@mui/material';
 
@@ -676,21 +746,26 @@ function MyModule() {
   return <Box>My Module</Box>;
 }
 
-// REQUIRED: Export to window.LinuxIOModules
-declare global {
-  interface Window {
-    LinuxIOModules: Record<string, { default: React.ComponentType }>;
+// REQUIRED: Export default for both HMR (dev) and bundled (prod) loads
+export default MyModule;
+
+// Export to window.LinuxIOModules for IIFE bundle mode (production)
+// This runs only when loaded as a script tag, not when imported as ESM
+if (typeof window !== 'undefined') {
+  if (!window.LinuxIOModules) {
+    window.LinuxIOModules = {};
+  }
+  if (!window.LinuxIOModules['my-module']) {
+    window.LinuxIOModules['my-module'] = { default: MyModule };
+    console.log('✅ My Module loaded (bundle mode)');
   }
 }
-
-window.LinuxIOModules = window.LinuxIOModules || {};
-window.LinuxIOModules['my-module'] = { default: MyModule };
-
-// Optional: Export for type checking
-export default MyModule;
 ```
 
-**Critical**: The key `'my-module'` must match the `name` field in `module.yaml`.
+**Critical**:
+- The `declare global` block must be at the top of the file
+- The key `'my-module'` must match the `name` field in `module.yaml`
+- Both `export default` and `window.LinuxIOModules` exports are required
 
 ### Available Dependencies
 
@@ -1118,41 +1193,41 @@ This means you're using named import syntax for a default export.
 
 ```tsx
 // ❌ WRONG - trying to use named import for default export
-import { RootCard } from '@/components/cards/RootCard.tsx';
+import { RootCard } from '@/components/cards/RootCard';
 
-// ✅ CORRECT - use default import
-import RootCard from '@/components/cards/RootCard.tsx';
+// ✅ CORRECT - use default import (no braces, no file extension)
+import RootCard from '@/components/cards/RootCard';
 
 // To check what a component exports:
 grep "export" frontend/src/components/cards/RootCard.tsx
-// If you see "export default", use default import
+// If you see "export default", use default import (no braces)
 ```
 
 **Error: `Could not load /path/to/component (imported by ...)`**
 
-Missing file extension or wrong path.
+Wrong path or typo in import.
 
 ```tsx
-// ❌ WRONG - missing file extension
+// ❌ WRONG - typo in path
+import RootCard from '@/components/card/RootCard';
+
+// ✅ CORRECT - no file extension needed, TypeScript resolves it
 import RootCard from '@/components/cards/RootCard';
 
-// ✅ CORRECT - include .tsx extension
-import RootCard from '@/components/cards/RootCard.tsx';
-
 // For utilities:
-import { formatFileSize } from '@/utils/formaters.ts'; // Note .ts extension
+import { formatFileSize } from '@/utils/formaters';
 ```
 
-**Error: `"formatBytes" is not exported by "src/utils/formaters.ts"`**
+**Error: `"formatBytes" is not exported by "src/utils/formaters"`**
 
 Wrong function name or typo.
 
 ```tsx
 // ❌ WRONG - function doesn't exist
-import { formatBytes } from '@/utils/formaters.ts';
+import { formatBytes } from '@/utils/formaters';
 
-// ✅ CORRECT - check actual export name
-import { formatFileSize } from '@/utils/formaters.ts';
+// ✅ CORRECT - check actual export name (no file extension)
+import { formatFileSize } from '@/utils/formaters';
 
 // To discover available exports:
 grep "^export" frontend/src/utils/formaters.ts
@@ -1238,12 +1313,22 @@ Add `/// <reference types="vite/client" />` to `src/vite-env.d.ts`:
 /// <reference types="vite/client" />
 ```
 
-**Hot reload not working:**
+**HMR not working:**
 
-Vite dev server is for local development only. For testing in LinuxIO, use watch mode:
+Make sure you've linked the module and started the dev server:
 
 ```bash
-npm run build -- --watch
+# Link module for HMR
+make link-module MODULE=my-module
+sudo systemctl restart linuxio.target
+
+# Start Vite dev server
+make dev
+
+# Check if symlink exists
+ls -la /etc/linuxio/modules/my-module
+
+# Should show: my-module -> /path/to/project/modules/my-module
 ```
 
 ---
@@ -1338,37 +1423,43 @@ const debouncedSearch = useDebounce(searchTerm, 300);
 ```bash
 # Create module from template
 cd /path/to/LinuxIO
-cp -r module-template modules/my-module
+make create-module MODULE=my-module
 
-# List available templates and modules
+# Link module for HMR development
+make link-module MODULE=my-module
+
+# Unlink module (remove development symlink)
+make unlink-module MODULE=my-module
+
+# List available modules
 make list-modules
 
-# Build module (production - optimized)
+# Build module (production - optimized, minified)
 make build-module MODULE=my-module
 
-# Build module (development - with source maps)
-make build-module-dev MODULE=my-module
-
-# Watch mode (auto-rebuild on changes)
-make watch-module MODULE=my-module
-
-# Deploy module (build + install to system)
+# Deploy module (build + install to /etc/linuxio/modules)
 make deploy-module MODULE=my-module
 
 # Clean build artifacts
 make clean-module MODULE=my-module
 
+# Uninstall module from system
+make uninstall-module MODULE=my-module
+
+# Start Vite dev server (enables HMR for linked modules)
+make dev
+
 # Restart LinuxIO services
-make restart
+sudo systemctl restart linuxio.target
 
 # Check if module loaded
-make logs-bridge | grep -i "Loaded module"
+journalctl -u linuxio-bridge -n 100 | grep -i "module"
 
 # View webserver logs
-make logs-webserver
+journalctl -u linuxio-webserver -f
 
 # View all logs
-make logs
+journalctl -u linuxio.target -f
 ```
 
 ### Import Patterns Cheatsheet
@@ -1387,23 +1478,23 @@ import {
 import { useTheme } from '@mui/material';
 
 // ============================================================================
-// LinuxIO Components (DEFAULT EXPORTS - no braces, include .tsx)
+// LinuxIO Components (DEFAULT EXPORTS - no file extensions)
 // ============================================================================
-import RootCard from '@/components/cards/RootCard.tsx';
-import GeneralCard from '@/components/cards/GeneralCard.tsx';
-import ContainerCard from '@/components/cards/ContainerCard.tsx';
-import MetricBar from '@/components/gauge/MetricBar.tsx';
-import CircularGauge from '@/components/gauge/CirularGauge.tsx';
+import RootCard from '@/components/cards/RootCard';
+import GeneralCard from '@/components/cards/GeneralCard';
+import ContainerCard from '@/components/cards/ContainerCard';
+import MetricBar from '@/components/gauge/MetricBar';
+import CircularGauge from '@/components/gauge/CirularGauge';
 
 // ============================================================================
-// LinuxIO Utilities (NAMED EXPORTS - use braces, include .ts)
+// LinuxIO Utilities (NAMED EXPORTS - use braces, no file extensions)
 // ============================================================================
-import { formatFileSize, formatDate } from '@/utils/formaters.ts';
+import { formatFileSize, formatDate } from '@/utils/formaters';
 
 // ============================================================================
-// LinuxIO API (default export, include .ts)
+// LinuxIO API (no file extensions)
 // ============================================================================
-import { linuxio } from '@/api/linuxio.ts';
+import { linuxio } from '@/api/linuxio';
 
 // ============================================================================
 // Toast Notifications (third-party library)
@@ -1415,9 +1506,17 @@ import { toast } from 'sonner';
 
 ```tsx
 // src/index.tsx
+
+// Declare global type for production bundle mode (MUST BE AT TOP)
+declare global {
+  interface Window {
+    LinuxIOModules: Record<string, { default: React.ComponentType }>;
+  }
+}
+
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import RootCard from '@/components/cards/RootCard.tsx';
+import RootCard from '@/components/cards/RootCard';
 
 function MyModule() {
   return (
@@ -1432,15 +1531,20 @@ function MyModule() {
   );
 }
 
-// REQUIRED: Export to window
-declare global {
-  interface Window {
-    LinuxIOModules: Record<string, { default: React.ComponentType }>;
+// REQUIRED: Export default for both HMR (dev) and bundled (prod) loads
+export default MyModule;
+
+// Export to window.LinuxIOModules for IIFE bundle mode (production)
+// This runs only when loaded as a script tag, not when imported as ESM
+if (typeof window !== 'undefined') {
+  if (!window.LinuxIOModules) {
+    window.LinuxIOModules = {};
+  }
+  if (!window.LinuxIOModules['my-module']) {
+    window.LinuxIOModules['my-module'] = { default: MyModule };
+    console.log('✅ My Module loaded (bundle mode)');
   }
 }
-window.LinuxIOModules = window.LinuxIOModules || {};
-window.LinuxIOModules['my-module'] = { default: MyModule };
-export default MyModule;
 ```
 
 ```yaml
@@ -1497,11 +1601,14 @@ LinuxIO/
 │       ├── src/
 │       │   └── index.tsx        # Entry point (your code)
 │       ├── module.yaml          # Manifest
+│       ├── node_modules/        # → Symlink to ../../frontend/node_modules
 │       └── dist/                # Build output (gitignored)
 │           └── component.js
-├── module-template/             # Template for creating new modules
+├── modules/.template/           # Template for creating new modules
 │   ├── src/index.tsx            # Reference implementation
 │   ├── module.yaml
+│   ├── tsconfig.json
+│   ├── node_modules/            # → Symlink to ../../frontend/node_modules
 │   └── dist/
 ├── docs/
 │   ├── MODULE_DEVELOPMENT.md    # Complete guide
