@@ -18,9 +18,9 @@ linuxio-bridge
 modules/*/dist/
 modules/*/node_modules/
 
-# Ignore all modules except the template
-modules/*
-!modules/.template/
+# Modules are visible to Vite for HMR during development
+# Add specific development modules to gitignore if needed:
+# modules/my-dev-module/
 
 # Logs and misc
 *.log

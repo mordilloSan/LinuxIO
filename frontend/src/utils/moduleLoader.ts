@@ -36,10 +36,18 @@ export function loadModuleComponent(url: string): Promise<React.ComponentType> {
  */
 const devModules = isDevMode
   ? import.meta.glob<{ default: React.ComponentType }>(
-      "../../modules/*/src/index.tsx",
+      "../../../modules/*/src/index.tsx",
       { eager: false },
     )
   : {};
+
+// Debug: Log discovered modules in development
+if (isDevMode) {
+  console.log(
+    "🔍 Vite discovered modules:",
+    Object.keys(devModules).map((path) => path.replace("../../../modules/", "").replace("/src/index.tsx", "")),
+  );
+}
 
 /**
  * Load module from source using Vite dynamic import (dev mode with HMR)
@@ -49,7 +57,7 @@ async function loadModuleFromSource(
 ): Promise<React.ComponentType> {
   try {
     // Build the expected path for this module
-    const modulePath = `../../modules/${moduleName}/src/index.tsx`;
+    const modulePath = `../../../modules/${moduleName}/src/index.tsx`;
 
     // Look up the module in our glob imports
     const moduleImporter = devModules[modulePath];
@@ -57,7 +65,7 @@ async function loadModuleFromSource(
     if (!moduleImporter) {
       throw new Error(
         `Module ${moduleName} not found in project modules/. ` +
-          `Expected at ${modulePath}. ` +
+          `Expected at modules/${moduleName}/src/index.tsx. ` +
           `Make sure to link the module with: make link-module MODULE=${moduleName}`,
       );
     }
