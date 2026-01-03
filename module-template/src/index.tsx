@@ -1,0 +1,114 @@
+import React, { useState } from 'react';
+import { Box, Typography, Button, Grid, useTheme } from '@mui/material';
+import RootCard from '@/components/cards/RootCard.tsx';
+import MetricBar from '@/components/gauge/MetricBar.tsx';
+import { formatFileSize } from '@/utils/formaters.ts';
+
+function ExampleModule() {
+  const [message, setMessage] = useState('');
+  const theme = useTheme();
+
+  const handleClick = () => {
+    setMessage('Hello from Example Module! 👋');
+  };
+
+  return (
+    <Box sx={{ p: 4 }}>
+      <Typography variant="h3" gutterBottom>
+        🧩 Example Module
+      </Typography>
+
+      <Typography variant="body1" sx={{ mb: 3, color: 'text.secondary' }}>
+        This is a demonstration module showing how to create LinuxIO modules with full access
+        to components, theme, and utilities.
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={6}>
+          <RootCard sx={{ height: '100%' }}>
+            <Typography variant="h6" gutterBottom>
+              LinuxIO Components
+            </Typography>
+
+            <Typography gutterBottom>
+              This module has full access to LinuxIO components and theme!
+            </Typography>
+
+            <MetricBar
+              label="Example Metric"
+              value={75}
+              max={100}
+              color={theme.palette.primary.main}
+            />
+
+            <Button
+              variant="contained"
+              onClick={handleClick}
+              sx={{ mt: 2 }}
+              fullWidth
+            >
+              Click Me
+            </Button>
+
+            {message && (
+              <Typography sx={{ mt: 2, color: 'success.main' }}>
+                ✅ {message}
+              </Typography>
+            )}
+          </RootCard>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <RootCard sx={{ height: '100%' }}>
+            <Typography variant="h6" gutterBottom>
+              Utilities & Theme
+            </Typography>
+
+            <Typography variant="body2" gutterBottom>
+              <strong>Formatted file size:</strong> {formatFileSize(1073741824)}
+            </Typography>
+
+            <Typography variant="body2" gutterBottom>
+              <strong>Theme mode:</strong> {theme.palette.mode}
+            </Typography>
+
+            <Typography variant="body2" gutterBottom>
+              <strong>Primary color:</strong>{' '}
+              <Box
+                component="span"
+                sx={{
+                  display: 'inline-block',
+                  width: 16,
+                  height: 16,
+                  bgcolor: theme.palette.primary.main,
+                  borderRadius: 1,
+                  verticalAlign: 'middle',
+                  ml: 1,
+                }}
+              />
+            </Typography>
+
+            <Typography variant="body2" sx={{ mt: 2, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+              💡 Edit this module in:<br />
+              modules/example-module/src/index.tsx
+            </Typography>
+          </RootCard>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+
+// REQUIRED: Export to window.LinuxIOModules
+declare global {
+  interface Window {
+    LinuxIOModules: Record<string, { default: React.ComponentType }>;
+  }
+}
+
+window.LinuxIOModules = window.LinuxIOModules || {};
+window.LinuxIOModules['example-module'] = { default: ExampleModule };
+
+console.log('✅ Example Module loaded successfully');
+
+export default ExampleModule;

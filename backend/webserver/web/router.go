@@ -4,7 +4,9 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/mordilloSan/go_logger/logger"
@@ -35,6 +37,9 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 
 	// WebSocket relay (protected)
 	mux.Handle("GET /ws", sm.RequireSession(http.HandlerFunc(WebSocketRelayHandler)))
+
+	// Serve module static files (protected)
+	mux.Handle("/modules/", sm.RequireSession(http.HandlerFunc(ServeModuleFiles)))
 
 	// Serve embedded SPA
 	mountProductionSPA(mux, cfg.UI)
@@ -104,6 +109,70 @@ func serveFileFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string
 
 	// Fallback: just copy the content
 	_, _ = io.Copy(w, f)
+}
+
+// ServeModuleFiles serves static files for modules from their directories
+func ServeModuleFiles(w http.ResponseWriter, r *http.Request) {
+	// Extract path like: /modules/example-module/component.js
+	urlPath := strings.TrimPrefix(r.URL.Path, "/modules/")
+
+	// Security: prevent directory traversal
+	if strings.Contains(urlPath, "..") {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	// Try user modules first, then system modules
+	userHome := os.Getenv("HOME")
+	if userHome == "" {
+		userHome = "/root"
+	}
+
+	paths := []string{
+		filepath.Join(userHome, ".config/linuxio/modules", urlPath),
+		filepath.Join("/etc/linuxio/modules", urlPath),
+	}
+
+	var filePath string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			filePath = p
+			break
+		}
+	}
+
+	if filePath == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Read and serve the file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		http.Error(w, "Failed to read file", http.StatusInternalServerError)
+		return
+	}
+
+	// Set content type based on extension
+	ext := filepath.Ext(filePath)
+	switch ext {
+	case ".js":
+		w.Header().Set("Content-Type", "application/javascript")
+	case ".css":
+		w.Header().Set("Content-Type", "text/css")
+	case ".json":
+		w.Header().Set("Content-Type", "application/json")
+	default:
+		w.Header().Set("Content-Type", "text/plain")
+	}
+
+	// Add CORS headers for module loading
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	if _, err := w.Write(content); err != nil {
+		logger.Warnf("Failed to write module file response: %v", err)
+	}
 }
 
 // HTTPErrorLogAdapter adapts logger.Warnf to the log.Logger interface for http.Server.ErrorLog.

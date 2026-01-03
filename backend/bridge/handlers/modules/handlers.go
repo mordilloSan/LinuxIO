@@ -30,7 +30,7 @@ func GetLoadedModulesForFrontend() ([]ModuleFrontendInfo, error) {
 			Route:        module.Manifest.UI.Route,
 			Icon:         module.Manifest.UI.Icon,
 			Position:     module.Manifest.UI.Sidebar.Position,
-			ComponentURL: fmt.Sprintf("/modules/%s/component.js", module.Manifest.Name),
+			ComponentURL: fmt.Sprintf("/modules/%s/ui/component.js", module.Manifest.Name),
 		})
 	}
 
