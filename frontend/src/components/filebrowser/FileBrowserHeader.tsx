@@ -9,8 +9,6 @@ import {
   Typography,
   useMediaQuery,
   useTheme,
-  darken,
-  lighten,
   Tooltip,
 } from "@mui/material";
 import React, { ReactNode } from "react";
@@ -62,8 +60,8 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
         minHeight: 64,
         backgroundColor:
           theme.palette.mode === "light"
-            ? darken(theme.sidebar.background, 0.13)
-            : lighten(theme.sidebar.background, 0.06),
+            ? theme.darken(theme.sidebar.background, 0.13)
+            : theme.lighten(theme.sidebar.background, 0.06),
         boxShadow: theme.shadows[2],
       })}
     >
@@ -88,7 +86,6 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
           )}
         </Box>
       )}
-
       {/* Center section - File info when editing OR search bar when browsing */}
       {showQuickSave && editingFileName ? (
         <Box sx={{ flex: 1, textAlign: "center", mx: 2 }}>
@@ -115,7 +112,6 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
           />
         </Box>
       )}
-
       {/* Right section - Action buttons */}
       <Box
         className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}

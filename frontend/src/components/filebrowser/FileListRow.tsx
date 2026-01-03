@@ -1,4 +1,4 @@
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
@@ -115,11 +115,15 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
 
     const baseBg = useMemo(() => {
       if (selected) {
-        return alpha(theme.palette.primary.main, 0.4);
+        return `color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)`;
       }
-      const bg = theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
-      return hidden ? alpha(bg, 0.5) : bg;
-    }, [selected, theme, hidden]);
+      if (hidden) {
+        return theme.palette.mode === "dark"
+          ? `color-mix(in srgb, #20292f, transparent 50%)`
+          : `color-mix(in srgb, #ffffff, transparent 50%)`;
+      }
+      return theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
+    }, [selected, theme.palette.mode, hidden]);
 
     const resolvedBorderRadius = borderRadius ?? theme.shape.borderRadius;
 
@@ -136,7 +140,6 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           alignItems: "center",
           backgroundColor: baseBg,
           cursor: "pointer",
-          transition: "background-color 0.15s ease",
           borderRadius: resolvedBorderRadius,
           userSelect: "none",
         }}
@@ -200,8 +203,8 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
                       ? theme.palette.primary.main
                       : theme.palette.text.secondary,
                     backgroundColor: isDirectory
-                      ? alpha(theme.palette.primary.main, 0.15)
-                      : alpha(theme.palette.text.secondary, 0.1),
+                      ? `color-mix(in srgb, var(--mui-palette-primary-main), transparent 85%)`
+                      : `color-mix(in srgb, var(--mui-palette-text-secondary), transparent 90%)`,
                     padding: "2px 6px",
                     borderRadius: "4px",
                     textTransform: "uppercase",
@@ -231,7 +234,6 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
             )}
           </div>
         </div>
-
         {/* Size */}
         <div
           style={{
@@ -257,7 +259,6 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
             formattedSize
           )}
         </div>
-
         {/* Modified Date */}
         <div
           style={{

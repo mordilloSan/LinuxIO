@@ -1,6 +1,5 @@
 import DownloadIcon from "@mui/icons-material/Download";
 import { Box, Button, Divider, Paper, Stack, Typography } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
@@ -82,7 +81,6 @@ const MultiFileItemRow: React.FC<{
 }> = ({ item, onDownload }) => {
   const isDir = item.type === "directory";
   const isLoading = item.isLoading ?? false;
-  const theme = useTheme();
   const [hovered, setHovered] = React.useState(false);
 
   const renderSize = () => {
@@ -106,7 +104,7 @@ const MultiFileItemRow: React.FC<{
       sx={{
         border: "1px solid",
         borderColor: hovered
-          ? alpha(theme.palette.primary.main, 0.4)
+          ? "color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)"
           : "divider",
         borderRadius: 1.5,
         p: 1.5,
@@ -114,7 +112,7 @@ const MultiFileItemRow: React.FC<{
         flexDirection: "column",
         gap: 0.5,
         backgroundColor: hovered
-          ? alpha(theme.palette.primary.main, 0.05)
+          ? "color-mix(in srgb, var(--mui-palette-primary-main), transparent 95%)"
           : "transparent",
         transition: "all 120ms ease",
         transform: hovered ? "translateY(-1px)" : "none",

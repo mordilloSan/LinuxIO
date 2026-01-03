@@ -46,6 +46,7 @@ const createTheme = (
       typography,
       shadows,
       palette,
+      cssVariables: { nativeColor: true },
     },
     {
       name: themeConfig.name,

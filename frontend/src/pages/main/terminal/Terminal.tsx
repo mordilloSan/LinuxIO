@@ -1,5 +1,5 @@
 import { Box, IconButton, Typography } from "@mui/material";
-import { darken, lighten, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import Minus from "lucide-react/dist/esm/icons/minus";
@@ -229,8 +229,8 @@ const TerminalXTerm: React.FC = () => {
           minHeight: 64,
           backgroundColor:
             theme.palette.mode === "light"
-              ? darken(theme.sidebar.background, 0.13)
-              : lighten(theme.sidebar.background, 0.06),
+              ? theme.darken(theme.sidebar.background, 0.13)
+              : theme.lighten(theme.sidebar.background, 0.06),
           boxShadow: theme.shadows[2],
         })}
       >
@@ -274,7 +274,6 @@ const TerminalXTerm: React.FC = () => {
           <RotateCcw size={18} />
         </IconButton>
       </Box>
-
       {/* TERMINAL */}
       <Box
         ref={termRef}
