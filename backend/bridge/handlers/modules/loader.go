@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/go_logger/logger"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	"gopkg.in/yaml.v3"
 )
@@ -18,9 +19,14 @@ func LoadModules(handlerRegistry map[string]map[string]func([]string) (any, erro
 
 	// Load from system directory
 	systemDir := "/etc/linuxio/modules"
+	logger.Debugf("Loading from system directory: %s", systemDir)
 	systemModules, err := loadModulesFromDir(systemDir)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to load system modules: %w", err)
+	}
+	logger.Infof("Found %d modules in system directory", len(systemModules))
+	for name := range systemModules {
+		logger.Debugf("  - %s (system)", name)
 	}
 
 	// Load from user directory
@@ -29,9 +35,14 @@ func LoadModules(handlerRegistry map[string]map[string]func([]string) (any, erro
 		userHome = "/root"
 	}
 	userDir := filepath.Join(userHome, ".config/linuxio/modules")
+	logger.Debugf("Loading from user directory: %s", userDir)
 	userModules, err := loadModulesFromDir(userDir)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to load user modules: %w", err)
+	}
+	logger.Infof("Found %d modules in user directory", len(userModules))
+	for name := range userModules {
+		logger.Debugf("  - %s (user)", name)
 	}
 
 	// Merge modules (user overrides system)
@@ -46,11 +57,11 @@ func LoadModules(handlerRegistry map[string]map[string]func([]string) (any, erro
 	// Register each module's handlers
 	for name, module := range allModules {
 		if err := registerModule(module, handlerRegistry, registry); err != nil {
-			fmt.Printf("Warning: failed to register module %s: %v\n", name, err)
+			logger.Warnf("Failed to register module %s: %v", name, err)
 			continue
 		}
 		loadedModules[name] = module
-		fmt.Printf("Loaded module: %s v%s\n", module.Manifest.Title, module.Manifest.Version)
+		logger.Infof("Loaded module: %s v%s", module.Manifest.Title, module.Manifest.Version)
 	}
 
 	return nil
@@ -62,29 +73,44 @@ func loadModulesFromDir(dir string) (map[string]*ModuleInfo, error) {
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		logger.Debugf("Error reading directory %s: %v", dir, err)
 		return nil, err
 	}
 
+	logger.Debugf("Reading directory %s, found %d entries", dir, len(entries))
+
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		modulePath := filepath.Join(dir, entry.Name())
+
+		// Use os.Stat to follow symlinks (entry.IsDir() returns false for symlinks)
+		info, err := os.Stat(modulePath)
+		if err != nil {
+			logger.Debugf("  Skipping %s: stat failed: %v", entry.Name(), err)
 			continue
 		}
 
-		modulePath := filepath.Join(dir, entry.Name())
+		isSymlink := entry.Type()&os.ModeSymlink != 0
+		logger.Debugf("  Entry: %s (isDir=%v, isSymlink=%v)", entry.Name(), info.IsDir(), isSymlink)
+		if !info.IsDir() {
+			continue
+		}
+
 		manifestPath := filepath.Join(modulePath, "module.yaml")
 
 		// Check if module.yaml exists
 		if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+			logger.Debugf("  Skipping %s: module.yaml not found", entry.Name())
 			continue
 		}
 
 		// Parse manifest
 		manifest, err := parseManifest(manifestPath)
 		if err != nil {
-			fmt.Printf("Warning: failed to parse %s: %v\n", manifestPath, err)
+			logger.Warnf("Failed to parse %s: %v", manifestPath, err)
 			continue
 		}
 
+		logger.Debugf("  ✓ Parsed module: %s (name=%s)", entry.Name(), manifest.Name)
 		modules[manifest.Name] = &ModuleInfo{
 			Manifest: *manifest,
 			Path:     modulePath,
