@@ -65,8 +65,13 @@ const TerminalXTerm: React.FC = () => {
 
     // Set custom scrollbar and connect to stream after DOM is ready
     requestAnimationFrame(() => {
-      const viewport = termRef.current?.querySelector(".xterm-viewport");
-      if (viewport) viewport.classList.add("custom-scrollbar");
+      // xterm.js 6.0 still uses .xterm-viewport for scrolling
+      if (termRef.current) {
+        const viewport = termRef.current.querySelector(".xterm-viewport");
+        if (viewport) {
+          viewport.classList.add("custom-scrollbar");
+        }
+      }
       fitAddon.current?.fit();
 
       if (!xterm.current || !isOpen) return;
