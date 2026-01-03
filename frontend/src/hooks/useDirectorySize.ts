@@ -1,10 +1,13 @@
-import { useEffect } from "react";
-
-import { linuxio, LinuxIOError } from "@/api/linuxio";
+import { linuxio } from "@/api/linuxio";
 import {
-  getIndexerAvailabilityFlag,
-  setIndexerAvailabilityFlag,
-} from "@/utils/indexerAvailability";
+  shouldSkipSizeCalculation,
+  getDirectorySizeQueryOptions,
+  useIndexerErrorHandler,
+  getDirectorySizeError,
+  isDirectorySizeUnavailable,
+  shouldEnableDirectorySizeQuery,
+  useIndexerAvailability,
+} from "./useDirectorySizeBase";
 
 interface DirectorySizeData {
   path: string;
@@ -17,21 +20,6 @@ interface UseDirectorySizeResult {
   error: Error | null;
   isUnavailable: boolean;
 }
-
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-const CACHE_PERSISTENCE = 24 * 60 * 60 * 1000; // 24 hours
-const FAILED_RETRY_DELAY = 30 * 1000; // 30 seconds
-const MAX_RETRIES = 2;
-
-// Directories that should not have size calculations (not indexed by the indexer)
-const EXCLUDED_DIRECTORIES = ["/proc", "/dev", "/sys"];
-
-const shouldSkipSizeCalculation = (path: string): boolean => {
-  if (!path) return true;
-  return EXCLUDED_DIRECTORIES.some(
-    (excluded) => path === excluded || path.startsWith(excluded + "/"),
-  );
-};
 
 /**
  * Hook to fetch the size of a single directory.
@@ -47,8 +35,13 @@ export const useDirectorySize = (
 ): UseDirectorySizeResult => {
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
-  const indexerDisabled = getIndexerAvailabilityFlag() === false;
-  const queryEnabled = enabled && !!path && !shouldSkip && !indexerDisabled;
+  const indexerDisabled = useIndexerAvailability();
+  const queryEnabled = shouldEnableDirectorySizeQuery(
+    enabled,
+    path,
+    shouldSkip,
+    indexerDisabled,
+  );
 
   const { data, isLoading, error } = linuxio.useCall<DirectorySizeData>(
     "filebrowser",
@@ -56,34 +49,25 @@ export const useDirectorySize = (
     [path],
     {
       enabled: queryEnabled,
-      staleTime: CACHE_DURATION,
-      gcTime: CACHE_PERSISTENCE,
-      refetchOnWindowFocus: false,
-      refetchOnMount: false,
-      retry: (failureCount: number) => failureCount < MAX_RETRIES,
-      retryDelay: () => FAILED_RETRY_DELAY,
+      ...getDirectorySizeQueryOptions(),
     },
   );
 
-  useEffect(() => {
-    if (!error) return;
-    if (
-      error instanceof LinuxIOError &&
-      error.message?.includes("indexer unavailable")
-    ) {
-      setIndexerAvailabilityFlag(false);
-    }
-  }, [error]);
+  // Handle indexer unavailability errors
+  useIndexerErrorHandler(error);
 
-  const derivedError =
-    indexerDisabled && !shouldSkip
-      ? new Error("Directory size indexing is unavailable")
-      : error instanceof Error
-        ? error
-        : null;
+  const derivedError = getDirectorySizeError(
+    error,
+    indexerDisabled,
+    shouldSkip,
+  );
 
-  const isUnavailable =
-    (derivedError !== null && !data) || (indexerDisabled && !shouldSkip);
+  const isUnavailable = isDirectorySizeUnavailable(
+    error,
+    data,
+    indexerDisabled,
+    shouldSkip,
+  );
 
   return {
     size: data?.size ?? null,

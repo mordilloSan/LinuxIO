@@ -105,25 +105,24 @@ const FileCard: React.FC<FileCardProps> = React.memo(
       return theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
     }, [selected, theme.palette.mode, hidden]);
 
-const baseBorderAlpha = theme.palette.mode === "dark" ? 0.15 : 0.1;
+    const baseBorderAlpha = theme.palette.mode === "dark" ? 0.15 : 0.1;
 
-const baseBorderColor = useMemo(
-  () => `rgba(var(--mui-palette-dividerChannel) / ${baseBorderAlpha})`,
-  [baseBorderAlpha],
-);
+    const baseBorderColor = useMemo(
+      () => `rgba(var(--mui-palette-dividerChannel) / ${baseBorderAlpha})`,
+      [baseBorderAlpha],
+    );
 
-const borderColor = useMemo(() => {
-  if (selected) {
-    return `rgba(var(--mui-palette-primary-mainChannel) / 0.7)`;
-  }
-  if (!isDirectory) return "transparent";
+    const borderColor = useMemo(() => {
+      if (selected) {
+        return `rgba(var(--mui-palette-primary-mainChannel) / 0.7)`;
+      }
+      if (!isDirectory) return "transparent";
 
-  // IMPORTANT: match old behavior: hidden overwrites alpha to 0.05
-  return hidden
-    ? `rgba(var(--mui-palette-dividerChannel) / 0.05)`
-    : baseBorderColor;
-}, [selected, isDirectory, hidden, baseBorderColor]);
-
+      // IMPORTANT: match old behavior: hidden overwrites alpha to 0.05
+      return hidden
+        ? `rgba(var(--mui-palette-dividerChannel) / 0.05)`
+        : baseBorderColor;
+    }, [selected, isDirectory, hidden, baseBorderColor]);
 
     // Keep file and folder titles consistent while still dimming supporting text
     const metadataOpacity = isDirectory ? 0.85 : 0.65;
