@@ -12,6 +12,14 @@ linuxio-bridge
 .go-cache
 .gocache
 
+# Module build artifacts
+modules/*/dist/
+modules/*/build/
+modules/*/node_modules/
+module-template/dist/
+module-template/build/
+module-template/node_modules/
+
 # Logs and misc
 *.log
 .DS_Store

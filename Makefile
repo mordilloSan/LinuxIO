@@ -525,10 +525,132 @@ help:
 	@$(PRINTC) "$(COLOR_RED)    make run              $(COLOR_RESET) Run production backend server"
 	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
 	@$(PRINTC) ""
+	@$(PRINTC) "$(COLOR_CYAN)  Modules$(COLOR_RESET)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-module MODULE=<name>       $(COLOR_RESET) Build module (production)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-module-dev MODULE=<name>   $(COLOR_RESET) Build module (development)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make watch-module MODULE=<name>       $(COLOR_RESET) Watch mode (auto-rebuild)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make deploy-module MODULE=<name>      $(COLOR_RESET) Build + deploy module"
+	@$(PRINTC) "$(COLOR_YELLOW)    make list-modules                     $(COLOR_RESET) List all modules"
+	@$(PRINTC) ""
+
+# ============================================================================
+# Module Build System
+# ============================================================================
+
+MODULE ?=
+MODULE_DIR := $(CURDIR)/modules/$(MODULE)
+INSTALL_DIR := /etc/linuxio/modules/$(MODULE)
+BUILD_SCRIPT := $(CURDIR)/packaging/scripts/build-module.sh
+
+# Build module in production mode (optimized)
+build-module:
+	@if [ -z "$(MODULE)" ]; then \
+		echo "Error: MODULE parameter required"; \
+		echo "Usage: make build-module MODULE=<name>"; \
+		echo ""; \
+		echo "To create a new module from template:"; \
+		echo "  cp -r module-template modules/my-module"; \
+		echo "  make build-module MODULE=my-module"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(MODULE_DIR)" ]; then \
+		echo "Error: Module directory not found: $(MODULE_DIR)"; \
+		echo ""; \
+		echo "To create a new module from template:"; \
+		echo "  cp -r module-template modules/$(MODULE)"; \
+		exit 1; \
+	fi
+	@echo "Building $(MODULE) in production mode..."
+	@$(BUILD_SCRIPT) $(MODULE)
+
+# Build module in development mode (source maps, no minification)
+build-module-dev:
+	@if [ ! -d "$(MODULE_DIR)" ]; then \
+		echo "Error: Module directory not found: $(MODULE_DIR)"; \
+		exit 1; \
+	fi
+	@echo "Building $(MODULE) in development mode..."
+	@$(BUILD_SCRIPT) $(MODULE) --dev
+
+# Watch mode (auto-rebuild on changes)
+watch-module:
+	@if [ ! -d "$(MODULE_DIR)" ]; then \
+		echo "Error: Module directory not found: $(MODULE_DIR)"; \
+		exit 1; \
+	fi
+	@echo "Starting watch mode for $(MODULE)..."
+	@$(BUILD_SCRIPT) $(MODULE) --watch
+
+# Build and deploy module to system
+deploy-module: build-module install-module
+	@echo ""
+	@echo "✅ $(MODULE) deployed successfully!"
+	@echo "   Restart LinuxIO: sudo systemctl restart linuxio.target"
+	@echo "   View module at: https://localhost:8090/$(MODULE)"
+
+# Install built module to system (requires sudo)
+install-module:
+	@if [ ! -f "$(MODULE_DIR)/dist/component.js" ]; then \
+		echo "Error: Build output not found. Run 'make build-module MODULE=$(MODULE)' first."; \
+		exit 1; \
+	fi
+	@echo "Installing $(MODULE) to $(INSTALL_DIR)..."
+	@sudo mkdir -p "$(INSTALL_DIR)/ui"
+	@sudo cp "$(MODULE_DIR)/module.yaml" "$(INSTALL_DIR)/"
+	@sudo cp "$(MODULE_DIR)/dist/component.js" "$(INSTALL_DIR)/ui/"
+	@sudo chmod -R 755 "$(INSTALL_DIR)"
+	@echo "✅ Module installed to $(INSTALL_DIR)"
+
+# Uninstall module from system (requires sudo)
+uninstall-module:
+	@echo "Removing $(MODULE) from system..."
+	@sudo rm -rf "$(INSTALL_DIR)"
+	@echo "✅ Module uninstalled"
+	@echo "   Restart LinuxIO: sudo systemctl restart linuxio.target"
+
+# Clean module build artifacts
+clean-module:
+	@if [ -d "$(MODULE_DIR)" ]; then \
+		echo "Cleaning build artifacts for $(MODULE)..."; \
+		rm -rf "$(MODULE_DIR)/dist"; \
+		echo "✅ Build artifacts removed"; \
+	fi
+
+# List all available modules
+list-modules:
+	@echo "📦 Installed modules:"
+	@module_count=0; \
+	for dir in modules/*/; do \
+		if [ -f "$$dir/module.yaml" ]; then \
+			name=$$(grep "^name:" "$$dir/module.yaml" | awk '{print $$2}'); \
+			version=$$(grep "^version:" "$$dir/module.yaml" | awk '{print $$2}'); \
+			title=$$(grep "^title:" "$$dir/module.yaml" | sed 's/^title: //'); \
+			echo "  • $$name (v$$version) - $$title"; \
+			module_count=$$((module_count + 1)); \
+		fi \
+	done; \
+	if [ $$module_count -eq 0 ]; then \
+		echo "  (none)"; \
+	fi
+	@echo ""
+	@echo "📋 Module template:"
+	@if [ -f "module-template/module.yaml" ]; then \
+		name=$$(grep "^name:" "module-template/module.yaml" | awk '{print $$2}'); \
+		version=$$(grep "^version:" "module-template/module.yaml" | awk '{print $$2}'); \
+		title=$$(grep "^title:" "module-template/module.yaml" | sed 's/^title: //'); \
+		echo "  • $$name (v$$version) - $$title"; \
+	else \
+		echo "  (not found)"; \
+	fi
+	@echo ""
+	@echo "To create a new module from template:"
+	@echo "  cp -r module-template modules/my-module"
+	@echo "  make build-module MODULE=my-module"
 
 .PHONY: \
   default help clean run \
   build fastbuild _build-binaries build-vite build-backend build-bridge build-auth build-cli \
   dev dev-prep setup test test-backend lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
-  generate localinstall reinstall fullinstall uninstall print-toolchain-versions
+  generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
+  build-module build-module-dev watch-module deploy-module install-module uninstall-module clean-module list-modules
