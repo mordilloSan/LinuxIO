@@ -1,8 +1,12 @@
 import { useQueries } from "@tanstack/react-query";
 
 import { MultiStatsItem } from "@/types/filebrowser";
-import { getIndexerAvailabilityFlag } from "@/utils/indexerAvailability";
 import { linuxio } from "@/api/linuxio";
+import {
+  shouldSkipSizeCalculation,
+  getDirectorySizeQueryOptions,
+  useIndexerAvailability,
+} from "./useDirectorySizeBase";
 
 interface DirectoryDetailsData {
   path: string;
@@ -22,21 +26,6 @@ interface UseMultipleDirectoryDetailsResult {
   isAnyLoading: boolean;
 }
 
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (same as useDirectorySize)
-const CACHE_PERSISTENCE = 24 * 60 * 60 * 1000; // 24 hours
-const FAILED_RETRY_DELAY = 30 * 1000;
-const MAX_RETRIES = 2;
-
-// Directories that should not have size calculations (not indexed by the indexer)
-const EXCLUDED_DIRECTORIES = ["/proc", "/dev", "/sys"];
-
-const shouldSkipSizeCalculation = (path: string): boolean => {
-  if (!path) return true;
-  return EXCLUDED_DIRECTORIES.some(
-    (excluded) => path === excluded || path.startsWith(excluded + "/"),
-  );
-};
-
 export const useMultipleDirectoryDetails = (
   paths: string[],
   fileResourceMap: Record<string, { name: string; type: string; size: number }>,
@@ -48,7 +37,7 @@ export const useMultipleDirectoryDetails = (
       !shouldSkipSizeCalculation(path),
   );
 
-  const indexerDisabled = getIndexerAvailabilityFlag() === false;
+  const indexerDisabled = useIndexerAvailability();
   const indexerUnavailableError = indexerDisabled
     ? new Error("Directory size indexing is unavailable")
     : null;
@@ -64,13 +53,8 @@ export const useMultipleDirectoryDetails = (
           [path],
         );
       },
-      staleTime: CACHE_DURATION,
-      gcTime: CACHE_PERSISTENCE,
-      refetchOnWindowFocus: false,
-      refetchOnMount: false,
+      ...getDirectorySizeQueryOptions(),
       enabled: !indexerDisabled,
-      retry: (failureCount: number) => failureCount < MAX_RETRIES,
-      retryDelay: () => FAILED_RETRY_DELAY,
     })),
   });
 

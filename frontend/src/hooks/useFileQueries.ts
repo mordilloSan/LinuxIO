@@ -10,7 +10,7 @@ import {
 } from "@/types/filebrowser";
 import { linuxio, LinuxIOError } from "@/api/linuxio";
 
-type UseFileBrowserQueriesParams = {
+type useFileQueriesParams = {
   normalizedPath: string;
   detailTarget: string[] | null;
   editingPath: string | null;
@@ -18,13 +18,13 @@ type UseFileBrowserQueriesParams = {
   hasMultipleDetailTargets: boolean;
 };
 
-export const useFileBrowserQueries = ({
+export const useFileQueries = ({
   normalizedPath,
   detailTarget,
   editingPath,
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
-}: UseFileBrowserQueriesParams) => {
+}: useFileQueriesParams) => {
   const {
     data: resourceData,
     isPending,

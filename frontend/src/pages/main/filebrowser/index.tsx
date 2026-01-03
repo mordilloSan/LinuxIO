@@ -28,8 +28,8 @@ import { toast } from "sonner";
 
 import { useDragAndDropUpload } from "../../../hooks/useDragAndDropUpload";
 import type { DroppedEntry } from "../../../hooks/useDragAndDropUpload";
-import { useFileBrowserQueries } from "../../../hooks/useFileBrowserQueries";
 import { useFileMutations } from "../../../hooks/useFileMutations";
+import { useFileQueries } from "../../../hooks/useFileQueries";
 import { useFileSearch } from "../../../hooks/useFileSearch";
 
 import {
@@ -263,7 +263,7 @@ const FileBrowser: React.FC = () => {
     editingFileResource,
     isEditingFileLoading,
     shouldShowDetailLoader,
-  } = useFileBrowserQueries({
+  } = useFileQueries({
     normalizedPath,
     detailTarget,
     editingPath,
