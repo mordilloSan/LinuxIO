@@ -1,3 +1,6 @@
+# Default target
+default: help
+
 # Include private release automation
 -include release.mk
 
@@ -120,8 +123,6 @@ LDFLAGS := $(HARDEN_LDFLAGS) $(SIZELDFLAGS) $(LTOFLAGS)
 
 .ONESHELL:
 SHELL := /bin/bash
-
-default: help
 
 print-toolchain-versions:
 	@set -euo pipefail; \
@@ -526,9 +527,8 @@ help:
 	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Modules$(COLOR_RESET)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make create-module MODULE=<name>      $(COLOR_RESET) Create new module from template"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-module MODULE=<name>       $(COLOR_RESET) Build module (production)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-module-dev MODULE=<name>   $(COLOR_RESET) Build module (development)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make watch-module MODULE=<name>       $(COLOR_RESET) Watch mode (auto-rebuild)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make deploy-module MODULE=<name>      $(COLOR_RESET) Build + deploy module"
 	@$(PRINTC) "$(COLOR_YELLOW)    make list-modules                     $(COLOR_RESET) List all modules"
 	@$(PRINTC) ""
@@ -542,44 +542,66 @@ MODULE_DIR := $(CURDIR)/modules/$(MODULE)
 INSTALL_DIR := /etc/linuxio/modules/$(MODULE)
 BUILD_SCRIPT := $(CURDIR)/packaging/scripts/build-module.sh
 
+# Create a new module from template
+create-module:
+	@if [ -z "$(MODULE)" ]; then \
+		echo "Error: MODULE parameter required"; \
+		echo "Usage: make create-module MODULE=<name>"; \
+		echo ""; \
+		echo "Example:"; \
+		echo "  make create-module MODULE=my-dashboard"; \
+		exit 1; \
+	fi
+	@if [ ! -d "modules/.template" ]; then \
+		echo "Error: Module template not found at modules/.template"; \
+		exit 1; \
+	fi
+	@if [ -d "$(MODULE_DIR)" ]; then \
+		echo "Error: Module '$(MODULE)' already exists at $(MODULE_DIR)"; \
+		echo ""; \
+		echo "To rebuild existing module:"; \
+		echo "  make build-module MODULE=$(MODULE)"; \
+		exit 1; \
+	fi
+	@echo "📦 Creating new module: $(MODULE)"
+	@cp -r modules/.template "$(MODULE_DIR)"
+	@MODULE_TITLE="$$(echo "$(MODULE)" | sed 's/-/ /g; s/\b\(.\)/\u\1/g')"; \
+	sed -i "s/name: example-module/name: $(MODULE)/" "$(MODULE_DIR)/module.yaml"; \
+	sed -i "s|route: /example-module|route: /$(MODULE)|" "$(MODULE_DIR)/module.yaml"; \
+	sed -i "s/title: Example Module/title: $$MODULE_TITLE/" "$(MODULE_DIR)/module.yaml"; \
+	sed -i "s/window.LinuxIOModules\['example-module'\]/window.LinuxIOModules['$(MODULE)']/" "$(MODULE_DIR)/src/index.tsx"; \
+	sed -i "s/modules\/example-module/modules\/$(MODULE)/" "$(MODULE_DIR)/src/index.tsx"
+	@ln -sf ../../frontend/node_modules "$(MODULE_DIR)/node_modules"
+	@echo "✅ Module created at: $(MODULE_DIR)"
+	@echo "   TypeScript config: $(MODULE_DIR)/tsconfig.json"
+	@echo "   Node modules: Symlinked to frontend/node_modules"
+	@echo ""
+	@echo "📝 Next steps:"
+	@echo "  1. Edit $(MODULE_DIR)/module.yaml to configure your module"
+	@echo "  2. Add your React component in $(MODULE_DIR)/src/"
+	@echo "  3. Build: make build-module MODULE=$(MODULE)"
+	@echo "  4. Deploy: make deploy-module MODULE=$(MODULE)"
+	@echo ""
+
 # Build module in production mode (optimized)
 build-module:
 	@if [ -z "$(MODULE)" ]; then \
 		echo "Error: MODULE parameter required"; \
 		echo "Usage: make build-module MODULE=<name>"; \
 		echo ""; \
-		echo "To create a new module from template:"; \
-		echo "  cp -r module-template modules/my-module"; \
-		echo "  make build-module MODULE=my-module"; \
+		echo "To create a new module:"; \
+		echo "  make create-module MODULE=my-module"; \
 		exit 1; \
 	fi
 	@if [ ! -d "$(MODULE_DIR)" ]; then \
 		echo "Error: Module directory not found: $(MODULE_DIR)"; \
 		echo ""; \
-		echo "To create a new module from template:"; \
-		echo "  cp -r module-template modules/$(MODULE)"; \
+		echo "To create this module:"; \
+		echo "  make create-module MODULE=$(MODULE)"; \
 		exit 1; \
 	fi
 	@echo "Building $(MODULE) in production mode..."
 	@$(BUILD_SCRIPT) $(MODULE)
-
-# Build module in development mode (source maps, no minification)
-build-module-dev:
-	@if [ ! -d "$(MODULE_DIR)" ]; then \
-		echo "Error: Module directory not found: $(MODULE_DIR)"; \
-		exit 1; \
-	fi
-	@echo "Building $(MODULE) in development mode..."
-	@$(BUILD_SCRIPT) $(MODULE) --dev
-
-# Watch mode (auto-rebuild on changes)
-watch-module:
-	@if [ ! -d "$(MODULE_DIR)" ]; then \
-		echo "Error: Module directory not found: $(MODULE_DIR)"; \
-		exit 1; \
-	fi
-	@echo "Starting watch mode for $(MODULE)..."
-	@$(BUILD_SCRIPT) $(MODULE) --watch
 
 # Build and deploy module to system
 deploy-module: build-module install-module
@@ -621,6 +643,7 @@ list-modules:
 	@echo "📦 Installed modules:"
 	@module_count=0; \
 	for dir in modules/*/; do \
+		[ "$$dir" = "modules/.template/" ] && continue; \
 		if [ -f "$$dir/module.yaml" ]; then \
 			name=$$(grep "^name:" "$$dir/module.yaml" | awk '{print $$2}'); \
 			version=$$(grep "^version:" "$$dir/module.yaml" | awk '{print $$2}'); \
@@ -634,18 +657,17 @@ list-modules:
 	fi
 	@echo ""
 	@echo "📋 Module template:"
-	@if [ -f "module-template/module.yaml" ]; then \
-		name=$$(grep "^name:" "module-template/module.yaml" | awk '{print $$2}'); \
-		version=$$(grep "^version:" "module-template/module.yaml" | awk '{print $$2}'); \
-		title=$$(grep "^title:" "module-template/module.yaml" | sed 's/^title: //'); \
+	@if [ -f "modules/.template/module.yaml" ]; then \
+		name=$$(grep "^name:" "modules/.template/module.yaml" | awk '{print $$2}'); \
+		version=$$(grep "^version:" "modules/.template/module.yaml" | awk '{print $$2}'); \
+		title=$$(grep "^title:" "modules/.template/module.yaml" | sed 's/^title: //'); \
 		echo "  • $$name (v$$version) - $$title"; \
 	else \
 		echo "  (not found)"; \
 	fi
 	@echo ""
-	@echo "To create a new module from template:"
-	@echo "  cp -r module-template modules/my-module"
-	@echo "  make build-module MODULE=my-module"
+	@echo "To create a new module:"
+	@echo "  make create-module MODULE=my-module"
 
 .PHONY: \
   default help clean run \
@@ -653,4 +675,4 @@ list-modules:
   dev dev-prep setup test test-backend lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
-  build-module build-module-dev watch-module deploy-module install-module uninstall-module clean-module list-modules
+  create-module build-module deploy-module install-module uninstall-module clean-module list-modules

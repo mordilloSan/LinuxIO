@@ -9,20 +9,15 @@ if [ -z "$1" ]; then
   echo ""
   echo "Options:"
   echo "  --dev     Build in development mode (no minification, includes source maps)"
-  echo "  --watch   Build in watch mode (auto-rebuild on changes)"
   exit 1
 fi
 
 MODULE_NAME="$1"
 BUILD_MODE="${2:-production}"
-WATCH_MODE=""
 
 # Parse flags
 if [ "$2" = "--dev" ]; then
   BUILD_MODE="development"
-elif [ "$2" = "--watch" ]; then
-  BUILD_MODE="development"
-  WATCH_MODE="--watch"
 fi
 
 LINUXIO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -59,7 +54,11 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 export default defineConfig({
   mode: isProduction ? 'production' : 'development',
-  plugins: [react()],
+  plugins: [
+    react({
+      jsxRuntime: 'classic',
+    }),
+  ],
   resolve: {
     alias: {
       // Match frontend tsconfig.json paths
@@ -138,25 +137,19 @@ EOF
 # Build with environment variables
 if [ "$BUILD_MODE" = "production" ]; then
   echo "   Optimizations: Minification, tree-shaking, compression"
-  NODE_ENV=production MODULE_NAME="$MODULE_NAME" MODULE_DIR="$MODULE_DIR" npx vite build --config "$TEMP_CONFIG" $WATCH_MODE
+  NODE_ENV=production MODULE_NAME="$MODULE_NAME" MODULE_DIR="$MODULE_DIR" npx vite build --config "$TEMP_CONFIG"
 else
   echo "   Optimizations: None (source maps enabled for debugging)"
-  NODE_ENV=development MODULE_NAME="$MODULE_NAME" MODULE_DIR="$MODULE_DIR" npx vite build --config "$TEMP_CONFIG" $WATCH_MODE
+  NODE_ENV=development MODULE_NAME="$MODULE_NAME" MODULE_DIR="$MODULE_DIR" npx vite build --config "$TEMP_CONFIG"
 fi
 
-# Cleanup (unless in watch mode)
-if [ -z "$WATCH_MODE" ]; then
-  rm "$TEMP_CONFIG"
-  echo ""
-  echo "✅ Build complete: $MODULE_DIR/dist/component.js"
+# Cleanup
+rm "$TEMP_CONFIG"
+echo ""
+echo "✅ Build complete: $MODULE_DIR/dist/component.js"
 
-  # Show file size comparison
-  if [ -f "$MODULE_DIR/dist/component.js" ]; then
-    SIZE=$(du -h "$MODULE_DIR/dist/component.js" | cut -f1)
-    echo "   Bundle size: $SIZE"
-  fi
-else
-  echo ""
-  echo "👀 Watch mode active - press Ctrl+C to stop"
-  echo "   Temp config: $TEMP_CONFIG (will be cleaned up on exit)"
+# Show file size comparison
+if [ -f "$MODULE_DIR/dist/component.js" ]; then
+  SIZE=$(du -h "$MODULE_DIR/dist/component.js" | cut -f1)
+  echo "   Bundle size: $SIZE"
 fi

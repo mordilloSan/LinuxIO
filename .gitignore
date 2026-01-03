@@ -1,6 +1,8 @@
 # frontend Files
-frontend/node_modules/
 backend/webserver/web/frontend/
+frontend/node_modules/
+frontend/.vite-dev.pid
+frontend/vite.config.module-build.tmp.js
 
 # Go Binaries
 /linuxio
@@ -14,11 +16,11 @@ linuxio-bridge
 
 # Module build artifacts
 modules/*/dist/
-modules/*/build/
 modules/*/node_modules/
-module-template/dist/
-module-template/build/
-module-template/node_modules/
+
+# Ignore all modules except the template
+modules/*
+!modules/.template/
 
 # Logs and misc
 *.log
@@ -26,5 +28,3 @@ module-template/node_modules/
 .vscode/
 .claude/
 *.swp
-
-frontend/.vite-dev.pid

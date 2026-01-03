@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Box, Typography, Button, Grid, useTheme } from '@mui/material';
-import RootCard from '@/components/cards/RootCard.tsx';
-import MetricBar from '@/components/gauge/MetricBar.tsx';
-import { formatFileSize } from '@/utils/formaters.ts';
+import { Box, Typography, Button, useTheme } from '@mui/material';
+import RootCard from '@/components/cards/RootCard';
+import MetricBar from '@/components/gauge/MetricBar';
+import { formatFileSize } from '@/utils/formaters';
 
 function ExampleModule() {
   const [message, setMessage] = useState('');
@@ -23,8 +23,8 @@ function ExampleModule() {
         to components, theme, and utilities.
       </Typography>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
+      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+        <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
           <RootCard sx={{ height: '100%' }}>
             <Typography variant="h6" gutterBottom>
               LinuxIO Components
@@ -36,8 +36,7 @@ function ExampleModule() {
 
             <MetricBar
               label="Example Metric"
-              value={75}
-              max={100}
+              percent={75}
               color={theme.palette.primary.main}
             />
 
@@ -56,9 +55,9 @@ function ExampleModule() {
               </Typography>
             )}
           </RootCard>
-        </Grid>
+        </Box>
 
-        <Grid item xs={12} md={6}>
+        <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
           <RootCard sx={{ height: '100%' }}>
             <Typography variant="h6" gutterBottom>
               Utilities & Theme
@@ -93,8 +92,8 @@ function ExampleModule() {
               modules/example-module/src/index.tsx
             </Typography>
           </RootCard>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
     </Box>
   );
 }
