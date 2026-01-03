@@ -2,7 +2,7 @@ import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useCallback } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
-import { useDirectorySize } from "@/hooks/useDirectorySize";
+import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
 import { formatFileSize } from "@/utils/formaters";
 
 const fileCardStyles = `
@@ -76,7 +76,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
       size: fetchedSize,
       isLoading: isFetchingSize,
       error: fetchError,
-    } = useDirectorySize(path || "", needsIndividualDirSize);
+    } = useFileDirectorySize(path || "", needsIndividualDirSize);
 
     // Override size props with fetched data when displaying search results
     const effectiveSize = needsIndividualDirSize ? (fetchedSize ?? size) : size;

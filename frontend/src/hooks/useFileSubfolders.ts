@@ -10,7 +10,7 @@ import {
   isDirectorySizeUnavailable,
   shouldEnableDirectorySizeQuery,
   useIndexerAvailability,
-} from "./useDirectorySizeBase";
+} from "./useFileDirectorySizeBase";
 
 export interface SubfolderData {
   path: string;
@@ -41,7 +41,7 @@ interface UseSubfoldersResult {
  * @param enabled - Whether the query should run
  * @returns Subfolders array and a map for quick lookup by path
  */
-export const useSubfolders = (
+export const useFileSubfolders = (
   path: string,
   enabled: boolean = true,
 ): UseSubfoldersResult => {
@@ -103,7 +103,7 @@ export const useSubfolders = (
 };
 
 // Function to clear the subfolder cache
-export const clearSubfoldersCache = (
+export const clearFileSubfoldersCache = (
   queryClient?: ReturnType<typeof useQueryClient>,
 ) => {
   if (queryClient) {
@@ -114,7 +114,7 @@ export const clearSubfoldersCache = (
 };
 
 // Function to clear a specific path from cache
-export const clearSubfoldersCacheForPath = (
+export const clearFileSubfoldersCacheForPath = (
   path: string,
   queryClient?: ReturnType<typeof useQueryClient>,
 ) => {

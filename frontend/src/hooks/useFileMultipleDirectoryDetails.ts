@@ -6,7 +6,7 @@ import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,
   useIndexerAvailability,
-} from "./useDirectorySizeBase";
+} from "./useFileDirectorySizeBase";
 
 interface DirectoryDetailsData {
   path: string;
@@ -26,7 +26,7 @@ interface UseMultipleDirectoryDetailsResult {
   isAnyLoading: boolean;
 }
 
-export const useMultipleDirectoryDetails = (
+export const useFileMultipleDirectoryDetails = (
   paths: string[],
   fileResourceMap: Record<string, { name: string; type: string; size: number }>,
 ): UseMultipleDirectoryDetailsResult => {

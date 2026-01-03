@@ -17,7 +17,7 @@ import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
-import { useSubfolders } from "@/hooks/useSubfolders";
+import { useFileSubfolders } from "@/hooks/useFileSubfolders";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
 interface FileDetailProps {
@@ -63,10 +63,8 @@ const FileDetail: React.FC<FileDetailProps> = ({
     : "/";
 
   // Fetch subfolders of the parent directory
-  const { subfoldersMap, isLoading: isLoadingDirectoryDetails } = useSubfolders(
-    parentPath,
-    isDirectory && !!resource?.path,
-  );
+  const { subfoldersMap, isLoading: isLoadingDirectoryDetails } =
+    useFileSubfolders(parentPath, isDirectory && !!resource?.path);
 
   // Look up this directory's size from the parent's subfolders
   const size =

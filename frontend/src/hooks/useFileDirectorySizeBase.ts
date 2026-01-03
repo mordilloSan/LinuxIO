@@ -1,9 +1,6 @@
 import { useEffect } from "react";
 import { LinuxIOError } from "@/api/linuxio";
-import {
-  getIndexerAvailabilityFlag,
-  setIndexerAvailabilityFlag,
-} from "@/utils/indexerAvailability";
+import useAuth from "@/hooks/useAuth";
 
 /**
  * Shared constants for directory size queries
@@ -42,7 +39,7 @@ export const getDirectorySizeQueryOptions = () => ({
 
 /**
  * Hook to handle indexer unavailability errors
- * Automatically sets the indexer availability flag when encountering indexer errors
+ * Note: Indexer availability is now managed by AuthContext from login response
  */
 export const useIndexerErrorHandler = (error: Error | null) => {
   useEffect(() => {
@@ -51,7 +48,8 @@ export const useIndexerErrorHandler = (error: Error | null) => {
       error instanceof LinuxIOError &&
       error.message?.includes("indexer unavailable")
     ) {
-      setIndexerAvailabilityFlag(false);
+      // Indexer availability is now managed by AuthContext from login response
+      // No client-side flag setting needed
     }
   }, [error]);
 };
@@ -100,8 +98,9 @@ export const shouldEnableDirectorySizeQuery = (
 };
 
 /**
- * Get the current indexer availability status
+ * Get the current indexer availability status from AuthContext
  */
 export const useIndexerAvailability = () => {
-  return getIndexerAvailabilityFlag() === false;
+  const { indexerAvailable } = useAuth();
+  return indexerAvailable === false;
 };

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { normalizeResource } from "@/components/filebrowser/utils";
-import { useMultipleDirectoryDetails } from "@/hooks/useMultipleDirectoryDetails";
+import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
 import {
   ApiResource,
   FileResource,
@@ -137,7 +137,7 @@ export const useFileQueries = ({
     );
   }, [multipleFileResources]);
 
-  const multiItemsStats = useMultipleDirectoryDetails(
+  const multiItemsStats = useFileMultipleDirectoryDetails(
     detailTarget || [],
     fileResourceMap,
   );

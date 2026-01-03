@@ -18,10 +18,6 @@ import {
   AuthUser,
   LoginResponse,
 } from "@/types/auth";
-import {
-  clearIndexerAvailabilityFlag,
-  setIndexerAvailabilityFlag,
-} from "@/utils/indexerAvailability";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -29,6 +25,8 @@ const initialState: AuthState = {
   isAuthenticated: false,
   isInitialized: false,
   user: null,
+  privileged: false,
+  indexerAvailable: null,
 };
 
 const reducer = (state: AuthState, action: AuthActions): AuthState => {
@@ -41,6 +39,8 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isInitialized: true,
         isAuthenticated: true,
         user: action.payload.user,
+        privileged: action.payload.privileged,
+        indexerAvailable: action.payload.indexerAvailable ?? null,
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
       return {
@@ -48,11 +48,25 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isInitialized: true,
         isAuthenticated: false,
         user: null,
+        privileged: false,
+        indexerAvailable: null,
       };
     case AUTH_ACTIONS.SIGN_IN:
-      return { ...state, isAuthenticated: true, user: action.payload.user };
+      return {
+        ...state,
+        isAuthenticated: true,
+        user: action.payload.user,
+        privileged: action.payload.privileged,
+        indexerAvailable: action.payload.indexerAvailable ?? null,
+      };
     case AUTH_ACTIONS.SIGN_OUT:
-      return { ...state, isAuthenticated: false, user: null };
+      return {
+        ...state,
+        isAuthenticated: false,
+        user: null,
+        privileged: false,
+        indexerAvailable: null,
+      };
     default: {
       const exhaustiveCheck: never = action;
       void exhaustiveCheck;
@@ -73,15 +87,16 @@ function AuthProvider({ children }: AuthProviderProps) {
     // Check if we have stored user info from a previous session
     // The WebSocket connection will validate the session cookie
     const storedUsername = localStorage.getItem("auth_username");
-    // Note: auth_privileged is also stored in localStorage for future UI features
+    const storedPrivileged = localStorage.getItem("auth_privileged");
 
     if (storedUsername) {
       // Optimistically set authenticated - WebSocket will validate
       // If session is invalid, WebSocket will fail and trigger logout
       const user: AuthUser = { id: storedUsername, name: storedUsername };
+      const privileged = storedPrivileged === "true";
       dispatch({
         type: AUTH_ACTIONS.INITIALIZE_SUCCESS,
-        payload: { user },
+        payload: { user, privileged },
       });
     } else {
       // No stored username, not authenticated
@@ -100,7 +115,6 @@ function AuthProvider({ children }: AuthProviderProps) {
     } catch {
       /* ignore */
     }
-    clearIndexerAvailabilityFlag();
     if (broadcast) {
       try {
         localStorage.setItem("logout", String(Date.now()));
@@ -181,8 +195,6 @@ function AuthProvider({ children }: AuthProviderProps) {
       }
     }
 
-    setIndexerAvailabilityFlag(data.indexer_available ?? null);
-
     // Store username and privileged status in localStorage (persists across tab close)
     try {
       localStorage.setItem("auth_username", username);
@@ -192,7 +204,14 @@ function AuthProvider({ children }: AuthProviderProps) {
     }
 
     const user: AuthUser = { id: username, name: username };
-    dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
+    dispatch({
+      type: AUTH_ACTIONS.SIGN_IN,
+      payload: {
+        user,
+        privileged: data.privileged,
+        indexerAvailable: data.indexer_available ?? null,
+      },
+    });
 
     // Show welcome message
     toast.success(`Welcome, ${username}!`);

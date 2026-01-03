@@ -2,7 +2,7 @@ import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
-import { useDirectorySize } from "@/hooks/useDirectorySize";
+import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
 import { formatFileSize } from "@/utils/formaters";
 
 // Styles are injected by FileCard.tsx (shared animation)
@@ -59,7 +59,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
       isLoading: isFetchingSize,
       error: fetchError,
       isUnavailable: isSizeUnavailable,
-    } = useDirectorySize(path || "", needsIndividualDirSize);
+    } = useFileDirectorySize(path || "", needsIndividualDirSize);
 
     // Override size props with fetched data when displaying search results
     const effectiveSize = needsIndividualDirSize ? (fetchedSize ?? size) : size;

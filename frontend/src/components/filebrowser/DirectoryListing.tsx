@@ -20,8 +20,8 @@ import {
 } from "../../types/filebrowser";
 
 import { useFileListKeyboardNavigation } from "@/hooks/useFileListKeyboardNavigation";
-import { useMarqueeSelection } from "@/hooks/useMarqueeSelection";
-import { useSubfolders } from "@/hooks/useSubfolders";
+import { useFileMarqueeSelection } from "@/hooks/useFileMarqueeSelection";
+import { useFileSubfolders } from "@/hooks/useFileSubfolders";
 
 interface DirectoryListingProps {
   resource: FileResource;
@@ -71,7 +71,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch all subfolder sizes in one request
-  const { subfoldersMap, isLoading: isLoadingSubfolders } = useSubfolders(
+  const { subfoldersMap, isLoading: isLoadingSubfolders } = useFileSubfolders(
     resource.path,
   );
 
@@ -143,11 +143,8 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   });
 
   // Use marquee selection hook
-  const { isSelecting, selectionBox, handleMouseDown } = useMarqueeSelection(
-    containerRef,
-    allItems,
-    onSelectedPathsChange,
-  );
+  const { isSelecting, selectionBox, handleMouseDown } =
+    useFileMarqueeSelection(containerRef, allItems, onSelectedPathsChange);
 
   // Handle document click to clear selection
   useEffect(() => {

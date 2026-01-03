@@ -1,11 +1,9 @@
 import React, { useEffect } from "react";
 import { useRoutes } from "react-router-dom";
-import { Toaster } from "sonner";
 
 import { AuthProvider } from "./contexts/AuthContext";
+import ReactQueryProvider from "./contexts/ReactQueryContext";
 import { useAppRoutes } from "./routes";
-import ReactQueryProvider from "./utils/ReactQueryProvider";
-import { ToastHistorySync } from "./utils/toastHistory";
 
 // Inner component that uses React Query hooks
 function AppRoutes() {
@@ -31,19 +29,11 @@ function App() {
   }, []);
 
   return (
-    <>
-      <AuthProvider>
-        <ReactQueryProvider>
-          <AppRoutes />
-        </ReactQueryProvider>
-      </AuthProvider>
-      <ToastHistorySync />
-      <Toaster
-        richColors
-        position="top-right"
-        toastOptions={{ duration: 1500 }}
-      />
-    </>
+    <AuthProvider>
+      <ReactQueryProvider>
+        <AppRoutes />
+      </ReactQueryProvider>
+    </AuthProvider>
   );
 }
 
