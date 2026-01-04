@@ -5,7 +5,6 @@ import {
   ListItemText,
   useTheme,
 } from "@mui/material";
-import { lighten } from "@mui/material/styles"; // use MUI's util
 import React from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
@@ -26,7 +25,7 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
     // Trust the theme
     const primaryHex = theme.palette.primary.main;
     const contrast = theme.palette.primary.contrastText;
-    const gradStart = lighten(primaryHex, 0.35);
+    const gradStart = theme.lighten(primaryHex, 0.35);
 
     const renderIcon = () => {
       if (!icon) return null;

@@ -33,12 +33,6 @@ func CheckForUpdate() *UpdateInfo {
 		return nil
 	}
 
-	// Skip update check for development versions
-	if strings.HasPrefix(current, "dev-") {
-		logger.Debugf("running dev version (%s), skipping update check", current)
-		return nil
-	}
-
 	latest, releaseURL := fetchLatestRelease()
 	if latest == "" {
 		logger.Debugf("could not fetch latest release")
@@ -64,8 +58,16 @@ func CheckForUpdate() *UpdateInfo {
 }
 
 // isNewerVersion returns true if 'latest' is newer than 'current'.
-// Handles versions like v0.4.1, v0.4.2, etc.
+// Handles versions like v0.4.1, dev-v0.4.1, etc.
+// A release version (v1.2.3) is considered newer than a dev version (dev-v1.2.3) of the same number.
 func isNewerVersion(latest, current string) bool {
+	// Strip leading 'dev-' prefix for comparison (but remember if current was dev)
+	currentIsDev := strings.HasPrefix(current, "dev-")
+	latestIsDev := strings.HasPrefix(latest, "dev-")
+
+	latest = strings.TrimPrefix(latest, "dev-")
+	current = strings.TrimPrefix(current, "dev-")
+
 	// Normalize versions (remove 'v' prefix if present)
 	latest = strings.TrimPrefix(latest, "v")
 	current = strings.TrimPrefix(current, "v")
@@ -95,8 +97,21 @@ func isNewerVersion(latest, current string) bool {
 		}
 	}
 
-	// If all compared parts are equal, longer version is newer (e.g., 1.0.1 > 1.0)
-	return len(latestParts) > len(currentParts)
+	// If version numbers are equal, check length
+	if len(latestParts) > len(currentParts) {
+		return true
+	}
+	if len(latestParts) < len(currentParts) {
+		return false
+	}
+
+	// If version numbers are identical, a release is newer than a dev version
+	// e.g., v0.6.1 > dev-v0.6.1
+	if currentIsDev && !latestIsDev {
+		return true
+	}
+
+	return false
 }
 
 // getInstalledVersion returns the compiled-in version from config.Version

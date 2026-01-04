@@ -34,7 +34,7 @@ if [[ -n "$SOCKET_FILE" && -f "$SOCKET_FILE" ]]; then
     fi
 fi
 
-# Build the banner similar to Cockpit's format
+# Build the banner
 HOSTNAME=$(hostname 2>/dev/null || echo "localhost")
 URLS=()
 

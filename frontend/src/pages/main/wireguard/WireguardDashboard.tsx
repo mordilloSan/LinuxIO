@@ -27,6 +27,7 @@ const WireGuardDashboard: React.FC = () => {
     data: interfaceData,
     isPending: isLoading,
     isError,
+    error,
     refetch,
   } = linuxio.useCall<WireGuardInterface[]>(
     "wireguard",
@@ -137,7 +138,9 @@ const WireGuardDashboard: React.FC = () => {
       {isLoading ? (
         <ComponentLoader />
       ) : isError ? (
-        <Typography color="error">Failed to fetch interfaces</Typography>
+        <Typography color="error">
+          {error?.message || "Failed to fetch interfaces"}
+        </Typography>
       ) : WGinterfaces.length > 0 ? (
         <>
           <AnimatePresence>

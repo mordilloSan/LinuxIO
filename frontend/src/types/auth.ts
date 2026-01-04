@@ -27,6 +27,8 @@ export type AuthState = {
   isAuthenticated: boolean;
   isInitialized: boolean;
   user: AuthUser | null;
+  privileged: boolean;
+  indexerAvailable: boolean | null;
 };
 
 /**
@@ -36,6 +38,8 @@ export type AuthContextType = {
   isAuthenticated: boolean;
   isInitialized: boolean;
   user: AuthUser | null;
+  privileged: boolean;
+  indexerAvailable: boolean | null;
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -68,9 +72,17 @@ export const AUTH_ACTIONS = {
  */
 export type AuthActionTypes = {
   [AUTH_ACTIONS.INITIALIZE_START]: undefined;
-  [AUTH_ACTIONS.INITIALIZE_SUCCESS]: { user: AuthUser };
+  [AUTH_ACTIONS.INITIALIZE_SUCCESS]: {
+    user: AuthUser;
+    privileged: boolean;
+    indexerAvailable?: boolean | null;
+  };
   [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
-  [AUTH_ACTIONS.SIGN_IN]: { user: AuthUser };
+  [AUTH_ACTIONS.SIGN_IN]: {
+    user: AuthUser;
+    privileged: boolean;
+    indexerAvailable?: boolean | null;
+  };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
 };
 

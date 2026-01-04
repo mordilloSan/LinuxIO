@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { FileTransferContextValue } from "@/contexts/FileTransferContext";
 import { FileResource } from "@/types/filebrowser";
 
-import { DroppedEntry, useDroppedEntries } from "./useDroppedEntries";
+import { DroppedEntry, useFileDroppedEntries } from "./useFileDroppedEntries";
 
 type UseDragAndDropUploadParams = {
   normalizedPath: string;
@@ -27,7 +27,7 @@ type UseDragAndDropUploadResult = {
   setOverwriteTargets: (targets: DroppedEntry[] | null) => void;
 };
 
-export const useDragAndDropUpload = ({
+export const useFileDragAndDrop = ({
   normalizedPath,
   resource,
   editingPath,
@@ -38,7 +38,7 @@ export const useDragAndDropUpload = ({
   const [overwriteTargets, setOverwriteTargets] = useState<
     DroppedEntry[] | null
   >(null);
-  const extractDroppedEntries = useDroppedEntries();
+  const extractDroppedEntries = useFileDroppedEntries();
 
   const uploadDroppedFiles = useCallback(
     async (entries: DroppedEntry[], options?: { override?: boolean }) => {

@@ -1,6 +1,8 @@
 # frontend Files
-frontend/node_modules/
 backend/webserver/web/frontend/
+frontend/node_modules/
+frontend/.vite-dev.pid
+frontend/vite.config.module-build.tmp.js
 
 # Go Binaries
 /linuxio
@@ -12,11 +14,17 @@ linuxio-bridge
 .go-cache
 .gocache
 
+# Module build artifacts
+modules/*/dist/
+modules/*/node_modules/
+
+# Modules are visible to Vite for HMR during development
+# Add specific development modules to gitignore if needed:
+# modules/my-dev-module/
+
 # Logs and misc
 *.log
 .DS_Store
 .vscode/
 .claude/
 *.swp
-
-frontend/.vite-dev.pid

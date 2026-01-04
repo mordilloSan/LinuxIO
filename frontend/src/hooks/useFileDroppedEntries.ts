@@ -163,7 +163,7 @@ export const extractDroppedEntries = async (
   return deduped;
 };
 
-export const useDroppedEntries = () =>
+export const useFileDroppedEntries = () =>
   useCallback(
     (dataTransfer: DataTransfer) => extractDroppedEntries(dataTransfer),
     [],

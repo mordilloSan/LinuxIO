@@ -1,11 +1,11 @@
-import { Theme, lighten, darken } from "@mui/material/styles";
+import { Theme } from "@mui/material/styles";
 
 // === Helpers ===
 
 export const getHoverBackground = (theme: Theme) =>
   theme.palette.mode === "light"
-    ? darken(theme.sidebar.background, 0.07)
-    : lighten(theme.sidebar.background, 0.07);
+    ? theme.darken(theme.sidebar.background, 0.07)
+    : theme.lighten(theme.sidebar.background, 0.07);
 
 const hoverStyles = (theme: Theme) => ({
   background: getHoverBackground(theme),
@@ -42,22 +42,43 @@ const components = {
       },
       /* Make scrollbars beautiful */
       ".custom-scrollbar::-webkit-scrollbar": {
-        width: "8px",
-        height: "8px",
+        width: "8px !important",
+        height: "8px !important",
       },
       ".custom-scrollbar::-webkit-scrollbar-thumb": {
-        backgroundColor: "rgba(100, 100, 100, 0.2)",
-        borderRadius: "8px",
-        border: "2px solid transparent",
-        backgroundClip: "content-box",
-        transition: "background-color 0.3s",
+        backgroundColor: "rgba(100, 100, 100, 0.2) !important",
+        borderRadius: "8px !important",
+        border: "2px solid transparent !important",
+        backgroundClip: "content-box !important",
+        transition: "background-color 0.3s !important",
       },
       ".custom-scrollbar::-webkit-scrollbar-track": {
-        background: "transparent",
-        borderRadius: "8px",
+        background: "transparent !important",
+        borderRadius: "8px !important",
       },
       ".custom-scrollbar::-webkit-scrollbar-thumb:hover": {
-        backgroundColor: "rgba(100, 100, 100, 0.45)",
+        backgroundColor: "rgba(100, 100, 100, 0.45) !important",
+      },
+
+      /* xterm.js 6.0 custom scrollbar */
+      ".xterm .scrollbar": {
+        width: "4px !important",
+        opacity: "1 !important",
+      },
+      ".xterm .scrollbar .slider": {
+        backgroundColor: "rgba(100, 100, 100, 0.2) !important",
+        borderRadius: "8px !important",
+        width: "8px !important",
+      },
+      ".xterm .scrollbar:hover .slider": {
+        backgroundColor: "rgba(100, 100, 100, 0.45) !important",
+      },
+      ".xterm .scrollbar.fade": {
+        opacity: "0 !important",
+        transition: "opacity 0.3s !important",
+      },
+      ".xterm:hover .scrollbar.fade": {
+        opacity: "1 !important",
       },
     }),
   },

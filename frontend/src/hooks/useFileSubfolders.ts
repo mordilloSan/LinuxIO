@@ -1,11 +1,16 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { linuxio, LinuxIOError } from "@/api/linuxio";
+import { linuxio } from "@/api/linuxio";
 import {
-  getIndexerAvailabilityFlag,
-  setIndexerAvailabilityFlag,
-} from "@/utils/indexerAvailability";
+  shouldSkipSizeCalculation,
+  getDirectorySizeQueryOptions,
+  useIndexerErrorHandler,
+  getDirectorySizeError,
+  isDirectorySizeUnavailable,
+  shouldEnableDirectorySizeQuery,
+  useIndexerAvailability,
+} from "./useFileDirectorySizeBase";
 
 export interface SubfolderData {
   path: string;
@@ -28,21 +33,6 @@ interface UseSubfoldersResult {
   isUnavailable: boolean;
 }
 
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (staleTime)
-const CACHE_PERSISTENCE = 24 * 60 * 60 * 1000; // 24 hours (gcTime - keep in cache)
-const FAILED_RETRY_DELAY = 30 * 1000; // 30 seconds before retrying failed paths
-const MAX_RETRIES = 2;
-
-// Directories that should not have size calculations (not indexed by the indexer)
-const EXCLUDED_DIRECTORIES = ["/proc", "/dev", "/sys"];
-
-const shouldSkipSizeCalculation = (path: string): boolean => {
-  if (!path) return true;
-  return EXCLUDED_DIRECTORIES.some(
-    (excluded) => path === excluded || path.startsWith(excluded + "/"),
-  );
-};
-
 /**
  * Hook to fetch all direct child folders with their sizes for a given path.
  * This replaces making multiple individual dir-size calls.
@@ -51,14 +41,19 @@ const shouldSkipSizeCalculation = (path: string): boolean => {
  * @param enabled - Whether the query should run
  * @returns Subfolders array and a map for quick lookup by path
  */
-export const useSubfolders = (
+export const useFileSubfolders = (
   path: string,
   enabled: boolean = true,
 ): UseSubfoldersResult => {
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
-  const indexerDisabled = getIndexerAvailabilityFlag() === false;
-  const queryEnabled = enabled && !!path && !shouldSkip && !indexerDisabled;
+  const indexerDisabled = useIndexerAvailability();
+  const queryEnabled = shouldEnableDirectorySizeQuery(
+    enabled,
+    path,
+    shouldSkip,
+    indexerDisabled,
+  );
 
   const { data, isLoading, error } = linuxio.useCall<SubfoldersResponse>(
     "filebrowser",
@@ -66,24 +61,12 @@ export const useSubfolders = (
     [path],
     {
       enabled: queryEnabled,
-      staleTime: CACHE_DURATION,
-      gcTime: CACHE_PERSISTENCE,
-      refetchOnWindowFocus: false,
-      refetchOnMount: false,
-      retry: (failureCount: number) => failureCount < MAX_RETRIES,
-      retryDelay: () => FAILED_RETRY_DELAY,
+      ...getDirectorySizeQueryOptions(),
     },
   );
 
-  useEffect(() => {
-    if (!error) return;
-    if (
-      error instanceof LinuxIOError &&
-      error.message?.includes("indexer unavailable")
-    ) {
-      setIndexerAvailabilityFlag(false);
-    }
-  }, [error]);
+  // Handle indexer unavailability errors
+  useIndexerErrorHandler(error);
 
   // Create a stable array reference (avoid new empty array on each render)
   const subfolders = useMemo(() => data?.subfolders ?? [], [data?.subfolders]);
@@ -97,14 +80,18 @@ export const useSubfolders = (
     return map;
   }, [subfolders]);
 
-  const derivedError =
-    indexerDisabled && !shouldSkip
-      ? new Error("Directory size indexing is unavailable")
-      : error instanceof Error
-        ? error
-        : null;
-  const isUnavailable =
-    (derivedError !== null && !data) || (indexerDisabled && !shouldSkip);
+  const derivedError = getDirectorySizeError(
+    error,
+    indexerDisabled,
+    shouldSkip,
+  );
+
+  const isUnavailable = isDirectorySizeUnavailable(
+    error,
+    data,
+    indexerDisabled,
+    shouldSkip,
+  );
 
   return {
     subfolders,
@@ -116,7 +103,7 @@ export const useSubfolders = (
 };
 
 // Function to clear the subfolder cache
-export const clearSubfoldersCache = (
+export const clearFileSubfoldersCache = (
   queryClient?: ReturnType<typeof useQueryClient>,
 ) => {
   if (queryClient) {
@@ -127,7 +114,7 @@ export const clearSubfoldersCache = (
 };
 
 // Function to clear a specific path from cache
-export const clearSubfoldersCacheForPath = (
+export const clearFileSubfoldersCacheForPath = (
   path: string,
   queryClient?: ReturnType<typeof useQueryClient>,
 ) => {

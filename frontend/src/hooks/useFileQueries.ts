@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { normalizeResource } from "@/components/filebrowser/utils";
-import { useMultipleDirectoryDetails } from "@/hooks/useMultipleDirectoryDetails";
+import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
 import {
   ApiResource,
   FileResource,
@@ -10,7 +10,7 @@ import {
 } from "@/types/filebrowser";
 import { linuxio, LinuxIOError } from "@/api/linuxio";
 
-type UseFileBrowserQueriesParams = {
+type useFileQueriesParams = {
   normalizedPath: string;
   detailTarget: string[] | null;
   editingPath: string | null;
@@ -18,13 +18,13 @@ type UseFileBrowserQueriesParams = {
   hasMultipleDetailTargets: boolean;
 };
 
-export const useFileBrowserQueries = ({
+export const useFileQueries = ({
   normalizedPath,
   detailTarget,
   editingPath,
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
-}: UseFileBrowserQueriesParams) => {
+}: useFileQueriesParams) => {
   const {
     data: resourceData,
     isPending,
@@ -137,7 +137,7 @@ export const useFileBrowserQueries = ({
     );
   }, [multipleFileResources]);
 
-  const multiItemsStats = useMultipleDirectoryDetails(
+  const multiItemsStats = useFileMultipleDirectoryDetails(
     detailTarget || [],
     fileResourceMap,
   );

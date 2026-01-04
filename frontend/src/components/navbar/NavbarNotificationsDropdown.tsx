@@ -21,11 +21,8 @@ import XCircle from "lucide-react/dist/esm/icons/x-circle";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import {
-  clearToastHistory,
-  useToastHistory,
-  type ToastHistoryItem,
-} from "@/utils/toastHistory";
+import { type ToastHistoryItem } from "@/contexts/ToastContext";
+import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
 
 const MAX_RECENT_TOASTS = 5;
 
@@ -91,6 +88,7 @@ function NavbarNotificationsDropdown() {
   const [now, setNow] = useState(0);
   const isOpen = Boolean(anchorEl);
   const recentToasts = useToastHistory(MAX_RECENT_TOASTS);
+  const clearToastHistory = useClearToastHistory();
 
   const handleOpen = () => {
     setNow(Date.now());
