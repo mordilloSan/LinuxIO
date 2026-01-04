@@ -23,7 +23,7 @@ interface MarqueeSelectionResult {
  * Custom hook for marquee selection (AutoCAD-style selection box)
  * Allows click-and-drag selection of items
  */
-export const useMarqueeSelection = (
+export const useFileMarqueeSelection = (
   containerRef: React.RefObject<HTMLElement | null>,
   allItems: FileItem[],
   onSelectionChange: (paths: Set<string>) => void,

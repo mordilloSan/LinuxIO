@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -30,6 +32,8 @@ func main() {
 		runSystemctl("stop", "linuxio.target")
 	case "restart":
 		runSystemctl("restart", "linuxio.target")
+	case "modules":
+		runModules()
 	case "version":
 		showVersion()
 	case "help", "-h", "--help":
@@ -52,6 +56,7 @@ Commands:
   start      Start LinuxIO services
   stop       Stop LinuxIO services
   restart    Restart LinuxIO services
+  modules    List all installed modules
   version    Show version information
   help       Show this help message`)
 }
@@ -228,6 +233,101 @@ func runLogs(args []string) {
 		}
 		os.Exit(1)
 	}
+}
+
+type ModuleConfig struct {
+	Name        string `yaml:"name"`
+	Version     string `yaml:"version"`
+	Title       string `yaml:"title"`
+	Description string `yaml:"description"`
+	Author      string `yaml:"author"`
+	UI          struct {
+		Route string `yaml:"route"`
+	} `yaml:"ui"`
+}
+
+func runModules() {
+	modulesDir := "/etc/linuxio/modules"
+
+	// Check if modules directory exists
+	if _, err := os.Stat(modulesDir); os.IsNotExist(err) {
+		fmt.Println("\033[1mInstalled Modules\033[0m")
+		fmt.Println()
+		fmt.Println("  No modules directory found at", modulesDir)
+		return
+	}
+
+	// Read all subdirectories in modules directory
+	entries, err := os.ReadDir(modulesDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading modules directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	var modules []ModuleConfig
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Read module.yaml
+		yamlPath := filepath.Join(modulesDir, entry.Name(), "module.yaml")
+		data, err := os.ReadFile(yamlPath)
+		if err != nil {
+			// Skip if no module.yaml
+			continue
+		}
+
+		var module ModuleConfig
+		if err := yaml.Unmarshal(data, &module); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to parse %s: %v\n", yamlPath, err)
+			continue
+		}
+
+		modules = append(modules, module)
+	}
+
+	// Display results
+	fmt.Println("\033[1mInstalled Modules\033[0m")
+	fmt.Println()
+
+	if len(modules) == 0 {
+		fmt.Println("  No modules installed")
+		fmt.Println("\n  To install a module:")
+		fmt.Println("    make deploy-module MODULE=<name>")
+		return
+	}
+
+	// Find max widths for alignment
+	maxName := 0
+	maxVersion := 0
+	for _, m := range modules {
+		if len(m.Name) > maxName {
+			maxName = len(m.Name)
+		}
+		if len(m.Version) > maxVersion {
+			maxVersion = len(m.Version)
+		}
+	}
+
+	// Print modules
+	for _, m := range modules {
+		namePadded := m.Name + strings.Repeat(" ", maxName-len(m.Name))
+		versionPadded := m.Version + strings.Repeat(" ", maxVersion-len(m.Version))
+
+		fmt.Printf("  \033[32m●\033[0m \033[1m%s\033[0m  \033[90mv%s\033[0m  %s\n",
+			namePadded, versionPadded, m.Title)
+
+		if m.Description != "" {
+			fmt.Printf("    \033[90m%s\033[0m\n", m.Description)
+		}
+		if m.UI.Route != "" {
+			fmt.Printf("    \033[36m→ %s\033[0m\n", m.UI.Route)
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("\033[1m%d module(s) installed\033[0m\n", len(modules))
 }
 
 func runSystemctl(action, target string) {

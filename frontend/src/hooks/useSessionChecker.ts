@@ -42,7 +42,10 @@ export default function useSessionChecker(
           console.log("[SessionChecker] Was unauthenticated, now signed in.");
       }
 
-      dispatch({ type: AUTH_ACTIONS.SIGN_IN, payload: { user } });
+      dispatch({
+        type: AUTH_ACTIONS.SIGN_IN,
+        payload: { user, privileged: false, indexerAvailable: null },
+      });
       options?.onSignIn?.(user);
     } catch {
       if (!state.isAuthenticated) {

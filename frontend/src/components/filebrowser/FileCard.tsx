@@ -1,8 +1,8 @@
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useCallback } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
-import { useDirectorySize } from "@/hooks/useDirectorySize";
+import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
 import { formatFileSize } from "@/utils/formaters";
 
 const fileCardStyles = `
@@ -76,7 +76,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
       size: fetchedSize,
       isLoading: isFetchingSize,
       error: fetchError,
-    } = useDirectorySize(path || "", needsIndividualDirSize);
+    } = useFileDirectorySize(path || "", needsIndividualDirSize);
 
     // Override size props with fetched data when displaying search results
     const effectiveSize = needsIndividualDirSize ? (fetchedSize ?? size) : size;
@@ -95,32 +95,34 @@ const FileCard: React.FC<FileCardProps> = React.memo(
 
     const baseBg = useMemo(() => {
       if (selected) {
-        return alpha(theme.palette.primary.main, 0.4);
+        return `color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)`;
       }
-      const bg = theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
-      return hidden ? alpha(bg, 0.5) : bg;
-    }, [selected, theme, hidden]);
+      if (hidden) {
+        return theme.palette.mode === "dark"
+          ? `color-mix(in srgb, #20292f, transparent 50%)`
+          : `color-mix(in srgb, #ffffff, transparent 50%)`;
+      }
+      return theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
+    }, [selected, theme.palette.mode, hidden]);
 
-    const baseBorderColor = alpha(
-      theme.palette.divider,
-      theme.palette.mode === "dark" ? 0.15 : 0.1,
+    const baseBorderAlpha = theme.palette.mode === "dark" ? 0.15 : 0.1;
+
+    const baseBorderColor = useMemo(
+      () => `rgba(var(--mui-palette-dividerChannel) / ${baseBorderAlpha})`,
+      [baseBorderAlpha],
     );
 
     const borderColor = useMemo(() => {
       if (selected) {
-        return alpha(theme.palette.primary.main, 0.7);
+        return `rgba(var(--mui-palette-primary-mainChannel) / 0.7)`;
       }
-      if (!isDirectory) {
-        return "transparent";
-      }
-      return hidden ? alpha(baseBorderColor, 0.05) : baseBorderColor;
-    }, [
-      selected,
-      isDirectory,
-      baseBorderColor,
-      hidden,
-      theme.palette.primary.main,
-    ]);
+      if (!isDirectory) return "transparent";
+
+      // IMPORTANT: match old behavior: hidden overwrites alpha to 0.05
+      return hidden
+        ? `rgba(var(--mui-palette-dividerChannel) / 0.05)`
+        : baseBorderColor;
+    }, [selected, isDirectory, hidden, baseBorderColor]);
 
     // Keep file and folder titles consistent while still dimming supporting text
     const metadataOpacity = isDirectory ? 0.85 : 0.65;
@@ -163,7 +165,6 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           backgroundColor: baseBg,
           cursor: "pointer",
           minHeight: "60px",
-          transition: "all 120ms ease",
           userSelect: "none",
         }}
       >
@@ -173,7 +174,6 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           hidden={hidden}
           isSymlink={isSymlink}
         />
-
         <div
           style={{
             flex: 1,

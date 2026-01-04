@@ -1,4 +1,4 @@
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 interface SelectionBoxProps {
@@ -28,7 +28,8 @@ const SelectionBox: React.FC<SelectionBoxProps> = ({
         width: `${width}px`,
         height: `${height}px`,
         border: `2px solid ${theme.palette.primary.main}`,
-        backgroundColor: alpha(theme.palette.primary.main, 0.1),
+        backgroundColor:
+          "color-mix(in srgb, var(--mui-palette-primary-main), transparent 90%)",
         pointerEvents: "none",
         zIndex: 1000,
         borderRadius: "4px",

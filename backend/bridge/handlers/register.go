@@ -12,6 +12,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
+	"github.com/mordilloSan/LinuxIO/backend/common/middleware"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -24,20 +25,19 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	HandlersByType["drives"] = drive.DriveHandlers()
 	HandlersByType["docker"] = docker.DockerHandlers()
 	HandlersByType["control"] = control.ControlHandlers(shutdownChan)
-	HandlersByType["wireguard"] = wireguard.WireguardHandlers()
 	HandlersByType["config"] = config.ThemeHandlers(sess)
 	HandlersByType["system"] = system.SystemHandlers()
 	HandlersByType["filebrowser"] = filebrowser.FilebrowserHandlers()
 	HandlersByType["terminal"] = terminal.TerminalHandlers(sess)
+	HandlersByType["modules"] = modules.ModuleHandlers(sess, HandlersByType)
+
+	// WireGuard handlers - all operations require administrator privileges
+	HandlersByType["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
 
 	// Generic handlers for modules
 	HandlersByType["command"] = generic.CommandHandlers()
 	HandlersByType["generic_dbus"] = generic.DbusHandlers()
 
-	// Load modules from YAML files
-	// Modules are optional - log errors but don't fail
+	// Load modules from YAML files - log errors but don't fail
 	_ = modules.LoadModules(HandlersByType)
-
-	// Register module management handlers
-	HandlersByType["modules"] = modules.ModuleHandlers()
 }

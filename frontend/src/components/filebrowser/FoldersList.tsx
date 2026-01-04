@@ -4,7 +4,7 @@ import { FileItem, ViewMode } from "../../types/filebrowser";
 
 import FileCard from "@/components/filebrowser/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
-import { SubfolderData } from "@/hooks/useSubfolders";
+import { SubfolderData } from "@/hooks/useFileSubfolders";
 
 interface FoldersListProps {
   folders: FileItem[];

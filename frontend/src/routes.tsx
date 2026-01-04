@@ -15,6 +15,7 @@ import React, { lazy, useMemo } from "react";
 import { useModules } from "@/api/modules";
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
+import { PrivilegedGuard } from "@/components/guards/PrivilegedGuard";
 import type { ModuleInfo } from "@/types/module";
 import { createModuleLazyComponent } from "@/utils/moduleLoader";
 
@@ -33,6 +34,7 @@ const Wireguard = lazy(() => import("@/pages/main/wireguard"));
 const TerminalPage = lazy(() => import("@/pages/main/terminal"));
 const Shares = lazy(() => import("@/pages/main/shares"));
 const FileBrowser = lazy(() => import("@/pages/main/filebrowser"));
+const ModulesPage = lazy(() => import("@/pages/main/modules"));
 
 // Auth pages
 const SignIn = lazy(() => import("@/pages/auth/Login"));
@@ -128,7 +130,11 @@ const coreRoutes: RouteWithSidebar[] = [
   },
   {
     path: "wireguard",
-    element: <Wireguard />,
+    element: (
+      <PrivilegedGuard>
+        <Wireguard />
+      </PrivilegedGuard>
+    ),
     sidebar: {
       title: "Wireguard",
       icon: () => <Icon icon="cib:wireguard" width="48" height="48" />,
@@ -160,6 +166,19 @@ const coreRoutes: RouteWithSidebar[] = [
       title: "Terminal",
       icon: TerminalIcon,
       position: 110,
+    },
+  },
+  {
+    path: "modules",
+    element: (
+      <PrivilegedGuard>
+        <ModulesPage />
+      </PrivilegedGuard>
+    ),
+    sidebar: {
+      title: "Modules",
+      icon: Puzzle,
+      position: 120,
     },
   },
 ];

@@ -9,7 +9,7 @@ import {
   SelectChangeEvent,
   Tooltip,
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import FrostedCard from "./RootCard";
@@ -137,7 +137,7 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
           "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out",
         borderBottomWidth: "2px",
         borderBottomStyle: "solid",
-        borderBottomColor: alpha(primaryColor, 0.3),
+        borderBottomColor: `color-mix(in srgb, ${primaryColor}, transparent 70%)`,
         "&:hover": {
           borderBottomWidth: "3px",
           borderBottomColor: primaryColor,

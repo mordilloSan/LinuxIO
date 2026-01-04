@@ -1,12 +1,6 @@
 import ClearIcon from "@mui/icons-material/Clear";
 import SearchIcon from "@mui/icons-material/Search";
-import {
-  alpha,
-  IconButton,
-  InputAdornment,
-  TextField,
-  useTheme,
-} from "@mui/material";
+import { IconButton, InputAdornment, TextField, useTheme } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
 interface SearchBarProps {
@@ -83,13 +77,15 @@ const SearchBar: React.FC<SearchBarProps> = ({
         minWidth: 250,
         "& .MuiOutlinedInput-root": {
           borderRadius: "24px",
-          backgroundColor: alpha(theme.palette.grey[500], 0.1),
+          backgroundColor:
+            "color-mix(in srgb, var(--mui-palette-grey-500), transparent 90%)",
           transition: "all 0.2s",
           "& fieldset": {
             border: "none",
           },
           "&:hover": {
-            backgroundColor: alpha(theme.palette.grey[500], 0.2),
+            backgroundColor:
+              "color-mix(in srgb, var(--mui-palette-grey-500), transparent 80%)",
           },
         },
       }}

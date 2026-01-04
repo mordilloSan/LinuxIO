@@ -1,6 +1,6 @@
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import { Box, Typography, alpha, useTheme } from "@mui/material";
+import { Box, Typography, useTheme } from "@mui/material";
 import React from "react";
 
 export type SortField = "name" | "size" | "modTime";
@@ -57,7 +57,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         display: "grid",
         gridTemplateColumns: columnTemplate,
         backgroundColor: theme.palette.mode === "dark" ? "#20292f" : "#ffffff",
-        border: `0.1px solid ${alpha(theme.palette.divider, theme.palette.mode === "dark" ? 0.15 : 0.1)}`,
+        border: `0.1px solid ${theme.palette.mode === "dark" ? "color-mix(in srgb, var(--mui-palette-divider), transparent 85%)" : "color-mix(in srgb, var(--mui-palette-divider), transparent 90%)"}`,
         borderRadius: 2,
       }}
     >
@@ -82,7 +82,6 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
           {renderSortIcon("name")}
         </Typography>
       </Box>
-
       <Box
         sx={columnStyle}
         onClick={() => onSortChange("size")}
@@ -104,7 +103,6 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
           {renderSortIcon("size")}
         </Typography>
       </Box>
-
       <Box
         onClick={() => onSortChange("modTime")}
         role="button"

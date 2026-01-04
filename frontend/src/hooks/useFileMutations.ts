@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { clearSubfoldersCache } from "@/hooks/useSubfolders";
+import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
 import { linuxio, LinuxIOError } from "@/api/linuxio";
 import { useFileTransfers } from "./useFileTransfers";
 
@@ -56,7 +56,7 @@ export const useFileMutations = ({
     queryClient.invalidateQueries({
       queryKey: ["stream", "filebrowser", "resource_get", normalizedPath],
     });
-    clearSubfoldersCache(queryClient);
+    clearFileSubfoldersCache(queryClient);
   };
 
   const getErrorMessage = (error: unknown, fallback: string): string => {
