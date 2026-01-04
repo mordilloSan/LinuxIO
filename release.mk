@@ -376,13 +376,17 @@ merge-release:
 	      TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
 	      if [ $$WATCH_STATUS -eq 0 ]; then \
 	        echo "✅ Release workflow completed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
+	        FINAL_CONCLUSION="$$(gh run view $(call _repo_flag) "$$RUN_ID" --json conclusion --jq '.conclusion // ""')"; \
+	        WORKFLOW_SUCCESS=$$( [ "$$FINAL_CONCLUSION" = "success" ] && echo 1 || echo 0 ); \
 	      else \
 	        echo "❌ Release workflow failed or was cancelled"; \
+	        WORKFLOW_SUCCESS=0; \
 	      fi; \
 	      echo ""; \
 	      gh run view $(call _repo_flag) "$$RUN_ID"; \
 	    else \
 	      echo "   Workflow already completed: $$CONCLUSION"; \
+	      WORKFLOW_SUCCESS=$$( [ "$$CONCLUSION" = "success" ] && echo 1 || echo 0 ); \
 	      gh run view $(call _repo_flag) "$$RUN_ID"; \
 	    fi; \
 	  else \
@@ -391,14 +395,23 @@ merge-release:
 	    echo "   • Not be triggered by this merge"; \
 	    echo "   • Take longer to start than expected"; \
 	    echo "💡 Check manually: gh run list --workflow=release.yml"; \
+	    WORKFLOW_SUCCESS=0; \
 	  fi; \
 	  echo ""; \
-	  echo "🗑️  Cleaning up: deleting branch $$BRANCH..."; \
-	  git checkout $(DEFAULT_BASE_BRANCH) 2>/dev/null || git checkout main; \
-	  git pull --ff-only; \
-	  git branch -d "$$BRANCH" 2>/dev/null || true; \
-	  git push origin --delete "$$BRANCH" 2>/dev/null || echo "   (remote branch already deleted)"; \
-	  echo "✅ Branch cleanup complete"; \
+	  if [ "$${WORKFLOW_SUCCESS:-0}" -eq 1 ]; then \
+	    echo "🗑️  Cleaning up: deleting branch $$BRANCH..."; \
+	    git checkout $(DEFAULT_BASE_BRANCH) 2>/dev/null || git checkout main; \
+	    git pull --ff-only; \
+	    git branch -d "$$BRANCH" 2>/dev/null || true; \
+	    git push origin --delete "$$BRANCH" 2>/dev/null || echo "   (remote branch already deleted)"; \
+	    echo "✅ Branch cleanup complete"; \
+	  else \
+	    echo "⚠️  Workflow did not succeed - keeping branch $$BRANCH for debugging"; \
+	    echo "💡 After fixing issues, you can manually delete with:"; \
+	    echo "   git branch -d $$BRANCH"; \
+	    echo "   git push origin --delete $$BRANCH"; \
+	    exit 1; \
+	  fi; \
 	}
 
 .PHONY: start-dev changelog rebuild-changelog open-pr merge-release

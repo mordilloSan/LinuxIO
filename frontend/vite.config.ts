@@ -73,6 +73,12 @@ export default defineConfig(({ command }) => {
       outDir: "../backend/webserver/web/frontend",
       emptyOutDir: true,
       minify: "esbuild",
+      rollupOptions: {
+        external: (id) => {
+          // Exclude modules directory from build (loaded dynamically at runtime)
+          return id.includes('/modules/') && id.includes('/src/index.tsx');
+        },
+      },
     },
   };
 });
