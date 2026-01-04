@@ -1,6 +1,5 @@
 import { Button } from "@mui/material";
-import { useQueryClient } from "@tanstack/react-query";
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
@@ -29,7 +28,6 @@ const CreateInterfaceButton = () => {
   const [peers, setPeers] = useState(1);
   const [nic, setNic] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [dns, setDns] = useState("");
 
@@ -41,11 +39,14 @@ const CreateInterfaceButton = () => {
   } = linuxio.useCall<NetworkInterface[]>("dbus", "GetNetworkInfo", [], {});
 
   // Fetch existing WireGuard interfaces via stream API
-  const { data: wgInterfaces } = linuxio.useCall<any[]>(
+  const { data: wgInterfaces, refetch: refetchInterfaces } = linuxio.useCall<
+    any[]
+  >("wireguard", "list_interfaces", [], {});
+
+  // Mutation for adding interface
+  const addInterfaceMutation = linuxio.useMutate<unknown, string[]>(
     "wireguard",
-    "list_interfaces",
-    [],
-    {},
+    "add_interface",
   );
 
   // Memoize WireGuard interfaces array
@@ -128,28 +129,27 @@ const CreateInterfaceButton = () => {
     [parseCidrThirdOctet],
   );
 
-  // Preselect NIC, name, port, and CIDR on dialog open
-  useEffect(() => {
-    if (showDialog) {
-      // Set NIC
-      const availableNICs = getPhysicalNICs(networkData);
-      if (availableNICs.length > 0) {
-        const firstOnline = availableNICs.find(
-          (nic) => !nic.label.includes("disconnected"),
-        );
-        setNic(firstOnline ? firstOnline.name : availableNICs[0].name);
-      }
-      // Set name/port/CIDR from WireGuard interfaces
-      const names = wgArray.map((iface: any) => iface.name);
-      const ports = wgArray.map((iface: any) => iface.port);
-      const cidrs = wgArray.map((iface: any) => iface.address);
-
-      setServerName(nextAvailableWgName(names));
-      setPort(nextAvailablePort(ports));
-      setCIDR(nextAvailableCIDR(cidrs));
+  // Preselect NIC, name, port, and CIDR when opening dialog
+  const handleOpenDialog = useCallback(() => {
+    // Set NIC
+    const availableNICs = getPhysicalNICs(networkData);
+    if (availableNICs.length > 0) {
+      const firstOnline = availableNICs.find(
+        (nic) => !nic.label.includes("disconnected"),
+      );
+      setNic(firstOnline ? firstOnline.name : availableNICs[0].name);
     }
+    // Set name/port/CIDR from WireGuard interfaces
+    const names = wgArray.map((iface: any) => iface.name);
+    const ports = wgArray.map((iface: any) => iface.port);
+    const cidrs = wgArray.map((iface: any) => iface.address);
+
+    setServerName(nextAvailableWgName(names));
+    setPort(nextAvailablePort(ports));
+    setCIDR(nextAvailableCIDR(cidrs));
+
+    setShowDialog(true);
   }, [
-    showDialog,
     networkData,
     wgArray,
     getPhysicalNICs,
@@ -158,48 +158,42 @@ const CreateInterfaceButton = () => {
     nextAvailableCIDR,
   ]);
 
-  const queryClient = useQueryClient();
-
-  const handleCreateInterface = async () => {
-    setLoading(true);
+  const handleCreateInterface = () => {
     setError(null);
-    try {
-      const dnsStr = dns
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .join(",");
 
-      // AddInterface expects: [name, addresses, listenPort, egressNic, dns, mtu, peers_json, numPeers]
-      const args = [
-        serverName,
-        CIDR, // addresses as comma-separated string
-        String(port),
-        nic,
-        dnsStr, // dns as comma-separated string
-        "0", // mtu
-        "[]", // peers_json (empty array)
-        String(peers), // numPeers
-      ];
+    const dnsStr = dns
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(",");
 
-      await linuxio.request("wireguard", "add_interface", args);
+    // AddInterface expects: [name, addresses, listenPort, egressNic, dns, mtu, peers_json, numPeers]
+    const args = [
+      serverName,
+      CIDR, // addresses as comma-separated string
+      String(port),
+      nic,
+      dnsStr, // dns as comma-separated string
+      "0", // mtu
+      "[]", // peers_json (empty array)
+      String(peers), // numPeers
+    ];
 
-      toast.success(
-        `WireGuard interface '${serverName}' created`,
-        wireguardToastMeta,
-      );
-      setShowDialog(false);
-      setDns("");
-      queryClient.invalidateQueries({
-        queryKey: ["stream", "wireguard", "list_interfaces"],
-      });
-    } catch (error: any) {
-      const msg = error.message || "Unknown error";
-      toast.error(`Failed to create interface: ${msg}`, wireguardToastMeta);
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
+    addInterfaceMutation.mutate(args, {
+      onSuccess: () => {
+        toast.success(
+          `WireGuard interface '${serverName}' created`,
+          wireguardToastMeta,
+        );
+        setShowDialog(false);
+        setDns("");
+        refetchInterfaces();
+      },
+      onError: (error: any) => {
+        const msg = error.message || "Unknown error";
+        setError(msg);
+      },
+    });
   };
 
   const availableNICs =
@@ -212,18 +206,14 @@ const CreateInterfaceButton = () => {
 
   return (
     <>
-      <Button
-        variant="contained"
-        color="primary"
-        onClick={() => setShowDialog(true)}
-      >
+      <Button variant="contained" color="primary" onClick={handleOpenDialog}>
         Create New Interface
       </Button>
       <CreateInterfaceDialog
         open={showDialog}
         onClose={() => setShowDialog(false)}
         onCreate={handleCreateInterface}
-        loading={loading}
+        loading={addInterfaceMutation.isPending}
         error={error || undefined}
         serverName={serverName}
         setServerName={setServerName}

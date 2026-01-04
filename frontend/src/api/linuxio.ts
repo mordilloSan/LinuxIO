@@ -62,11 +62,12 @@ type CallOptions<T> = Omit<
   "queryKey" | "queryFn"
 >;
 
-type MutateOptions<TData, TVariables> = Omit<
-  UseMutationOptions<TData, LinuxIOError, TVariables>,
-  "mutationFn"
+// Allow custom mutationFn to be passed for complex operations
+type MutateOptions<TData, TVariables> = UseMutationOptions<
+  TData,
+  LinuxIOError,
+  TVariables
 >;
-
 
 // ============================================================================
 // React Hook: useStreamMux
@@ -135,12 +136,35 @@ export function useStreamMux() {
 // ============================================================================
 
 /**
- * Make an API call (non-React).
- * Opens stream, waits for result, returns Promise.
+ * Low-level API call function.
+ *
+ * ⚠️ **DO NOT USE DIRECTLY** ⚠️
+ *
+ * This is an internal function. Use React hooks instead:
+ * - For queries (reads): `linuxio.useCall()`
+ * - For mutations (writes): `linuxio.useMutate()`
+ *
+ * **Only use this inside:**
+ * - Custom `mutationFn` for complex parallel operations
+ * - Hook implementations (useCall, useMutate internals)
+ *
+ * @internal
+ * @example
+ * // ❌ BAD - Don't do this
+ * await linuxio.request("docker", "start_container", [id]);
  *
  * @example
- * const cpuInfo = await linuxio.request("system", "get_cpu_info");
- * const containers = await linuxio.request("docker", "list_containers");
+ * // ✅ GOOD - Use the hook
+ * const start = linuxio.useMutate("docker", "start_container");
+ * start.mutate(id);
+ *
+ * @example
+ * // ✅ OK - Inside custom mutationFn for complex operations
+ * const deleteMany = linuxio.useMutate("files", "delete", {
+ *   mutationFn: async (paths: string[]) => {
+ *     await Promise.all(paths.map(p => linuxio.request("files", "delete", [p])));
+ *   }
+ * });
  */
 export async function request<T = unknown>(
   handler: string,
@@ -238,42 +262,59 @@ export function useCall<T = unknown>(
 /**
  * Make a mutation (write operation) with React Query.
  *
+ * Provides a default mutationFn that calls linuxio.request(),
+ * but you can override it by passing a custom mutationFn in options.
+ *
  * @example
+ * // Simple usage - auto-generates mutationFn
  * const { mutate, isPending } = linuxio.useMutate("docker", "start_container");
  * mutate("container-123");
  *
  * @example
+ * // With callbacks
  * const { mutate } = linuxio.useMutate("docker", "create_container", {
  *   onSuccess: () => toast.success("Container created"),
  * });
  * mutate({ name: "my-container", image: "nginx" });
+ *
+ * @example
+ * // With custom mutationFn for complex operations
+ * const deleteMutation = linuxio.useMutate("files", "delete", {
+ *   mutationFn: async (paths: string[]) => {
+ *     await Promise.all(paths.map(path => linuxio.request("files", "delete", [path])));
+ *   },
+ *   onSuccess: () => toast.success("Files deleted"),
+ * });
  */
 export function useMutate<TData = unknown, TVariables = unknown>(
   handler: string,
   command: string,
   options?: MutateOptions<TData, TVariables>,
 ) {
+  // Default mutationFn - can be overridden by options.mutationFn
+  const defaultMutationFn = (variables: TVariables) => {
+    // Handle different variable types
+    let args: string[];
+
+    if (variables === undefined || variables === null) {
+      args = [];
+    } else if (Array.isArray(variables)) {
+      args = variables.map(String);
+    } else if (typeof variables === "string") {
+      args = [variables];
+    } else if (typeof variables === "object") {
+      // Object - JSON stringify as last arg
+      args = [JSON.stringify(variables)];
+    } else {
+      args = [String(variables)];
+    }
+
+    return request<TData>(handler, command, args);
+  };
+
   return useMutation<TData, LinuxIOError, TVariables>({
-    mutationFn: (variables: TVariables) => {
-      // Handle different variable types
-      let args: string[];
-
-      if (variables === undefined || variables === null) {
-        args = [];
-      } else if (Array.isArray(variables)) {
-        args = variables.map(String);
-      } else if (typeof variables === "string") {
-        args = [variables];
-      } else if (typeof variables === "object") {
-        // Object - JSON stringify as last arg
-        args = [JSON.stringify(variables)];
-      } else {
-        args = [String(variables)];
-      }
-
-      return request<TData>(handler, command, args);
-    },
-    ...options,
+    mutationFn: defaultMutationFn,
+    ...options, // Custom mutationFn in options will override defaultMutationFn
   });
 }
 

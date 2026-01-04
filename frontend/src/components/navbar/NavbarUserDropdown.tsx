@@ -28,6 +28,10 @@ function NavbarUserDropdown() {
   const [anchorMenu, setAnchorMenu] = useState<null | HTMLElement>(null);
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
 
+  // Mutations for power actions
+  const rebootMutation = linuxio.useMutate("dbus", "Reboot");
+  const poweroffMutation = linuxio.useMutate("dbus", "PowerOff");
+
   const toggleMenu = (event: React.SyntheticEvent<HTMLElement>) => {
     setAnchorMenu(event.currentTarget);
   };
@@ -40,7 +44,7 @@ function NavbarUserDropdown() {
     navigate("/sign-in");
   };
 
-  const handleConfirmedAction = async () => {
+  const handleConfirmedAction = () => {
     const action = confirm;
     closeMenu();
     closeConfirm();
@@ -48,18 +52,18 @@ function NavbarUserDropdown() {
     // Show overlay immediately
     if (action === "reboot") {
       triggerReboot();
+      rebootMutation.mutate(undefined, {
+        onError: () => {
+          // Server may die before responding - this is expected
+        },
+      });
     } else if (action === "poweroff") {
       triggerPowerOff();
-    }
-
-    try {
-      if (action === "reboot") {
-        await linuxio.request("dbus", "Reboot");
-      } else if (action === "poweroff") {
-        await linuxio.request("dbus", "PowerOff");
-      }
-    } catch {
-      // Server may die before responding - this is expected
+      poweroffMutation.mutate(undefined, {
+        onError: () => {
+          // Server may die before responding - this is expected
+        },
+      });
     }
   };
 

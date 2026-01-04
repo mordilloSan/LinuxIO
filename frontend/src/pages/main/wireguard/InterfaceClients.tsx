@@ -91,7 +91,6 @@ const formatAgo = (unix?: number) => {
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
-  const [loadingQr, setLoadingQr] = useState(false);
 
   const interfaceName = params.id;
 
@@ -111,6 +110,22 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     },
   );
 
+  // Mutations
+  const deletePeerMutation = linuxio.useMutate<unknown, string[]>(
+    "wireguard",
+    "remove_peer",
+  );
+
+  const downloadConfigMutation = linuxio.useMutate<
+    { config: string },
+    string[]
+  >("wireguard", "peer_config_download");
+
+  const qrCodeMutation = linuxio.useMutate<{ qrcode: string }, string[]>(
+    "wireguard",
+    "peer_qrcode",
+  );
+
   // Normalize peers response
   const peers: Peer[] = peersData
     ? Array.isArray(peersData)
@@ -118,20 +133,16 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       : peersData.peers || []
     : [];
 
-  const handleDeletePeer = async (peerName: string) => {
-    try {
-      await linuxio.request("wireguard", "remove_peer", [
-        interfaceName,
-        peerName,
-      ]);
-      toast.success(`WireGuard Peer '${peerName}' deleted`, wireguardToastMeta);
-      refetch();
-    } catch {
-      toast.error(
-        `Failed to delete interface: ${peerName}`,
-        wireguardToastMeta,
-      );
-    }
+  const handleDeletePeer = (peerName: string) => {
+    deletePeerMutation.mutate([interfaceName, peerName], {
+      onSuccess: () => {
+        toast.success(
+          `WireGuard Peer '${peerName}' deleted`,
+          wireguardToastMeta,
+        );
+        refetch();
+      },
+    });
   };
 
   const handleDownloadConfig = async (peername: string) => {
