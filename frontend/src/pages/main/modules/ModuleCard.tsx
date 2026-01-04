@@ -37,7 +37,6 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
   onModuleChange,
 }) => {
   const [uninstallDialogOpen, setUninstallDialogOpen] = useState(false);
-  const [uninstalling, setUninstalling] = useState(false);
 
   // Fetch detailed info to check if it's a system module
   const { data: moduleDetails } = linuxio.useCall<ModuleDetailsInfo>(
@@ -49,25 +48,24 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
     },
   );
 
-  const handleUninstall = useCallback(async () => {
-    setUninstalling(true);
-    try {
-      const result = await linuxio.request<UninstallResult>(
-        "modules",
-        "UninstallModule",
-        [module.name],
-      );
-      toast.success(
-        result.message || `Module ${module.title} uninstalled successfully`,
-      );
-      setUninstallDialogOpen(false);
-      onModuleChange();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to uninstall module");
-    } finally {
-      setUninstalling(false);
-    }
-  }, [module.name, module.title, onModuleChange]);
+  // Uninstall mutation
+  const uninstallMutation = linuxio.useMutate<UninstallResult, string>(
+    "modules",
+    "UninstallModule",
+    {
+      onSuccess: (result) => {
+        toast.success(
+          result.message || `Module ${module.title} uninstalled successfully`,
+        );
+        setUninstallDialogOpen(false);
+        onModuleChange();
+      },
+    },
+  );
+
+  const handleUninstall = useCallback(() => {
+    uninstallMutation.mutate(module.name);
+  }, [module.name, uninstallMutation]);
 
   const isSystem = moduleDetails?.isSystem || false;
   const isSymlink = moduleDetails?.isSymlink || false;
@@ -184,9 +182,9 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
             onClick={handleUninstall}
             color="error"
             variant="contained"
-            disabled={uninstalling}
+            disabled={uninstallMutation.isPending}
           >
-            {uninstalling ? "Uninstalling..." : "Uninstall"}
+            {uninstallMutation.isPending ? "Uninstalling..." : "Uninstall"}
           </Button>
         </DialogActions>
       </Dialog>

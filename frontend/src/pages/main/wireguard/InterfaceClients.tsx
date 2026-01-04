@@ -180,6 +180,10 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
         link.click();
         link.remove();
         window.URL.revokeObjectURL(url);
+        toast.success(
+          `Config for '${peername}' downloaded successfully`,
+          wireguardToastMeta,
+        );
       },
     });
   };
@@ -189,6 +193,10 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
       onSuccess: (result) => {
         setQrCode(result.qrcode);
         setOpenDialog(true);
+        toast.success(
+          `QR code for '${peername}' loaded successfully`,
+          wireguardToastMeta,
+        );
       },
     });
   };
