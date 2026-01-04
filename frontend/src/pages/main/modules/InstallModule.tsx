@@ -23,68 +23,65 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
   const [path, setPath] = useState("");
   const [targetName, setTargetName] = useState("");
   const [createSymlink, setCreateSymlink] = useState(false);
-  const [validating, setValidating] = useState(false);
-  const [installing, setInstalling] = useState(false);
   const [validationResult, setValidationResult] =
     useState<ValidationResult | null>(null);
 
-  const handleValidate = async () => {
+  // Mutations
+  const validateMutation = linuxio.useMutate<ValidationResult, string>(
+    "modules",
+    "ValidateModule",
+  );
+
+  const installMutation = linuxio.useMutate<InstallResult, string[]>(
+    "modules",
+    "InstallModule",
+  );
+
+  const handleValidate = () => {
     if (!path) {
       toast.error("Please enter a module path");
       return;
     }
 
-    setValidating(true);
     setValidationResult(null);
-    try {
-      const result = await linuxio.request<ValidationResult>(
-        "modules",
-        "ValidateModule",
-        [path],
-      );
-      setValidationResult(result);
-      if (result.valid) {
-        toast.success("Module is valid!");
-      } else {
-        toast.error("Module validation failed");
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Validation failed");
-      setValidationResult({ valid: false, errors: [err.message] });
-    } finally {
-      setValidating(false);
-    }
+    validateMutation.mutate(path, {
+      onSuccess: (result) => {
+        setValidationResult(result);
+        if (result.valid) {
+          toast.success("Module is valid!");
+        } else {
+          toast.error("Module validation failed");
+        }
+      },
+      onError: (err) => {
+        setValidationResult({ valid: false, errors: [err.message] });
+      },
+    });
   };
 
-  const handleInstall = async () => {
+  const handleInstall = () => {
     if (!path) {
       toast.error("Please enter a module path");
       return;
     }
 
-    setInstalling(true);
-    try {
-      const result = await linuxio.request<InstallResult>(
-        "modules",
-        "InstallModule",
-        [path, targetName, createSymlink ? "true" : "false"],
-      );
+    installMutation.mutate(
+      [path, targetName, createSymlink ? "true" : "false"],
+      {
+        onSuccess: (result) => {
+          toast.success(result.message || "Module installed successfully!");
 
-      toast.success(result.message || "Module installed successfully!");
+          // Reset form
+          setPath("");
+          setTargetName("");
+          setCreateSymlink(false);
+          setValidationResult(null);
 
-      // Reset form
-      setPath("");
-      setTargetName("");
-      setCreateSymlink(false);
-      setValidationResult(null);
-
-      // Navigate to installed modules
-      onInstalled();
-    } catch (err: any) {
-      toast.error(err.message || "Installation failed");
-    } finally {
-      setInstalling(false);
-    }
+          // Navigate to installed modules
+          onInstalled();
+        },
+      },
+    );
   };
 
   return (
@@ -136,16 +133,28 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
             <Button
               variant="outlined"
               onClick={handleValidate}
-              disabled={validating || installing || !path}
+              disabled={
+                validateMutation.isPending || installMutation.isPending || !path
+              }
             >
-              {validating ? <CircularProgress size={20} /> : "Validate"}
+              {validateMutation.isPending ? (
+                <CircularProgress size={20} />
+              ) : (
+                "Validate"
+              )}
             </Button>
             <Button
               variant="contained"
               onClick={handleInstall}
-              disabled={validating || installing || !path}
+              disabled={
+                validateMutation.isPending || installMutation.isPending || !path
+              }
             >
-              {installing ? <CircularProgress size={20} /> : "Install"}
+              {installMutation.isPending ? (
+                <CircularProgress size={20} />
+              ) : (
+                "Install"
+              )}
             </Button>
           </Box>
 
