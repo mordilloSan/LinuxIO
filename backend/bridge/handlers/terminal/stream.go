@@ -14,10 +14,10 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
+	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 // StreamTerminalSession manages a direct PTY-to-stream connection.
@@ -28,6 +28,12 @@ type StreamTerminalSession struct {
 	mu       sync.Mutex
 	closed   bool
 	doneChan chan struct{}
+}
+
+// RegisterStreamHandlers registers all terminal stream handlers.
+func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
+	handlers["terminal"] = HandleTerminalStream
+	handlers["container"] = HandleContainerTerminalStream
 }
 
 // HandleTerminalStream handles a yamux stream dedicated to terminal I/O.

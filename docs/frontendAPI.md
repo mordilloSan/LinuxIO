@@ -17,18 +17,24 @@ import { linuxio } from "@/api/linuxio";
 // 1. API calls with React Query
 const { data, isLoading, refetch } = linuxio.useCall("system", "get_cpu_info");
 
-// 2. Direct stream access (terminals)
-const term = linuxio.stream("terminal", {
+// 2. Command execution with streaming output
+linuxio.useStream("exec", "ls", ["-lh", "/home"], {
+  onData: (data) => console.log(linuxio.decodeString(data)),
+  onResult: (r) => console.log("Exit code:", r.data?.exitCode),
+});
+
+// 3. Terminal stream
+linuxio.useStream("terminal", "open", [cols, rows], {
   onData: (data) => xterm.write(linuxio.decodeString(data)),
 });
 
-// 3. File upload with progress
-const upload = linuxio.stream("fb-upload", {
+// 4. File upload with progress
+linuxio.useStream("filebrowser", "upload", [path, size], {
   onProgress: (p) => setProgress(p.pct),
   onResult: (r) => toast.success("Upload complete!"),
 });
 
-// 4. Mutations (write operations)
+// 5. Mutations (write operations)
 const { mutate, isPending } = linuxio.useMutate("docker", "start_container");
 mutate("container-id");
 ```

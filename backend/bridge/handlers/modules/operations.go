@@ -3,10 +3,12 @@ package modules
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
 )
 
@@ -26,7 +28,11 @@ func IsSymlinkModule(modulePath string) (bool, error) {
 }
 
 // UninstallModuleOperation removes a module from the filesystem and registry
-func UninstallModuleOperation(moduleName string, handlerRegistry map[string]map[string]func([]string) (any, error)) (*UninstallResult, error) {
+func UninstallModuleOperation(
+	moduleName string,
+	jsonHandlers map[string]map[string]func([]string) (any, error),
+	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
+) (*UninstallResult, error) {
 	module, exists := GetModule(moduleName)
 	if !exists {
 		return nil, fmt.Errorf("module '%s' not found", moduleName)
@@ -34,13 +40,15 @@ func UninstallModuleOperation(moduleName string, handlerRegistry map[string]map[
 
 	logger.Infof("Uninstalling module: %s (path=%s)", moduleName, module.Path)
 
-	// Clear handlers from registry
-	GetRegistry().Clear(moduleName)
-
 	// Unregister from bridge handlers
-	if handlerRegistry != nil {
-		handlerKey := "module." + moduleName
-		delete(handlerRegistry, handlerKey)
+	namespace := "module." + moduleName
+	delete(jsonHandlers, namespace)
+
+	// Remove stream handlers for this module
+	for streamType := range streamHandlers {
+		if strings.HasPrefix(streamType, namespace+".") {
+			delete(streamHandlers, streamType)
+		}
 	}
 
 	// Remove from loaded modules
@@ -59,7 +67,12 @@ func UninstallModuleOperation(moduleName string, handlerRegistry map[string]map[
 }
 
 // InstallModuleOperation installs a module from a source path
-func InstallModuleOperation(sourcePath, targetName string, createSymlink bool, handlerRegistry map[string]map[string]func([]string) (any, error)) (*InstallResult, error) {
+func InstallModuleOperation(
+	sourcePath, targetName string,
+	createSymlink bool,
+	jsonHandlers map[string]map[string]func([]string) (any, error),
+	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
+) (*InstallResult, error) {
 	// Validate source path exists
 	sourcePath = filepath.Clean(sourcePath)
 	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
@@ -127,9 +140,9 @@ func InstallModuleOperation(sourcePath, targetName string, createSymlink bool, h
 		Enabled:  true,
 	}
 
-	// Register module handlers if registry provided
-	if handlerRegistry != nil {
-		if err := registerModule(module, handlerRegistry, GetRegistry()); err != nil {
+	// Register module handlers if registries provided
+	if jsonHandlers != nil {
+		if err := registerModule(module, jsonHandlers, streamHandlers); err != nil {
 			// Cleanup on failure
 			_ = os.RemoveAll(targetDir)
 			return nil, fmt.Errorf("failed to register module: %w", err)

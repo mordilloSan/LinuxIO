@@ -3,20 +3,56 @@ import { Box, Typography, Button, useTheme } from '@mui/material';
 import RootCard from '@/components/cards/RootCard';
 import MetricBar from '@/components/gauge/MetricBar';
 import { formatFileSize } from '@/utils/formaters';
-
-// Declare global type for production bundle mode
-declare global {
-  interface Window {
-    LinuxIOModules: Record<string, { default: React.ComponentType }>;
-  }
-}
+import linuxio from '@/api/linuxio';
 
 function ExampleModule() {
   const [message, setMessage] = useState('');
+  const [dirListing, setDirListing] = useState('');
   const theme = useTheme();
+
+  // Example 1: Use linuxio.useCall for existing handlers (JSON RPC)
+  const {
+    data: cpuInfo,
+    refetch: refetchCpuInfo
+  } = linuxio.useCall("system", "get_cpu_info", [], { enabled: false });
 
   const handleClick = () => {
     setMessage('Hello from Example Module! 👋');
+  };
+
+  const getCpuInfo = async () => {
+    setMessage('Loading CPU info...');
+    const result = await refetchCpuInfo();
+    if (result.isSuccess) {
+      setMessage('CPU info loaded successfully!');
+    } else if (result.isError) {
+      setMessage('Error loading CPU info: ' + result.error.message);
+    }
+  };
+
+  // Example 2: Use linuxio.useStream for command execution (streaming stdout)
+  const listDirectory = () => {
+    setMessage('Loading directory listing...');
+    setDirListing('');
+
+    let output = '';
+
+    // Open exec stream - unified signature matching useCall
+    linuxio.useStream('exec', 'ls', ['-lh', '/home'], {
+      onData: (data) => {
+        const text = linuxio.decodeString(data);
+        output += text;
+        setDirListing(output);
+      },
+      onResult: (result) => {
+        setMessage(`Directory listing loaded! Exit code: ${result.data?.exitCode || 0}`);
+      },
+      onClose: () => {
+        if (!output) {
+          setMessage('Stream closed');
+        }
+      }
+    });
   };
 
   return (
@@ -67,6 +103,48 @@ function ExampleModule() {
         <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
           <RootCard sx={{ height: '100%' }}>
             <Typography variant="h6" gutterBottom>
+              LinuxIO API Demo
+            </Typography>
+
+            <Button
+              variant="outlined"
+              onClick={getCpuInfo}
+              sx={{ mt: 1 }}
+              fullWidth
+            >
+              Get CPU Info (system handler)
+            </Button>
+
+            <Button
+              variant="outlined"
+              onClick={listDirectory}
+              sx={{ mt: 1 }}
+              fullWidth
+            >
+              List /home (exec stream)
+            </Button>
+
+            {cpuInfo && (
+              <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                  {JSON.stringify(cpuInfo, null, 2)}
+                </Typography>
+              </Box>
+            )}
+
+            {dirListing && (
+              <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                <Typography variant="caption" component="pre" sx={{ fontFamily: 'monospace', fontSize: '0.7rem', whiteSpace: 'pre-wrap' }}>
+                  {dirListing}
+                </Typography>
+              </Box>
+            )}
+          </RootCard>
+        </Box>
+
+        <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
+          <RootCard sx={{ height: '100%' }}>
+            <Typography variant="h6" gutterBottom>
               Utilities & Theme
             </Typography>
 
@@ -96,7 +174,7 @@ function ExampleModule() {
 
             <Typography variant="body2" sx={{ mt: 2, fontFamily: 'monospace', fontSize: '0.75rem' }}>
               💡 Edit this module in:<br />
-              modules/asd/src/index.tsx
+              modules/example-module/src/component.jsx
             </Typography>
           </RootCard>
         </Box>
@@ -105,17 +183,4 @@ function ExampleModule() {
   );
 }
 
-// REQUIRED: Export default for both HMR (dev) and bundled (prod) loads
 export default ExampleModule;
-
-// Export to window.LinuxIOModules for IIFE bundle mode (production)
-// This runs only when loaded as a script tag, not when imported as ESM
-if (typeof window !== 'undefined') {
-  if (!window.LinuxIOModules) {
-    window.LinuxIOModules = {};
-  }
-  if (!window.LinuxIOModules['asd']) {
-    window.LinuxIOModules['asd'] = { default: ExampleModule };
-    console.log('✅ Example Module loaded (bundle mode)');
-  }
-}

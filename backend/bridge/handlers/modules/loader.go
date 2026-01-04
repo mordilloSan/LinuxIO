@@ -2,11 +2,13 @@ package modules
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
 	"gopkg.in/yaml.v3"
 )
@@ -14,9 +16,10 @@ import (
 var loadedModules = make(map[string]*ModuleInfo)
 
 // LoadModules discovers and loads all modules from system and user directories
-func LoadModules(handlerRegistry map[string]map[string]func([]string) (any, error)) error {
-	registry := GetRegistry()
-
+func LoadModules(
+	jsonHandlers map[string]map[string]func([]string) (any, error),
+	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
+) error {
 	// Load from system directory
 	systemDir := "/etc/linuxio/modules"
 	logger.Debugf("Loading from system directory: %s", systemDir)
@@ -56,7 +59,7 @@ func LoadModules(handlerRegistry map[string]map[string]func([]string) (any, erro
 
 	// Register each module's handlers
 	for name, module := range allModules {
-		if err := registerModule(module, handlerRegistry, registry); err != nil {
+		if err := registerModule(module, jsonHandlers, streamHandlers); err != nil {
 			logger.Warnf("Failed to register module %s: %v", name, err)
 			continue
 		}
@@ -159,49 +162,42 @@ func parseManifest(path string) (*ModuleManifest, error) {
 // registerModule registers all handlers from a module
 func registerModule(
 	module *ModuleInfo,
-	handlerRegistry map[string]map[string]func([]string) (any, error),
-	cmdRegistry *CommandRegistry,
+	jsonHandlers map[string]map[string]func([]string) (any, error),
+	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) error {
 	namespace := "module." + module.Manifest.Name
-	handlerRegistry[namespace] = make(map[string]func([]string) (any, error))
+	jsonHandlers[namespace] = make(map[string]func([]string) (any, error))
 
 	// Register shell command handlers
 	for name, cmd := range module.Manifest.Handlers.Commands {
-		// Add to whitelist
-		timeout := cmd.Timeout
-		if timeout == 0 {
-			timeout = 10 // Default timeout
-		}
-		cmdRegistry.RegisterCommand(module.Manifest.Name, name, cmd.Command, timeout, cmd.Args)
-
 		// Create handler function
-		handlerRegistry[namespace][name] = createCommandHandler(module.Manifest.Name, name, cmdRegistry)
+		jsonHandlers[namespace][name] = createCommandHandler(module.Manifest.Name, name, cmd)
 	}
 
-	// Register DBus handlers
+	// Register DBus handlers (immediate response -> JsonHandlers)
 	for name, dbus := range module.Manifest.Handlers.Dbus {
-		// Add to whitelist
-		cmdRegistry.RegisterDbus(module.Manifest.Name, name, dbus)
-
 		// Create handler function
-		handlerRegistry[namespace][name] = createDbusHandler(module.Manifest.Name, name, cmdRegistry)
+		jsonHandlers[namespace][name] = createDbusHandler(module.Manifest.Name, name, dbus)
+	}
+
+	// Register DBus stream handlers (signal streaming -> StreamHandlers)
+	for name, dbusStream := range module.Manifest.Handlers.DbusStreams {
+		// Create stream handler function
+		// Stream type: "module.{moduleName}.{handlerName}"
+		streamType := namespace + "." + name
+		streamHandlers[streamType] = createDbusStreamHandler(module.Manifest.Name, name, dbusStream)
+
+		logger.Debugf("Registered D-Bus stream handler: %s", streamType)
 	}
 
 	return nil
 }
 
 // createCommandHandler creates a handler function for a shell command
-// This handler will check the registry before executing
-func createCommandHandler(moduleName, commandName string, registry *CommandRegistry) func([]string) (any, error) {
+func createCommandHandler(moduleName, commandName string, cmdDef CommandHandler) func([]string) (any, error) {
 	return func(args []string) (any, error) {
-		// Check if command is whitelisted
-		cmd := registry.GetCommand(moduleName, commandName)
-		if cmd == nil {
-			return nil, fmt.Errorf("command %s:%s not found in registry", moduleName, commandName)
-		}
-
 		// Template substitution
-		command := cmd.Template
+		command := cmdDef.Command
 
 		// Support both numeric {{.arg0}} and named {{.argName}} placeholders
 		for i, argValue := range args {
@@ -210,46 +206,72 @@ func createCommandHandler(moduleName, commandName string, registry *CommandRegis
 			command = strings.ReplaceAll(command, placeholderN, argValue)
 
 			// Named placeholders: {{.path}}, {{.host}}, etc.
-			if i < len(cmd.Args) {
-				argName := cmd.Args[i].Name
+			if i < len(cmdDef.Args) {
+				argName := cmdDef.Args[i].Name
 				placeholderNamed := fmt.Sprintf("{{.%s}}", argName)
 				command = strings.ReplaceAll(command, placeholderNamed, argValue)
 			}
 		}
 
 		// Execute using generic command handler
-		timeout := fmt.Sprintf("%d", cmd.Timeout)
+		timeout := fmt.Sprintf("%d", cmdDef.Timeout)
+		if cmdDef.Timeout == 0 {
+			timeout = "10" // Default timeout
+		}
 		return generic.ExecCommandDirect(command, timeout)
 	}
 }
 
 // createDbusHandler creates a handler function for a DBus call
-// This handler will check the registry before executing
-func createDbusHandler(moduleName, commandName string, registry *CommandRegistry) func([]string) (any, error) {
+func createDbusHandler(moduleName, commandName string, dbusDef DbusHandler) func([]string) (any, error) {
 	return func(args []string) (any, error) {
-		// Check if DBus call is whitelisted
-		dbus := registry.GetDbus(moduleName, commandName)
-		if dbus == nil {
-			return nil, fmt.Errorf("dbus call %s:%s not found in registry", moduleName, commandName)
-		}
-
 		// Build DBus call arguments
 		dbusArgs := []string{
-			dbus.Bus,
-			dbus.Destination,
-			dbus.Path,
-			dbus.Interface,
-			dbus.Method,
+			dbusDef.Bus,
+			dbusDef.Destination,
+			dbusDef.Path,
+			dbusDef.Interface,
+			dbusDef.Method,
 		}
 
 		// Add predefined args from manifest
-		dbusArgs = append(dbusArgs, dbus.Args...)
+		dbusArgs = append(dbusArgs, dbusDef.Args...)
 
 		// Add runtime args
 		dbusArgs = append(dbusArgs, args...)
 
 		// Execute using generic DBus handler
 		return generic.CallDbusMethodDirect(dbusArgs)
+	}
+}
+
+// createDbusStreamHandler creates a stream handler for a DBus operation with signals
+func createDbusStreamHandler(moduleName, commandName string, dbusStreamDef DbusStreamHandler) func(*session.Session, net.Conn, []string) error {
+	return func(sess *session.Session, conn net.Conn, args []string) error {
+		// Build DBus stream arguments
+		// Format: [bus, destination, path, interface, method, signal1, signal2, ..., "--", methodArg1, methodArg2, ...]
+		streamArgs := []string{
+			dbusStreamDef.Bus,
+			dbusStreamDef.Destination,
+			dbusStreamDef.Path,
+			dbusStreamDef.Interface,
+			dbusStreamDef.Method,
+		}
+
+		// Add signal names
+		streamArgs = append(streamArgs, dbusStreamDef.Signals...)
+
+		// Add separator
+		streamArgs = append(streamArgs, "--")
+
+		// Add predefined args from manifest
+		streamArgs = append(streamArgs, dbusStreamDef.Args...)
+
+		// Add runtime args
+		streamArgs = append(streamArgs, args...)
+
+		// Execute using generic DBus stream handler
+		return generic.HandleDbusStream(conn, streamArgs)
 	}
 }
 
