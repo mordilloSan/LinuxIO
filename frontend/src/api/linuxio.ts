@@ -9,8 +9,8 @@
  *   const { data, isLoading } = linuxio.useCall("system", "get_cpu_info");
  *
  *   // Direct stream access
- *   const stream = linuxio.stream("terminal", { onData: handleData });
- *   const upload = linuxio.stream("fb-upload", { onProgress: handleProgress });
+ *   const stream = linuxio.useStream("terminal", { onData: handleData });
+ *   const upload = linuxio.useStream("fb-upload", { onProgress: handleProgress });
  */
 
 import { useEffect, useState, useCallback } from "react";
@@ -56,6 +56,17 @@ export interface StreamOptions {
   onResult?: (result: ResultFrame) => void;
   onClose?: () => void;
 }
+
+type CallOptions<T> = Omit<
+  UseQueryOptions<T, LinuxIOError>,
+  "queryKey" | "queryFn"
+>;
+
+type MutateOptions<TData, TVariables> = Omit<
+  UseMutationOptions<TData, LinuxIOError, TVariables>,
+  "mutationFn"
+>;
+
 
 // ============================================================================
 // React Hook: useStreamMux
@@ -142,11 +153,11 @@ export async function request<T = unknown>(
     throw new LinuxIOError("Not connected to server", 503);
   }
 
-  // Build payload: "api\0handler\0command\0arg1\0arg2..."
-  const parts = ["api", handler, command, ...args];
+  // Build payload: "json\0handler\0command\0arg1\0arg2..."
+  const parts = ["json", handler, command, ...args];
   const payload = encodeString(parts.join("\0"));
 
-  const stream = mux.openStream("api", payload);
+  const stream = mux.openStream("json", payload);
   if (!stream) {
     throw new LinuxIOError("Failed to open stream", 503);
   }
@@ -187,13 +198,8 @@ export async function request<T = unknown>(
 }
 
 // ============================================================================
-// React Query: call() Hook
+// React Query: useCall() Hook
 // ============================================================================
-
-type CallOptions<T> = Omit<
-  UseQueryOptions<T, LinuxIOError>,
-  "queryKey" | "queryFn"
->;
 
 /**
  * Make an API call with React Query integration.
@@ -226,13 +232,8 @@ export function useCall<T = unknown>(
 }
 
 // ============================================================================
-// React Query: mutate() Hook
+// React Query: useMutate() Hook
 // ============================================================================
-
-type MutateOptions<TData, TVariables> = Omit<
-  UseMutationOptions<TData, LinuxIOError, TVariables>,
-  "mutationFn"
->;
 
 /**
  * Make a mutation (write operation) with React Query.
@@ -286,7 +287,7 @@ export function useMutate<TData = unknown, TVariables = unknown>(
  *
  * @example
  * // Terminal
- * const term = linuxio.stream("terminal", {
+ * const term = linuxio.useStream("terminal", {
  *   onData: (data) => xterm.write(decodeString(data)),
  * });
  * term.write(encodeString("ls -la\n"));
@@ -294,7 +295,7 @@ export function useMutate<TData = unknown, TVariables = unknown>(
  *
  * @example
  * // File upload with progress
- * const upload = linuxio.stream("fb-upload", {
+ * const upload = linuxio.useStream("fb-upload", {
  *   onProgress: (p) => setProgress(p.pct),
  *   onResult: (r) => console.log("Done:", r),
  * });
@@ -302,12 +303,12 @@ export function useMutate<TData = unknown, TVariables = unknown>(
  *
  * @example
  * // Package update with progress
- * const update = linuxio.stream("pkg-update", {
+ * const update = linuxio.useStream("pkg-update", {
  *   onProgress: (p) => setProgress(p.pct),
  *   onResult: (r) => toast.success("Updated!"),
  * });
  */
-export function stream(
+export function useStream(
   type: string,
   payloadOrOptions: Uint8Array | StreamOptions,
   options?: StreamOptions,
@@ -404,6 +405,34 @@ export function extractPayload(
   return encodeString(`fb-extract\0${archive}\0${destination}`);
 }
 
+/**
+ * Build payload for exec stream
+ * @param command - The command to execute
+ * @param args - Command arguments as a single string or array
+ *
+ * @example
+ * execPayload('ls', '-lh /home')
+ * execPayload('ls', ['-lh', '/home'])
+ */
+export function execPayload(
+  command: string,
+  args?: string | string[],
+): Uint8Array {
+  const parts = ["exec", command];
+
+  if (args) {
+    if (Array.isArray(args)) {
+      parts.push(...args);
+    } else {
+      // Split string by spaces, respecting quotes
+      const argArray = args.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+      parts.push(...argArray.map((arg) => arg.replace(/^"|"$/g, "")));
+    }
+  }
+
+  return encodeString(parts.join("\0"));
+}
+
 // ============================================================================
 // Utilities
 // ============================================================================
@@ -452,9 +481,7 @@ export const linuxio = {
   useStreamMux,
   useCall,
   useMutate,
-
-  // Direct stream access
-  stream,
+  useStream,
 
   // Promise-based (non-React)
   request,
@@ -466,6 +493,7 @@ export const linuxio = {
   downloadPayload,
   compressPayload,
   extractPayload,
+  execPayload,
 
   // Utilities
   isConnected,

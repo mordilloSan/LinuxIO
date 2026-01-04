@@ -2,19 +2,24 @@ package modules
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/middleware"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // ModuleHandlers returns the handler map for module-related API calls
-func ModuleHandlers(sess *session.Session, handlerRegistry map[string]map[string]func([]string) (any, error)) map[string]func([]string) (any, error) {
-	// Create closures for handlers that need the handlerRegistry
+func ModuleHandlers(
+	sess *session.Session,
+	jsonHandlers map[string]map[string]func([]string) (any, error),
+	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
+) map[string]func([]string) (any, error) {
+	// Create closures for handlers that need the registries
 	uninstallModuleHandler := func(args []string) (any, error) {
 		if len(args) < 1 {
 			return nil, fmt.Errorf("module name required")
 		}
-		return UninstallModuleOperation(args[0], handlerRegistry)
+		return UninstallModuleOperation(args[0], jsonHandlers, streamHandlers)
 	}
 
 	installModuleHandler := func(args []string) (any, error) {
@@ -26,7 +31,7 @@ func ModuleHandlers(sess *session.Session, handlerRegistry map[string]map[string
 			targetName = args[1]
 		}
 		createSymlink := len(args) > 2 && args[2] == "true"
-		return InstallModuleOperation(args[0], targetName, createSymlink, handlerRegistry)
+		return InstallModuleOperation(args[0], targetName, createSymlink, jsonHandlers, streamHandlers)
 	}
 
 	getModuleDetailsHandler := func(args []string) (any, error) {
@@ -99,18 +104,22 @@ func GetModuleDetailsInfo(moduleName string) (*ModuleDetailsInfo, error) {
 		isSymlink = false // Default to false if check fails
 	}
 
-	// Get list of registered handlers
-	registry := GetRegistry()
+	// Get list of registered handlers from the manifest
 	var handlers []string
 
-	// Get command handlers
-	for _, cmd := range registry.ListCommands(moduleName) {
-		handlers = append(handlers, cmd.CommandName)
+	// Get command handlers from manifest
+	for cmdName := range module.Manifest.Handlers.Commands {
+		handlers = append(handlers, cmdName)
 	}
 
-	// Get DBus handlers
-	for _, dbus := range registry.ListDbus(moduleName) {
-		handlers = append(handlers, dbus.CommandName)
+	// Get DBus handlers from manifest
+	for dbusName := range module.Manifest.Handlers.Dbus {
+		handlers = append(handlers, dbusName)
+	}
+
+	// Get DBus stream handlers from manifest
+	for dbusStreamName := range module.Manifest.Handlers.DbusStreams {
+		handlers = append(handlers, dbusStreamName)
 	}
 
 	return &ModuleDetailsInfo{

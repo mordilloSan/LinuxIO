@@ -44,29 +44,38 @@ type FileProgress struct {
 	Phase string `json:"phase,omitempty"` // Optional phase description
 }
 
-// HandleFilebrowserStream handles a yamux stream for filebrowser operations.
-// streamType is one of: fb-download, fb-upload, fb-archive, fb-compress, fb-extract
-// args contains operation-specific parameters
-func HandleFilebrowserStream(sess *session.Session, stream net.Conn, streamType string, args []string) error {
-	logger.Debugf("[FBStream] Starting type=%s args=%v", streamType, args)
+// HandleDownloadStream handles a download stream for a single file.
+func HandleDownloadStream(sess *session.Session, stream net.Conn, args []string) error {
+	return handleDownload(stream, args)
+}
 
-	switch streamType {
-	case StreamTypeFBDownload:
-		return handleDownload(stream, args)
-	case StreamTypeFBUpload:
-		return handleUpload(stream, args)
-	case StreamTypeFBArchive:
-		return handleArchiveDownload(stream, args)
-	case StreamTypeFBCompress:
-		return handleCompress(stream, args)
-	case StreamTypeFBExtract:
-		return handleExtract(stream, args)
-	default:
-		logger.Warnf("[FBStream] Unknown stream type: %s", streamType)
-		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("unknown stream type: %s", streamType), 400)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("unknown stream type: %s", streamType)
-	}
+// HandleUploadStream handles an upload stream for a single file.
+func HandleUploadStream(sess *session.Session, stream net.Conn, args []string) error {
+	return handleUpload(stream, args)
+}
+
+// HandleArchiveStream handles an archive download stream (multi-file).
+func HandleArchiveStream(sess *session.Session, stream net.Conn, args []string) error {
+	return handleArchiveDownload(stream, args)
+}
+
+// HandleCompressStream handles a compression stream.
+func HandleCompressStream(sess *session.Session, stream net.Conn, args []string) error {
+	return handleCompress(stream, args)
+}
+
+// HandleExtractStream handles an extraction stream.
+func HandleExtractStream(sess *session.Session, stream net.Conn, args []string) error {
+	return handleExtract(stream, args)
+}
+
+// RegisterStreamHandlers registers all filebrowser stream handlers.
+func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
+	handlers[StreamTypeFBDownload] = HandleDownloadStream
+	handlers[StreamTypeFBUpload] = HandleUploadStream
+	handlers[StreamTypeFBArchive] = HandleArchiveStream
+	handlers[StreamTypeFBCompress] = HandleCompressStream
+	handlers[StreamTypeFBExtract] = HandleExtractStream
 }
 
 // handleDownload streams a single file to the client.

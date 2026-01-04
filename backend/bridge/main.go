@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -17,10 +15,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
@@ -144,8 +139,7 @@ func main() {
 	// Handle the single client connection (no accept loop needed)
 	connDone := make(chan struct{})
 	go func() {
-		id := uuid.NewString()
-		handleMainRequest(clientConn, id)
+		handleMainRequest(clientConn)
 		// Connection closed - trigger shutdown
 		select {
 		case ShutdownChan <- "client disconnected":
@@ -199,33 +193,33 @@ func printBridgeVersion() {
 }
 
 // handleMainRequest sets up a yamux session for the client connection.
-func handleMainRequest(conn net.Conn, id string) {
+func handleMainRequest(conn net.Conn) {
 	wg.Add(1)
 	defer wg.Done()
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
 			if strings.Contains(cerr.Error(), "use of closed") {
-				logger.DebugKV("bridge conn already closed", "conn_id", id)
+				logger.DebugKV("bridge conn already closed", "session_id", Sess.SessionID)
 			} else {
-				logger.WarnKV("bridge conn close failed", "conn_id", id, "error", cerr)
+				logger.WarnKV("bridge conn close failed", "session_id", Sess.SessionID, "error", cerr)
 			}
 		}
 	}()
 
-	handleYamuxSession(conn, id)
+	handleYamuxSession(conn)
 }
 
 // handleYamuxSession handles a yamux multiplexed connection.
 // Each stream within the session is treated as an independent request.
-func handleYamuxSession(conn net.Conn, sessionID string) {
-	session, err := ipc.NewYamuxServer(conn)
+func handleYamuxSession(conn net.Conn) {
+	ymuxSession, err := ipc.NewYamuxServer(conn)
 	if err != nil {
-		logger.ErrorKV("failed to create yamux session", "session_id", sessionID, "error", err)
+		logger.ErrorKV("failed to create yamux session", "session_id", Sess.SessionID, "error", err)
 		return
 	}
-	defer session.Close()
+	defer ymuxSession.Close()
 
-	logger.InfoKV("yamux session started", "session_id", sessionID)
+	logger.InfoKV("yamux session started", "session_id", Sess.SessionID)
 
 	// Track active streams for graceful shutdown
 	var streamWg sync.WaitGroup
@@ -234,17 +228,17 @@ func handleYamuxSession(conn net.Conn, sessionID string) {
 	for {
 		select {
 		case <-bridgeClosing:
-			logger.DebugKV("yamux session closing due to bridge shutdown", "session_id", sessionID)
+			logger.DebugKV("yamux session closing due to bridge shutdown", "session_id", Sess.SessionID)
 			goto waitForStreams
 		default:
 		}
 
-		stream, err := session.Accept()
+		stream, err := ymuxSession.Accept()
 		if err != nil {
-			if session.IsClosed() {
-				logger.DebugKV("yamux session closed", "session_id", sessionID)
+			if ymuxSession.IsClosed() {
+				logger.DebugKV("yamux session closed", "session_id", Sess.SessionID)
 			} else {
-				logger.WarnKV("yamux accept error", "session_id", sessionID, "error", err)
+				logger.WarnKV("yamux accept error", "session_id", Sess.SessionID, "error", err)
 			}
 			break
 		}
@@ -253,157 +247,54 @@ func handleYamuxSession(conn net.Conn, sessionID string) {
 		streamWg.Add(1)
 		wg.Add(1)
 
-		go func(s net.Conn, id string) {
+		go func(s net.Conn, streamID string) {
 			defer streamWg.Done()
 			defer wg.Done()
 			defer s.Close()
 
-			handleYamuxStream(s, sessionID, id)
+			handleYamuxStream(Sess, s, streamID)
 		}(stream, streamID)
 	}
 
 waitForStreams:
 	// Wait for all streams to complete
 	streamWg.Wait()
-	logger.InfoKV("yamux session ended", "session_id", sessionID)
+	logger.InfoKV("yamux session ended", "session_id", Sess.SessionID)
 }
 
 // handleYamuxStream handles a single stream within a yamux session.
-// All streams use the binary frame protocol (OpStreamOpen, OpStreamData, etc.)
-func handleYamuxStream(stream net.Conn, sessionID, streamID string) {
-	id := fmt.Sprintf("%s/%s", sessionID, streamID)
-	handleBinaryStream(stream, id)
-}
-
-// handleBinaryStream handles binary stream protocol (terminal streaming, etc.)
-func handleBinaryStream(conn net.Conn, id string) {
+// Reads the OpStreamOpen frame, looks up the registered handler, and executes it.
+func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) {
 	// Read the first frame to determine stream type
-	frame, err := ipc.ReadRelayFrame(conn)
+	frame, err := ipc.ReadRelayFrame(stream)
 	if err != nil {
-		logger.WarnKV("failed to read stream open frame", "stream_id", id, "error", err)
+		logger.WarnKV("failed to read stream open frame", "session_id", sess.SessionID, "stream_id", streamID, "error", err)
 		return
 	}
 
 	if frame.Opcode != ipc.OpStreamOpen {
-		logger.WarnKV("expected OpStreamOpen frame", "stream_id", id, "opcode", fmt.Sprintf("0x%02x", frame.Opcode))
+		logger.WarnKV("expected OpStreamOpen frame", "session_id", sess.SessionID, "stream_id", streamID, "opcode", fmt.Sprintf("0x%02x", frame.Opcode))
 		return
 	}
 
 	// Parse stream type and args from payload
 	streamType, args := ipc.ParseStreamOpenPayload(frame.Payload)
-	logger.DebugKV("binary stream opened", "stream_id", id, "type", streamType, "args", args)
+	logger.DebugKV("stream opened", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "args", args)
 
-	switch streamType {
-	case "terminal":
-		// Handle terminal stream - pass the connection for bidirectional I/O
-		if err := terminal.HandleTerminalStream(Sess, conn, args); err != nil {
-			logger.WarnKV("terminal stream error", "stream_id", id, "error", err)
-		}
-	case "container":
-		// Handle container terminal stream - docker exec
-		if err := terminal.HandleContainerTerminalStream(Sess, conn, args); err != nil {
-			logger.WarnKV("container terminal stream error", "stream_id", id, "error", err)
-		}
-	case filebrowser.StreamTypeFBDownload, filebrowser.StreamTypeFBUpload, filebrowser.StreamTypeFBArchive, filebrowser.StreamTypeFBCompress, filebrowser.StreamTypeFBExtract:
-		// Handle filebrowser stream - download, upload, archive, compress, extract operations
-		if err := filebrowser.HandleFilebrowserStream(Sess, conn, streamType, args); err != nil {
-			logger.WarnKV("filebrowser stream error", "stream_id", id, "type", streamType, "error", err)
-		}
-	case dbus.StreamTypePkgUpdate:
-		// Handle package update stream - updates packages with real-time D-Bus progress
-		if err := dbus.HandlePackageUpdateStream(conn, args); err != nil {
-			logger.WarnKV("package update stream error", "stream_id", id, "error", err)
-		}
-	case "api":
-		// Handle API stream - JSON API calls over yamux
-		if err := HandleAPIStream(conn, args); err != nil {
-			logger.WarnKV("api stream error", "stream_id", id, "error", err)
-		}
-	default:
-		logger.WarnKV("unknown stream type", "stream_id", id, "type", streamType)
+	// Look up registered stream handler
+	handler, found := handlers.StreamHandlers[streamType]
+	if !found {
+		logger.WarnKV("unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType)
 		// Send close frame
-		_ = ipc.WriteRelayFrame(conn, &ipc.StreamFrame{
+		_ = ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
 			Opcode:   ipc.OpStreamClose,
 			StreamID: frame.StreamID,
 		})
-	}
-}
-
-// HandleAPIStream handles a yamux stream for JSON API calls.
-// This allows API calls to bypass HTTP and use the same stream infrastructure
-// as terminal and file transfers.
-//
-// args format: [type, command, ...handlerArgs]
-// - type: handler group (e.g., "system", "docker", "filebrowser")
-// - command: handler command (e.g., "get_cpu_info", "list_containers")
-// - handlerArgs: remaining args passed to the handler
-//
-// Response: OpStreamResult with JSON data, then OpStreamClose
-func HandleAPIStream(stream net.Conn, args []string) error {
-	logger.Debugf("[APIStream] Starting args=%v", args)
-
-	// Validate args
-	if len(args) < 2 {
-		errMsg := "api stream requires at least [type, command]"
-		logger.Warnf("[APIStream] %s, got: %v", errMsg, args)
-		_ = ipc.WriteResultError(stream, 0, errMsg, 400)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return errors.New(errMsg)
+		return
 	}
 
-	handlerType := args[0]
-	command := args[1]
-	handlerArgs := args[2:]
-
-	// Look up handler group
-	group, found := handlers.HandlersByType[handlerType]
-	if !found {
-		errMsg := fmt.Sprintf("unknown handler type: %s", handlerType)
-		logger.Warnf("[APIStream] %s", errMsg)
-		_ = ipc.WriteResultError(stream, 0, errMsg, 404)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return errors.New(errMsg)
+	// Execute stream handler
+	if err := handler(sess, stream, args); err != nil {
+		logger.WarnKV("stream handler error", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
 	}
-
-	// Look up handler
-	handler, ok := group[command]
-	if !ok {
-		errMsg := fmt.Sprintf("unknown command: %s/%s", handlerType, command)
-		logger.Warnf("[APIStream] %s", errMsg)
-		_ = ipc.WriteResultError(stream, 0, errMsg, 404)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return errors.New(errMsg)
-	}
-
-	// Execute handler
-	result, err := handler(handlerArgs)
-	if err != nil {
-		logger.Warnf("[APIStream] Handler error %s/%s: %v", handlerType, command, err)
-		_ = ipc.WriteResultError(stream, 0, err.Error(), 500)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return err
-	}
-
-	// Marshal result
-	var data json.RawMessage
-	if result != nil {
-		b, err := json.Marshal(result)
-		if err != nil {
-			logger.Warnf("[APIStream] Marshal error: %v", err)
-			_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("marshal error: %v", err), 500)
-			_ = ipc.WriteStreamClose(stream, 0)
-			return err
-		}
-		data = b
-	}
-
-	// Send result
-	logger.Debugf("[APIStream] Success %s/%s, data len=%d", handlerType, command, len(data))
-	_ = ipc.WriteResultFrame(stream, 0, &ipc.ResultFrame{
-		Status: "ok",
-		Data:   data,
-	})
-	_ = ipc.WriteStreamClose(stream, 0)
-
-	return nil
 }
