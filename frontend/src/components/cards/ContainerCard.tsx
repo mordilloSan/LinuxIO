@@ -2,6 +2,7 @@ import { Box, Grid, Tooltip, Typography, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState, useCallback } from "react";
+import { toast } from "sonner";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
 import LogsDialog from "../../pages/main/docker/LogsDialog";
@@ -62,31 +63,42 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const iconUrl = useMemo(() => getContainerIconUrl(name), [name]);
 
   // ---- actions (start/stop/restart/remove) ----
-  const [actionPending, setActionPending] = useState(false);
-
-  const handleAction = useCallback(
-    async (action: "start" | "stop" | "restart" | "remove") => {
+  const containerActionMutation = linuxio.useMutate<
+    unknown,
+    "start" | "stop" | "restart" | "remove"
+  >("docker", "start_container", {
+    mutationFn: async (action) => {
       const commandMap: Record<string, string> = {
         start: "start_container",
         stop: "stop_container",
         restart: "restart_container",
         remove: "remove_container",
       };
-      setActionPending(true);
-      try {
-        await linuxio.request("docker", commandMap[action], [container.Id]);
-        // refresh list + logs
-        queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "list_containers"],
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "get_container_logs", container.Id],
-        });
-      } finally {
-        setActionPending(false);
-      }
+      return linuxio.request("docker", commandMap[action], [container.Id]);
     },
-    [container.Id, queryClient],
+    onSuccess: (_, action) => {
+      const actionLabels: Record<string, string> = {
+        start: "started",
+        stop: "stopped",
+        restart: "restarted",
+        remove: "removed",
+      };
+      toast.success(`Container ${name} ${actionLabels[action]} successfully`);
+      // refresh list + logs
+      queryClient.invalidateQueries({
+        queryKey: ["stream", "docker", "list_containers"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["stream", "docker", "get_container_logs", container.Id],
+      });
+    },
+  });
+
+  const handleAction = useCallback(
+    (action: "start" | "stop" | "restart" | "remove") => {
+      containerActionMutation.mutate(action);
+    },
+    [containerActionMutation],
   );
 
   // ---- logs via stream API (fetch only when dialog is open) ----
@@ -273,7 +285,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
         {/* Metrics area: full width */}
         <Box sx={{ mt: 2, width: "100%" }}>
-          {actionPending ? (
+          {containerActionMutation.isPending ? (
             <ComponentLoader />
           ) : (
             <>
