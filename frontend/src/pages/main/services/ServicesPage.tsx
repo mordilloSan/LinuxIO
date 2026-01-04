@@ -1,6 +1,6 @@
 import { Box, Alert } from "@mui/material";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useCallback } from "react";
+import { toast } from "sonner";
 
 import ServiceLogsDrawer from "./ServiceLogsDrawer";
 import ServiceTable, { Service } from "./ServiceTable";
@@ -9,24 +9,26 @@ import { linuxio } from "@/api/linuxio";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const ServicesList: React.FC = () => {
-  const queryClient = useQueryClient();
   const [logsDrawerOpen, setLogsDrawerOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<string>("");
-  const [actionPending, setActionPending] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const {
     data,
     isPending: isLoading,
     isError,
     error,
+    refetch,
   } = linuxio.useCall<Service[]>("dbus", "ListServices", [], {
     refetchInterval: 2000,
   });
 
-  // Service action handler with dynamic command
-  const performServiceAction = useCallback(
-    async (serviceName: string, action: string) => {
+  // Service action mutation with dynamic command mapping
+  const serviceActionMutation = linuxio.useMutate<
+    unknown,
+    { serviceName: string; action: string }
+  >("dbus", "StartService", {
+    mutationFn: async (variables) => {
+      const { serviceName, action } = variables;
       const commandMap: Record<string, string> = {
         start: "StartService",
         stop: "StopService",
@@ -38,23 +40,24 @@ const ServicesList: React.FC = () => {
         unmask: "UnmaskService",
       };
       const command = commandMap[action];
-      if (!command) return;
-
-      setActionPending(true);
-      setActionError(null);
-      try {
-        await linuxio.request("dbus", command, [serviceName]);
-        queryClient.invalidateQueries({
-          queryKey: ["stream", "dbus", "ListServices"],
-        });
-      } catch (err: any) {
-        console.error("Service action failed:", err);
-        setActionError(err.message || "Action failed");
-      } finally {
-        setActionPending(false);
+      if (!command) {
+        throw new Error(`Unknown service action: ${action}`);
       }
+      return linuxio.request("dbus", command, [serviceName]);
     },
-    [queryClient],
+    onSuccess: (_, variables) => {
+      const { serviceName, action } = variables;
+      toast.success(`Service ${serviceName} ${action}ed successfully`);
+      refetch();
+    },
+  });
+
+  // Service action handler
+  const performServiceAction = useCallback(
+    (serviceName: string, action: string) => {
+      serviceActionMutation.mutate({ serviceName, action });
+    },
+    [serviceActionMutation],
   );
 
   const handleRestart = (service: Service) =>
@@ -77,15 +80,6 @@ const ServicesList: React.FC = () => {
           {error instanceof Error ? error.message : "Failed to load services"}
         </Alert>
       )}
-      {actionError && (
-        <Alert
-          severity="error"
-          sx={{ mb: 2 }}
-          onClose={() => setActionError(null)}
-        >
-          {actionError}
-        </Alert>
-      )}
       {data && (
         <ServiceTable
           serviceList={data}
@@ -93,7 +87,7 @@ const ServicesList: React.FC = () => {
           onStop={handleStop}
           onStart={handleStart}
           onViewLogs={handleViewLogs}
-          isLoading={actionPending}
+          isLoading={serviceActionMutation.isPending}
         />
       )}
       <ServiceLogsDrawer

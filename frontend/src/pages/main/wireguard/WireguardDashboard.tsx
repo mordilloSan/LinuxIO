@@ -1,5 +1,4 @@
 import { Grid, Typography, Box } from "@mui/material";
-import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
@@ -21,7 +20,6 @@ const WireGuardDashboard: React.FC = () => {
   );
   const selectedCardRef = useRef<HTMLDivElement>(null!);
   const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
-  const queryClient = useQueryClient();
 
   const {
     data: interfaceData,
@@ -36,6 +34,27 @@ const WireGuardDashboard: React.FC = () => {
     {
       refetchInterval: 10000,
     },
+  );
+
+  // Mutations
+  const removeInterfaceMutation = linuxio.useMutate<unknown, string>(
+    "wireguard",
+    "remove_interface",
+  );
+
+  const addPeerMutation = linuxio.useMutate<unknown, string>(
+    "wireguard",
+    "add_peer",
+  );
+
+  const upInterfaceMutation = linuxio.useMutate<unknown, string>(
+    "wireguard",
+    "up_interface",
+  );
+
+  const downInterfaceMutation = linuxio.useMutate<unknown, string>(
+    "wireguard",
+    "down_interface",
   );
 
   const WGinterfaces = Array.isArray(interfaceData) ? interfaceData : [];
@@ -70,63 +89,44 @@ const WireGuardDashboard: React.FC = () => {
     };
   }, [selectedInterface]);
 
-  const handleDelete = async (interfaceName: string) => {
-    try {
-      await linuxio.request("wireguard", "remove_interface", [interfaceName]);
-      toast.success(
-        `WireGuard interface '${interfaceName}' deleted`,
-        wireguardToastMeta,
-      );
-      refetch();
-      setSelectedInterface(null);
-    } catch (error) {
-      toast.error(
-        `Failed to delete interface '${interfaceName}'`,
-        wireguardToastMeta,
-      );
-      console.error("Failed to delete WireGuard interface:", error);
-    }
+  const handleDelete = (interfaceName: string) => {
+    removeInterfaceMutation.mutate(interfaceName, {
+      onSuccess: () => {
+        toast.success(
+          `WireGuard interface '${interfaceName}' deleted`,
+          wireguardToastMeta,
+        );
+        refetch();
+        setSelectedInterface(null);
+      },
+    });
   };
 
-  const handleAddPeer = async (interfaceName: string) => {
-    try {
-      await linuxio.request("wireguard", "add_peer", [interfaceName]);
-      toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
-      refetch();
-      queryClient.invalidateQueries({
-        queryKey: ["stream", "wireguard", "list_peers", interfaceName],
-      });
-    } catch (error) {
-      toast.error(
-        `Failed to add peer to '${interfaceName}'`,
-        wireguardToastMeta,
-      );
-      console.error("Failed to add peer:", error);
-    }
+  const handleAddPeer = (interfaceName: string) => {
+    addPeerMutation.mutate(interfaceName, {
+      onSuccess: () => {
+        toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
+        refetch();
+      },
+    });
   };
 
-  const handleToggleInterface = async (
+  const handleToggleInterface = (
     interfaceName: string,
     status: "up" | "down",
   ) => {
-    try {
-      if (status !== "up" && status !== "down") {
-        throw new Error('Action must be either "up" or "down".');
-      }
-      const command = status === "up" ? "up_interface" : "down_interface";
-      await linuxio.request("wireguard", command, [interfaceName]);
-      toast.success(
-        `WireGuard interface "${interfaceName}" turned ${status === "up" ? "on" : "off"}.`,
-        wireguardToastMeta,
-      );
-      refetch();
-    } catch (error: any) {
-      toast.error(
-        `Failed to turn ${status} WireGuard interface "${interfaceName}": ${error?.message || "Unknown error"}`,
-        wireguardToastMeta,
-      );
-      console.error(`Failed to ${status} WireGuard interface:`, error);
-    }
+    const mutation =
+      status === "up" ? upInterfaceMutation : downInterfaceMutation;
+
+    mutation.mutate(interfaceName, {
+      onSuccess: () => {
+        toast.success(
+          `WireGuard interface "${interfaceName}" turned ${status === "up" ? "on" : "off"}.`,
+          wireguardToastMeta,
+        );
+        refetch();
+      },
+    });
   };
 
   const handleSelectInterface = (iface: WireGuardInterface) => {
