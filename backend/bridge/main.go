@@ -81,7 +81,8 @@ func main() {
 	// Read bootstrap from stdin (auth daemon pipes this)
 	bootCfg = readBootstrap()
 	Sess = &session.Session{
-		SessionID: bootCfg.SessionID,
+		SessionID:  bootCfg.SessionID,
+		Privileged: bootCfg.Privileged,
 		User: session.User{
 			Username: bootCfg.Username,
 			UID:      bootCfg.UID,

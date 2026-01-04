@@ -45,7 +45,9 @@ const devModules = isDevMode
 if (isDevMode) {
   console.log(
     "🔍 Vite discovered modules:",
-    Object.keys(devModules).map((path) => path.replace("../../../modules/", "").replace("/src/index.tsx", "")),
+    Object.keys(devModules).map((path) =>
+      path.replace("../../../modules/", "").replace("/src/index.tsx", ""),
+    ),
   );
 }
 
