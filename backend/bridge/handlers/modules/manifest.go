@@ -99,3 +99,37 @@ type ModuleFrontendInfo struct {
 	Position     int    `json:"position"`
 	ComponentURL string `json:"componentUrl"`
 }
+
+// ModuleDetailsInfo extends ModuleFrontendInfo with management metadata
+type ModuleDetailsInfo struct {
+	ModuleFrontendInfo
+	Author      string          `json:"author"`
+	Homepage    string          `json:"homepage"`
+	License     string          `json:"license"`
+	Path        string          `json:"path"`
+	IsSystem    bool            `json:"isSystem"`    // true if in /etc/linuxio/modules/
+	IsSymlink   bool            `json:"isSymlink"`   // true if path is symlink
+	Handlers    []string        `json:"handlers"`    // List of registered handler names
+	Permissions []string        `json:"permissions"` // From manifest
+	Settings    []SettingConfig `json:"settings"`    // From manifest
+}
+
+// InstallResult represents the result of module installation
+type InstallResult struct {
+	Success    bool   `json:"success"`
+	ModuleName string `json:"moduleName"`
+	Message    string `json:"message"`
+}
+
+// UninstallResult represents the result of module uninstallation
+type UninstallResult struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// ValidationResult represents module validation outcome
+type ValidationResult struct {
+	Valid    bool            `json:"valid"`
+	Errors   []string        `json:"errors"`
+	Manifest *ModuleManifest `json:"manifest,omitempty"`
+}

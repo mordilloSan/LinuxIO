@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mordilloSan/go_logger/logger"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
+	"github.com/mordilloSan/go_logger/logger"
 	"gopkg.in/yaml.v3"
 )
 
@@ -98,8 +98,17 @@ func loadModulesFromDir(dir string) (map[string]*ModuleInfo, error) {
 		manifestPath := filepath.Join(modulePath, "module.yaml")
 
 		// Check if module.yaml exists
-		if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
-			logger.Debugf("  Skipping %s: module.yaml not found", entry.Name())
+		manifestInfo, statErr := os.Stat(manifestPath)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				logger.Debugf("  Skipping %s: module.yaml not found", entry.Name())
+				continue
+			}
+			logger.Debugf("  Skipping %s: module.yaml stat failed: %v", entry.Name(), statErr)
+			continue
+		}
+		if manifestInfo.IsDir() {
+			logger.Debugf("  Skipping %s: module.yaml is a directory", entry.Name())
 			continue
 		}
 
