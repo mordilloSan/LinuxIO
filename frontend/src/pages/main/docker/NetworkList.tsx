@@ -10,7 +10,7 @@ import {
   Paper,
 } from "@mui/material";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import CollapsibleTable from "@/components/tables/CollapsibleTable";
 import { CollapsibleColumn } from "@/types/collapsible";
 

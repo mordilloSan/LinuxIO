@@ -7,9 +7,10 @@ import {
   Collapse,
   CircularProgress,
 } from "@mui/material";
+import { useMutation } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { linuxio } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
@@ -37,9 +38,11 @@ const UpdateList: React.FC<Props> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Mutation for fetching changelog details
-  const changelogMutation = linuxio.useMutate<Update, string>(
-    "dbus",
-    "GetUpdateDetail",
+  const { mutate: fetchChangelogMutation } = useMutation<Update, Error, string>(
+    {
+      mutationFn: (packageId: string) =>
+        linuxio.call<Update>("dbus", "GetUpdateDetail", [packageId]),
+    },
   );
 
   const fetchChangelog = useCallback(
@@ -47,7 +50,7 @@ const UpdateList: React.FC<Props> = ({
       if (changelogs[packageId]) return; // Already loaded
 
       setLoadingChangelog(packageId);
-      changelogMutation.mutate(packageId, {
+      fetchChangelogMutation(packageId, {
         onSuccess: (detail) => {
           setChangelogs((prev) => ({
             ...prev,
@@ -64,7 +67,7 @@ const UpdateList: React.FC<Props> = ({
         },
       });
     },
-    [changelogs, changelogMutation],
+    [changelogs, fetchChangelogMutation],
   );
 
   const toggleExpanded = (index: number, packageId: string) => {

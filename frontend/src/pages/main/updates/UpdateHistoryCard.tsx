@@ -5,7 +5,7 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import React from "react";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import CollapsibleTable from "@/components/tables/CollapsibleTable";
 import { CollapsibleColumn } from "@/types/tables";
 

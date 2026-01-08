@@ -17,7 +17,7 @@ import {
 import React, { useState, useCallback } from "react";
 import { toast } from "sonner";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import type {
   ModuleInfo,

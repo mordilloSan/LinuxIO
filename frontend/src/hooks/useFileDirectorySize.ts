@@ -1,4 +1,4 @@
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,

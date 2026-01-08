@@ -2,7 +2,7 @@ import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Typography, Box } from "@mui/material";
 import React from "react";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import GeneralCard from "@/components/cards/GeneralCard";
 
 interface MotherboardInfo {

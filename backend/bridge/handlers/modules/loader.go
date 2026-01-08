@@ -285,3 +285,72 @@ func GetModule(name string) (*ModuleInfo, bool) {
 	module, ok := loadedModules[name]
 	return module, ok
 }
+
+// GetLoadedModulesForFrontend returns all loaded modules in frontend-friendly format
+func GetLoadedModulesForFrontend() ([]ModuleFrontendInfo, error) {
+	var modules []ModuleFrontendInfo
+	for _, module := range loadedModules {
+		info := ModuleFrontendInfo{
+			Name:         module.Manifest.Name,
+			Title:        module.Manifest.Title,
+			Description:  module.Manifest.Description,
+			Version:      module.Manifest.Version,
+			Route:        module.Manifest.UI.Route,
+			Icon:         module.Manifest.UI.Icon,
+			Position:     module.Manifest.UI.Sidebar.Position,
+			ComponentURL: fmt.Sprintf("/modules/%s/index.js", module.Manifest.Name),
+		}
+		modules = append(modules, info)
+	}
+	return modules, nil
+}
+
+// GetModuleDetailsInfo returns detailed info for a specific module
+func GetModuleDetailsInfo(name string) (*ModuleDetailsInfo, error) {
+	module, exists := GetModule(name)
+	if !exists {
+		return nil, fmt.Errorf("module '%s' not found", name)
+	}
+
+	// Collect handler names
+	var handlers []string
+	for handlerName := range module.Manifest.Handlers.Commands {
+		handlers = append(handlers, handlerName)
+	}
+	for handlerName := range module.Manifest.Handlers.Dbus {
+		handlers = append(handlers, handlerName)
+	}
+	for handlerName := range module.Manifest.Handlers.DbusStreams {
+		handlers = append(handlers, handlerName)
+	}
+
+	// Check if system module
+	isSystem := IsSystemModule(module.Path)
+
+	// Check if symlink
+	isSymlink, _ := IsSymlinkModule(module.Path)
+
+	details := &ModuleDetailsInfo{
+		ModuleFrontendInfo: ModuleFrontendInfo{
+			Name:         module.Manifest.Name,
+			Title:        module.Manifest.Title,
+			Description:  module.Manifest.Description,
+			Version:      module.Manifest.Version,
+			Route:        module.Manifest.UI.Route,
+			Icon:         module.Manifest.UI.Icon,
+			Position:     module.Manifest.UI.Sidebar.Position,
+			ComponentURL: fmt.Sprintf("/modules/%s/index.js", module.Manifest.Name),
+		},
+		Author:      module.Manifest.Author,
+		Homepage:    module.Manifest.Homepage,
+		License:     module.Manifest.License,
+		Path:        module.Path,
+		IsSystem:    isSystem,
+		IsSymlink:   isSymlink,
+		Handlers:    handlers,
+		Permissions: module.Manifest.Permissions,
+		Settings:    module.Manifest.Settings,
+	}
+
+	return details, nil
+}

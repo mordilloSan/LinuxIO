@@ -3,7 +3,7 @@ import React, { Suspense } from "react";
 
 import ContainerCard from "../../../components/cards/ContainerCard";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import { ContainerInfo } from "@/types/container";
 
 const ContainerList: React.FC = () => {

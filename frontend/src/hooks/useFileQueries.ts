@@ -8,7 +8,7 @@ import {
   FileResource,
   ResourceStatData,
 } from "@/types/filebrowser";
-import { linuxio, LinuxIOError } from "@/api/linuxio";
+import linuxio, { LinuxIOError } from "@/api/react-query";
 
 type useFileQueriesParams = {
   normalizedPath: string;
@@ -106,7 +106,7 @@ export const useFileQueries = ({
         await Promise.all(
           currentDetailTarget.map(async (path) => {
             // Args: [path]
-            const data = await linuxio.request<ApiResource>(
+            const data = await linuxio.call<ApiResource>(
               "filebrowser",
               "resource_get",
               [path],

@@ -5,7 +5,7 @@ import { Link } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 

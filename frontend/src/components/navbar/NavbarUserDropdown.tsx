@@ -11,11 +11,12 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
+import { useMutation } from "@tanstack/react-query";
 import LucidePower from "lucide-react/dist/esm/icons/power";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { linuxio } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
 import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
 
@@ -29,8 +30,12 @@ function NavbarUserDropdown() {
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
 
   // Mutations for power actions
-  const rebootMutation = linuxio.useMutate("dbus", "Reboot");
-  const poweroffMutation = linuxio.useMutate("dbus", "PowerOff");
+  const rebootMutation = useMutation({
+    mutationFn: () => linuxio.call("dbus", "Reboot"),
+  });
+  const poweroffMutation = useMutation({
+    mutationFn: () => linuxio.call("dbus", "PowerOff"),
+  });
 
   const toggleMenu = (event: React.SyntheticEvent<HTMLElement>) => {
     setAnchorMenu(event.currentTarget);

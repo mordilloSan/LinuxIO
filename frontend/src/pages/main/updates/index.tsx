@@ -6,7 +6,7 @@ import UpdateHistory from "./UpdateHistory";
 import UpdateSettings from "./UpdateSettings";
 import UpdateStatus from "./UpdateStatus";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import TabSelector from "@/components/tabbar/TabSelector";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 import { Update } from "@/types/update";

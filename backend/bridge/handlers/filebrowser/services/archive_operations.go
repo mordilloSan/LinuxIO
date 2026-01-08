@@ -111,6 +111,11 @@ func ComputeExtractSize(archivePath string) (int64, error) {
 // skipPath allows excluding the archive itself if it lives inside the source tree.
 // opts is optional - pass nil if callbacks are not needed.
 func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string, filenames ...string) error {
+	// Check for cancellation before creating file
+	if opts.IsCancelled() {
+		return ipc.ErrAborted
+	}
+
 	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
@@ -127,11 +132,19 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 	for _, fname := range filenames {
 		if opts.IsCancelled() {
 			zipWriter.Close()
+			file.Close()
+			fileOpen = false
+			os.Remove(tmpDirPath) // Clean up partial archive
 			return ipc.ErrAborted
 		}
 		if addErr := addFile(fname, nil, zipWriter, false, opts, skipPath); addErr != nil {
 			logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
-			zipWriter.Close() // Best-effort close on error
+			zipWriter.Close()
+			file.Close()
+			fileOpen = false
+			if addErr == ipc.ErrAborted {
+				os.Remove(tmpDirPath) // Clean up on abort
+			}
 			return addErr
 		}
 	}
@@ -155,6 +168,11 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 // skipPath allows excluding the archive itself if it lives inside the source tree.
 // opts is optional - pass nil if callbacks are not needed.
 func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string, filenames ...string) error {
+	// Check for cancellation before creating file
+	if opts.IsCancelled() {
+		return ipc.ErrAborted
+	}
+
 	file, err := os.OpenFile(tmpDirPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
@@ -173,12 +191,20 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 		if opts.IsCancelled() {
 			tarWriter.Close()
 			gzWriter.Close()
+			file.Close()
+			fileOpen = false
+			os.Remove(tmpDirPath) // Clean up partial archive
 			return ipc.ErrAborted
 		}
 		if addErr := addFile(fname, tarWriter, nil, false, opts, skipPath); addErr != nil {
 			logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
-			tarWriter.Close() // Best-effort close on error
+			tarWriter.Close()
 			gzWriter.Close()
+			file.Close()
+			fileOpen = false
+			if addErr == ipc.ErrAborted {
+				os.Remove(tmpDirPath) // Clean up on abort
+			}
 			return addErr
 		}
 	}

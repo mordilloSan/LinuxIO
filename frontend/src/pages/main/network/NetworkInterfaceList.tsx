@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo } from "react";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 

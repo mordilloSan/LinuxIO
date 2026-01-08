@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import ModuleCard from "./ModuleCard";
 import ModuleDetailsDrawer from "./ModuleDetailsDrawer";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import type { ModuleInfo } from "@/types/module";
 

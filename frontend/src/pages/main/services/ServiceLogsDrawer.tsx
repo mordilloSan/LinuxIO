@@ -2,7 +2,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import { Drawer, Box, IconButton, Typography, Alert } from "@mui/material";
 import React from "react";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface ServiceLogsDrawerProps {

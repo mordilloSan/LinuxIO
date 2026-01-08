@@ -1,7 +1,7 @@
 import { Box, useTheme, Typography } from "@mui/material";
 import React from "react";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import FileNotifications from "@/components/filebrowser/FileNotifications";
 
