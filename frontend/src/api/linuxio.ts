@@ -23,20 +23,7 @@ import {
   encodeString,
   decodeString,
 } from "./StreamMultiplexer";
-
-// ============================================================================
-// Error Class
-// ============================================================================
-
-export class LinuxIOError extends Error {
-  constructor(
-    message: string,
-    public code: number = 500,
-  ) {
-    super(message);
-    this.name = "LinuxIOError";
-  }
-}
+import { LinuxIOError } from "./linuxio-core";
 
 // ============================================================================
 // React Hook: useStreamMux
@@ -58,19 +45,48 @@ export function useStreamMux() {
   });
 
   useEffect(() => {
-    const mux = getStreamMux();
-    if (!mux) return;
+    let unsubscribe: (() => void) | null = null;
+    let checkInterval: ReturnType<typeof setInterval> | null = null;
 
-    // Update status immediately
-    setStatus(mux.status);
+    const setupListener = () => {
+      const mux = getStreamMux();
+      if (!mux) {
+        setStatus("closed");
+        return false;
+      }
 
-    // Subscribe to status changes
-    const unsubscribe = mux.addStatusListener((newStatus: MuxStatus) => {
-      setStatus(newStatus);
-    });
+      // Update status immediately
+      setStatus(mux.status);
+
+      // Subscribe to status changes
+      unsubscribe = mux.addStatusListener((newStatus: MuxStatus) => {
+        setStatus(newStatus);
+      });
+
+      return true;
+    };
+
+    // Try to set up listener immediately
+    if (!setupListener()) {
+      // If mux doesn't exist yet, poll for it (handles late initialization)
+      checkInterval = setInterval(() => {
+        if (setupListener()) {
+          // Successfully set up, stop polling
+          if (checkInterval) {
+            clearInterval(checkInterval);
+            checkInterval = null;
+          }
+        }
+      }, 100);
+    }
 
     return () => {
-      unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      if (checkInterval) {
+        clearInterval(checkInterval);
+      }
     };
   }, []);
 
@@ -185,7 +201,7 @@ export function getStatus(): "connecting" | "open" | "closed" | "error" | null {
 }
 
 // ============================================================================
-// Re-exports from StreamMultiplexer
+// Re-exports
 // ============================================================================
 
 export {
@@ -199,3 +215,4 @@ export {
   UPLOAD_WINDOW_SIZE,
 };
 export type { Stream, ProgressFrame, ResultFrame, MuxStatus, StreamType };
+export { LinuxIOError };
