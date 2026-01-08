@@ -8,28 +8,12 @@ import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
-interface CPUInfoResponse {
-  vendorId: string;
-  modelName: string;
-  family: string;
-  model: string;
-  mhz: number;
-  cores: number;
-  loadAverage: {
-    load1: number;
-    load5: number;
-    load15: number;
-  };
-  perCoreUsage: number[];
-  temperature: { [core: string]: number };
-}
-
 const Processor: React.FC = () => {
   const {
     data: CPUInfo,
     isPending,
     isError,
-  } = linuxio.useCall<CPUInfoResponse>("system", "get_cpu_info", [], {
+  } = linuxio.system.get_cpu_info.useQuery({
     refetchInterval: 2000,
   });
 

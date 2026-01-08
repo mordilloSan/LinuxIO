@@ -40,7 +40,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	dbus.RegisterHandlers()
 	terminal.RegisterHandlers(sess)
 	wireguard.RegisterHandlers()
-	modules.RegisterHandlers(sess, JsonHandlers, StreamHandlers)
+	modules.RegisterHandlers(sess, StreamHandlers)
 
 	// Register stream handlers for yamux streams (terminal, filebrowser, etc.)
 	generic.RegisterStreamHandlers(StreamHandlers, JsonHandlers)
@@ -49,5 +49,5 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	dbus.RegisterStreamHandlers(StreamHandlers)
 
 	// Load modules from YAML files - log errors but don't fail
-	_ = modules.LoadModules(JsonHandlers, StreamHandlers)
+	_ = modules.LoadModules(StreamHandlers)
 }

@@ -5,18 +5,10 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import React from "react";
 
+import type { UpdateHistoryRow } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 import CollapsibleTable from "@/components/tables/CollapsibleTable";
 import { CollapsibleColumn } from "@/types/tables";
-
-interface UpgradeItem {
-  package: string;
-}
-
-interface UpdateHistoryRow {
-  date: string;
-  upgrades: UpgradeItem[];
-}
 
 const columns: CollapsibleColumn[] = [{ field: "date", headerName: "Date" }];
 
@@ -29,12 +21,7 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 
 const UpdateHistoryCard: React.FC = () => {
-  const { data: rows = [] } = linuxio.useCall<UpdateHistoryRow[]>(
-    "dbus",
-    "GetUpdateHistory",
-    [],
-    {},
-  );
+  const { data: rows = [] } = linuxio.dbus.GetUpdateHistory.useQuery();
 
   const renderCollapseContent = (row: UpdateHistoryRow) => {
     const chunked = chunkArray(row.upgrades, 5);

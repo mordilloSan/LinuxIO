@@ -16,7 +16,6 @@ import React from "react";
 
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import type { ModuleDetailsInfo } from "@/types/module";
 
 interface ModuleDetailsDrawerProps {
   open: boolean;
@@ -33,14 +32,9 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
     data: module,
     isPending,
     isError,
-  } = linuxio.useCall<ModuleDetailsInfo>(
-    "modules",
-    "GetModuleDetails",
-    moduleName ? [moduleName] : [],
-    {
-      enabled: open && !!moduleName,
-    },
-  );
+  } = linuxio.modules.GetModuleDetails.useQuery(moduleName ?? "", {
+    enabled: open && !!moduleName,
+  });
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose}>

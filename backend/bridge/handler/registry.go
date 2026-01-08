@@ -72,6 +72,45 @@ func Get(handlerType, command string) (Handler, bool) {
 	return handler, ok
 }
 
+// Unregister removes a specific handler by type and command.
+// Returns true if the handler was found and removed, false otherwise.
+func Unregister(handlerType, command string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	commands, ok := registry[handlerType]
+	if !ok {
+		return false
+	}
+
+	if _, exists := commands[command]; !exists {
+		return false
+	}
+
+	delete(commands, command)
+
+	// Clean up empty handler type map
+	if len(commands) == 0 {
+		delete(registry, handlerType)
+	}
+
+	return true
+}
+
+// UnregisterAll removes all handlers for a given handler type.
+// Returns true if any handlers were removed, false if the type didn't exist.
+func UnregisterAll(handlerType string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if _, ok := registry[handlerType]; !ok {
+		return false
+	}
+
+	delete(registry, handlerType)
+	return true
+}
+
 // List returns all registered handler types and their commands.
 // Useful for debugging and introspection.
 //

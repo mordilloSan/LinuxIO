@@ -19,7 +19,7 @@ const ServicesList: React.FC = () => {
     isError,
     error,
     refetch,
-  } = linuxio.useCall<Service[]>("dbus", "ListServices", [], {
+  } = linuxio.dbus.ListServices.useQuery({
     refetchInterval: 2000,
   });
 

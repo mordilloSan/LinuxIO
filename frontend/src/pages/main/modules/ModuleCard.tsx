@@ -19,11 +19,7 @@ import { toast } from "sonner";
 
 import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
-import type {
-  ModuleInfo,
-  ModuleDetailsInfo,
-  UninstallResult,
-} from "@/types/module";
+import type { ModuleInfo } from "@/types/module";
 
 interface ModuleCardProps {
   module: ModuleInfo;
@@ -39,32 +35,23 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
   const [uninstallDialogOpen, setUninstallDialogOpen] = useState(false);
 
   // Fetch detailed info to check if it's a system module
-  const { data: moduleDetails } = linuxio.useCall<ModuleDetailsInfo>(
-    "modules",
-    "GetModuleDetails",
-    [module.name],
-    {
-      enabled: true,
-    },
+  const { data: moduleDetails } = linuxio.modules.GetModuleDetails.useQuery(
+    module.name,
   );
 
   // Uninstall mutation
-  const uninstallMutation = linuxio.useMutate<UninstallResult, string>(
-    "modules",
-    "UninstallModule",
-    {
-      onSuccess: (result) => {
-        toast.success(
-          result.message || `Module ${module.title} uninstalled successfully`,
-        );
-        setUninstallDialogOpen(false);
-        onModuleChange();
-      },
+  const uninstallMutation = linuxio.modules.UninstallModule.useMutation({
+    onSuccess: (result) => {
+      toast.success(
+        result.message || `Module ${module.title} uninstalled successfully`,
+      );
+      setUninstallDialogOpen(false);
+      onModuleChange();
     },
-  );
+  });
 
   const handleUninstall = useCallback(() => {
-    uninstallMutation.mutate(module.name);
+    uninstallMutation.mutate([module.name]);
   }, [module.name, uninstallMutation]);
 
   const isSystem = moduleDetails?.isSystem || false;

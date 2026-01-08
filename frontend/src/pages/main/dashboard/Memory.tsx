@@ -12,21 +12,12 @@ import { formatFileSize } from "@/utils/formaters";
 const calculatePercentage = (used: number, total: number) =>
   ((used / total) * 100).toFixed(2);
 
-interface MemoryInfoResponse {
-  system: {
-    total: number;
-    active: number;
-    swapTotal: number;
-    swapFree: number;
-  };
-}
-
 const MemoryUsage = () => {
   const {
     data: memoryData,
     isPending,
     isError,
-  } = linuxio.useCall<MemoryInfoResponse>("system", "get_memory_info", [], {
+  } = linuxio.system.get_memory_info.useQuery({
     refetchInterval: 2000,
   });
 

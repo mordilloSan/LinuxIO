@@ -101,15 +101,10 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   );
 
   // ---- logs via stream API (fetch only when dialog is open) ----
-  const logsQuery = linuxio.useCall<string>(
-    "docker",
-    "get_container_logs",
-    [container.Id],
-    {
-      enabled: logDialogOpen,
-      refetchInterval: logDialogOpen ? 4000 : false,
-    },
-  );
+  const logsQuery = linuxio.docker.get_container_logs.useQuery(container.Id, {
+    enabled: logDialogOpen,
+    refetchInterval: logDialogOpen ? 4000 : false,
+  });
 
   const handleLogsClick = () => setLogDialogOpen(true);
 

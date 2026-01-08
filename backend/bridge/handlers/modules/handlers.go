@@ -12,7 +12,6 @@ import (
 // RegisterHandlers registers module handlers with the new handler system
 func RegisterHandlers(
 	sess *session.Session,
-	jsonHandlers map[string]map[string]func([]string) (any, error),
 	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) {
 	// GetModules - public handler (no privilege required)
@@ -67,7 +66,7 @@ func RegisterHandlers(
 			targetName = args[1]
 		}
 		createSymlink := len(args) > 2 && args[2] == "true"
-		result, err := InstallModuleOperation(args[0], targetName, createSymlink, jsonHandlers, streamHandlers)
+		result, err := InstallModuleOperation(args[0], targetName, createSymlink, streamHandlers)
 		if err != nil {
 			return err
 		}
@@ -82,7 +81,7 @@ func RegisterHandlers(
 		if len(args) < 1 {
 			return handler.ErrInvalidArgs
 		}
-		result, err := UninstallModuleOperation(args[0], jsonHandlers, streamHandlers)
+		result, err := UninstallModuleOperation(args[0], streamHandlers)
 		if err != nil {
 			return err
 		}
