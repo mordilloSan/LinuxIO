@@ -27,12 +27,7 @@ import {
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
 import { useStreamMux } from "./linuxio";
-import type {
-  LinuxIOSchema,
-  HandlerName,
-  CommandName,
-  CommandResult,
-} from "./linuxio-types";
+import type { HandlerName, CommandName, CommandResult } from "./linuxio-types";
 
 // ============================================================================
 // String-based API (for dynamic handlers like modules)
@@ -230,28 +225,19 @@ function createHandlerNamespace<H extends HandlerName>(
   });
 }
 
-/**
- * Create the full typed API via Proxy
- */
-function createTypedAPI(): TypedAPI {
-  const cache = new Map<string, HandlerEndpoints<HandlerName>>();
-
-  return new Proxy({} as TypedAPI, {
-    get(_, handler: string) {
-      if (!cache.has(handler)) {
-        cache.set(handler, createHandlerNamespace(handler as HandlerName));
-      }
-      return cache.get(handler);
-    },
-  });
-}
-
-// Create the typed API instance
-const typedAPI = createTypedAPI();
-
 // ============================================================================
 // Export
 // ============================================================================
+
+// Static methods that exist on linuxio directly
+const staticMethods = {
+  useCall,
+  useMutate,
+  ...core,
+};
+
+// Handler namespace cache
+const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
 
 /**
  * LinuxIO API
@@ -270,15 +256,19 @@ const typedAPI = createTypedAPI();
  * const result = await linuxio.spawn("filebrowser", "compress", [...])
  *   .progress(p => setProgress(p.pct));
  */
-const linuxio = {
-  // Type-safe handler namespaces (system, docker, dbus, etc.)
-  ...typedAPI,
-  // String-based React Query hooks (for modules)
-  useCall,
-  useMutate,
-  // Core API (call, spawn, openStream)
-  ...core,
-};
+const linuxio = new Proxy(staticMethods as typeof staticMethods & TypedAPI, {
+  get(target, prop: string) {
+    // First check static methods
+    if (prop in target) {
+      return (target as Record<string, unknown>)[prop];
+    }
+    // Then return handler namespace (lazily created)
+    if (!handlerCache.has(prop)) {
+      handlerCache.set(prop, createHandlerNamespace(prop as HandlerName));
+    }
+    return handlerCache.get(prop);
+  },
+});
 
 export default linuxio;
 export { LinuxIOError };

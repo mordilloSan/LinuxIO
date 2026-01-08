@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
+import type { NetworkInterface } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 
 const wireguardToastMeta = {
@@ -13,8 +14,6 @@ const wireguardToastMeta = {
 const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
 const BASE_CIDR_SUFFIX = "0/24";
-
-import type { NetworkInterface } from "@/api/linuxio-types";
 
 const CreateInterfaceButton = () => {
   const [serverName, setServerName] = useState("");

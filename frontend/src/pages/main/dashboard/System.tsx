@@ -25,15 +25,6 @@ type SystemUpdatesResponse = {
   updates: Update[];
 };
 
-type ServiceStatus = {
-  running: boolean;
-  // ...any other fields
-};
-
-type DistroInfo = {
-  platform: string;
-};
-
 // --- Component ---
 const SystemHealth = () => {
   const theme = useTheme();
