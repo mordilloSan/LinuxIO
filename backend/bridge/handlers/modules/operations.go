@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
 )
@@ -30,7 +31,6 @@ func IsSymlinkModule(modulePath string) (bool, error) {
 // UninstallModuleOperation removes a module from the filesystem and registry
 func UninstallModuleOperation(
 	moduleName string,
-	jsonHandlers map[string]map[string]func([]string) (any, error),
 	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) (*UninstallResult, error) {
 	module, exists := GetModule(moduleName)
@@ -40,9 +40,9 @@ func UninstallModuleOperation(
 
 	logger.Infof("Uninstalling module: %s (path=%s)", moduleName, module.Path)
 
-	// Unregister from bridge handlers
+	// Unregister from new handler system
 	namespace := "module." + moduleName
-	delete(jsonHandlers, namespace)
+	handler.UnregisterAll(namespace)
 
 	// Remove stream handlers for this module
 	for streamType := range streamHandlers {
@@ -70,7 +70,6 @@ func UninstallModuleOperation(
 func InstallModuleOperation(
 	sourcePath, targetName string,
 	createSymlink bool,
-	jsonHandlers map[string]map[string]func([]string) (any, error),
 	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) (*InstallResult, error) {
 	// Validate source path exists
@@ -140,13 +139,11 @@ func InstallModuleOperation(
 		Enabled:  true,
 	}
 
-	// Register module handlers if registries provided
-	if jsonHandlers != nil {
-		if err := registerModule(module, jsonHandlers, streamHandlers); err != nil {
-			// Cleanup on failure
-			_ = os.RemoveAll(targetDir)
-			return nil, fmt.Errorf("failed to register module: %w", err)
-		}
+	// Register module handlers
+	if err := registerModule(module, streamHandlers); err != nil {
+		// Cleanup on failure
+		_ = os.RemoveAll(targetDir)
+		return nil, fmt.Errorf("failed to register module: %w", err)
 	}
 
 	loadedModules[targetName] = module

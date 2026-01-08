@@ -5,17 +5,10 @@ import linuxio from "@/api/react-query";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import FileNotifications from "@/components/filebrowser/FileNotifications";
 
-interface VersionResponse {
-  checked_at: string;
-  current_version: string;
-  latest_version: string;
-  update_available: boolean;
-}
-
 function Footer() {
   const theme = useTheme();
 
-  const { data } = linuxio.useCall<VersionResponse>("control", "version", [], {
+  const { data } = linuxio.control.version.useQuery({
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: false, // Don't retry on failure for footer
   });

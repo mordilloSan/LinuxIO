@@ -1,12 +1,14 @@
 package modules
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
@@ -17,7 +19,6 @@ var loadedModules = make(map[string]*ModuleInfo)
 
 // LoadModules discovers and loads all modules from system and user directories
 func LoadModules(
-	jsonHandlers map[string]map[string]func([]string) (any, error),
 	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) error {
 	// Load from system directory
@@ -59,7 +60,7 @@ func LoadModules(
 
 	// Register each module's handlers
 	for name, module := range allModules {
-		if err := registerModule(module, jsonHandlers, streamHandlers); err != nil {
+		if err := registerModule(module, streamHandlers); err != nil {
 			logger.Warnf("Failed to register module %s: %v", name, err)
 			continue
 		}
@@ -162,91 +163,94 @@ func parseManifest(path string) (*ModuleManifest, error) {
 // registerModule registers all handlers from a module
 func registerModule(
 	module *ModuleInfo,
-	jsonHandlers map[string]map[string]func([]string) (any, error),
 	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) error {
 	namespace := "module." + module.Manifest.Name
-	jsonHandlers[namespace] = make(map[string]func([]string) (any, error))
 
-	// Register shell command handlers
+	// Register shell command handlers with new handler system
 	for name, cmd := range module.Manifest.Handlers.Commands {
-		// Create handler function
-		jsonHandlers[namespace][name] = createCommandHandler(module.Manifest.Name, name, cmd)
+		cmdCopy := cmd // Capture for closure
+		handler.RegisterFunc(namespace, name, func(ctx context.Context, args []string, emit handler.Events) error {
+			result, err := executeCommand(cmdCopy, args)
+			if err != nil {
+				return err
+			}
+			return emit.Result(result)
+		})
+		logger.Debugf("Registered command handler: %s.%s", namespace, name)
 	}
 
-	// Register DBus handlers (immediate response -> JsonHandlers)
+	// Register DBus handlers with new handler system
 	for name, dbus := range module.Manifest.Handlers.Dbus {
-		// Create handler function
-		jsonHandlers[namespace][name] = createDbusHandler(module.Manifest.Name, name, dbus)
+		dbusCopy := dbus // Capture for closure
+		handler.RegisterFunc(namespace, name, func(ctx context.Context, args []string, emit handler.Events) error {
+			result, err := executeDbusCall(dbusCopy, args)
+			if err != nil {
+				return err
+			}
+			return emit.Result(result)
+		})
+		logger.Debugf("Registered D-Bus handler: %s.%s", namespace, name)
 	}
 
 	// Register DBus stream handlers (signal streaming -> StreamHandlers)
+	// These still use the old stream system since they need yamux streams
 	for name, dbusStream := range module.Manifest.Handlers.DbusStreams {
-		// Create stream handler function
-		// Stream type: "module.{moduleName}.{handlerName}"
 		streamType := namespace + "." + name
-		streamHandlers[streamType] = createDbusStreamHandler(module.Manifest.Name, name, dbusStream)
-
+		streamHandlers[streamType] = createDbusStreamHandler(dbusStream)
 		logger.Debugf("Registered D-Bus stream handler: %s", streamType)
 	}
 
 	return nil
 }
 
-// createCommandHandler creates a handler function for a shell command
-func createCommandHandler(moduleName, commandName string, cmdDef CommandHandler) func([]string) (any, error) {
-	return func(args []string) (any, error) {
-		// Template substitution
-		command := cmdDef.Command
+// executeCommand executes a shell command from module definition
+func executeCommand(cmdDef CommandHandler, args []string) (any, error) {
+	command := cmdDef.Command
 
-		// Support both numeric {{.arg0}} and named {{.argName}} placeholders
-		for i, argValue := range args {
-			// Numeric placeholders: {{.arg0}}, {{.arg1}}, etc.
-			placeholderN := fmt.Sprintf("{{.arg%d}}", i)
-			command = strings.ReplaceAll(command, placeholderN, argValue)
+	// Support both numeric {{.arg0}} and named {{.argName}} placeholders
+	for i, argValue := range args {
+		// Numeric placeholders: {{.arg0}}, {{.arg1}}, etc.
+		placeholderN := fmt.Sprintf("{{.arg%d}}", i)
+		command = strings.ReplaceAll(command, placeholderN, argValue)
 
-			// Named placeholders: {{.path}}, {{.host}}, etc.
-			if i < len(cmdDef.Args) {
-				argName := cmdDef.Args[i].Name
-				placeholderNamed := fmt.Sprintf("{{.%s}}", argName)
-				command = strings.ReplaceAll(command, placeholderNamed, argValue)
-			}
+		// Named placeholders: {{.path}}, {{.host}}, etc.
+		if i < len(cmdDef.Args) {
+			argName := cmdDef.Args[i].Name
+			placeholderNamed := fmt.Sprintf("{{.%s}}", argName)
+			command = strings.ReplaceAll(command, placeholderNamed, argValue)
 		}
-
-		// Execute using generic command handler
-		timeout := fmt.Sprintf("%d", cmdDef.Timeout)
-		if cmdDef.Timeout == 0 {
-			timeout = "10" // Default timeout
-		}
-		return generic.ExecCommandDirect(command, timeout)
 	}
+
+	// Execute using generic command handler
+	timeout := fmt.Sprintf("%d", cmdDef.Timeout)
+	if cmdDef.Timeout == 0 {
+		timeout = "10" // Default timeout
+	}
+	return generic.ExecCommandDirect(command, timeout)
 }
 
-// createDbusHandler creates a handler function for a DBus call
-func createDbusHandler(moduleName, commandName string, dbusDef DbusHandler) func([]string) (any, error) {
-	return func(args []string) (any, error) {
-		// Build DBus call arguments
-		dbusArgs := []string{
-			dbusDef.Bus,
-			dbusDef.Destination,
-			dbusDef.Path,
-			dbusDef.Interface,
-			dbusDef.Method,
-		}
-
-		// Add predefined args from manifest
-		dbusArgs = append(dbusArgs, dbusDef.Args...)
-
-		// Add runtime args
-		dbusArgs = append(dbusArgs, args...)
-
-		// Execute using generic DBus handler
-		return generic.CallDbusMethodDirect(dbusArgs)
+// executeDbusCall executes a D-Bus method call from module definition
+func executeDbusCall(dbusDef DbusHandler, args []string) (any, error) {
+	dbusArgs := []string{
+		dbusDef.Bus,
+		dbusDef.Destination,
+		dbusDef.Path,
+		dbusDef.Interface,
+		dbusDef.Method,
 	}
+
+	// Add predefined args from manifest
+	dbusArgs = append(dbusArgs, dbusDef.Args...)
+
+	// Add runtime args
+	dbusArgs = append(dbusArgs, args...)
+
+	return generic.CallDbusMethodDirect(dbusArgs)
 }
 
 // createDbusStreamHandler creates a stream handler for a DBus operation with signals
-func createDbusStreamHandler(moduleName, commandName string, dbusStreamDef DbusStreamHandler) func(*session.Session, net.Conn, []string) error {
+func createDbusStreamHandler(dbusStreamDef DbusStreamHandler) func(*session.Session, net.Conn, []string) error {
 	return func(sess *session.Session, conn net.Conn, args []string) error {
 		// Build DBus stream arguments
 		// Format: [bus, destination, path, interface, method, signal1, signal2, ..., "--", methodArg1, methodArg2, ...]

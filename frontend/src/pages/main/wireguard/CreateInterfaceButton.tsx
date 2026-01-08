@@ -14,12 +14,7 @@ const BASE_CIDR_PREFIX = "10.10."; // Only works for /24
 const BASE_CIDR_START = 20;
 const BASE_CIDR_SUFFIX = "0/24";
 
-interface NetworkInterface {
-  name: string;
-  type: string;
-  mac?: string;
-  ipv4?: string | null;
-}
+import type { NetworkInterface } from "@/api/linuxio-types";
 
 const CreateInterfaceButton = () => {
   const [serverName, setServerName] = useState("");
@@ -36,18 +31,14 @@ const CreateInterfaceButton = () => {
     data: networkData,
     isPending: networkLoading,
     error: networkError,
-  } = linuxio.useCall<NetworkInterface[]>("dbus", "GetNetworkInfo", [], {});
+  } = linuxio.dbus.GetNetworkInfo.useQuery();
 
   // Fetch existing WireGuard interfaces via stream API
-  const { data: wgInterfaces, refetch: refetchInterfaces } = linuxio.useCall<
-    any[]
-  >("wireguard", "list_interfaces", [], {});
+  const { data: wgInterfaces, refetch: refetchInterfaces } =
+    linuxio.wireguard.list_interfaces.useQuery();
 
   // Mutation for adding interface
-  const addInterfaceMutation = linuxio.useMutate<unknown, string[]>(
-    "wireguard",
-    "add_interface",
-  );
+  const addInterfaceMutation = linuxio.wireguard.add_interface.useMutation();
 
   // Memoize WireGuard interfaces array
   const wgArray = useMemo(

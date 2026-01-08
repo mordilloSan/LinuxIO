@@ -43,12 +43,7 @@ const SystemHealth = () => {
     data: updatesRaw,
     isPending: loadingHealth,
     isFetching: fetchingHealth,
-  } = linuxio.useCall<Update[] | SystemUpdatesResponse>(
-    "system",
-    "get_updates_fast",
-    [],
-    { refetchInterval: 50000 },
-  );
+  } = linuxio.system.get_updates_fast.useQuery({ refetchInterval: 50000 });
 
   // Normalize updates response
   const systemHealth: SystemUpdatesResponse | undefined = updatesRaw
@@ -58,20 +53,14 @@ const SystemHealth = () => {
     : undefined;
 
   // Services
-  const { data: servicesRaw } = linuxio.useCall<ServiceStatus[]>(
-    "system",
-    "get_processes",
-    [],
-    { refetchInterval: 50000 },
-  );
+  const { data: servicesRaw } = linuxio.system.get_processes.useQuery({
+    refetchInterval: 50000,
+  });
 
   // Distro Info
-  const { data: distroInfo } = linuxio.useCall<DistroInfo>(
-    "system",
-    "get_host_info",
-    [],
-    { refetchInterval: 50000 },
-  );
+  const { data: distroInfo } = linuxio.system.get_host_info.useQuery({
+    refetchInterval: 50000,
+  });
 
   // --- Data extraction ---
   const services = Array.isArray(servicesRaw) ? servicesRaw : [];

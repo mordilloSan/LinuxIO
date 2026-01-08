@@ -14,29 +14,17 @@ import {
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import type {
+  AutoUpdateOptions,
+  AutoUpdateState,
+  AutoUpdateFrequency,
+  AutoUpdateScope,
+  AutoUpdateRebootPolicy,
+} from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
-type Frequency = "hourly" | "daily" | "weekly";
-type Scope = "security" | "updates" | "all";
-type RebootPolicy = "never" | "if_needed" | "always" | "schedule";
-
 const updatesToastMeta = { meta: { href: "/updates", label: "Open updates" } };
-
-interface AutoUpdateOptions {
-  enabled: boolean;
-  frequency: Frequency;
-  scope: Scope;
-  download_only: boolean;
-  reboot_policy: RebootPolicy;
-  exclude_packages: string[];
-}
-
-interface AutoUpdateState {
-  backend: string;
-  options: AutoUpdateOptions;
-  notes?: string[];
-}
 
 const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   ...s,
@@ -52,9 +40,9 @@ const UpdateSettings: React.FC = () => {
   // -------- Load auto update settings --------
   const {
     data: rawServerState,
-    isLoading: loading,
+    isPending: loading,
     refetch,
-  } = linuxio.useCall<AutoUpdateState>("dbus", "GetAutoUpdates");
+  } = linuxio.dbus.GetAutoUpdates.useQuery();
 
   const serverState = useMemo(
     () => (rawServerState ? normalizeState(rawServerState) : null),
@@ -83,6 +71,7 @@ const UpdateSettings: React.FC = () => {
   }, [serverState, excludeInputOverride]);
 
   // -------- Mutations --------
+  // Use string-based API for complex object payloads
   const setAutoUpdatesMutation = linuxio.useMutate<
     AutoUpdateState,
     AutoUpdateOptions
@@ -212,10 +201,10 @@ const UpdateSettings: React.FC = () => {
           <Select
             size="small"
             value={currentOptions.frequency}
-            onChange={(e: SelectChangeEvent<Frequency>) =>
+            onChange={(e: SelectChangeEvent<AutoUpdateFrequency>) =>
               setDraftOverrides({
                 ...(draftOverrides ?? {}),
-                frequency: e.target.value as Frequency,
+                frequency: e.target.value as AutoUpdateFrequency,
               })
             }
             disabled={saving}
@@ -233,10 +222,10 @@ const UpdateSettings: React.FC = () => {
           <Select
             size="small"
             value={currentOptions.scope}
-            onChange={(e: SelectChangeEvent<Scope>) =>
+            onChange={(e: SelectChangeEvent<AutoUpdateScope>) =>
               setDraftOverrides({
                 ...(draftOverrides ?? {}),
-                scope: e.target.value as Scope,
+                scope: e.target.value as AutoUpdateScope,
               })
             }
             disabled={saving}
@@ -254,10 +243,10 @@ const UpdateSettings: React.FC = () => {
           <Select
             size="small"
             value={currentOptions.reboot_policy}
-            onChange={(e: SelectChangeEvent<RebootPolicy>) =>
+            onChange={(e: SelectChangeEvent<AutoUpdateRebootPolicy>) =>
               setDraftOverrides({
                 ...(draftOverrides ?? {}),
-                reboot_policy: e.target.value as RebootPolicy,
+                reboot_policy: e.target.value as AutoUpdateRebootPolicy,
               })
             }
             disabled={saving}

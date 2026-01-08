@@ -119,17 +119,15 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     },
   );
 
-  // Mutations
+  // Mutations (using string-based API for complex response types)
   const deletePeerMutation = linuxio.useMutate<unknown, string[]>(
     "wireguard",
     "remove_peer",
   );
-
   const downloadConfigMutation = linuxio.useMutate<
-    { config: string },
+    { content: string },
     string[]
   >("wireguard", "peer_config_download");
-
   const qrCodeMutation = linuxio.useMutate<{ qrcode: string }, string[]>(
     "wireguard",
     "peer_qrcode",
@@ -171,7 +169,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     downloadConfigMutation.mutate([interfaceName, peername], {
       onSuccess: (result) => {
         // Create blob from config text
-        const blob = new Blob([result.config], { type: "text/plain" });
+        const blob = new Blob([result.content], { type: "text/plain" });
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;

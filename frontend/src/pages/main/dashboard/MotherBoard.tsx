@@ -5,27 +5,11 @@ import React from "react";
 import linuxio from "@/api/react-query";
 import GeneralCard from "@/components/cards/GeneralCard";
 
-interface MotherboardInfo {
-  baseboard: {
-    manufacturer: string;
-    model: string;
-  };
-  bios: {
-    vendor: string;
-    version: string;
-  };
-  temperatures?: {
-    socket: number[];
-  };
-}
-
 const MotherBoardInfo: React.FC = () => {
-  const { data: motherboardInfo } = linuxio.useCall<MotherboardInfo>(
-    "system",
-    "get_motherboard_info",
-    [],
-    { refetchInterval: 50000 },
-  );
+  const { data: motherboardInfo } =
+    linuxio.system.get_motherboard_info.useQuery({
+      refetchInterval: 50000,
+    });
 
   const visibleDetails = motherboardInfo ? (
     <Box sx={{ display: "flex", gap: 1, flexDirection: "column" }}>

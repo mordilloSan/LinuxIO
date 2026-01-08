@@ -10,12 +10,9 @@ import { FilesystemInfo } from "@/types/fs";
 import { formatFileSize } from "@/utils/formaters";
 
 const FsInfoCard: React.FC = () => {
-  const { data: fsInfo, isPending } = linuxio.useCall<FilesystemInfo[]>(
-    "system",
-    "get_fs_info",
-    [],
-    { refetchInterval: 2000 },
-  );
+  const { data: fsInfo, isPending } = linuxio.system.get_fs_info.useQuery({
+    refetchInterval: 2000,
+  });
   const theme = useTheme();
   const isRelevantMount = (fs: FilesystemInfo): boolean => {
     const mount = fs.mountpoint;

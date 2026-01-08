@@ -27,35 +27,16 @@ const WireGuardDashboard: React.FC = () => {
     isError,
     error,
     refetch,
-  } = linuxio.useCall<WireGuardInterface[]>(
-    "wireguard",
-    "list_interfaces",
-    [],
-    {
-      refetchInterval: 10000,
-    },
-  );
+  } = linuxio.wireguard.list_interfaces.useQuery({
+    refetchInterval: 10000,
+  });
 
   // Mutations
-  const removeInterfaceMutation = linuxio.useMutate<unknown, string>(
-    "wireguard",
-    "remove_interface",
-  );
-
-  const addPeerMutation = linuxio.useMutate<unknown, string>(
-    "wireguard",
-    "add_peer",
-  );
-
-  const upInterfaceMutation = linuxio.useMutate<unknown, string>(
-    "wireguard",
-    "up_interface",
-  );
-
-  const downInterfaceMutation = linuxio.useMutate<unknown, string>(
-    "wireguard",
-    "down_interface",
-  );
+  const removeInterfaceMutation =
+    linuxio.wireguard.remove_interface.useMutation();
+  const addPeerMutation = linuxio.wireguard.add_peer.useMutation();
+  const upInterfaceMutation = linuxio.wireguard.up_interface.useMutation();
+  const downInterfaceMutation = linuxio.wireguard.down_interface.useMutation();
 
   const WGinterfaces = Array.isArray(interfaceData) ? interfaceData : [];
 
@@ -90,7 +71,7 @@ const WireGuardDashboard: React.FC = () => {
   }, [selectedInterface]);
 
   const handleDelete = (interfaceName: string) => {
-    removeInterfaceMutation.mutate(interfaceName, {
+    removeInterfaceMutation.mutate([interfaceName], {
       onSuccess: () => {
         toast.success(
           `WireGuard interface '${interfaceName}' deleted`,
@@ -103,7 +84,7 @@ const WireGuardDashboard: React.FC = () => {
   };
 
   const handleAddPeer = (interfaceName: string) => {
-    addPeerMutation.mutate(interfaceName, {
+    addPeerMutation.mutate([interfaceName], {
       onSuccess: () => {
         toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
         refetch();
@@ -118,7 +99,7 @@ const WireGuardDashboard: React.FC = () => {
     const mutation =
       status === "up" ? upInterfaceMutation : downInterfaceMutation;
 
-    mutation.mutate(interfaceName, {
+    mutation.mutate([interfaceName], {
       onSuccess: () => {
         toast.success(
           `WireGuard interface "${interfaceName}" turned ${status === "up" ? "on" : "off"}.`,

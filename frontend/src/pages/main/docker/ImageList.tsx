@@ -112,12 +112,8 @@ function renderCollapseContent(row: any) {
 }
 
 export default function ImageList() {
-  const { data = [], isPending: isLoading } = linuxio.useCall<any[]>(
-    "docker",
-    "list_images",
-    [],
-    {},
-  );
+  const { data = [], isPending: isLoading } =
+    linuxio.docker.list_images.useQuery();
 
   const rows = formatImageRows(data);
   const [selected, setSelected] = useState<Set<string>>(new Set());

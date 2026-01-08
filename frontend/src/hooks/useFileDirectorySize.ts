@@ -9,11 +9,6 @@ import {
   useIndexerAvailability,
 } from "./useFileDirectorySizeBase";
 
-interface DirectorySizeData {
-  path: string;
-  size: number;
-}
-
 interface UseDirectorySizeResult {
   size: number | null;
   isLoading: boolean;
@@ -43,10 +38,8 @@ export const useFileDirectorySize = (
     indexerDisabled,
   );
 
-  const { data, isLoading, error } = linuxio.useCall<DirectorySizeData>(
-    "filebrowser",
-    "dir_size",
-    [path],
+  const { data, isLoading, error } = linuxio.filebrowser.dir_size.useQuery(
+    path,
     {
       enabled: queryEnabled,
       ...getDirectorySizeQueryOptions(),
