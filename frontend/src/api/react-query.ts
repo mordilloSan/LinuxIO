@@ -26,7 +26,13 @@ import {
 
 import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
-import { useStreamMux } from "./linuxio";
+import {
+  useStreamMux,
+  initStreamMux,
+  closeStreamMux,
+  waitForStreamMux,
+  getStreamMux,
+} from "./linuxio";
 import type { HandlerName, CommandName, CommandResult } from "./linuxio-types";
 
 // ============================================================================
@@ -93,6 +99,15 @@ export function useMutate<TData = unknown, TVariables = void>(
   });
 }
 
+/**
+ * Convert mutation variables to string array arguments.
+ *
+ * WARNING: When passing objects, argument order depends on property insertion order.
+ * For positional arguments, prefer passing an array: mutate(["arg1", "arg2", "arg3"])
+ *
+ * @param variables - Mutation variables (array, object, primitive, or void)
+ * @returns Array of string arguments
+ */
 function variablesToArgs(variables: unknown): string[] {
   if (variables === undefined || variables === null) {
     return [];
@@ -101,6 +116,8 @@ function variablesToArgs(variables: unknown): string[] {
     return variables.map(String);
   }
   if (typeof variables === "object") {
+    // WARNING: Object.values() order is insertion order (not guaranteed in all JS engines)
+    // For positional arguments, use arrays instead: mutate(["arg1", "arg2"])
     return Object.values(variables as Record<string, unknown>).map(String);
   }
   return [String(variables)];
@@ -119,10 +136,17 @@ type QueryOptions<TResult> = Omit<
 >;
 
 /**
- * Mutation options type
+ * Query config with explicit args for complex types
+ */
+type QueryConfig<TResult> = {
+  args?: unknown[];
+} & QueryOptions<TResult>;
+
+/**
+ * Mutation options type - accepts unknown[] to support complex types
  */
 type MutationOptions<TResult> = Omit<
-  UseMutationOptions<TResult, LinuxIOError, string[]>,
+  UseMutationOptions<TResult, LinuxIOError, unknown[]>,
   "mutationFn"
 >;
 
@@ -132,20 +156,43 @@ type MutationOptions<TResult> = Omit<
 interface CommandEndpoint<TResult> {
   /**
    * React Query hook for fetching data
-   * @param args - Command arguments (optional)
-   * @param options - React Query options (optional)
+   *
+   * @example
+   * // No arguments
+   * useQuery()
+   *
+   * @example
+   * // String arguments
+   * useQuery("arg1", "arg2")
+   *
+   * @example
+   * // String arguments with options
+   * useQuery("arg1", { staleTime: 60000 })
+   *
+   * @example
+   * // Complex arguments (objects, arrays) with explicit args
+   * useQuery({ args: ["arg1", { complex: "object" }], staleTime: 60000 })
    */
   useQuery: (
-    ...params: Array<string | QueryOptions<TResult>>
+    ...params: Array<string | QueryOptions<TResult> | QueryConfig<TResult>>
   ) => ReturnType<typeof useQuery<TResult, LinuxIOError>>;
 
   /**
    * React Query hook for mutations
-   * @param options - React Query mutation options (optional)
+   *
+   * @example
+   * // Mutate with string args
+   * const { mutate } = useMutation();
+   * mutate(["arg1", "arg2"]);
+   *
+   * @example
+   * // Mutate with complex args (objects, arrays)
+   * const { mutate } = useMutation();
+   * mutate(["arg1", { complex: "object" }]);
    */
   useMutation: (
     options?: MutationOptions<TResult>,
-  ) => ReturnType<typeof useMutation<TResult, LinuxIOError, string[]>>;
+  ) => ReturnType<typeof useMutation<TResult, LinuxIOError, unknown[]>>;
 }
 
 /**
@@ -156,33 +203,70 @@ function createEndpoint<TResult>(
   command: string,
 ): CommandEndpoint<TResult> {
   return {
-    useQuery(...params: Array<string | QueryOptions<TResult>>) {
+    useQuery(
+      ...params: Array<string | QueryOptions<TResult> | QueryConfig<TResult>>
+    ) {
       const { isOpen } = useStreamMux();
 
-      // Separate args from options
-      let args: string[] = [];
+      let args: unknown[] = [];
       let options: QueryOptions<TResult> | undefined;
 
-      for (const param of params) {
-        if (typeof param === "string") {
-          args.push(param);
-        } else if (param && typeof param === "object") {
-          options = param as QueryOptions<TResult>;
+      // Check if first param is a config object with explicit args
+      if (
+        params.length === 1 &&
+        params[0] &&
+        typeof params[0] === "object" &&
+        "args" in params[0]
+      ) {
+        const config = params[0] as QueryConfig<TResult>;
+        args = config.args ?? [];
+        options = config;
+      } else {
+        // Legacy mode: separate string args from options
+        for (const param of params) {
+          if (typeof param === "string") {
+            args.push(param);
+          } else if (param && typeof param === "object") {
+            options = param as QueryOptions<TResult>;
+          }
         }
       }
 
+      // Serialize args to strings (JSON for complex types)
+      const serializedArgs = args.map((arg) => {
+        if (typeof arg === "string") {
+          return arg;
+        }
+        if (typeof arg === "object" || Array.isArray(arg)) {
+          return JSON.stringify(arg);
+        }
+        return String(arg);
+      });
+
       return useQuery<TResult, LinuxIOError>({
-        queryKey: ["linuxio", handler, command, ...args],
-        queryFn: () => core.call<TResult>(handler, command, args),
+        queryKey: ["linuxio", handler, command, ...serializedArgs],
+        queryFn: () =>
+          core.call<TResult>(handler, command, serializedArgs as string[]),
         enabled: isOpen && (options?.enabled ?? true),
         ...options,
       });
     },
 
     useMutation(options?: MutationOptions<TResult>) {
-      return useMutation<TResult, LinuxIOError, string[]>({
-        mutationFn: (args: string[]) =>
-          core.call<TResult>(handler, command, args),
+      return useMutation<TResult, LinuxIOError, unknown[]>({
+        mutationFn: (args: unknown[]) => {
+          // Serialize args to strings (JSON for complex types)
+          const serializedArgs = (args ?? []).map((arg) => {
+            if (typeof arg === "string") {
+              return arg;
+            }
+            if (typeof arg === "object" || Array.isArray(arg)) {
+              return JSON.stringify(arg);
+            }
+            return String(arg);
+          });
+          return core.call<TResult>(handler, command, serializedArgs);
+        },
         ...options,
       });
     },
@@ -272,6 +356,9 @@ const linuxio = new Proxy(staticMethods as typeof staticMethods & TypedAPI, {
 
 export default linuxio;
 export { LinuxIOError };
+
+// Re-export mux lifecycle functions for convenience
+export { initStreamMux, closeStreamMux, waitForStreamMux, getStreamMux };
 
 // Re-export types for convenience
 export type {

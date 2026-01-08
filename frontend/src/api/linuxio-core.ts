@@ -66,23 +66,39 @@ export async function call<T = unknown>(
   const stream = mux.openStream("bridge", payload);
 
   return new Promise<T>((resolve, reject) => {
+    let settled = false;
     const timer = setTimeout(() => {
-      stream.close();
-      reject(new LinuxIOError("Request timeout", "timeout"));
+      if (!settled) {
+        settled = true;
+        stream.close();
+        reject(new LinuxIOError("Request timeout", "timeout"));
+      }
     }, timeoutMs);
 
     stream.onResult = (result: ResultFrame) => {
-      clearTimeout(timer);
-      if (result.status === "ok") {
-        resolve(result.data as T);
-      } else {
-        reject(new LinuxIOError(result.error || "Unknown error", result.code));
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        if (result.status === "ok") {
+          resolve(result.data as T);
+        } else {
+          reject(new LinuxIOError(result.error || "Unknown error", result.code));
+        }
       }
     };
 
-    // Handle errors (though onResult should catch most)
+    // If stream closes without a result, reject the promise
     stream.onClose = () => {
-      clearTimeout(timer);
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        reject(
+          new LinuxIOError(
+            "Connection closed before receiving result",
+            "connection_closed",
+          ),
+        );
+      }
     };
   });
 }
@@ -119,15 +135,26 @@ export function spawn(
  * Opens a bidirectional stream for manual control
  * Use for terminal, docker attach, or custom protocols
  *
+ * @param handler - Handler name (e.g., "terminal", "docker")
+ * @param command - Command name (e.g., "bash", "container_exec")
+ * @param args - Command arguments
+ * @param streamType - Stream type for persistence/reuse (default: "bridge")
+ *
  * @example
- * const stream = openStream("terminal", "bash", ["120", "32"]);
+ * // Terminal stream (reusable via "terminal" type)
+ * const stream = openStream("terminal", "bash", ["120", "32"], "terminal");
  * stream.onData = (data) => xterm.write(decodeString(data));
  * stream.write(encodeString("ls -la\n"));
+ *
+ * @example
+ * // One-off stream (bridge type)
+ * const stream = openStream("docker", "container_exec", ["abc123", "sh", "80", "24"]);
  */
 export function openStream(
   handler: string,
   command: string,
   args: string[] = [],
+  streamType: string = "bridge",
 ): Stream {
   const mux = getStreamMux();
   if (!mux) {
@@ -137,7 +164,7 @@ export function openStream(
   const parts = ["bridge", handler, command, ...args];
   const payload = encodeString(parts.join("\0"));
 
-  return mux.openStream("bridge", payload);
+  return mux.openStream(streamType, payload);
 }
 
 /**
@@ -161,13 +188,43 @@ export class SpawnedProcess implements Promise<any> {
       this.rejectPromise = reject;
     });
 
+    let settled = false;
+    const timeoutMs = options?.timeout ?? 300000; // Default 5 minutes for long operations
+
+    // Apply timeout if specified
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        this._stream.close();
+        this.rejectPromise(new LinuxIOError("Operation timeout", "timeout"));
+      }
+    }, timeoutMs);
+
     // Wire up stream events
     this._stream.onResult = (result: ResultFrame) => {
-      if (result.status === "ok") {
-        this.resolvePromise(result.data);
-      } else {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        if (result.status === "ok") {
+          this.resolvePromise(result.data);
+        } else {
+          this.rejectPromise(
+            new LinuxIOError(result.error || "Unknown error", result.code),
+          );
+        }
+      }
+    };
+
+    // If stream closes without a result, reject the promise
+    this._stream.onClose = () => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
         this.rejectPromise(
-          new LinuxIOError(result.error || "Unknown error", result.code),
+          new LinuxIOError(
+            "Connection closed before operation completed",
+            "connection_closed",
+          ),
         );
       }
     };

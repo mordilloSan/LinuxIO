@@ -10,7 +10,8 @@ The LinuxIO frontend API provides a clean, type-safe interface for communicating
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │                  react-query.ts                            │ │
-│  │  React Query integration: useCall(), useMutate()           │ │
+│  │  Type-safe API + React Query integration                  │ │
+│  │  linuxio.handler.command.useQuery()                        │ │
 │  └──────────────────────────┬─────────────────────────────────┘ │
 │                             │                                    │
 │  ┌──────────────────────────▼─────────────────────────────────┐ │
@@ -43,121 +44,155 @@ The LinuxIO frontend API provides a clean, type-safe interface for communicating
 
 | Module | Purpose | Import |
 |--------|---------|--------|
-| `react-query.ts` | React Query hooks for data fetching | `@/api/react-query` |
+| `react-query.ts` | Type-safe API + React Query hooks | `@/api/react-query` |
 | `linuxio-core.ts` | Framework-agnostic core API | `@/api/linuxio-core` |
 | `linuxio.ts` | Shared utilities and payload helpers | `@/api/linuxio` |
 
 ---
 
-## React Query API (`@/api/react-query`)
+## Type-Safe API (`@/api/react-query`)
 
-For most React components, use these hooks for automatic caching, refetching, and state management.
+**Recommended for all React components.** Provides full TypeScript autocomplete, compile-time type checking, and React Query integration.
 
-### `useCall<T>(handler, command, args?, options?)`
-
-Query hook for fetching data. Automatically handles loading states, caching, and refetching.
+### Importing
 
 ```typescript
-import { useCall } from "@/api/react-query";
-
-// Basic usage
-const { data, isLoading, error, refetch } = useCall<DiskInfo[]>(
-  "system",
-  "get_drive_info"
-);
-
-// With arguments
-const { data } = useCall<ContainerStats>(
-  "docker",
-  "get_container_stats",
-  [containerId]
-);
-
-// With options
-const { data } = useCall<ServiceList>(
-  "dbus",
-  "ListServices",
-  [],
-  {
-    refetchInterval: 5000,  // Auto-refresh every 5 seconds
-    staleTime: 2000,        // Consider data fresh for 2 seconds
-    enabled: isReady,       // Conditional fetching
-  }
-);
+import linuxio from "@/api/react-query";
+// Also available: initStreamMux, closeStreamMux, waitForStreamMux, getStreamMux
 ```
 
-**Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `handler` | `string` | Handler namespace (e.g., "system", "docker", "dbus") |
-| `command` | `string` | Command name (e.g., "get_drive_info", "ListServices") |
-| `args` | `string[]` | Optional arguments array |
-| `options` | `UseQueryOptions` | React Query options |
+### Query Hooks
+
+Use `linuxio.handler.command.useQuery()` for fetching data:
+
+```typescript
+// Basic usage - no arguments
+const { data, isLoading, error } = linuxio.system.get_drive_info.useQuery();
+
+// With string arguments
+const { data } = linuxio.docker.container_stats.useQuery(containerId);
+
+// Multiple string arguments
+const { data } = linuxio.filebrowser.resource_get.useQuery(path, "file");
+
+// With React Query options
+const { data } = linuxio.system.get_cpu_info.useQuery({
+  staleTime: 60000,
+  refetchInterval: 5000,
+});
+
+// String args + options
+const { data } = linuxio.docker.list_containers.useQuery("all", {
+  staleTime: 2000,
+});
+
+// Complex arguments (objects, arrays) - use explicit args
+const { data } = linuxio.dbus.SetAutoUpdates.useQuery({
+  args: ["enabled", { exclude_packages: ["kernel"], auto_reboot: true }],
+  staleTime: 60000,
+});
+```
 
 **Returns:** React Query `UseQueryResult<T, LinuxIOError>`
 
-### `useMutate<TData, TVariables>(handler, command, options?)`
+**Features:**
+- Automatic caching based on handler + command + args
+- Auto-refetch on window focus/reconnect
+- Loading and error states
+- Disabled when mux is not open
+- Full TypeScript inference for result types
 
-Mutation hook for write operations. Handles loading states and error handling.
+### Mutation Hooks
+
+Use `linuxio.handler.command.useMutation()` for write operations:
 
 ```typescript
-import { useMutate } from "@/api/react-query";
+// Basic mutation - no arguments
+const { mutate, isPending } = linuxio.control.shutdown.useMutation();
+mutate([]);
 
-// Basic usage
-const { mutate, isPending } = useMutate("docker", "start_container");
-mutate(containerId);
+// String arguments
+const { mutate } = linuxio.docker.start_container.useMutation();
+mutate([containerId]);
+
+// Complex arguments (objects, arrays)
+const { mutate } = linuxio.dbus.InstallPackages.useMutation();
+mutate([
+  packageId,
+  { auto_confirm: true, skip_deps: false }
+]);
 
 // With callbacks
-const { mutate } = useMutate("docker", "remove_container", {
+const { mutate } = linuxio.docker.remove_container.useMutation({
   onSuccess: () => {
     toast.success("Container removed");
-    queryClient.invalidateQueries(["linuxio", "docker"]);
+    queryClient.invalidateQueries({ queryKey: ["linuxio", "docker"] });
   },
   onError: (error) => {
     toast.error(error.message);
   },
 });
-
-// With object variables (auto-converted to args)
-const { mutate } = useMutate("config", "theme_set");
-mutate({ theme: "dark", accent: "blue" });
+mutate([containerId]);
 ```
 
-**Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `handler` | `string` | Handler namespace |
-| `command` | `string` | Command name |
-| `options` | `UseMutationOptions` | React Query mutation options |
+**Returns:** React Query `UseMutationResult<TResult, LinuxIOError, unknown[]>`
 
-**Returns:** React Query `UseMutationResult<TData, LinuxIOError, TVariables>`
+**Note:** Mutations always expect an array of arguments. Objects and arrays are JSON-serialized automatically.
+
+---
+
+## String-Based API (for modules)
+
+For dynamic handlers (modules) or when handler/command names are not in the schema:
+
+```typescript
+// Query
+const { data } = linuxio.useCall<WeatherData>(
+  "module.weather",
+  "getForecast",
+  ["London"],
+  { staleTime: 60000 }
+);
+
+// Mutation
+const { mutate } = linuxio.useMutate<void, string[]>(
+  "module.lights",
+  "toggle"
+);
+mutate(["living-room"]);
+```
 
 ---
 
 ## Core API (`@/api/linuxio-core`)
 
-For non-React code or when you need direct control over requests.
+For non-React code or when you need direct control. Imported via `linuxio` from `@/api/react-query`:
+
+```typescript
+import linuxio from "@/api/react-query";
+
+// or direct import
+import { call, spawn, openStream } from "@/api/linuxio-core";
+```
 
 ### `call<T>(handler, command, args?, options?)`
 
-Simple request/response call. Returns a Promise.
+Simple request/response call. Returns a Promise that rejects on timeout or if the connection closes.
 
 ```typescript
-import { call } from "@/api/linuxio-core";
-
 // Basic usage
-const drives = await call<DiskInfo[]>("system", "get_drive_info");
+const drives = await linuxio.call<DiskInfo[]>("system", "get_drive_info");
 
 // With arguments
-const stats = await call<ContainerStats>(
+const stats = await linuxio.call<ContainerStats>(
   "docker",
   "get_container_stats",
   [containerId]
 );
 
 // With timeout
-const result = await call("dbus", "InstallPackage", [packageId], {
-  timeout: 60000, // 60 second timeout
+const result = await linuxio.call("dbus", "InstallPackage", [packageId], {
+  timeout: 60000, // 60 second timeout (default: 30000)
 });
 ```
 
@@ -171,17 +206,18 @@ const result = await call("dbus", "InstallPackage", [packageId], {
 
 **Returns:** `Promise<T>`
 
-**Throws:** `LinuxIOError` on failure or timeout
+**Throws:**
+- `LinuxIOError("Request timeout", "timeout")` - Request timed out
+- `LinuxIOError("Connection closed before receiving result", "connection_closed")` - Connection dropped
+- `LinuxIOError(message, code)` - Backend error
 
 ### `spawn(handler, command, args?, options?)`
 
 Streaming operation with progress and data callbacks. Returns a `SpawnedProcess` that is also a Promise.
 
 ```typescript
-import { spawn } from "@/api/linuxio-core";
-
 // Download with progress
-const result = await spawn("filebrowser", "download", ["/path/to/file"])
+const result = await linuxio.spawn("filebrowser", "download", ["/path/to/file"])
   .onStream((chunk) => {
     // Handle binary data chunks
     writeToFile(chunk);
@@ -192,13 +228,28 @@ const result = await spawn("filebrowser", "download", ["/path/to/file"])
     console.log(`${p.current}/${p.total} bytes`);
   });
 
-// Package installation with progress
-await spawn("dbus", "InstallPackage", [packageId])
+// Package installation with timeout
+await linuxio.spawn("dbus", "InstallPackage", [packageId], {
+  timeout: 300000,  // 5 minutes (default: 300000)
+  onProgress: (p) => setProgress(p.pct),
+});
+
+// With early cancellation
+const operation = linuxio.spawn("filebrowser", "compress", [paths, output, "zip"])
   .progress((p) => setProgress(p.pct));
+
+// Later...
+operation.close();  // Cancel the operation
 ```
 
-**SpawnedProcess Methods:**
+**SpawnOptions:**
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `timeout` | `number` | `300000` | Timeout in milliseconds (5 minutes) |
+| `onData` | `(chunk: Uint8Array) => void` | - | Binary data callback |
+| `onProgress` | `(progress: ProgressFrame) => void` | - | Progress callback |
 
+**SpawnedProcess Methods:**
 | Method | Description |
 |--------|-------------|
 | `.onStream(callback)` | Register handler for binary data chunks |
@@ -207,38 +258,50 @@ await spawn("dbus", "InstallPackage", [packageId])
 | `.close()` | Abort the operation early |
 | `.then()/.catch()/.finally()` | Promise methods for completion |
 
-### `openStream(handler, command, args?)`
+**Throws:**
+- `LinuxIOError("Operation timeout", "timeout")` - Operation timed out
+- `LinuxIOError("Connection closed before operation completed", "connection_closed")` - Connection dropped
+
+### `openStream(handler, command, args?, streamType?)`
 
 Opens a bidirectional stream for terminal, docker exec, or custom protocols.
 
 ```typescript
-import { openStream, encodeString, decodeString } from "@/api/linuxio-core";
-
-// Terminal session
-const stream = openStream("terminal", "bash", ["120", "32"]);
+// Terminal session with persistence (reusable stream)
+const stream = linuxio.openStream("terminal", "bash", ["120", "32"], "terminal");
 
 stream.onData = (data) => {
-  // Receive terminal output
   terminal.write(decodeString(data));
 };
 
-stream.onResult = (result) => {
-  // Stream completed
-  console.log("Exit code:", result.data.exit_code);
+stream.onClose = () => {
+  console.log("Terminal closed");
 };
 
 // Send user input
 stream.write(encodeString("ls -la\n"));
 
-// Resize terminal
-stream.write(encodeString("\x1b[8;40;120t")); // ANSI resize
-
 // Close when done
 stream.close();
+
+// Docker container exec (one-off stream)
+const stream = linuxio.openStream(
+  "docker",
+  "container_exec",
+  [containerId, "sh", "80", "24"]
+  // streamType defaults to "bridge" (one-off)
+);
 ```
 
-**Stream Properties:**
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `handler` | `string` | - | Handler name (e.g., "terminal", "docker") |
+| `command` | `string` | - | Command name (e.g., "bash", "container_exec") |
+| `args` | `string[]` | `[]` | Command arguments |
+| `streamType` | `string` | `"bridge"` | Stream type for persistence ("terminal", "container", or "bridge") |
 
+**Stream Properties:**
 | Property | Type | Description |
 |----------|------|-------------|
 | `onData` | `(data: Uint8Array) => void` | Binary data callback |
@@ -247,7 +310,6 @@ stream.close();
 | `onClose` | `() => void` | Stream closed callback |
 
 **Stream Methods:**
-
 | Method | Description |
 |--------|-------------|
 | `write(data: Uint8Array)` | Send binary data |
@@ -261,7 +323,7 @@ Shared utilities for stream management and payload building.
 
 ### `useStreamMux()`
 
-React hook for accessing the stream multiplexer status.
+React hook for accessing the stream multiplexer status. Now supports late initialization (polls for mux if not available at mount).
 
 ```typescript
 import { useStreamMux } from "@/api/linuxio";
@@ -284,6 +346,31 @@ const stream = openStream("bridge", payload);
 | `isOpen` | `boolean` | True if connected and ready |
 | `openStream` | `function` | Open a new stream |
 | `getStream` | `function` | Get existing stream by type |
+
+### Mux Lifecycle Functions
+
+All available from `@/api/react-query`:
+
+```typescript
+import {
+  initStreamMux,
+  closeStreamMux,
+  waitForStreamMux,
+  getStreamMux
+} from "@/api/react-query";
+
+// Initialize connection (called by AuthContext on login)
+initStreamMux(wsUrl);
+
+// Wait for connection to be ready
+await waitForStreamMux();
+
+// Close connection (called on logout)
+closeStreamMux();
+
+// Get mux instance (advanced usage)
+const mux = getStreamMux();
+```
 
 ### Payload Helpers
 
@@ -330,31 +417,17 @@ const bytes = encodeString("Hello, World!");
 const text = decodeString(bytes);
 ```
 
-### Connection Utilities
-
-```typescript
-import { isConnected, getStatus } from "@/api/linuxio";
-
-// Check if connected
-if (isConnected()) {
-  // Safe to make API calls
-}
-
-// Get detailed status
-const status = getStatus(); // "connecting" | "open" | "closed" | "error" | null
-```
-
 ---
 
 ## Error Handling
 
-All API methods throw `LinuxIOError` on failure:
+All API methods throw/reject with `LinuxIOError`:
 
 ```typescript
-import { LinuxIOError } from "@/api/linuxio-core";
+import { LinuxIOError } from "@/api/react-query";
 
 try {
-  await call("system", "get_drive_info");
+  await linuxio.call("system", "get_drive_info");
 } catch (error) {
   if (error instanceof LinuxIOError) {
     console.error(`Error ${error.code}: ${error.message}`);
@@ -363,13 +436,15 @@ try {
 ```
 
 **Common Error Codes:**
-
 | Code | Description |
 |------|-------------|
-| `not_initialized` | StreamMux not ready (not logged in) |
-| `timeout` | Request timed out |
+| `"not_initialized"` | StreamMux not ready (not logged in) |
+| `"timeout"` | Request/operation timed out |
+| `"connection_closed"` | Connection dropped before completion |
 | `500` | Server error |
 | `403` | Permission denied |
+
+**New in v0.6:** Promises now properly reject if the connection closes before receiving a result, preventing hanging promises.
 
 ---
 
@@ -381,12 +456,7 @@ All requests use the bridge protocol with null-separated arguments:
 bridge\0<handler>\0<command>\0<arg1>\0<arg2>...
 ```
 
-Example:
-```
-bridge\0docker\0start_container\0abc123
-```
-
-The backend dispatches to the appropriate handler based on the handler name and command.
+Complex types (objects, arrays) are JSON-serialized automatically when using the typed API.
 
 ---
 
@@ -396,30 +466,58 @@ The backend dispatches to the appropriate handler based on the handler name and 
 |---------|-------------|------------------|
 | `system` | System information | `get_drive_info`, `get_cpu_info`, `get_memory_info` |
 | `docker` | Docker management | `list_containers`, `start_container`, `container_exec` |
-| `filebrowser` | File operations | `list_directory`, `upload`, `download`, `compress` |
-| `dbus` | D-Bus services | `ListServices`, `GetUpdates`, `InstallPackage` |
-| `terminal` | Terminal sessions | `bash`, `sh` |
-| `wireguard` | WireGuard VPN | `list_interfaces`, `add_peer` |
+| `filebrowser` | File operations | `resource_get`, `subfolders`, `upload`, `download`, `compress` |
+| `dbus` | D-Bus services | `ListServices`, `GetUpdates`, `InstallPackages`, `SetAutoUpdates` |
+| `wireguard` | WireGuard VPN | `list_interfaces`, `add_peer`, `remove_peer` |
 | `config` | User configuration | `theme_get`, `theme_set` |
 | `control` | System control | `version`, `shutdown`, `update` |
-| `modules` | Module management | `GetModules`, `InstallModule` |
+| `modules` | Module management | `GetModules`, `InstallModule`, `UninstallModule` |
 
 ---
 
 ## Best Practices
 
-1. **Use React Query hooks** (`useCall`, `useMutate`) for React components
-2. **Use core API** (`call`, `spawn`) for non-React code or complex operations
-3. **Handle errors** with try/catch or React Query's error states
-4. **Set appropriate timeouts** for long-running operations
-5. **Use `spawn` with progress** for file transfers and package operations
-6. **Invalidate queries** after mutations to refresh cached data
+1. **Use type-safe API** (`linuxio.handler.command.useQuery()`) for built-in handlers
+2. **Use string-based API** (`linuxio.useCall()`) for dynamic/module handlers
+3. **Use explicit args** when passing objects: `useQuery({ args: ["str", obj] })`
+4. **Handle errors** with try/catch or React Query's error states
+5. **Set appropriate timeouts** for long-running operations
+6. **Use `spawn` with progress** for file transfers and package operations
+7. **Invalidate queries** after mutations to refresh cached data
 
 ```typescript
-// Good: Invalidate related queries after mutation
-const { mutate } = useMutate("docker", "remove_container", {
+// Good: Type-safe with proper invalidation
+const { mutate } = linuxio.docker.remove_container.useMutation({
   onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: ["linuxio", "docker"] });
   },
 });
+mutate([containerId]);
 ```
+
+---
+
+## Migration from Old API
+
+If you're migrating from the old string-based API:
+
+```typescript
+// Old (still works, but deprecated for built-in handlers)
+const { data } = useCall("system", "get_drive_info");
+
+// New (recommended)
+const { data } = linuxio.system.get_drive_info.useQuery();
+
+// Old mutation
+const { mutate } = useMutate("docker", "start_container");
+mutate(containerId);  // Single string
+
+// New mutation
+const { mutate } = linuxio.docker.start_container.useMutation();
+mutate([containerId]);  // Array of args
+```
+
+Key differences:
+- Mutations now expect arrays: `mutate([arg1, arg2])` instead of `mutate(arg1)`
+- Complex objects need explicit args in queries: `useQuery({ args: [...] })`
+- Full TypeScript autocomplete and type checking
