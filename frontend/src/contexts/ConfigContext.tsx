@@ -8,7 +8,9 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-import { linuxio, LinuxIOError, waitForStreamMux } from "@/api/linuxio";
+import { waitForStreamMux } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
+import { LinuxIOError } from "@/api/linuxio-core";
 import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
@@ -68,7 +70,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
           return;
         }
 
-        const data = await linuxio.request<AppConfig>("config", "theme_get");
+        const data = await linuxio.call<AppConfig>("config", "theme_get");
         if (!cancelled) {
           setConfig(applyDefaults(data));
           setCanSave(true); // Successfully loaded from backend, allow saves
@@ -112,7 +114,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
     (cfg: AppConfig) => {
       if (!canSave) return; // Only save if we successfully loaded from backend
       linuxio
-        .request("config", "theme_set", [JSON.stringify(cfg)])
+        .call("config", "theme_set", [JSON.stringify(cfg)])
         .catch(() => {});
     },
     [canSave],

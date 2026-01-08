@@ -2,7 +2,6 @@ import React, { createContext, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
 import {
-  linuxio,
   getStreamMux,
   Stream,
   ProgressFrame,
@@ -11,6 +10,7 @@ import {
   STREAM_CHUNK_SIZE,
   UPLOAD_WINDOW_SIZE,
 } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
 
 // Stream types matching backend constants
 const STREAM_TYPE_FB_DOWNLOAD = "fb-download";
@@ -1024,7 +1024,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             if (override) {
               args.push("true");
             }
-            await linuxio.request("filebrowser", "resource_post", args);
+            await linuxio.call("filebrowser", "resource_post", args);
             uploaded += 1;
           } catch (err: any) {
             if (abortController.signal.aborted) break;

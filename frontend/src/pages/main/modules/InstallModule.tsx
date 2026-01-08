@@ -9,10 +9,11 @@ import {
   Typography,
   CircularProgress,
 } from "@mui/material";
+import { useMutation } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
-import { linuxio } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
 import type { InstallResult, ValidationResult } from "@/types/module";
 
 interface InstallModuleProps {
@@ -27,15 +28,15 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
     useState<ValidationResult | null>(null);
 
   // Mutations
-  const validateMutation = linuxio.useMutate<ValidationResult, string>(
-    "modules",
-    "ValidateModule",
-  );
+  const validateMutation = useMutation<ValidationResult, Error, string>({
+    mutationFn: (path: string) =>
+      linuxio.call<ValidationResult>("modules", "ValidateModule", [path]),
+  });
 
-  const installMutation = linuxio.useMutate<InstallResult, string[]>(
-    "modules",
-    "InstallModule",
-  );
+  const installMutation = useMutation<InstallResult, Error, string[]>({
+    mutationFn: (args: string[]) =>
+      linuxio.call<InstallResult>("modules", "InstallModule", args),
+  });
 
   const handleValidate = () => {
     if (!path) {

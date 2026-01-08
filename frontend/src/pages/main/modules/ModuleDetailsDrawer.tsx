@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import React from "react";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import type { ModuleDetailsInfo } from "@/types/module";
 

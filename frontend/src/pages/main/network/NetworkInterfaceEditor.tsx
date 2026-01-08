@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
-import { linuxio } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
 
 /* ================= helpers ================= */
 
@@ -196,7 +196,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     try {
       if (mode === "auto") {
         // SetIPv4 with method "dhcp"
-        await linuxio.request("dbus", "SetIPv4", [iface.name, "dhcp"]);
+        await linuxio.call("dbus", "SetIPv4", [iface.name, "dhcp"]);
         toast.success("Switched to DHCP mode");
       } else {
         const ipv4 = (editForm.ipv4 || "").trim();
@@ -247,7 +247,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         }
 
         // SetIPv4Manual: args = [interface, addressCIDR, gateway, ...dnsServers]
-        await linuxio.request("dbus", "SetIPv4Manual", [
+        await linuxio.call("dbus", "SetIPv4Manual", [
           iface.name,
           ipv4,
           gateway,

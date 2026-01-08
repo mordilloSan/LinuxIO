@@ -1,4 +1,4 @@
-import { linuxio } from "./linuxio";
+import linuxio from "./react-query";
 import type { ModuleInfo } from "@/types/module";
 
 /**

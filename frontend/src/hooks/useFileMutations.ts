@@ -6,7 +6,8 @@ import {
 import { toast } from "sonner";
 
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
-import { linuxio, LinuxIOError } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
+import { LinuxIOError } from "@/api/linuxio-core";
 import { useFileTransfers } from "./useFileTransfers";
 
 type UseFileMutationsParams = {
@@ -73,7 +74,7 @@ export const useFileMutations = ({
     mutationFn: async (fileName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
       // Args: [path] - file path without trailing slash
-      await linuxio.request("filebrowser", "resource_post", [path]);
+      await linuxio.call("filebrowser", "resource_post", [path]);
     },
     onSuccess: () => {
       invalidateListing();
@@ -88,7 +89,7 @@ export const useFileMutations = ({
     mutationFn: async (folderName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
       // Args: [path] - directory path with trailing slash
-      await linuxio.request("filebrowser", "resource_post", [path]);
+      await linuxio.call("filebrowser", "resource_post", [path]);
     },
     onSuccess: () => {
       invalidateListing();
@@ -104,7 +105,7 @@ export const useFileMutations = ({
       await Promise.all(
         paths.map((path) =>
           // Args: [path]
-          linuxio.request("filebrowser", "resource_delete", [path]),
+          linuxio.call("filebrowser", "resource_delete", [path]),
         ),
       );
     },
@@ -174,7 +175,7 @@ export const useFileMutations = ({
       if (recursive) {
         args.push("true");
       }
-      await linuxio.request("filebrowser", "chmod", args);
+      await linuxio.call("filebrowser", "chmod", args);
     },
     onSuccess: () => {
       invalidateListing();
@@ -191,7 +192,7 @@ export const useFileMutations = ({
         throw new Error("Invalid rename parameters");
       }
       // Args: [action, from, destination]
-      await linuxio.request("filebrowser", "resource_patch", [
+      await linuxio.call("filebrowser", "resource_patch", [
         "rename",
         from,
         destination,
@@ -222,7 +223,7 @@ export const useFileMutations = ({
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
           // Args: [action, from, destination]
-          return linuxio.request("filebrowser", "resource_patch", [
+          return linuxio.call("filebrowser", "resource_patch", [
             "copy",
             sourcePath,
             destination,
@@ -255,7 +256,7 @@ export const useFileMutations = ({
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
           // Args: [action, from, destination]
-          return linuxio.request("filebrowser", "resource_patch", [
+          return linuxio.call("filebrowser", "resource_patch", [
             "move",
             sourcePath,
             destination,

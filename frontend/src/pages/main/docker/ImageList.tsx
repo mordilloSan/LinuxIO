@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import CollapsibleCard from "./DockerImageCard"; // ← new import
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { CollapsibleColumn } from "@/types/collapsible";
 

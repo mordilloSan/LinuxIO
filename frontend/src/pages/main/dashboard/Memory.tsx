@@ -1,6 +1,6 @@
 import { Typography, Box } from "@mui/material";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";

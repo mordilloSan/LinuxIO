@@ -14,7 +14,7 @@ import {
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 type Frequency = "hourly" | "daily" | "weekly";

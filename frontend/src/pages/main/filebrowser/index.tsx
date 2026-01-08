@@ -27,12 +27,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import {
-  linuxio,
   getStreamMux,
   encodeString,
   STREAM_CHUNK_SIZE,
   type ResultFrame,
 } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
@@ -498,7 +498,7 @@ const FileBrowser: React.FC = () => {
     try {
       // Fetch stat info to get current permissions (use first item as reference)
       // Args: [path]
-      const stat = await linuxio.request<ResourceStatData>(
+      const stat = await linuxio.call<ResourceStatData>(
         "filebrowser",
         "resource_stat",
         [selectedPath],

@@ -17,7 +17,10 @@ import { Terminal } from "@xterm/xterm";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 
 import "@xterm/xterm/css/xterm.css";
-import { linuxio, Stream, encodeString, decodeString } from "@/api/linuxio";
+import { useStreamMux } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
+import { encodeString, decodeString } from "@/api/StreamMultiplexer";
+import type { Stream } from "@/api/StreamMultiplexer";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface Props {
@@ -54,7 +57,7 @@ const TerminalDialog: React.FC<Props> = ({
   const [loadingShells, setLoadingShells] = useState(false);
   const [hasLoadedShells, setHasLoadedShells] = useState(false);
 
-  const { isOpen, openStream } = linuxio.useStreamMux();
+  const { isOpen, openStream } = useStreamMux();
   const theme = useTheme();
 
   // Fetch available shells when dialog opens
@@ -63,11 +66,9 @@ const TerminalDialog: React.FC<Props> = ({
 
     setLoadingShells(true);
     try {
-      const shells = await linuxio.request<string[]>(
-        "terminal",
-        "list_shells",
-        [containerId],
-      );
+      const shells = await linuxio.call<string[]>("terminal", "list_shells", [
+        containerId,
+      ]);
       const validShells = shells.filter(
         (s: string) => s && typeof s === "string" && s.trim() !== "",
       );

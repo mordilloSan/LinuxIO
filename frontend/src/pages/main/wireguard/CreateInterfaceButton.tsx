@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 
 const wireguardToastMeta = {
   meta: { href: "/wireguard", label: "Open WireGuard" },

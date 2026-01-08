@@ -34,34 +34,6 @@ func logStream(r io.Reader, prefix string, isInfo bool) {
 	}
 }
 
-func ControlHandlers(shutdownChan chan string) map[string]func([]string) (any, error) {
-	return map[string]func([]string) (any, error){
-		"shutdown": func(args []string) (any, error) {
-			reason := "unknown"
-			if len(args) > 0 {
-				reason = args[0]
-			}
-			logger.Debugf("Received shutdown command: %s", reason)
-			select {
-			case shutdownChan <- reason:
-			default:
-			}
-			return "Bridge shutting down", nil
-		},
-		"version": func(args []string) (any, error) {
-			_ = args
-			return getVersionInfo()
-		},
-		"update": func(args []string) (any, error) {
-			targetVersion := ""
-			if len(args) > 0 {
-				targetVersion = args[0] // Optional: specific version
-			}
-			return performUpdate(targetVersion)
-		},
-	}
-}
-
 type VersionInfo struct {
 	CurrentVersion  string `json:"current_version"`
 	LatestVersion   string `json:"latest_version,omitempty"`

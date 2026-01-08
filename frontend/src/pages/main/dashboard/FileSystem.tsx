@@ -2,7 +2,7 @@ import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import GeneralCard from "@/components/cards/GeneralCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";

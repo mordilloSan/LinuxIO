@@ -8,7 +8,9 @@ import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
-import { linuxio, Stream, encodeString, decodeString } from "@/api/linuxio";
+import { useStreamMux } from "@/api/linuxio";
+import { encodeString, decodeString } from "@/api/linuxio-core";
+import type { Stream } from "@/api/StreamMultiplexer";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
@@ -26,7 +28,7 @@ const TerminalXTerm: React.FC = () => {
   const streamRef = useRef<Stream | null>(null);
   const theme = useTheme();
 
-  const { isOpen, openStream, getStream } = linuxio.useStreamMux();
+  const { isOpen, openStream, getStream } = useStreamMux();
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);
 
   // Update xterm font size when fontSize changes

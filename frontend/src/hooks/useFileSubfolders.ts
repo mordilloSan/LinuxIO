@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,

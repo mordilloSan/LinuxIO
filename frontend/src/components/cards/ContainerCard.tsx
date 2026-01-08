@@ -1,6 +1,7 @@
 import { Box, Grid, Tooltip, Typography, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import React, { useMemo, useState, useCallback } from "react";
 import { toast } from "sonner";
 
@@ -8,7 +9,7 @@ import ActionButton from "../../pages/main/docker/ActionButton";
 import LogsDialog from "../../pages/main/docker/LogsDialog";
 import ComponentLoader from "../loaders/ComponentLoader";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import TerminalDialog from "@/pages/main/docker/TerminalDialog";
@@ -63,42 +64,40 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const iconUrl = useMemo(() => getContainerIconUrl(name), [name]);
 
   // ---- actions (start/stop/restart/remove) ----
-  const containerActionMutation = linuxio.useMutate<
-    unknown,
-    "start" | "stop" | "restart" | "remove"
-  >("docker", "start_container", {
-    mutationFn: async (action) => {
-      const commandMap: Record<string, string> = {
-        start: "start_container",
-        stop: "stop_container",
-        restart: "restart_container",
-        remove: "remove_container",
-      };
-      return linuxio.request("docker", commandMap[action], [container.Id]);
-    },
-    onSuccess: (_, action) => {
-      const actionLabels: Record<string, string> = {
-        start: "started",
-        stop: "stopped",
-        restart: "restarted",
-        remove: "removed",
-      };
-      toast.success(`Container ${name} ${actionLabels[action]} successfully`);
-      // refresh list + logs
-      queryClient.invalidateQueries({
-        queryKey: ["stream", "docker", "list_containers"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["stream", "docker", "get_container_logs", container.Id],
-      });
-    },
-  });
+  const { mutate: performContainerAction, isPending: isActionPending } =
+    useMutation({
+      mutationFn: async (action: "start" | "stop" | "restart" | "remove") => {
+        const commandMap: Record<string, string> = {
+          start: "start_container",
+          stop: "stop_container",
+          restart: "restart_container",
+          remove: "remove_container",
+        };
+        return linuxio.call("docker", commandMap[action], [container.Id]);
+      },
+      onSuccess: (_, action) => {
+        const actionLabels: Record<string, string> = {
+          start: "started",
+          stop: "stopped",
+          restart: "restarted",
+          remove: "removed",
+        };
+        toast.success(`Container ${name} ${actionLabels[action]} successfully`);
+        // refresh list + logs
+        queryClient.invalidateQueries({
+          queryKey: ["stream", "docker", "list_containers"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["stream", "docker", "get_container_logs", container.Id],
+        });
+      },
+    });
 
   const handleAction = useCallback(
     (action: "start" | "stop" | "restart" | "remove") => {
-      containerActionMutation.mutate(action);
+      performContainerAction(action);
     },
-    [containerActionMutation],
+    [performContainerAction],
   );
 
   // ---- logs via stream API (fetch only when dialog is open) ----
@@ -285,7 +284,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
         {/* Metrics area: full width */}
         <Box sx={{ mt: 2, width: "100%" }}>
-          {containerActionMutation.isPending ? (
+          {isActionPending ? (
             <ComponentLoader />
           ) : (
             <>
