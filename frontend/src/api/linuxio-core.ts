@@ -82,7 +82,9 @@ export async function call<T = unknown>(
         if (result.status === "ok") {
           resolve(result.data as T);
         } else {
-          reject(new LinuxIOError(result.error || "Unknown error", result.code));
+          reject(
+            new LinuxIOError(result.error || "Unknown error", result.code),
+          );
         }
       }
     };
