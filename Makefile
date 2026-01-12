@@ -593,7 +593,9 @@ MODULE_FROM_GOAL :=
 ifneq ($(filter $(MODULE_TARGETS),$(MODULE_GOAL)),)
   ifeq ($(words $(MAKECMDGOALS)),2)
     MODULE_FROM_GOAL := $(word 2,$(MAKECMDGOALS))
-    MODULE ?= $(MODULE_FROM_GOAL)
+    ifeq ($(MODULE),)
+      MODULE := $(MODULE_FROM_GOAL)
+    endif
   endif
 endif
 ifneq ($(MODULE_FROM_GOAL),)
