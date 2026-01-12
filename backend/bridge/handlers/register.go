@@ -9,6 +9,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/logs"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/modules"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
@@ -48,6 +49,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	filebrowser.RegisterStreamHandlers(StreamHandlers)
 	dbus.RegisterStreamHandlers(StreamHandlers)
 	docker.RegisterStreamHandlers(StreamHandlers)
+	logs.RegisterStreamHandlers(StreamHandlers)
 
 	// Load modules from YAML files - log errors but don't fail
 	_ = modules.LoadModules(StreamHandlers)

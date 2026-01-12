@@ -223,15 +223,17 @@ func runInstallScript(version string) error {
 }
 
 func getInstalledVersion() string {
-	// Run linuxio with no args - it prints help (with version) to stderr
-	cmd := exec.Command(config.BinDir + "/linuxio-webserver version")
+	// Use compiled-in version (most reliable)
+	// The binary is compiled with -ldflags to set config.Version
+	if config.Version != "" && config.Version != "untracked" {
+		return config.Version
+	}
+
+	// Fallback: try running linuxio-webserver to get version
+	cmd := exec.Command(config.BinDir+"/linuxio-webserver", "version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		// Fall back to compiled-in version (useful in dev mode where binary doesn't exist)
-		if config.Version != "" && config.Version != "untracked" {
-			return config.Version
-		}
-		logger.Debugf("failed to run linuxio: %v", err)
+		logger.Debugf("failed to get version from binary: %v", err)
 		return "unknown"
 	}
 	version := parseVersionOutput(string(output))
