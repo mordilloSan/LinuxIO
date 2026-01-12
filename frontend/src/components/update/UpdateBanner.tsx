@@ -6,8 +6,6 @@ import { useState, useEffect, useRef } from "react";
 import UpdateDialog from "./UpdateDialog";
 
 import { getStreamMux, initStreamMux } from "@/api/linuxio";
-import { call } from "@/api/linuxio-core";
-import type { VersionResponse } from "@/api/linuxio-types";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 
 interface UpdateInfo {
@@ -16,20 +14,6 @@ interface UpdateInfo {
   latest_version?: string;
   release_url?: string;
 }
-
-// Normalize version string for comparison (strip leading 'v' and whitespace)
-const normalizeVersion = (v: string | null | undefined): string => {
-  if (!v) return "";
-  return v.trim().replace(/^v/i, "");
-};
-
-// Compare versions for equality (handles v0.6.8 vs 0.6.8)
-const versionsMatch = (
-  a: string | null | undefined,
-  b: string | null | undefined,
-): boolean => {
-  return normalizeVersion(a) === normalizeVersion(b);
-};
 
 interface UpdateBannerProps {
   updateInfo: UpdateInfo;
@@ -43,19 +27,28 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   const [showDialog, setShowDialog] = useState(false);
   const [updateComplete, setUpdateComplete] = useState(false);
   const [updateSuccess, setUpdateSuccess] = useState(false);
-  const [verifiedVersion, setVerifiedVersion] = useState<string | null>(null);
   const [targetVersion, setTargetVersion] = useState<string | null>(null);
   const { startUpdate, status, progress, output, error, isUpdating } =
     useLinuxIOUpdater();
   const waitingForReconnectRef = useRef(false);
   const hasDisconnectedRef = useRef(false);
-  const targetVersionRef = useRef<string | null>(null); // Also keep ref for use in async callbacks
 
-  // Auto-reload when WebSocket reconnects after update
-  // With socket activation, we need to actively try to reconnect (not passively wait)
+  // Monitor for WebSocket reconnection after update
+  // With socket activation, we need to actively poll for reconnection
   useEffect(() => {
     let reconnectInterval: ReturnType<typeof setInterval> | null = null;
     let unsubscribe: (() => void) | null = null;
+
+    const handleReconnected = () => {
+      console.log("[UpdateBanner] Service reconnected! Update successful.");
+      if (reconnectInterval) {
+        clearInterval(reconnectInterval);
+        reconnectInterval = null;
+      }
+      waitingForReconnectRef.current = false;
+      setUpdateComplete(true);
+      setUpdateSuccess(true);
+    };
 
     const setupListener = () => {
       const mux = getStreamMux();
@@ -85,130 +78,24 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
                 // initStreamMux creates a new WebSocket if current is closed
                 const newMux = initStreamMux();
 
-                // Listen for this mux to open and verify version
-                const checkAndShowSuccess = async (status: string) => {
-                  if (status === "open") {
-                    console.log(
-                      "[UpdateBanner] Reconnected! Verifying version...",
-                    );
-                    // Clear interval to stop further attempts
-                    if (reconnectInterval) {
-                      clearInterval(reconnectInterval);
-                      reconnectInterval = null;
-                    }
-                    waitingForReconnectRef.current = false;
-
-                    // Verify the version actually changed
-                    try {
-                      const versionInfo = await call<VersionResponse>(
-                        "control",
-                        "version",
-                      );
-                      const currentVersion = versionInfo.current_version;
-                      const targetVersion = targetVersionRef.current;
-
-                      console.log(
-                        `[UpdateBanner] Version check: current=${currentVersion}, target=${targetVersion}`,
-                      );
-                      setVerifiedVersion(currentVersion);
-
-                      if (
-                        targetVersion &&
-                        versionsMatch(currentVersion, targetVersion)
-                      ) {
-                        console.log(
-                          "[UpdateBanner] Version verified! Update successful.",
-                        );
-                        setUpdateComplete(true);
-                        setUpdateSuccess(true);
-                      } else if (
-                        targetVersion &&
-                        !versionsMatch(currentVersion, targetVersion)
-                      ) {
-                        console.warn(
-                          `[UpdateBanner] Version mismatch: expected ${targetVersion}, got ${currentVersion}`,
-                        );
-                        setUpdateComplete(true);
-                        setUpdateSuccess(false);
-                      } else {
-                        // No target version to compare, assume success
-                        setUpdateComplete(true);
-                        setUpdateSuccess(true);
-                      }
-                    } catch (err) {
-                      console.error(
-                        "[UpdateBanner] Failed to verify version:",
-                        err,
-                      );
-                      // Version check failed, but service is up - show success with warning
-                      setUpdateComplete(true);
-                      setUpdateSuccess(true);
-                    }
-                  }
-                };
-
                 // Check current status and also listen for changes
                 if (newMux.status === "open") {
-                  checkAndShowSuccess("open");
+                  handleReconnected();
                 } else {
-                  newMux.addStatusListener(checkAndShowSuccess);
+                  newMux.addStatusListener((status) => {
+                    if (status === "open") {
+                      handleReconnected();
+                    }
+                  });
                 }
               }, 2000); // Try every 2 seconds
             }, 5000); // Wait 5 seconds before starting to poll
           }
         }
 
-        // When it reconnects after being disconnected, verify version
+        // When it reconnects after being disconnected
         if (newStatus === "open" && hasDisconnectedRef.current) {
-          console.log(
-            "[UpdateBanner] Service reconnected! Verifying version...",
-          );
-          waitingForReconnectRef.current = false;
-
-          // Verify the version actually changed
-          (async () => {
-            try {
-              const versionInfo = await call<VersionResponse>(
-                "control",
-                "version",
-              );
-              const currentVersion = versionInfo.current_version;
-              const targetVersion = targetVersionRef.current;
-
-              console.log(
-                `[UpdateBanner] Version check: current=${currentVersion}, target=${targetVersion}`,
-              );
-              setVerifiedVersion(currentVersion);
-
-              if (
-                targetVersion &&
-                versionsMatch(currentVersion, targetVersion)
-              ) {
-                console.log(
-                  "[UpdateBanner] Version verified! Update successful.",
-                );
-                setUpdateComplete(true);
-                setUpdateSuccess(true);
-              } else if (
-                targetVersion &&
-                !versionsMatch(currentVersion, targetVersion)
-              ) {
-                console.warn(
-                  `[UpdateBanner] Version mismatch: expected ${targetVersion}, got ${currentVersion}`,
-                );
-                setUpdateComplete(true);
-                setUpdateSuccess(false);
-              } else {
-                // No target version to compare, assume success
-                setUpdateComplete(true);
-                setUpdateSuccess(true);
-              }
-            } catch (err) {
-              console.error("[UpdateBanner] Failed to verify version:", err);
-              setUpdateComplete(true);
-              setUpdateSuccess(true);
-            }
-          })();
+          handleReconnected();
         }
       });
     };
@@ -234,11 +121,9 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
     setShowDialog(true);
     setUpdateComplete(false);
     setUpdateSuccess(false);
-    setVerifiedVersion(null);
     setTargetVersion(updateInfo.latest_version || null);
     waitingForReconnectRef.current = false;
     hasDisconnectedRef.current = false;
-    targetVersionRef.current = updateInfo.latest_version || null;
 
     try {
       await startUpdate(updateInfo.latest_version);
@@ -246,56 +131,33 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       // Start monitoring for reconnection
       waitingForReconnectRef.current = true;
 
-      // Fallback: if reconnection detection fails, try to verify after 30 seconds
+      // Fallback: if reconnection detection fails after 30 seconds, try once more
       setTimeout(async () => {
         if (waitingForReconnectRef.current) {
           console.log(
-            "[UpdateBanner] Fallback timeout reached, attempting to verify...",
+            "[UpdateBanner] Fallback timeout reached, attempting to reconnect...",
           );
-          waitingForReconnectRef.current = false;
 
-          // Try to initialize connection and verify version
+          // Try to initialize connection
           try {
             const mux = initStreamMux();
             // Wait a bit for connection to establish
             await new Promise((resolve) => setTimeout(resolve, 2000));
 
+            waitingForReconnectRef.current = false;
             if (mux.status === "open") {
-              const versionInfo = await call<VersionResponse>(
-                "control",
-                "version",
-              );
-              const currentVersion = versionInfo.current_version;
-              const targetVersion = targetVersionRef.current;
-
-              console.log(
-                `[UpdateBanner] Fallback version check: current=${currentVersion}, target=${targetVersion}`,
-              );
-              setVerifiedVersion(currentVersion);
-
-              if (
-                targetVersion &&
-                versionsMatch(currentVersion, targetVersion)
-              ) {
-                setUpdateComplete(true);
-                setUpdateSuccess(true);
-              } else if (
-                targetVersion &&
-                !versionsMatch(currentVersion, targetVersion)
-              ) {
-                setUpdateComplete(true);
-                setUpdateSuccess(false);
-              } else {
-                setUpdateComplete(true);
-                setUpdateSuccess(true);
-              }
+              console.log("[UpdateBanner] Fallback reconnection successful!");
+              setUpdateComplete(true);
+              setUpdateSuccess(true);
             } else {
-              // Connection failed, show as failed
+              // Connection failed after timeout
+              console.warn("[UpdateBanner] Fallback reconnection failed");
               setUpdateComplete(true);
               setUpdateSuccess(false);
             }
           } catch (err) {
-            console.error("[UpdateBanner] Fallback verification failed:", err);
+            console.error("[UpdateBanner] Fallback reconnection failed:", err);
+            waitingForReconnectRef.current = false;
             setUpdateComplete(true);
             setUpdateSuccess(false);
           }
@@ -337,7 +199,6 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
         updateSuccess={updateSuccess}
         onContinue={handleContinue}
         targetVersion={targetVersion}
-        verifiedVersion={verifiedVersion}
       />
       <Alert
         severity="info"
