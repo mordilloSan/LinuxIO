@@ -32,12 +32,14 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
 
   // Auto-reload when WebSocket reconnects after update
   useEffect(() => {
-    if (!waitingForReconnectRef.current) return;
-
     const mux = getStreamMux();
     if (!mux) return;
 
+    // Always set up the listener - check waitingForReconnectRef inside the callback
     const unsubscribe = mux.addStatusListener((newStatus) => {
+      // Only process if we're waiting for reconnection after an update
+      if (!waitingForReconnectRef.current) return;
+
       console.log(
         `[UpdateBanner] WebSocket status: ${newStatus}, hasDisconnected=${hasDisconnectedRef.current}`,
       );
@@ -48,11 +50,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       }
 
       // When it reconnects after being disconnected, reload the page
-      if (
-        newStatus === "open" &&
-        hasDisconnectedRef.current &&
-        waitingForReconnectRef.current
-      ) {
+      if (newStatus === "open" && hasDisconnectedRef.current) {
         console.log("[UpdateBanner] Service reconnected, reloading page...");
         sessionStorage.removeItem("update_info");
         window.location.reload();
