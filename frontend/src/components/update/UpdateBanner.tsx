@@ -17,6 +17,20 @@ interface UpdateInfo {
   release_url?: string;
 }
 
+// Normalize version string for comparison (strip leading 'v' and whitespace)
+const normalizeVersion = (v: string | null | undefined): string => {
+  if (!v) return "";
+  return v.trim().replace(/^v/i, "");
+};
+
+// Compare versions for equality (handles v0.6.8 vs 0.6.8)
+const versionsMatch = (
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean => {
+  return normalizeVersion(a) === normalizeVersion(b);
+};
+
 interface UpdateBannerProps {
   updateInfo: UpdateInfo;
   onDismiss: () => void;
@@ -98,7 +112,10 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
                       );
                       setVerifiedVersion(currentVersion);
 
-                      if (targetVersion && currentVersion === targetVersion) {
+                      if (
+                        targetVersion &&
+                        versionsMatch(currentVersion, targetVersion)
+                      ) {
                         console.log(
                           "[UpdateBanner] Version verified! Update successful.",
                         );
@@ -106,7 +123,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
                         setUpdateSuccess(true);
                       } else if (
                         targetVersion &&
-                        currentVersion !== targetVersion
+                        !versionsMatch(currentVersion, targetVersion)
                       ) {
                         console.warn(
                           `[UpdateBanner] Version mismatch: expected ${targetVersion}, got ${currentVersion}`,
@@ -163,13 +180,19 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
               );
               setVerifiedVersion(currentVersion);
 
-              if (targetVersion && currentVersion === targetVersion) {
+              if (
+                targetVersion &&
+                versionsMatch(currentVersion, targetVersion)
+              ) {
                 console.log(
                   "[UpdateBanner] Version verified! Update successful.",
                 );
                 setUpdateComplete(true);
                 setUpdateSuccess(true);
-              } else if (targetVersion && currentVersion !== targetVersion) {
+              } else if (
+                targetVersion &&
+                !versionsMatch(currentVersion, targetVersion)
+              ) {
                 console.warn(
                   `[UpdateBanner] Version mismatch: expected ${targetVersion}, got ${currentVersion}`,
                 );
@@ -250,10 +273,16 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
               );
               setVerifiedVersion(currentVersion);
 
-              if (targetVersion && currentVersion === targetVersion) {
+              if (
+                targetVersion &&
+                versionsMatch(currentVersion, targetVersion)
+              ) {
                 setUpdateComplete(true);
                 setUpdateSuccess(true);
-              } else if (targetVersion && currentVersion !== targetVersion) {
+              } else if (
+                targetVersion &&
+                !versionsMatch(currentVersion, targetVersion)
+              ) {
                 setUpdateComplete(true);
                 setUpdateSuccess(false);
               } else {
