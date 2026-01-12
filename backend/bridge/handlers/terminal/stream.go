@@ -197,6 +197,7 @@ func (sts *StreamTerminalSession) relayStreamToPTY() {
 			if len(frame.Payload) >= 4 {
 				cols := binary.BigEndian.Uint16(frame.Payload[0:2])
 				rows := binary.BigEndian.Uint16(frame.Payload[2:4])
+				logger.Debugf("[StreamTerminal] Resize %dx%d", cols, rows)
 				_ = pty.Setsize(sts.PTY, &pty.Winsize{Cols: cols, Rows: rows})
 			}
 

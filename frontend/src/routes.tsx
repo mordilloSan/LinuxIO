@@ -94,7 +94,7 @@ const coreRoutes: RouteWithSidebar[] = [
   },
   {
     path: "storage",
-    element: null, // TODO: Create storage page
+    element: null,
     sidebar: {
       title: "Storage",
       icon: HardDrive,
@@ -112,7 +112,7 @@ const coreRoutes: RouteWithSidebar[] = [
   },
   {
     path: "accounts",
-    element: null, // TODO: Create accounts page
+    element: null,
     sidebar: {
       title: "Accounts",
       icon: Users,

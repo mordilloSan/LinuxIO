@@ -38,17 +38,6 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("docker", "get_container_logs", func(ctx context.Context, args []string, emit handler.Events) error {
-		if len(args) < 1 {
-			return handler.ErrInvalidArgs
-		}
-		logs, err := LogContainer(args[0])
-		if err != nil {
-			return err
-		}
-		return emit.Result(logs)
-	})
-
 	handler.RegisterFunc("docker", "remove_container", func(ctx context.Context, args []string, emit handler.Events) error {
 		if len(args) < 1 {
 			return handler.ErrInvalidArgs
