@@ -162,6 +162,7 @@ func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, e
 				resizeChan = nil
 				continue
 			}
+			logger.Debugf("[Terminal] Resize %dx%d for user=%s", ev.Cols, ev.Rows, h.sess.User.Username)
 			_ = pty.Setsize(ptmx, &pty.Winsize{
 				Cols: ev.Cols,
 				Rows: ev.Rows,

@@ -51,6 +51,16 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
     }
   }, []);
 
+  // Reset state helper - called from transition callbacks, not effects
+  const resetState = useCallback(() => {
+    closeStream();
+    setLogs([]);
+    setError(null);
+    setLiveMode(true);
+    setIsLoading(true);
+    hasReceivedData.current = false;
+  }, [closeStream]);
+
   // Open stream when drawer opens
   useEffect(() => {
     if (!open || !serviceName || !muxIsOpen) {
@@ -62,10 +72,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
       return;
     }
 
-    // Reset state for new stream
-    setLogs([]);
-    setError(null);
-    setIsLoading(true);
+    // Track state
     hasReceivedData.current = false;
 
     // Open the service-logs stream
@@ -73,8 +80,10 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
     const stream = openStream("service-logs", payload);
 
     if (!stream) {
-      setError("Failed to connect to log stream");
-      setIsLoading(false);
+      queueMicrotask(() => {
+        setError("Failed to connect to log stream");
+        setIsLoading(false);
+      });
       return;
     }
 
@@ -127,19 +136,27 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
     }
   }, [liveMode, open, serviceName, muxIsOpen, openStream, closeStream]);
 
-  // Cleanup stream when drawer closes
+  // Cleanup stream when drawer closes (only close stream, not state)
   useEffect(() => {
     if (!open) {
       closeStream();
-      setLogs([]);
-      setError(null);
-      setLiveMode(true);
-      hasReceivedData.current = false;
     }
   }, [open, closeStream]);
 
   return (
-    <Drawer anchor="right" open={open} onClose={onClose}>
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      slotProps={{
+        transition: {
+          onExited: () => {
+            // Reset all state when drawer fully closes
+            resetState();
+          },
+        },
+      }}
+    >
       <Box
         sx={{
           width: 700,
