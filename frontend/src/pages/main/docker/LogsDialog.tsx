@@ -47,6 +47,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<Stream | null>(null);
   const hasReceivedData = useRef(false);
+  const lastContainerId = useRef<string | null>(null);
 
   const { isOpen: muxIsOpen, openStream } = useStreamMux();
 
@@ -65,6 +66,17 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     }
   }, []);
 
+  // Reset state helper - called from transition callbacks, not effects
+  const resetState = useCallback(() => {
+    closeStream();
+    setLogs("");
+    setError(null);
+    setLiveMode(true);
+    setIsLoading(true);
+    hasReceivedData.current = false;
+    lastContainerId.current = null;
+  }, [closeStream]);
+
   // Open stream when dialog opens
   useEffect(() => {
     if (!open || !containerId || !muxIsOpen) {
@@ -76,10 +88,8 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       return;
     }
 
-    // Reset state for new stream
-    setLogs("");
-    setError(null);
-    setIsLoading(true);
+    // Track that we're connecting to this container
+    lastContainerId.current = containerId;
     hasReceivedData.current = false;
 
     // Open the docker-logs stream
@@ -87,8 +97,10 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     const stream = openStream("docker-logs", payload);
 
     if (!stream) {
-      setError("Failed to connect to log stream");
-      setIsLoading(false);
+      queueMicrotask(() => {
+        setError("Failed to connect to log stream");
+        setIsLoading(false);
+      });
       return;
     }
 
@@ -141,14 +153,10 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     }
   }, [liveMode, open, containerId, muxIsOpen, openStream, closeStream]);
 
-  // Cleanup stream when dialog closes
+  // Cleanup stream when dialog closes (only close stream, not state)
   useEffect(() => {
     if (!open) {
       closeStream();
-      setLogs("");
-      setError(null);
-      setLiveMode(true);
-      hasReceivedData.current = false;
     }
   }, [open, closeStream]);
 
@@ -192,6 +200,8 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
             }
           },
           onExited: () => {
+            // Reset all state when dialog fully closes
+            resetState();
             setSearch("");
           },
         },
