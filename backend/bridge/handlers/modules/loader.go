@@ -204,30 +204,43 @@ func registerModule(
 	return nil
 }
 
+// shellEscape escapes a string for safe use in shell commands
+func shellEscape(s string) string {
+	// Use single quotes and escape any single quotes within the string
+	// This is the safest approach for shell escaping
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
+}
+
 // executeCommand executes a shell command from module definition
 func executeCommand(cmdDef CommandHandler, args []string) (any, error) {
 	command := cmdDef.Command
 
 	// Support both numeric {{.arg0}} and named {{.argName}} placeholders
 	for i, argValue := range args {
+		// Shell-escape the argument to prevent injection
+		escapedArg := shellEscape(argValue)
+
 		// Numeric placeholders: {{.arg0}}, {{.arg1}}, etc.
 		placeholderN := fmt.Sprintf("{{.arg%d}}", i)
-		command = strings.ReplaceAll(command, placeholderN, argValue)
+		command = strings.ReplaceAll(command, placeholderN, escapedArg)
 
 		// Named placeholders: {{.path}}, {{.host}}, etc.
 		if i < len(cmdDef.Args) {
 			argName := cmdDef.Args[i].Name
 			placeholderNamed := fmt.Sprintf("{{.%s}}", argName)
-			command = strings.ReplaceAll(command, placeholderNamed, argValue)
+			command = strings.ReplaceAll(command, placeholderNamed, escapedArg)
 		}
 	}
 
 	// Execute using generic command handler
-	timeout := fmt.Sprintf("%d", cmdDef.Timeout)
-	if cmdDef.Timeout == 0 {
-		timeout = "10" // Default timeout
+	// Validate and clamp timeout to reasonable bounds (1-600 seconds)
+	timeoutSec := cmdDef.Timeout
+	if timeoutSec <= 0 {
+		timeoutSec = 10 // Default timeout
+	} else if timeoutSec > 600 {
+		timeoutSec = 600 // Max 10 minutes
 	}
-	return generic.ExecCommandDirect(command, timeout)
+	return generic.ExecCommandDirect(command, fmt.Sprintf("%d", timeoutSec))
 }
 
 // executeDbusCall executes a D-Bus method call from module definition

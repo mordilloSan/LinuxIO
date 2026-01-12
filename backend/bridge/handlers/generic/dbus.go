@@ -191,10 +191,12 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 	}
 
 	// Create a map of signal names for quick lookup
+	// Store both full names and short names for flexible matching
 	signalMap := make(map[string]bool)
 	for _, sig := range signalNames {
 		fullName := iface + "." + sig
 		signalMap[fullName] = true
+		signalMap[sig] = true // Also store short name for fallback matching
 	}
 
 	// Process signals until timeout or specific signal received
