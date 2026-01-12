@@ -1,3 +1,5 @@
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorIcon from "@mui/icons-material/Error";
 import {
   Box,
   Button,
@@ -19,6 +21,9 @@ interface UpdateDialogProps {
   output: string[];
   onClose?: () => void;
   canClose: boolean;
+  updateComplete?: boolean;
+  updateSuccess?: boolean;
+  onContinue?: () => void;
 }
 
 const UpdateDialog: React.FC<UpdateDialogProps> = ({
@@ -28,6 +33,9 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
   output,
   onClose,
   canClose,
+  updateComplete = false,
+  updateSuccess = false,
+  onContinue,
 }) => {
   const outputEndRef = useRef<HTMLDivElement>(null);
 
@@ -44,21 +52,60 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
       disableEscapeKeyDown={!canClose}
       onClose={canClose ? onClose : undefined}
     >
-      <DialogTitle>Updating LinuxIO</DialogTitle>
+      <DialogTitle>
+        {updateComplete
+          ? updateSuccess
+            ? "Update Complete"
+            : "Update Failed"
+          : "Updating LinuxIO"}
+      </DialogTitle>
       <DialogContent>
         <Stack spacing={2}>
-          {/* Status */}
-          <Box>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Status
-            </Typography>
-            <Typography variant="body1" fontWeight="medium">
-              {status || "Preparing..."}
-            </Typography>
-          </Box>
+          {/* Success/Fail banner when complete */}
+          {updateComplete && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                p: 2,
+                borderRadius: 1,
+                bgcolor: updateSuccess ? "success.main" : "error.main",
+                color: "white",
+              }}
+            >
+              {updateSuccess ? (
+                <CheckCircleIcon fontSize="large" />
+              ) : (
+                <ErrorIcon fontSize="large" />
+              )}
+              <Box>
+                <Typography variant="h6" fontWeight="bold">
+                  {updateSuccess ? "Update Successful!" : "Update Failed"}
+                </Typography>
+                <Typography variant="body2">
+                  {updateSuccess
+                    ? "LinuxIO has been updated. Click Continue to log in."
+                    : "Please check the output below for details."}
+                </Typography>
+              </Box>
+            </Box>
+          )}
 
-          {/* Progress bar */}
-          {progress < 100 && (
+          {/* Status - hide when complete */}
+          {!updateComplete && (
+            <Box>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Status
+              </Typography>
+              <Typography variant="body1" fontWeight="medium">
+                {status || "Preparing..."}
+              </Typography>
+            </Box>
+          )}
+
+          {/* Progress bar - hide when complete */}
+          {!updateComplete && progress < 100 && (
             <Box>
               <Typography variant="body2" color="text.secondary" mb={1}>
                 Progress
@@ -101,12 +148,27 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
         </Stack>
       </DialogContent>
       <DialogActions>
-        {canClose && (
+        {updateComplete && updateSuccess && onContinue && (
+          <Button
+            onClick={onContinue}
+            variant="contained"
+            color="success"
+            size="large"
+          >
+            Continue to Login
+          </Button>
+        )}
+        {updateComplete && !updateSuccess && (
           <Button onClick={onClose} variant="contained">
             Close
           </Button>
         )}
-        {!canClose && (
+        {!updateComplete && canClose && (
+          <Button onClick={onClose} variant="contained">
+            Close
+          </Button>
+        )}
+        {!updateComplete && !canClose && (
           <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>
             Please wait...
           </Typography>
