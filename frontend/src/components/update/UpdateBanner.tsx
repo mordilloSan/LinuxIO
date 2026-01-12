@@ -5,7 +5,6 @@ import { useState, useEffect, useRef } from "react";
 
 import UpdateDialog from "./UpdateDialog";
 
-import { getStreamMux, initStreamMux } from "@/api/linuxio";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 
 interface UpdateInfo {
@@ -30,83 +29,67 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   const [targetVersion, setTargetVersion] = useState<string | null>(null);
   const { startUpdate, status, progress, output, error, isUpdating } =
     useLinuxIOUpdater();
-  const waitingForReconnectRef = useRef(false);
-  const hasDisconnectedRef = useRef(false);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
-  // Monitor for WebSocket reconnection after update
-  // With socket activation, we need to actively poll for reconnection
+  // Poll version endpoint to detect when server is back up after update
   useEffect(() => {
-    let reconnectInterval: ReturnType<typeof setInterval> | null = null;
-    let unsubscribe: (() => void) | null = null;
-
-    const handleReconnected = () => {
-      console.log("[UpdateBanner] Service reconnected! Update successful.");
-      if (reconnectInterval) {
-        clearInterval(reconnectInterval);
-        reconnectInterval = null;
-      }
-      waitingForReconnectRef.current = false;
-      setUpdateComplete(true);
-      setUpdateSuccess(true);
-    };
-
-    const setupListener = () => {
-      const mux = getStreamMux();
-      if (!mux) return;
-
-      unsubscribe = mux.addStatusListener((newStatus) => {
-        if (!waitingForReconnectRef.current) return;
-
-        console.log(
-          `[UpdateBanner] WebSocket status: ${newStatus}, hasDisconnected=${hasDisconnectedRef.current}`,
-        );
-
-        // Track when WebSocket disconnects (service restarting)
-        if (newStatus === "closed" || newStatus === "error") {
-          hasDisconnectedRef.current = true;
-
-          // Start actively polling for reconnection (triggers socket activation)
-          // Wait a few seconds before polling to let the update script finish
-          if (!reconnectInterval) {
-            console.log(
-              "[UpdateBanner] Will start reconnection polling in 5 seconds...",
-            );
-            setTimeout(() => {
-              console.log("[UpdateBanner] Starting reconnection polling...");
-              reconnectInterval = setInterval(() => {
-                console.log("[UpdateBanner] Attempting to reconnect...");
-                // initStreamMux creates a new WebSocket if current is closed
-                const newMux = initStreamMux();
-
-                // Check current status and also listen for changes
-                if (newMux.status === "open") {
-                  handleReconnected();
-                } else {
-                  newMux.addStatusListener((status) => {
-                    if (status === "open") {
-                      handleReconnected();
-                    }
-                  });
-                }
-              }, 2000); // Try every 2 seconds
-            }, 5000); // Wait 5 seconds before starting to poll
-          }
-        }
-
-        // When it reconnects after being disconnected
-        if (newStatus === "open" && hasDisconnectedRef.current) {
-          handleReconnected();
-        }
-      });
-    };
-
-    setupListener();
-
     return () => {
-      if (unsubscribe) unsubscribe();
-      if (reconnectInterval) clearInterval(reconnectInterval);
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
     };
   }, []);
+
+  const startVersionPolling = () => {
+    console.log("[UpdateBanner] Starting version polling in 5 seconds...");
+
+    setTimeout(() => {
+      console.log("[UpdateBanner] Polling /api/version for server recovery...");
+      pollingIntervalRef.current = setInterval(async () => {
+        try {
+          const response = await fetch("/api/version", {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          });
+
+          if (response.ok) {
+            const versions = await response.json();
+            console.log(
+              "[UpdateBanner] Server is back up! Installed versions:",
+              versions,
+            );
+
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
+            }
+
+            // Check if update was successful by comparing versions
+            // Look for any component with the target version
+            const hasTargetVersion = targetVersion
+              ? Object.values(versions).some((v) => v === targetVersion)
+              : true;
+
+            setUpdateComplete(true);
+            setUpdateSuccess(hasTargetVersion);
+
+            if (!hasTargetVersion && targetVersion) {
+              console.warn(
+                "[UpdateBanner] Update may have failed - target version not found in:",
+                versions,
+              );
+            }
+          }
+        } catch (err) {
+          // Server still down, keep polling
+          console.log("[UpdateBanner] Version check failed, retrying...", err);
+        }
+      }, 2000); // Poll every 2 seconds
+    }, 5000); // Wait 5 seconds before starting
+  };
 
   const handleUpdate = async () => {
     if (
@@ -122,50 +105,14 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
     setUpdateComplete(false);
     setUpdateSuccess(false);
     setTargetVersion(updateInfo.latest_version || null);
-    waitingForReconnectRef.current = false;
-    hasDisconnectedRef.current = false;
 
     try {
       await startUpdate(updateInfo.latest_version);
 
-      // Start monitoring for reconnection
-      waitingForReconnectRef.current = true;
-
-      // Fallback: if reconnection detection fails after 30 seconds, try once more
-      setTimeout(async () => {
-        if (waitingForReconnectRef.current) {
-          console.log(
-            "[UpdateBanner] Fallback timeout reached, attempting to reconnect...",
-          );
-
-          // Try to initialize connection
-          try {
-            const mux = initStreamMux();
-            // Wait a bit for connection to establish
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-
-            waitingForReconnectRef.current = false;
-            if (mux.status === "open") {
-              console.log("[UpdateBanner] Fallback reconnection successful!");
-              setUpdateComplete(true);
-              setUpdateSuccess(true);
-            } else {
-              // Connection failed after timeout
-              console.warn("[UpdateBanner] Fallback reconnection failed");
-              setUpdateComplete(true);
-              setUpdateSuccess(false);
-            }
-          } catch (err) {
-            console.error("[UpdateBanner] Fallback reconnection failed:", err);
-            waitingForReconnectRef.current = false;
-            setUpdateComplete(true);
-            setUpdateSuccess(false);
-          }
-        }
-      }, 30000);
+      // Start polling version endpoint to detect when server is back up
+      startVersionPolling();
     } catch (err) {
       console.error("Update failed:", err);
-      waitingForReconnectRef.current = false;
       // Dialog will show the error, keep it open
     }
   };
