@@ -34,7 +34,7 @@ export const useLinuxIOUpdater = () => {
 
       setIsUpdating(true);
       isUpdatingRef.current = true; // Set ref immediately (no async delay)
-      setProgress(0);
+      setProgress(10); // Initial progress
       setError(null);
       setStatus("Starting update...");
       setOutput([]);
@@ -97,7 +97,10 @@ export const useLinuxIOUpdater = () => {
               fullText.includes("starting linuxio") ||
               fullText.includes("target version")
             ) {
-              updateStartedRef.current = true;
+              if (!updateStartedRef.current) {
+                updateStartedRef.current = true;
+                setProgress(30); // Update is downloading/installing
+              }
             }
           }
         };
@@ -115,7 +118,7 @@ export const useLinuxIOUpdater = () => {
             // If update was started (systemd unit is running), treat errors as expected
             // The error is likely from journalctl being killed when the service stops
             if (updateStartedRef.current) {
-              setProgress(50);
+              setProgress(60);
               setStatus("Update in progress - service restarting...");
               setIsUpdating(false);
               isUpdatingRef.current = false;
@@ -139,7 +142,7 @@ export const useLinuxIOUpdater = () => {
           // Use ref instead of state to avoid stale closure issue
           if (isUpdatingRef.current) {
             if (updateStartedRef.current) {
-              setProgress(50);
+              setProgress(60);
               setStatus("Update in progress - service restarting...");
               setIsUpdating(false);
               isUpdatingRef.current = false;
@@ -175,6 +178,7 @@ export const useLinuxIOUpdater = () => {
     startUpdate,
     cancelUpdate,
     clearError,
+    setProgress,
     status,
     progress,
     output,
