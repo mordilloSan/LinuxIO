@@ -408,17 +408,15 @@ verify_installation() {
         log_warn "linuxio-webserver did not run successfully (may be arch mismatch)"
     fi
 
-    if "${BIN_DIR}/linuxio-bridge" >/dev/null 2>&1; then
-        local version
-        version=$("${BIN_DIR}/linuxio-bridge" 2>&1 | head -n1 || echo "unknown")
-        log_ok "linuxio-bridge: ${version}"
+    # Check bridge is executable (it's session-based, only runs when user logs in)
+    if [[ -x "${BIN_DIR}/linuxio-bridge" ]]; then
+        log_ok "linuxio-bridge: executable"
     else
-        log_warn "linuxio-bridge did not run successfully"
+        log_warn "linuxio-bridge: not executable"
     fi
 
     # Check auth helper is executable
-    local auth_helper="${BIN_DIR}/linuxio-auth"
-    if [[ -x "$auth_helper" ]]; then
+    if [[ -x "${BIN_DIR}/linuxio-auth" ]]; then
         log_ok "linuxio-auth: executable"
     else
         log_warn "linuxio-auth: not executable"

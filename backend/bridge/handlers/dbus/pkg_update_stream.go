@@ -21,7 +21,6 @@ const StreamTypePkgUpdate = "pkg-update"
 // RegisterStreamHandlers registers all dbus stream handlers.
 func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
 	handlers[StreamTypePkgUpdate] = HandlePackageUpdateStream
-	handlers[StreamTypeServiceLogs] = HandleServiceLogsStream
 }
 
 // PkgUpdateProgress represents progress for package update operations.
