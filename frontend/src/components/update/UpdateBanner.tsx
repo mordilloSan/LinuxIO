@@ -52,29 +52,45 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
           hasDisconnectedRef.current = true;
 
           // Start actively polling for reconnection (triggers socket activation)
+          // Wait a few seconds before polling to let the update script finish
           if (!reconnectInterval) {
-            console.log("[UpdateBanner] Starting reconnection polling...");
-            reconnectInterval = setInterval(() => {
-              console.log("[UpdateBanner] Attempting to reconnect...");
-              // initStreamMux creates a new WebSocket if current is closed
-              const newMux = initStreamMux();
+            console.log(
+              "[UpdateBanner] Will start reconnection polling in 5 seconds...",
+            );
+            setTimeout(() => {
+              console.log("[UpdateBanner] Starting reconnection polling...");
+              reconnectInterval = setInterval(() => {
+                console.log("[UpdateBanner] Attempting to reconnect...");
+                // initStreamMux creates a new WebSocket if current is closed
+                const newMux = initStreamMux();
 
-              // Listen for this mux to open
-              const checkAndReload = (status: string) => {
-                if (status === "open") {
-                  console.log("[UpdateBanner] Reconnected! Reloading page...");
-                  sessionStorage.removeItem("update_info");
-                  window.location.reload();
+                // Listen for this mux to open
+                const checkAndReload = (status: string) => {
+                  if (status === "open") {
+                    console.log(
+                      "[UpdateBanner] Reconnected! Reloading in 2 seconds...",
+                    );
+                    // Clear interval to stop further attempts
+                    if (reconnectInterval) {
+                      clearInterval(reconnectInterval);
+                      reconnectInterval = null;
+                    }
+                    // Brief delay so user can see the success state
+                    setTimeout(() => {
+                      sessionStorage.removeItem("update_info");
+                      window.location.reload();
+                    }, 2000);
+                  }
+                };
+
+                // Check current status and also listen for changes
+                if (newMux.status === "open") {
+                  checkAndReload("open");
+                } else {
+                  newMux.addStatusListener(checkAndReload);
                 }
-              };
-
-              // Check current status and also listen for changes
-              if (newMux.status === "open") {
-                checkAndReload("open");
-              } else {
-                newMux.addStatusListener(checkAndReload);
-              }
-            }, 2000); // Try every 2 seconds
+              }, 2000); // Try every 2 seconds
+            }, 5000); // Wait 5 seconds before starting to poll
           }
         }
 
@@ -115,7 +131,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       // Start monitoring for reconnection
       waitingForReconnectRef.current = true;
 
-      // Fallback: if reconnection detection fails, reload after 10 seconds
+      // Fallback: if reconnection detection fails, reload after 30 seconds
+      // (5s initial wait + polling attempts + some buffer)
       setTimeout(() => {
         if (waitingForReconnectRef.current) {
           console.log(
@@ -124,7 +141,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
           sessionStorage.removeItem("update_info");
           window.location.reload();
         }
-      }, 10000);
+      }, 30000);
     } catch (err) {
       console.error("Update failed:", err);
       waitingForReconnectRef.current = false;

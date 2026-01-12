@@ -553,6 +553,10 @@ main() {
     verify_installation
     echo ""
 
+    # Brief pause to let journalctl stream all output to the UI
+    # Without this, the verification results may not be visible before disconnect
+    sleep 2
+
     # Stop existing services if running (this is the only point where we stop)
     # This ensures all installation output was visible before disconnection
     stop_existing_services
