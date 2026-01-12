@@ -309,7 +309,9 @@ export function useStream(
 
     return process;
   } catch (error) {
-    options?.onError?.(error instanceof Error ? error : new Error(String(error)));
+    options?.onError?.(
+      error instanceof Error ? error : new Error(String(error)),
+    );
     return null;
   }
 }
