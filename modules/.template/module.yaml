@@ -1,21 +1,21 @@
 name: example-module
 version: 1.0.0
 title: Example Module
-description: A demonstration module showing LinuxIO module capabilities
+description: A demonstration UI module using existing LinuxIO handlers
 author: LinuxIO Team
 homepage: https://github.com/mordilloSan/LinuxIO
 license: MIT
 
+# UI Configuration
 ui:
-  route: /example-module
-  icon: "mdi:puzzle-outline"
+  route: /example-module           # Frontend route (must be unique)
+  icon: "mdi:puzzle-outline"       # Material Design Icon
   sidebar:
-    enabled: true
-    position: 115
+    enabled: true                  # Show in sidebar
+    position: 115                  # Sidebar position (lower = higher in list)
 
-handlers:
-  commands:
-    hello:
-      description: Returns a greeting message
-      command: echo "Hello from Example Module!"
-      timeout: 5
+# This is a UI-only module that uses:
+# 1. Existing LinuxIO handlers: linuxio.useCall("system", "get_cpu_info")
+# 2. Exec streams: linuxio.useStream('exec', payload)
+#
+# No backend handlers needed - handlers section can be omitted for UI-only modules

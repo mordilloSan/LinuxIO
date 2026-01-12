@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
+import type { SubfolderData } from "@/api/linuxio-types";
 import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,
@@ -12,18 +13,7 @@ import {
   useIndexerAvailability,
 } from "./useFileDirectorySizeBase";
 
-export interface SubfolderData {
-  path: string;
-  name: string;
-  size: number;
-  mod_time: string;
-}
-
-export interface SubfoldersResponse {
-  path: string;
-  subfolders: SubfolderData[];
-  count: number;
-}
+export type { SubfolderData };
 
 interface UseSubfoldersResult {
   subfolders: SubfolderData[];
@@ -55,10 +45,8 @@ export const useFileSubfolders = (
     indexerDisabled,
   );
 
-  const { data, isLoading, error } = linuxio.useCall<SubfoldersResponse>(
-    "filebrowser",
-    "subfolders",
-    [path],
+  const { data, isLoading, error } = linuxio.filebrowser.subfolders.useQuery(
+    path,
     {
       enabled: queryEnabled,
       ...getDirectorySizeQueryOptions(),

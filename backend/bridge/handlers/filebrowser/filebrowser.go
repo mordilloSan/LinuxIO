@@ -953,7 +953,7 @@ func resolveGroupID(identifier string) (int, error) {
 
 // usersGroups returns lists of all users and groups on the system
 // Args: []
-func usersGroups(args []string) (any, error) {
+func usersGroups() (any, error) {
 	users, err := getAllUsers()
 	if err != nil {
 		logger.Debugf("error getting users: %v", err)

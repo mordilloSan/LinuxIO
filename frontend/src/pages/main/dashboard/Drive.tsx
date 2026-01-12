@@ -1,23 +1,10 @@
 import { Box, Typography } from "@mui/material";
 import React, { useState, useMemo } from "react";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
-
-// --- API shape from /system/disk ---
-interface ApiDisk {
-  model: string;
-  name: string;
-  ro: boolean;
-  serial?: string;
-  size: string; // e.g. "0B", "953.9G"
-  type?: string; // e.g. "nvme", "usb", "sata", etc.
-  vendor?: string;
-  power?: unknown; // present for nvme
-  smart?: unknown; // present for nvme
-}
 
 // --- Component's normalized shape ---
 interface DriveInfo {
@@ -66,7 +53,7 @@ const Drive: React.FC = () => {
     data: rawDrives = [],
     isPending: isLoading,
     isError,
-  } = linuxio.useCall<ApiDisk[]>("system", "get_drive_info", [], {});
+  } = linuxio.system.get_drive_info.useQuery();
 
   // Normalize API → component shape
   const drives = useMemo<DriveInfo[]>(

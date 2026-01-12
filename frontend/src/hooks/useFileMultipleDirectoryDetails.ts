@@ -1,7 +1,7 @@
 import { useQueries } from "@tanstack/react-query";
 
 import { MultiStatsItem } from "@/types/filebrowser";
-import { linuxio } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
 import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,
@@ -47,11 +47,9 @@ export const useFileMultipleDirectoryDetails = (
     queries: directoryPaths.map((path) => ({
       queryKey: ["directorySize", path],
       queryFn: async () => {
-        return linuxio.request<DirectoryDetailsData>(
-          "filebrowser",
-          "dir_size",
-          [path],
-        );
+        return linuxio.call<DirectoryDetailsData>("filebrowser", "dir_size", [
+          path,
+        ]);
       },
       ...getDirectorySizeQueryOptions(),
       enabled: !indexerDisabled,

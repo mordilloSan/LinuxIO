@@ -3,16 +3,12 @@ import React, { Suspense } from "react";
 
 import ContainerCard from "../../../components/cards/ContainerCard";
 
-import { linuxio } from "@/api/linuxio";
-import { ContainerInfo } from "@/types/container";
+import linuxio from "@/api/react-query";
 
 const ContainerList: React.FC = () => {
-  const { data: containers = [] } = linuxio.useCall<ContainerInfo[]>(
-    "docker",
-    "list_containers",
-    [],
-    { refetchInterval: 5000 },
-  );
+  const { data: containers = [] } = linuxio.docker.list_containers.useQuery({
+    refetchInterval: 5000,
+  });
 
   return (
     <Suspense fallback={<Typography>Loading containers...</Typography>}>

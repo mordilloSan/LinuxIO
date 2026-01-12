@@ -10,7 +10,7 @@ import {
   Paper,
 } from "@mui/material";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import CollapsibleTable from "@/components/tables/CollapsibleTable";
 import { CollapsibleColumn } from "@/types/collapsible";
 
@@ -144,13 +144,7 @@ function renderCollapseContent(row: any) {
 }
 
 export default function DockerNetworksTable() {
-  const { data = [] } = linuxio.useCall<any[]>(
-    "docker",
-    "list_networks",
-    [],
-    {},
-  );
-
+  const { data = [] } = linuxio.docker.list_networks.useQuery();
   const rows = formatNetworkRows(data);
 
   return (

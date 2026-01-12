@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 // Homedir determines the user's home folder
@@ -152,8 +152,7 @@ func readConfigStrict(path string) (*Settings, error) {
 		return nil, err
 	}
 	var out Settings
-	dec := yaml.NewDecoder(bytes.NewReader(b))
-	dec.KnownFields(true)
+	dec := yaml.NewDecoder(bytes.NewReader(b), yaml.Strict())
 	if err := dec.Decode(&out); err != nil {
 		return nil, err
 	}

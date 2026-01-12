@@ -14,6 +14,21 @@
 
 10 - fix indexer status check and calls.
 
+11
+
+Issues Found (7 minor)
+Medium Priority:
+Goroutine sync bug in HandleExecStream - could cause premature completion
+Template placeholder substitution - no shell escaping (low risk, manifests are trusted)
+Low Priority: 3. Goroutine leak risk in HandleDbusStream (minimal impact) 4. Missing ANSI code stripping in DBus responses (inconsistency) 5. No timeout validation in manifests 6. Signal name matching has unreachable fallback logic 7. Symlink validation missing in module install
+
+
+
+
+
+
+
+
 Remove gin - DONE
 use quantum filebrowser as our main navigator - DONE
 when we login we must also add the user to filebrowser - DONE

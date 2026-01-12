@@ -389,7 +389,7 @@ static void set_resource_limits(void)
   (void)setrlimit(RLIMIT_NOFILE, &rl);
 
   int nproc_limit = env_get_int("LINUXIO_RLIMIT_NPROC", 1024, 10, 4096);
-  rl.rlim_cur = rl.rlim_max = nproc_limit;
+  rl.rlim_cur = rl.rlim_max = (rlim_t)nproc_limit;
   (void)setrlimit(RLIMIT_NPROC, &rl);
 
   rl.rlim_cur = rl.rlim_max = 16UL * 1024 * 1024 * 1024;
@@ -920,7 +920,6 @@ static pid_t spawn_bridge_process(
     }
     // Close original to avoid leaking extra copy of pipe write-end
     close(orig_exec_status);
-    orig_exec_status = -1;
   }
   else
   {
@@ -933,7 +932,6 @@ static pid_t spawn_bridge_process(
     if (tmp_bridge < 0) _exit(127);
     // Close original to avoid leaking extra FD
     close(orig_bridge);
-    orig_bridge = -1;
   }
   else
   {

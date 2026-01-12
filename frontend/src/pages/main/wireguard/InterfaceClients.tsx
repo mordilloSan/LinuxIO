@@ -13,10 +13,10 @@ import {
   Chip,
   Tooltip,
 } from "@mui/material";
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const wireguardToastMeta = {
@@ -91,9 +91,17 @@ const formatAgo = (unix?: number) => {
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
-  const [loadingQr, setLoadingQr] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
 
   const interfaceName = params.id;
+
+  // Update current time every 3 seconds (matches refetchInterval)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now() / 1000);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   const {
     data: peersData,
@@ -111,66 +119,84 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     },
   );
 
+  // Mutations (using string-based API for complex response types)
+  const deletePeerMutation = linuxio.useMutate<unknown, string[]>(
+    "wireguard",
+    "remove_peer",
+  );
+  const downloadConfigMutation = linuxio.useMutate<
+    { content: string },
+    string[]
+  >("wireguard", "peer_config_download");
+  const qrCodeMutation = linuxio.useMutate<{ qrcode: string }, string[]>(
+    "wireguard",
+    "peer_qrcode",
+  );
+
   // Normalize peers response
-  const peers: Peer[] = peersData
-    ? Array.isArray(peersData)
-      ? peersData
-      : peersData.peers || []
-    : [];
+  const peers: Peer[] = useMemo(
+    () =>
+      peersData
+        ? Array.isArray(peersData)
+          ? peersData
+          : peersData.peers || []
+        : [],
+    [peersData],
+  );
 
-  const handleDeletePeer = async (peerName: string) => {
-    try {
-      await linuxio.request("wireguard", "remove_peer", [
-        interfaceName,
-        peerName,
-      ]);
-      toast.success(`WireGuard Peer '${peerName}' deleted`, wireguardToastMeta);
-      refetch();
-    } catch {
-      toast.error(
-        `Failed to delete interface: ${peerName}`,
-        wireguardToastMeta,
-      );
-    }
+  // Calculate online status (re-calculates when peers or time updates)
+  const peersWithStatus = useMemo(() => {
+    return peers.map((peer) => {
+      const lastUnix = peer.last_handshake_unix ?? 0;
+      const isOnline = lastUnix > 0 && currentTime - lastUnix < 180; // 3 min window
+      return { ...peer, isOnline };
+    });
+  }, [peers, currentTime]);
+
+  const handleDeletePeer = (peerName: string) => {
+    deletePeerMutation.mutate([interfaceName, peerName], {
+      onSuccess: () => {
+        toast.success(
+          `WireGuard Peer '${peerName}' deleted`,
+          wireguardToastMeta,
+        );
+        refetch();
+      },
+    });
   };
 
-  const handleDownloadConfig = async (peername: string) => {
-    try {
-      const result = await linuxio.request<{ config: string }>(
-        "wireguard",
-        "peer_config_download",
-        [interfaceName, peername],
-      );
-      // Create blob from config text
-      const blob = new Blob([result.config], { type: "text/plain" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `${peername}.conf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Download failed", err);
-    }
+  const handleDownloadConfig = (peername: string) => {
+    downloadConfigMutation.mutate([interfaceName, peername], {
+      onSuccess: (result) => {
+        // Create blob from config text
+        const blob = new Blob([result.content], { type: "text/plain" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `${peername}.conf`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        toast.success(
+          `Config for '${peername}' downloaded successfully`,
+          wireguardToastMeta,
+        );
+      },
+    });
   };
 
-  const handleViewQrCode = async (peername: string) => {
-    setLoadingQr(true);
-    try {
-      const result = await linuxio.request<{ qrcode: string }>(
-        "wireguard",
-        "peer_qrcode",
-        [interfaceName, peername],
-      );
-      setQrCode(result.qrcode);
-      setOpenDialog(true);
-    } catch (error) {
-      console.error("Failed to fetch QR code:", error);
-    } finally {
-      setLoadingQr(false);
-    }
+  const handleViewQrCode = (peername: string) => {
+    qrCodeMutation.mutate([interfaceName, peername], {
+      onSuccess: (result) => {
+        setQrCode(result.qrcode);
+        setOpenDialog(true);
+        toast.success(
+          `QR code for '${peername}' loaded successfully`,
+          wireguardToastMeta,
+        );
+      },
+    });
   };
 
   if (isLoading) return <ComponentLoader />;
@@ -180,14 +206,13 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   return (
     <>
       <Grid container spacing={3}>
-        {peers.length === 0 ? (
+        {peersWithStatus.length === 0 ? (
           <Grid size={{ xs: 6, sm: 4, md: 4, lg: 3, xl: 2 }}>
             <Typography>No peers found for this interface.</Typography>
           </Grid>
         ) : (
-          peers.map((peer, idx) => {
-            const lastUnix = peer.last_handshake_unix ?? 0;
-            const isOnline = lastUnix > 0 && Date.now() / 1000 - lastUnix < 180; // 3 min window
+          peersWithStatus.map((peer, idx) => {
+            const isOnline = peer.isOnline;
 
             return (
               <Grid
@@ -290,7 +315,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
         }}
       >
         <DialogContent>
-          {loadingQr ? (
+          {qrCodeMutation.isPending ? (
             <Typography>Loading QR code...</Typography>
           ) : qrCode ? (
             <img

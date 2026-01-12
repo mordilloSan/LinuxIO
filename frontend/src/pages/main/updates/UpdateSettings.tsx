@@ -11,32 +11,20 @@ import {
   Chip,
   Stack,
 } from "@mui/material";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { linuxio } from "@/api/linuxio";
+import type {
+  AutoUpdateOptions,
+  AutoUpdateState,
+  AutoUpdateFrequency,
+  AutoUpdateScope,
+  AutoUpdateRebootPolicy,
+} from "@/api/linuxio-types";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
-type Frequency = "hourly" | "daily" | "weekly";
-type Scope = "security" | "updates" | "all";
-type RebootPolicy = "never" | "if_needed" | "always" | "schedule";
-
 const updatesToastMeta = { meta: { href: "/updates", label: "Open updates" } };
-
-interface AutoUpdateOptions {
-  enabled: boolean;
-  frequency: Frequency;
-  scope: Scope;
-  download_only: boolean;
-  reboot_policy: RebootPolicy;
-  exclude_packages: string[];
-}
-
-interface AutoUpdateState {
-  backend: string;
-  options: AutoUpdateOptions;
-  notes?: string[];
-}
 
 const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   ...s,
@@ -49,44 +37,61 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
 });
 
 const UpdateSettings: React.FC = () => {
-  const [serverState, setServerState] = useState<AutoUpdateState | null>(null);
-  const [draft, setDraft] = useState<AutoUpdateOptions | null>(null);
-  const [excludeInput, setExcludeInput] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  // -------- Load auto update settings --------
+  const {
+    data: rawServerState,
+    isPending: loading,
+    refetch,
+  } = linuxio.dbus.GetAutoUpdates.useQuery();
 
-  // -------- Load on mount --------
-  useEffect(() => {
-    let mounted = true;
-    linuxio
-      .request<AutoUpdateState>("dbus", "GetAutoUpdates")
-      .then((payload) => {
-        if (!mounted) return;
-        if (!payload) {
-          throw new Error("Empty auto update response");
-        }
-        const norm = normalizeState(payload);
-        setServerState(norm);
-        setDraft(norm.options);
-        setExcludeInput(norm.options.exclude_packages.join(", "));
-      })
-      .catch((err) => {
-        console.error("Failed to load auto update settings", err);
-        toast.error("Failed to load auto update settings", updatesToastMeta);
-      })
-      .finally(() => setLoading(false));
-    return () => {
-      mounted = false;
+  const serverState = useMemo(
+    () => (rawServerState ? normalizeState(rawServerState) : null),
+    [rawServerState],
+  );
+
+  // Local draft state - null means "use server value"
+  const [draftOverrides, setDraftOverrides] =
+    useState<Partial<AutoUpdateOptions> | null>(null);
+  const [excludeInputOverride, setExcludeInputOverride] = useState<
+    string | null
+  >(null);
+
+  // Derived current values (draft overrides server)
+  const currentOptions: AutoUpdateOptions | null = useMemo(() => {
+    if (!serverState) return null;
+    return {
+      ...serverState.options,
+      ...draftOverrides,
     };
-  }, []);
+  }, [serverState, draftOverrides]);
+
+  const currentExcludeInput = useMemo(() => {
+    if (excludeInputOverride !== null) return excludeInputOverride;
+    return serverState?.options.exclude_packages.join(", ") ?? "";
+  }, [serverState, excludeInputOverride]);
+
+  // -------- Mutations --------
+  // Use string-based API for complex object payloads
+  const setAutoUpdatesMutation = linuxio.useMutate<
+    AutoUpdateState,
+    AutoUpdateOptions
+  >("dbus", "SetAutoUpdates");
+
+  const applyOfflineMutation = linuxio.useMutate<{
+    status?: string;
+    error?: string;
+  }>("dbus", "ApplyOfflineUpdates");
+
+  const saving =
+    setAutoUpdatesMutation.isPending || applyOfflineMutation.isPending;
 
   // dirty check for enabling Save/Cancel
   const dirty = useMemo(() => {
-    if (!serverState || !draft) return false;
+    if (!serverState || !currentOptions) return false;
     // compare with excludeInput normalized into list, so the button reflects pending text edits
     const draftWithExcludes: AutoUpdateOptions = {
-      ...draft,
-      exclude_packages: excludeInput
+      ...currentOptions,
+      exclude_packages: currentExcludeInput
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
@@ -94,73 +99,68 @@ const UpdateSettings: React.FC = () => {
     return (
       JSON.stringify(serverState.options) !== JSON.stringify(draftWithExcludes)
     );
-  }, [serverState, draft, excludeInput]);
+  }, [serverState, currentOptions, currentExcludeInput]);
 
   // -------- Save (explicit) --------
-  const save = async () => {
-    if (!draft) return;
-    setSaving(true);
-    try {
-      const payload: AutoUpdateOptions = {
-        ...draft,
-        exclude_packages: excludeInput
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
-      };
-      // SetAutoUpdates expects a single JSON arg
-      const result = await linuxio.request<AutoUpdateState>(
-        "dbus",
-        "SetAutoUpdates",
-        [JSON.stringify(payload)],
-      );
-      if (!result) {
-        throw new Error("Empty auto update response");
-      }
-      const norm = normalizeState(result);
-      setServerState(norm);
-      setDraft(norm.options);
-      setExcludeInput(norm.options.exclude_packages.join(", "));
-      toast.success("Automatic Updates Settings saved", updatesToastMeta);
-    } catch (err) {
-      console.error("Failed to save auto update settings", err);
-      toast.error("Failed to save settings", updatesToastMeta);
-    } finally {
-      setSaving(false);
-    }
+  const save = () => {
+    if (!currentOptions) return;
+
+    const payload: AutoUpdateOptions = {
+      ...currentOptions,
+      exclude_packages: currentExcludeInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+
+    setAutoUpdatesMutation.mutate(payload, {
+      onSuccess: () => {
+        // Clear overrides - server now has the saved values
+        setDraftOverrides(null);
+        setExcludeInputOverride(null);
+        // Refetch to update UI with server state
+        refetch();
+        toast.success("Automatic Updates Settings saved", updatesToastMeta);
+      },
+    });
   };
 
   // -------- Apply at next reboot --------
-  const handleApplyOffline = async () => {
-    try {
-      const result = await linuxio.request<{ status?: string; error?: string }>(
-        "dbus",
-        "ApplyOfflineUpdates",
-      );
-      if (result?.status && result.status !== "ok") {
-        throw new Error(result.error || "Failed to schedule offline update");
-      }
-      toast.success(
-        "Offline update scheduled for next reboot",
-        updatesToastMeta,
-      );
-    } catch (err: any) {
-      const errMsg = err?.message || String(err);
-      console.error("Failed to schedule offline update", err);
-
-      // Show friendly messages for common cases
-      if (
-        errMsg.includes("no updates available") ||
-        errMsg.includes("Prepared update not found")
-      ) {
-        toast.info("No updates available to schedule", updatesToastMeta);
-      } else {
-        toast.error("Failed to schedule offline update", updatesToastMeta);
-      }
-    }
+  const handleApplyOffline = () => {
+    applyOfflineMutation.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result?.status && result.status !== "ok") {
+          const errMsg = result.error || "Failed to schedule offline update";
+          // Show friendly info message for "no updates" case
+          if (
+            errMsg.includes("no updates available") ||
+            errMsg.includes("Prepared update not found")
+          ) {
+            toast.info("No updates available to schedule", updatesToastMeta);
+          }
+          // Other errors handled by global QueryClient config
+          return;
+        }
+        toast.success(
+          "Offline update scheduled for next reboot",
+          updatesToastMeta,
+        );
+      },
+      onError: (err) => {
+        const errMsg = err?.message || String(err);
+        // Show friendly info message for "no updates" case
+        if (
+          errMsg.includes("no updates available") ||
+          errMsg.includes("Prepared update not found")
+        ) {
+          toast.info("No updates available to schedule", updatesToastMeta);
+        }
+        // Other errors handled by global QueryClient config
+      },
+    });
   };
 
-  if (loading || !serverState || !draft) {
+  if (loading || !serverState || !currentOptions) {
     return <ComponentLoader />;
   }
 
@@ -176,8 +176,13 @@ const UpdateSettings: React.FC = () => {
       <FormControlLabel
         control={
           <Switch
-            checked={draft.enabled}
-            onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
+            checked={currentOptions.enabled}
+            onChange={(e) =>
+              setDraftOverrides({
+                ...(draftOverrides ?? {}),
+                enabled: e.target.checked,
+              })
+            }
             disabled={saving}
           />
         }
@@ -195,9 +200,12 @@ const UpdateSettings: React.FC = () => {
           </Typography>
           <Select
             size="small"
-            value={draft.frequency}
-            onChange={(e: SelectChangeEvent<Frequency>) =>
-              setDraft({ ...draft, frequency: e.target.value as Frequency })
+            value={currentOptions.frequency}
+            onChange={(e: SelectChangeEvent<AutoUpdateFrequency>) =>
+              setDraftOverrides({
+                ...(draftOverrides ?? {}),
+                frequency: e.target.value as AutoUpdateFrequency,
+              })
             }
             disabled={saving}
           >
@@ -213,9 +221,12 @@ const UpdateSettings: React.FC = () => {
           </Typography>
           <Select
             size="small"
-            value={draft.scope}
-            onChange={(e: SelectChangeEvent<Scope>) =>
-              setDraft({ ...draft, scope: e.target.value as Scope })
+            value={currentOptions.scope}
+            onChange={(e: SelectChangeEvent<AutoUpdateScope>) =>
+              setDraftOverrides({
+                ...(draftOverrides ?? {}),
+                scope: e.target.value as AutoUpdateScope,
+              })
             }
             disabled={saving}
           >
@@ -231,11 +242,11 @@ const UpdateSettings: React.FC = () => {
           </Typography>
           <Select
             size="small"
-            value={draft.reboot_policy}
-            onChange={(e: SelectChangeEvent<RebootPolicy>) =>
-              setDraft({
-                ...draft,
-                reboot_policy: e.target.value as RebootPolicy,
+            value={currentOptions.reboot_policy}
+            onChange={(e: SelectChangeEvent<AutoUpdateRebootPolicy>) =>
+              setDraftOverrides({
+                ...(draftOverrides ?? {}),
+                reboot_policy: e.target.value as AutoUpdateRebootPolicy,
               })
             }
             disabled={saving}
@@ -249,9 +260,12 @@ const UpdateSettings: React.FC = () => {
         <FormControlLabel
           control={
             <Switch
-              checked={draft.download_only}
+              checked={currentOptions.download_only}
               onChange={(e) =>
-                setDraft({ ...draft, download_only: e.target.checked })
+                setDraftOverrides({
+                  ...(draftOverrides ?? {}),
+                  download_only: e.target.checked,
+                })
               }
               disabled={saving}
             />
@@ -268,8 +282,8 @@ const UpdateSettings: React.FC = () => {
           <TextField
             size="small"
             placeholder="e.g. linux-headers-*, docker-ce"
-            value={excludeInput}
-            onChange={(e) => setExcludeInput(e.target.value)}
+            value={currentExcludeInput}
+            onChange={(e) => setExcludeInputOverride(e.target.value)}
             disabled={saving}
             sx={{ minWidth: 420, maxWidth: 600 }}
           />
@@ -283,9 +297,9 @@ const UpdateSettings: React.FC = () => {
         <Button
           variant="text"
           onClick={() => {
-            // Revert draft to server values
-            setDraft(serverState.options);
-            setExcludeInput(serverState.options.exclude_packages.join(", "));
+            // Revert to server values by clearing overrides
+            setDraftOverrides(null);
+            setExcludeInputOverride(null);
           }}
           disabled={saving || !dirty}
         >

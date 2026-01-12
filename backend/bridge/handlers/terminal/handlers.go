@@ -1,115 +1,189 @@
 package terminal
 
 import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"os/user"
 	"strconv"
+	"syscall"
 
+	"github.com/creack/pty"
+	"github.com/mordilloSan/go_logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// TerminalHandlers exposes terminal control to the bridge IPC.
-// Commands:
-// - start_main []
-// - read_main [waitMs]
-// - input_main [data]
-// - resize_main [cols rows]
-// - close_main []
-// - list_shells [containerID]
-// - start_container [containerID shell]
-// - read_container [containerID waitMs]
-// - input_container [containerID data]
-// - resize_container [containerID cols rows]
-// - close_container [containerID]
-func TerminalHandlers(sess *session.Session) map[string]func([]string) (any, error) {
-	return map[string]func([]string) (any, error){
-		"start_main": func(_ []string) (any, error) {
-			return map[string]bool{"started": true}, StartTerminal(sess)
-		},
-		"read_main_backlog": func(_ []string) (any, error) {
-			data, err := ReadTerminalBacklog(sess.SessionID)
-			if err != nil {
-				// If no terminal yet, return empty backlog gracefully
-				return map[string]any{"data": ""}, nil
-			}
-			return map[string]any{"data": data}, nil
-		},
-		"read_main": func(args []string) (any, error) {
-			wait := 750
-			if len(args) > 0 {
-				if v, err := strconv.Atoi(args[0]); err == nil && v >= 0 {
-					wait = v
-				}
-			}
-			data, closed, err := ReadTerminal(sess.SessionID, wait)
-			if err != nil && data == "" {
-				return map[string]any{"data": "", "closed": true}, nil
-			}
-			return map[string]any{"data": data, "closed": closed}, nil
-		},
-		"input_main": func(args []string) (any, error) {
-			if len(args) == 0 {
-				return map[string]bool{"ok": true}, nil
-			}
-			return map[string]bool{"ok": true}, WriteToTerminal(sess.SessionID, args[0])
-		},
-		"resize_main": func(args []string) (any, error) {
-			if len(args) < 2 {
-				return map[string]bool{"ok": true}, nil
-			}
-			cols, _ := strconv.Atoi(args[0])
-			rows, _ := strconv.Atoi(args[1])
-			return map[string]bool{"ok": true}, ResizeTerminal(sess.SessionID, cols, rows)
-		},
-		"close_main": func(_ []string) (any, error) {
-			return map[string]bool{"closed": true}, CloseTerminal(sess.SessionID)
-		},
+// RegisterHandlers registers all terminal handlers with the global registry
+func RegisterHandlers(sess *session.Session) {
+	// Terminal - bidirectional PTY stream
+	handler.Register("terminal", "bash", &terminalHandler{sess: sess})
+	handler.Register("terminal", "sh", &terminalHandler{sess: sess, shell: "sh"})
 
-		"list_shells": func(args []string) (any, error) {
-			if len(args) < 1 {
-				return []string{}, nil
-			}
-			return ListContainerShells(args[0])
-		},
-		"start_container": func(args []string) (any, error) {
-			if len(args) < 2 {
-				return map[string]bool{"started": false}, nil
-			}
-			return map[string]bool{"started": true}, StartContainerTerminal(sess, args[0], args[1])
-		},
-		"read_container": func(args []string) (any, error) {
-			if len(args) < 1 {
-				return map[string]any{"data": "", "closed": true}, nil
-			}
-			wait := 750
-			if len(args) > 1 {
-				if v, err := strconv.Atoi(args[1]); err == nil && v >= 0 {
-					wait = v
+	// Simple JSON handlers
+	handler.RegisterFunc("terminal", "list_shells", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) < 1 {
+			return emit.Result([]string{})
+		}
+		shells, err := ListContainerShells(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(shells)
+	})
+}
+
+// terminalHandler implements BidirectionalHandler for terminal PTY sessions
+type terminalHandler struct {
+	sess  *session.Session
+	shell string // Optional shell override ("bash", "sh", etc.)
+}
+
+func (h *terminalHandler) Execute(ctx context.Context, args []string, emit handler.Events) error {
+	return fmt.Errorf("terminal requires bidirectional stream")
+}
+
+func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, emit handler.Events, input <-chan []byte) error {
+	// Parse terminal size from args (cols, rows)
+	cols, rows := 120, 32
+	if len(args) >= 2 {
+		if c, err := strconv.Atoi(args[0]); err == nil && c > 0 {
+			cols = c
+		}
+		if r, err := strconv.Atoi(args[1]); err == nil && r > 0 {
+			rows = r
+		}
+	}
+
+	logger.Debugf("[Terminal] Starting for user=%s size=%dx%d", h.sess.User.Username, cols, rows)
+
+	// Look up user for environment
+	u, err := user.LookupId(strconv.FormatUint(uint64(h.sess.User.UID), 10))
+	if err != nil {
+		return fmt.Errorf("lookup user: %w", err)
+	}
+
+	// Build environment
+	env := append(os.Environ(),
+		"HOME="+u.HomeDir,
+		"USER="+h.sess.User.Username,
+		"LOGNAME="+h.sess.User.Username,
+		"TERM=xterm-256color",
+		"COLORTERM=truecolor",
+		"HISTFILE="+u.HomeDir+"/.bash_history",
+	)
+
+	// Determine shell
+	shellPath := h.shell
+	if shellPath == "" {
+		shellPath = "bash"
+	}
+	if _, lookErr := exec.LookPath(shellPath); lookErr != nil {
+		shellPath = "sh"
+	}
+
+	// Create command
+	cmd := exec.Command(shellPath, "-i", "-l")
+	cmd.Dir = u.HomeDir
+	cmd.Env = append(env, "SHELL="+shellPath)
+
+	sysAttr := &syscall.SysProcAttr{Setsid: true, Setctty: true}
+
+	// Drop privileges if running as root
+	if os.Geteuid() == 0 {
+		sysAttr.Credential = &syscall.Credential{
+			Uid: h.sess.User.UID,
+			Gid: h.sess.User.GID,
+		}
+	}
+	cmd.SysProcAttr = sysAttr
+
+	// Start PTY
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return fmt.Errorf("pty start failed: %w", err)
+	}
+	defer ptmx.Close()
+
+	// Set initial size
+	_ = pty.Setsize(ptmx, &pty.Winsize{
+		Cols: safeUint16(cols),
+		Rows: safeUint16(rows),
+	})
+
+	logger.Infof("[Terminal] Started for user=%s pid=%d", h.sess.User.Username, cmd.Process.Pid)
+
+	// Start PTY output relay (PTY → client)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		buf := make([]byte, 4096)
+		for {
+			n, err := ptmx.Read(buf)
+			if n > 0 {
+				// Send PTY output to client
+				if emitErr := emit.Data(buf[:n]); emitErr != nil {
+					return
 				}
 			}
-			data, closed, err := ReadContainerTerminal(sess.SessionID, args[0], wait)
-			if err != nil && data == "" {
-				return map[string]any{"data": "", "closed": true}, nil
+			if err == io.EOF {
+				return
 			}
-			return map[string]any{"data": data, "closed": closed}, nil
-		},
-		"input_container": func(args []string) (any, error) {
-			if len(args) < 2 {
-				return map[string]bool{"ok": true}, nil
+			if err != nil {
+				logger.Errorf("[Terminal] PTY read error: %v", err)
+				return
 			}
-			return map[string]bool{"ok": true}, WriteToContainerTerminal(sess.SessionID, args[0], args[1])
-		},
-		"resize_container": func(args []string) (any, error) {
-			if len(args) < 3 {
-				return map[string]bool{"ok": true}, nil
+		}
+	}()
+
+	// Process client input (client → PTY)
+	for {
+		select {
+		case chunk, ok := <-input:
+			if !ok {
+				// Client closed connection
+				logger.Debugf("[Terminal] Client closed connection")
+				_ = cmd.Process.Kill()
+				goto cleanup
 			}
-			cols, _ := strconv.Atoi(args[1])
-			rows, _ := strconv.Atoi(args[2])
-			return map[string]bool{"ok": true}, ResizeContainerTerminal(sess.SessionID, args[0], cols, rows)
-		},
-		"close_container": func(args []string) (any, error) {
-			if len(args) < 1 {
-				return map[string]bool{"closed": true}, nil
+
+			// TODO: Handle resize frames
+			// For now, just write everything to PTY
+			if _, err := ptmx.Write(chunk); err != nil {
+				logger.Errorf("[Terminal] PTY write error: %v", err)
+				goto cleanup
 			}
-			return map[string]bool{"closed": true}, CloseContainerTerminal(sess.SessionID, args[0])
-		},
+
+		case <-ctx.Done():
+			// Context cancelled
+			logger.Debugf("[Terminal] Context cancelled")
+			_ = cmd.Process.Kill()
+			goto cleanup
+
+		case <-done:
+			// PTY closed (command exited)
+			logger.Debugf("[Terminal] PTY closed")
+			goto cleanup
+		}
 	}
+
+cleanup:
+	// Wait for command to finish
+	exitCode := 0
+	if err := cmd.Wait(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		}
+	}
+
+	logger.Infof("[Terminal] Closed for user=%s exitCode=%d", h.sess.User.Username, exitCode)
+
+	return emit.Result(map[string]any{
+		"exit_code": exitCode,
+	})
 }
+
+// Use safeUint16 from stream.go (already defined)

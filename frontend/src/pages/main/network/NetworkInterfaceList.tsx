@@ -6,26 +6,12 @@ import { useState, useEffect, useMemo } from "react";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 
-import { linuxio } from "@/api/linuxio";
+import type { NetworkInterface } from "@/api/linuxio-types";
+import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
-export interface NetworkInterface {
-  name: string;
-  type: string;
-  mac: string;
-  mtu: number;
-  speed: string;
-  duplex: string;
-  state: number;
-  ipv4: string[];
-  ipv6: string[];
-  rx_speed: number;
-  tx_speed: number;
-  dns: string[];
-  gateway: string;
-  ipv4_method?: "auto" | "manual" | "disabled" | "unknown";
-}
+export type { NetworkInterface };
 
 const getStatusColor = (state: number) => {
   if (state === 100) return "success.main";
@@ -55,9 +41,10 @@ const NetworkInterfaceList = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
-  const { data: rawInterfaces = [], isPending: isLoading } = linuxio.useCall<
-    NetworkInterface[]
-  >("dbus", "GetNetworkInfo", [], { refetchInterval: 1000 });
+  const { data: rawInterfaces = [], isPending: isLoading } =
+    linuxio.dbus.GetNetworkInfo.useQuery({
+      refetchInterval: 1000,
+    });
 
   // Transform data - filter veths and add type field
   const interfaces = useMemo(

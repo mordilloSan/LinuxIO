@@ -1,43 +1,53 @@
 package handlers
 
 import (
+	"net"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/drive"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/modules"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/terminal"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/wireguard"
-	"github.com/mordilloSan/LinuxIO/backend/common/middleware"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// HandlersByType is the registry for bridge request handlers.
-// Usage: HandlersByType[handlerType][command](args)
-var HandlersByType = map[string]map[string]func([]string) (any, error){}
+// JsonHandlers are functions that return JSON-serializable data.
+// Used by dynamic module system for YAML-defined handlers.
+var JsonHandlers = map[string]map[string]func([]string) (any, error){}
+
+// StreamHandlers is the registry for yamux stream handlers.
+// Used for the bridge protocol and dynamic module streams.
+var StreamHandlers = map[string]func(*session.Session, net.Conn, []string) error{}
 
 func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
-	HandlersByType["dbus"] = dbus.DbusHandlers()
-	HandlersByType["drives"] = drive.DriveHandlers()
-	HandlersByType["docker"] = docker.DockerHandlers()
-	HandlersByType["control"] = control.ControlHandlers(shutdownChan)
-	HandlersByType["config"] = config.ThemeHandlers(sess)
-	HandlersByType["system"] = system.SystemHandlers()
-	HandlersByType["filebrowser"] = filebrowser.FilebrowserHandlers()
-	HandlersByType["terminal"] = terminal.TerminalHandlers(sess)
-	HandlersByType["modules"] = modules.ModuleHandlers(sess, HandlersByType)
+	// Register the universal bridge stream handler
+	// Frontend calls linuxio.call("system", "get_drive_info") -> opens "bridge" stream
+	StreamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
+		return generic.HandleBridgeStream(s, conn, args)
+	}
 
-	// WireGuard handlers - all operations require administrator privileges
-	HandlersByType["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
+	// Register all handlers using the handler.Register() system
+	system.RegisterHandlers()
+	docker.RegisterHandlers()
+	filebrowser.RegisterHandlers()
+	config.RegisterHandlers(sess)
+	control.RegisterHandlers(shutdownChan)
+	dbus.RegisterHandlers()
+	terminal.RegisterHandlers(sess)
+	wireguard.RegisterHandlers()
+	modules.RegisterHandlers(sess, StreamHandlers)
 
-	// Generic handlers for modules
-	HandlersByType["command"] = generic.CommandHandlers()
-	HandlersByType["generic_dbus"] = generic.DbusHandlers()
+	// Register stream handlers for yamux streams (terminal, filebrowser, etc.)
+	generic.RegisterStreamHandlers(StreamHandlers, JsonHandlers)
+	terminal.RegisterStreamHandlers(StreamHandlers)
+	filebrowser.RegisterStreamHandlers(StreamHandlers)
+	dbus.RegisterStreamHandlers(StreamHandlers)
 
 	// Load modules from YAML files - log errors but don't fail
-	_ = modules.LoadModules(HandlersByType)
+	_ = modules.LoadModules(StreamHandlers)
 }

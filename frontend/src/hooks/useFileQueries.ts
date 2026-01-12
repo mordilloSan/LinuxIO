@@ -3,12 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
-import {
-  ApiResource,
-  FileResource,
-  ResourceStatData,
-} from "@/types/filebrowser";
-import { linuxio, LinuxIOError } from "@/api/linuxio";
+import { ApiResource, FileResource } from "@/types/filebrowser";
+import linuxio, { LinuxIOError } from "@/api/react-query";
 
 type useFileQueriesParams = {
   normalizedPath: string;
@@ -30,14 +26,9 @@ export const useFileQueries = ({
     isPending,
     isError,
     error,
-  } = linuxio.useCall<ApiResource>(
-    "filebrowser",
-    "resource_get",
-    [normalizedPath],
-    {
-      staleTime: 0,
-    },
-  );
+  } = linuxio.filebrowser.resource_get.useQuery(normalizedPath, {
+    staleTime: 0,
+  });
 
   const resource = useMemo(
     () => (resourceData ? normalizeResource(resourceData) : undefined),
@@ -63,6 +54,7 @@ export const useFileQueries = ({
     return "Failed to load file information.";
   }, [error, isError, normalizedPath]);
 
+  // Detail resource query uses string-based API due to extra args
   const {
     data: detailResource,
     isPending: isDetailPending,
@@ -82,10 +74,8 @@ export const useFileQueries = ({
   );
 
   const { data: statData, isPending: isStatPending } =
-    linuxio.useCall<ResourceStatData>(
-      "filebrowser",
-      "resource_stat",
-      detailTarget && detailTarget.length === 1 ? [detailTarget[0]] : [],
+    linuxio.filebrowser.resource_stat.useQuery(
+      detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
       {
         enabled:
           hasSingleDetailTarget &&
@@ -106,7 +96,7 @@ export const useFileQueries = ({
         await Promise.all(
           currentDetailTarget.map(async (path) => {
             // Args: [path]
-            const data = await linuxio.request<ApiResource>(
+            const data = await linuxio.call<ApiResource>(
               "filebrowser",
               "resource_get",
               [path],
@@ -142,6 +132,7 @@ export const useFileQueries = ({
     fileResourceMap,
   );
 
+  // Editing file resource uses string-based API due to extra args
   const { data: editingFileResource, isPending: isEditingFileLoading } =
     linuxio.useCall<FileResource>(
       "filebrowser",

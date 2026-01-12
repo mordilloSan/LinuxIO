@@ -3,23 +3,15 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 
 import NetworkGraph from "./NetworkGraph";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
-interface InterfaceStats {
-  name: string;
-  mac: string;
-  ipv4: string[] | null;
-  rx_speed: number;
-  tx_speed: number;
-  speed: string;
-}
-
 const NetworkInterfacesCard: React.FC = () => {
-  const { data: rawInterfaces = [], isPending: isLoading } = linuxio.useCall<
-    InterfaceStats[]
-  >("system", "get_network_info", [], { refetchInterval: 1000 });
+  const { data: rawInterfaces = [], isPending: isLoading } =
+    linuxio.system.get_network_info.useQuery({
+      refetchInterval: 1000,
+    });
 
   // Transform data to add type field
   const interfaces = useMemo(

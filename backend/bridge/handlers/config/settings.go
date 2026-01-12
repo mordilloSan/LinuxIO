@@ -3,7 +3,7 @@ package config
 // DefaultAppSettings returns sane UI defaults.
 func DefaultAppSettings() AppSettings {
 	return AppSettings{
-		Theme:            "DARK",
+		Theme:            ThemeDark,
 		PrimaryColor:     "#2196f3",
 		SidebarCollapsed: false,
 		ShowHiddenFiles:  false,
@@ -13,7 +13,7 @@ func DefaultAppSettings() AppSettings {
 // DefaultDocker returns Docker defaults based on the chosen base directory.
 func DefaultDocker(base string) Docker {
 	return Docker{
-		Folder: filepathJoinClean(base, "docker"),
+		Folder: AbsolutePath(filepathJoinClean(base, "docker")),
 	}
 }
 
@@ -30,7 +30,7 @@ func DefaultSettings(base string) *Settings {
 func ExampleDefaults() Settings {
 	return Settings{
 		AppSettings: AppSettings{
-			Theme:            "DARK",
+			Theme:            ThemeDark,
 			PrimaryColor:     "#2196f3",
 			SidebarCollapsed: false,
 			ShowHiddenFiles:  false,

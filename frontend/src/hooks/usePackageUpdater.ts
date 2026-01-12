@@ -1,13 +1,8 @@
 // src/hooks/usePackageUpdater.ts
 import { useState, useCallback, useRef } from "react";
 
-import {
-  linuxio,
-  getStreamMux,
-  Stream,
-  ResultFrame,
-  encodeString,
-} from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
+import { getStreamMux, Stream, ResultFrame, encodeString } from "@/api/linuxio";
 
 // Stream type for package updates (must match backend ipc.StreamTypePkgUpdate)
 const STREAM_TYPE_PKG_UPDATE = "pkg-update";
@@ -42,7 +37,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       setStatus("Installing");
 
       try {
-        await linuxio.request("dbus", "InstallPackage", [pkg]);
+        await linuxio.call("dbus", "InstallPackage", [pkg]);
         await onComplete();
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : "Update failed";
@@ -176,7 +171,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
           setStatus("Installing");
 
           try {
-            await linuxio.request("dbus", "InstallPackage", [pkg]);
+            await linuxio.call("dbus", "InstallPackage", [pkg]);
             updated.add(pkg);
 
             const totalProcessed = updated.size + failedPackages.length;
@@ -184,13 +179,14 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
               updated.size + failedPackages.length + remaining.length - 1;
             setProgress((totalProcessed / totalPackages) * 100);
 
-            const freshUpdates = await linuxio.request<
-              { package_id: string }[]
-            >("dbus", "GetUpdatesBasic");
+            const freshUpdates = await linuxio.call<{ package_id: string }[]>(
+              "dbus",
+              "GetUpdatesBasic",
+            );
             const fresh = freshUpdates || [];
 
             remaining = fresh
-              .map((u) => u.package_id)
+              .map((u: { package_id: string }) => u.package_id)
               .filter(
                 (id: string) =>
                   !updated.has(id) && !failedPackages.includes(id),

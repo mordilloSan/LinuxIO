@@ -1,128 +1,287 @@
 package dbus
 
 import (
+	"context"
 	"fmt"
 	"strings"
-	"sync"
-	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
 )
 
-// Needed to make sure one d-bus call at a time!
-var systemDBusMu sync.Mutex
-
-func DbusHandlers() map[string]func([]string) (any, error) {
-	return map[string]func([]string) (any, error){
-		// System control
-		"Reboot":   func([]string) (any, error) { return nil, CallLogin1Action("Reboot") },
-		"PowerOff": func([]string) (any, error) { return nil, CallLogin1Action("PowerOff") },
-
-		// Updates management
-		"GetUpdates":      func([]string) (any, error) { return GetUpdatesWithDetails() },
-		"GetUpdatesBasic": func([]string) (any, error) { return GetUpdatesBasic() },
-		"GetUpdateDetail": func(args []string) (any, error) {
-			if len(args) == 0 {
-				return nil, fmt.Errorf("GetUpdateDetail requires package ID")
-			}
-			return GetSingleUpdateDetail(args[0])
-		},
-		"InstallPackage": func(args []string) (any, error) { return nil, InstallPackage(args[0]) },
-		"GetAutoUpdates": func([]string) (any, error) { return getAutoUpdates() },
-		"SetAutoUpdates": func(args []string) (any, error) {
-			if len(args) != 1 {
-				return nil, fmt.Errorf("SetAutoUpdates expects 1 JSON arg")
-			}
-			return setAutoUpdates(args[0])
-		},
-		"ApplyOfflineUpdates": func([]string) (any, error) { return applyOfflineUpdates() },
-		"GetUpdateHistory":    func([]string) (any, error) { return GetUpdateHistory() },
-
-		// Service management
-		"ListServices":   func([]string) (any, error) { return ListServices() },
-		"GetServiceInfo": func(args []string) (any, error) { return GetServiceInfo(args[0]) },
-		"GetServiceLogs": func(args []string) (any, error) {
-			if len(args) < 2 {
-				return nil, fmt.Errorf("GetServiceLogs requires serviceName and lines")
-			}
-			return GetServiceLogs(args[0], args[1])
-		},
-		"StartService":   func(args []string) (any, error) { return nil, StartService(args[0]) },
-		"StopService":    func(args []string) (any, error) { return nil, StopService(args[0]) },
-		"RestartService": func(args []string) (any, error) { return nil, RestartService(args[0]) },
-		"ReloadService":  func(args []string) (any, error) { return nil, ReloadService(args[0]) },
-		"EnableService":  func(args []string) (any, error) { return nil, EnableService(args[0]) },
-		"DisableService": func(args []string) (any, error) { return nil, DisableService(args[0]) },
-		"MaskService":    func(args []string) (any, error) { return nil, MaskService(args[0]) },
-		"UnmaskService":  func(args []string) (any, error) { return nil, UnmaskService(args[0]) },
-
-		// Network information
-		"GetNetworkInfo": func([]string) (any, error) { return GetNetworkInfo() },
-
-		// Network configuration - IPv4
-		"SetIPv4Manual": func(args []string) (any, error) {
-			if len(args) < 4 {
-				return nil, fmt.Errorf("SetIPv4Manual requires interface, addressCIDR, gateway, and dns servers")
-			}
-			iface := args[0]
-			addressCIDR := args[1]
-			gateway := args[2]
-			dnsServers := args[3:] // All remaining args are DNS servers
-			return nil, SetIPv4Manual(iface, addressCIDR, gateway, dnsServers)
-		},
-		"SetIPv4": func(args []string) (any, error) {
-			if len(args) < 2 {
-				return nil, fmt.Errorf("SetIPv4 requires interface and method (dhcp/static)")
-			}
-			iface, method := args[0], strings.ToLower(args[1])
-			switch method {
-			case "dhcp", "auto":
-				return nil, SetIPv4DHCP(iface)
-			default:
-				return nil, fmt.Errorf("SetIPv4 method must be 'dhcp' or 'static'")
-			}
-		},
-
-		// Network configuration - IPv6
-		"SetIPv6": func(args []string) (any, error) {
-			if len(args) < 2 {
-				return nil, fmt.Errorf("SetIPv6 requires interface and method (dhcp/static)")
-			}
-			iface, method := args[0], strings.ToLower(args[1])
-			switch method {
-			case "dhcp", "auto":
-				return nil, SetIPv6DHCP(iface)
-			case "static":
-				if len(args) != 3 {
-					return nil, fmt.Errorf("SetIPv6 static requires addressCIDR")
-				}
-				return nil, SetIPv6Static(iface, args[2])
-			default:
-				return nil, fmt.Errorf("SetIPv6 method must be 'dhcp' or 'static'")
-			}
-		},
-
-		// Network configuration - Other
-		"SetMTU": func(args []string) (any, error) {
-			if len(args) != 2 {
-				return nil, fmt.Errorf("SetMTU requires interface and MTU value")
-			}
-			return nil, SetMTU(args[0], args[1])
-		},
-	}
-}
-
-// --- Retry Wrapper ---
-func RetryOnceIfClosed(initialErr error, do func() error) error {
-	if initialErr == nil {
-		err := do()
-		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
-			time.Sleep(150 * time.Millisecond)
-			return do()
+// RegisterHandlers registers dbus handlers with the new handler system
+func RegisterHandlers() {
+	// System control
+	handler.RegisterFunc("dbus", "Reboot", func(ctx context.Context, args []string, emit handler.Events) error {
+		if err := CallLogin1Action("Reboot"); err != nil {
+			return err
 		}
-		return err
-	}
-	if strings.Contains(initialErr.Error(), "use of closed network connection") {
-		time.Sleep(150 * time.Millisecond)
-		return do()
-	}
-	return initialErr
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "PowerOff", func(ctx context.Context, args []string, emit handler.Events) error {
+		if err := CallLogin1Action("PowerOff"); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	// Updates management
+	handler.RegisterFunc("dbus", "GetUpdates", func(ctx context.Context, args []string, emit handler.Events) error {
+		updates, err := GetUpdatesWithDetails()
+		if err != nil {
+			return err
+		}
+		return emit.Result(updates)
+	})
+
+	handler.RegisterFunc("dbus", "GetUpdatesBasic", func(ctx context.Context, args []string, emit handler.Events) error {
+		updates, err := GetUpdatesBasic()
+		if err != nil {
+			return err
+		}
+		return emit.Result(updates)
+	})
+
+	handler.RegisterFunc("dbus", "GetUpdateDetail", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		detail, err := GetSingleUpdateDetail(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(detail)
+	})
+
+	handler.RegisterFunc("dbus", "InstallPackage", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		if err := InstallPackage(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "GetAutoUpdates", func(ctx context.Context, args []string, emit handler.Events) error {
+		state, err := getAutoUpdates()
+		if err != nil {
+			return err
+		}
+		return emit.Result(state)
+	})
+
+	handler.RegisterFunc("dbus", "SetAutoUpdates", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) != 1 {
+			return handler.ErrInvalidArgs
+		}
+		result, err := setAutoUpdates(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	handler.RegisterFunc("dbus", "ApplyOfflineUpdates", func(ctx context.Context, args []string, emit handler.Events) error {
+		result, err := applyOfflineUpdates()
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	handler.RegisterFunc("dbus", "GetUpdateHistory", func(ctx context.Context, args []string, emit handler.Events) error {
+		history, err := GetUpdateHistory()
+		if err != nil {
+			return err
+		}
+		return emit.Result(history)
+	})
+
+	// Service management
+	handler.RegisterFunc("dbus", "ListServices", func(ctx context.Context, args []string, emit handler.Events) error {
+		services, err := ListServices()
+		if err != nil {
+			return err
+		}
+		return emit.Result(services)
+	})
+
+	handler.RegisterFunc("dbus", "GetServiceInfo", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		info, err := GetServiceInfo(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(info)
+	})
+
+	handler.RegisterFunc("dbus", "GetServiceLogs", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) < 2 {
+			return handler.ErrInvalidArgs
+		}
+		logs, err := GetServiceLogs(args[0], args[1])
+		if err != nil {
+			return err
+		}
+		return emit.Result(logs)
+	})
+
+	handler.RegisterFunc("dbus", "StartService", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		if err := StartService(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "StopService", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		if err := StopService(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "RestartService", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		if err := RestartService(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "ReloadService", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		if err := ReloadService(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "EnableService", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		if err := EnableService(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "DisableService", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		if err := DisableService(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "MaskService", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		if err := MaskService(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "UnmaskService", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) == 0 {
+			return handler.ErrInvalidArgs
+		}
+		if err := UnmaskService(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	// Network information
+	handler.RegisterFunc("dbus", "GetNetworkInfo", func(ctx context.Context, args []string, emit handler.Events) error {
+		info, err := GetNetworkInfo()
+		if err != nil {
+			return err
+		}
+		return emit.Result(info)
+	})
+
+	// Network configuration - IPv4
+	handler.RegisterFunc("dbus", "SetIPv4Manual", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) < 4 {
+			return handler.ErrInvalidArgs
+		}
+		iface := args[0]
+		addressCIDR := args[1]
+		gateway := args[2]
+		dnsServers := args[3:]
+		if err := SetIPv4Manual(iface, addressCIDR, gateway, dnsServers); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	handler.RegisterFunc("dbus", "SetIPv4", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) < 2 {
+			return handler.ErrInvalidArgs
+		}
+		iface, method := args[0], strings.ToLower(args[1])
+		switch method {
+		case "dhcp", "auto":
+			if err := SetIPv4DHCP(iface); err != nil {
+				return err
+			}
+			return emit.Result(nil)
+		default:
+			return fmt.Errorf("SetIPv4 method must be 'dhcp' or 'static'")
+		}
+	})
+
+	// Network configuration - IPv6
+	handler.RegisterFunc("dbus", "SetIPv6", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) < 2 {
+			return handler.ErrInvalidArgs
+		}
+		iface, method := args[0], strings.ToLower(args[1])
+		switch method {
+		case "dhcp", "auto":
+			if err := SetIPv6DHCP(iface); err != nil {
+				return err
+			}
+			return emit.Result(nil)
+		case "static":
+			if len(args) != 3 {
+				return handler.ErrInvalidArgs
+			}
+			if err := SetIPv6Static(iface, args[2]); err != nil {
+				return err
+			}
+			return emit.Result(nil)
+		default:
+			return fmt.Errorf("SetIPv6 method must be 'dhcp' or 'static'")
+		}
+	})
+
+	// Network configuration - Other
+	handler.RegisterFunc("dbus", "SetMTU", func(ctx context.Context, args []string, emit handler.Events) error {
+		if len(args) != 2 {
+			return handler.ErrInvalidArgs
+		}
+		if err := SetMTU(args[0], args[1]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
 }

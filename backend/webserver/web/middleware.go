@@ -2,7 +2,6 @@ package web
 
 import (
 	"bufio"
-	"fmt"
 	"net"
 	"net/http"
 	"runtime/debug"
@@ -46,17 +45,11 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-// Hijack implements http.Hijacker for WebSocket support.
+// Hijack implements http.Hijacker for WebSocket upgrades.
 func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	if h, ok := rw.ResponseWriter.(http.Hijacker); ok {
-		return h.Hijack()
+	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
 	}
-	return nil, nil, fmt.Errorf("hijack not supported")
-}
-
-// Flush implements http.Flusher for streaming support.
-func (rw *responseWriter) Flush() {
-	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
+	return hijacker.Hijack()
 }

@@ -34,34 +34,6 @@ func logStream(r io.Reader, prefix string, isInfo bool) {
 	}
 }
 
-func ControlHandlers(shutdownChan chan string) map[string]func([]string) (any, error) {
-	return map[string]func([]string) (any, error){
-		"shutdown": func(args []string) (any, error) {
-			reason := "unknown"
-			if len(args) > 0 {
-				reason = args[0]
-			}
-			logger.Debugf("Received shutdown command: %s", reason)
-			select {
-			case shutdownChan <- reason:
-			default:
-			}
-			return "Bridge shutting down", nil
-		},
-		"version": func(args []string) (any, error) {
-			_ = args
-			return getVersionInfo()
-		},
-		"update": func(args []string) (any, error) {
-			targetVersion := ""
-			if len(args) > 0 {
-				targetVersion = args[0] // Optional: specific version
-			}
-			return performUpdate(targetVersion)
-		},
-	}
-}
-
 type VersionInfo struct {
 	CurrentVersion  string `json:"current_version"`
 	LatestVersion   string `json:"latest_version,omitempty"`
@@ -86,18 +58,20 @@ func getVersionInfo() (VersionInfo, error) {
 		CheckedAt:       time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Skip update check only for truly unknown versions
-	if currentVersion == "untracked" || currentVersion == "unknown" {
-		return info, nil
-	}
-
 	latestVersion, err := fetchLatestVersion()
 	if err != nil {
 		logger.Debugf("[version] failed to fetch latest version: %v", err)
 		info.Error = fmt.Sprintf("could not check for updates: %v", err)
 	} else {
 		info.LatestVersion = latestVersion
-		info.UpdateAvailable = isNewerVersion(latestVersion, currentVersion)
+
+		// For dev/untracked/unknown versions, always show update is available
+		if strings.HasPrefix(currentVersion, "dev-") || currentVersion == "untracked" || currentVersion == "unknown" {
+			info.UpdateAvailable = true
+		} else {
+			// For release versions, compare semantically
+			info.UpdateAvailable = isNewerVersion(latestVersion, currentVersion)
+		}
 	}
 	return info, nil
 }
@@ -313,19 +287,11 @@ func restartService() error {
 }
 
 // isNewerVersion returns true if latest is semantically newer than current.
-// Expects versions like "v1.2.3", "dev-v1.2.3", or "1.2.3".
-// A release version (v1.2.3) is considered newer than a dev version (dev-v1.2.3) of the same number.
+// Expects versions like "v1.2.3" or "1.2.3".
 func isNewerVersion(latest, current string) bool {
 	if latest == "" || current == "" {
 		return false
 	}
-
-	// Strip leading 'dev-' prefix for comparison (but remember if current was dev)
-	currentIsDev := strings.HasPrefix(current, "dev-")
-	latestIsDev := strings.HasPrefix(latest, "dev-")
-
-	latest = strings.TrimPrefix(latest, "dev-")
-	current = strings.TrimPrefix(current, "dev-")
 
 	// Strip leading 'v' if present
 	latest = strings.TrimPrefix(latest, "v")
@@ -357,19 +323,6 @@ func isNewerVersion(latest, current string) bool {
 		}
 	}
 
-	// If version numbers are equal, check length
-	if len(latestParts) > len(currentParts) {
-		return true
-	}
-	if len(latestParts) < len(currentParts) {
-		return false
-	}
-
-	// If version numbers are identical, a release is newer than a dev version
-	// e.g., v0.6.1 > dev-v0.6.1
-	if currentIsDev && !latestIsDev {
-		return true
-	}
-
-	return false
+	// If all compared parts are equal, longer version is newer (e.g., 1.2.3 > 1.2)
+	return len(latestParts) > len(currentParts)
 }

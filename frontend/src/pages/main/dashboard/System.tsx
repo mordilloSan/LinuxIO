@@ -5,7 +5,7 @@ import { Link } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
@@ -25,15 +25,6 @@ type SystemUpdatesResponse = {
   updates: Update[];
 };
 
-type ServiceStatus = {
-  running: boolean;
-  // ...any other fields
-};
-
-type DistroInfo = {
-  platform: string;
-};
-
 // --- Component ---
 const SystemHealth = () => {
   const theme = useTheme();
@@ -43,12 +34,7 @@ const SystemHealth = () => {
     data: updatesRaw,
     isPending: loadingHealth,
     isFetching: fetchingHealth,
-  } = linuxio.useCall<Update[] | SystemUpdatesResponse>(
-    "system",
-    "get_updates_fast",
-    [],
-    { refetchInterval: 50000 },
-  );
+  } = linuxio.system.get_updates_fast.useQuery({ refetchInterval: 50000 });
 
   // Normalize updates response
   const systemHealth: SystemUpdatesResponse | undefined = updatesRaw
@@ -58,20 +44,14 @@ const SystemHealth = () => {
     : undefined;
 
   // Services
-  const { data: servicesRaw } = linuxio.useCall<ServiceStatus[]>(
-    "system",
-    "get_processes",
-    [],
-    { refetchInterval: 50000 },
-  );
+  const { data: servicesRaw } = linuxio.system.get_processes.useQuery({
+    refetchInterval: 50000,
+  });
 
   // Distro Info
-  const { data: distroInfo } = linuxio.useCall<DistroInfo>(
-    "system",
-    "get_host_info",
-    [],
-    { refetchInterval: 50000 },
-  );
+  const { data: distroInfo } = linuxio.system.get_host_info.useQuery({
+    refetchInterval: 50000,
+  });
 
   // --- Data extraction ---
   const services = Array.isArray(servicesRaw) ? servicesRaw : [];
