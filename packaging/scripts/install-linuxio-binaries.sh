@@ -284,15 +284,27 @@ is_port_in_use() {
     local port="$1"
     # Check if port is in use by a process OTHER than linuxio
     # If linuxio is already using the port, that's fine (we're reinstalling/upgrading)
+
+    # First check: if existing linuxio socket is configured for this port, it's ours
+    local existing_socket="/lib/systemd/system/linuxio-webserver.socket"
+    if [[ -f "$existing_socket" ]]; then
+        if grep -qE "ListenStream=.*:${port}\$" "$existing_socket" 2>/dev/null; then
+            return 1  # linuxio socket owns it, consider it available
+        fi
+    fi
+
     local proc
     proc=$(ss -tlnpH "sport = :${port}" 2>/dev/null)
 
     # Port not in use at all
     [[ -z "$proc" ]] && return 1
 
-    # Port in use - check if it's owned by linuxio
-    if echo "$proc" | grep -qE '"linuxio"'; then
-        return 1  # linuxio owns it, consider it available
+    # Port in use - check if it's owned by linuxio or systemd (socket activation)
+    if echo "$proc" | grep -qE 'linuxio|systemd'; then
+        # Could be socket-activated, check if linuxio socket unit is active for this port
+        if systemctl is-active --quiet linuxio-webserver.socket 2>/dev/null; then
+            return 1  # linuxio socket owns it
+        fi
     fi
 
     return 0  # Some other process owns it
