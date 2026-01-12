@@ -173,6 +173,8 @@ const TerminalDialog: React.FC<Props> = ({
       stream.onClose = () => {
         streamRef.current = null;
       };
+
+      stream.resize(xterm.current.cols, xterm.current.rows);
     }
 
     // Terminal input -> send to stream
@@ -183,7 +185,12 @@ const TerminalDialog: React.FC<Props> = ({
     });
 
     // Fit on window resize
-    const handleResize = () => fitAddon.current?.fit();
+    const handleResize = () => {
+      fitAddon.current?.fit();
+      if (xterm.current && streamRef.current) {
+        streamRef.current.resize(xterm.current.cols, xterm.current.rows);
+      }
+    };
     window.addEventListener("resize", handleResize);
 
     // Focus on open

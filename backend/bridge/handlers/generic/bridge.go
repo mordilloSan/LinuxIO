@@ -2,6 +2,7 @@ package generic
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -74,11 +75,15 @@ func handleBidirectional(ctx context.Context, stream net.Conn, h handler.Bidirec
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	resizeChan := make(chan handler.ResizeEvent, 1)
+	ctx = handler.WithResizeChannel(ctx, resizeChan)
+
 	emit := newEventEmitter(stream)
 	inputChan := make(chan []byte, 16)
 
 	// Start goroutine to read client data
 	go func() {
+		defer close(resizeChan)
 		defer close(inputChan)
 		for {
 			frame, err := ipc.ReadRelayFrame(stream)
@@ -100,9 +105,15 @@ func handleBidirectional(ctx context.Context, stream net.Conn, h handler.Bidirec
 				cancel()
 				return
 			case ipc.OpStreamResize:
-				// TODO: Handle terminal resize
-				// For now, we could add this to the Events interface
-				// or handle it specially for terminal handlers
+				if len(frame.Payload) < 4 {
+					continue
+				}
+				cols := binary.BigEndian.Uint16(frame.Payload[0:2])
+				rows := binary.BigEndian.Uint16(frame.Payload[2:4])
+				select {
+				case resizeChan <- handler.ResizeEvent{Cols: cols, Rows: rows}:
+				default:
+				}
 			}
 		}
 	}()

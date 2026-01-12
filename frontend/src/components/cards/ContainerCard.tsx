@@ -83,12 +83,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           remove: "removed",
         };
         toast.success(`Container ${name} ${actionLabels[action]} successfully`);
-        // refresh list + logs
+        // refresh container list
         queryClient.invalidateQueries({
           queryKey: ["stream", "docker", "list_containers"],
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "get_container_logs", container.Id],
         });
       },
     });
@@ -99,12 +96,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     },
     [performContainerAction],
   );
-
-  // ---- logs via stream API (fetch only when dialog is open) ----
-  const logsQuery = linuxio.docker.get_container_logs.useQuery(container.Id, {
-    enabled: logDialogOpen,
-    refetchInterval: logDialogOpen ? 4000 : false,
-  });
 
   const handleLogsClick = () => setLogDialogOpen(true);
 
@@ -249,25 +240,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         <LogsDialog
           open={logDialogOpen}
           onClose={() => setLogDialogOpen(false)}
-          logs={logsQuery.data ?? null}
-          loading={logsQuery.isPending}
-          error={
-            logsQuery.isError
-              ? "Failed to load logs. (Check backend logs for details.)"
-              : null
-          }
           containerName={name}
-          onRefresh={() =>
-            queryClient.invalidateQueries({
-              queryKey: [
-                "stream",
-                "docker",
-                "get_container_logs",
-                container.Id,
-              ],
-            })
-          }
-          autoRefreshDefault={true}
+          containerId={container.Id}
         />
 
         <TerminalDialog

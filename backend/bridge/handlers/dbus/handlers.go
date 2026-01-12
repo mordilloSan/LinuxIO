@@ -118,17 +118,6 @@ func RegisterHandlers() {
 		return emit.Result(info)
 	})
 
-	handler.RegisterFunc("dbus", "GetServiceLogs", func(ctx context.Context, args []string, emit handler.Events) error {
-		if len(args) < 2 {
-			return handler.ErrInvalidArgs
-		}
-		logs, err := GetServiceLogs(args[0], args[1])
-		if err != nil {
-			return err
-		}
-		return emit.Result(logs)
-	})
-
 	handler.RegisterFunc("dbus", "StartService", func(ctx context.Context, args []string, emit handler.Events) error {
 		if len(args) == 0 {
 			return handler.ErrInvalidArgs

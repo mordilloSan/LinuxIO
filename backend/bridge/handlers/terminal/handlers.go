@@ -116,6 +116,8 @@ func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, e
 
 	logger.Infof("[Terminal] Started for user=%s pid=%d", h.sess.User.Username, cmd.Process.Pid)
 
+	resizeChan, _ := handler.ResizeChannel(ctx)
+
 	// Start PTY output relay (PTY → client)
 	done := make(chan struct{})
 	go func() {
@@ -150,12 +152,20 @@ func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, e
 				goto cleanup
 			}
 
-			// TODO: Handle resize frames
-			// For now, just write everything to PTY
 			if _, err := ptmx.Write(chunk); err != nil {
 				logger.Errorf("[Terminal] PTY write error: %v", err)
 				goto cleanup
 			}
+
+		case ev, ok := <-resizeChan:
+			if !ok {
+				resizeChan = nil
+				continue
+			}
+			_ = pty.Setsize(ptmx, &pty.Winsize{
+				Cols: ev.Cols,
+				Rows: ev.Rows,
+			})
 
 		case <-ctx.Done():
 			// Context cancelled
