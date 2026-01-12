@@ -17,13 +17,9 @@ import {
 import React, { useState, useCallback } from "react";
 import { toast } from "sonner";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
-import type {
-  ModuleInfo,
-  ModuleDetailsInfo,
-  UninstallResult,
-} from "@/types/module";
+import type { ModuleInfo } from "@/types/module";
 
 interface ModuleCardProps {
   module: ModuleInfo;
@@ -37,37 +33,26 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
   onModuleChange,
 }) => {
   const [uninstallDialogOpen, setUninstallDialogOpen] = useState(false);
-  const [uninstalling, setUninstalling] = useState(false);
 
   // Fetch detailed info to check if it's a system module
-  const { data: moduleDetails } = linuxio.useCall<ModuleDetailsInfo>(
-    "modules",
-    "GetModuleDetails",
-    [module.name],
-    {
-      enabled: true,
-    },
+  const { data: moduleDetails } = linuxio.modules.GetModuleDetails.useQuery(
+    module.name,
   );
 
-  const handleUninstall = useCallback(async () => {
-    setUninstalling(true);
-    try {
-      const result = await linuxio.request<UninstallResult>(
-        "modules",
-        "UninstallModule",
-        [module.name],
-      );
+  // Uninstall mutation
+  const uninstallMutation = linuxio.modules.UninstallModule.useMutation({
+    onSuccess: (result) => {
       toast.success(
         result.message || `Module ${module.title} uninstalled successfully`,
       );
       setUninstallDialogOpen(false);
       onModuleChange();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to uninstall module");
-    } finally {
-      setUninstalling(false);
-    }
-  }, [module.name, module.title, onModuleChange]);
+    },
+  });
+
+  const handleUninstall = useCallback(() => {
+    uninstallMutation.mutate([module.name]);
+  }, [module.name, uninstallMutation]);
 
   const isSystem = moduleDetails?.isSystem || false;
   const isSymlink = moduleDetails?.isSymlink || false;
@@ -184,9 +169,9 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
             onClick={handleUninstall}
             color="error"
             variant="contained"
-            disabled={uninstalling}
+            disabled={uninstallMutation.isPending}
           >
-            {uninstalling ? "Uninstalling..." : "Uninstall"}
+            {uninstallMutation.isPending ? "Uninstalling..." : "Uninstall"}
           </Button>
         </DialogActions>
       </Dialog>

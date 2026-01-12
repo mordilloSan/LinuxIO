@@ -31,8 +31,9 @@ type SidebarConfig struct {
 
 // HandlerConfig defines all handlers for the module
 type HandlerConfig struct {
-	Commands map[string]CommandHandler `yaml:"commands"`
-	Dbus     map[string]DbusHandler    `yaml:"dbus"`
+	Commands    map[string]CommandHandler    `yaml:"commands"`
+	Dbus        map[string]DbusHandler       `yaml:"dbus"`
+	DbusStreams map[string]DbusStreamHandler `yaml:"dbus_streams"`
 }
 
 // CommandHandler defines a shell command handler
@@ -44,7 +45,7 @@ type CommandHandler struct {
 	Returns     HandlerReturns `yaml:"returns"`
 }
 
-// DbusHandler defines a DBus method call handler
+// DbusHandler defines a DBus method call handler (immediate response)
 type DbusHandler struct {
 	Description string         `yaml:"description"`
 	Bus         string         `yaml:"bus"`         // "system" or "session"
@@ -54,6 +55,18 @@ type DbusHandler struct {
 	Method      string         `yaml:"method"`      // e.g. Reboot
 	Args        []string       `yaml:"args"`        // Method arguments
 	Returns     HandlerReturns `yaml:"returns"`
+}
+
+// DbusStreamHandler defines a DBus operation with signal streaming
+type DbusStreamHandler struct {
+	Description string   `yaml:"description"`
+	Bus         string   `yaml:"bus"`         // "system" or "session"
+	Destination string   `yaml:"destination"` // e.g. org.freedesktop.PackageKit
+	Path        string   `yaml:"path"`        // e.g. /org/freedesktop/PackageKit
+	Interface   string   `yaml:"interface"`   // e.g. org.freedesktop.PackageKit.Transaction
+	Method      string   `yaml:"method"`      // e.g. UpdatePackages
+	Args        []string `yaml:"args"`        // Method arguments
+	Signals     []string `yaml:"signals"`     // Signal names to subscribe to (e.g. ["ItemProgress", "Finished"])
 }
 
 // HandlerArg defines an argument for a handler

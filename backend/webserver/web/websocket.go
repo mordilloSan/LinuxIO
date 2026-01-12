@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -269,7 +270,7 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 	}
 
 	// Open new yamux stream
-	stream, err := yamuxSession.Open()
+	stream, err := yamuxSession.Open(context.Background())
 	if err != nil {
 		logger.Errorf("[WSRelay] failed to open stream: %v", err)
 		r.sendFrame(streamID, FlagRST, nil)

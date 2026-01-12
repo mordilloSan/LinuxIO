@@ -31,7 +31,7 @@ func RequirePrivileged(sess *session.Session, handler func([]string) (any, error
 //
 // Usage:
 //
-//	HandlersByType["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
+//	JsonHandlers["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
 func RequirePrivilegedAll(sess *session.Session, handlers map[string]func([]string) (any, error)) map[string]func([]string) (any, error) {
 	wrapped := make(map[string]func([]string) (any, error), len(handlers))
 	for name, handler := range handlers {

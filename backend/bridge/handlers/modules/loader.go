@@ -1,22 +1,26 @@
 package modules
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/goccy/go-yaml"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
-	"gopkg.in/yaml.v3"
 )
 
 var loadedModules = make(map[string]*ModuleInfo)
 
 // LoadModules discovers and loads all modules from system and user directories
-func LoadModules(handlerRegistry map[string]map[string]func([]string) (any, error)) error {
-	registry := GetRegistry()
-
+func LoadModules(
+	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
+) error {
 	// Load from system directory
 	systemDir := "/etc/linuxio/modules"
 	logger.Debugf("Loading from system directory: %s", systemDir)
@@ -56,7 +60,7 @@ func LoadModules(handlerRegistry map[string]map[string]func([]string) (any, erro
 
 	// Register each module's handlers
 	for name, module := range allModules {
-		if err := registerModule(module, handlerRegistry, registry); err != nil {
+		if err := registerModule(module, streamHandlers); err != nil {
 			logger.Warnf("Failed to register module %s: %v", name, err)
 			continue
 		}
@@ -159,97 +163,119 @@ func parseManifest(path string) (*ModuleManifest, error) {
 // registerModule registers all handlers from a module
 func registerModule(
 	module *ModuleInfo,
-	handlerRegistry map[string]map[string]func([]string) (any, error),
-	cmdRegistry *CommandRegistry,
+	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) error {
 	namespace := "module." + module.Manifest.Name
-	handlerRegistry[namespace] = make(map[string]func([]string) (any, error))
 
-	// Register shell command handlers
+	// Register shell command handlers with new handler system
 	for name, cmd := range module.Manifest.Handlers.Commands {
-		// Add to whitelist
-		timeout := cmd.Timeout
-		if timeout == 0 {
-			timeout = 10 // Default timeout
-		}
-		cmdRegistry.RegisterCommand(module.Manifest.Name, name, cmd.Command, timeout, cmd.Args)
-
-		// Create handler function
-		handlerRegistry[namespace][name] = createCommandHandler(module.Manifest.Name, name, cmdRegistry)
+		cmdCopy := cmd // Capture for closure
+		handler.RegisterFunc(namespace, name, func(ctx context.Context, args []string, emit handler.Events) error {
+			result, err := executeCommand(cmdCopy, args)
+			if err != nil {
+				return err
+			}
+			return emit.Result(result)
+		})
+		logger.Debugf("Registered command handler: %s.%s", namespace, name)
 	}
 
-	// Register DBus handlers
+	// Register DBus handlers with new handler system
 	for name, dbus := range module.Manifest.Handlers.Dbus {
-		// Add to whitelist
-		cmdRegistry.RegisterDbus(module.Manifest.Name, name, dbus)
+		dbusCopy := dbus // Capture for closure
+		handler.RegisterFunc(namespace, name, func(ctx context.Context, args []string, emit handler.Events) error {
+			result, err := executeDbusCall(dbusCopy, args)
+			if err != nil {
+				return err
+			}
+			return emit.Result(result)
+		})
+		logger.Debugf("Registered D-Bus handler: %s.%s", namespace, name)
+	}
 
-		// Create handler function
-		handlerRegistry[namespace][name] = createDbusHandler(module.Manifest.Name, name, cmdRegistry)
+	// Register DBus stream handlers (signal streaming -> StreamHandlers)
+	// These still use the old stream system since they need yamux streams
+	for name, dbusStream := range module.Manifest.Handlers.DbusStreams {
+		streamType := namespace + "." + name
+		streamHandlers[streamType] = createDbusStreamHandler(dbusStream)
+		logger.Debugf("Registered D-Bus stream handler: %s", streamType)
 	}
 
 	return nil
 }
 
-// createCommandHandler creates a handler function for a shell command
-// This handler will check the registry before executing
-func createCommandHandler(moduleName, commandName string, registry *CommandRegistry) func([]string) (any, error) {
-	return func(args []string) (any, error) {
-		// Check if command is whitelisted
-		cmd := registry.GetCommand(moduleName, commandName)
-		if cmd == nil {
-			return nil, fmt.Errorf("command %s:%s not found in registry", moduleName, commandName)
+// executeCommand executes a shell command from module definition
+func executeCommand(cmdDef CommandHandler, args []string) (any, error) {
+	command := cmdDef.Command
+
+	// Support both numeric {{.arg0}} and named {{.argName}} placeholders
+	for i, argValue := range args {
+		// Numeric placeholders: {{.arg0}}, {{.arg1}}, etc.
+		placeholderN := fmt.Sprintf("{{.arg%d}}", i)
+		command = strings.ReplaceAll(command, placeholderN, argValue)
+
+		// Named placeholders: {{.path}}, {{.host}}, etc.
+		if i < len(cmdDef.Args) {
+			argName := cmdDef.Args[i].Name
+			placeholderNamed := fmt.Sprintf("{{.%s}}", argName)
+			command = strings.ReplaceAll(command, placeholderNamed, argValue)
 		}
-
-		// Template substitution
-		command := cmd.Template
-
-		// Support both numeric {{.arg0}} and named {{.argName}} placeholders
-		for i, argValue := range args {
-			// Numeric placeholders: {{.arg0}}, {{.arg1}}, etc.
-			placeholderN := fmt.Sprintf("{{.arg%d}}", i)
-			command = strings.ReplaceAll(command, placeholderN, argValue)
-
-			// Named placeholders: {{.path}}, {{.host}}, etc.
-			if i < len(cmd.Args) {
-				argName := cmd.Args[i].Name
-				placeholderNamed := fmt.Sprintf("{{.%s}}", argName)
-				command = strings.ReplaceAll(command, placeholderNamed, argValue)
-			}
-		}
-
-		// Execute using generic command handler
-		timeout := fmt.Sprintf("%d", cmd.Timeout)
-		return generic.ExecCommandDirect(command, timeout)
 	}
+
+	// Execute using generic command handler
+	timeout := fmt.Sprintf("%d", cmdDef.Timeout)
+	if cmdDef.Timeout == 0 {
+		timeout = "10" // Default timeout
+	}
+	return generic.ExecCommandDirect(command, timeout)
 }
 
-// createDbusHandler creates a handler function for a DBus call
-// This handler will check the registry before executing
-func createDbusHandler(moduleName, commandName string, registry *CommandRegistry) func([]string) (any, error) {
-	return func(args []string) (any, error) {
-		// Check if DBus call is whitelisted
-		dbus := registry.GetDbus(moduleName, commandName)
-		if dbus == nil {
-			return nil, fmt.Errorf("dbus call %s:%s not found in registry", moduleName, commandName)
+// executeDbusCall executes a D-Bus method call from module definition
+func executeDbusCall(dbusDef DbusHandler, args []string) (any, error) {
+	dbusArgs := []string{
+		dbusDef.Bus,
+		dbusDef.Destination,
+		dbusDef.Path,
+		dbusDef.Interface,
+		dbusDef.Method,
+	}
+
+	// Add predefined args from manifest
+	dbusArgs = append(dbusArgs, dbusDef.Args...)
+
+	// Add runtime args
+	dbusArgs = append(dbusArgs, args...)
+
+	return generic.CallDbusMethodDirect(dbusArgs)
+}
+
+// createDbusStreamHandler creates a stream handler for a DBus operation with signals
+func createDbusStreamHandler(dbusStreamDef DbusStreamHandler) func(*session.Session, net.Conn, []string) error {
+	return func(sess *session.Session, conn net.Conn, args []string) error {
+		// Build DBus stream arguments
+		// Format: [bus, destination, path, interface, method, signal1, signal2, ..., "--", methodArg1, methodArg2, ...]
+		streamArgs := []string{
+			dbusStreamDef.Bus,
+			dbusStreamDef.Destination,
+			dbusStreamDef.Path,
+			dbusStreamDef.Interface,
+			dbusStreamDef.Method,
 		}
 
-		// Build DBus call arguments
-		dbusArgs := []string{
-			dbus.Bus,
-			dbus.Destination,
-			dbus.Path,
-			dbus.Interface,
-			dbus.Method,
-		}
+		// Add signal names
+		streamArgs = append(streamArgs, dbusStreamDef.Signals...)
+
+		// Add separator
+		streamArgs = append(streamArgs, "--")
 
 		// Add predefined args from manifest
-		dbusArgs = append(dbusArgs, dbus.Args...)
+		streamArgs = append(streamArgs, dbusStreamDef.Args...)
 
 		// Add runtime args
-		dbusArgs = append(dbusArgs, args...)
+		streamArgs = append(streamArgs, args...)
 
-		// Execute using generic DBus handler
-		return generic.CallDbusMethodDirect(dbusArgs)
+		// Execute using generic DBus stream handler
+		return generic.HandleDbusStream(conn, streamArgs)
 	}
 }
 
@@ -262,4 +288,73 @@ func GetLoadedModules() map[string]*ModuleInfo {
 func GetModule(name string) (*ModuleInfo, bool) {
 	module, ok := loadedModules[name]
 	return module, ok
+}
+
+// GetLoadedModulesForFrontend returns all loaded modules in frontend-friendly format
+func GetLoadedModulesForFrontend() ([]ModuleFrontendInfo, error) {
+	var modules []ModuleFrontendInfo
+	for _, module := range loadedModules {
+		info := ModuleFrontendInfo{
+			Name:         module.Manifest.Name,
+			Title:        module.Manifest.Title,
+			Description:  module.Manifest.Description,
+			Version:      module.Manifest.Version,
+			Route:        module.Manifest.UI.Route,
+			Icon:         module.Manifest.UI.Icon,
+			Position:     module.Manifest.UI.Sidebar.Position,
+			ComponentURL: fmt.Sprintf("/modules/%s/index.js", module.Manifest.Name),
+		}
+		modules = append(modules, info)
+	}
+	return modules, nil
+}
+
+// GetModuleDetailsInfo returns detailed info for a specific module
+func GetModuleDetailsInfo(name string) (*ModuleDetailsInfo, error) {
+	module, exists := GetModule(name)
+	if !exists {
+		return nil, fmt.Errorf("module '%s' not found", name)
+	}
+
+	// Collect handler names
+	var handlers []string
+	for handlerName := range module.Manifest.Handlers.Commands {
+		handlers = append(handlers, handlerName)
+	}
+	for handlerName := range module.Manifest.Handlers.Dbus {
+		handlers = append(handlers, handlerName)
+	}
+	for handlerName := range module.Manifest.Handlers.DbusStreams {
+		handlers = append(handlers, handlerName)
+	}
+
+	// Check if system module
+	isSystem := IsSystemModule(module.Path)
+
+	// Check if symlink
+	isSymlink, _ := IsSymlinkModule(module.Path)
+
+	details := &ModuleDetailsInfo{
+		ModuleFrontendInfo: ModuleFrontendInfo{
+			Name:         module.Manifest.Name,
+			Title:        module.Manifest.Title,
+			Description:  module.Manifest.Description,
+			Version:      module.Manifest.Version,
+			Route:        module.Manifest.UI.Route,
+			Icon:         module.Manifest.UI.Icon,
+			Position:     module.Manifest.UI.Sidebar.Position,
+			ComponentURL: fmt.Sprintf("/modules/%s/index.js", module.Manifest.Name),
+		},
+		Author:      module.Manifest.Author,
+		Homepage:    module.Manifest.Homepage,
+		License:     module.Manifest.License,
+		Path:        module.Path,
+		IsSystem:    isSystem,
+		IsSymlink:   isSymlink,
+		Handlers:    handlers,
+		Permissions: module.Manifest.Permissions,
+		Settings:    module.Manifest.Settings,
+	}
+
+	return details, nil
 }

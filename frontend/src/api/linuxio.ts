@@ -1,25 +1,13 @@
 /**
- * LinuxIO Unified API
+ * LinuxIO Common Utilities
  *
- * Single source of truth for all backend communication.
- * Everything flows through yamux streams over a single WebSocket connection.
- *
- * Usage:
- *   // API calls with React Query
- *   const { data, isLoading } = linuxio.useCall("system", "get_cpu_info");
- *
- *   // Direct stream access
- *   const stream = linuxio.stream("terminal", { onData: handleData });
- *   const upload = linuxio.stream("fb-upload", { onProgress: handleProgress });
+ * Shared utilities for stream multiplexer access.
+ * For API calls, use:
+ * - @/api/react-query for React Query hooks (useCall, useMutate)
+ * - @/api/linuxio-core for direct calls (call, spawn, openStream)
  */
 
 import { useEffect, useState, useCallback } from "react";
-import {
-  useQuery,
-  useMutation,
-  type UseQueryOptions,
-  type UseMutationOptions,
-} from "@tanstack/react-query";
 import {
   getStreamMux,
   initStreamMux,
@@ -35,27 +23,8 @@ import {
   encodeString,
   decodeString,
 } from "./StreamMultiplexer";
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export class LinuxIOError extends Error {
-  constructor(
-    message: string,
-    public code: number = 500,
-  ) {
-    super(message);
-    this.name = "LinuxIOError";
-  }
-}
-
-export interface StreamOptions {
-  onData?: (data: Uint8Array) => void;
-  onProgress?: (progress: ProgressFrame) => void;
-  onResult?: (result: ResultFrame) => void;
-  onClose?: () => void;
-}
+import { LinuxIOError, spawn } from "./linuxio-core";
+import { useCall, useMutate } from "./react-query";
 
 // ============================================================================
 // React Hook: useStreamMux
@@ -68,7 +37,7 @@ export interface StreamOptions {
  * This hook provides access to it and tracks status changes.
  *
  * @example
- * const { status, isOpen, openStream } = linuxio.useStreamMux();
+ * const { status, isOpen, openStream } = useStreamMux();
  */
 export function useStreamMux() {
   const [status, setStatus] = useState<MuxStatus>(() => {
@@ -77,19 +46,48 @@ export function useStreamMux() {
   });
 
   useEffect(() => {
-    const mux = getStreamMux();
-    if (!mux) return;
+    let unsubscribe: (() => void) | null = null;
+    let checkInterval: ReturnType<typeof setInterval> | null = null;
 
-    // Update status immediately
-    setStatus(mux.status);
+    const setupListener = () => {
+      const mux = getStreamMux();
+      if (!mux) {
+        setStatus("closed");
+        return false;
+      }
 
-    // Subscribe to status changes
-    const unsubscribe = mux.addStatusListener((newStatus: MuxStatus) => {
-      setStatus(newStatus);
-    });
+      // Update status immediately
+      setStatus(mux.status);
+
+      // Subscribe to status changes
+      unsubscribe = mux.addStatusListener((newStatus: MuxStatus) => {
+        setStatus(newStatus);
+      });
+
+      return true;
+    };
+
+    // Try to set up listener immediately
+    if (!setupListener()) {
+      // If mux doesn't exist yet, poll for it (handles late initialization)
+      checkInterval = setInterval(() => {
+        if (setupListener()) {
+          // Successfully set up, stop polling
+          if (checkInterval) {
+            clearInterval(checkInterval);
+            checkInterval = null;
+          }
+        }
+      }, 100);
+    }
 
     return () => {
-      unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      if (checkInterval) {
+        clearInterval(checkInterval);
+      }
     };
   }, []);
 
@@ -120,239 +118,14 @@ export function useStreamMux() {
 }
 
 // ============================================================================
-// Core: Request Function (Promise-based)
-// ============================================================================
-
-/**
- * Make an API call (non-React).
- * Opens stream, waits for result, returns Promise.
- *
- * @example
- * const cpuInfo = await linuxio.request("system", "get_cpu_info");
- * const containers = await linuxio.request("docker", "list_containers");
- */
-export async function request<T = unknown>(
-  handler: string,
-  command: string,
-  args: string[] = [],
-  timeoutMs = 30000,
-): Promise<T> {
-  const mux = getStreamMux();
-  if (!mux || mux.status !== "open") {
-    throw new LinuxIOError("Not connected to server", 503);
-  }
-
-  // Build payload: "api\0handler\0command\0arg1\0arg2..."
-  const parts = ["api", handler, command, ...args];
-  const payload = encodeString(parts.join("\0"));
-
-  const stream = mux.openStream("api", payload);
-  if (!stream) {
-    throw new LinuxIOError("Failed to open stream", 503);
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    let resolved = false;
-
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        stream.abort();
-        reject(new LinuxIOError(`Timeout: ${handler}/${command}`, 408));
-      }
-    }, timeoutMs);
-
-    stream.onResult = (result: ResultFrame) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
-
-      if (result.status === "ok") {
-        resolve(result.data as T);
-      } else {
-        reject(
-          new LinuxIOError(result.error || "Unknown error", result.code || 500),
-        );
-      }
-    };
-
-    stream.onClose = () => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        reject(new LinuxIOError("Stream closed unexpectedly", 500));
-      }
-    };
-  });
-}
-
-// ============================================================================
-// React Query: call() Hook
-// ============================================================================
-
-type CallOptions<T> = Omit<
-  UseQueryOptions<T, LinuxIOError>,
-  "queryKey" | "queryFn"
->;
-
-/**
- * Make an API call with React Query integration.
- * Provides loading states, caching, refetching, etc.
- *
- * @example
- * const { data, isLoading, error, refetch } = linuxio.useCall("system", "get_cpu_info");
- *
- * @example
- * const { data } = linuxio.useCall("docker", "get_stats", ["container-123"], {
- *   refetchInterval: 2000,
- *   staleTime: 1000,
- * });
- */
-export function useCall<T = unknown>(
-  handler: string,
-  command: string,
-  args: string[] = [],
-  options?: CallOptions<T>,
-) {
-  const { isOpen } = useStreamMux();
-  const { enabled = true, ...queryOptions } = options || {};
-
-  return useQuery<T, LinuxIOError>({
-    queryKey: ["linuxio", handler, command, ...args],
-    queryFn: () => request<T>(handler, command, args),
-    enabled: isOpen && enabled,
-    ...queryOptions,
-  });
-}
-
-// ============================================================================
-// React Query: mutate() Hook
-// ============================================================================
-
-type MutateOptions<TData, TVariables> = Omit<
-  UseMutationOptions<TData, LinuxIOError, TVariables>,
-  "mutationFn"
->;
-
-/**
- * Make a mutation (write operation) with React Query.
- *
- * @example
- * const { mutate, isPending } = linuxio.useMutate("docker", "start_container");
- * mutate("container-123");
- *
- * @example
- * const { mutate } = linuxio.useMutate("docker", "create_container", {
- *   onSuccess: () => toast.success("Container created"),
- * });
- * mutate({ name: "my-container", image: "nginx" });
- */
-export function useMutate<TData = unknown, TVariables = unknown>(
-  handler: string,
-  command: string,
-  options?: MutateOptions<TData, TVariables>,
-) {
-  return useMutation<TData, LinuxIOError, TVariables>({
-    mutationFn: (variables: TVariables) => {
-      // Handle different variable types
-      let args: string[];
-
-      if (variables === undefined || variables === null) {
-        args = [];
-      } else if (Array.isArray(variables)) {
-        args = variables.map(String);
-      } else if (typeof variables === "string") {
-        args = [variables];
-      } else if (typeof variables === "object") {
-        // Object - JSON stringify as last arg
-        args = [JSON.stringify(variables)];
-      } else {
-        args = [String(variables)];
-      }
-
-      return request<TData>(handler, command, args);
-    },
-    ...options,
-  });
-}
-
-// ============================================================================
-// Direct Stream Access
-// ============================================================================
-
-/**
- * Open a stream with custom callbacks.
- * Use this for terminals, file transfers, long-running operations.
- *
- * @example
- * // Terminal
- * const term = linuxio.stream("terminal", {
- *   onData: (data) => xterm.write(decodeString(data)),
- * });
- * term.write(encodeString("ls -la\n"));
- * term.close();
- *
- * @example
- * // File upload with progress
- * const upload = linuxio.stream("fb-upload", {
- *   onProgress: (p) => setProgress(p.pct),
- *   onResult: (r) => console.log("Done:", r),
- * });
- * upload.write(fileChunk);
- *
- * @example
- * // Package update with progress
- * const update = linuxio.stream("pkg-update", {
- *   onProgress: (p) => setProgress(p.pct),
- *   onResult: (r) => toast.success("Updated!"),
- * });
- */
-export function stream(
-  type: string,
-  payloadOrOptions: Uint8Array | StreamOptions,
-  options?: StreamOptions,
-): Stream {
-  const mux = getStreamMux();
-  if (!mux || mux.status !== "open") {
-    throw new LinuxIOError("Not connected to server", 503);
-  }
-
-  // Parse arguments
-  let payload: Uint8Array;
-  let opts: StreamOptions;
-
-  if (payloadOrOptions instanceof Uint8Array) {
-    payload = payloadOrOptions;
-    opts = options || {};
-  } else {
-    // No payload provided - empty payload
-    payload = new Uint8Array(0);
-    opts = payloadOrOptions;
-  }
-
-  const s = mux.openStream(type, payload);
-  if (!s) {
-    throw new LinuxIOError("Failed to open stream", 503);
-  }
-
-  // Wire up callbacks
-  if (opts.onData) s.onData = opts.onData;
-  if (opts.onProgress) s.onProgress = opts.onProgress;
-  if (opts.onResult) s.onResult = opts.onResult;
-  if (opts.onClose) s.onClose = opts.onClose;
-
-  return s;
-}
-
-// ============================================================================
-// Helpers for Stream Payloads
+// Payload Helpers (using new bridge protocol)
 // ============================================================================
 
 /**
  * Build payload for terminal stream
  */
 export function terminalPayload(cols: number, rows: number): Uint8Array {
-  return encodeString(`terminal\0${cols}\0${rows}`);
+  return encodeString(`bridge\0terminal\0bash\0${cols}\0${rows}`);
 }
 
 /**
@@ -364,21 +137,23 @@ export function containerPayload(
   cols: number,
   rows: number,
 ): Uint8Array {
-  return encodeString(`container\0${containerId}\0${shell}\0${cols}\0${rows}`);
+  return encodeString(
+    `bridge\0docker\0container_exec\0${containerId}\0${shell}\0${cols}\0${rows}`,
+  );
 }
 
 /**
  * Build payload for file upload stream
  */
 export function uploadPayload(path: string, size: number): Uint8Array {
-  return encodeString(`fb-upload\0${path}\0${size}`);
+  return encodeString(`bridge\0filebrowser\0upload\0${path}\0${size}`);
 }
 
 /**
  * Build payload for file download stream
  */
 export function downloadPayload(paths: string[]): Uint8Array {
-  return encodeString(`fb-download\0${paths.join("\0")}`);
+  return encodeString(`bridge\0filebrowser\0download\0${paths.join("\0")}`);
 }
 
 /**
@@ -390,7 +165,7 @@ export function compressPayload(
   format: string,
 ): Uint8Array {
   return encodeString(
-    `fb-compress\0${paths.join("\0")}\0${destination}\0${format}`,
+    `bridge\0filebrowser\0compress\0${paths.join("\0")}\0${destination}\0${format}`,
   );
 }
 
@@ -401,7 +176,9 @@ export function extractPayload(
   archive: string,
   destination: string,
 ): Uint8Array {
-  return encodeString(`fb-extract\0${archive}\0${destination}`);
+  return encodeString(
+    `bridge\0filebrowser\0extract\0${archive}\0${destination}`,
+  );
 }
 
 // ============================================================================
@@ -425,7 +202,7 @@ export function getStatus(): "connecting" | "open" | "closed" | "error" | null {
 }
 
 // ============================================================================
-// Re-exports from StreamMultiplexer
+// Re-exports
 // ============================================================================
 
 export {
@@ -439,39 +216,114 @@ export {
   UPLOAD_WINDOW_SIZE,
 };
 export type { Stream, ProgressFrame, ResultFrame, MuxStatus, StreamType };
+export { LinuxIOError };
 
 // ============================================================================
-// Default Export (Namespace)
+// useStream - Callback-based streaming for modules
 // ============================================================================
+
+export interface UseStreamOptions {
+  onData?: (data: Uint8Array) => void;
+  onResult?: (result: ResultFrame) => void;
+  onProgress?: (progress: ProgressFrame) => void;
+  onClose?: () => void;
+  onError?: (error: Error) => void;
+}
 
 /**
- * LinuxIO API - Single entry point for all backend communication
+ * Opens a stream with callback-style API for module use.
+ *
+ * @param handler - Handler name (e.g., "exec", "system")
+ * @param command - Command name (e.g., "ls", "get_cpu_info")
+ * @param args - Command arguments
+ * @param options - Callback options
+ * @returns The stream or SpawnedProcess, or null on error
+ *
+ * @example
+ * // Execute a command (exec stream)
+ * linuxio.useStream('exec', 'ls', ['-lh', '/home'], {
+ *   onData: (data) => console.log(decodeString(data)),
+ *   onResult: (result) => console.log('Exit code:', result.data?.exitCode),
+ *   onClose: () => console.log('Stream closed')
+ * });
+ *
+ * @example
+ * // Call a bridge handler (RPC-style)
+ * linuxio.useStream('system', 'get_cpu_info', [], {
+ *   onResult: (result) => console.log(result.data)
+ * });
  */
-export const linuxio = {
-  // React hooks
-  useStreamMux,
+export function useStream(
+  handler: string,
+  command: string,
+  args: string[] = [],
+  options?: UseStreamOptions,
+) {
+  try {
+    const mux = getStreamMux();
+    if (!mux) {
+      throw new Error("StreamMux not initialized");
+    }
+
+    // Special handling for exec streams - they use a different protocol
+    if (handler === "exec") {
+      const payloadParts = ["exec", command, ...args];
+      const payload = encodeString(payloadParts.join("\0"));
+      const stream = mux.openStream("exec", payload);
+
+      if (options?.onData) {
+        stream.onData = options.onData;
+      }
+      if (options?.onProgress) {
+        stream.onProgress = options.onProgress;
+      }
+      if (options?.onResult) {
+        stream.onResult = (result) => {
+          options.onResult?.(result);
+          options?.onClose?.();
+        };
+      }
+      stream.onClose = () => {
+        options?.onClose?.();
+      };
+
+      return stream;
+    }
+
+    // For bridge handlers, use spawn
+    const process = spawn(handler, command, args, {
+      onData: options?.onData,
+      onProgress: options?.onProgress,
+    });
+
+    // Handle result and completion via the promise
+    process
+      .then((result) => {
+        options?.onResult?.({ status: "ok", data: result });
+        options?.onClose?.();
+      })
+      .catch((error: Error) => {
+        options?.onError?.(error);
+        options?.onClose?.();
+      });
+
+    return process;
+  } catch (error) {
+    options?.onError?.(error instanceof Error ? error : new Error(String(error)));
+    return null;
+  }
+}
+
+// ============================================================================
+// Default Export - Unified API for modules
+// ============================================================================
+
+const linuxio = {
   useCall,
   useMutate,
-
-  // Direct stream access
-  stream,
-
-  // Promise-based (non-React)
-  request,
-
-  // Payload builders
-  terminalPayload,
-  containerPayload,
-  uploadPayload,
-  downloadPayload,
-  compressPayload,
-  extractPayload,
-
-  // Utilities
-  isConnected,
-  getStatus,
-  encodeString,
+  useStream,
   decodeString,
+  encodeString,
 };
 
 export default linuxio;

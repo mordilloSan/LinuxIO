@@ -4,9 +4,8 @@ import React, { useState } from "react";
 import ModuleCard from "./ModuleCard";
 import ModuleDetailsDrawer from "./ModuleDetailsDrawer";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import type { ModuleInfo } from "@/types/module";
 
 const ModulesList: React.FC = () => {
   const [selectedModule, setSelectedModule] = useState<string | null>(null);
@@ -18,7 +17,7 @@ const ModulesList: React.FC = () => {
     isError,
     error,
     refetch,
-  } = linuxio.useCall<ModuleInfo[]>("modules", "GetModules", [], {
+  } = linuxio.modules.GetModules.useQuery({
     refetchInterval: 5000,
   });
 

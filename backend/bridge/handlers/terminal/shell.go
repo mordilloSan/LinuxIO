@@ -106,16 +106,6 @@ func ResizeTerminal(sessionID string, cols, rows int) error {
 	if ts == nil || ts.PTY == nil || !ts.Open {
 		return errors.New("terminal not running")
 	}
-	// Clamp values to valid range for uint16
-	safeUint16 := func(val int) uint16 {
-		if val < 0 {
-			return 0
-		}
-		if val > 65535 {
-			return 65535
-		}
-		return uint16(val)
-	}
 
 	return pty.Setsize(ts.PTY, &pty.Winsize{
 		Cols: safeUint16(cols),

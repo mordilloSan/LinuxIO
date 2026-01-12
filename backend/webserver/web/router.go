@@ -38,8 +38,24 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 	// WebSocket relay (protected)
 	mux.Handle("GET /ws", sm.RequireSession(http.HandlerFunc(WebSocketRelayHandler)))
 
-	// Serve module static files (protected)
-	mux.Handle("/modules/", sm.RequireSession(http.HandlerFunc(ServeModuleFiles)))
+	// Serve module static files
+	// SPA routes (no file extension) are public - React handles auth
+	// File routes (.js, .css, etc.) require session
+	mux.Handle("/modules/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		urlPath := strings.TrimPrefix(r.URL.Path, "/modules/")
+		ext := filepath.Ext(urlPath)
+
+		// SPA route - serve index.html, let React handle auth
+		if urlPath == "" || ext == "" {
+			serveFileFS(w, r, cfg.UI, "index.html")
+			return
+		}
+
+		// File route - require session
+		sm.RequireSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ServeModuleFiles(w, r, cfg.UI)
+		})).ServeHTTP(w, r)
+	}))
 
 	// Serve embedded SPA
 	mountProductionSPA(mux, cfg.UI)
@@ -112,9 +128,11 @@ func serveFileFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string
 }
 
 // ServeModuleFiles serves static files for modules from their directories
-func ServeModuleFiles(w http.ResponseWriter, r *http.Request) {
+// Note: SPA routes are handled by the router before this is called
+func ServeModuleFiles(w http.ResponseWriter, r *http.Request, ui fs.FS) {
 	// Extract path like: /modules/example-module/component.js
 	urlPath := strings.TrimPrefix(r.URL.Path, "/modules/")
+	ext := filepath.Ext(urlPath)
 
 	// Security: prevent directory traversal
 	if strings.Contains(urlPath, "..") {
@@ -153,8 +171,7 @@ func ServeModuleFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set content type based on extension
-	ext := filepath.Ext(filePath)
+	// Set content type based on extension (ext already computed above)
 	switch ext {
 	case ".js":
 		w.Header().Set("Content-Type", "application/javascript")

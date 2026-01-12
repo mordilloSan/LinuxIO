@@ -7,9 +7,10 @@ import {
   Collapse,
   CircularProgress,
 } from "@mui/material";
+import { useMutation } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { linuxio } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
@@ -36,31 +37,37 @@ const UpdateList: React.FC<Props> = ({
   const [loadingChangelog, setLoadingChangelog] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Mutation for fetching changelog details
+  const { mutate: fetchChangelogMutation } = useMutation<Update, Error, string>(
+    {
+      mutationFn: (packageId: string) =>
+        linuxio.call<Update>("dbus", "GetUpdateDetail", [packageId]),
+    },
+  );
+
   const fetchChangelog = useCallback(
-    async (packageId: string) => {
+    (packageId: string) => {
       if (changelogs[packageId]) return; // Already loaded
 
       setLoadingChangelog(packageId);
-      try {
-        const detail = await linuxio.request<Update>(
-          "dbus",
-          "GetUpdateDetail",
-          [packageId],
-        );
-        setChangelogs((prev) => ({
-          ...prev,
-          [packageId]: detail.changelog || "No changelog available",
-        }));
-      } catch {
-        setChangelogs((prev) => ({
-          ...prev,
-          [packageId]: "Failed to load changelog",
-        }));
-      } finally {
-        setLoadingChangelog(null);
-      }
+      fetchChangelogMutation(packageId, {
+        onSuccess: (detail) => {
+          setChangelogs((prev) => ({
+            ...prev,
+            [packageId]: detail.changelog || "No changelog available",
+          }));
+          setLoadingChangelog(null);
+        },
+        onError: () => {
+          setChangelogs((prev) => ({
+            ...prev,
+            [packageId]: "Failed to load changelog",
+          }));
+          setLoadingChangelog(null);
+        },
+      });
     },
-    [changelogs],
+    [changelogs, fetchChangelogMutation],
   );
 
   const toggleExpanded = (index: number, packageId: string) => {

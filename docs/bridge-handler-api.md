@@ -37,7 +37,7 @@ Bridge's job:
 │  │  - Route to handler based on stream type:           │    │
 │  │    • "terminal"    → TerminalHandler                │    │
 │  │    • "container"   → ContainerHandler               │    │
-│  │    • "api"         → APIHandler                     │    │
+│  │    • "json"        → JSONHandler                    │    │
 │  │    • "fb-upload"   → FileUploadHandler              │    │
 │  │    • "fb-download" → FileDownloadHandler            │    │
 │  └────────────────────┬────────────────────────────────┘    │
@@ -45,7 +45,7 @@ Bridge's job:
 │          ┌────────────┴────────────┐                        │
 │          ▼            ▼            ▼                        │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐                 │
-│  │ Terminal │  │   API    │  │   File   │  ... handlers   │
+│  │ Terminal │  │   JSON   │  │   File   │  ... handlers   │
 │  │ Handler  │  │ Handler  │  │ Handler  │                 │
 │  └──────────┘  └──────────┘  └──────────┘                 │
 │                                                               │
@@ -136,7 +136,7 @@ type StreamHandler func(stream *yamux.Stream, args []string, userID string) erro
 handlers := map[string]StreamHandler{
     "terminal":    HandleTerminalStream,
     "container":   HandleContainerStream,
-    "api":         HandleAPIStream,
+    "json":        HandleJSONStream,
     "fb-upload":   HandleFileUpload,
     "fb-download": HandleFileDownload,
     "fb-compress": HandleFileCompress,
@@ -258,10 +258,10 @@ func HandleTerminalStream(stream *yamux.Stream, args []string, userID string) er
 }
 ```
 
-### Request/Response Stream (API)
+### Request/Response Stream (JSON)
 
 ```go
-func HandleAPIStream(stream *yamux.Stream, args []string, userID string) error {
+func HandleJSONStream(stream *yamux.Stream, args []string, userID string) error {
     // args[0] = handler type (e.g., "system")
     // args[1] = command (e.g., "get_cpu_info")
     // args[2...] = additional arguments
@@ -456,7 +456,7 @@ registry := &HandlerRegistry{handlers: make(map[string]StreamHandler)}
 // Register handlers
 terminal.Register(registry)   // registers "terminal", "container"
 filebrowser.Register(registry) // registers "fb-*"
-api.Register(registry)         // registers "api"
+api.Register(registry)         // registers "json"
 ```
 
 ### Handler Package Structure
@@ -470,7 +470,7 @@ backend/bridge/handlers/
 │   ├── stream.go        // HandleFileUpload, HandleFileDownload, etc.
 │   └── register.go      // Register function
 ├── api/
-│   ├── stream.go        // HandleAPIStream (routes to sub-handlers)
+│   ├── stream.go        // HandleJSONStream (routes to sub-handlers)
 │   ├── system.go        // System commands
 │   ├── docker.go        // Docker commands
 │   ├── dbus.go          // DBus commands
@@ -510,7 +510,7 @@ func HandleContainerStream(stream *yamux.Stream, args []string, userID string) e
 
 | Type | Args | Frames Sent | Closes When |
 |------|------|-------------|-------------|
-| `api` | `[handler, command, ...args]` | OpStreamResult | After result sent |
+| `json` | `[handler, command, ...args]` | OpStreamResult | After result sent |
 
 ### Progress Streams (Ephemeral with progress)
 

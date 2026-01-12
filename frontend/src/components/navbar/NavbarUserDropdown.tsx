@@ -11,11 +11,12 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
+import { useMutation } from "@tanstack/react-query";
 import LucidePower from "lucide-react/dist/esm/icons/power";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { linuxio } from "@/api/linuxio";
+import * as linuxio from "@/api/linuxio-core";
 import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
 
@@ -27,6 +28,14 @@ function NavbarUserDropdown() {
 
   const [anchorMenu, setAnchorMenu] = useState<null | HTMLElement>(null);
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
+
+  // Mutations for power actions
+  const rebootMutation = useMutation({
+    mutationFn: () => linuxio.call("dbus", "Reboot"),
+  });
+  const poweroffMutation = useMutation({
+    mutationFn: () => linuxio.call("dbus", "PowerOff"),
+  });
 
   const toggleMenu = (event: React.SyntheticEvent<HTMLElement>) => {
     setAnchorMenu(event.currentTarget);
@@ -40,7 +49,7 @@ function NavbarUserDropdown() {
     navigate("/sign-in");
   };
 
-  const handleConfirmedAction = async () => {
+  const handleConfirmedAction = () => {
     const action = confirm;
     closeMenu();
     closeConfirm();
@@ -48,18 +57,18 @@ function NavbarUserDropdown() {
     // Show overlay immediately
     if (action === "reboot") {
       triggerReboot();
+      rebootMutation.mutate(undefined, {
+        onError: () => {
+          // Server may die before responding - this is expected
+        },
+      });
     } else if (action === "poweroff") {
       triggerPowerOff();
-    }
-
-    try {
-      if (action === "reboot") {
-        await linuxio.request("dbus", "Reboot");
-      } else if (action === "poweroff") {
-        await linuxio.request("dbus", "PowerOff");
-      }
-    } catch {
-      // Server may die before responding - this is expected
+      poweroffMutation.mutate(undefined, {
+        onError: () => {
+          // Server may die before responding - this is expected
+        },
+      });
     }
   };
 

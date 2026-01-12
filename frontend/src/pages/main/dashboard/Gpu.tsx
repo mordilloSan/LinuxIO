@@ -2,27 +2,15 @@ import ThermostatIcon from "@mui/icons-material/Thermostat";
 import { Typography, Box } from "@mui/material";
 import React from "react";
 
-import { linuxio } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import GeneralCard from "@/components/cards/GeneralCard";
-
-interface GpuDevice {
-  address: string;
-  device_id: string;
-  driver: string;
-  model: string;
-  revision: string;
-  subsystem: string;
-  subsystem_id: string;
-  vendor: string;
-  vendor_id: string;
-}
 
 const GpuInfo: React.FC = () => {
   const {
     data: gpus,
     isPending: isLoading,
     isError,
-  } = linuxio.useCall<GpuDevice[]>("system", "get_gpu_info", [], {
+  } = linuxio.system.get_gpu_info.useQuery({
     refetchInterval: 50_000,
   });
 

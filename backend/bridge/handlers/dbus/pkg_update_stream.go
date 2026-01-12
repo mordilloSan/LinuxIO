@@ -12,10 +12,16 @@ import (
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // StreamTypePkgUpdate is the stream type for package update operations.
 const StreamTypePkgUpdate = "pkg-update"
+
+// RegisterStreamHandlers registers all dbus stream handlers.
+func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
+	handlers[StreamTypePkgUpdate] = HandlePackageUpdateStream
+}
 
 // PkgUpdateProgress represents progress for package update operations.
 type PkgUpdateProgress struct {
@@ -101,7 +107,7 @@ func isRealWorkStatus(status uint32) bool {
 
 // HandlePackageUpdateStream handles streaming package updates with real-time progress.
 // args: package IDs to update (null-byte separated in payload)
-func HandlePackageUpdateStream(stream net.Conn, args []string) error {
+func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []string) error {
 	logger.Debugf("[PkgUpdate] Starting with %d packages", len(args))
 
 	if len(args) == 0 {

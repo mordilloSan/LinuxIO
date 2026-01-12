@@ -56,7 +56,7 @@ import "github.com/mordilloSan/LinuxIO/backend/common/middleware"
 
 func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
     // WireGuard handlers - all operations require administrator privileges
-    HandlersByType["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
+    JsonHandlers["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
 }
 ```
 
@@ -99,7 +99,7 @@ func ModuleHandlers(sess *session.Session, handlerRegistry ...) map[string]func(
 
 ```go
 func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
-    HandlersByType["modules"] = modules.ModuleHandlers(sess, HandlersByType)
+    JsonHandlers["modules"] = modules.ModuleHandlers(sess, JsonHandlers)
 }
 ```
 
@@ -129,7 +129,7 @@ func WireguardHandlers() map[string]func([]string) (any, error) {
 **Registration** (privilege enforcement):
 ```go
 // register.go
-HandlersByType["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
+JsonHandlers["wireguard"] = middleware.RequirePrivilegedAll(sess, wireguard.WireguardHandlers())
 ```
 
 Result: **All WireGuard operations require administrator privileges**
@@ -210,7 +210,7 @@ curl -X POST https://localhost:8443/api/bridge \
 
 Example pattern:
 ```go
-HandlersByType["package"] = middleware.RequirePrivilegedAll(sess, package.PackageHandlers())
+JsonHandlers["package"] = middleware.RequirePrivilegedAll(sess, package.PackageHandlers())
 ```
 
 ### For Fine-Grained Privilege (For mixed public/privileged packages):

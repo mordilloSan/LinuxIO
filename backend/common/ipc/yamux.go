@@ -5,8 +5,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/yamux"
+	"github.com/libp2p/go-yamux/v4"
 )
+
+// MemoryManagerFactory creates a new yamux.MemoryManager per session.
+// Return nil to use unlimited memory (default behavior).
+var MemoryManagerFactory func() yamux.MemoryManager = nil
 
 // YamuxConfig returns the default yamux configuration for LinuxIO
 func YamuxConfig() *yamux.Config {
@@ -30,7 +34,8 @@ type YamuxSession struct {
 
 // NewYamuxServer creates a server-side yamux session
 func NewYamuxServer(conn net.Conn) (*YamuxSession, error) {
-	session, err := yamux.Server(conn, YamuxConfig())
+	// Use default memory manager (nil for libp2p yamux)
+	session, err := yamux.Server(conn, YamuxConfig(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +47,8 @@ func NewYamuxServer(conn net.Conn) (*YamuxSession, error) {
 
 // NewYamuxClient creates a client-side yamux session
 func NewYamuxClient(conn net.Conn) (*YamuxSession, error) {
-	session, err := yamux.Client(conn, YamuxConfig())
+	// Use default memory manager (nil for libp2p yamux)
+	session, err := yamux.Client(conn, YamuxConfig(), nil)
 	if err != nil {
 		return nil, err
 	}
