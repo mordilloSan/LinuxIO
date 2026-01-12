@@ -21,6 +21,7 @@ export const useLinuxIOUpdater = () => {
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const streamRef = useRef<Stream | null>(null);
+  const updateStartedRef = useRef(false); // Track if update unit was successfully started
 
   const startUpdate = useCallback(
     async (targetVersion?: string): Promise<void> => {
@@ -35,12 +36,25 @@ export const useLinuxIOUpdater = () => {
       setError(null);
       setStatus("Starting update...");
       setOutput([]);
+      updateStartedRef.current = false;
 
-      // Build command: download and execute install script
-      // Format: bash -c "curl -fsSL <url> | bash -s -- <version>"
-      const cmd = targetVersion
+      // Build command: download and execute install script as a detached systemd unit
+      // We use systemd-run to spawn the update as a transient service, so it survives
+      // when the main LinuxIO service is stopped during the update process.
+      // After starting the unit, we follow its journal output until we lose connection.
+      const updateCmd = targetVersion
         ? `curl -fsSL ${INSTALL_SCRIPT_URL} | bash -s -- ${targetVersion}`
         : `curl -fsSL ${INSTALL_SCRIPT_URL} | bash`;
+
+      // Start update as transient systemd unit, then follow its journal output
+      // --no-block: returns immediately after starting the unit
+      // --unit: name the unit for easier tracking
+      // -p StandardOutput=journal: send output to journal so we can stream it
+      const cmd =
+        `systemd-run --no-block --unit=linuxio-update ` +
+        `-p StandardOutput=journal -p StandardError=journal ` +
+        `bash -c '${updateCmd}' && ` +
+        `sleep 0.5 && journalctl -f -u linuxio-update --no-pager -o cat`;
 
       // Build payload for exec stream: [stream_type, command, ...args]
       // We use bash -c to execute the full command as a single string
@@ -71,6 +85,18 @@ export const useLinuxIOUpdater = () => {
             if (lastLine) {
               setStatus(lastLine);
             }
+
+            // Detect when the systemd unit has been started or install script output is seen
+            // This indicates the update is running in a detached unit
+            const fullText = text.toLowerCase();
+            if (
+              fullText.includes("running as unit") ||
+              fullText.includes("linuxio-update") ||
+              fullText.includes("starting linuxio") ||
+              fullText.includes("target version")
+            ) {
+              updateStartedRef.current = true;
+            }
           }
         };
 
@@ -83,22 +109,40 @@ export const useLinuxIOUpdater = () => {
             setIsUpdating(false);
             resolve();
           } else {
-            const errorMsg = result.error || "Update failed";
-            setError(errorMsg);
-            setStatus("Update failed");
-            setIsUpdating(false);
-            reject(new Error(errorMsg));
+            // If update was started (systemd unit is running), treat errors as expected
+            // The error is likely from journalctl being killed when the service stops
+            if (updateStartedRef.current) {
+              setProgress(50);
+              setStatus("Update in progress - service restarting...");
+              setIsUpdating(false);
+              resolve(); // Update is running in background, wait for reconnection
+            } else {
+              const errorMsg = result.error || "Update failed";
+              setError(errorMsg);
+              setStatus("Update failed");
+              setIsUpdating(false);
+              reject(new Error(errorMsg));
+            }
           }
         };
 
         stream.onClose = () => {
           streamRef.current = null;
-          // If closed without result while updating, treat as error
+          // Connection loss during update is expected - the update runs in a separate
+          // systemd unit and continues even when the main service is stopped.
+          // The UpdateBanner component will handle reconnection and page reload.
           if (isUpdating) {
-            setError("Update stream closed unexpectedly");
-            setStatus("Connection lost");
-            setIsUpdating(false);
-            reject(new Error("Stream closed unexpectedly"));
+            if (updateStartedRef.current) {
+              setProgress(50);
+              setStatus("Update in progress - service restarting...");
+              setIsUpdating(false);
+              resolve(); // Resolve so reconnection logic kicks in
+            } else {
+              setError("Connection lost before update started");
+              setStatus("Connection lost");
+              setIsUpdating(false);
+              reject(new Error("Stream closed before update started"));
+            }
           }
         };
       });
