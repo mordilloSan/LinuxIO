@@ -116,6 +116,8 @@ const TerminalXTerm: React.FC = () => {
         stream.onClose = () => {
           streamRef.current = null;
         };
+
+        stream.resize(xterm.current.cols, xterm.current.rows);
       }
 
       // Auto-focus terminal
@@ -132,6 +134,9 @@ const TerminalXTerm: React.FC = () => {
     // Responsive fit on window resize
     const doFit = () => {
       fitAddon.current?.fit();
+      if (xterm.current && streamRef.current) {
+        streamRef.current.resize(xterm.current.cols, xterm.current.rows);
+      }
     };
     window.addEventListener("resize", doFit);
 

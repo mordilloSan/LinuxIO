@@ -129,6 +129,26 @@ export function terminalPayload(cols: number, rows: number): Uint8Array {
 }
 
 /**
+ * Build payload for docker logs stream
+ */
+export function dockerLogsPayload(
+  containerId: string,
+  tail: string = "100",
+): Uint8Array {
+  return encodeString(`docker-logs\0${containerId}\0${tail}`);
+}
+
+/**
+ * Build payload for service logs stream (journalctl)
+ */
+export function serviceLogsPayload(
+  serviceName: string,
+  lines: string = "100",
+): Uint8Array {
+  return encodeString(`service-logs\0${serviceName}\0${lines}`);
+}
+
+/**
  * Build payload for container terminal stream
  */
 export function containerPayload(

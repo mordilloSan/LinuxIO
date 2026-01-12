@@ -169,8 +169,6 @@ A session is privileged if:
 
 ## Adding Privilege Checks to Existing Handlers
 
-**TODO - Handlers needing privilege enforcement:**
-
 - [ ] **docker**: All operations (use package-wide loop pattern in register.go)
 - [ ] **filebrowser**: Write operations (use fine-grained pattern - read is public, write is privileged)
 - [ ] **control**: Shutdown/reboot operations (likely all privileged, use package-wide loop)

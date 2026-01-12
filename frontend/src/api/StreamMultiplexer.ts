@@ -39,6 +39,7 @@ export interface Stream {
   readonly type: StreamType;
   readonly status: StreamStatus;
   write(data: Uint8Array): void;
+  resize(cols: number, rows: number): void;
   close(): void;
   /** Abort the stream immediately (sends RST flag instead of FIN) */
   abort(): void;
@@ -190,6 +191,26 @@ class StreamImpl implements Stream {
     view.setUint32(1, this.id, false);
     view.setUint32(5, data.length, false);
     bridgeFrame.set(data, 9);
+    this.mux.sendFrame(this.id, Flags.DATA, bridgeFrame);
+  }
+
+  resize(cols: number, rows: number): void {
+    if (this._status !== "open" && this._status !== "opening") {
+      return;
+    }
+    const safeCols = Math.max(0, Math.min(cols, 0xffff));
+    const safeRows = Math.max(0, Math.min(rows, 0xffff));
+    const payload = new Uint8Array(4);
+    const payloadView = new DataView(payload.buffer);
+    payloadView.setUint16(0, safeCols, false);
+    payloadView.setUint16(2, safeRows, false);
+
+    const bridgeFrame = new Uint8Array(9 + payload.length);
+    const view = new DataView(bridgeFrame.buffer);
+    bridgeFrame[0] = BridgeOpcode.StreamResize;
+    view.setUint32(1, this.id, false);
+    view.setUint32(5, payload.length, false);
+    bridgeFrame.set(payload, 9);
     this.mux.sendFrame(this.id, Flags.DATA, bridgeFrame);
   }
 

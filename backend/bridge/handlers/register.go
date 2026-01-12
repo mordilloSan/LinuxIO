@@ -47,6 +47,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	terminal.RegisterStreamHandlers(StreamHandlers)
 	filebrowser.RegisterStreamHandlers(StreamHandlers)
 	dbus.RegisterStreamHandlers(StreamHandlers)
+	docker.RegisterStreamHandlers(StreamHandlers)
 
 	// Load modules from YAML files - log errors but don't fail
 	_ = modules.LoadModules(StreamHandlers)

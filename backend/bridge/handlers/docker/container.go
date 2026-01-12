@@ -2,12 +2,8 @@ package docker
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
-	"regexp"
-	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -44,33 +40,6 @@ func getSystemMemoryTotal() (uint64, error) {
 		return 0, err
 	}
 	return uint64(info.Totalram) * uint64(info.Unit), nil
-}
-
-// Helper to demultiplex Docker log stream into clean text
-func demuxDockerLogs(reader io.Reader) (string, error) {
-	var logs strings.Builder
-	header := make([]byte, 8)
-	for {
-		// Each frame starts with 8 bytes: [STREAM][0,0,0][SIZE(4 bytes)]
-		_, err := io.ReadFull(reader, header)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return "", err
-		}
-		size := int(binary.BigEndian.Uint32(header[4:]))
-		if size == 0 {
-			continue
-		}
-		frame := make([]byte, size)
-		_, err = io.ReadFull(reader, frame)
-		if err != nil {
-			break
-		}
-		logs.Write(frame)
-	}
-	return logs.String(), nil
 }
 
 // List all containers with metrics
@@ -238,44 +207,4 @@ func RestartContainer(id string) (any, error) {
 	}
 
 	return "restarted", nil
-}
-
-// GetContainerLogs fetches logs (stdout + stderr) for a container by ID.
-func LogContainer(id string) (string, error) {
-	cli, err := getClient()
-	if err != nil {
-		return "", fmt.Errorf("docker client error: %w", err)
-	}
-	defer func() {
-		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("failed to close Docker client: %v", cerr)
-		}
-	}()
-
-	options := container.LogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-		Timestamps: false,
-		Follow:     false,
-		Tail:       "100",
-	}
-
-	reader, err := cli.ContainerLogs(context.Background(), id, options)
-	if err != nil {
-		return "", fmt.Errorf("failed to get logs: %w", err)
-	}
-
-	plainLogs, err := demuxDockerLogs(reader)
-	closeErr := reader.Close() // Close explicitly, handle error
-
-	if closeErr != nil {
-		// Log the close error but do not override the main error
-		logger.Warnf("failed to close container logs reader: %v", closeErr)
-	}
-
-	if err != nil {
-		return "", fmt.Errorf("failed to decode logs: %w", err)
-	}
-	cleanLogs := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`).ReplaceAllString(plainLogs, "")
-	return cleanLogs, nil
 }
