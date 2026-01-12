@@ -91,6 +91,18 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// Version returns installed component versions (public endpoint, no auth required).
+// Used by frontend to detect when server is back up after updates.
+func (h *Handlers) Version(w http.ResponseWriter, r *http.Request) {
+	// Get component versions from CLI command
+	versions := getComponentVersions()
+	if versions == nil {
+		versions = make(map[string]string)
+	}
+
+	web.WriteJSON(w, http.StatusOK, versions)
+}
+
 // ---- internals ----
 
 func (h *Handlers) createUserSession(req LoginRequest) (*session.Session, error) {

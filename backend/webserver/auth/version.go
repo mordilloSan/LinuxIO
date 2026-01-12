@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -155,4 +156,39 @@ func fetchLatestRelease() (version string, releaseURL string) {
 	}
 
 	return release.TagName, release.HTMLURL
+}
+
+// getComponentVersions runs 'linuxio version' command and parses the output.
+// Returns a map of component names to versions, or nil if the command fails.
+func getComponentVersions() map[string]string {
+	linuxioCLI := config.BinDir + "/linuxio"
+	cmd := exec.Command(linuxioCLI, "version")
+	output, err := cmd.Output()
+	if err != nil {
+		logger.Debugf("failed to run '%s version': %v", linuxioCLI, err)
+		return nil
+	}
+
+	components := make(map[string]string)
+	lines := strings.Split(string(output), "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Look for lines like: "  LinuxIO Web Server dev-v0.6.9"
+		if strings.HasPrefix(line, "LinuxIO ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				// Join all parts except the last one for the component name
+				componentName := strings.Join(parts[:len(parts)-1], " ")
+				version := parts[len(parts)-1]
+				components[componentName] = version
+			}
+		}
+	}
+
+	if len(components) == 0 {
+		return nil
+	}
+
+	return components
 }
