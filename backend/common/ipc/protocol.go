@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 )
 
 // Common errors for stream operations.
@@ -223,6 +224,7 @@ func (o *OperationCallbacks) ReportComplete(path string) {
 
 // AbortMonitor monitors a stream for abort signals (OpStreamAbort).
 // Returns a cancel function that returns true when abort is received.
+// The cleanup function waits for the monitor goroutine to exit (with timeout).
 func AbortMonitor(r io.Reader) (cancelFn CancelFunc, cleanup func()) {
 	aborted := make(chan struct{})
 	done := make(chan struct{})
@@ -250,10 +252,14 @@ func AbortMonitor(r io.Reader) (cancelFn CancelFunc, cleanup func()) {
 		}
 	}
 
+	// cleanup waits for the goroutine to finish with a reasonable timeout.
+	// The goroutine will exit when the reader returns an error (e.g., stream closed).
 	cleanup = func() {
 		select {
 		case <-done:
-		default:
+			// Goroutine finished cleanly
+		case <-time.After(100 * time.Millisecond):
+			// Timeout - goroutine will exit when stream closes
 		}
 	}
 

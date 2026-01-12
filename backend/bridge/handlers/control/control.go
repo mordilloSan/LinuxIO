@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mordilloSan/go_logger/logger"
@@ -195,11 +196,25 @@ func runInstallScript(version string) error {
 		return fmt.Errorf("failed to start systemd-run: %w", err)
 	}
 
-	// Stream logs in real-time
-	go logStream(stdout, "", true)
-	go logStream(stderr, "", false)
+	// Stream logs in real-time with WaitGroup to ensure completion
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		logStream(stdout, "", true)
+	}()
+	go func() {
+		defer wg.Done()
+		logStream(stderr, "", false)
+	}()
 
-	if err := cmd.Wait(); err != nil {
+	// Wait for command to complete
+	err = cmd.Wait()
+
+	// Wait for log goroutines to finish processing all output
+	wg.Wait()
+
+	if err != nil {
 		return fmt.Errorf("installer failed: %w", err)
 	}
 
