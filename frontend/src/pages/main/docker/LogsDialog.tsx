@@ -14,34 +14,42 @@ import {
   Switch,
   FormControlLabel,
 } from "@mui/material";
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 
+import { useStreamMux, dockerLogsPayload, decodeString } from "@/api/linuxio";
+import type { Stream } from "@/api/linuxio";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface LogsDialogProps {
   open: boolean;
   onClose: () => void;
-  logs: string | null;
-  loading?: boolean;
-  error?: string | null;
   containerName?: string;
-  onRefresh?: () => void;
-  autoRefreshDefault?: boolean;
+  containerId: string;
 }
 
 const LogsDialog: React.FC<LogsDialogProps> = ({
   open,
   onClose,
-  logs,
-  loading,
-  error,
   containerName,
-  onRefresh,
-  autoRefreshDefault = false,
+  containerId,
 }) => {
   const [search, setSearch] = useState("");
-  const [autoRefresh, setAutoRefresh] = useState(autoRefreshDefault);
+  const [liveMode, setLiveMode] = useState(true);
+  const [logs, setLogs] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
+  const streamRef = useRef<Stream | null>(null);
+  const hasReceivedData = useRef(false);
+  const lastContainerId = useRef<string | null>(null);
+
+  const { isOpen: muxIsOpen, openStream } = useStreamMux();
 
   // Scroll to bottom when logs change
   useEffect(() => {
@@ -50,7 +58,109 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     }
   }, [logs, open]);
 
-  // Filter logs (no highlighting for simplicity)
+  // Close stream helper
+  const closeStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.close();
+      streamRef.current = null;
+    }
+  }, []);
+
+  // Reset state helper - called from transition callbacks, not effects
+  const resetState = useCallback(() => {
+    closeStream();
+    setLogs("");
+    setError(null);
+    setLiveMode(true);
+    setIsLoading(true);
+    hasReceivedData.current = false;
+    lastContainerId.current = null;
+  }, [closeStream]);
+
+  // Open stream when dialog opens
+  useEffect(() => {
+    if (!open || !containerId || !muxIsOpen) {
+      return;
+    }
+
+    // Don't create duplicate streams
+    if (streamRef.current) {
+      return;
+    }
+
+    // Track that we're connecting to this container
+    lastContainerId.current = containerId;
+    hasReceivedData.current = false;
+
+    // Open the docker-logs stream
+    const payload = dockerLogsPayload(containerId, "100");
+    const stream = openStream("docker-logs", payload);
+
+    if (!stream) {
+      queueMicrotask(() => {
+        setError("Failed to connect to log stream");
+        setIsLoading(false);
+      });
+      return;
+    }
+
+    streamRef.current = stream;
+
+    // Handle incoming log data
+    stream.onData = (data: Uint8Array) => {
+      const text = decodeString(data);
+      if (!hasReceivedData.current) {
+        hasReceivedData.current = true;
+        setIsLoading(false);
+      }
+      setLogs((prev) => prev + text);
+    };
+
+    stream.onClose = () => {
+      streamRef.current = null;
+      // If we never received data, show a message
+      if (!hasReceivedData.current) {
+        setIsLoading(false);
+      }
+    };
+  }, [open, containerId, muxIsOpen, openStream]);
+
+  // Handle liveMode toggle - close stream when disabled
+  useEffect(() => {
+    if (!liveMode && streamRef.current) {
+      closeStream();
+    } else if (
+      liveMode &&
+      !streamRef.current &&
+      open &&
+      containerId &&
+      muxIsOpen
+    ) {
+      // Re-open stream when live mode is re-enabled
+      const payload = dockerLogsPayload(containerId, "0"); // Don't re-fetch old logs
+      const stream = openStream("docker-logs", payload);
+
+      if (stream) {
+        streamRef.current = stream;
+        stream.onData = (data: Uint8Array) => {
+          const text = decodeString(data);
+          setLogs((prev) => prev + text);
+        };
+        stream.onClose = () => {
+          streamRef.current = null;
+        };
+      }
+    }
+  }, [liveMode, open, containerId, muxIsOpen, openStream, closeStream]);
+
+  // Cleanup stream when dialog closes (only close stream, not state)
+  useEffect(() => {
+    if (!open) {
+      closeStream();
+    }
+  }, [open, closeStream]);
+
+  // Filter logs
   const filtered = useMemo(() => {
     if (!search || !logs) return logs;
     return logs
@@ -76,17 +186,6 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  // Auto-refresh effect
-  useEffect(() => {
-    if (!onRefresh || !open) return;
-
-    if (autoRefresh) {
-      onRefresh(); // Immediate
-      const interval = setInterval(onRefresh, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [autoRefresh, onRefresh, open]);
-
   return (
     <Dialog
       open={open}
@@ -101,8 +200,9 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
             }
           },
           onExited: () => {
+            // Reset all state when dialog fully closes
+            resetState();
             setSearch("");
-            setAutoRefresh(autoRefreshDefault);
           },
         },
       }}
@@ -127,22 +227,20 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
             <DownloadIcon fontSize="small" />
           </IconButton>
         </Tooltip>
-        {onRefresh && (
-          <Tooltip title={autoRefresh ? "Auto-refresh ON" : "Auto-refresh OFF"}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={autoRefresh}
-                  onChange={(_, checked) => setAutoRefresh(checked)}
-                  color="primary"
-                  size="small"
-                />
-              }
-              label="Auto-refresh"
-              sx={{ ml: 1 }}
-            />
-          </Tooltip>
-        )}
+        <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={liveMode}
+                onChange={(_, checked) => setLiveMode(checked)}
+                color="primary"
+                size="small"
+              />
+            }
+            label="Live"
+            sx={{ ml: 1 }}
+          />
+        </Tooltip>
         <IconButton onClick={onClose} size="small">
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -176,7 +274,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
           ) : (
             filtered || "No logs available."
           )}
-          {loading && logs == null && (
+          {isLoading && (
             <Box
               sx={{
                 position: "absolute",

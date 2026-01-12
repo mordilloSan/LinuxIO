@@ -2,13 +2,12 @@ package dbus
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
+	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
-	"github.com/mordilloSan/go_logger/logger"
 )
 
 type ServiceStatus struct {
@@ -304,26 +303,4 @@ func UnmaskService(name string) error {
 		call := systemd.Call("org.freedesktop.systemd1.Manager.UnmaskUnitFiles", 0, []string{name}, false)
 		return call.Err
 	})
-}
-
-// GetServiceLogs fetches logs for a service using journalctl
-func GetServiceLogs(serviceName string, lines string) ([]string, error) {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-
-	serviceName = strings.TrimSpace(serviceName)
-	if serviceName == "" {
-		return nil, fmt.Errorf("missing service name")
-	}
-
-	// Use journalctl to get logs
-	cmd := exec.Command("journalctl", "-u", serviceName, "-n", lines, "--no-pager")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get logs: %v - %s", err, string(output))
-	}
-
-	// Split into lines
-	logLines := strings.Split(string(output), "\n")
-	return logLines, nil
 }

@@ -2,17 +2,14 @@
 
 3 - chunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts
 
-4 - for docker logs we could use real streaming?????
-
-5 - for service logs we could use real streaming?????
-
 6 - Notifications!!!! See notifications.md
 
 9 - right now hash can be reproduced if build from same code base. We need to make this time and machine specific??????
 
 10 - fix indexer status check and calls.
 
-
+for service logs we could use real streaming????? DONE
+for docker logs we could use real streaming????? DONE
 Improve the app update feature to give more feedback (like unraid) -DONE
 Remove gin - DONE
 use quantum filebrowser as our main navigator - DONE
