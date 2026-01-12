@@ -22,6 +22,7 @@ export const useLinuxIOUpdater = () => {
   const [isUpdating, setIsUpdating] = useState(false);
   const streamRef = useRef<Stream | null>(null);
   const updateStartedRef = useRef(false); // Track if update unit was successfully started
+  const isUpdatingRef = useRef(false); // Ref to avoid stale closure in callbacks
 
   const startUpdate = useCallback(
     async (targetVersion?: string): Promise<void> => {
@@ -32,6 +33,7 @@ export const useLinuxIOUpdater = () => {
       }
 
       setIsUpdating(true);
+      isUpdatingRef.current = true; // Set ref immediately (no async delay)
       setProgress(0);
       setError(null);
       setStatus("Starting update...");
@@ -107,6 +109,7 @@ export const useLinuxIOUpdater = () => {
             setProgress(100);
             setStatus("Update complete - service restarting");
             setIsUpdating(false);
+            isUpdatingRef.current = false;
             resolve();
           } else {
             // If update was started (systemd unit is running), treat errors as expected
@@ -115,12 +118,14 @@ export const useLinuxIOUpdater = () => {
               setProgress(50);
               setStatus("Update in progress - service restarting...");
               setIsUpdating(false);
+              isUpdatingRef.current = false;
               resolve(); // Update is running in background, wait for reconnection
             } else {
               const errorMsg = result.error || "Update failed";
               setError(errorMsg);
               setStatus("Update failed");
               setIsUpdating(false);
+              isUpdatingRef.current = false;
               reject(new Error(errorMsg));
             }
           }
@@ -131,23 +136,26 @@ export const useLinuxIOUpdater = () => {
           // Connection loss during update is expected - the update runs in a separate
           // systemd unit and continues even when the main service is stopped.
           // The UpdateBanner component will handle reconnection and page reload.
-          if (isUpdating) {
+          // Use ref instead of state to avoid stale closure issue
+          if (isUpdatingRef.current) {
             if (updateStartedRef.current) {
               setProgress(50);
               setStatus("Update in progress - service restarting...");
               setIsUpdating(false);
+              isUpdatingRef.current = false;
               resolve(); // Resolve so reconnection logic kicks in
             } else {
               setError("Connection lost before update started");
               setStatus("Connection lost");
               setIsUpdating(false);
+              isUpdatingRef.current = false;
               reject(new Error("Stream closed before update started"));
             }
           }
         };
       });
     },
-    [isUpdating],
+    [], // No deps needed - we use refs for values accessed in callbacks
   );
 
   const cancelUpdate = useCallback(() => {
@@ -156,6 +164,7 @@ export const useLinuxIOUpdater = () => {
       streamRef.current = null;
       setStatus("Update cancelled");
       setIsUpdating(false);
+      isUpdatingRef.current = false;
       setError("Update cancelled by user");
     }
   }, []);

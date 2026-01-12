@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react";
 
 import UpdateDialog from "./UpdateDialog";
 
-import { getStreamMux } from "@/api/linuxio";
+import { getStreamMux, initStreamMux } from "@/api/linuxio";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 
 interface UpdateInfo {
@@ -31,33 +31,68 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   const hasDisconnectedRef = useRef(false);
 
   // Auto-reload when WebSocket reconnects after update
+  // With socket activation, we need to actively try to reconnect (not passively wait)
   useEffect(() => {
-    const mux = getStreamMux();
-    if (!mux) return;
+    let reconnectInterval: ReturnType<typeof setInterval> | null = null;
+    let unsubscribe: (() => void) | null = null;
 
-    // Always set up the listener - check waitingForReconnectRef inside the callback
-    const unsubscribe = mux.addStatusListener((newStatus) => {
-      // Only process if we're waiting for reconnection after an update
-      if (!waitingForReconnectRef.current) return;
+    const setupListener = () => {
+      const mux = getStreamMux();
+      if (!mux) return;
 
-      console.log(
-        `[UpdateBanner] WebSocket status: ${newStatus}, hasDisconnected=${hasDisconnectedRef.current}`,
-      );
+      unsubscribe = mux.addStatusListener((newStatus) => {
+        if (!waitingForReconnectRef.current) return;
 
-      // Track when WebSocket disconnects (service restarting)
-      if (newStatus === "closed" || newStatus === "error") {
-        hasDisconnectedRef.current = true;
-      }
+        console.log(
+          `[UpdateBanner] WebSocket status: ${newStatus}, hasDisconnected=${hasDisconnectedRef.current}`,
+        );
 
-      // When it reconnects after being disconnected, reload the page
-      if (newStatus === "open" && hasDisconnectedRef.current) {
-        console.log("[UpdateBanner] Service reconnected, reloading page...");
-        sessionStorage.removeItem("update_info");
-        window.location.reload();
-      }
-    });
+        // Track when WebSocket disconnects (service restarting)
+        if (newStatus === "closed" || newStatus === "error") {
+          hasDisconnectedRef.current = true;
 
-    return () => unsubscribe();
+          // Start actively polling for reconnection (triggers socket activation)
+          if (!reconnectInterval) {
+            console.log("[UpdateBanner] Starting reconnection polling...");
+            reconnectInterval = setInterval(() => {
+              console.log("[UpdateBanner] Attempting to reconnect...");
+              // initStreamMux creates a new WebSocket if current is closed
+              const newMux = initStreamMux();
+
+              // Listen for this mux to open
+              const checkAndReload = (status: string) => {
+                if (status === "open") {
+                  console.log("[UpdateBanner] Reconnected! Reloading page...");
+                  sessionStorage.removeItem("update_info");
+                  window.location.reload();
+                }
+              };
+
+              // Check current status and also listen for changes
+              if (newMux.status === "open") {
+                checkAndReload("open");
+              } else {
+                newMux.addStatusListener(checkAndReload);
+              }
+            }, 2000); // Try every 2 seconds
+          }
+        }
+
+        // When it reconnects after being disconnected, reload the page
+        if (newStatus === "open" && hasDisconnectedRef.current) {
+          console.log("[UpdateBanner] Service reconnected, reloading page...");
+          sessionStorage.removeItem("update_info");
+          window.location.reload();
+        }
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+      if (reconnectInterval) clearInterval(reconnectInterval);
+    };
   }, []);
 
   const handleUpdate = async () => {
