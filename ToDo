@@ -14,12 +14,7 @@
 
 10 - fix indexer status check and calls.
 
-11 - migrate away from  linuxio.request() to react way...
-
-12 - remove tanstack/react-query from all components except useCall????
-
-12
-
+11
 
 Issues Found (7 minor)
 Medium Priority:
