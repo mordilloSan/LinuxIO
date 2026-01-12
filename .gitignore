@@ -15,8 +15,8 @@ linuxio-bridge
 .gocache
 
 # Module build artifacts
-modules/*/dist/
-modules/*/node_modules/
+modules/
+!modules/.*
 
 # Modules are visible to Vite for HMR during development
 # Add specific development modules to gitignore if needed:

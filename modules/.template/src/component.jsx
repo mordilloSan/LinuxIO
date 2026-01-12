@@ -55,6 +55,31 @@ function ExampleModule() {
     });
   };
 
+  // Example 2: Use linuxio.useStream for command execution (streaming stdout)
+  const listDirectory2 = () => {
+    setMessage('Loading directory listing...');
+    setDirListing('');
+
+    let output = '';
+
+    // Open exec stream - unified signature matching useCall
+    linuxio.useStream('exec', 'whoami', [], {
+      onData: (data) => {
+        const text = linuxio.decodeString(data);
+        output += text;
+        setDirListing(output);
+      },
+      onResult: (result) => {
+        setMessage(`Directory listing loaded! Exit code: ${result.data?.exitCode || 0}`);
+      },
+      onClose: () => {
+        if (!output) {
+          setMessage('Stream closed');
+        }
+      }
+    });
+  };
+
   return (
     <Box sx={{ p: 4 }}>
       <Typography variant="h3" gutterBottom>
@@ -124,6 +149,15 @@ function ExampleModule() {
               List /home (exec stream)
             </Button>
 
+                        <Button
+              variant="outlined"
+              onClick={listDirectory2}
+              sx={{ mt: 1 }}
+              fullWidth
+            >
+              who is the user (whoami)
+            </Button>
+
             {cpuInfo && (
               <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
                 <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>
@@ -139,6 +173,7 @@ function ExampleModule() {
                 </Typography>
               </Box>
             )}
+
           </RootCard>
         </Box>
 
