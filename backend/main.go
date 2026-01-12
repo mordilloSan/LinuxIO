@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/goccy/go-yaml"
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
-	"gopkg.in/yaml.v3"
 )
 
 func main() {

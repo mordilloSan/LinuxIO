@@ -290,6 +290,52 @@ test-backend:
 		status=$$?; \
 		echo "$$out" | grep -v '\[no test files\]' || true; \
 		exit $$status
+
+analyze-auth:
+	@echo ""
+	@echo "🔎 Running C static analysis (linuxio-auth)..."
+	@set -euo pipefail; \
+	FILE="backend/auth/linuxio-auth.c"; \
+	CPPCHK_DEFS='-D__has_include(x)=0 -DLINUXIO_VERSION="dev"'; \
+	CPPCHK_SUPPRESS='--suppress=ctunullpointer:backend/auth/linuxio-auth.c --suppress=variableScope:backend/auth/linuxio-auth.c --suppress=constParameter:backend/auth/linuxio-auth.c'; \
+	SB_WARNFLAGS="$(filter-out -Wduplicated-cond -Wlogical-op,$(WARNFLAGS)) -Wno-format-nonliteral"; \
+	CLANG_TIDY_OPTS='-checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-format-nonliteral'; \
+	CC_DB_DIR=".cache/clang"; \
+	CC_DB="$$CC_DB_DIR/compile_commands.json"; \
+	if ! command -v cppcheck >/dev/null 2>&1; then \
+	  echo "❌ cppcheck not found (install: sudo apt-get install cppcheck)"; \
+	  exit 1; \
+	fi; \
+	echo "▶ cppcheck"; \
+	cppcheck --enable=warning,style,performance,portability --inconclusive --std=c11 --force \
+	  $$CPPCHK_SUPPRESS $$CPPCHK_DEFS "$$FILE"; \
+	if ! command -v "$(CC)" >/dev/null 2>&1; then \
+	  echo "❌ compiler not found: $(CC)"; \
+	  exit 1; \
+	fi; \
+	echo "▶ $(CC) -fanalyzer"; \
+	"$(CC)" -fanalyzer -Wall -Wextra -Wshadow -Wformat=2 -Wconversion -Wnull-dereference -Wvla -O2 -c "$$FILE"; \
+	rm -f linuxio-auth.o; \
+	if ! command -v scan-build >/dev/null 2>&1; then \
+	  echo "⚠️  scan-build not found - skipping clang static analyzer"; \
+	else \
+	  echo "▶ scan-build (clang static analyzer)"; \
+	  scan-build --use-cc=clang $(MAKE) --no-print-directory build-auth CC=clang WARNFLAGS="$$SB_WARNFLAGS"; \
+	fi; \
+	if ! command -v bear >/dev/null 2>&1; then \
+	  echo "❌ bear not found (install: sudo apt-get install bear)"; \
+	  exit 1; \
+	fi; \
+	if ! command -v clang-tidy >/dev/null 2>&1; then \
+	  echo "❌ clang-tidy not found (install: sudo apt-get install clang-tidy)"; \
+	  exit 1; \
+	fi; \
+	echo "▶ clang-tidy (compile_commands.json via bear)"; \
+	mkdir -p "$$CC_DB_DIR"; \
+	rm -f "$$CC_DB"; \
+	bear --output "$$CC_DB" -- $(MAKE) --no-print-directory build-auth; \
+	clang-tidy $$CLANG_TIDY_OPTS -p "$$CC_DB_DIR" "$$FILE"; \
+	echo "✅ C analysis complete."
 	
 
 build-vite:
@@ -501,6 +547,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint + backend tests (optimized)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
+	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"
@@ -527,11 +574,11 @@ help:
 	@$(PRINTC) "$(COLOR_RED)    make clean            $(COLOR_RESET) Remove binaries, node_modules, and generated assets"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Modules$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make create-module MODULE=<name>      $(COLOR_RESET) Create new module from template"
-	@$(PRINTC) "$(COLOR_YELLOW)    make link-module MODULE=<name>        $(COLOR_RESET) Symlink module to /etc (dev mode with HMR)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make unlink-module MODULE=<name>      $(COLOR_RESET) Remove development symlink"
-	@$(PRINTC) "$(COLOR_YELLOW)    make build-module MODULE=<name>       $(COLOR_RESET) Build module (production)"
-	@$(PRINTC) "$(COLOR_YELLOW)    make deploy-module MODULE=<name>      $(COLOR_RESET) Build + deploy module"
+	@$(PRINTC) "$(COLOR_YELLOW)    make create-module <name>             $(COLOR_RESET) Create new module from template"
+	@$(PRINTC) "$(COLOR_YELLOW)    make link-module <name>               $(COLOR_RESET) Symlink module to /etc (dev mode with HMR)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make unlink-module <name>             $(COLOR_RESET) Remove development symlink"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-module <name>              $(COLOR_RESET) Build module (production)"
+	@$(PRINTC) "$(COLOR_YELLOW)    make deploy-module <name>             $(COLOR_RESET) Build + deploy module"
 	@$(PRINTC) "$(COLOR_YELLOW)    make list-modules                     $(COLOR_RESET) List all modules"
 	@$(PRINTC) ""
 
@@ -540,6 +587,20 @@ help:
 # ============================================================================
 
 MODULE ?=
+MODULE_TARGETS := create-module build-module link-module unlink-module deploy-module install-module uninstall-module clean-module
+MODULE_GOAL := $(firstword $(MAKECMDGOALS))
+MODULE_FROM_GOAL :=
+ifneq ($(filter $(MODULE_TARGETS),$(MODULE_GOAL)),)
+  ifeq ($(words $(MAKECMDGOALS)),2)
+    MODULE_FROM_GOAL := $(word 2,$(MAKECMDGOALS))
+    MODULE ?= $(MODULE_FROM_GOAL)
+  endif
+endif
+ifneq ($(MODULE_FROM_GOAL),)
+.PHONY: $(MODULE_FROM_GOAL)
+$(MODULE_FROM_GOAL):
+	@:
+endif
 MODULE_DIR := $(CURDIR)/modules/$(MODULE)
 INSTALL_DIR := /etc/linuxio/modules/$(MODULE)
 BUILD_SCRIPT := $(CURDIR)/packaging/scripts/build-module.sh
@@ -548,10 +609,10 @@ BUILD_SCRIPT := $(CURDIR)/packaging/scripts/build-module.sh
 create-module:
 	@if [ -z "$(MODULE)" ]; then \
 		echo "Error: MODULE parameter required"; \
-		echo "Usage: make create-module MODULE=<name>"; \
+		echo "Usage: make create-module <name> (or MODULE=<name>)"; \
 		echo ""; \
 		echo "Example:"; \
-		echo "  make create-module MODULE=my-dashboard"; \
+		echo "  make create-module my-dashboard"; \
 		exit 1; \
 	fi
 	@if [ ! -d "modules/.template" ]; then \
@@ -562,7 +623,7 @@ create-module:
 		echo "Error: Module '$(MODULE)' already exists at $(MODULE_DIR)"; \
 		echo ""; \
 		echo "To rebuild existing module:"; \
-		echo "  make build-module MODULE=$(MODULE)"; \
+		echo "  make build-module $(MODULE)"; \
 		exit 1; \
 	fi
 	@echo "📦 Creating new module: $(MODULE)"
@@ -594,24 +655,24 @@ create-module:
 	@echo "  3. View at: http://localhost:8090/$(MODULE)"
 	@echo ""
 	@echo "When done developing:"
-	@echo "  make deploy-module MODULE=$(MODULE)"
+	@echo "  make deploy-module $(MODULE)"
 	@echo ""
 
 # Build module in production mode (optimized)
 build-module:
 	@if [ -z "$(MODULE)" ]; then \
 		echo "Error: MODULE parameter required"; \
-		echo "Usage: make build-module MODULE=<name>"; \
+		echo "Usage: make build-module <name> (or MODULE=<name>)"; \
 		echo ""; \
 		echo "To create a new module:"; \
-		echo "  make create-module MODULE=my-module"; \
+		echo "  make create-module my-module"; \
 		exit 1; \
 	fi
 	@if [ ! -d "$(MODULE_DIR)" ]; then \
 		echo "Error: Module directory not found: $(MODULE_DIR)"; \
 		echo ""; \
 		echo "To create this module:"; \
-		echo "  make create-module MODULE=$(MODULE)"; \
+		echo "  make create-module $(MODULE)"; \
 		exit 1; \
 	fi
 	@echo "Building $(MODULE) in production mode..."
@@ -621,14 +682,14 @@ build-module:
 link-module:
 	@if [ -z "$(MODULE)" ]; then \
 		echo "Error: MODULE parameter required"; \
-		echo "Usage: make link-module MODULE=<name>"; \
+		echo "Usage: make link-module <name> (or MODULE=<name>)"; \
 		exit 1; \
 	fi
 	@if [ ! -d "$(MODULE_DIR)" ]; then \
 		echo "Error: Module directory not found: $(MODULE_DIR)"; \
 		echo ""; \
 		echo "To create this module:"; \
-		echo "  make create-module MODULE=$(MODULE)"; \
+		echo "  make create-module $(MODULE)"; \
 		exit 1; \
 	fi
 	@if [ -e "$(INSTALL_DIR)" ]; then \
@@ -637,7 +698,7 @@ link-module:
 			echo "   Points to: $$(readlink $(INSTALL_DIR))"; \
 		else \
 			echo "Error: $(INSTALL_DIR) already exists and is not a symlink"; \
-			echo "   Run 'make uninstall-module MODULE=$(MODULE)' first"; \
+			echo "   Run 'make uninstall-module $(MODULE)' first"; \
 			exit 1; \
 		fi; \
 	else \
@@ -651,32 +712,32 @@ link-module:
 		echo "  3. Edit $(MODULE_DIR)/src/index.tsx (HMR enabled)"; \
 		echo ""; \
 		echo "When done developing:"; \
-		echo "  make unlink-module MODULE=$(MODULE)"; \
-		echo "  make deploy-module MODULE=$(MODULE)"; \
+		echo "  make unlink-module $(MODULE)"; \
+		echo "  make deploy-module $(MODULE)"; \
 	fi
 
 # Unlink development module
 unlink-module:
 	@if [ -z "$(MODULE)" ]; then \
 		echo "Error: MODULE parameter required"; \
-		echo "Usage: make unlink-module MODULE=<name>"; \
+		echo "Usage: make unlink-module <name> (or MODULE=<name>)"; \
 		exit 1; \
 	fi
 	@if [ ! -L "$(INSTALL_DIR)" ]; then \
 		echo "Error: $(INSTALL_DIR) is not a symlink"; \
-		echo "   Use 'make uninstall-module MODULE=$(MODULE)' for deployed modules"; \
+		echo "   Use 'make uninstall-module $(MODULE)' for deployed modules"; \
 		exit 1; \
 	fi
 	@echo "🔗 Unlinking $(MODULE)..."
 	@sudo rm "$(INSTALL_DIR)"
 	@echo "✅ Module unlinked"
-	@echo "   To deploy for production: make deploy-module MODULE=$(MODULE)"
+	@echo "   To deploy for production: make deploy-module $(MODULE)"
 
 # Build and deploy module to system
 deploy-module:
 	@if [ -z "$(MODULE)" ]; then \
 		echo "Error: MODULE parameter required"; \
-		echo "Usage: make deploy-module MODULE=<name>"; \
+		echo "Usage: make deploy-module <name> (or MODULE=<name>)"; \
 		exit 1; \
 	fi
 	@# Remove development symlink if it exists
@@ -706,7 +767,7 @@ deploy-module:
 # Install built module to system (requires sudo)
 install-module:
 	@if [ ! -f "$(MODULE_DIR)/dist/component.js" ]; then \
-		echo "Error: Build output not found. Run 'make build-module MODULE=$(MODULE)' first."; \
+		echo "Error: Build output not found. Run 'make build-module $(MODULE)' first."; \
 		exit 1; \
 	fi
 	@echo "Installing $(MODULE) to $(INSTALL_DIR)..."
@@ -760,12 +821,12 @@ list-modules:
 	fi
 	@echo ""
 	@echo "To create a new module:"
-	@echo "  make create-module MODULE=my-module"
+	@echo "  make create-module my-module"
 
 .PHONY: \
   default help clean run \
   build fastbuild _build-binaries build-vite build-backend build-bridge build-auth build-cli \
-  dev dev-prep setup test test-backend lint tsc golint lint-only tsc-only golint-only \
+  dev dev-prep setup test test-backend analyze-auth lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
   create-module build-module link-module unlink-module deploy-module install-module uninstall-module clean-module list-modules

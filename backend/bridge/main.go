@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -10,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/mordilloSan/go_logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
@@ -243,7 +244,17 @@ func handleYamuxSession(conn net.Conn) {
 			break
 		}
 
-		streamID := uuid.NewString()
+		var idBytes [16]byte
+		n, err := rand.Read(idBytes[:])
+		if err != nil {
+			logger.WarnKV("failed to generate stream id", "session_id", Sess.SessionID, "error", err)
+			continue
+		}
+		if n != len(idBytes) {
+			logger.WarnKV("short random read for stream id", "session_id", Sess.SessionID, "read", n)
+			continue
+		}
+		streamID := hex.EncodeToString(idBytes[:])
 		streamWg.Add(1)
 		wg.Add(1)
 

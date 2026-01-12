@@ -5,8 +5,8 @@ go 1.25.5
 require (
 	github.com/creack/pty v1.1.24
 	github.com/docker/docker v28.5.2+incompatible
+	github.com/goccy/go-yaml v1.19.2
 	github.com/godbus/dbus/v5 v5.2.2
-	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jaypipes/ghw v0.21.2
 	github.com/libp2p/go-yamux/v4 v4.0.2
@@ -17,7 +17,6 @@ require (
 	golang.org/x/sys v0.40.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	gopkg.in/ini.v1 v1.67.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -28,6 +27,7 @@ require (
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (
