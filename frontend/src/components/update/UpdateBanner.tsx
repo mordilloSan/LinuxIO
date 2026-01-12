@@ -27,8 +27,15 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   const [updateComplete, setUpdateComplete] = useState(false);
   const [updateSuccess, setUpdateSuccess] = useState(false);
   const [targetVersion, setTargetVersion] = useState<string | null>(null);
-  const { startUpdate, status, progress, output, error, isUpdating } =
-    useLinuxIOUpdater();
+  const {
+    startUpdate,
+    setProgress,
+    status,
+    progress,
+    output,
+    error,
+    isUpdating,
+  } = useLinuxIOUpdater();
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
@@ -45,6 +52,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
 
   const startVersionPolling = () => {
     console.log("[UpdateBanner] Starting version polling in 5 seconds...");
+    setProgress(80); // Waiting for server to come back up
 
     setTimeout(() => {
       console.log("[UpdateBanner] Polling /api/version for server recovery...");
@@ -73,6 +81,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
               ? Object.values(versions).some((v) => v === targetVersion)
               : true;
 
+            setProgress(100); // Update complete!
             setUpdateComplete(true);
             setUpdateSuccess(hasTargetVersion);
 
