@@ -24,6 +24,8 @@ interface UpdateDialogProps {
   updateComplete?: boolean;
   updateSuccess?: boolean;
   onContinue?: () => void;
+  targetVersion?: string | null;
+  verifiedVersion?: string | null;
 }
 
 const UpdateDialog: React.FC<UpdateDialogProps> = ({
@@ -36,6 +38,8 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
   updateComplete = false,
   updateSuccess = false,
   onContinue,
+  targetVersion,
+  verifiedVersion,
 }) => {
   const outputEndRef = useRef<HTMLDivElement>(null);
 
@@ -84,9 +88,25 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                   {updateSuccess ? "Update Successful!" : "Update Failed"}
                 </Typography>
                 <Typography variant="body2">
-                  {updateSuccess
-                    ? "LinuxIO has been updated. Click Continue to log in."
-                    : "Please check the output below for details."}
+                  {updateSuccess ? (
+                    verifiedVersion ? (
+                      <>
+                        LinuxIO has been updated to {verifiedVersion}. Click
+                        Continue to log in.
+                      </>
+                    ) : (
+                      "LinuxIO has been updated. Click Continue to log in."
+                    )
+                  ) : verifiedVersion &&
+                    targetVersion &&
+                    verifiedVersion !== targetVersion ? (
+                    <>
+                      Version mismatch: expected {targetVersion}, got{" "}
+                      {verifiedVersion}. Please check the output below.
+                    </>
+                  ) : (
+                    "Please check the output below for details."
+                  )}
                 </Typography>
               </Box>
             </Box>
