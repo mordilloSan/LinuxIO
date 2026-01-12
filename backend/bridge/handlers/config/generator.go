@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 
 	config "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 )

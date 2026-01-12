@@ -52,16 +52,16 @@ func RegisterHandlers(sess *session.Session) {
 
 		if payload.Theme != nil {
 			t := strings.ToUpper(strings.TrimSpace(*payload.Theme))
-			if t != "LIGHT" && t != "DARK" {
+			if t != string(ThemeLight) && t != string(ThemeDark) {
 				return fmt.Errorf("invalid theme value (LIGHT|DARK)")
 			}
-			next.Theme = t
+			next.Theme = Theme(t)
 		}
 		if payload.PrimaryColor != nil {
 			if !IsValidCSSColor(*payload.PrimaryColor) {
 				return fmt.Errorf("invalid primaryColor")
 			}
-			next.PrimaryColor = *payload.PrimaryColor
+			next.PrimaryColor = CSSColor(*payload.PrimaryColor)
 		}
 		if payload.SidebarCollapsed != nil {
 			next.SidebarCollapsed = *payload.SidebarCollapsed
@@ -84,8 +84,8 @@ func RegisterHandlers(sess *session.Session) {
 		return emit.Result(map[string]any{
 			"message":          "theme updated",
 			"path":             cfgPath,
-			"appliedTheme":     next.Theme,
-			"appliedPrimary":   next.PrimaryColor,
+			"appliedTheme":     string(next.Theme),
+			"appliedPrimary":   string(next.PrimaryColor),
 			"sidebarCollapsed": next.SidebarCollapsed,
 			"showHiddenFiles":  next.ShowHiddenFiles,
 		})
