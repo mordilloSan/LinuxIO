@@ -192,7 +192,8 @@ func runInstallScript(version string) error {
 	stderr, _ := cmd.StderrPipe()
 	cmd.Stdin = resp.Body // Stream GitHub response directly
 
-	if err := cmd.Start(); err != nil {
+	err = cmd.Start()
+	if err != nil {
 		return fmt.Errorf("failed to start systemd-run: %w", err)
 	}
 

@@ -25,6 +25,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   onDismiss,
 }) => {
   const [showDialog, setShowDialog] = useState(false);
+  const [updateComplete, setUpdateComplete] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState(false);
   const { startUpdate, status, progress, output, error, isUpdating } =
     useLinuxIOUpdater();
   const waitingForReconnectRef = useRef(false);
@@ -65,40 +67,40 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
                 const newMux = initStreamMux();
 
                 // Listen for this mux to open
-                const checkAndReload = (status: string) => {
+                const checkAndShowSuccess = (status: string) => {
                   if (status === "open") {
                     console.log(
-                      "[UpdateBanner] Reconnected! Reloading in 2 seconds...",
+                      "[UpdateBanner] Reconnected! Update successful.",
                     );
                     // Clear interval to stop further attempts
                     if (reconnectInterval) {
                       clearInterval(reconnectInterval);
                       reconnectInterval = null;
                     }
-                    // Brief delay so user can see the success state
-                    setTimeout(() => {
-                      sessionStorage.removeItem("update_info");
-                      window.location.reload();
-                    }, 2000);
+                    // Show success state - user clicks to continue
+                    waitingForReconnectRef.current = false;
+                    setUpdateComplete(true);
+                    setUpdateSuccess(true);
                   }
                 };
 
                 // Check current status and also listen for changes
                 if (newMux.status === "open") {
-                  checkAndReload("open");
+                  checkAndShowSuccess("open");
                 } else {
-                  newMux.addStatusListener(checkAndReload);
+                  newMux.addStatusListener(checkAndShowSuccess);
                 }
               }, 2000); // Try every 2 seconds
             }, 5000); // Wait 5 seconds before starting to poll
           }
         }
 
-        // When it reconnects after being disconnected, reload the page
+        // When it reconnects after being disconnected, show success
         if (newStatus === "open" && hasDisconnectedRef.current) {
-          console.log("[UpdateBanner] Service reconnected, reloading page...");
-          sessionStorage.removeItem("update_info");
-          window.location.reload();
+          console.log("[UpdateBanner] Service reconnected! Update successful.");
+          waitingForReconnectRef.current = false;
+          setUpdateComplete(true);
+          setUpdateSuccess(true);
         }
       });
     };
@@ -122,6 +124,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
     }
 
     setShowDialog(true);
+    setUpdateComplete(false);
+    setUpdateSuccess(false);
     waitingForReconnectRef.current = false;
     hasDisconnectedRef.current = false;
 
@@ -131,15 +135,16 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       // Start monitoring for reconnection
       waitingForReconnectRef.current = true;
 
-      // Fallback: if reconnection detection fails, reload after 30 seconds
-      // (5s initial wait + polling attempts + some buffer)
+      // Fallback: if reconnection detection fails, show success after 30 seconds
+      // (assuming update completed but WebSocket reconnection failed)
       setTimeout(() => {
         if (waitingForReconnectRef.current) {
           console.log(
-            "[UpdateBanner] Fallback timeout reached, reloading page...",
+            "[UpdateBanner] Fallback timeout reached, assuming success...",
           );
-          sessionStorage.removeItem("update_info");
-          window.location.reload();
+          waitingForReconnectRef.current = false;
+          setUpdateComplete(true);
+          setUpdateSuccess(true);
         }
       }, 30000);
     } catch (err) {
@@ -155,6 +160,12 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
     }
   };
 
+  const handleContinue = () => {
+    // Clear update info and reload to login page
+    sessionStorage.removeItem("update_info");
+    window.location.reload();
+  };
+
   if (!updateInfo.available) {
     return null;
   }
@@ -167,7 +178,10 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
         progress={progress}
         output={output}
         onClose={handleCloseDialog}
-        canClose={!isUpdating}
+        canClose={!isUpdating && !updateComplete}
+        updateComplete={updateComplete}
+        updateSuccess={updateSuccess}
+        onContinue={handleContinue}
       />
       <Alert
         severity="info"
