@@ -22,10 +22,29 @@ log_ok()    { printf "✓ %s\n" "$*"; }
 log_error() { printf "✗ %s\n" "$*" >&2; }
 log_warn()  { printf "⚠ %s\n" "$*"; }
 
+# Track if services were stopped (to ensure they're restarted on exit)
+SERVICES_STOPPED=0
+
 cleanup() {
+    local exit_code=$?
+
+    # Always try to start services if we stopped them
+    # This ensures services come back up even if script fails
+    if [[ $SERVICES_STOPPED -eq 1 ]]; then
+        log_info "Ensuring LinuxIO services are started..."
+        if command -v linuxio &>/dev/null; then
+            linuxio start 2>/dev/null || systemctl start linuxio.target 2>/dev/null || true
+        else
+            systemctl start linuxio.target 2>/dev/null || true
+        fi
+    fi
+
+    # Clean up staging directory
     if [[ -d "$STAGING" ]]; then
         rm -rf "$STAGING" 2>/dev/null || true
     fi
+
+    exit $exit_code
 }
 
 trap cleanup EXIT INT TERM
@@ -247,12 +266,15 @@ install_pam_config() {
 SELECTED_PORT=8090
 
 stop_existing_services() {
-    # Stop existing linuxio services before updating
-    # This frees up the port and allows clean binary replacement
+    # Stop existing linuxio services before starting new version
+    # Called at the END of installation (not the beginning) to ensure:
+    # 1. UI remains connected during download/install and shows full output
+    # 2. Port is freed just before new version starts
     if systemctl is-active linuxio.target >/dev/null 2>&1 || \
        systemctl is-active linuxio-webserver.service >/dev/null 2>&1 || \
        systemctl is-active linuxio-webserver.socket >/dev/null 2>&1; then
         log_info "Stopping existing LinuxIO services..."
+        SERVICES_STOPPED=1  # Mark that we stopped services (cleanup trap will ensure restart)
         systemctl stop linuxio.target 2>/dev/null || true
         log_ok "Existing services stopped"
     fi
@@ -455,8 +477,11 @@ main() {
     fi
     echo ""
 
-    # Stop existing services first to free up port and allow clean updates
-    stop_existing_services
+    # NOTE: We intentionally do NOT stop services here during updates.
+    # All installation steps (download, verify, install binaries/config/systemd)
+    # can safely run while the old version is still serving requests.
+    # Services are only stopped/restarted at the very end, ensuring the UI
+    # remains connected and can show the full installation output.
 
     # Step 1: Download binaries (unless skipped)
     if [[ $skip_binaries -eq 0 ]]; then
@@ -516,12 +541,18 @@ main() {
     verify_installation
     echo ""
 
+    # Stop existing services if running (this is the only point where we stop)
+    # This ensures all installation output was visible before disconnection
+    stop_existing_services
+
     # Start the service
     log_info "Starting LinuxIO service..."
     if systemctl start linuxio.target; then
         log_ok "LinuxIO service started"
+        SERVICES_STOPPED=0  # Clear flag - services are running, cleanup doesn't need to restart
     else
-        log_warn "Failed to start LinuxIO service"
+        log_warn "Failed to start LinuxIO service - cleanup will retry"
+        # Leave SERVICES_STOPPED=1 so cleanup trap will try again
     fi
 
     log_ok "Installation complete!"
