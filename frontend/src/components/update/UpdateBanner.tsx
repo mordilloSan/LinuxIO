@@ -51,7 +51,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   }, []);
 
   const startVersionPolling = () => {
-    console.log("[UpdateBanner] Starting version polling in 5 seconds...");
+    console.log("[UpdateBanner] Starting version polling in 2 seconds...");
     setProgress(80); // Waiting for server to come back up
 
     setTimeout(() => {
@@ -97,7 +97,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
           console.log("[UpdateBanner] Version check failed, retrying...", err);
         }
       }, 2000); // Poll every 2 seconds
-    }, 5000); // Wait 5 seconds before starting
+    }, 2000); // Wait 2 seconds before starting
   };
 
   const handleUpdate = async () => {
