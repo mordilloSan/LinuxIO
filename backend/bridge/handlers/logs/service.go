@@ -1,4 +1,4 @@
-package dbus
+package logs
 
 import (
 	"bufio"
@@ -17,25 +17,19 @@ import (
 
 const StreamTypeServiceLogs = "service-logs"
 
-// RegisterServiceLogsStreamHandler registers the service logs stream handler.
-// Called from RegisterStreamHandlers in pkg_update_stream.go
-func RegisterServiceLogsStreamHandler(handlers map[string]func(*session.Session, net.Conn, []string) error) {
-	handlers[StreamTypeServiceLogs] = HandleServiceLogsStream
-}
-
 // HandleServiceLogsStream streams service logs from journalctl in real-time.
 // Args: [serviceName, lines] where lines is the number of initial lines (default "100")
 func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		logger.Errorf("[ServiceLogs] missing service name")
-		sendServiceLogsClose(stream)
+		sendStreamClose(stream)
 		return errors.New("missing service name")
 	}
 
 	serviceName := strings.TrimSpace(args[0])
 	if serviceName == "" {
 		logger.Errorf("[ServiceLogs] empty service name")
-		sendServiceLogsClose(stream)
+		sendStreamClose(stream)
 		return errors.New("empty service name")
 	}
 
@@ -61,13 +55,13 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		logger.Errorf("[ServiceLogs] failed to create stdout pipe: %v", err)
-		sendServiceLogsClose(stream)
+		sendStreamClose(stream)
 		return err
 	}
 
 	if err := cmd.Start(); err != nil {
 		logger.Errorf("[ServiceLogs] failed to start journalctl: %v", err)
-		sendServiceLogsClose(stream)
+		sendStreamClose(stream)
 		return err
 	}
 
@@ -88,7 +82,7 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 		case <-ctx.Done():
 			logger.Debugf("[ServiceLogs] context cancelled, stopping stream")
 			_ = cmd.Process.Kill()
-			sendServiceLogsClose(stream)
+			sendStreamClose(stream)
 			return nil
 		default:
 		}
@@ -118,15 +112,7 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	// Wait for command to finish
 	_ = cmd.Wait()
 
-	sendServiceLogsClose(stream)
+	sendStreamClose(stream)
 	logger.Infof("[ServiceLogs] Stream closed for service=%s", serviceName)
 	return nil
-}
-
-func sendServiceLogsClose(stream net.Conn) {
-	frame := &ipc.StreamFrame{
-		Opcode:   ipc.OpStreamClose,
-		StreamID: 1,
-	}
-	_ = ipc.WriteRelayFrame(stream, frame)
 }

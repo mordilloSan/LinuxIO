@@ -149,6 +149,13 @@ export function serviceLogsPayload(
 }
 
 /**
+ * Build payload for general logs stream (journalctl)
+ */
+export function generalLogsPayload(lines: string = "100"): Uint8Array {
+  return encodeString(`general-logs\0${lines}`);
+}
+
+/**
  * Build payload for container terminal stream
  */
 export function containerPayload(

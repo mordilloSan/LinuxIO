@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import Cpu from "lucide-react/dist/esm/icons/cpu";
+import FileText from "lucide-react/dist/esm/icons/file-text";
 import Folder from "lucide-react/dist/esm/icons/folder";
 import HardDrive from "lucide-react/dist/esm/icons/hard-drive";
 import Home from "lucide-react/dist/esm/icons/home";
@@ -28,6 +29,7 @@ const Default = lazy(() => import("@/pages/main/dashboard"));
 const Updates = lazy(() => import("@/pages/main/updates"));
 const Docker = lazy(() => import("@/pages/main/docker"));
 const Services = lazy(() => import("@/pages/main/services"));
+const Logs = lazy(() => import("@/pages/main/logs"));
 const Network = lazy(() => import("@/pages/main/network"));
 const Hardware = lazy(() => import("@/pages/main/hardware"));
 const Wireguard = lazy(() => import("@/pages/main/wireguard"));
@@ -90,6 +92,15 @@ const coreRoutes: RouteWithSidebar[] = [
       title: "Services",
       icon: ServerCog,
       position: 30,
+    },
+  },
+  {
+    path: "logs",
+    element: <Logs />,
+    sidebar: {
+      title: "Logs",
+      icon: FileText,
+      position: 35,
     },
   },
   {
