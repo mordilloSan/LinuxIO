@@ -120,6 +120,24 @@ func InstallModuleOperation(
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve absolute path: %w", err)
 		}
+
+		// Validate symlink target is not pointing to sensitive system directories
+		// Resolve any symlinks in the source path to get the real target
+		realSource, err := filepath.EvalSymlinks(absSource)
+		if err != nil {
+			// If EvalSymlinks fails, use the absolute path but log warning
+			logger.Warnf("Could not resolve symlinks in source path: %v", err)
+			realSource = absSource
+		}
+
+		// Block symlinks to sensitive system directories
+		sensitivePrefix := []string{"/etc/", "/var/", "/usr/", "/bin/", "/sbin/", "/lib/", "/root/", "/boot/", "/sys/", "/proc/"}
+		for _, prefix := range sensitivePrefix {
+			if strings.HasPrefix(realSource, prefix) && !strings.HasPrefix(realSource, "/etc/linuxio/") && !strings.HasPrefix(realSource, "/var/lib/linuxio/") {
+				return nil, fmt.Errorf("symlink to sensitive system path not allowed: %s", realSource)
+			}
+		}
+
 		if err := os.Symlink(absSource, targetDir); err != nil {
 			return nil, fmt.Errorf("failed to create symlink: %w", err)
 		}
@@ -223,12 +241,17 @@ func ValidateModuleAtPath(path string) (*ValidationResult, error) {
 	}, nil
 }
 
-// copyDir recursively copies a directory
+// copyDir recursively copies a directory, skipping symlinks for security
 func copyDir(src, dst string) error {
-	// Get source directory info
-	srcInfo, err := os.Stat(src)
+	// Get source directory info (using Lstat to not follow symlinks)
+	srcInfo, err := os.Lstat(src)
 	if err != nil {
 		return err
+	}
+
+	// Skip if source is a symlink
+	if srcInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("source path is a symlink, refusing to copy: %s", src)
 	}
 
 	// Create destination directory
@@ -246,6 +269,12 @@ func copyDir(src, dst string) error {
 	for _, entry := range entries {
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
+
+		// Check if entry is a symlink and skip it
+		if entry.Type()&os.ModeSymlink != 0 {
+			logger.Warnf("Skipping symlink during copy: %s", srcPath)
+			continue
+		}
 
 		if entry.IsDir() {
 			// Recursively copy subdirectory

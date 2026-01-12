@@ -171,12 +171,13 @@ func HandleExecStream(sess *session.Session, stream net.Conn, args []string) err
 	go streamOutput(stdout, "[stdout] ")
 	go streamOutput(stderr, "[stderr] ")
 
-	// Wait for both streams to finish
-	go func() { <-done }()
-	go func() { <-done }()
-
 	// Wait for command to complete
 	err = cmd.Wait()
+
+	// Wait for both stream goroutines to finish after command exits
+	// This ensures all output is sent before we send the result
+	<-done
+	<-done
 
 	exitCode := 0
 	if err != nil {

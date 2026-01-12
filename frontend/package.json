@@ -8,7 +8,12 @@
   "engines": {
     "node": "24"
   },
-  "scripts": {},
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "analyze": "BUNDLE_ANALYZE=true vite build"
+  },
   "browserslist": [
     "> 0.5%",
     "last 2 versions",

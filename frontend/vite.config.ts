@@ -9,6 +9,7 @@ import path from 'path';
 
 export default defineConfig(({ command }) => {
   const isBuild = command === "build";
+  const shouldAnalyze = isBuild && process.env.BUNDLE_ANALYZE === "true";
   const reactPlugin = isBuild
     ? reactBabel({ babel: { plugins: ["babel-plugin-react-compiler"] } })
     : reactSwc();
@@ -24,11 +25,15 @@ export default defineConfig(({ command }) => {
       compression({
         algorithms: ["gzip"],
       }),
-      analyzer({
-        analyzerMode: 'static',
-        openAnalyzer: false,
-      }),
     );
+    if (shouldAnalyze) {
+      plugins.push(
+        analyzer({
+          analyzerMode: "static",
+          openAnalyzer: false,
+        }),
+      );
+    }
   }
 
   return {
