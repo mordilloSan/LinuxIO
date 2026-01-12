@@ -283,7 +283,15 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 		cancel: make(chan struct{}),
 	}
 
+	// Re-check under lock to prevent TOCTOU race (another goroutine may have added same streamID)
 	r.mu.Lock()
+	if _, exists := r.streams[streamID]; exists {
+		r.mu.Unlock()
+		// Another goroutine won the race - close our stream and return
+		stream.Close()
+		logger.Warnf("[WSRelay] stream %d race detected, closing duplicate", streamID)
+		return
+	}
 	r.streams[streamID] = rs
 	r.mu.Unlock()
 
