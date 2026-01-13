@@ -6,8 +6,7 @@
 
 9 - right now hash can be reproduced if build from same code base. We need to make this time and machine specific??????
 
-10 - fix indexer status check and calls.
-
+fix indexer status check and calls. DONE
 for service logs we could use real streaming????? DONE
 for docker logs we could use real streaming????? DONE
 Improve the app update feature to give more feedback (like unraid) -DONE

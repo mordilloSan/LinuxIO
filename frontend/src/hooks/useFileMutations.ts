@@ -55,7 +55,7 @@ export const useFileMutations = ({
 
   const invalidateListing = () => {
     queryClient.invalidateQueries({
-      queryKey: ["stream", "filebrowser", "resource_get", normalizedPath],
+      queryKey: ["linuxio", "filebrowser", "resource_get", normalizedPath],
     });
     clearFileSubfoldersCache(queryClient);
   };
