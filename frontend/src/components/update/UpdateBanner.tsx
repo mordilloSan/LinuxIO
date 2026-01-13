@@ -1,7 +1,6 @@
 import CloseIcon from "@mui/icons-material/Close";
 import DownloadIcon from "@mui/icons-material/Download";
 import { Alert, Button, IconButton, Link, Stack } from "@mui/material";
-import { useState, useEffect, useRef } from "react";
 
 import UpdateDialog from "./UpdateDialog";
 
@@ -23,84 +22,21 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   updateInfo,
   onDismiss,
 }) => {
-  const [showDialog, setShowDialog] = useState(false);
-  const [updateComplete, setUpdateComplete] = useState(false);
-  const [updateSuccess, setUpdateSuccess] = useState(false);
-  const [targetVersion, setTargetVersion] = useState<string | null>(null);
   const {
     startUpdate,
-    setProgress,
+    resetUpdate,
+    phase,
     status,
     progress,
     output,
     error,
     isUpdating,
+    updateComplete,
+    updateSuccess,
+    targetVersion,
   } = useLinuxIOUpdater();
-  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
 
-  // Poll version endpoint to detect when server is back up after update
-  useEffect(() => {
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    };
-  }, []);
-
-  const startVersionPolling = () => {
-    console.log("[UpdateBanner] Starting version polling in 2 seconds...");
-    setProgress(80); // Waiting for server to come back up
-
-    setTimeout(() => {
-      console.log("[UpdateBanner] Polling /api/version for server recovery...");
-      pollingIntervalRef.current = setInterval(async () => {
-        try {
-          const response = await fetch("/api/version", {
-            method: "GET",
-            headers: { "Content-Type": "application/json" },
-          });
-
-          if (response.ok) {
-            const versions = await response.json();
-            console.log(
-              "[UpdateBanner] Server is back up! Installed versions:",
-              versions,
-            );
-
-            if (pollingIntervalRef.current) {
-              clearInterval(pollingIntervalRef.current);
-              pollingIntervalRef.current = null;
-            }
-
-            // Check if update was successful by comparing versions
-            // Look for any component with the target version
-            const hasTargetVersion = targetVersion
-              ? Object.values(versions).some((v) => v === targetVersion)
-              : true;
-
-            setProgress(100); // Update complete!
-            setUpdateComplete(true);
-            setUpdateSuccess(hasTargetVersion);
-
-            if (!hasTargetVersion && targetVersion) {
-              console.warn(
-                "[UpdateBanner] Update may have failed - target version not found in:",
-                versions,
-              );
-            }
-          }
-        } catch (err) {
-          // Server still down, keep polling
-          console.log("[UpdateBanner] Version check failed, retrying...", err);
-        }
-      }, 2000); // Poll every 2 seconds
-    }, 2000); // Wait 2 seconds before starting
-  };
-
-  const handleUpdate = async () => {
+  const handleUpdate = () => {
     if (
       !confirm(
         `Update LinuxIO from ${updateInfo.current_version} to ${updateInfo.latest_version}?\n\n` +
@@ -110,26 +46,11 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
       return;
     }
 
-    setShowDialog(true);
-    setUpdateComplete(false);
-    setUpdateSuccess(false);
-    setTargetVersion(updateInfo.latest_version || null);
-
-    try {
-      await startUpdate(updateInfo.latest_version);
-
-      // Start polling version endpoint to detect when server is back up
-      startVersionPolling();
-    } catch (err) {
-      console.error("Update failed:", err);
-      // Dialog will show the error, keep it open
-    }
+    startUpdate(updateInfo.latest_version);
   };
 
   const handleCloseDialog = () => {
-    if (!isUpdating) {
-      setShowDialog(false);
-    }
+    if (!isUpdating) resetUpdate();
   };
 
   const handleContinue = () => {
@@ -145,12 +66,12 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   return (
     <>
       <UpdateDialog
-        open={showDialog}
+        open={phase !== "idle"}
         status={error || status}
         progress={progress}
         output={output}
         onClose={handleCloseDialog}
-        canClose={!isUpdating && !updateComplete}
+        canClose={!isUpdating && !updateSuccess}
         updateComplete={updateComplete}
         updateSuccess={updateSuccess}
         onContinue={handleContinue}

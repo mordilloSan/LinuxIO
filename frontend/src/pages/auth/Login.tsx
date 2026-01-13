@@ -32,11 +32,13 @@ const Login: React.FC = () => {
         {/* Paper form */}
         <Paper
           sx={(theme) => ({
+            borderRadius: 3,
             p: 3,
-            width: "100%",
+            width: "75%",
+            mx: "auto",
             boxSizing: "border-box",
             backgroundColor: theme.palette.background.paper,
-            [theme.breakpoints.up("md")]: { p: 6 },
+            [theme.breakpoints.up("md")]: { p: 6, width: "100%" },
           })}
         >
           {/* Logo */}

@@ -13,10 +13,11 @@ interface SidebarNavListItemProps {
   title: string;
   icon?: React.ElementType | string;
   collapsed?: boolean;
+  disabled?: boolean;
 }
 
 const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
-  ({ href, title, icon, collapsed = false }) => {
+  ({ href, title, icon, collapsed = false, disabled = false }) => {
     const theme = useTheme();
     const { pathname } = useLocation();
 
@@ -40,6 +41,8 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
         component={NavLink}
         to={href}
         selected={isActive}
+        disabled={disabled}
+        aria-disabled={disabled}
         sx={{
           margin: theme.spacing(1, 2),
           padding: theme.spacing(1.5, 3),
@@ -49,6 +52,9 @@ const SidebarNavList: React.FC<SidebarNavListItemProps> = React.memo(
           width: "auto",
           justifyContent: collapsed ? "center" : "flex-start",
           transition: "all 0.3s ease",
+          opacity: disabled ? 0.5 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+          pointerEvents: disabled ? "none" : "auto",
           "& svg": {
             color: theme.sidebar.color,
             width: 26,
