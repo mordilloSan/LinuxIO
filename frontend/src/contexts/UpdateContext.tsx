@@ -29,7 +29,10 @@ const POLL_INTERVAL_MS = 2000;
 const VERIFY_TIMEOUT_MS = 10 * 60 * 1000;
 
 const buildUpdateRunId = () => {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return `update-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -344,7 +347,12 @@ const useUpdateController = (): UpdateContextValue => {
 
       void finalize();
     },
-    [beginVerification, failUpdate, fetchUpdateStatus, markUpdateStartedFromStatus],
+    [
+      beginVerification,
+      failUpdate,
+      fetchUpdateStatus,
+      markUpdateStartedFromStatus,
+    ],
   );
 
   const startUpdate = useCallback(
@@ -405,7 +413,9 @@ const useUpdateController = (): UpdateContextValue => {
       stream.onResult = (result: ResultFrame) => {
         streamRef.current = null;
         const fallbackError =
-          result.status === "error" ? result.error || "Update failed" : undefined;
+          result.status === "error"
+            ? result.error || "Update failed"
+            : undefined;
         handleStreamFinished(fallbackError);
       };
 
