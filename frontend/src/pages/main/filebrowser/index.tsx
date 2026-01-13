@@ -809,7 +809,14 @@ const FileBrowser: React.FC = () => {
 
       // Invalidate the file cache so it reloads with new content
       queryClient.invalidateQueries({
-        queryKey: ["linuxio", "filebrowser", "resource_get", editingPath, "", "true"],
+        queryKey: [
+          "linuxio",
+          "filebrowser",
+          "resource_get",
+          editingPath,
+          "",
+          "true",
+        ],
       });
     } catch (error: any) {
       console.error("Save error:", error);
@@ -906,7 +913,14 @@ const FileBrowser: React.FC = () => {
       setCloseEditorDialog(false);
 
       queryClient.invalidateQueries({
-        queryKey: ["linuxio", "filebrowser", "resource_get", editingPath, "", "true"],
+        queryKey: [
+          "linuxio",
+          "filebrowser",
+          "resource_get",
+          editingPath,
+          "",
+          "true",
+        ],
       });
     } catch (error: any) {
       toast.error(error.message || "Failed to save file");

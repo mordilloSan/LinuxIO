@@ -59,7 +59,7 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		ShowStdout: true,
 		ShowStderr: true,
 		Timestamps: false,
-		Follow:     true, // This is the key - enables streaming!
+		Follow:     true,
 		Tail:       tail,
 	}
 

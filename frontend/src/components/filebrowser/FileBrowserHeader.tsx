@@ -1,9 +1,11 @@
 import CloseIcon from "@mui/icons-material/Close";
 import SaveIcon from "@mui/icons-material/Save";
+import SyncIcon from "@mui/icons-material/Sync";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   Box,
+  CircularProgress,
   IconButton,
   Stack,
   Typography,
@@ -15,6 +17,8 @@ import React, { ReactNode } from "react";
 
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
+import { useFileTransfers } from "@/hooks/useFileTransfers";
+import useAuth from "@/hooks/useAuth";
 
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
@@ -50,6 +54,14 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { startReindex, isReindexing, reindexes } = useFileTransfers();
+  const { indexerAvailable } = useAuth();
+
+  const handleReindex = () => {
+    startReindex({});
+  };
+
+  const currentReindex = reindexes[0];
 
   return (
     <Box
@@ -172,6 +184,40 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                 >
                   {showHiddenFiles ? <VisibilityIcon /> : <VisibilityOffIcon />}
                 </IconButton>
+              </Tooltip>
+
+              <Tooltip
+                title={
+                  isReindexing
+                    ? currentReindex?.label || "Reindexing..."
+                    : indexerAvailable === false
+                      ? "Indexer unavailable"
+                      : "Reindex filesystem"
+                }
+              >
+                <span>
+                  <IconButton
+                    onClick={handleReindex}
+                    disabled={isReindexing || indexerAvailable === false}
+                    aria-label="Reindex filesystem"
+                    sx={{
+                      position: "relative",
+                    }}
+                  >
+                    {isReindexing ? (
+                      <CircularProgress size={24} />
+                    ) : (
+                      <SyncIcon
+                        sx={{
+                          color:
+                            indexerAvailable === false
+                              ? "text.disabled"
+                              : "inherit",
+                        }}
+                      />
+                    )}
+                  </IconButton>
+                </span>
               </Tooltip>
             </>
           )}

@@ -14,27 +14,27 @@ Server's job:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                   LinuxIO WebServer                          │
-│                                                              │
-│  WebSocket Handler         Yamux Session Pool               │
-│  ┌──────────────┐         ┌──────────────────┐            │
-│  │ Upgrade HTTP │────────►│ Get/Create       │            │
-│  │ → WebSocket  │         │ Yamux Session    │            │
-│  └──────┬───────┘         └────────┬─────────┘            │
-│         │                          │                       │
-│         │  WebSocket Frames        │  Yamux Frames         │
-│         │  [streamID][flags][data] │  yamux protocol       │
-│         │                          │                       │
-│         ▼                          ▼                       │
-│  ┌─────────────────────────────────────────────┐          │
-│  │         Pure Byte Relay Loop                │          │
-│  │  - Read from WebSocket → Write to Yamux     │          │
-│  │  - Read from Yamux → Write to WebSocket     │          │
-│  │  - No parsing, no inspection, just routing  │          │
-│  └─────────────────────────────────────────────┘          │
-│                                                              │
-└──────────────────────┬───────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                   LinuxIO WebServer                     │
+│                                                         │
+│  WebSocket Handler         Yamux Session Pool           │
+│  ┌──────────────┐         ┌──────────────────┐          │
+│  │ Upgrade HTTP │────────►│ Get/Create       │          │
+│  │ → WebSocket  │         │ Yamux Session    │          │
+│  └──────┬───────┘         └────────┬─────────┘          │
+│         │                          │                    │
+│         │  WebSocket Frames        │  Yamux Frames      │
+│         │  [streamID][flags][data] │  yamux protocol    │
+│         │                          │                    │
+│         ▼                          ▼                    │
+│  ┌─────────────────────────────────────────────┐        │
+│  │         Pure Byte Relay Loop                │        │
+│  │  - Read from WebSocket → Write to Yamux     │        │
+│  │  - Read from Yamux → Write to WebSocket     │        │
+│  │  - No parsing, no inspection, just routing  │        │
+│  └─────────────────────────────────────────────┘        │
+│                                                         │
+└──────────────────────┬──────────────────────────────────┘
                        │
                        │ Unix socket: /run/linuxio/bridge.sock
                        │ Or TCP: localhost:9099
