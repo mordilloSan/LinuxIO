@@ -75,7 +75,6 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 	go func() {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil || frame.Opcode == ipc.OpStreamClose {
-			logger.Debugf("[DockerLogs] client closed stream")
 			cancel()
 		}
 	}()
@@ -89,7 +88,6 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		// Check if context was cancelled
 		select {
 		case <-ctx.Done():
-			logger.Debugf("[DockerLogs] context cancelled, stopping stream")
 			sendStreamClose(stream)
 			return nil
 		default:
@@ -131,13 +129,11 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 			Payload:  cleanData,
 		}
 		if err := ipc.WriteRelayFrame(stream, frame); err != nil {
-			logger.Debugf("[DockerLogs] write to stream failed: %v", err)
 			break
 		}
 	}
 
 	sendStreamClose(stream)
-	logger.Infof("[DockerLogs] Stream closed for container=%s", containerID)
 	return nil
 }
 

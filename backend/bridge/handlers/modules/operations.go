@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
 )
@@ -42,7 +42,7 @@ func UninstallModuleOperation(
 
 	// Unregister from new handler system
 	namespace := "module." + moduleName
-	handler.UnregisterAll(namespace)
+	ipc.UnregisterAll(namespace)
 
 	// Remove stream handlers for this module
 	for streamType := range streamHandlers {
