@@ -4,8 +4,8 @@ import "errors"
 
 // Common errors for handlers
 var (
-	ErrInvalidArgs = errors.New("invalid arguments")
-	ErrHandlerNotFound    = errors.New("handler not found")
+	ErrInvalidArgs     = errors.New("invalid arguments")
+	ErrHandlerNotFound = errors.New("handler not found")
 )
 
 // Events allows handlers to send various types of data back to the client.
