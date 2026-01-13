@@ -205,8 +205,8 @@ const GeneralLogsPage: React.FC = () => {
         // Extract timestamp
         const timestamp = data.__REALTIME_TIMESTAMP
           ? new Date(
-            parseInt(data.__REALTIME_TIMESTAMP) / 1000,
-          ).toLocaleString()
+              parseInt(data.__REALTIME_TIMESTAMP) / 1000,
+            ).toLocaleString()
           : new Date().toLocaleString();
 
         // Extract message
@@ -476,7 +476,6 @@ const GeneralLogsPage: React.FC = () => {
           }}
         >
           <Box sx={{ flex: 1 }} />
-
         </Box>
 
         {/* Filters */}
@@ -541,9 +540,7 @@ const GeneralLogsPage: React.FC = () => {
             filterOptions={(options, { inputValue }) => {
               if (!inputValue) return options;
               const lower = inputValue.toLowerCase();
-              return options.filter((opt) =>
-                opt.toLowerCase().includes(lower),
-              );
+              return options.filter((opt) => opt.toLowerCase().includes(lower));
             }}
             renderInput={(params) => (
               <TextField
@@ -594,7 +591,9 @@ const GeneralLogsPage: React.FC = () => {
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
+          <Tooltip
+            title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
+          >
             <FormControlLabel
               control={
                 <Switch
@@ -626,7 +625,7 @@ const GeneralLogsPage: React.FC = () => {
             borderRadius: 1,
             overflow: "auto",
             border: 1,
-            borderColor: "divider",
+            borderColor: "transparent",
           }}
         >
           {filteredLogs.length > 0 ? (

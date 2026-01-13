@@ -90,7 +90,6 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 	go func() {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil || frame.Opcode == ipc.OpStreamClose {
-			logger.Debugf("[GeneralLogs] client closed stream")
 			cancel()
 		}
 	}()
@@ -101,7 +100,6 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 		// Check if context was cancelled
 		select {
 		case <-ctx.Done():
-			logger.Debugf("[GeneralLogs] context cancelled, stopping stream")
 			_ = cmd.Process.Kill()
 			sendStreamClose(stream)
 			return nil
@@ -125,7 +123,6 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 			Payload:  []byte(line),
 		}
 		if err := ipc.WriteRelayFrame(stream, frame); err != nil {
-			logger.Debugf("[GeneralLogs] write to stream failed: %v", err)
 			break
 		}
 	}
@@ -134,6 +131,5 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 	_ = cmd.Wait()
 
 	sendStreamClose(stream)
-	logger.Infof("[GeneralLogs] Stream closed")
 	return nil
 }

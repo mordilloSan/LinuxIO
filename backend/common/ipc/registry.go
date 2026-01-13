@@ -1,4 +1,4 @@
-package handler
+package ipc
 
 import (
 	"sync"
@@ -14,7 +14,7 @@ var (
 //
 // Example:
 //
-//	handlers.Register("system", "get_drive_info", myHandler)
+//	ipc.Register("system", "get_drive_info", myHandler)
 //
 // Panics if handlerType or command is empty.
 func Register(handlerType, command string, handler Handler) {
@@ -42,7 +42,7 @@ func Register(handlerType, command string, handler Handler) {
 //
 // Example:
 //
-//	handlers.RegisterFunc("system", "get_cpu_info", func(ctx, args, emit) error {
+//	ipc.RegisterFunc("system", "get_cpu_info", func(ctx, args, emit) error {
 //	    cpuInfo := FetchCPUInfo()
 //	    return emit.Result(cpuInfo)
 //	})
@@ -55,7 +55,7 @@ func RegisterFunc(handlerType, command string, fn HandlerFunc) {
 //
 // Example:
 //
-//	handler, ok := handlers.Get("system", "get_drive_info")
+//	handler, ok := ipc.Get("system", "get_drive_info")
 //	if !ok {
 //	    return errors.New("handler not found")
 //	}

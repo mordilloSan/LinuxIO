@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/go_logger/logger"
 )
@@ -170,7 +170,7 @@ func registerModule(
 	// Register shell command handlers with new handler system
 	for name, cmd := range module.Manifest.Handlers.Commands {
 		cmdCopy := cmd // Capture for closure
-		handler.RegisterFunc(namespace, name, func(ctx context.Context, args []string, emit handler.Events) error {
+		ipc.RegisterFunc(namespace, name, func(ctx context.Context, args []string, emit ipc.Events) error {
 			result, err := executeCommand(cmdCopy, args)
 			if err != nil {
 				return err
@@ -183,7 +183,7 @@ func registerModule(
 	// Register DBus handlers with new handler system
 	for name, dbus := range module.Manifest.Handlers.Dbus {
 		dbusCopy := dbus // Capture for closure
-		handler.RegisterFunc(namespace, name, func(ctx context.Context, args []string, emit handler.Events) error {
+		ipc.RegisterFunc(namespace, name, func(ctx context.Context, args []string, emit ipc.Events) error {
 			result, err := executeDbusCall(dbusCopy, args)
 			if err != nil {
 				return err

@@ -11,13 +11,13 @@ import (
 
 	"github.com/mordilloSan/go_logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
 func RegisterHandlers() {
 	// Simple JSON handlers
-	handler.RegisterFunc("filebrowser", "resource_get", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "resource_get", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := resourceGet(args)
 		if err != nil {
 			return err
@@ -25,7 +25,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "resource_stat", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "resource_stat", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := resourceStat(args)
 		if err != nil {
 			return err
@@ -33,7 +33,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "resource_delete", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "resource_delete", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := resourceDelete(args)
 		if err != nil {
 			return err
@@ -41,7 +41,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "resource_post", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "resource_post", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := resourcePost(args)
 		if err != nil {
 			return err
@@ -49,7 +49,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "resource_patch", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "resource_patch", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := resourcePatch(args)
 		if err != nil {
 			return err
@@ -57,7 +57,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "dir_size", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "dir_size", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := dirSize(args)
 		if err != nil {
 			return err
@@ -65,7 +65,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "subfolders", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "subfolders", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := subfolders(args)
 		if err != nil {
 			return err
@@ -73,7 +73,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "search", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "search", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := searchFiles(args)
 		if err != nil {
 			return err
@@ -81,7 +81,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "indexer_status", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "indexer_status", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := indexerStatus(args)
 		if err != nil {
 			return err
@@ -89,7 +89,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "chmod", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "chmod", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := resourceChmod(args)
 		if err != nil {
 			return err
@@ -97,7 +97,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "users_groups", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "users_groups", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := usersGroups()
 		if err != nil {
 			return err
@@ -105,7 +105,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("filebrowser", "file_update_from_temp", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "file_update_from_temp", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := fileUpdateFromTemp(args)
 		if err != nil {
 			return err
@@ -116,9 +116,9 @@ func RegisterHandlers() {
 	// Streaming handlers with progress
 
 	// Download - streams file data with progress updates
-	handler.RegisterFunc("filebrowser", "download", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "download", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 
 		path := args[0]
@@ -204,22 +204,22 @@ func RegisterHandlers() {
 	})
 
 	// Upload - bidirectional handler (receives data from client)
-	handler.Register("filebrowser", "upload", &uploadHandler{})
+	ipc.Register("filebrowser", "upload", &uploadHandler{})
 
 	// Archive download - creates and streams a tar.gz
-	handler.RegisterFunc("filebrowser", "archive", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "archive", func(ctx context.Context, args []string, emit ipc.Events) error {
 		// Implementation will call existing handleArchiveDownload logic
 		return fmt.Errorf("archive download not yet migrated")
 	})
 
 	// Compress - creates archive from multiple paths
-	handler.RegisterFunc("filebrowser", "compress", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "compress", func(ctx context.Context, args []string, emit ipc.Events) error {
 		// Implementation will call existing handleCompress logic
 		return fmt.Errorf("compress not yet migrated")
 	})
 
 	// Extract - extracts archive to destination
-	handler.RegisterFunc("filebrowser", "extract", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("filebrowser", "extract", func(ctx context.Context, args []string, emit ipc.Events) error {
 		// Implementation will call existing handleExtract logic
 		return fmt.Errorf("extract not yet migrated")
 	})
@@ -228,11 +228,11 @@ func RegisterHandlers() {
 // uploadHandler implements BidirectionalHandler for file uploads
 type uploadHandler struct{}
 
-func (h *uploadHandler) Execute(ctx context.Context, args []string, emit handler.Events) error {
+func (h *uploadHandler) Execute(ctx context.Context, args []string, emit ipc.Events) error {
 	return fmt.Errorf("upload requires bidirectional stream")
 }
 
-func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emit handler.Events, input <-chan []byte) error {
+func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emit ipc.Events, input <-chan []byte) error {
 	if len(args) < 2 {
 		return fmt.Errorf("missing path or size")
 	}
