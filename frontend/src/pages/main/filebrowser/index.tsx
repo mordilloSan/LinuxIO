@@ -809,7 +809,7 @@ const FileBrowser: React.FC = () => {
 
       // Invalidate the file cache so it reloads with new content
       queryClient.invalidateQueries({
-        queryKey: ["stream", "filebrowser", "resource_get_edit", editingPath],
+        queryKey: ["linuxio", "filebrowser", "resource_get", editingPath, "", "true"],
       });
     } catch (error: any) {
       console.error("Save error:", error);
@@ -906,7 +906,7 @@ const FileBrowser: React.FC = () => {
       setCloseEditorDialog(false);
 
       queryClient.invalidateQueries({
-        queryKey: ["stream", "filebrowser", "resource_get_edit", editingPath],
+        queryKey: ["linuxio", "filebrowser", "resource_get", editingPath, "", "true"],
       });
     } catch (error: any) {
       toast.error(error.message || "Failed to save file");
@@ -925,7 +925,7 @@ const FileBrowser: React.FC = () => {
 
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ["stream", "filebrowser", "resource_get", normalizedPath],
+      queryKey: ["linuxio", "filebrowser", "resource_get", normalizedPath],
     });
     clearFileSubfoldersCache(queryClient);
   }, [normalizedPath, queryClient]);

@@ -701,6 +701,10 @@ func handleExtract(stream net.Conn, args []string) error {
 		destination = defaultExtractDestination(archivePath)
 	}
 
+	// Check if destination already exists (for cleanup decision on abort)
+	_, statErr := os.Stat(destination)
+	destExistedBefore := statErr == nil
+
 	// Check archive exists
 	archiveStat, err := os.Stat(archivePath)
 	if err != nil {
@@ -757,7 +761,14 @@ func handleExtract(stream net.Conn, args []string) error {
 	// Extract archive
 	err = services.ExtractArchive(archivePath, destination, opts)
 	if err == ipc.ErrAborted {
-		logger.Infof("[FBStream] Extract aborted")
+		logger.Infof("[FBStream] Extract aborted, cleaning up: %s", destination)
+		// Clean up extracted files on abort
+		// Only remove the destination if we created it (didn't exist before)
+		if !destExistedBefore {
+			if removeErr := os.RemoveAll(destination); removeErr != nil {
+				logger.Debugf("[FBStream] Failed to clean up extraction directory: %v", removeErr)
+			}
+		}
 		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 		_ = ipc.WriteStreamClose(stream, 0)
 		return fmt.Errorf("extraction aborted")

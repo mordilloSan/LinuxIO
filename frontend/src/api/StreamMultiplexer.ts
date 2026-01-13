@@ -231,16 +231,28 @@ class StreamImpl implements Stream {
   }
 
   /**
-   * Abort/cancel the stream immediately using RST flag.
-   * Unlike close(), this signals an abort rather than graceful close.
+   * Abort/cancel the stream immediately.
+   * Sends OpStreamAbort frame to signal cancellation to the backend,
+   * then sends RST flag to close the transport.
    * Can override a pending close() to force immediate abort.
    */
   abort(): void {
     if (this._status === "closed") {
       return;
     }
-    // Always send RST, even if already closing (overrides pending FIN)
+    // Always send abort, even if already closing (overrides pending FIN)
     this._status = "closing";
+
+    // Send OpStreamAbort frame to backend: [opcode:1][streamID:4][length:4]
+    // This signals the backend's AbortMonitor to cancel the operation
+    const abortFrame = new Uint8Array(9);
+    const view = new DataView(abortFrame.buffer);
+    abortFrame[0] = 0x86; // OpStreamAbort
+    view.setUint32(1, this.id, false);
+    view.setUint32(5, 0, false); // length = 0
+    this.mux.sendFrame(this.id, Flags.DATA, abortFrame);
+
+    // Then send RST to close the transport layer
     this.mux.sendFrame(this.id, Flags.RST, new Uint8Array(0));
   }
 
@@ -586,6 +598,7 @@ export const BridgeOpcode = {
   StreamResize: 0x83,
   StreamProgress: 0x84,
   StreamResult: 0x85,
+  StreamAbort: 0x86,
 } as const;
 
 // File transfer constants (must match backend bridge/handlers/filebrowser/stream.go)
