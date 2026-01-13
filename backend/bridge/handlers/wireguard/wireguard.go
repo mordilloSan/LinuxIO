@@ -3,6 +3,7 @@ package wireguard
 import (
 	"encoding/base64"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,8 +67,17 @@ func AddInterface(args []string) (any, error) {
 	}
 
 	name := args[0]
+	if err := validateInterfaceName(name); err != nil {
+		logger.Errorf("AddInterface: invalid interface name %q: %v", name, err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
+
 	addresses := normalizeAddresses(parseCSV(args[1]))
-	listenPort, _ := strconv.Atoi(args[2])
+	listenPort, err := strconv.Atoi(args[2])
+	if err != nil {
+		logger.Errorf("AddInterface: invalid listen port %q: %v", args[2], err)
+		return nil, fmt.Errorf("invalid listen port: %w", err)
+	}
 	egressNic := args[3]
 
 	// Optional parameters
@@ -78,7 +88,6 @@ func AddInterface(args []string) (any, error) {
 
 	// Auto-generate peers if requested
 	if len(peers) == 0 && numPeers > 0 {
-		var err error
 		peers, err = generatePeers(addresses[0], numPeers)
 		if err != nil {
 			logger.Errorf("AddInterface: generate peers failed: %v", err)
@@ -151,6 +160,10 @@ func RemoveInterface(args []string) (any, error) {
 	}
 
 	name := args[0]
+	if err := validateInterfaceName(name); err != nil {
+		logger.Errorf("RemoveInterface: invalid interface name %q: %v", name, err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
 	logger.Infof("RemoveInterface: removing interface %s", name)
 
 	// Best-effort: bring it down, but don't abort on failure.
@@ -192,6 +205,10 @@ func AddPeer(args []string) (any, error) {
 	}
 
 	interfaceName := args[0]
+	if err := validateInterfaceName(interfaceName); err != nil {
+		logger.Errorf("AddPeer: invalid interface name %q: %v", interfaceName, err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
 	logger.Infof("AddPeer: adding peer to %s", interfaceName)
 
 	// Read current config
@@ -221,7 +238,11 @@ func AddPeer(args []string) (any, error) {
 	}
 
 	// Generate keys
-	priv, _ := wgtypes.GeneratePrivateKey()
+	priv, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		logger.Errorf("AddPeer: generate private key failed: %v", err)
+		return nil, fmt.Errorf("generate private key: %w", err)
+	}
 
 	peer := PeerConfig{
 		PublicKey:           priv.PublicKey().String(),
@@ -252,16 +273,50 @@ func AddPeer(args []string) (any, error) {
 		return nil, fmt.Errorf("export peer config: %w", err)
 	}
 
-	// Bounce interface to apply changes
-	if _, err := DownInterface([]string{interfaceName}); err != nil {
-		logger.Warnf("AddPeer: wg-quick down %s failed (continuing): %v", interfaceName, err)
-	}
-	if _, err := UpInterface([]string{interfaceName}); err != nil {
-		logger.Errorf("AddPeer: wg-quick up %s failed after adding peer: %v", interfaceName, err)
-		return nil, fmt.Errorf("restart interface: %w", err)
-	}
+	// Apply peer to running interface using wgctrl (no restart needed)
+	if isInterfaceUp(interfaceName) {
+		pubKey, err := wgtypes.ParseKey(peer.PublicKey)
+		if err != nil {
+			logger.Errorf("AddPeer: parse public key failed: %v", err)
+			return nil, fmt.Errorf("parse public key: %w", err)
+		}
 
-	logger.Infof("AddPeer: added %s with IP %s to %s and restarted interface", peer.Name, nextIP, interfaceName)
+		var allowedIPs []net.IPNet
+		for _, ipStr := range peer.AllowedIPs {
+			_, ipNet, parseErr := net.ParseCIDR(ipStr)
+			if parseErr != nil {
+				logger.Warnf("AddPeer: parse allowed IP %s failed: %v", ipStr, parseErr)
+				continue
+			}
+			allowedIPs = append(allowedIPs, *ipNet)
+		}
+
+		client, err := wgctrl.New()
+		if err != nil {
+			logger.Errorf("AddPeer: wgctrl.New failed: %v", err)
+			return nil, fmt.Errorf("create wgctrl client: %w", err)
+		}
+		defer client.Close()
+
+		keepalive := time.Duration(peer.PersistentKeepalive) * time.Second
+		peerCfg := wgtypes.PeerConfig{
+			PublicKey:                   pubKey,
+			AllowedIPs:                  allowedIPs,
+			ReplaceAllowedIPs:           true,
+			PersistentKeepaliveInterval: &keepalive,
+		}
+
+		if err := client.ConfigureDevice(interfaceName, wgtypes.Config{
+			Peers: []wgtypes.PeerConfig{peerCfg},
+		}); err != nil {
+			logger.Errorf("AddPeer: ConfigureDevice failed for %s: %v", interfaceName, err)
+			return nil, fmt.Errorf("configure device: %w", err)
+		}
+
+		logger.Infof("AddPeer: dynamically added %s with IP %s to %s", peer.Name, nextIP, interfaceName)
+	} else {
+		logger.Infof("AddPeer: added %s with IP %s to %s config (interface not running)", peer.Name, nextIP, interfaceName)
+	}
 	return map[string]any{
 		"peer_name":  peer.Name,
 		"public_key": peer.PublicKey,
@@ -277,6 +332,14 @@ func RemovePeerByName(args []string) (any, error) {
 
 	interfaceName := args[0]
 	peerName := args[1]
+	if err := validateInterfaceName(interfaceName); err != nil {
+		logger.Errorf("RemovePeerByName: invalid interface name %q: %v", interfaceName, err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
+	if err := validateInterfaceName(peerName); err != nil {
+		logger.Errorf("RemovePeerByName: invalid peer name %q: %v", peerName, err)
+		return nil, fmt.Errorf("invalid peer name: %w", err)
+	}
 	logger.Infof("RemovePeerByName: removing peer %s from %s", peerName, interfaceName)
 
 	// Read peer config to get AllowedIP
@@ -351,6 +414,10 @@ func ListPeers(args []string) (any, error) {
 	}
 
 	interfaceName := args[0]
+	if err := validateInterfaceName(interfaceName); err != nil {
+		logger.Errorf("ListPeers: invalid interface name %q: %v", interfaceName, err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
 	logger.Debugf("ListPeers: listing exported peers for %s", interfaceName)
 
 	// 1) Read exported peer configs from disk (as before)
@@ -366,7 +433,7 @@ func ListPeers(args []string) (any, error) {
 	for _, file := range files {
 		iniFile, loadErr := ini.Load(file)
 		if loadErr != nil {
-			logger.Warnf("ListPeers: failed to parse %s: %v", file, err)
+			logger.Warnf("ListPeers: failed to parse %s: %v", file, loadErr)
 			continue
 		}
 
@@ -496,6 +563,10 @@ func UpInterface(args []string) (any, error) {
 		return nil, fmt.Errorf("usage: up_interface <name>")
 	}
 	name := args[0]
+	if err := validateInterfaceName(name); err != nil {
+		logger.Errorf("UpInterface: invalid interface name %q: %v", name, err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
 	cmd := exec.Command("/usr/bin/wg-quick", "up", name)
 
 	// Ensure real/effective/saved IDs are 0 in the child
@@ -527,6 +598,10 @@ func DownInterface(args []string) (any, error) {
 	}
 
 	name := args[0]
+	if err := validateInterfaceName(name); err != nil {
+		logger.Errorf("DownInterface: invalid interface name %q: %v", name, err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
 	cmd := exec.Command("/usr/bin/wg-quick", "down", name)
 
 	// Ensure real/effective/saved IDs are 0 in the child
@@ -557,6 +632,15 @@ func PeerQRCode(args []string) (any, error) {
 		return nil, fmt.Errorf("usage: peer_qrcode <interface> <peername>")
 	}
 
+	if err := validateInterfaceName(args[0]); err != nil {
+		logger.Errorf("PeerQRCode: invalid interface name %q: %v", args[0], err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
+	if err := validateInterfaceName(args[1]); err != nil {
+		logger.Errorf("PeerQRCode: invalid peer name %q: %v", args[1], err)
+		return nil, fmt.Errorf("invalid peer name: %w", err)
+	}
+
 	peerPath := peerConfigPath(args[0], args[1])
 	rawConfig, err := os.ReadFile(peerPath)
 	if err != nil {
@@ -582,6 +666,15 @@ func PeerConfigDownload(args []string) (any, error) {
 		return nil, fmt.Errorf("usage: peer_config_download <interface> <peername>")
 	}
 
+	if err := validateInterfaceName(args[0]); err != nil {
+		logger.Errorf("PeerConfigDownload: invalid interface name %q: %v", args[0], err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
+	if err := validateInterfaceName(args[1]); err != nil {
+		logger.Errorf("PeerConfigDownload: invalid peer name %q: %v", args[1], err)
+		return nil, fmt.Errorf("invalid peer name: %w", err)
+	}
+
 	peerPath := peerConfigPath(args[0], args[1])
 	data, err := os.ReadFile(peerPath)
 	if err != nil {
@@ -597,6 +690,11 @@ func GetKeys(args []string) (any, error) {
 	if len(args) < 1 {
 		logger.Errorf("GetKeys: invalid arguments: %v", args)
 		return nil, fmt.Errorf("usage: get_keys <interface>")
+	}
+
+	if err := validateInterfaceName(args[0]); err != nil {
+		logger.Errorf("GetKeys: invalid interface name %q: %v", args[0], err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 
 	cfg, err := ParseWireGuardConfig(configPath(args[0]))
