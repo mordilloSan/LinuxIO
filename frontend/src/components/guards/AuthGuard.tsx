@@ -8,6 +8,7 @@ import { FileTransferProvider } from "@/contexts/FileTransferContext";
 import { PowerActionProvider } from "@/contexts/PowerActionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { ToastProvider } from "@/contexts/ToastContext";
+import { UpdateProvider } from "@/contexts/UpdateContext";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue, useConfigReady } from "@/hooks/useConfig";
 import createTheme from "@/theme";
@@ -59,7 +60,9 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
         <ConfigProvider>
           <AuthedThemeShell>
             <PowerActionProvider>
-              <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
+              <UpdateProvider>
+                <SidebarProvider>{children ?? <Outlet />}</SidebarProvider>
+              </UpdateProvider>
             </PowerActionProvider>
           </AuthedThemeShell>
         </ConfigProvider>

@@ -14,6 +14,7 @@ import SidebarNavList from "./SidebarNavList";
 import LogoDisplay from "../logo/LogoDisplay";
 
 import { collapsedDrawerWidth, drawerWidth } from "@/constants";
+import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 import useSidebar from "@/hooks/useSidebar";
 import { SidebarItemsType } from "@/types/sidebar";
 
@@ -23,6 +24,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
   const theme = useTheme();
   const { collapsed, toggleCollapse, isDesktop, mobileOpen, setMobileOpen } =
     useSidebar();
+  const { canNavigate } = useLinuxIOUpdater();
 
   // Local hover state - doesn't affect other components via context
   const [hovered, setHovered] = useState(false);
@@ -111,6 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
             icon={page.icon}
             title={page.title}
             collapsed={isDesktop && collapsed && !hovered}
+            disabled={!canNavigate}
           />
         ))}
       </List>
