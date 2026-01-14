@@ -39,7 +39,8 @@ func RunServer(cfg ServerConfig) {
 	}
 
 	logger.Init(logger.Config{
-		Levels: levels,
+		Levels:           levels,
+		IncludeCallerTag: true,
 	})
 	logger.InfoKV("server starting", "verbose", verbose)
 

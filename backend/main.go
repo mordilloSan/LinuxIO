@@ -418,11 +418,11 @@ func enableVerbose() {
 		os.Exit(1)
 	}
 
-	// Restart webserver
-	fmt.Println("Restarting linuxio-webserver.service...")
-	cmd = exec.Command("systemctl", "restart", "linuxio-webserver.service")
+	// Restart LinuxIO services
+	fmt.Println("Restarting linuxio.target...")
+	cmd = exec.Command("systemctl", "restart", "linuxio.target")
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to restart webserver: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -454,11 +454,11 @@ func disableVerbose() {
 		os.Exit(1)
 	}
 
-	// Restart webserver
-	fmt.Println("Restarting linuxio-webserver.service...")
-	cmd = exec.Command("systemctl", "restart", "linuxio-webserver.service")
+	// Restart LinuxIO services
+	fmt.Println("Restarting linuxio.target...")
+	cmd = exec.Command("systemctl", "restart", "linuxio.target")
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to restart webserver: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
 		os.Exit(1)
 	}
 
