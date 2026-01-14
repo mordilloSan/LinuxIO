@@ -281,10 +281,19 @@ collectPackages:
 			}
 			if sig.Name == transactionIfc+".Package" {
 				if len(sig.Body) > 2 {
+					// Body[0] is the PkInfoEnum (uint32)
+					infoEnum, _ := sig.Body[0].(uint32)
 					pkgID, _ := sig.Body[1].(string)
 					summary, _ := sig.Body[2].(string)
 					name, version := extractNameVersion(pkgID)
 					_ = name // unused, but extractNameVersion returns both
+
+					// Sanitize invalid InfoEnum values (e.g., Docker repos have 327685 instead of valid 0-30 range)
+					// PackageKit's valid severity range is 0-30. Values outside this are repository metadata bugs.
+					if infoEnum > 30 {
+						logger.Debugf(" Package %s has invalid InfoEnum: %d (sanitizing to 0=Unknown)", pkgID, infoEnum)
+						infoEnum = 0 // PK_INFO_ENUM_UNKNOWN
+					}
 
 					updates = append(updates, UpdateDetail{
 						PackageID: pkgID,
