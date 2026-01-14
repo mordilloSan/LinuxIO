@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/go_logger/v2/logger"
+	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
@@ -88,10 +88,17 @@ func main() {
 	}
 
 	// Initialize logger (stdout/stderr → systemd journal)
+	// Configure log levels based on verbose flag
+	var levels []logger.Level
+	verbose := bootCfg.Verbose
+	if verbose {
+		levels = logger.AllLevels() // Includes DEBUG
+	} else {
+		levels = []logger.Level{logger.InfoLevel, logger.WarnLevel, logger.ErrorLevel}
+	}
+
 	logger.Init(logger.Config{
-		Levels:          logger.AllLevels(),
-		Colorize:        false,
-		OmitLevelPrefix: true,
+		Levels: levels,
 	})
 
 	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",

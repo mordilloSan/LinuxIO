@@ -17,8 +17,9 @@ import React, { ReactNode } from "react";
 
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
-import { useFileTransfers } from "@/hooks/useFileTransfers";
+
 import useAuth from "@/hooks/useAuth";
+import { useFileTransfers } from "@/hooks/useFileTransfers";
 
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
