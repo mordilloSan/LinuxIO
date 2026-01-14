@@ -19,6 +19,7 @@ export interface UnifiedTableColumn {
   headerName: string;
   align?: "left" | "center" | "right";
   width?: string | number;
+  sx?: object;
 }
 
 interface UnifiedCollapsibleTableProps<T> {
@@ -27,6 +28,7 @@ interface UnifiedCollapsibleTableProps<T> {
   getRowKey: (row: T, index: number) => string | number;
   renderMainRow: (row: T, index: number) => React.ReactNode;
   renderExpandedContent: (row: T, index: number) => React.ReactNode;
+  renderFirstCell?: (row: T, index: number) => React.ReactNode;
   emptyMessage?: string;
 }
 
@@ -36,6 +38,7 @@ function UnifiedCollapsibleTable<T>({
   getRowKey,
   renderMainRow,
   renderExpandedContent,
+  renderFirstCell,
   emptyMessage = "No data available.",
 }: UnifiedCollapsibleTableProps<T>) {
   const [expanded, setExpanded] = useState<string | number | null>(null);
@@ -65,7 +68,7 @@ function UnifiedCollapsibleTable<T>({
                 boxShadow: "none",
               })}
             >
-              <TableCell width="40px"></TableCell>
+              <TableCell width="40px" sx={{ padding: "8px 4px 8px 12px" }}></TableCell>
               {columns.map((column) => (
                 <TableCell
                   key={column.field}
@@ -76,6 +79,7 @@ function UnifiedCollapsibleTable<T>({
                       fontSize: "0.75rem",
                       padding: "8px 4px",
                     },
+                    ...column.sx,
                   }}
                 >
                   {column.headerName}
@@ -108,7 +112,12 @@ function UnifiedCollapsibleTable<T>({
                       },
                     })}
                   >
-                    <TableCell></TableCell>
+                    <TableCell
+                      width="40px"
+                      sx={{ padding: "8px 4px 8px 12px" }}
+                    >
+                      {renderFirstCell && renderFirstCell(row, index)}
+                    </TableCell>
                     {renderMainRow(row, index)}
                     <TableCell>
                       <IconButton
