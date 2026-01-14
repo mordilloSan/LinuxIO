@@ -27,6 +27,7 @@ type UpdateDetail struct {
 	CVEs      []string `json:"cve"`
 	Restart   uint32   `json:"restart"`
 	State     uint32   `json:"state"`
+	InfoEnum  uint32   `json:"info_enum,omitempty"` // PackageKit info enum (severity/type): 0=Unknown, 1-30=various types
 }
 
 // —— use type ALIASES, not new structs —— //
@@ -299,6 +300,7 @@ collectPackages:
 						PackageID: pkgID,
 						Summary:   summary,
 						Version:   version,
+						InfoEnum:  infoEnum,
 						// Other fields left empty - will be populated by GetUpdates (full) if needed
 					})
 				}
@@ -466,6 +468,7 @@ func getUpdatesWithDetails() ([]UpdateDetail, error) {
 
 	var pkgIDs []string
 	var summaries []string
+	var infoEnums []uint32
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -478,10 +481,19 @@ collectPackages:
 			}
 			if sig.Name == transactionIfc+".Package" {
 				if len(sig.Body) > 2 {
+					infoEnum, _ := sig.Body[0].(uint32)
 					pkgID, _ := sig.Body[1].(string)
 					summary, _ := sig.Body[2].(string)
+
+					// Sanitize invalid InfoEnum values
+					if infoEnum > 30 {
+						logger.Debugf(" Package %s has invalid InfoEnum: %d (sanitizing to 0=Unknown)", pkgID, infoEnum)
+						infoEnum = 0
+					}
+
 					pkgIDs = append(pkgIDs, pkgID)
 					summaries = append(summaries, summary)
+					infoEnums = append(infoEnums, infoEnum)
 				}
 			} else if sig.Name == transactionIfc+".Finished" {
 				break collectPackages
@@ -520,9 +532,13 @@ collectPackages:
 	defer cancel2()
 
 	summaryByPkg := map[string]string{}
+	infoEnumByPkg := map[string]uint32{}
 	for i, id := range pkgIDs {
 		if i < len(summaries) {
 			summaryByPkg[id] = summaries[i]
+		}
+		if i < len(infoEnums) {
+			infoEnumByPkg[id] = infoEnums[i]
 		}
 	}
 
@@ -539,6 +555,7 @@ collectDetails:
 					return nil, fmt.Errorf("invalid pkgID: %w", err)
 				}
 				summary := summaryByPkg[pkgID]
+				infoEnum := infoEnumByPkg[pkgID]
 
 				version, err := utils.AsString(sig.Body[11])
 				if err != nil {
@@ -598,6 +615,7 @@ collectDetails:
 					CVEs:      combinedCVEs,
 					Restart:   restart,
 					State:     state,
+					InfoEnum:  infoEnum,
 				}
 				details = append(details, detail)
 			} else if sig.Name == transactionIfc+".Finished" {
