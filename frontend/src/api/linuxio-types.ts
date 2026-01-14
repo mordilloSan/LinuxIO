@@ -200,7 +200,6 @@ export interface ComposeProject {
   name: string;
   status: string;
   services: Record<string, ComposeService>;
-  service_count: number;
   config_files: string[];
   working_dir: string;
 }

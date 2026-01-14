@@ -27,7 +27,7 @@ import {
   responsiveTextStyles,
   longTextStyles,
   wrappableChipStyles,
-} from "@/styles/tableStyles";
+} from "@/theme/tableStyles";
 
 interface DockerNetwork {
   Id: string;

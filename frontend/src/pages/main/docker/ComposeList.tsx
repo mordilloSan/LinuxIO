@@ -36,7 +36,6 @@ export interface ComposeProject {
   name: string;
   status: string; // "running", "partial", "stopped"
   services: Record<string, ComposeService>;
-  service_count: number;
   config_files: string[];
   working_dir: string;
 }
@@ -114,7 +113,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
             >
               <TableCell>Status</TableCell>
               <TableCell>Stack Name</TableCell>
-              <TableCell>Services</TableCell>
               <TableCell>Containers</TableCell>
               <TableCell>Config Files</TableCell>
               <TableCell align="right">Actions</TableCell>
@@ -163,7 +161,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       {project.name}
                     </Typography>
                   </TableCell>
-                  <TableCell>{project.service_count}</TableCell>
                   <TableCell>{getTotalContainers(project)}</TableCell>
                   <TableCell>
                     <Tooltip
@@ -263,7 +260,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 >
                   <TableCell
                     style={{ paddingBottom: 0, paddingTop: 0 }}
-                    colSpan={7}
+                    colSpan={6}
                   >
                     <Collapse
                       in={expanded === project.name}
