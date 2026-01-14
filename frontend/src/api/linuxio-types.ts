@@ -151,12 +151,36 @@ export interface DockerNetwork {
   Name: string;
   Driver: string;
   Scope: string;
+  Internal?: boolean;
+  EnableIPv4?: boolean;
+  EnableIPv6?: boolean;
+  IPAM?: {
+    Config?: Array<{
+      Subnet: string;
+      Gateway: string;
+    }>;
+  };
+  Options?: Record<string, string>;
+  Labels?: Record<string, string>;
+  Containers?: Record<
+    string,
+    {
+      Name: string;
+      IPv4Address?: string;
+      IPv6Address?: string;
+      MacAddress?: string;
+    }
+  >;
 }
 
 export interface DockerVolume {
   Name: string;
   Driver: string;
   Mountpoint: string;
+  CreatedAt?: string;
+  Labels?: Record<string, string>;
+  Options?: Record<string, string>;
+  Scope?: string;
 }
 
 export interface ComposeService {

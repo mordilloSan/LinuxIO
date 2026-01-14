@@ -5,7 +5,9 @@ import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerList from "./ContainerList";
 import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
+import VolumeList from "./VolumeList";
 
+import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import TabSelector from "@/components/tabbar/TabSelector";
 
 const tabOptions = [
@@ -31,7 +33,9 @@ const DockerPage: React.FC = () => {
             width: "100%",
           }}
         >
-          <ContainerList />
+          <ErrorBoundary>
+            <ContainerList />
+          </ErrorBoundary>
         </Box>
       </Fade>
 
@@ -43,7 +47,9 @@ const DockerPage: React.FC = () => {
             width: "100%",
           }}
         >
-          <ComposeStacksPage />
+          <ErrorBoundary>
+            <ComposeStacksPage />
+          </ErrorBoundary>
         </Box>
       </Fade>
 
@@ -55,7 +61,9 @@ const DockerPage: React.FC = () => {
             width: "100%",
           }}
         >
-          <ImageList />
+          <ErrorBoundary>
+            <ImageList />
+          </ErrorBoundary>
         </Box>
       </Fade>
 
@@ -67,7 +75,23 @@ const DockerPage: React.FC = () => {
             width: "100%",
           }}
         >
-          <DockerNetworksTable />
+          <ErrorBoundary>
+            <DockerNetworksTable />
+          </ErrorBoundary>
+        </Box>
+      </Fade>
+
+      <Fade in={tab === "volumes"} timeout={300} unmountOnExit={false}>
+        <Box
+          sx={{
+            display: tab === "volumes" ? "block" : "none",
+            position: "relative",
+            width: "100%",
+          }}
+        >
+          <ErrorBoundary>
+            <VolumeList />
+          </ErrorBoundary>
         </Box>
       </Fade>
     </Box>
