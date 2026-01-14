@@ -113,9 +113,7 @@ function UnifiedCollapsibleTable<T>({
                     <TableCell>
                       <IconButton
                         size="small"
-                        onClick={() =>
-                          setExpanded(isExpanded ? null : rowKey)
-                        }
+                        onClick={() => setExpanded(isExpanded ? null : rowKey)}
                       >
                         <ExpandMoreIcon
                           style={{
@@ -143,11 +141,7 @@ function UnifiedCollapsibleTable<T>({
                       style={{ paddingBottom: 0, paddingTop: 0 }}
                       colSpan={columns.length + 2}
                     >
-                      <Collapse
-                        in={isExpanded}
-                        timeout="auto"
-                        unmountOnExit
-                      >
+                      <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                         <Box
                           component={motion.div}
                           initial={{ opacity: 0, y: -10 }}

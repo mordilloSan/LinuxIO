@@ -13,7 +13,7 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 
 import linuxio from "@/api/react-query";
-import type { InstallResult, ValidationResult } from "@/types/module";
+import type { ValidationResult, InstallResult } from "@/types/module";
 
 interface InstallModuleProps {
   onInstalled: () => void;
@@ -61,23 +61,20 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
       return;
     }
 
-    installMutation.mutate(
-      [path, targetName, createSymlink ? "true" : "false"],
-      {
-        onSuccess: (result) => {
-          toast.success(result.message || "Module installed successfully!");
+    installMutation([path, targetName, createSymlink ? "true" : "false"], {
+      onSuccess: (result: InstallResult) => {
+        toast.success(result.message || "Module installed successfully!");
 
-          // Reset form
-          setPath("");
-          setTargetName("");
-          setCreateSymlink(false);
-          setValidationResult(null);
+        // Reset form
+        setPath("");
+        setTargetName("");
+        setCreateSymlink(false);
+        setValidationResult(null);
 
-          // Navigate to installed modules
-          onInstalled();
-        },
+        // Navigate to installed modules
+        onInstalled();
       },
-    );
+    });
   };
 
   return (
@@ -131,22 +128,14 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
               onClick={handleValidate}
               disabled={validatePending || installPending || !path}
             >
-              {validatePending ? (
-                <CircularProgress size={20} />
-              ) : (
-                "Validate"
-              )}
+              {validatePending ? <CircularProgress size={20} /> : "Validate"}
             </Button>
             <Button
               variant="contained"
               onClick={handleInstall}
               disabled={validatePending || installPending || !path}
             >
-              {installPending ? (
-                <CircularProgress size={20} />
-              ) : (
-                "Install"
-              )}
+              {installPending ? <CircularProgress size={20} /> : "Install"}
             </Button>
           </Box>
 

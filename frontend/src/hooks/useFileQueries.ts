@@ -54,17 +54,15 @@ export const useFileQueries = ({
     return "Failed to load file information.";
   }, [error, isError, normalizedPath]);
 
-  // Detail resource query uses string-based API due to extra args
+  // Detail resource query with content flag
   const {
     data: detailResource,
     isPending: isDetailPending,
     error: detailError,
-  } = linuxio.useCall<FileResource>(
-    "filebrowser",
-    "resource_get",
-    detailTarget && detailTarget.length === 1
-      ? [detailTarget[0], "", "true"]
-      : [],
+  } = linuxio.filebrowser.resource_get.useQuery(
+    detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
+    "",
+    "true",
     {
       enabled:
         hasSingleDetailTarget &&
@@ -132,12 +130,12 @@ export const useFileQueries = ({
     fileResourceMap,
   );
 
-  // Editing file resource uses string-based API due to extra args
+  // Editing file resource with content flag
   const { data: editingFileResource, isPending: isEditingFileLoading } =
-    linuxio.useCall<FileResource>(
-      "filebrowser",
-      "resource_get",
-      editingPath ? [editingPath, "", "true"] : [],
+    linuxio.filebrowser.resource_get.useQuery(
+      editingPath || "",
+      "",
+      "true",
       {
         enabled: !!editingPath,
       },

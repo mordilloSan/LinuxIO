@@ -291,6 +291,7 @@ export interface SubfoldersResponse {
 }
 
 export interface SearchResponse {
+  query: string;
   results: Array<{
     path: string;
     name: string;
@@ -298,6 +299,7 @@ export interface SearchResponse {
     size: number;
     modified: string;
   }>;
+  count: number;
 }
 
 export interface UsersGroupsResponse {
@@ -435,7 +437,10 @@ export interface LinuxIOSchema {
   };
 
   filebrowser: {
-    resource_get: { args: [path: string]; result: ApiResource };
+    resource_get: {
+      args: [path: string, unused?: string, getContent?: string];
+      result: ApiResource;
+    };
     resource_stat: { args: [path: string]; result: ResourceStatData };
     resource_delete: { args: [path: string]; result: void };
     resource_post: { args: [path: string, action: string]; result: void };
@@ -445,7 +450,10 @@ export interface LinuxIOSchema {
     };
     dir_size: { args: [path: string]; result: DirectorySizeData };
     subfolders: { args: [path: string]; result: SubfoldersResponse };
-    search: { args: [path: string, query: string]; result: SearchResponse };
+    search: {
+      args: [query: string, limit?: string, basePath?: string];
+      result: SearchResponse;
+    };
     indexer_status: {
       args: [];
       result: { running: boolean; progress: number };
@@ -514,7 +522,10 @@ export interface LinuxIOSchema {
   };
 
   terminal: {
-    list_shells: { args: []; result: Array<{ id: string; command: string }> };
+    list_shells: {
+      args: [containerId: string];
+      result: string[];
+    };
   };
 }
 

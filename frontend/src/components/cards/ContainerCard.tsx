@@ -124,7 +124,13 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           break;
       }
     },
-    [container.Id, startContainer, stopContainer, restartContainer, removeContainer],
+    [
+      container.Id,
+      startContainer,
+      stopContainer,
+      restartContainer,
+      removeContainer,
+    ],
   );
 
   const handleLogsClick = () => setLogDialogOpen(true);
