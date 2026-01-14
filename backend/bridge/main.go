@@ -98,7 +98,8 @@ func main() {
 	}
 
 	logger.Init(logger.Config{
-		Levels: levels,
+		Levels:           levels,
+		IncludeCallerTag: true,
 	})
 
 	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
