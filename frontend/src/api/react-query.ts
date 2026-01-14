@@ -28,6 +28,7 @@ import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
 import {
   useStreamMux,
+  useIsUpdating,
   initStreamMux,
   closeStreamMux,
   waitForStreamMux,
@@ -59,11 +60,12 @@ export function useCall<T = unknown>(
   options?: Omit<UseQueryOptions<T, LinuxIOError>, "queryKey" | "queryFn">,
 ) {
   const { isOpen } = useStreamMux();
+  const isUpdating = useIsUpdating();
 
   return useQuery<T, LinuxIOError>({
     queryKey: ["linuxio", handler, command, ...args],
     queryFn: () => core.call<T>(handler, command, args),
-    enabled: isOpen && (options?.enabled ?? true),
+    enabled: isOpen && !isUpdating && (options?.enabled ?? true),
     ...options,
   });
 }
@@ -207,6 +209,7 @@ function createEndpoint<TResult>(
       ...params: Array<string | QueryOptions<TResult> | QueryConfig<TResult>>
     ) {
       const { isOpen } = useStreamMux();
+      const isUpdating = useIsUpdating();
 
       let args: unknown[] = [];
       let options: QueryOptions<TResult> | undefined;
@@ -247,7 +250,7 @@ function createEndpoint<TResult>(
         queryKey: ["linuxio", handler, command, ...serializedArgs],
         queryFn: () =>
           core.call<TResult>(handler, command, serializedArgs as string[]),
-        enabled: isOpen && (options?.enabled ?? true),
+        enabled: isOpen && !isUpdating && (options?.enabled ?? true),
         ...options,
       });
     },

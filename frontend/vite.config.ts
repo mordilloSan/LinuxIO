@@ -69,6 +69,7 @@ export default defineConfig(({ command }) => {
       proxy: {
         "/ws": { target: proxyTarget, changeOrigin: true, ws: true, secure: false },
         "/auth": { target: proxyTarget, changeOrigin: true, secure: false },
+        "/api": { target: proxyTarget, changeOrigin: true, secure: false },
       },
     },
     build: {

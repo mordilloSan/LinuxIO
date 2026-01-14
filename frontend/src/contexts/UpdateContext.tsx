@@ -19,8 +19,10 @@ import {
 // Stream type for command execution (must match backend generic.StreamTypeExec)
 const STREAM_TYPE_EXEC = "exec";
 
-const INSTALL_SCRIPT_URL =
-  "https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh";
+// In dev mode, use local test script; in production, use GitHub hosted script
+const INSTALL_SCRIPT_URL = import.meta.env.DEV
+  ? "http://localhost:9999/dev-test-update.sh"
+  : "https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh";
 const UPDATE_STATUS_FILE = "/run/linuxio/update-status.json";
 
 const UPDATE_TIMEOUT_MS = 20 * 60 * 1000;
@@ -136,6 +138,8 @@ const useUpdateController = (): UpdateContextValue => {
     setOutput([]);
     setError(null);
     setTargetVersion(null);
+    // Re-enable API requests
+    getStreamMux()?.setUpdating(false);
   }, [clearTimers]);
 
   const failUpdate = useCallback(
@@ -146,6 +150,8 @@ const useUpdateController = (): UpdateContextValue => {
       setError(message);
       setStatus("Update failed");
       setProgress(100);
+      // Re-enable API requests
+      getStreamMux()?.setUpdating(false);
     },
     [clearTimers],
   );
@@ -212,7 +218,7 @@ const useUpdateController = (): UpdateContextValue => {
         `rm -f ${UPDATE_STATUS_FILE}`,
         `systemd-run --no-block --unit=linuxio-update -p StandardOutput=journal -p StandardError=journal ${unitCmd}`,
         "sleep 0.5",
-        "journalctl -f -u linuxio-update --no-pager -o cat",
+        "journalctl -f -u linuxio-update --lines=0 --no-pager -o cat",
       ];
 
       return commandParts.join(" && ");
@@ -221,23 +227,16 @@ const useUpdateController = (): UpdateContextValue => {
   );
 
   const beginVerification = useCallback(() => {
-    let shouldStart = false;
-    setPhase((prev) => {
-      if (prev === "verifying") return prev;
-      shouldStart = true;
-      return "verifying";
-    });
-    if (!shouldStart) return;
-
-    clearTimers();
-    setStatus("Waiting for server to come back...");
-    setProgress((prev) => Math.max(prev, 80));
-
     const runId = updateRunIdRef.current;
     if (!runId) {
       failUpdate("Update verification missing run id");
       return;
     }
+
+    setPhase("verifying");
+    clearTimers();
+    setStatus("Waiting for server to come back...");
+    setProgress((prev) => Math.max(prev, 90));
 
     const poll = async () => {
       if (updateRunIdRef.current !== runId) return;
@@ -259,7 +258,9 @@ const useUpdateController = (): UpdateContextValue => {
       if (updateRunIdRef.current !== runId) return;
 
       let versionMatch = false;
+      let serverResponding = false;
       if (versionResult.status === "fulfilled" && versionResult.value.ok) {
+        serverResponding = true;
         const versions = await versionResult.value.json();
         versionMatch = target
           ? Object.values(versions).some((value) => value === target)
@@ -287,12 +288,17 @@ const useUpdateController = (): UpdateContextValue => {
         markUpdateStartedFromStatus(updateStatus);
       }
 
-      if (versionMatch && updateStatus?.status === "ok") {
+      // Complete if update status is OK and either:
+      // 1. Version matches the target, or
+      // 2. Server is responding (even if we can't verify version yet)
+      if (updateStatus?.status === "ok" && (versionMatch || serverResponding)) {
         clearTimers();
         updateRunIdRef.current = null;
         setPhase("done");
         setStatus("Update complete");
         setProgress(100);
+        // Re-enable API requests
+        getStreamMux()?.setUpdating(false);
       }
     };
 
@@ -319,7 +325,9 @@ const useUpdateController = (): UpdateContextValue => {
   const handleStreamFinished = useCallback(
     (fallbackError?: string) => {
       const finalize = async () => {
-        if (!updateRunIdRef.current) return;
+        if (!updateRunIdRef.current) {
+          return;
+        }
         const updateStatus = await fetchUpdateStatus();
 
         if (!updateStatus || updateStatus.status === "unknown") {
@@ -339,7 +347,7 @@ const useUpdateController = (): UpdateContextValue => {
           return;
         }
 
-        setPhase("restarting");
+        // Don't set phase here - let beginVerification handle it to avoid state update race conditions
         setStatus("Update in progress - service restarting...");
         setProgress((prev) => Math.max(prev, 60));
         beginVerification();
@@ -379,6 +387,9 @@ const useUpdateController = (): UpdateContextValue => {
         return;
       }
 
+      // Disable all API requests during update
+      mux.setUpdating(true);
+
       const cmd = buildUpdateCommand(runId, target);
       const payload = encodeString(
         [STREAM_TYPE_EXEC, "bash", "-c", cmd].join("\0"),
@@ -398,15 +409,96 @@ const useUpdateController = (): UpdateContextValue => {
         }
       }, UPDATE_TIMEOUT_MS);
 
+      // Poll update status to detect completion and close stream
+      // The journalctl -f stream never closes on its own, so we monitor the status file
+      const pollStatusAndCloseStream = async () => {
+        if (updateRunIdRef.current !== runId) {
+          return;
+        }
+        const status = await fetchUpdateStatus();
+        if (status && (status.status === "ok" || status.status === "error")) {
+          // Update completed, close the stream and trigger verification
+          if (streamRef.current) {
+            const currentStream = streamRef.current;
+            streamRef.current = null;
+
+            // Clear stream handlers to prevent double-calling handleStreamFinished
+            currentStream.onClose = () => {};
+            currentStream.onResult = () => {};
+            currentStream.close();
+
+            // Stop polling - clear all timers before starting verification
+            clearTimers();
+
+            // Manually trigger the finish handler to start verification
+            const fallbackError =
+              status.status === "error" ? "Update failed" : undefined;
+            handleStreamFinished(fallbackError);
+          }
+        }
+      };
+
+      // Start polling after a delay (give update time to start)
+      trackTimeout(() => {
+        const intervalId = trackInterval(() => {
+          void pollStatusAndCloseStream();
+        }, POLL_INTERVAL_MS);
+        // Clean up interval on timeout
+        trackTimeout(() => clearInterval(intervalId), UPDATE_TIMEOUT_MS);
+      }, POLL_START_DELAY_MS);
+
       stream.onData = (data: Uint8Array) => {
         const text = decodeString(data);
-        const lines = text.split("\n").filter((line) => line.trim());
+        const lines = text
+          .split("\n")
+          .map((line) => {
+            const trimmed = line.trim();
+            // Filter out systemd journal metadata lines
+            if (!trimmed) return null;
+            if (trimmed.startsWith("Running as unit:")) return null;
+            // Truncate the verbose "Started linuxio-update.service - ..." line
+            if (trimmed.startsWith("Started linuxio-update.service - ")) {
+              return "Started linuxio-update.service";
+            }
+            return line;
+          })
+          .filter((line): line is string => line !== null);
         if (lines.length === 0) return;
         markUpdateStarted();
 
         for (const line of lines) {
           setOutput((prev) => [...prev, line]);
           setStatus(line);
+
+          // Update progress based on installation steps
+          if (
+            line.includes("Step 1/5:") ||
+            line.includes("Downloading binaries")
+          ) {
+            setProgress(20);
+          } else if (
+            line.includes("Step 2/5:") ||
+            line.includes("Verifying checksums")
+          ) {
+            setProgress(35);
+          } else if (
+            line.includes("Step 3/5:") ||
+            line.includes("Installing binaries")
+          ) {
+            setProgress(50);
+          } else if (
+            line.includes("Step 4/5:") ||
+            line.includes("Installing configuration")
+          ) {
+            setProgress(65);
+          } else if (
+            line.includes("Step 5/5:") ||
+            line.includes("Installing systemd")
+          ) {
+            setProgress(75);
+          } else if (line.includes("Installation complete")) {
+            setProgress(85);
+          }
         }
       };
 
@@ -428,9 +520,11 @@ const useUpdateController = (): UpdateContextValue => {
       buildUpdateCommand,
       clearTimers,
       failUpdate,
+      fetchUpdateStatus,
       handleStreamFinished,
       markUpdateStarted,
       phase,
+      trackInterval,
       trackTimeout,
     ],
   );
