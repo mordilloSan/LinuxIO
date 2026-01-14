@@ -322,12 +322,18 @@ export interface VersionResponse {
 // ============================================================================
 
 export interface Peer {
-  publicKey: string;
-  allowedIPs: string[];
+  name: string;
+  public_key: string;
+  allowed_ips?: string[];
   endpoint?: string;
-  lastHandshake?: string;
-  transferRx?: number;
-  transferTx?: number;
+  preshared_key?: string;
+  persistent_keepalive?: number;
+  last_handshake?: string; // RFC3339 or "never"
+  last_handshake_unix?: number; // 0 if never
+  rx_bytes?: number;
+  tx_bytes?: number;
+  rx_bps?: number; // bytes/sec
+  tx_bps?: number; // bytes/sec
 }
 
 export interface PeerConfigDownload {
