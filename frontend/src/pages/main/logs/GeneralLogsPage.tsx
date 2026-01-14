@@ -1,6 +1,7 @@
 import BugReportIcon from "@mui/icons-material/BugReport";
 import DownloadIcon from "@mui/icons-material/Download";
 import ErrorIcon from "@mui/icons-material/Error";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FileCopyIcon from "@mui/icons-material/FileCopy";
 import InfoIcon from "@mui/icons-material/Info";
 import SearchIcon from "@mui/icons-material/Search";
@@ -10,19 +11,28 @@ import {
   Autocomplete,
   Box,
   Chip,
+  Collapse,
   FormControl,
   FormControlLabel,
   IconButton,
   InputAdornment,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
   Tooltip,
   Typography,
   useTheme,
 } from "@mui/material";
+import { motion } from "framer-motion";
 import React, {
   useCallback,
   useEffect,
@@ -80,48 +90,24 @@ const getPriorityLabel = (priority: LogPriority): string => {
   }
 };
 
-const getPriorityColor = (
-  priority: LogPriority,
-  isDark: boolean,
-): { bg: string; text: string } => {
+const getPriorityColor = (priority: LogPriority): string => {
   switch (priority) {
     case LogPriority.EMERGENCY:
     case LogPriority.ALERT:
     case LogPriority.CRITICAL:
-      return {
-        bg: isDark ? "rgba(255, 23, 68, 0.2)" : "rgba(255, 23, 68, 0.1)",
-        text: "#ff1744",
-      };
+      return "error";
     case LogPriority.ERROR:
-      return {
-        bg: isDark ? "rgba(244, 67, 54, 0.2)" : "rgba(244, 67, 54, 0.1)",
-        text: "#ff5252",
-      };
+      return "error";
     case LogPriority.WARNING:
-      return {
-        bg: isDark ? "rgba(255, 152, 0, 0.2)" : "rgba(255, 152, 0, 0.1)",
-        text: "#ff9800",
-      };
+      return "warning";
     case LogPriority.NOTICE:
-      return {
-        bg: isDark ? "rgba(33, 150, 243, 0.2)" : "rgba(33, 150, 243, 0.1)",
-        text: "#2196f3",
-      };
+      return "info";
     case LogPriority.INFO:
-      return {
-        bg: isDark ? "rgba(0, 230, 118, 0.15)" : "rgba(0, 230, 118, 0.1)",
-        text: "#00e676",
-      };
+      return "success";
     case LogPriority.DEBUG:
-      return {
-        bg: isDark ? "rgba(158, 158, 158, 0.15)" : "rgba(158, 158, 158, 0.1)",
-        text: isDark ? "#9e9e9e" : "#757575",
-      };
+      return "default";
     default:
-      return {
-        bg: isDark ? "rgba(158, 158, 158, 0.15)" : "rgba(158, 158, 158, 0.1)",
-        text: "#757575",
-      };
+      return "default";
   }
 };
 
@@ -146,7 +132,6 @@ const getPriorityIcon = (priority: LogPriority) => {
 
 const GeneralLogsPage: React.FC = () => {
   const theme = useTheme();
-  const isDark = theme.palette.mode === "dark";
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [search, setSearch] = useState("");
@@ -155,6 +140,7 @@ const GeneralLogsPage: React.FC = () => {
   const [identifierFilter, setIdentifierFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<Stream | null>(null);
   const hasReceivedData = useRef(false);
@@ -162,7 +148,7 @@ const GeneralLogsPage: React.FC = () => {
 
   const { isOpen: muxIsOpen, openStream } = useStreamMux();
 
-  // Extract priority from message content (e.g., "[DEBUG]", "[INFO]", "[WARN]", etc.)
+  // Extract priority from message content
   const extractPriorityFromMessage = useCallback(
     (message: string): LogPriority | null => {
       const match = message.match(
@@ -202,17 +188,14 @@ const GeneralLogsPage: React.FC = () => {
       try {
         const data = JSON.parse(jsonStr);
 
-        // Extract timestamp
         const timestamp = data.__REALTIME_TIMESTAMP
           ? new Date(
               parseInt(data.__REALTIME_TIMESTAMP) / 1000,
             ).toLocaleString()
           : new Date().toLocaleString();
 
-        // Extract message
         const message = data.MESSAGE || "";
 
-        // Extract priority - first try from message content, then fall back to journal PRIORITY
         const messagePriority = extractPriorityFromMessage(message);
         const journalPriority =
           typeof data.PRIORITY === "string"
@@ -222,7 +205,6 @@ const GeneralLogsPage: React.FC = () => {
               : LogPriority.INFO;
         const priority = messagePriority ?? journalPriority;
 
-        // Extract identifier (SYSLOG_IDENTIFIER or _COMM)
         const identifier = data.SYSLOG_IDENTIFIER || data._COMM || "system";
 
         return {
@@ -247,7 +229,7 @@ const GeneralLogsPage: React.FC = () => {
     return Array.from(identifiers).sort();
   }, [logs]);
 
-  // Scroll to top when new logs arrive (newest on top)
+  // Scroll to top when new logs arrive
   useEffect(() => {
     if (liveMode && logsBoxRef.current) {
       logsBoxRef.current.scrollTop = 0;
@@ -273,12 +255,7 @@ const GeneralLogsPage: React.FC = () => {
 
       hasReceivedData.current = false;
 
-      const payload = generalLogsPayload(
-        lines,
-        timePeriod,
-        priority,
-        identifier,
-      );
+      const payload = generalLogsPayload(lines, timePeriod, priority, identifier);
       const stream = openStream("general-logs", payload);
 
       if (!stream) {
@@ -300,7 +277,7 @@ const GeneralLogsPage: React.FC = () => {
         }
         const logEntry = parseLogEntry(text.trimEnd());
         if (logEntry) {
-          setLogs((prev) => [logEntry, ...prev]); // Prepend: newest on top
+          setLogs((prev) => [logEntry, ...prev]);
         }
       };
 
@@ -315,8 +292,6 @@ const GeneralLogsPage: React.FC = () => {
     [muxIsOpen, openStream, parseLogEntry],
   );
 
-  // Check if identifier is an exact match (should be sent to backend)
-  // Partial matches (like "linuxio" for "linuxio-auth") are filtered client-side
   const isExactIdentifier = useMemo(() => {
     return (
       identifierFilter === "all" || uniqueIdentifiers.includes(identifierFilter)
@@ -324,14 +299,12 @@ const GeneralLogsPage: React.FC = () => {
   }, [identifierFilter, uniqueIdentifiers]);
 
   // Open stream on mount and when filters change
-  // Note: Filter change handlers (handleTimePeriodChange, etc.) close the stream and clear logs
   useEffect(() => {
     if (!muxIsOpen || !liveMode || streamRef.current) {
       return;
     }
 
     const tail = hasOpenedOnce.current ? "0" : DEFAULT_TAIL;
-    // Only send exact identifier matches to backend; partial matches are filtered client-side
     const backendIdentifier =
       identifierFilter === "all"
         ? ""
@@ -370,29 +343,29 @@ const GeneralLogsPage: React.FC = () => {
     setError(null);
   };
 
-  // Filter change handlers - clear logs and reset to load historical logs
+  // Filter change handlers
   const handleTimePeriodChange = (value: string) => {
     closeStream();
     setLogs([]);
-    hasOpenedOnce.current = false; // Reset to load historical logs with new filter
+    hasOpenedOnce.current = false;
     setTimePeriod(value);
   };
 
   const handlePriorityFilterChange = (value: string) => {
     closeStream();
     setLogs([]);
-    hasOpenedOnce.current = false; // Reset to load historical logs with new filter
+    hasOpenedOnce.current = false;
     setPriorityFilter(value);
   };
 
   const handleIdentifierFilterChange = (value: string) => {
     closeStream();
     setLogs([]);
-    hasOpenedOnce.current = false; // Reset to load historical logs with new filter
+    hasOpenedOnce.current = false;
     setIdentifierFilter(value);
   };
 
-  // Cleanup stream when page unmounts
+  // Cleanup stream
   useEffect(() => {
     return () => {
       closeStream();
@@ -402,7 +375,6 @@ const GeneralLogsPage: React.FC = () => {
   const filteredLogs = useMemo(() => {
     let filtered = logs;
 
-    // Apply client-side identifier filtering for partial matches (e.g., "linuxio" matches "linuxio-auth")
     if (identifierFilter !== "all" && !isExactIdentifier) {
       const pattern = identifierFilter.toLowerCase();
       filtered = filtered.filter((log) =>
@@ -410,7 +382,6 @@ const GeneralLogsPage: React.FC = () => {
       );
     }
 
-    // Apply client-side search text filtering
     const trimmed = search.trim();
     if (trimmed) {
       const needle = trimmed.toLowerCase();
@@ -453,161 +424,134 @@ const GeneralLogsPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Fixed Header */}
+    <Box>
+      {/* Filters */}
       <Box
         sx={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          borderRadius: "6px",
-          p: 2,
+          display: "flex",
+          gap: 2,
+          flexWrap: "wrap",
+          alignItems: "center",
           mb: 2,
         }}
       >
-        {/* Title and Actions */}
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 2,
-            flexWrap: "wrap",
-            mb: 1.5,
-          }}
-        >
-          <Box sx={{ flex: 1 }} />
-        </Box>
-
-        {/* Filters */}
-        <Box
-          sx={{
-            display: "flex",
-            gap: 2,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Time Period</InputLabel>
-            <Select
-              value={timePeriod}
-              label="Time Period"
-              onChange={(e) => handleTimePeriodChange(e.target.value)}
-            >
-              <MenuItem value="1h">Last 1 hour</MenuItem>
-              <MenuItem value="6h">Last 6 hours</MenuItem>
-              <MenuItem value="24h">Last 24 hours</MenuItem>
-              <MenuItem value="7d">Last 7 days</MenuItem>
-              <MenuItem value="30d">Last 30 days</MenuItem>
-            </Select>
-          </FormControl>
-
-          <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel>Priority</InputLabel>
-            <Select
-              value={priorityFilter}
-              label="Priority"
-              onChange={(e) => handlePriorityFilterChange(e.target.value)}
-            >
-              <MenuItem value="all">All</MenuItem>
-              <MenuItem value="0">Emergency and above</MenuItem>
-              <MenuItem value="1">Alert and above</MenuItem>
-              <MenuItem value="2">Critical and above</MenuItem>
-              <MenuItem value="3">Error and above</MenuItem>
-              <MenuItem value="4">Warning and above</MenuItem>
-              <MenuItem value="5">Notice and above</MenuItem>
-              <MenuItem value="6">Info and above</MenuItem>
-              <MenuItem value="7">Debug and above</MenuItem>
-            </Select>
-          </FormControl>
-
-          <Autocomplete
-            size="small"
-            freeSolo
-            options={uniqueIdentifiers}
-            value={identifierFilter === "all" ? "" : identifierFilter}
-            onChange={(_, newValue) => {
-              // Called when user selects from dropdown or clears
-              handleIdentifierFilterChange(newValue || "all");
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                // When user presses Enter, use current input value
-                const input = e.target as HTMLInputElement;
-                handleIdentifierFilterChange(input.value || "all");
-              }
-            }}
-            filterOptions={(options, { inputValue }) => {
-              if (!inputValue) return options;
-              const lower = inputValue.toLowerCase();
-              return options.filter((opt) => opt.toLowerCase().includes(lower));
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Identifier"
-                placeholder="All"
-                sx={{ minWidth: 180 }}
-              />
-            )}
-            sx={{ minWidth: 180 }}
-          />
-
-          <TextField
-            size="small"
-            placeholder="Search logs..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            sx={{ minWidth: 220, flex: "1 1 260px" }}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-          <Tooltip title="Copy logs">
-            <span>
-              <IconButton
-                onClick={handleCopy}
-                size="small"
-                disabled={filteredLogs.length === 0}
-              >
-                <FileCopyIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Download logs">
-            <span>
-              <IconButton
-                onClick={handleDownload}
-                size="small"
-                disabled={filteredLogs.length === 0}
-              >
-                <DownloadIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip
-            title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Time Period</InputLabel>
+          <Select
+            value={timePeriod}
+            label="Time Period"
+            onChange={(e) => handleTimePeriodChange(e.target.value)}
           >
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={liveMode}
-                  onChange={handleLiveModeChange}
-                  color="primary"
-                  size="small"
-                />
-              }
-              label="Live"
-              sx={{ ml: 1 }}
+            <MenuItem value="1h">Last 1 hour</MenuItem>
+            <MenuItem value="6h">Last 6 hours</MenuItem>
+            <MenuItem value="24h">Last 24 hours</MenuItem>
+            <MenuItem value="7d">Last 7 days</MenuItem>
+            <MenuItem value="30d">Last 30 days</MenuItem>
+          </Select>
+        </FormControl>
+
+        <FormControl size="small" sx={{ minWidth: 180 }}>
+          <InputLabel>Priority</InputLabel>
+          <Select
+            value={priorityFilter}
+            label="Priority"
+            onChange={(e) => handlePriorityFilterChange(e.target.value)}
+          >
+            <MenuItem value="all">All</MenuItem>
+            <MenuItem value="0">Emergency and above</MenuItem>
+            <MenuItem value="1">Alert and above</MenuItem>
+            <MenuItem value="2">Critical and above</MenuItem>
+            <MenuItem value="3">Error and above</MenuItem>
+            <MenuItem value="4">Warning and above</MenuItem>
+            <MenuItem value="5">Notice and above</MenuItem>
+            <MenuItem value="6">Info and above</MenuItem>
+            <MenuItem value="7">Debug and above</MenuItem>
+          </Select>
+        </FormControl>
+
+        <Autocomplete
+          size="small"
+          freeSolo
+          options={uniqueIdentifiers}
+          value={identifierFilter === "all" ? "" : identifierFilter}
+          onChange={(_, newValue) => {
+            handleIdentifierFilterChange(newValue || "all");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              const input = e.target as HTMLInputElement;
+              handleIdentifierFilterChange(input.value || "all");
+            }
+          }}
+          filterOptions={(options, { inputValue }) => {
+            if (!inputValue) return options;
+            const lower = inputValue.toLowerCase();
+            return options.filter((opt) => opt.toLowerCase().includes(lower));
+          }}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Identifier"
+              placeholder="All"
+              sx={{ minWidth: 180 }}
             />
-          </Tooltip>
-        </Box>
+          )}
+          sx={{ minWidth: 180 }}
+        />
+
+        <TextField
+          size="small"
+          placeholder="Search logs..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          sx={{ minWidth: 220, flex: "1 1 260px" }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <Tooltip title="Copy logs">
+          <span>
+            <IconButton
+              onClick={handleCopy}
+              size="small"
+              disabled={filteredLogs.length === 0}
+            >
+              <FileCopyIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Download logs">
+          <span>
+            <IconButton
+              onClick={handleDownload}
+              size="small"
+              disabled={filteredLogs.length === 0}
+            >
+              <DownloadIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={liveMode}
+                onChange={handleLiveModeChange}
+                color="success"
+                size="small"
+              />
+            }
+            label="Live"
+            sx={{ ml: 1 }}
+          />
+        </Tooltip>
+        <Box fontWeight="bold">{filteredLogs.length} shown</Box>
       </Box>
 
       {isLoading && <ComponentLoader />}
@@ -615,122 +559,212 @@ const GeneralLogsPage: React.FC = () => {
       {error && <Alert severity="error">{error}</Alert>}
 
       {!isLoading && !error && (
-        <Box
-          ref={logsBoxRef}
-          className="custom-scrollbar"
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            bgcolor: "background.paper",
-            borderRadius: 1,
-            overflow: "auto",
-            border: 1,
-            borderColor: "transparent",
-          }}
-        >
-          {filteredLogs.length > 0 ? (
-            filteredLogs.map((log, idx) => {
-              const colors = getPriorityColor(log.priority, isDark);
-              return (
-                <Box
-                  key={idx}
-                  sx={{
-                    display: "flex",
-                    gap: 1.5,
-                    px: 2,
-                    py: 1.5,
-                    borderBottom: 1,
-                    borderColor: "divider",
-                    bgcolor:
-                      idx % 2 === 0
-                        ? "transparent"
-                        : isDark
-                          ? "rgba(255,255,255,0.02)"
-                          : "rgba(0,0,0,0.02)",
-                    "&:hover": {
-                      bgcolor: isDark
-                        ? "rgba(255,255,255,0.05)"
-                        : "rgba(0,0,0,0.04)",
-                    },
-                    "&:last-child": {
-                      borderBottom: 0,
-                    },
-                  }}
-                >
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      color: colors.text,
-                      pt: 0.25,
-                    }}
+        <TableContainer ref={logsBoxRef}>
+          <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
+            <TableHead>
+              <TableRow
+                sx={(theme) => ({
+                  "& .MuiTableCell-root": { borderBottom: "none" },
+                  backgroundColor:
+                    theme.palette.mode === "dark"
+                      ? "rgba(255,255,255,0.08)"
+                      : "rgba(0,0,0,0.08)",
+                  borderRadius: "6px",
+                  boxShadow: "none",
+                })}
+              >
+                <TableCell width="40px"></TableCell>
+                <TableCell>Priority</TableCell>
+                <TableCell>Identifier</TableCell>
+                <TableCell>Timestamp</TableCell>
+                <TableCell>Message</TableCell>
+                <TableCell width="40px" />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredLogs.map((log, index) => (
+                <React.Fragment key={index}>
+                  <TableRow
+                    sx={(theme) => ({
+                      "& .MuiTableCell-root": { borderBottom: "none" },
+                      backgroundColor:
+                        index % 2 === 0
+                          ? "transparent"
+                          : theme.palette.mode === "dark"
+                            ? "rgba(255,255,255,0.04)"
+                            : "rgba(0,0,0,0.05)",
+                    })}
                   >
-                    {getPriorityIcon(log.priority)}
-                  </Box>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        gap: 1,
-                        alignItems: "center",
-                        mb: 0.5,
-                      }}
-                    >
+                    <TableCell>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          color:
+                            getPriorityColor(log.priority) === "error"
+                              ? "#ff5252"
+                              : getPriorityColor(log.priority) === "warning"
+                                ? "#ff9800"
+                                : getPriorityColor(log.priority) === "info"
+                                  ? "#2196f3"
+                                  : getPriorityColor(log.priority) === "success"
+                                    ? "#00e676"
+                                    : "#9e9e9e",
+                        }}
+                      >
+                        {getPriorityIcon(log.priority)}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
                       <Chip
                         label={getPriorityLabel(log.priority)}
                         size="small"
+                        color={getPriorityColor(log.priority) as any}
                         sx={{
-                          bgcolor: colors.bg,
-                          color: colors.text,
                           fontWeight: 600,
                           fontSize: "0.7rem",
-                          height: 20,
-                          border: `1px solid ${colors.text}`,
                         }}
                       />
+                    </TableCell>
+                    <TableCell>
                       <Chip
                         label={log.identifier}
                         size="small"
                         variant="outlined"
-                        sx={{
-                          fontSize: "0.7rem",
-                          height: 20,
-                          borderColor: isDark
-                            ? "rgba(255,255,255,0.23)"
-                            : "rgba(0,0,0,0.23)",
-                        }}
+                        sx={{ fontSize: "0.75rem" }}
                       />
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ ml: "auto", whiteSpace: "nowrap" }}
-                      >
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontSize: "0.85rem" }}>
                         {log.timestamp}
                       </Typography>
-                    </Box>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        wordBreak: "break-word",
-                        whiteSpace: "pre-wrap",
-                        fontFamily: "monospace",
-                        fontSize: "0.8rem",
-                        color: "text.primary",
-                      }}
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        variant="body2"
+                        noWrap
+                        sx={{
+                          maxWidth: 600,
+                          fontFamily: "monospace",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        {log.message}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <IconButton
+                        size="small"
+                        onClick={() =>
+                          setExpanded(expanded === index ? null : index)
+                        }
+                      >
+                        <ExpandMoreIcon
+                          style={{
+                            transform:
+                              expanded === index
+                                ? "rotate(180deg)"
+                                : "rotate(0deg)",
+                            transition: "0.2s",
+                          }}
+                        />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow
+                    sx={(theme) => ({
+                      "& .MuiTableCell-root": { borderBottom: "none" },
+                      backgroundColor:
+                        index % 2 === 0
+                          ? "transparent"
+                          : theme.palette.mode === "dark"
+                            ? "rgba(255,255,255,0.08)"
+                            : "rgba(0,0,0,0.05)",
+                    })}
+                  >
+                    <TableCell
+                      style={{ paddingBottom: 0, paddingTop: 0 }}
+                      colSpan={6}
                     >
-                      {log.message}
-                    </Typography>
-                  </Box>
-                </Box>
-              );
-            })
-          ) : (
-            <Box sx={{ p: 4, textAlign: "center" }}>
-              <Typography color="text.secondary">
-                {logs.length === 0 ? "No logs available." : "No matching logs."}
-              </Typography>
-            </Box>
-          )}
+                      <Collapse
+                        in={expanded === index}
+                        timeout="auto"
+                        unmountOnExit
+                      >
+                        <Box
+                          component={motion.div}
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          sx={{
+                            margin: 2,
+                            borderRadius: 2,
+                            p: 2,
+                            bgcolor: (theme) =>
+                              theme.palette.mode === "dark"
+                                ? "rgba(255,255,255,0.05)"
+                                : "rgba(0,0,0,0.03)",
+                          }}
+                        >
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Full Message:</b>
+                          </Typography>
+                          <Paper
+                            sx={(theme) => ({
+                              p: 2,
+                              mb: 2,
+                              bgcolor:
+                                theme.palette.mode === "dark"
+                                  ? "rgba(0,0,0,0.3)"
+                                  : "rgba(0,0,0,0.02)",
+                              fontFamily: "monospace",
+                              fontSize: "0.85rem",
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                            })}
+                          >
+                            {log.message}
+                          </Paper>
+
+                          {log.rawJson && (
+                            <>
+                              <Typography variant="subtitle2" gutterBottom>
+                                <b>Raw Journal Entry:</b>
+                              </Typography>
+                              <Paper
+                                sx={(theme) => ({
+                                  p: 2,
+                                  bgcolor:
+                                    theme.palette.mode === "dark"
+                                      ? "rgba(0,0,0,0.3)"
+                                      : "rgba(0,0,0,0.02)",
+                                  fontFamily: "monospace",
+                                  fontSize: "0.75rem",
+                                  maxHeight: 300,
+                                  overflowY: "auto",
+                                })}
+                              >
+                                <pre style={{ margin: 0 }}>
+                                  {JSON.stringify(log.rawJson, null, 2)}
+                                </pre>
+                              </Paper>
+                            </>
+                          )}
+                        </Box>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                </React.Fragment>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {!isLoading && !error && filteredLogs.length === 0 && (
+        <Box textAlign="center" py={4}>
+          <Typography variant="body2" color="text.secondary">
+            {logs.length === 0 ? "No logs available." : "No matching logs."}
+          </Typography>
         </Box>
       )}
     </Box>
