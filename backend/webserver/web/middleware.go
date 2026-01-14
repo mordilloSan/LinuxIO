@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/mordilloSan/go_logger/v2/logger"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 // RecoveryMiddleware returns middleware that recovers from panics.

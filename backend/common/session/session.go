@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/go_logger/v2/logger"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 // -----------------------------------------------------------------------------

@@ -8,7 +8,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/mordilloSan/go_logger/v2/logger"
+	"github.com/mordilloSan/go-logger/logger"
 	"golang.org/x/sys/unix"
 )
 

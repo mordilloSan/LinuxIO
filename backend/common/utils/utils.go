@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/go_logger/v2/logger"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 func GetPublicIP() (string, error) {

@@ -9,10 +9,11 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/mordilloSan/go-logger/logger"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/generic"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/go_logger/v2/logger"
 )
 
 var loadedModules = make(map[string]*ModuleInfo)
