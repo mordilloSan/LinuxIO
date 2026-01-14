@@ -144,6 +144,9 @@ export interface DockerImage {
   RepoTags: string[];
   Size: number;
   Created: number;
+  Containers?: number;
+  Labels?: Record<string, string>;
+  RepoDigests?: string[];
 }
 
 export interface DockerNetwork {

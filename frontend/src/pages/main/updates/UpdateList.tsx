@@ -10,7 +10,7 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";

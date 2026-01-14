@@ -6,8 +6,7 @@ import {
 import { toast } from "sonner";
 
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
-import * as linuxio from "@/api/linuxio-core";
-import { LinuxIOError } from "@/api/linuxio-core";
+import linuxio, { LinuxIOError } from "@/api/react-query";
 import { useFileTransfers } from "./useFileTransfers";
 
 type UseFileMutationsParams = {

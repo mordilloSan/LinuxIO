@@ -18,7 +18,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import { useStreamMux } from "@/api/linuxio";
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 import { encodeString, decodeString } from "@/api/StreamMultiplexer";
 import type { Stream } from "@/api/StreamMultiplexer";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -53,43 +53,36 @@ const TerminalDialog: React.FC<Props> = ({
 
   const [terminalKey, setTerminalKey] = useState(0);
   const [shell, setShell] = useState("");
-  const [availableShells, setAvailableShells] = useState<string[]>([]);
-  const [loadingShells, setLoadingShells] = useState(false);
   const [hasLoadedShells, setHasLoadedShells] = useState(false);
 
   const { isOpen, openStream } = useStreamMux();
   const theme = useTheme();
 
   // Fetch available shells when dialog opens
-  const fetchShells = useCallback(async () => {
-    if (!containerId) return;
+  const { data: shells, isLoading: loadingShells } =
+    linuxio.terminal.list_shells.useQuery(containerId, {
+      enabled: open && !!containerId,
+    });
 
-    setLoadingShells(true);
-    try {
-      const shells = await linuxio.call<string[]>("terminal", "list_shells", [
-        containerId,
-      ]);
-      const validShells = shells.filter(
-        (s: string) => s && typeof s === "string" && s.trim() !== "",
-      );
-      setAvailableShells(validShells);
-      setShell(validShells.length > 0 ? validShells[0] : "");
+  const availableShells = React.useMemo(() => {
+    if (!shells) return [];
+    return shells.filter(
+      (s) => s && typeof s === "string" && s.trim() !== "",
+    );
+  }, [shells]);
+
+  // Set default shell when shells are loaded
+  useEffect(() => {
+    if (availableShells.length > 0 && !shell && !hasLoadedShells) {
+      setShell(availableShells[0]);
       setHasLoadedShells(true);
-    } catch (error) {
-      console.error("Failed to fetch container shells:", error);
-      setAvailableShells([]);
-      setHasLoadedShells(true);
-    } finally {
-      setLoadingShells(false);
     }
-  }, [containerId]);
+  }, [availableShells, shell, hasLoadedShells]);
 
   const handleDialogEntered = useCallback(() => {
     setShell("");
-    setAvailableShells([]);
     setHasLoadedShells(false);
-    fetchShells();
-  }, [fetchShells]);
+  }, []);
 
   const handleDialogExited = useCallback(() => {
     // Close stream on dialog exit
@@ -98,9 +91,7 @@ const TerminalDialog: React.FC<Props> = ({
       streamRef.current = null;
     }
     setShell("");
-    setAvailableShells([]);
     setHasLoadedShells(false);
-    setLoadingShells(false);
     xterm.current?.dispose();
     xterm.current = null;
     fitAddon.current = null;

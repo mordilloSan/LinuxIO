@@ -32,7 +32,7 @@ import {
   STREAM_CHUNK_SIZE,
   type ResultFrame,
 } from "@/api/linuxio";
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
