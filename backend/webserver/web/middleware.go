@@ -29,7 +29,7 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(wrapped, r)
-		logger.Infof("%s %s %d %v", r.Method, r.URL.Path, wrapped.status, time.Since(start))
+		logger.Debugf("%s %s %d %v", r.Method, r.URL.Path, wrapped.status, time.Since(start))
 	})
 }
 
