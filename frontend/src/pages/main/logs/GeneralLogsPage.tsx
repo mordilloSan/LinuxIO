@@ -51,7 +51,7 @@ import {
   getExpandedContentStyles,
   tableContainerStyles,
   responsiveTextStyles,
-} from "@/styles/tableStyles";
+} from "@/theme/tableStyles";
 
 const DEFAULT_TAIL = "200";
 

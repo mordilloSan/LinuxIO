@@ -25,7 +25,7 @@ import {
   getExpandedContentStyles,
   tableContainerStyles,
   responsiveTextStyles,
-} from "@/styles/tableStyles";
+} from "@/theme/tableStyles";
 
 const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   const result: T[][] = [];

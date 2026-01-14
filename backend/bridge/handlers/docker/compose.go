@@ -25,12 +25,11 @@ type ComposeService struct {
 
 // ComposeProject represents a docker compose stack
 type ComposeProject struct {
-	Name         string                     `json:"name"`
-	Status       string                     `json:"status"` // "running", "partial", "stopped"
-	Services     map[string]*ComposeService `json:"services"`
-	ServiceCount int                        `json:"service_count"`
-	ConfigFiles  []string                   `json:"config_files"`
-	WorkingDir   string                     `json:"working_dir"`
+	Name        string                     `json:"name"`
+	Status      string                     `json:"status"` // "running", "partial", "stopped"
+	Services    map[string]*ComposeService `json:"services"`
+	ConfigFiles []string                   `json:"config_files"`
+	WorkingDir  string                     `json:"working_dir"`
 }
 
 // ListComposeProjects discovers all compose projects by analyzing container labels
@@ -105,7 +104,6 @@ func ListComposeProjects() (any, error) {
 
 	// Calculate overall project status
 	for _, project := range projects {
-		project.ServiceCount = len(project.Services)
 		project.Status = calculateProjectStatus(project)
 	}
 

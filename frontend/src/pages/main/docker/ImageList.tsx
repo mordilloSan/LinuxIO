@@ -27,7 +27,7 @@ import {
   responsiveTextStyles,
   longTextStyles,
   wrappableChipStyles,
-} from "@/styles/tableStyles";
+} from "@/theme/tableStyles";
 
 const ImageList: React.FC = () => {
   const { data: images = [] } = linuxio.docker.list_images.useQuery({
