@@ -9,8 +9,7 @@ import React, {
 import { toast } from "sonner";
 
 import { waitForStreamMux } from "@/api/linuxio";
-import * as linuxio from "@/api/linuxio-core";
-import { LinuxIOError } from "@/api/linuxio-core";
+import linuxio, { LinuxIOError } from "@/api/react-query";
 import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,

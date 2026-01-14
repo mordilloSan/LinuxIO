@@ -16,28 +16,12 @@ import {
 import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 
+import type { Peer } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const wireguardToastMeta = {
   meta: { href: "/wireguard", label: "Open WireGuard" },
-};
-
-type Peer = {
-  name: string;
-  public_key: string;
-  allowed_ips?: string[];
-  endpoint?: string;
-  preshared_key?: string;
-  persistent_keepalive?: number;
-
-  // New fields from server:
-  last_handshake?: string; // RFC3339 or "never"
-  last_handshake_unix?: number; // 0 if never
-  rx_bytes?: number;
-  tx_bytes?: number;
-  rx_bps?: number; // bytes/sec
-  tx_bps?: number; // bytes/sec
 };
 
 interface InterfaceDetailsProps {
@@ -108,41 +92,20 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     isPending: isLoading,
     isError,
     refetch,
-  } = linuxio.useCall<Peer[] | { peers: Peer[] }>(
-    "wireguard",
-    "list_peers",
-    [interfaceName],
-    {
-      enabled: !!interfaceName,
-      // poll so bps updates
-      refetchInterval: 3000,
-    },
-  );
+  } = linuxio.wireguard.list_peers.useQuery(interfaceName, {
+    enabled: !!interfaceName,
+    // poll so bps updates
+    refetchInterval: 3000,
+  });
 
-  // Mutations (using string-based API for complex response types)
-  const deletePeerMutation = linuxio.useMutate<unknown, string[]>(
-    "wireguard",
-    "remove_peer",
-  );
-  const downloadConfigMutation = linuxio.useMutate<
-    { content: string },
-    string[]
-  >("wireguard", "peer_config_download");
-  const qrCodeMutation = linuxio.useMutate<{ qrcode: string }, string[]>(
-    "wireguard",
-    "peer_qrcode",
-  );
+  // Mutations
+  const deletePeerMutation = linuxio.wireguard.remove_peer.useMutation();
+  const downloadConfigMutation =
+    linuxio.wireguard.peer_config_download.useMutation();
+  const qrCodeMutation = linuxio.wireguard.peer_qrcode.useMutation();
 
-  // Normalize peers response
-  const peers: Peer[] = useMemo(
-    () =>
-      peersData
-        ? Array.isArray(peersData)
-          ? peersData
-          : peersData.peers || []
-        : [],
-    [peersData],
-  );
+  // Type-safe API returns Peer[] directly
+  const peers: Peer[] = useMemo(() => peersData || [], [peersData]);
 
   // Calculate online status (re-calculates when peers or time updates)
   const peersWithStatus = useMemo(() => {
@@ -154,7 +117,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   }, [peers, currentTime]);
 
   const handleDeletePeer = (peerName: string) => {
-    deletePeerMutation.mutate([interfaceName, peerName], {
+    deletePeerMutation.mutate([[interfaceName, peerName]], {
       onSuccess: () => {
         toast.success(
           `WireGuard Peer '${peerName}' deleted`,
@@ -166,7 +129,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   };
 
   const handleDownloadConfig = (peername: string) => {
-    downloadConfigMutation.mutate([interfaceName, peername], {
+    downloadConfigMutation.mutate([[interfaceName, peername]], {
       onSuccess: (result) => {
         // Create blob from config text
         const blob = new Blob([result.content], { type: "text/plain" });
@@ -187,7 +150,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   };
 
   const handleViewQrCode = (peername: string) => {
-    qrCodeMutation.mutate([interfaceName, peername], {
+    qrCodeMutation.mutate([[interfaceName, peername]], {
       onSuccess: (result) => {
         setQrCode(result.qrcode);
         setOpenDialog(true);

@@ -1,7 +1,7 @@
 // src/hooks/usePackageUpdater.ts
 import { useState, useCallback, useRef } from "react";
 
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 import { getStreamMux, Stream, ResultFrame, encodeString } from "@/api/linuxio";
 
 // Stream type for package updates (must match backend ipc.StreamTypePkgUpdate)

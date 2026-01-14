@@ -17,9 +17,9 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 
 interface PermissionsDialogProps {
   open: boolean;
@@ -130,29 +130,14 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   const [recursive, setRecursive] = useState(false);
   const [ownerInput, setOwnerInput] = useState(owner || "");
   const [groupInput, setGroupInput] = useState(group || "");
-  const [availableUsers, setAvailableUsers] = useState<string[]>([]);
-  const [availableGroups, setAvailableGroups] = useState<string[]>([]);
-
   // Fetch users and groups when dialog opens
-  useEffect(() => {
-    if (open) {
-      const fetchUsersAndGroups = async () => {
-        try {
-          // Args: []
-          const data = await linuxio.call<{
-            users: string[];
-            groups: string[];
-          }>("filebrowser", "users_groups", []);
-          setAvailableUsers(data.users || []);
-          setAvailableGroups(data.groups || []);
-        } catch (error) {
-          console.error("Failed to fetch users and groups:", error);
-          // Continue without autocomplete data
-        }
-      };
-      fetchUsersAndGroups();
-    }
-  }, [open]);
+  const { data: usersGroupsData } = linuxio.filebrowser.users_groups.useQuery({
+    enabled: open,
+  });
+
+  // Derive available users and groups directly from query data
+  const availableUsers = usersGroupsData?.users || [];
+  const availableGroups = usersGroupsData?.groups || [];
 
   const handlePermissionChange = useCallback(
     (category: keyof PermissionBits, type: "read" | "write" | "execute") => {

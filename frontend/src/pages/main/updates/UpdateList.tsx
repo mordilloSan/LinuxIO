@@ -7,10 +7,9 @@ import {
   Collapse,
   CircularProgress,
 } from "@mui/material";
-import { useMutation } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
@@ -38,19 +37,15 @@ const UpdateList: React.FC<Props> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Mutation for fetching changelog details
-  const { mutate: fetchChangelogMutation } = useMutation<Update, Error, string>(
-    {
-      mutationFn: (packageId: string) =>
-        linuxio.call<Update>("dbus", "GetUpdateDetail", [packageId]),
-    },
-  );
+  const { mutate: fetchChangelogMutation } =
+    linuxio.dbus.GetUpdateDetail.useMutation();
 
   const fetchChangelog = useCallback(
     (packageId: string) => {
       if (changelogs[packageId]) return; // Already loaded
 
       setLoadingChangelog(packageId);
-      fetchChangelogMutation(packageId, {
+      fetchChangelogMutation([packageId], {
         onSuccess: (detail) => {
           setChangelogs((prev) => ({
             ...prev,

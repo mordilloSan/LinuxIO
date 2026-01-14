@@ -1,7 +1,6 @@
 import { Box, Grid, Tooltip, Typography, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMutation } from "@tanstack/react-query";
 import React, { useMemo, useState, useCallback } from "react";
 import { toast } from "sonner";
 
@@ -64,37 +63,74 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   const iconUrl = useMemo(() => getContainerIconUrl(name), [name]);
 
   // ---- actions (start/stop/restart/remove) ----
-  const { mutate: performContainerAction, isPending: isActionPending } =
-    useMutation({
-      mutationFn: async (action: "start" | "stop" | "restart" | "remove") => {
-        const commandMap: Record<string, string> = {
-          start: "start_container",
-          stop: "stop_container",
-          restart: "restart_container",
-          remove: "remove_container",
-        };
-        return linuxio.call("docker", commandMap[action], [container.Id]);
-      },
-      onSuccess: (_, action) => {
-        const actionLabels: Record<string, string> = {
-          start: "started",
-          stop: "stopped",
-          restart: "restarted",
-          remove: "removed",
-        };
-        toast.success(`Container ${name} ${actionLabels[action]} successfully`);
-        // refresh container list
+  const { mutate: startContainer, isPending: isStartPending } =
+    linuxio.docker.start_container.useMutation({
+      onSuccess: () => {
+        toast.success(`Container ${name} started successfully`);
         queryClient.invalidateQueries({
           queryKey: ["stream", "docker", "list_containers"],
         });
       },
     });
 
+  const { mutate: stopContainer, isPending: isStopPending } =
+    linuxio.docker.stop_container.useMutation({
+      onSuccess: () => {
+        toast.success(`Container ${name} stopped successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["stream", "docker", "list_containers"],
+        });
+      },
+    });
+
+  const { mutate: restartContainer, isPending: isRestartPending } =
+    linuxio.docker.restart_container.useMutation({
+      onSuccess: () => {
+        toast.success(`Container ${name} restarted successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["stream", "docker", "list_containers"],
+        });
+      },
+    });
+
+  const { mutate: removeContainer, isPending: isRemovePending } =
+    linuxio.docker.remove_container.useMutation({
+      onSuccess: () => {
+        toast.success(`Container ${name} removed successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["stream", "docker", "list_containers"],
+        });
+      },
+    });
+
+  const isActionPending =
+    isStartPending || isStopPending || isRestartPending || isRemovePending;
+
   const handleAction = useCallback(
     (action: "start" | "stop" | "restart" | "remove") => {
-      performContainerAction(action);
+      const containerId = [container.Id];
+      switch (action) {
+        case "start":
+          startContainer(containerId);
+          break;
+        case "stop":
+          stopContainer(containerId);
+          break;
+        case "restart":
+          restartContainer(containerId);
+          break;
+        case "remove":
+          removeContainer(containerId);
+          break;
+      }
     },
-    [performContainerAction],
+    [
+      container.Id,
+      startContainer,
+      stopContainer,
+      restartContainer,
+      removeContainer,
+    ],
   );
 
   const handleLogsClick = () => setLogDialogOpen(true);

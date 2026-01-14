@@ -21,12 +21,13 @@ func ListVolumes() (any, error) {
 		}
 	}()
 
-	volumes, err := cli.VolumeList(context.Background(), volume.ListOptions{})
+	volumesResp, err := cli.VolumeList(context.Background(), volume.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list volumes: %w", err)
 	}
 
-	return volumes, nil
+	// Return the Volumes array from the response
+	return volumesResp.Volumes, nil
 }
 
 // Delete a volume
