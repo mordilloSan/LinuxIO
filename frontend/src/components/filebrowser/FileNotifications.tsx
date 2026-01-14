@@ -14,7 +14,7 @@ import { useFileTransfers } from "@/hooks/useFileTransfers";
 
 interface CompletedTransfer {
   id: string;
-  type: "download" | "upload" | "compression" | "extraction";
+  type: "download" | "upload" | "compression" | "extraction" | "reindex";
   label?: string;
   completedAt: Date;
 }
@@ -112,12 +112,18 @@ const FileNotifications: React.FC = () => {
         return "Compression Progress";
       case "extraction":
         return "Extraction Progress";
+      case "reindex":
+        return "Reindex Progress";
       default:
         return "Progress";
     }
   };
 
   const handleCancel = (transfer: (typeof transfers)[number]) => {
+    // Reindex cannot be cancelled - it must complete
+    if (transfer.type === "reindex") {
+      return;
+    }
     if (transfer.type === "download") {
       cancelDownload(transfer.id);
     } else if (transfer.type === "upload") {
@@ -246,15 +252,19 @@ const FileNotifications: React.FC = () => {
                             ? "Preparing upload..."
                             : transfer.type === "compression"
                               ? "Compressing selection..."
-                              : "Extracting archive..."}
+                              : transfer.type === "reindex"
+                                ? "Reindexing filesystem..."
+                                : "Extracting archive..."}
                     </Typography>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleCancel(transfer)}
-                      sx={{ ml: 1, p: 0.5 }}
-                    >
-                      <CloseIcon fontSize="small" />
-                    </IconButton>
+                    {transfer.type !== "reindex" && (
+                      <IconButton
+                        size="small"
+                        onClick={() => handleCancel(transfer)}
+                        sx={{ ml: 1, p: 0.5 }}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </Box>
                   {(() => {
                     const percentText = `${Math.round(transfer.progress)}%`;

@@ -17,6 +17,7 @@ const STREAM_TYPE_FB_DOWNLOAD = "fb-download";
 const STREAM_TYPE_FB_UPLOAD = "fb-upload";
 const STREAM_TYPE_FB_COMPRESS = "fb-compress";
 const STREAM_TYPE_FB_EXTRACT = "fb-extract";
+const STREAM_TYPE_FB_REINDEX = "fb-reindex";
 
 interface Download {
   id: string;
@@ -66,13 +67,27 @@ interface Extraction {
   stream?: Stream | null;
 }
 
-type Transfer = Download | Upload | Compression | Extraction;
+interface Reindex {
+  id: string;
+  type: "reindex";
+  path: string;
+  filesIndexed: number;
+  dirsIndexed: number;
+  currentPath: string;
+  progress: number;
+  label: string;
+  abortController: AbortController;
+  stream?: Stream | null;
+}
+
+type Transfer = Download | Upload | Compression | Extraction | Reindex;
 
 export interface FileTransferContextValue {
   downloads: Download[];
   uploads: Upload[];
   compressions: Compression[];
   extractions: Extraction[];
+  reindexes: Reindex[];
   transfers: Transfer[];
   startDownload: (paths: string[]) => Promise<void>;
   cancelDownload: (id: string) => void;
@@ -89,6 +104,16 @@ export interface FileTransferContextValue {
     onComplete?: () => void;
   }) => Promise<void>;
   cancelExtraction: (id: string) => void;
+  startReindex: (options: {
+    path?: string;
+    onComplete?: (result: {
+      filesIndexed: number;
+      dirsIndexed: number;
+      totalSize: number;
+      durationMs: number;
+    }) => void;
+  }) => Promise<void>;
+  isReindexing: boolean;
   startUpload: (
     entries: Array<{ file?: File; relativePath: string; isDirectory: boolean }>,
     targetPath: string,
@@ -115,8 +140,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [compressions, setCompressions] = useState<Compression[]>([]);
   const [extractions, setExtractions] = useState<Extraction[]>([]);
+  const [reindexes, setReindexes] = useState<Reindex[]>([]);
   const activeCompressionIdsRef = useRef<Set<string>>(new Set());
   const activeExtractionIdsRef = useRef<Set<string>>(new Set());
+  const activeReindexIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
   const transferRatesRef = useRef<
@@ -212,7 +239,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     ...uploads,
     ...compressions,
     ...extractions,
+    ...reindexes,
   ];
+
+  const isReindexing = reindexes.length > 0;
 
   const updateDownload = useCallback(
     (
@@ -753,6 +783,147 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [extractions, removeExtraction],
   );
 
+  const removeReindex = useCallback((id: string) => {
+    if (!activeReindexIdsRef.current.has(id)) {
+      return;
+    }
+    activeReindexIdsRef.current.delete(id);
+    setReindexes((prev) => prev.filter((r) => r.id !== id));
+    streamRefsRef.current.delete(id);
+  }, []);
+
+  const startReindex = useCallback(
+    async ({
+      path = "/",
+      onComplete,
+    }: {
+      path?: string;
+      onComplete?: (result: {
+        filesIndexed: number;
+        dirsIndexed: number;
+        totalSize: number;
+        durationMs: number;
+      }) => void;
+    }) => {
+      // Only allow one reindex at a time
+      if (activeReindexIdsRef.current.size > 0) {
+        toast.error("A reindex operation is already in progress");
+        return;
+      }
+
+      const id = crypto.randomUUID();
+      const abortController = new AbortController();
+
+      const reindex: Reindex = {
+        id,
+        type: "reindex",
+        path,
+        filesIndexed: 0,
+        dirsIndexed: 0,
+        currentPath: "",
+        progress: 0,
+        label: "Starting reindex...",
+        abortController,
+      };
+
+      setReindexes((prev) => [...prev, reindex]);
+      activeReindexIdsRef.current.add(id);
+
+      const mux = getStreamMux();
+      if (!mux || mux.status !== "open") {
+        toast.error("Stream connection not ready");
+        removeReindex(id);
+        return;
+      }
+
+      // Build payload: "fb-reindex\0path" (path is optional, defaults to "/" on backend)
+      const payloadParts = [STREAM_TYPE_FB_REINDEX];
+      if (path && path !== "/") {
+        payloadParts.push(path);
+      }
+      const payload = encodeString(payloadParts.join("\0"));
+
+      const stream = mux.openStream(STREAM_TYPE_FB_REINDEX, payload);
+      if (!stream) {
+        toast.error("Failed to open reindex stream");
+        removeReindex(id);
+        return;
+      }
+
+      // Store stream reference for cancellation
+      streamRefsRef.current.set(id, stream);
+
+      stream.onProgress = (progress: ProgressFrame) => {
+        const progressData = progress as ProgressFrame & {
+          files_indexed?: number;
+          dirs_indexed?: number;
+          current_path?: string;
+          phase?: string;
+        };
+
+        setReindexes((prev) =>
+          prev.map((r) => {
+            if (r.id !== id) return r;
+            const filesIndexed = progressData.files_indexed ?? r.filesIndexed;
+            const dirsIndexed = progressData.dirs_indexed ?? r.dirsIndexed;
+            const currentPath = progressData.current_path ?? r.currentPath;
+            const phase = progressData.phase ?? "indexing";
+
+            return {
+              ...r,
+              filesIndexed,
+              dirsIndexed,
+              currentPath,
+              label:
+                phase === "connecting"
+                  ? "Connecting to indexer..."
+                  : `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`,
+            };
+          }),
+        );
+      };
+
+      stream.onResult = (result: ResultFrame) => {
+        streamRefsRef.current.delete(id);
+        setReindexes((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, stream: null } : r)),
+        );
+
+        if (result.status === "ok") {
+          const data = result.data as
+            | {
+                files_indexed?: number;
+                dirs_indexed?: number;
+                total_size?: number;
+                duration_ms?: number;
+              }
+            | undefined;
+
+          toast.success(
+            `Reindex complete: ${data?.files_indexed ?? 0} files, ${data?.dirs_indexed ?? 0} dirs`,
+          );
+          onComplete?.({
+            filesIndexed: data?.files_indexed ?? 0,
+            dirsIndexed: data?.dirs_indexed ?? 0,
+            totalSize: data?.total_size ?? 0,
+            durationMs: data?.duration_ms ?? 0,
+          });
+        } else {
+          toast.error(result.error || "Reindex failed");
+        }
+        removeReindex(id);
+      };
+
+      stream.onClose = () => {
+        streamRefsRef.current.delete(id);
+        if (abortController.signal.aborted) {
+          removeReindex(id);
+        }
+      };
+    },
+    [removeReindex],
+  );
+
   const updateUpload = useCallback(
     (
       id: string,
@@ -1218,6 +1389,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         uploads,
         compressions,
         extractions,
+        reindexes,
         transfers,
         startDownload,
         cancelDownload,
@@ -1225,6 +1397,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         cancelCompression,
         startExtraction,
         cancelExtraction,
+        startReindex,
+        isReindexing,
         startUpload,
         cancelUpload,
       }}

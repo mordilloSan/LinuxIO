@@ -7,7 +7,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 // repairConfig loads cfgPath, validates keys/values, and rewrites only if needed.

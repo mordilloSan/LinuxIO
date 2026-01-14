@@ -2,9 +2,7 @@ package terminal
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -14,7 +12,7 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -116,8 +114,6 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 		doneChan: make(chan struct{}),
 	}
 
-	logger.Infof("[StreamTerminal] Started for user=%s pid=%d", sess.User.Username, cmd.Process.Pid)
-
 	// Start bidirectional relay
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -136,7 +132,6 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 
 	wg.Wait()
 	sts.cleanup()
-	logger.Infof("[StreamTerminal] Closed for user=%s", sess.User.Username)
 	return nil
 }
 
@@ -152,14 +147,10 @@ func (sts *StreamTerminalSession) relayPTYToStream() {
 				Payload:  buf[:n],
 			}
 			if werr := ipc.WriteRelayFrame(sts.Stream, frame); werr != nil {
-				logger.Debugf("[StreamTerminal] write to stream failed: %v", werr)
 				return
 			}
 		}
 		if err != nil {
-			if !errors.Is(err, io.EOF) && !isExpectedFileClosed(err) {
-				logger.Debugf("[StreamTerminal] PTY read error: %v", err)
-			}
 			// Send close frame
 			sendStreamClose(sts.Stream, 1)
 			return
@@ -172,9 +163,6 @@ func (sts *StreamTerminalSession) relayStreamToPTY() {
 	for {
 		frame, err := ipc.ReadRelayFrame(sts.Stream)
 		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				logger.Debugf("[StreamTerminal] stream read error: %v", err)
-			}
 			return
 		}
 
@@ -183,13 +171,11 @@ func (sts *StreamTerminalSession) relayStreamToPTY() {
 			// Write input to PTY
 			if len(frame.Payload) > 0 {
 				if _, werr := sts.PTY.Write(frame.Payload); werr != nil {
-					logger.Debugf("[StreamTerminal] PTY write error: %v", werr)
 					return
 				}
 			}
 
 		case ipc.OpStreamClose:
-			logger.Debugf("[StreamTerminal] received close frame")
 			return
 
 		case ipc.OpStreamResize:
@@ -197,12 +183,11 @@ func (sts *StreamTerminalSession) relayStreamToPTY() {
 			if len(frame.Payload) >= 4 {
 				cols := binary.BigEndian.Uint16(frame.Payload[0:2])
 				rows := binary.BigEndian.Uint16(frame.Payload[2:4])
-				logger.Debugf("[StreamTerminal] Resize %dx%d", cols, rows)
 				_ = pty.Setsize(sts.PTY, &pty.Winsize{Cols: cols, Rows: rows})
 			}
 
 		default:
-			logger.Debugf("[StreamTerminal] unknown opcode: %d", frame.Opcode)
+			// Unknown opcode - ignore
 		}
 	}
 }
@@ -309,8 +294,6 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 		doneChan: make(chan struct{}),
 	}
 
-	logger.Infof("[ContainerTerminal] Started for container=%s shell=%s pid=%d", containerID, shell, cmd.Process.Pid)
-
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -326,6 +309,5 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 
 	wg.Wait()
 	sts.cleanup()
-	logger.Infof("[ContainerTerminal] Closed for container=%s", containerID)
 	return nil
 }

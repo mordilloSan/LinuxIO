@@ -9,7 +9,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 // --- Peer Management ---

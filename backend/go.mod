@@ -10,13 +10,13 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jaypipes/ghw v0.21.2
 	github.com/libp2p/go-yamux/v4 v4.0.2
-	github.com/mordilloSan/go_logger v1.6.0
+	github.com/mordilloSan/go-logger v1.0.3
 	github.com/shirou/gopsutil/v4 v4.25.12
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sys v0.40.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
-	gopkg.in/ini.v1 v1.67.0
+	gopkg.in/ini.v1 v1.67.1
 )
 
 require (
@@ -26,7 +26,7 @@ require (
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260112192933-99fd39fd28a9 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
@@ -65,8 +65,8 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.39.0 // indirect
 	go.opentelemetry.io/otel/metric v1.39.0 // indirect
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/crypto v0.47.0 // indirect
+	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb // indirect

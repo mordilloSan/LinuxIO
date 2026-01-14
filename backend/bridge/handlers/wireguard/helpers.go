@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,8 +17,25 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 )
+
+// validInterfaceName matches valid WireGuard interface names (alphanumeric, underscore, hyphen)
+var validInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// validateInterfaceName checks if the interface name is safe to use in file paths
+func validateInterfaceName(name string) error {
+	if name == "" {
+		return fmt.Errorf("interface name cannot be empty")
+	}
+	if len(name) > 15 { // Linux interface name limit
+		return fmt.Errorf("interface name too long (max 15 characters)")
+	}
+	if !validInterfaceName.MatchString(name) {
+		return fmt.Errorf("interface name contains invalid characters (allowed: a-z, A-Z, 0-9, _, -)")
+	}
+	return nil
+}
 
 // --- Path Helpers ---
 func configPath(name string) string {

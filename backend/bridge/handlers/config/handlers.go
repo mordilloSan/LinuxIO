@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -24,7 +24,7 @@ type themePayload struct {
 func RegisterHandlers(sess *session.Session) {
 	username := sess.User.Username
 
-	handler.RegisterFunc("config", "theme_get", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("config", "theme_get", func(ctx context.Context, args []string, emit ipc.Events) error {
 		cfg, cfgPath, err := Load(username)
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
@@ -34,13 +34,13 @@ func RegisterHandlers(sess *session.Session) {
 		return emit.Result(cfg.AppSettings)
 	})
 
-	handler.RegisterFunc("config", "theme_set", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("config", "theme_set", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		var payload themePayload
 		if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 
 		cfg, _, err := Load(username)

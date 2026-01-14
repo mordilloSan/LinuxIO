@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )

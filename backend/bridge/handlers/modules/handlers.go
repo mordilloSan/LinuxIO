@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -15,7 +15,7 @@ func RegisterHandlers(
 	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) {
 	// GetModules - public handler (no privilege required)
-	handler.RegisterFunc("modules", "GetModules", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("modules", "GetModules", func(ctx context.Context, args []string, emit ipc.Events) error {
 		modules, err := GetLoadedModulesForFrontend()
 		if err != nil {
 			return err
@@ -24,12 +24,12 @@ func RegisterHandlers(
 	})
 
 	// GetModuleDetails - privileged handler
-	handler.RegisterFunc("modules", "GetModuleDetails", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("modules", "GetModuleDetails", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if !sess.Privileged {
 			return fmt.Errorf("privilege required")
 		}
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		details, err := GetModuleDetailsInfo(args[0])
 		if err != nil {
@@ -39,12 +39,12 @@ func RegisterHandlers(
 	})
 
 	// ValidateModule - privileged handler
-	handler.RegisterFunc("modules", "ValidateModule", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("modules", "ValidateModule", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if !sess.Privileged {
 			return fmt.Errorf("privilege required")
 		}
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := ValidateModuleAtPath(args[0])
 		if err != nil {
@@ -54,12 +54,12 @@ func RegisterHandlers(
 	})
 
 	// InstallModule - privileged handler
-	handler.RegisterFunc("modules", "InstallModule", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("modules", "InstallModule", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if !sess.Privileged {
 			return fmt.Errorf("privilege required")
 		}
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		targetName := ""
 		if len(args) > 1 {
@@ -74,12 +74,12 @@ func RegisterHandlers(
 	})
 
 	// UninstallModule - privileged handler
-	handler.RegisterFunc("modules", "UninstallModule", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("modules", "UninstallModule", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if !sess.Privileged {
 			return fmt.Errorf("privilege required")
 		}
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := UninstallModuleOperation(args[0], streamHandlers)
 		if err != nil {

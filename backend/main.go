@@ -32,6 +32,8 @@ func main() {
 		runSystemctl("stop", "linuxio.target")
 	case "restart":
 		runSystemctl("restart", "linuxio.target")
+	case "verbose":
+		runVerbose(args)
 	case "modules":
 		runModules()
 	case "version":
@@ -56,6 +58,7 @@ Commands:
   start      Start LinuxIO services
   stop       Stop LinuxIO services
   restart    Restart LinuxIO services
+  verbose    Manage verbose logging [enable|disable|status]
   modules    List all installed modules
   version    Show version information
   help       Show this help message`)
@@ -168,17 +171,6 @@ func runLogs(args []string) {
 		}
 	}
 
-	// Pipe through awk to remove hostname (4th field) and colorize log levels
-	awkScript := `{
-		$4=""
-		gsub(/\[DEBUG\]/, "\033[36m[DEBUG]\033[0m")
-		gsub(/\[INFO\]/, "\033[32m[INFO]\033[0m")
-		gsub(/\[WARN\]/, "\033[33m[WARN]\033[0m")
-		gsub(/\[WARNING\]/, "\033[33m[WARNING]\033[0m")
-		gsub(/\[ERROR\]/, "\033[31m[ERROR]\033[0m")
-		print $0
-	}`
-
 	allUnits := []string{
 		"_SYSTEMD_UNIT=linuxio.target",
 		"_SYSTEMD_UNIT=linuxio-webserver.service",
@@ -219,7 +211,29 @@ func runLogs(args []string) {
 	}
 
 	journalMatch := strings.Join(journalTerms, " + ")
-	shellCmd := fmt.Sprintf("journalctl %s -f -n %d --no-pager | awk '%s'", journalMatch, lines, awkScript)
+
+	// Use jq to parse JSON output and reconstruct the journalctl short format with colorized level prefix
+	// PRIORITY levels: 7=DEBUG(cyan), 6=INFO(green), 5=NOTICE(green), 4=WARNING(yellow), 3=ERROR(red), 0-2=ERROR(red)
+	jqScript := `
+		(.__REALTIME_TIMESTAMP | tonumber / 1000000 | strftime("%b %d %H:%M:%S")) as $time |
+		(._SYSTEMD_UNIT // .SYSLOG_IDENTIFIER // "unknown") as $unit |
+		(._PID // .SYSLOG_PID // "") as $pid |
+		(.MESSAGE // "") as $msg |
+		(if .PRIORITY == "7" then "\u001b[36m[DEBUG]\u001b[0m"
+		 elif .PRIORITY == "6" or .PRIORITY == "5" then "\u001b[32m[INFO]\u001b[0m"
+		 elif .PRIORITY == "4" then "\u001b[33m[WARNING]\u001b[0m"
+		 elif .PRIORITY == "3" or .PRIORITY == "2" or .PRIORITY == "1" or .PRIORITY == "0" then "\u001b[31m[ERROR]\u001b[0m"
+		 else ""
+		 end) as $level |
+		($unit | gsub("@.*$"; "") | gsub("\\.service$"; "") | gsub("\\.socket$"; "")) as $short_unit |
+		if $pid != "" then
+			"\($time)  \($short_unit)[\($pid)]: \($level) \($msg)"
+		else
+			"\($time)  \($short_unit): \($level) \($msg)"
+		end
+	`
+
+	shellCmd := fmt.Sprintf("journalctl %s -f -n %d --no-pager -o json | jq -r '%s'", journalMatch, lines, jqScript)
 
 	cmd := exec.Command("sh", "-c", shellCmd)
 	cmd.Stdout = os.Stdout
@@ -342,4 +356,122 @@ func runSystemctl(action, target string) {
 	}
 
 	fmt.Printf("Successfully %sed %s\n", action, target)
+}
+
+const verboseDropinPath = "/etc/systemd/system/linuxio-webserver.service.d/verbose.conf"
+const verboseDropinContent = `[Service]
+ExecStart=
+ExecStart=/usr/local/bin/linuxio-webserver run -verbose
+`
+
+func runVerbose(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: linuxio verbose [enable|disable|status]")
+		os.Exit(1)
+	}
+
+	action := args[0]
+
+	switch action {
+	case "enable":
+		enableVerbose()
+	case "disable":
+		disableVerbose()
+	case "status":
+		showVerboseStatus()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown verbose action: %s\n", action)
+		fmt.Fprintln(os.Stderr, "Usage: linuxio verbose [enable|disable|status]")
+		os.Exit(1)
+	}
+}
+
+func enableVerbose() {
+	// Check if already enabled
+	if _, err := os.Stat(verboseDropinPath); err == nil {
+		fmt.Println("Verbose mode is already enabled")
+		return
+	}
+
+	// Create drop-in directory
+	dropinDir := filepath.Dir(verboseDropinPath)
+	if err := os.MkdirAll(dropinDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create drop-in directory: %v\n", err)
+		fmt.Fprintln(os.Stderr, "This command requires sudo")
+		os.Exit(1)
+	}
+
+	// Write drop-in file
+	if err := os.WriteFile(verboseDropinPath, []byte(verboseDropinContent), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to write drop-in file: %v\n", err)
+		fmt.Fprintln(os.Stderr, "This command requires sudo")
+		os.Exit(1)
+	}
+
+	fmt.Println("✓ Verbose mode enabled")
+
+	// Reload systemd daemon
+	fmt.Println("Reloading systemd daemon...")
+	cmd := exec.Command("systemctl", "daemon-reload")
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Restart LinuxIO services
+	fmt.Println("Restarting linuxio.target...")
+	cmd = exec.Command("systemctl", "restart", "linuxio.target")
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("\n✓ Verbose logging is now active")
+	fmt.Println("  View debug logs with: linuxio logs")
+}
+
+func disableVerbose() {
+	// Check if already disabled
+	if _, err := os.Stat(verboseDropinPath); os.IsNotExist(err) {
+		fmt.Println("Verbose mode is already disabled")
+		return
+	}
+
+	// Remove drop-in file
+	if err := os.Remove(verboseDropinPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to remove drop-in file: %v\n", err)
+		fmt.Fprintln(os.Stderr, "This command requires sudo")
+		os.Exit(1)
+	}
+
+	fmt.Println("✓ Verbose mode disabled")
+
+	// Reload systemd daemon
+	fmt.Println("Reloading systemd daemon...")
+	cmd := exec.Command("systemctl", "daemon-reload")
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to reload systemd daemon: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Restart LinuxIO services
+	fmt.Println("Restarting linuxio.target...")
+	cmd = exec.Command("systemctl", "restart", "linuxio.target")
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to restart LinuxIO services: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("\n✓ Verbose logging is now disabled")
+}
+
+func showVerboseStatus() {
+	if _, err := os.Stat(verboseDropinPath); os.IsNotExist(err) {
+		fmt.Println("Verbose mode: \033[90mdisabled\033[0m")
+		fmt.Println("\nTo enable: sudo linuxio verbose enable")
+	} else {
+		fmt.Println("Verbose mode: \033[32menabled\033[0m")
+		fmt.Println("\nDrop-in file: " + verboseDropinPath)
+		fmt.Println("To disable: sudo linuxio verbose disable")
+	}
 }

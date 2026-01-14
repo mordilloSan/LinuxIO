@@ -3,12 +3,12 @@ package control
 import (
 	"context"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 // RegisterHandlers registers control handlers with the new handler system
 func RegisterHandlers(shutdownChan chan string) {
-	handler.RegisterFunc("control", "version", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("control", "version", func(ctx context.Context, args []string, emit ipc.Events) error {
 		info, err := getVersionInfo()
 		if err != nil {
 			return err
@@ -16,7 +16,7 @@ func RegisterHandlers(shutdownChan chan string) {
 		return emit.Result(info)
 	})
 
-	handler.RegisterFunc("control", "update", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("control", "update", func(ctx context.Context, args []string, emit ipc.Events) error {
 		targetVersion := ""
 		if len(args) > 0 {
 			targetVersion = args[0]
@@ -28,7 +28,7 @@ func RegisterHandlers(shutdownChan chan string) {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("control", "shutdown", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("control", "shutdown", func(ctx context.Context, args []string, emit ipc.Events) error {
 		reason := "unknown"
 		if len(args) > 0 {
 			reason = args[0]
