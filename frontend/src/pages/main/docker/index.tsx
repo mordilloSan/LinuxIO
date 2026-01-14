@@ -1,6 +1,7 @@
 import { Box, Fade } from "@mui/material";
 import React, { useState } from "react";
 
+import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerList from "./ContainerList";
 import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
@@ -31,6 +32,18 @@ const DockerPage: React.FC = () => {
           }}
         >
           <ContainerList />
+        </Box>
+      </Fade>
+
+      <Fade in={tab === "compose"} timeout={300} unmountOnExit={false}>
+        <Box
+          sx={{
+            display: tab === "compose" ? "block" : "none",
+            position: "relative",
+            width: "100%",
+          }}
+        >
+          <ComposeStacksPage />
         </Box>
       </Fade>
 

@@ -159,6 +159,25 @@ export interface DockerVolume {
   Mountpoint: string;
 }
 
+export interface ComposeService {
+  name: string;
+  image: string;
+  status: string;
+  state: string;
+  container_count: number;
+  container_ids: string[];
+  ports: string[];
+}
+
+export interface ComposeProject {
+  name: string;
+  status: string;
+  services: Record<string, ComposeService>;
+  service_count: number;
+  config_files: string[];
+  working_dir: string;
+}
+
 // ============================================================================
 // DBus Types
 // ============================================================================
@@ -331,6 +350,15 @@ export interface LinuxIOSchema {
     list_volumes: { args: []; result: DockerVolume[] };
     create_volume: { args: [name: string]; result: void };
     delete_volume: { args: [name: string]; result: void };
+    list_compose_projects: { args: []; result: ComposeProject[] };
+    get_compose_project: {
+      args: [projectName: string];
+      result: ComposeProject;
+    };
+    compose_up: { args: [projectName: string]; result: any };
+    compose_down: { args: [projectName: string]; result: any };
+    compose_stop: { args: [projectName: string]; result: any };
+    compose_restart: { args: [projectName: string]; result: any };
   };
 
   dbus: {
