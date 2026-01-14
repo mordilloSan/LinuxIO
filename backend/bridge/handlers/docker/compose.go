@@ -3,12 +3,15 @@ package docker
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/goccy/go-yaml"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/go-logger/logger"
 )
 
@@ -308,4 +311,183 @@ func calculateProjectStatus(project *ComposeProject) string {
 		return "stopped"
 	}
 	return "partial"
+}
+
+// ValidationError represents a validation error with location information
+type ValidationError struct {
+	Line    int    `json:"line,omitempty"`
+	Column  int    `json:"column,omitempty"`
+	Field   string `json:"field,omitempty"`
+	Message string `json:"message"`
+	Type    string `json:"type"` // "error" or "warning"
+}
+
+// ValidationResult represents the result of compose file validation
+type ValidationResult struct {
+	Valid  bool              `json:"valid"`
+	Errors []ValidationError `json:"errors"`
+}
+
+// ComposeFilePathInfo represents information about a compose file path
+type ComposeFilePathInfo struct {
+	Path      string `json:"path"`
+	Exists    bool   `json:"exists"`
+	Directory string `json:"directory"`
+}
+
+// ValidateComposeFile validates docker-compose YAML syntax and structure
+func ValidateComposeFile(content string) (any, error) {
+	result := ValidationResult{
+		Valid:  true,
+		Errors: []ValidationError{},
+	}
+
+	// Parse YAML to verify syntax
+	var composeData map[string]interface{}
+	if err := yaml.Unmarshal([]byte(content), &composeData); err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Message: fmt.Sprintf("Invalid YAML syntax: %v", err),
+			Type:    "error",
+		})
+		return result, nil
+	}
+
+	// Check for services section
+	services, hasServices := composeData["services"]
+	if !hasServices {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Field:   "services",
+			Message: "Missing required 'services' section",
+			Type:    "error",
+		})
+	} else {
+		// Validate services is a map
+		servicesMap, ok := services.(map[string]interface{})
+		if !ok {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Field:   "services",
+				Message: "'services' must be a mapping of service names to service definitions",
+				Type:    "error",
+			})
+		} else if len(servicesMap) == 0 {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Field:   "services",
+				Message: "At least one service must be defined",
+				Type:    "error",
+			})
+		} else {
+			// Validate each service
+			for serviceName, serviceData := range servicesMap {
+				serviceMap, ok := serviceData.(map[string]interface{})
+				if !ok {
+					result.Valid = false
+					result.Errors = append(result.Errors, ValidationError{
+						Field:   fmt.Sprintf("services.%s", serviceName),
+						Message: "Service definition must be a mapping",
+						Type:    "error",
+					})
+					continue
+				}
+
+				// Check that service has either image or build
+				_, hasImage := serviceMap["image"]
+				_, hasBuild := serviceMap["build"]
+				if !hasImage && !hasBuild {
+					result.Valid = false
+					result.Errors = append(result.Errors, ValidationError{
+						Field:   fmt.Sprintf("services.%s", serviceName),
+						Message: "Service must have either 'image' or 'build' defined",
+						Type:    "error",
+					})
+				}
+			}
+		}
+	}
+
+	// Optional: Check for version (deprecated in v3 but still common)
+	if version, hasVersion := composeData["version"]; hasVersion {
+		versionStr, ok := version.(string)
+		if !ok {
+			result.Errors = append(result.Errors, ValidationError{
+				Field:   "version",
+				Message: "Version should be a string",
+				Type:    "warning",
+			})
+		} else if versionStr != "" {
+			// Just a warning for information
+			logger.Debugf("Compose file version: %s", versionStr)
+		}
+	}
+
+	return result, nil
+}
+
+// GetDockerFolder returns the configured Docker folder path from user config
+func GetDockerFolder(username string) (any, error) {
+	cfg, _, err := config.Load(username)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	return map[string]string{
+		"folder": string(cfg.Docker.Folder),
+	}, nil
+}
+
+// GetComposeFilePath builds the full path for a compose file
+func GetComposeFilePath(username, stackName string) (any, error) {
+	cfg, _, err := config.Load(username)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	// Sanitize stack name
+	sanitized := sanitizeStackName(stackName)
+	if sanitized == "" {
+		return nil, fmt.Errorf("invalid stack name")
+	}
+
+	// Build path: {Docker.Folder}/{stack-name}/docker-compose.yml
+	stackDir := filepath.Join(string(cfg.Docker.Folder), sanitized)
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+
+	// Check if file exists
+	_, err = os.Stat(composePath)
+	exists := err == nil
+
+	return ComposeFilePathInfo{
+		Path:      composePath,
+		Exists:    exists,
+		Directory: stackDir,
+	}, nil
+}
+
+// sanitizeStackName sanitizes a stack name for use in file paths
+func sanitizeStackName(name string) string {
+	// Convert to lowercase
+	name = strings.ToLower(name)
+
+	// Replace invalid characters with hyphens
+	var result strings.Builder
+	for _, ch := range name {
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
+			result.WriteRune(ch)
+		} else {
+			result.WriteRune('-')
+		}
+	}
+
+	// Remove leading/trailing hyphens
+	sanitized := strings.Trim(result.String(), "-")
+
+	// Limit to 63 characters (Docker project name limit)
+	if len(sanitized) > 63 {
+		sanitized = sanitized[:63]
+	}
+
+	return sanitized
 }

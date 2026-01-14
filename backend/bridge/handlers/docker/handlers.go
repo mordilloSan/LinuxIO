@@ -4,10 +4,12 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // RegisterHandlers registers all docker handlers with the global registry
-func RegisterHandlers() {
+func RegisterHandlers(sess *session.Session) {
+	username := sess.User.Username
 	ipc.RegisterFunc("docker", "list_containers", func(ctx context.Context, args []string, emit ipc.Events) error {
 		containers, err := ListContainers()
 		if err != nil {
@@ -186,6 +188,37 @@ func RegisterHandlers() {
 			return ipc.ErrInvalidArgs
 		}
 		result, err := ComposeRestart(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	// Compose file management handlers
+	ipc.RegisterFunc("docker", "get_docker_folder", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := GetDockerFolder(username)
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "validate_compose", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := ValidateComposeFile(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "get_compose_file_path", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := GetComposeFilePath(username, args[0])
 		if err != nil {
 			return err
 		}

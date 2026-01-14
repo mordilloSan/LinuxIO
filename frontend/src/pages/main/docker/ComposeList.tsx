@@ -1,4 +1,5 @@
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -46,6 +47,7 @@ interface ComposeListProps {
   onStop: (projectName: string) => void;
   onRestart: (projectName: string) => void;
   onDown: (projectName: string) => void;
+  onEdit?: (projectName: string, configPath: string) => void;
   isLoading?: boolean;
 }
 
@@ -55,6 +57,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
   onStop,
   onRestart,
   onDown,
+  onEdit,
   isLoading = false,
 }) => {
   const [search, setSearch] = useState("");
@@ -183,6 +186,19 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     </Tooltip>
                   </TableCell>
                   <TableCell align="right">
+                    {onEdit && project.config_files.length > 0 && (
+                      <Tooltip title="Edit">
+                        <IconButton
+                          size="small"
+                          onClick={() =>
+                            onEdit(project.name, project.config_files[0])
+                          }
+                          disabled={isLoading}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     {project.status === "running" ||
                     project.status === "partial" ? (
                       <>
