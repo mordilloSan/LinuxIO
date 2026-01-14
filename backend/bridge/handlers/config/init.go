@@ -5,7 +5,7 @@ package config
 import (
 	"path/filepath"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go_logger/v2/logger"
 )
 
 const (

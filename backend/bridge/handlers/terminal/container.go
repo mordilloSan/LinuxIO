@@ -10,7 +10,7 @@ import (
 	"github.com/creack/pty"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go_logger/v2/logger"
 )
 
 // StartContainerTerminal launches a shell inside a docker container.

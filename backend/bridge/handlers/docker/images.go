@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go_logger/v2/logger"
 
 	"github.com/docker/docker/api/types/image"
 )
