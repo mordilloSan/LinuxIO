@@ -1,6 +1,6 @@
 import { Button } from "@mui/material";
-import { useState } from "react";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
+import { useState } from "react";
 
 /**
  * Dev-only tool to force an update notification for testing.
@@ -113,9 +113,7 @@ export const ForceUpdateNotification = () => {
               boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
             }}
           >
-            <ReactQueryDevtoolsPanel
-              onClose={() => setIsDevtoolsOpen(false)}
-            />
+            <ReactQueryDevtoolsPanel onClose={() => setIsDevtoolsOpen(false)} />
           </div>
         </>
       )}

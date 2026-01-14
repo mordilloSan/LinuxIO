@@ -16,7 +16,6 @@ import {
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
-import type { DockerImage } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 import {
   getTableHeaderStyles,
@@ -215,7 +214,11 @@ const ImageList: React.FC = () => {
                                     key={key}
                                     label={`${key}: ${val}`}
                                     size="small"
-                                    sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
+                                    sx={{
+                                      mr: 1,
+                                      mb: 1,
+                                      ...wrappableChipStyles,
+                                    }}
                                   />
                                 ),
                               )

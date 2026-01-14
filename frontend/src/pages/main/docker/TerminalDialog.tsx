@@ -66,9 +66,7 @@ const TerminalDialog: React.FC<Props> = ({
 
   const availableShells = React.useMemo(() => {
     if (!shells) return [];
-    return shells.filter(
-      (s) => s && typeof s === "string" && s.trim() !== "",
-    );
+    return shells.filter((s) => s && typeof s === "string" && s.trim() !== "");
   }, [shells]);
 
   // Set default shell when shells are loaded

@@ -16,8 +16,8 @@ import {
 import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
 import type { Peer } from "@/api/linuxio-types";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const wireguardToastMeta = {

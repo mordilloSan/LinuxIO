@@ -30,7 +30,6 @@ import {
   TextField,
   Tooltip,
   Typography,
-  useTheme,
 } from "@mui/material";
 import { motion } from "framer-motion";
 import React, {
@@ -139,7 +138,6 @@ const getPriorityIcon = (priority: LogPriority) => {
 };
 
 const GeneralLogsPage: React.FC = () => {
-  const theme = useTheme();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [search, setSearch] = useState("");
@@ -263,7 +261,12 @@ const GeneralLogsPage: React.FC = () => {
 
       hasReceivedData.current = false;
 
-      const payload = generalLogsPayload(lines, timePeriod, priority, identifier);
+      const payload = generalLogsPayload(
+        lines,
+        timePeriod,
+        priority,
+        identifier,
+      );
       const stream = openStream("general-logs", payload);
 
       if (!stream) {

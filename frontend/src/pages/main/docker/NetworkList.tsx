@@ -29,25 +29,6 @@ import {
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 
-interface DockerNetwork {
-  Id: string;
-  Name: string;
-  Driver: string;
-  Scope: string;
-  Internal?: boolean;
-  EnableIPv4?: boolean;
-  EnableIPv6?: boolean;
-  IPAM?: {
-    Config?: Array<{
-      Subnet: string;
-      Gateway: string;
-    }>;
-  };
-  Options?: Record<string, string>;
-  Labels?: Record<string, string>;
-  Containers?: Record<string, any>;
-}
-
 const NetworkList: React.FC = () => {
   const { data: networks = [] } = linuxio.docker.list_networks.useQuery({
     refetchInterval: 10000,
@@ -103,292 +84,325 @@ const NetworkList: React.FC = () => {
               return (
                 <React.Fragment key={network.Id}>
                   <TableRow sx={rowStyles}>
-                  <TableCell>
-                    <Box sx={{ display: "flex", alignItems: "center" }}>
-                      <HubIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
-                      <Typography
-                        variant="body2"
-                        fontWeight="medium"
-                        sx={responsiveTextStyles}
-                      >
-                        {network.Name}
-                      </Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={network.Driver}
-                      size="small"
-                      sx={{ fontSize: "0.75rem" }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" sx={responsiveTextStyles}>
-                      {network.Scope}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      label={network.Internal ? "Yes" : "No"}
-                      size="small"
-                      color={network.Internal ? "warning" : "default"}
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      label={network.EnableIPv4 !== false ? "Yes" : "No"}
-                      size="small"
-                      color={
-                        network.EnableIPv4 !== false ? "success" : "default"
-                      }
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      label={network.EnableIPv6 ? "Yes" : "No"}
-                      size="small"
-                      color={network.EnableIPv6 ? "success" : "default"}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontFamily: "monospace",
-                        fontSize: "0.85rem",
-                        ...responsiveTextStyles,
-                      }}
-                    >
-                      {network.Id?.slice(0, 12)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <IconButton
-                      size="small"
-                      onClick={() =>
-                        setExpanded(expanded === network.Id ? null : network.Id)
-                      }
-                    >
-                      <ExpandMoreIcon
-                        style={{
-                          transform:
-                            expanded === network.Id
-                              ? "rotate(180deg)"
-                              : "rotate(0deg)",
-                          transition: "0.2s",
-                        }}
-                      />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-                <TableRow sx={expandedRowStyles}>
-                  <TableCell
-                    style={{ paddingBottom: 0, paddingTop: 0 }}
-                    colSpan={8}
-                  >
-                    <Collapse
-                      in={expanded === network.Id}
-                      timeout="auto"
-                      unmountOnExit
-                    >
-                      <Box
-                        component={motion.div}
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        sx={getExpandedContentStyles}
-                      >
-                        <Typography variant="subtitle2" gutterBottom>
-                          <b>Full Network ID:</b>
-                        </Typography>
+                    <TableCell>
+                      <Box sx={{ display: "flex", alignItems: "center" }}>
+                        <HubIcon
+                          fontSize="small"
+                          sx={{ mr: 1, opacity: 0.7 }}
+                        />
                         <Typography
                           variant="body2"
-                          sx={{
-                            fontFamily: "monospace",
-                            fontSize: "0.85rem",
-                            mb: 2,
-                            ...longTextStyles,
-                          }}
+                          fontWeight="medium"
+                          sx={responsiveTextStyles}
                         >
-                          {network.Id}
+                          {network.Name}
                         </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={network.Driver}
+                        size="small"
+                        sx={{ fontSize: "0.75rem" }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={responsiveTextStyles}>
+                        {network.Scope}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="center">
+                      <Chip
+                        label={network.Internal ? "Yes" : "No"}
+                        size="small"
+                        color={network.Internal ? "warning" : "default"}
+                      />
+                    </TableCell>
+                    <TableCell align="center">
+                      <Chip
+                        label={network.EnableIPv4 !== false ? "Yes" : "No"}
+                        size="small"
+                        color={
+                          network.EnableIPv4 !== false ? "success" : "default"
+                        }
+                      />
+                    </TableCell>
+                    <TableCell align="center">
+                      <Chip
+                        label={network.EnableIPv6 ? "Yes" : "No"}
+                        size="small"
+                        color={network.EnableIPv6 ? "success" : "default"}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontFamily: "monospace",
+                          fontSize: "0.85rem",
+                          ...responsiveTextStyles,
+                        }}
+                      >
+                        {network.Id?.slice(0, 12)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <IconButton
+                        size="small"
+                        onClick={() =>
+                          setExpanded(
+                            expanded === network.Id ? null : network.Id,
+                          )
+                        }
+                      >
+                        <ExpandMoreIcon
+                          style={{
+                            transform:
+                              expanded === network.Id
+                                ? "rotate(180deg)"
+                                : "rotate(0deg)",
+                            transition: "0.2s",
+                          }}
+                        />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow sx={expandedRowStyles}>
+                    <TableCell
+                      style={{ paddingBottom: 0, paddingTop: 0 }}
+                      colSpan={8}
+                    >
+                      <Collapse
+                        in={expanded === network.Id}
+                        timeout="auto"
+                        unmountOnExit
+                      >
+                        <Box
+                          component={motion.div}
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          sx={getExpandedContentStyles}
+                        >
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Full Network ID:</b>
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontFamily: "monospace",
+                              fontSize: "0.85rem",
+                              mb: 2,
+                              ...longTextStyles,
+                            }}
+                          >
+                            {network.Id}
+                          </Typography>
 
-                        <Typography variant="subtitle2" gutterBottom>
-                          <b>Subnet(s):</b>
-                        </Typography>
-                        <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
-                          {network.IPAM?.Config &&
-                          network.IPAM.Config.length > 0 ? (
-                            network.IPAM.Config.map((ipam, i) => (
-                              <Chip
-                                key={i}
-                                label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
-                                size="small"
-                                sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                              />
-                            ))
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              (no IPAM config)
-                            </Typography>
-                          )}
-                        </Box>
-
-                        <Typography variant="subtitle2" gutterBottom>
-                          <b>Options:</b>
-                        </Typography>
-                        <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
-                          {network.Options &&
-                          Object.keys(network.Options).length > 0 ? (
-                            Object.entries(network.Options).map(
-                              ([key, val]) => (
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Subnet(s):</b>
+                          </Typography>
+                          <Box
+                            sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}
+                          >
+                            {network.IPAM?.Config &&
+                            network.IPAM.Config.length > 0 ? (
+                              network.IPAM.Config.map((ipam, i) => (
                                 <Chip
-                                  key={key}
-                                  label={`${key}: ${val}`}
+                                  key={i}
+                                  label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
                                   size="small"
                                   sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                                 />
-                              ),
-                            )
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              (no options)
-                            </Typography>
-                          )}
-                        </Box>
+                              ))
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                (no IPAM config)
+                              </Typography>
+                            )}
+                          </Box>
 
-                        <Typography variant="subtitle2" gutterBottom>
-                          <b>Labels:</b>
-                        </Typography>
-                        <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
-                          {network.Labels &&
-                          Object.keys(network.Labels).length > 0 ? (
-                            Object.entries(network.Labels).map(([key, val]) => (
-                              <Chip
-                                key={key}
-                                label={`${key}: ${val}`}
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Options:</b>
+                          </Typography>
+                          <Box
+                            sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}
+                          >
+                            {network.Options &&
+                            Object.keys(network.Options).length > 0 ? (
+                              Object.entries(network.Options).map(
+                                ([key, val]) => (
+                                  <Chip
+                                    key={key}
+                                    label={`${key}: ${val}`}
+                                    size="small"
+                                    sx={{
+                                      mr: 1,
+                                      mb: 1,
+                                      ...wrappableChipStyles,
+                                    }}
+                                  />
+                                ),
+                              )
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                (no options)
+                              </Typography>
+                            )}
+                          </Box>
+
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Labels:</b>
+                          </Typography>
+                          <Box
+                            sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}
+                          >
+                            {network.Labels &&
+                            Object.keys(network.Labels).length > 0 ? (
+                              Object.entries(network.Labels).map(
+                                ([key, val]) => (
+                                  <Chip
+                                    key={key}
+                                    label={`${key}: ${val}`}
+                                    size="small"
+                                    sx={{
+                                      mr: 1,
+                                      mb: 1,
+                                      ...wrappableChipStyles,
+                                    }}
+                                  />
+                                ),
+                              )
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                (no labels)
+                              </Typography>
+                            )}
+                          </Box>
+
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Connected Containers:</b>
+                          </Typography>
+                          <Box>
+                            {network.Containers &&
+                            Object.keys(network.Containers).length > 0 ? (
+                              <Table
                                 size="small"
-                                sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                              />
-                            ))
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              (no labels)
-                            </Typography>
-                          )}
-                        </Box>
-
-                        <Typography variant="subtitle2" gutterBottom>
-                          <b>Connected Containers:</b>
-                        </Typography>
-                        <Box>
-                          {network.Containers &&
-                          Object.keys(network.Containers).length > 0 ? (
-                            <Table
-                              size="small"
-                              sx={{
-                                bgcolor: (theme) =>
-                                  theme.palette.mode === "dark"
-                                    ? "rgba(0,0,0,0.2)"
-                                    : "rgba(255,255,255,0.5)",
-                                overflowX: "auto",
-                                display: "block",
-                              }}
-                            >
-                              <TableHead>
-                                <TableRow>
-                                  <TableCell>
-                                    <b>Name</b>
-                                  </TableCell>
-                                  <TableCell>
-                                    <b>Container ID</b>
-                                  </TableCell>
-                                  <TableCell>
-                                    <b>IPv4</b>
-                                  </TableCell>
-                                  <TableCell>
-                                    <b>IPv6</b>
-                                  </TableCell>
-                                  <TableCell>
-                                    <b>MAC</b>
-                                  </TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {Object.entries(network.Containers).map(
-                                  ([id, info]: [string, any]) => (
-                                    <TableRow key={id}>
-                                      <TableCell>
-                                        <Typography
-                                          variant="body2"
-                                          sx={responsiveTextStyles}
-                                        >
-                                          {info.Name || "-"}
-                                        </Typography>
-                                      </TableCell>
-                                      <TableCell
-                                        sx={{
-                                          fontFamily: "monospace",
-                                          fontSize: "0.85rem",
-                                          ...longTextStyles,
-                                        }}
-                                      >
-                                        {id.slice(0, 12)}
-                                      </TableCell>
-                                      <TableCell>
-                                        <Typography
-                                          variant="body2"
+                                sx={{
+                                  bgcolor: (theme) =>
+                                    theme.palette.mode === "dark"
+                                      ? "rgba(0,0,0,0.2)"
+                                      : "rgba(255,255,255,0.5)",
+                                  overflowX: "auto",
+                                  display: "block",
+                                }}
+                              >
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell>
+                                      <b>Name</b>
+                                    </TableCell>
+                                    <TableCell>
+                                      <b>Container ID</b>
+                                    </TableCell>
+                                    <TableCell>
+                                      <b>IPv4</b>
+                                    </TableCell>
+                                    <TableCell>
+                                      <b>IPv6</b>
+                                    </TableCell>
+                                    <TableCell>
+                                      <b>MAC</b>
+                                    </TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {Object.entries(network.Containers).map(
+                                    ([id, info]: [string, any]) => (
+                                      <TableRow key={id}>
+                                        <TableCell>
+                                          <Typography
+                                            variant="body2"
+                                            sx={responsiveTextStyles}
+                                          >
+                                            {info.Name || "-"}
+                                          </Typography>
+                                        </TableCell>
+                                        <TableCell
                                           sx={{
                                             fontFamily: "monospace",
                                             fontSize: "0.85rem",
                                             ...longTextStyles,
                                           }}
                                         >
-                                          {info.IPv4Address?.replace(
-                                            /\/.*/,
-                                            "",
-                                          ) || "-"}
-                                        </Typography>
-                                      </TableCell>
-                                      <TableCell>
-                                        <Typography
-                                          variant="body2"
+                                          {id.slice(0, 12)}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Typography
+                                            variant="body2"
+                                            sx={{
+                                              fontFamily: "monospace",
+                                              fontSize: "0.85rem",
+                                              ...longTextStyles,
+                                            }}
+                                          >
+                                            {info.IPv4Address?.replace(
+                                              /\/.*/,
+                                              "",
+                                            ) || "-"}
+                                          </Typography>
+                                        </TableCell>
+                                        <TableCell>
+                                          <Typography
+                                            variant="body2"
+                                            sx={{
+                                              fontFamily: "monospace",
+                                              fontSize: "0.85rem",
+                                              ...longTextStyles,
+                                            }}
+                                          >
+                                            {info.IPv6Address?.replace(
+                                              /\/.*/,
+                                              "",
+                                            ) || "-"}
+                                          </Typography>
+                                        </TableCell>
+                                        <TableCell
                                           sx={{
                                             fontFamily: "monospace",
                                             fontSize: "0.85rem",
                                             ...longTextStyles,
                                           }}
                                         >
-                                          {info.IPv6Address?.replace(
-                                            /\/.*/,
-                                            "",
-                                          ) || "-"}
-                                        </Typography>
-                                      </TableCell>
-                                      <TableCell
-                                        sx={{
-                                          fontFamily: "monospace",
-                                          fontSize: "0.85rem",
-                                          ...longTextStyles,
-                                        }}
-                                      >
-                                        {info.MacAddress || "-"}
-                                      </TableCell>
-                                    </TableRow>
-                                  ),
-                                )}
-                              </TableBody>
-                            </Table>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              (no containers)
-                            </Typography>
-                          )}
+                                          {info.MacAddress || "-"}
+                                        </TableCell>
+                                      </TableRow>
+                                    ),
+                                  )}
+                                </TableBody>
+                              </Table>
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                (no containers)
+                              </Typography>
+                            )}
+                          </Box>
                         </Box>
-                      </Box>
-                    </Collapse>
-                  </TableCell>
-                </TableRow>
-              </React.Fragment>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                </React.Fragment>
               );
             })}
           </TableBody>

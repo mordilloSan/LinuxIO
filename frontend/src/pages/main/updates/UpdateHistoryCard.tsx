@@ -16,7 +16,6 @@ import {
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
-import type { UpdateHistoryRow } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 import {
   getTableHeaderStyles,
@@ -59,115 +58,115 @@ const UpdateHistoryCard: React.FC = () => {
               return (
                 <React.Fragment key={index}>
                   <TableRow sx={rowStyles}>
-                  <TableCell>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        color: "primary.main",
-                      }}
-                    >
-                      <HistoryIcon fontSize="small" />
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Typography
-                      variant="body2"
-                      fontWeight="medium"
-                      sx={responsiveTextStyles}
-                    >
-                      {row.date}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      label={row.upgrades.length}
-                      size="small"
-                      color="success"
-                      sx={{ minWidth: 40 }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <IconButton
-                      size="small"
-                      onClick={() =>
-                        setExpanded(expanded === index ? null : index)
-                      }
-                    >
-                      <ExpandMoreIcon
-                        style={{
-                          transform:
-                            expanded === index
-                              ? "rotate(180deg)"
-                              : "rotate(0deg)",
-                          transition: "0.2s",
-                        }}
-                      />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-                <TableRow sx={expandedRowStyles}>
-                  <TableCell
-                    style={{ paddingBottom: 0, paddingTop: 0 }}
-                    colSpan={4}
-                  >
-                    <Collapse
-                      in={expanded === index}
-                      timeout="auto"
-                      unmountOnExit
-                    >
+                    <TableCell>
                       <Box
-                        component={motion.div}
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        sx={getExpandedContentStyles}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          color: "primary.main",
+                        }}
                       >
-                        <Typography variant="subtitle2" gutterBottom>
-                          <b>Packages Installed:</b>
-                        </Typography>
-                        <Table
-                          size="small"
-                          sx={{
-                            borderCollapse: "collapse",
-                            "& .MuiTableCell-root": { border: "none" },
-                            overflowX: "auto",
-                            display: "block",
-                          }}
-                        >
-                          <TableBody>
-                            {chunkArray(row.upgrades, 5).map((group, i) => (
-                              <TableRow key={i}>
-                                {group.map((pkg, j) => (
-                                  <TableCell
-                                    key={j}
-                                    sx={{
-                                      width: "20%",
-                                      padding: "8px 12px",
-                                      color: "text.secondary",
-                                      fontFamily: "monospace",
-                                      fontSize: "0.85rem",
-                                      ...responsiveTextStyles,
-                                    }}
-                                  >
-                                    {pkg.package}
-                                  </TableCell>
-                                ))}
-                                {group.length < 5 &&
-                                  [...Array(5 - group.length)].map((_, j) => (
-                                    <TableCell
-                                      key={`empty-${j}`}
-                                      sx={{ width: "20%", border: "none" }}
-                                    />
-                                  ))}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                        <HistoryIcon fontSize="small" />
                       </Box>
-                    </Collapse>
-                  </TableCell>
-                </TableRow>
-              </React.Fragment>
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        variant="body2"
+                        fontWeight="medium"
+                        sx={responsiveTextStyles}
+                      >
+                        {row.date}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="center">
+                      <Chip
+                        label={row.upgrades.length}
+                        size="small"
+                        color="success"
+                        sx={{ minWidth: 40 }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <IconButton
+                        size="small"
+                        onClick={() =>
+                          setExpanded(expanded === index ? null : index)
+                        }
+                      >
+                        <ExpandMoreIcon
+                          style={{
+                            transform:
+                              expanded === index
+                                ? "rotate(180deg)"
+                                : "rotate(0deg)",
+                            transition: "0.2s",
+                          }}
+                        />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow sx={expandedRowStyles}>
+                    <TableCell
+                      style={{ paddingBottom: 0, paddingTop: 0 }}
+                      colSpan={4}
+                    >
+                      <Collapse
+                        in={expanded === index}
+                        timeout="auto"
+                        unmountOnExit
+                      >
+                        <Box
+                          component={motion.div}
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          sx={getExpandedContentStyles}
+                        >
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Packages Installed:</b>
+                          </Typography>
+                          <Table
+                            size="small"
+                            sx={{
+                              borderCollapse: "collapse",
+                              "& .MuiTableCell-root": { border: "none" },
+                              overflowX: "auto",
+                              display: "block",
+                            }}
+                          >
+                            <TableBody>
+                              {chunkArray(row.upgrades, 5).map((group, i) => (
+                                <TableRow key={i}>
+                                  {group.map((pkg, j) => (
+                                    <TableCell
+                                      key={j}
+                                      sx={{
+                                        width: "20%",
+                                        padding: "8px 12px",
+                                        color: "text.secondary",
+                                        fontFamily: "monospace",
+                                        fontSize: "0.85rem",
+                                        ...responsiveTextStyles,
+                                      }}
+                                    >
+                                      {pkg.package}
+                                    </TableCell>
+                                  ))}
+                                  {group.length < 5 &&
+                                    [...Array(5 - group.length)].map((_, j) => (
+                                      <TableCell
+                                        key={`empty-${j}`}
+                                        sx={{ width: "20%", border: "none" }}
+                                      />
+                                    ))}
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </Box>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                </React.Fragment>
               );
             })}
           </TableBody>
