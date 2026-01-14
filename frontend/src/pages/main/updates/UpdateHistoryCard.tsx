@@ -18,6 +18,14 @@ import React, { useState } from "react";
 
 import type { UpdateHistoryRow } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
+import {
+  getTableHeaderStyles,
+  getTableRowStyles,
+  getExpandedRowStyles,
+  getExpandedContentStyles,
+  tableContainerStyles,
+  responsiveTextStyles,
+} from "@/styles/tableStyles";
 
 const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   const result: T[][] = [];
@@ -33,20 +41,10 @@ const UpdateHistoryCard: React.FC = () => {
 
   return (
     <Box>
-      <TableContainer>
+      <TableContainer sx={tableContainerStyles}>
         <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
           <TableHead>
-            <TableRow
-              sx={(theme) => ({
-                "& .MuiTableCell-root": { borderBottom: "none" },
-                backgroundColor:
-                  theme.palette.mode === "dark"
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(0,0,0,0.08)",
-                borderRadius: "6px",
-                boxShadow: "none",
-              })}
-            >
+            <TableRow sx={getTableHeaderStyles}>
               <TableCell width="40px"></TableCell>
               <TableCell>Date</TableCell>
               <TableCell align="center">Packages Updated</TableCell>
@@ -54,19 +52,13 @@ const UpdateHistoryCard: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row, index) => (
-              <React.Fragment key={index}>
-                <TableRow
-                  sx={(theme) => ({
-                    "& .MuiTableCell-root": { borderBottom: "none" },
-                    backgroundColor:
-                      index % 2 === 0
-                        ? "transparent"
-                        : theme.palette.mode === "dark"
-                          ? "rgba(255,255,255,0.04)"
-                          : "rgba(0,0,0,0.05)",
-                  })}
-                >
+            {rows.map((row, index) => {
+              const rowStyles = (theme: any) => getTableRowStyles(theme, index);
+              const expandedRowStyles = (theme: any) =>
+                getExpandedRowStyles(theme, index);
+              return (
+                <React.Fragment key={index}>
+                  <TableRow sx={rowStyles}>
                   <TableCell>
                     <Box
                       sx={{
@@ -79,7 +71,11 @@ const UpdateHistoryCard: React.FC = () => {
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" fontWeight="medium">
+                    <Typography
+                      variant="body2"
+                      fontWeight="medium"
+                      sx={responsiveTextStyles}
+                    >
                       {row.date}
                     </Typography>
                   </TableCell>
@@ -110,17 +106,7 @@ const UpdateHistoryCard: React.FC = () => {
                     </IconButton>
                   </TableCell>
                 </TableRow>
-                <TableRow
-                  sx={(theme) => ({
-                    "& .MuiTableCell-root": { borderBottom: "none" },
-                    backgroundColor:
-                      index % 2 === 0
-                        ? "transparent"
-                        : theme.palette.mode === "dark"
-                          ? "rgba(255,255,255,0.08)"
-                          : "rgba(0,0,0,0.05)",
-                  })}
-                >
+                <TableRow sx={expandedRowStyles}>
                   <TableCell
                     style={{ paddingBottom: 0, paddingTop: 0 }}
                     colSpan={4}
@@ -134,15 +120,7 @@ const UpdateHistoryCard: React.FC = () => {
                         component={motion.div}
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        sx={{
-                          margin: 2,
-                          borderRadius: 2,
-                          p: 2,
-                          bgcolor: (theme) =>
-                            theme.palette.mode === "dark"
-                              ? "rgba(255,255,255,0.05)"
-                              : "rgba(0,0,0,0.03)",
-                        }}
+                        sx={getExpandedContentStyles}
                       >
                         <Typography variant="subtitle2" gutterBottom>
                           <b>Packages Installed:</b>
@@ -152,6 +130,8 @@ const UpdateHistoryCard: React.FC = () => {
                           sx={{
                             borderCollapse: "collapse",
                             "& .MuiTableCell-root": { border: "none" },
+                            overflowX: "auto",
+                            display: "block",
                           }}
                         >
                           <TableBody>
@@ -166,6 +146,7 @@ const UpdateHistoryCard: React.FC = () => {
                                       color: "text.secondary",
                                       fontFamily: "monospace",
                                       fontSize: "0.85rem",
+                                      ...responsiveTextStyles,
                                     }}
                                   >
                                     {pkg.package}
@@ -187,7 +168,8 @@ const UpdateHistoryCard: React.FC = () => {
                   </TableCell>
                 </TableRow>
               </React.Fragment>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </TableContainer>

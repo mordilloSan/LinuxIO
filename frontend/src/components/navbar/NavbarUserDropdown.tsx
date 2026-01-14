@@ -11,12 +11,11 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
-import { useMutation } from "@tanstack/react-query";
 import LucidePower from "lucide-react/dist/esm/icons/power";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
 
@@ -30,12 +29,8 @@ function NavbarUserDropdown() {
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
 
   // Mutations for power actions
-  const rebootMutation = useMutation({
-    mutationFn: () => linuxio.call("dbus", "Reboot"),
-  });
-  const poweroffMutation = useMutation({
-    mutationFn: () => linuxio.call("dbus", "PowerOff"),
-  });
+  const rebootMutation = linuxio.dbus.Reboot.useMutation();
+  const poweroffMutation = linuxio.dbus.PowerOff.useMutation();
 
   const toggleMenu = (event: React.SyntheticEvent<HTMLElement>) => {
     setAnchorMenu(event.currentTarget);
@@ -57,14 +52,14 @@ function NavbarUserDropdown() {
     // Show overlay immediately
     if (action === "reboot") {
       triggerReboot();
-      rebootMutation.mutate(undefined, {
+      rebootMutation.mutate([], {
         onError: () => {
           // Server may die before responding - this is expected
         },
       });
     } else if (action === "poweroff") {
       triggerPowerOff();
-      poweroffMutation.mutate(undefined, {
+      poweroffMutation.mutate([], {
         onError: () => {
           // Server may die before responding - this is expected
         },

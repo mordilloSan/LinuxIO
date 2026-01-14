@@ -22,6 +22,7 @@
     "paths": {
       // Folders
       "@/api/*": ["api/*"],
+      "@/styles/*": ["styles/*"],
       "@/components/*": ["components/*"],
       "@/contexts/*": ["contexts/*"],
       "@/hooks/*": ["hooks/*"],

@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 
 /* ================= helpers ================= */
 

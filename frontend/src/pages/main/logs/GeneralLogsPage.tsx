@@ -44,6 +44,13 @@ import React, {
 import { useStreamMux, generalLogsPayload, decodeString } from "@/api/linuxio";
 import type { Stream } from "@/api/linuxio";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import {
+  getTableHeaderStyles,
+  getTableRowStyles,
+  getExpandedRowStyles,
+  getExpandedContentStyles,
+  tableContainerStyles,
+} from "@/styles/tableStyles";
 
 const DEFAULT_TAIL = "200";
 
@@ -559,20 +566,10 @@ const GeneralLogsPage: React.FC = () => {
       {error && <Alert severity="error">{error}</Alert>}
 
       {!isLoading && !error && (
-        <TableContainer ref={logsBoxRef}>
+        <TableContainer ref={logsBoxRef} sx={tableContainerStyles}>
           <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
             <TableHead>
-              <TableRow
-                sx={(theme) => ({
-                  "& .MuiTableCell-root": { borderBottom: "none" },
-                  backgroundColor:
-                    theme.palette.mode === "dark"
-                      ? "rgba(255,255,255,0.08)"
-                      : "rgba(0,0,0,0.08)",
-                  borderRadius: "6px",
-                  boxShadow: "none",
-                })}
-              >
+              <TableRow sx={getTableHeaderStyles}>
                 <TableCell width="40px"></TableCell>
                 <TableCell>Priority</TableCell>
                 <TableCell>Identifier</TableCell>
@@ -584,17 +581,7 @@ const GeneralLogsPage: React.FC = () => {
             <TableBody>
               {filteredLogs.map((log, index) => (
                 <React.Fragment key={index}>
-                  <TableRow
-                    sx={(theme) => ({
-                      "& .MuiTableCell-root": { borderBottom: "none" },
-                      backgroundColor:
-                        index % 2 === 0
-                          ? "transparent"
-                          : theme.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.04)"
-                            : "rgba(0,0,0,0.05)",
-                    })}
-                  >
+                  <TableRow sx={(theme) => getTableRowStyles(theme, index)}>
                     <TableCell>
                       <Box
                         sx={{
@@ -671,17 +658,7 @@ const GeneralLogsPage: React.FC = () => {
                       </IconButton>
                     </TableCell>
                   </TableRow>
-                  <TableRow
-                    sx={(theme) => ({
-                      "& .MuiTableCell-root": { borderBottom: "none" },
-                      backgroundColor:
-                        index % 2 === 0
-                          ? "transparent"
-                          : theme.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.08)"
-                            : "rgba(0,0,0,0.05)",
-                    })}
-                  >
+                  <TableRow sx={(theme) => getExpandedRowStyles(theme, index)}>
                     <TableCell
                       style={{ paddingBottom: 0, paddingTop: 0 }}
                       colSpan={6}
@@ -695,15 +672,7 @@ const GeneralLogsPage: React.FC = () => {
                           component={motion.div}
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          sx={{
-                            margin: 2,
-                            borderRadius: 2,
-                            p: 2,
-                            bgcolor: (theme) =>
-                              theme.palette.mode === "dark"
-                                ? "rgba(255,255,255,0.05)"
-                                : "rgba(0,0,0,0.03)",
-                          }}
+                          sx={(theme) => getExpandedContentStyles(theme)}
                         >
                           <Typography variant="subtitle2" gutterBottom>
                             <b>Full Message:</b>

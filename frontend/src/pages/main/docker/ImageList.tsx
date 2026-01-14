@@ -16,17 +16,18 @@ import {
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
+import type { DockerImage } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
-
-interface DockerImage {
-  Id: string;
-  RepoTags: string[];
-  Size: number;
-  Created: number;
-  Containers: number;
-  Labels?: Record<string, string>;
-  RepoDigests?: string[];
-}
+import {
+  getTableHeaderStyles,
+  getTableRowStyles,
+  getExpandedRowStyles,
+  getExpandedContentStyles,
+  tableContainerStyles,
+  responsiveTextStyles,
+  longTextStyles,
+  wrappableChipStyles,
+} from "@/styles/tableStyles";
 
 const ImageList: React.FC = () => {
   const { data: images = [] } = linuxio.docker.list_images.useQuery({
@@ -70,24 +71,19 @@ const ImageList: React.FC = () => {
           placeholder="Search images…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ width: 320 }}
+          sx={{
+            width: 320,
+            "@media (max-width: 600px)": {
+              width: "100%",
+            },
+          }}
         />
         <Box fontWeight="bold">{filtered.length} shown</Box>
       </Box>
-      <TableContainer>
+      <TableContainer sx={tableContainerStyles}>
         <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
           <TableHead>
-            <TableRow
-              sx={(theme) => ({
-                "& .MuiTableCell-root": { borderBottom: "none" },
-                backgroundColor:
-                  theme.palette.mode === "dark"
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(0,0,0,0.08)",
-                borderRadius: "6px",
-                boxShadow: "none",
-              })}
-            >
+            <TableRow sx={getTableHeaderStyles}>
               <TableCell>Repository</TableCell>
               <TableCell>Tag</TableCell>
               <TableCell>Image ID</TableCell>
@@ -100,21 +96,18 @@ const ImageList: React.FC = () => {
           <TableBody>
             {filtered.map((image, index) => {
               const rowKey = `${image.id}-${image.tag}`;
+              const rowStyles = (theme: any) => getTableRowStyles(theme, index);
+              const expandedRowStyles = (theme: any) =>
+                getExpandedRowStyles(theme, index);
               return (
                 <React.Fragment key={rowKey}>
-                  <TableRow
-                    sx={(theme) => ({
-                      "& .MuiTableCell-root": { borderBottom: "none" },
-                      backgroundColor:
-                        index % 2 === 0
-                          ? "transparent"
-                          : theme.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.04)"
-                            : "rgba(0,0,0,0.05)",
-                    })}
-                  >
+                  <TableRow sx={rowStyles}>
                     <TableCell>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography
+                        variant="body2"
+                        fontWeight="medium"
+                        sx={responsiveTextStyles}
+                      >
                         {image.repo}
                       </Typography>
                     </TableCell>
@@ -128,16 +121,25 @@ const ImageList: React.FC = () => {
                     <TableCell>
                       <Typography
                         variant="body2"
-                        sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+                        sx={{
+                          fontFamily: "monospace",
+                          fontSize: "0.85rem",
+                          ...responsiveTextStyles,
+                        }}
                       >
                         {image.shortId}
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2">{image.size} MB</Typography>
+                      <Typography variant="body2" sx={responsiveTextStyles}>
+                        {image.size} MB
+                      </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={{ fontSize: "0.85rem" }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ fontSize: "0.85rem", ...responsiveTextStyles }}
+                      >
                         {image.created}
                       </Typography>
                     </TableCell>
@@ -168,17 +170,7 @@ const ImageList: React.FC = () => {
                       </IconButton>
                     </TableCell>
                   </TableRow>
-                  <TableRow
-                    sx={(theme) => ({
-                      "& .MuiTableCell-root": { borderBottom: "none" },
-                      backgroundColor:
-                        index % 2 === 0
-                          ? "transparent"
-                          : theme.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.08)"
-                            : "rgba(0,0,0,0.05)",
-                    })}
-                  >
+                  <TableRow sx={expandedRowStyles}>
                     <TableCell
                       style={{ paddingBottom: 0, paddingTop: 0 }}
                       colSpan={7}
@@ -192,15 +184,7 @@ const ImageList: React.FC = () => {
                           component={motion.div}
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          sx={{
-                            margin: 2,
-                            borderRadius: 2,
-                            p: 2,
-                            bgcolor: (theme) =>
-                              theme.palette.mode === "dark"
-                                ? "rgba(255,255,255,0.05)"
-                                : "rgba(0,0,0,0.03)",
-                          }}
+                          sx={getExpandedContentStyles}
                         >
                           <Typography variant="subtitle2" gutterBottom>
                             <b>Full Image ID:</b>
@@ -211,7 +195,7 @@ const ImageList: React.FC = () => {
                               fontFamily: "monospace",
                               fontSize: "0.85rem",
                               mb: 2,
-                              wordBreak: "break-all",
+                              ...longTextStyles,
                             }}
                           >
                             {image.id}
@@ -231,7 +215,7 @@ const ImageList: React.FC = () => {
                                     key={key}
                                     label={`${key}: ${val}`}
                                     size="small"
-                                    sx={{ mr: 1, mb: 1 }}
+                                    sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                                   />
                                 ),
                               )
@@ -259,7 +243,7 @@ const ImageList: React.FC = () => {
                                     fontFamily: "monospace",
                                     fontSize: "0.8rem",
                                     mb: 0.5,
-                                    wordBreak: "break-all",
+                                    ...longTextStyles,
                                   }}
                                 >
                                   {digest}

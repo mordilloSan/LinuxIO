@@ -13,7 +13,7 @@ import { useMutation } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 import type { InstallResult, ValidationResult } from "@/types/module";
 
 interface InstallModuleProps {

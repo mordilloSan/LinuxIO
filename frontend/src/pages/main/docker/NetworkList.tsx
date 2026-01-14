@@ -18,6 +18,16 @@ import { motion } from "framer-motion";
 import React, { useState } from "react";
 
 import linuxio from "@/api/react-query";
+import {
+  getTableHeaderStyles,
+  getTableRowStyles,
+  getExpandedRowStyles,
+  getExpandedContentStyles,
+  tableContainerStyles,
+  responsiveTextStyles,
+  longTextStyles,
+  wrappableChipStyles,
+} from "@/styles/tableStyles";
 
 interface DockerNetwork {
   Id: string;
@@ -62,24 +72,19 @@ const NetworkList: React.FC = () => {
           placeholder="Search networks…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ width: 320 }}
+          sx={{
+            width: 320,
+            "@media (max-width: 600px)": {
+              width: "100%",
+            },
+          }}
         />
         <Box fontWeight="bold">{filtered.length} shown</Box>
       </Box>
-      <TableContainer>
+      <TableContainer sx={tableContainerStyles}>
         <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
           <TableHead>
-            <TableRow
-              sx={(theme) => ({
-                "& .MuiTableCell-root": { borderBottom: "none" },
-                backgroundColor:
-                  theme.palette.mode === "dark"
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(0,0,0,0.08)",
-                borderRadius: "6px",
-                boxShadow: "none",
-              })}
-            >
+            <TableRow sx={getTableHeaderStyles}>
               <TableCell>Network Name</TableCell>
               <TableCell>Driver</TableCell>
               <TableCell>Scope</TableCell>
@@ -91,23 +96,21 @@ const NetworkList: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filtered.map((network, index) => (
-              <React.Fragment key={network.Id}>
-                <TableRow
-                  sx={(theme) => ({
-                    "& .MuiTableCell-root": { borderBottom: "none" },
-                    backgroundColor:
-                      index % 2 === 0
-                        ? "transparent"
-                        : theme.palette.mode === "dark"
-                          ? "rgba(255,255,255,0.04)"
-                          : "rgba(0,0,0,0.05)",
-                  })}
-                >
+            {filtered.map((network, index) => {
+              const rowStyles = (theme: any) => getTableRowStyles(theme, index);
+              const expandedRowStyles = (theme: any) =>
+                getExpandedRowStyles(theme, index);
+              return (
+                <React.Fragment key={network.Id}>
+                  <TableRow sx={rowStyles}>
                   <TableCell>
                     <Box sx={{ display: "flex", alignItems: "center" }}>
                       <HubIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography
+                        variant="body2"
+                        fontWeight="medium"
+                        sx={responsiveTextStyles}
+                      >
                         {network.Name}
                       </Typography>
                     </Box>
@@ -120,7 +123,9 @@ const NetworkList: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2">{network.Scope}</Typography>
+                    <Typography variant="body2" sx={responsiveTextStyles}>
+                      {network.Scope}
+                    </Typography>
                   </TableCell>
                   <TableCell align="center">
                     <Chip
@@ -148,7 +153,11 @@ const NetworkList: React.FC = () => {
                   <TableCell>
                     <Typography
                       variant="body2"
-                      sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+                      sx={{
+                        fontFamily: "monospace",
+                        fontSize: "0.85rem",
+                        ...responsiveTextStyles,
+                      }}
                     >
                       {network.Id?.slice(0, 12)}
                     </Typography>
@@ -172,17 +181,7 @@ const NetworkList: React.FC = () => {
                     </IconButton>
                   </TableCell>
                 </TableRow>
-                <TableRow
-                  sx={(theme) => ({
-                    "& .MuiTableCell-root": { borderBottom: "none" },
-                    backgroundColor:
-                      index % 2 === 0
-                        ? "transparent"
-                        : theme.palette.mode === "dark"
-                          ? "rgba(255,255,255,0.08)"
-                          : "rgba(0,0,0,0.05)",
-                  })}
-                >
+                <TableRow sx={expandedRowStyles}>
                   <TableCell
                     style={{ paddingBottom: 0, paddingTop: 0 }}
                     colSpan={8}
@@ -196,15 +195,7 @@ const NetworkList: React.FC = () => {
                         component={motion.div}
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        sx={{
-                          margin: 2,
-                          borderRadius: 2,
-                          p: 2,
-                          bgcolor: (theme) =>
-                            theme.palette.mode === "dark"
-                              ? "rgba(255,255,255,0.05)"
-                              : "rgba(0,0,0,0.03)",
-                        }}
+                        sx={getExpandedContentStyles}
                       >
                         <Typography variant="subtitle2" gutterBottom>
                           <b>Full Network ID:</b>
@@ -215,7 +206,7 @@ const NetworkList: React.FC = () => {
                             fontFamily: "monospace",
                             fontSize: "0.85rem",
                             mb: 2,
-                            wordBreak: "break-all",
+                            ...longTextStyles,
                           }}
                         >
                           {network.Id}
@@ -232,7 +223,7 @@ const NetworkList: React.FC = () => {
                                 key={i}
                                 label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
                                 size="small"
-                                sx={{ mr: 1, mb: 1 }}
+                                sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                               />
                             ))
                           ) : (
@@ -254,7 +245,7 @@ const NetworkList: React.FC = () => {
                                   key={key}
                                   label={`${key}: ${val}`}
                                   size="small"
-                                  sx={{ mr: 1, mb: 1 }}
+                                  sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                                 />
                               ),
                             )
@@ -276,7 +267,7 @@ const NetworkList: React.FC = () => {
                                 key={key}
                                 label={`${key}: ${val}`}
                                 size="small"
-                                sx={{ mr: 1, mb: 1 }}
+                                sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                               />
                             ))
                           ) : (
@@ -299,6 +290,8 @@ const NetworkList: React.FC = () => {
                                   theme.palette.mode === "dark"
                                     ? "rgba(0,0,0,0.2)"
                                     : "rgba(255,255,255,0.5)",
+                                overflowX: "auto",
+                                display: "block",
                               }}
                             >
                               <TableHead>
@@ -324,31 +317,58 @@ const NetworkList: React.FC = () => {
                                 {Object.entries(network.Containers).map(
                                   ([id, info]: [string, any]) => (
                                     <TableRow key={id}>
-                                      <TableCell>{info.Name || "-"}</TableCell>
+                                      <TableCell>
+                                        <Typography
+                                          variant="body2"
+                                          sx={responsiveTextStyles}
+                                        >
+                                          {info.Name || "-"}
+                                        </Typography>
+                                      </TableCell>
                                       <TableCell
                                         sx={{
                                           fontFamily: "monospace",
                                           fontSize: "0.85rem",
+                                          ...longTextStyles,
                                         }}
                                       >
                                         {id.slice(0, 12)}
                                       </TableCell>
                                       <TableCell>
-                                        {info.IPv4Address?.replace(
-                                          /\/.*/,
-                                          "",
-                                        ) || "-"}
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            fontFamily: "monospace",
+                                            fontSize: "0.85rem",
+                                            ...longTextStyles,
+                                          }}
+                                        >
+                                          {info.IPv4Address?.replace(
+                                            /\/.*/,
+                                            "",
+                                          ) || "-"}
+                                        </Typography>
                                       </TableCell>
                                       <TableCell>
-                                        {info.IPv6Address?.replace(
-                                          /\/.*/,
-                                          "",
-                                        ) || "-"}
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            fontFamily: "monospace",
+                                            fontSize: "0.85rem",
+                                            ...longTextStyles,
+                                          }}
+                                        >
+                                          {info.IPv6Address?.replace(
+                                            /\/.*/,
+                                            "",
+                                          ) || "-"}
+                                        </Typography>
                                       </TableCell>
                                       <TableCell
                                         sx={{
                                           fontFamily: "monospace",
                                           fontSize: "0.85rem",
+                                          ...longTextStyles,
                                         }}
                                       >
                                         {info.MacAddress || "-"}
@@ -369,7 +389,8 @@ const NetworkList: React.FC = () => {
                   </TableCell>
                 </TableRow>
               </React.Fragment>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </TableContainer>

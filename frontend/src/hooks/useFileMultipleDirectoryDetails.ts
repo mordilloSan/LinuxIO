@@ -1,7 +1,7 @@
 import { useQueries } from "@tanstack/react-query";
 
 import { MultiStatsItem } from "@/types/filebrowser";
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,
