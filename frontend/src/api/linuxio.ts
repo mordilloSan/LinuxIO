@@ -150,9 +150,20 @@ export function serviceLogsPayload(
 
 /**
  * Build payload for general logs stream (journalctl)
+ * @param lines - Number of initial lines to show (default "100")
+ * @param timePeriod - Time range like "1h", "24h", "7d" (optional)
+ * @param priority - Max priority level 0-7 (optional, empty = all)
+ * @param identifier - Filter by SYSLOG_IDENTIFIER (optional, empty = all)
  */
-export function generalLogsPayload(lines: string = "100"): Uint8Array {
-  return encodeString(`general-logs\0${lines}`);
+export function generalLogsPayload(
+  lines: string = "100",
+  timePeriod: string = "",
+  priority: string = "",
+  identifier: string = "",
+): Uint8Array {
+  return encodeString(
+    `general-logs\0${lines}\0${timePeriod}\0${priority}\0${identifier}`,
+  );
 }
 
 /**

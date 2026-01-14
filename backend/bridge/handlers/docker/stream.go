@@ -9,7 +9,7 @@ import (
 	"regexp"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -59,7 +59,7 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		ShowStdout: true,
 		ShowStderr: true,
 		Timestamps: false,
-		Follow:     true, // This is the key - enables streaming!
+		Follow:     true,
 		Tail:       tail,
 	}
 
@@ -75,7 +75,6 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 	go func() {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil || frame.Opcode == ipc.OpStreamClose {
-			logger.Debugf("[DockerLogs] client closed stream")
 			cancel()
 		}
 	}()
@@ -89,7 +88,6 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		// Check if context was cancelled
 		select {
 		case <-ctx.Done():
-			logger.Debugf("[DockerLogs] context cancelled, stopping stream")
 			sendStreamClose(stream)
 			return nil
 		default:
@@ -131,13 +129,11 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 			Payload:  cleanData,
 		}
 		if err := ipc.WriteRelayFrame(stream, frame); err != nil {
-			logger.Debugf("[DockerLogs] write to stream failed: %v", err)
 			break
 		}
 	}
 
 	sendStreamClose(stream)
-	logger.Infof("[DockerLogs] Stream closed for container=%s", containerID)
 	return nil
 }
 

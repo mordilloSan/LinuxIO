@@ -1,16 +1,21 @@
 package filebrowser
 
 import (
+	"bufio"
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -24,6 +29,7 @@ const (
 	StreamTypeFBArchive  = "fb-archive"  // Multi-file archive download
 	StreamTypeFBCompress = "fb-compress" // Create archive from paths
 	StreamTypeFBExtract  = "fb-extract"  // Extract archive to destination
+	StreamTypeFBReindex  = "fb-reindex"  // Reindex filesystem with progress
 )
 
 const (
@@ -69,6 +75,11 @@ func HandleExtractStream(sess *session.Session, stream net.Conn, args []string) 
 	return handleExtract(stream, args)
 }
 
+// HandleReindexStream handles a reindex stream with real-time progress.
+func HandleReindexStream(sess *session.Session, stream net.Conn, args []string) error {
+	return handleReindex(stream, args)
+}
+
 // RegisterStreamHandlers registers all filebrowser stream handlers.
 func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
 	handlers[StreamTypeFBDownload] = HandleDownloadStream
@@ -76,6 +87,7 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 	handlers[StreamTypeFBArchive] = HandleArchiveStream
 	handlers[StreamTypeFBCompress] = HandleCompressStream
 	handlers[StreamTypeFBExtract] = HandleExtractStream
+	handlers[StreamTypeFBReindex] = HandleReindexStream
 }
 
 // handleDownload streams a single file to the client.
@@ -701,6 +713,10 @@ func handleExtract(stream net.Conn, args []string) error {
 		destination = defaultExtractDestination(archivePath)
 	}
 
+	// Check if destination already exists (for cleanup decision on abort)
+	_, statErr := os.Stat(destination)
+	destExistedBefore := statErr == nil
+
 	// Check archive exists
 	archiveStat, err := os.Stat(archivePath)
 	if err != nil {
@@ -757,7 +773,14 @@ func handleExtract(stream net.Conn, args []string) error {
 	// Extract archive
 	err = services.ExtractArchive(archivePath, destination, opts)
 	if err == ipc.ErrAborted {
-		logger.Infof("[FBStream] Extract aborted")
+		logger.Infof("[FBStream] Extract aborted, cleaning up: %s", destination)
+		// Clean up extracted files on abort
+		// Only remove the destination if we created it (didn't exist before)
+		if !destExistedBefore {
+			if removeErr := os.RemoveAll(destination); removeErr != nil {
+				logger.Debugf("[FBStream] Failed to clean up extraction directory: %v", removeErr)
+			}
+		}
 		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 		_ = ipc.WriteStreamClose(stream, 0)
 		return fmt.Errorf("extraction aborted")
@@ -791,4 +814,198 @@ func handleExtract(stream net.Conn, args []string) error {
 
 	logger.Infof("[FBStream] Extract complete: archive=%s destination=%s", archivePath, destination)
 	return nil
+}
+
+// ReindexProgress represents progress for reindex operations.
+type ReindexProgress struct {
+	FilesIndexed int64  `json:"files_indexed"`
+	DirsIndexed  int64  `json:"dirs_indexed"`
+	CurrentPath  string `json:"current_path,omitempty"`
+	Phase        string `json:"phase,omitempty"`
+}
+
+// ReindexResult represents the final result of a reindex operation.
+type ReindexResult struct {
+	Path         string `json:"path"`
+	FilesIndexed int64  `json:"files_indexed"`
+	DirsIndexed  int64  `json:"dirs_indexed"`
+	TotalSize    int64  `json:"total_size"`
+	DurationMs   int64  `json:"duration_ms"`
+}
+
+// indexerStreamClient is an HTTP client for SSE connections to the indexer.
+// It has no timeout since SSE streams can run for a long time.
+var indexerStreamClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{
+				Timeout:   5 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}
+			return dialer.DialContext(ctx, "unix", "/var/run/indexer.sock")
+		},
+	},
+	// No timeout for SSE streams
+}
+
+// handleReindex triggers a reindex operation and streams progress to the client.
+// args: [path?] - optional path, defaults to "/" for full filesystem reindex
+func handleReindex(stream net.Conn, args []string) error {
+	// Default to root path for full filesystem reindex
+	path := "/"
+	if len(args) > 0 && args[0] != "" {
+		path = filepath.Clean(args[0])
+	}
+
+	// Set up abort monitoring
+	cancelFn, cleanup := ipc.AbortMonitor(stream)
+	defer cleanup()
+
+	// Create a cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Monitor for abort in background
+	go func() {
+		for {
+			if cancelFn() {
+				cancel()
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
+	// Build request to indexer's SSE endpoint
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex/stream?path="+path, nil)
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("failed to create request: %v", err), 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+
+	// Send initial progress
+	_ = ipc.WriteProgress(stream, 0, ReindexProgress{
+		Phase: "connecting",
+	})
+
+	// Make request to indexer
+	resp, err := indexerStreamClient.Do(req)
+	if err != nil {
+		if ctx.Err() == context.Canceled {
+			logger.Infof("[FBStream] Reindex aborted: %s", path)
+			_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("reindex aborted")
+		}
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("indexer connection failed: %v", err), 503)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("indexer request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for conflict (another operation running)
+	if resp.StatusCode == http.StatusConflict {
+		_ = ipc.WriteResultError(stream, 0, "another index operation is already running", 409)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("indexer conflict")
+	}
+
+	// Check for bad request
+	if resp.StatusCode == http.StatusBadRequest {
+		_ = ipc.WriteResultError(stream, 0, "invalid path", 400)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("invalid path")
+	}
+
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("indexer error: %s", resp.Status), resp.StatusCode)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("indexer error: %s", resp.Status)
+	}
+
+	// Read SSE events
+	reader := bufio.NewReader(resp.Body)
+	var currentEvent string
+
+	for {
+		// Check for cancellation
+		if cancelFn() {
+			logger.Infof("[FBStream] Reindex aborted: %s", path)
+			_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("reindex aborted")
+		}
+
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			if ctx.Err() == context.Canceled {
+				logger.Infof("[FBStream] Reindex aborted: %s", path)
+				_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+				_ = ipc.WriteStreamClose(stream, 0)
+				return fmt.Errorf("reindex aborted")
+			}
+			_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("read error: %v", err), 500)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("read SSE: %w", err)
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Parse SSE format
+		if strings.HasPrefix(line, "event:") {
+			currentEvent = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			continue
+		}
+
+		if strings.HasPrefix(line, "data:") {
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+
+			switch currentEvent {
+			case "started":
+				_ = ipc.WriteProgress(stream, 0, ReindexProgress{
+					Phase: "indexing",
+				})
+
+			case "progress":
+				var progress ReindexProgress
+				if err := json.Unmarshal([]byte(data), &progress); err == nil {
+					progress.Phase = "indexing"
+					_ = ipc.WriteProgress(stream, 0, progress)
+				}
+
+			case "complete":
+				var result ReindexResult
+				if err := json.Unmarshal([]byte(data), &result); err == nil {
+					_ = ipc.WriteResultOK(stream, 0, result)
+					_ = ipc.WriteStreamClose(stream, 0)
+					logger.Infof("[FBStream] Reindex complete: path=%s files=%d dirs=%d duration=%dms",
+						result.Path, result.FilesIndexed, result.DirsIndexed, result.DurationMs)
+					return nil
+				}
+
+			case "error":
+				var errData struct {
+					Message string `json:"message"`
+				}
+				if err := json.Unmarshal([]byte(data), &errData); err == nil {
+					_ = ipc.WriteResultError(stream, 0, errData.Message, 500)
+					_ = ipc.WriteStreamClose(stream, 0)
+					return fmt.Errorf("indexer error: %s", errData.Message)
+				}
+			}
+		}
+	}
+
+	// If we got here without a complete event, something went wrong
+	_ = ipc.WriteResultError(stream, 0, "indexer stream ended unexpectedly", 500)
+	_ = ipc.WriteStreamClose(stream, 0)
+	return fmt.Errorf("indexer stream ended unexpectedly")
 }

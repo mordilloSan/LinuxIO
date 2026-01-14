@@ -1016,6 +1016,7 @@ static pid_t spawn_bridge_process(
   // Preserve and validate environment variables before clearenv()
   const char *preserve_lang = getenv("LANG");
   const char *preserve_term = getenv("TERM");
+  const char *preserve_journal_stream = getenv("JOURNAL_STREAM");
 
   // Save validated copies
   char safe_lang[128] = "C.UTF-8";  // Default to UTF-8 instead of plain C
@@ -1046,6 +1047,10 @@ static pid_t spawn_bridge_process(
   setenv("LANG", safe_lang, 1);
   setenv("LC_ALL", safe_lang, 1);
   setenv("TERM", safe_term, 1);
+
+  // Restore JOURNAL_STREAM if present - needed for proper syslog priority logging
+  if (preserve_journal_stream && *preserve_journal_stream)
+    setenv("JOURNAL_STREAM", preserve_journal_stream, 1);
 
   if (want_privileged)
   {

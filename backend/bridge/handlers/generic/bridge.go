@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -35,7 +34,7 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 	handlerArgs := args[2:]
 
 	// Look up handler
-	h, ok := handler.Get(handlerType, command)
+	h, ok := ipc.Get(handlerType, command)
 	if !ok {
 		err := fmt.Errorf("handler not found: %s.%s", handlerType, command)
 		_ = ipc.WriteResultError(stream, 0, err.Error(), 404)
@@ -47,7 +46,7 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 	ctx := context.WithValue(context.Background(), sessionContextKey, sess)
 
 	// Check if bidirectional
-	if bidirHandler, ok := h.(handler.BidirectionalHandler); ok {
+	if bidirHandler, ok := h.(ipc.BidirectionalHandler); ok {
 		return handleBidirectional(ctx, stream, bidirHandler, handlerArgs)
 	}
 
@@ -55,7 +54,7 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 	return handleUnidirectional(ctx, stream, h, handlerArgs)
 }
 
-func handleUnidirectional(ctx context.Context, stream net.Conn, h handler.Handler, args []string) error {
+func handleUnidirectional(ctx context.Context, stream net.Conn, h ipc.Handler, args []string) error {
 	emit := newEventEmitter(stream)
 
 	// Execute handler
@@ -71,12 +70,12 @@ func handleUnidirectional(ctx context.Context, stream net.Conn, h handler.Handle
 	return nil
 }
 
-func handleBidirectional(ctx context.Context, stream net.Conn, h handler.BidirectionalHandler, args []string) error {
+func handleBidirectional(ctx context.Context, stream net.Conn, h ipc.BidirectionalHandler, args []string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	resizeChan := make(chan handler.ResizeEvent, 1)
-	ctx = handler.WithResizeChannel(ctx, resizeChan)
+	resizeChan := make(chan ipc.ResizeEvent, 1)
+	ctx = ipc.WithResizeChannel(ctx, resizeChan)
 
 	emit := newEventEmitter(stream)
 	inputChan := make(chan []byte, 16)
@@ -111,7 +110,7 @@ func handleBidirectional(ctx context.Context, stream net.Conn, h handler.Bidirec
 				cols := binary.BigEndian.Uint16(frame.Payload[0:2])
 				rows := binary.BigEndian.Uint16(frame.Payload[2:4])
 				select {
-				case resizeChan <- handler.ResizeEvent{Cols: cols, Rows: rows}:
+				case resizeChan <- ipc.ResizeEvent{Cols: cols, Rows: rows}:
 				default:
 				}
 			}
@@ -129,7 +128,7 @@ func handleBidirectional(ctx context.Context, stream net.Conn, h handler.Bidirec
 	return nil
 }
 
-// eventEmitter implements handler.Events
+// eventEmitter implements ipc.Events
 type eventEmitter struct {
 	stream net.Conn
 }

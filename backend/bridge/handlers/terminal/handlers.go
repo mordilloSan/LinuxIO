@@ -11,20 +11,20 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // RegisterHandlers registers all terminal handlers with the global registry
 func RegisterHandlers(sess *session.Session) {
 	// Terminal - bidirectional PTY stream
-	handler.Register("terminal", "bash", &terminalHandler{sess: sess})
-	handler.Register("terminal", "sh", &terminalHandler{sess: sess, shell: "sh"})
+	ipc.Register("terminal", "bash", &terminalHandler{sess: sess})
+	ipc.Register("terminal", "sh", &terminalHandler{sess: sess, shell: "sh"})
 
 	// Simple JSON handlers
-	handler.RegisterFunc("terminal", "list_shells", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("terminal", "list_shells", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return emit.Result([]string{})
 		}
@@ -42,11 +42,11 @@ type terminalHandler struct {
 	shell string // Optional shell override ("bash", "sh", etc.)
 }
 
-func (h *terminalHandler) Execute(ctx context.Context, args []string, emit handler.Events) error {
+func (h *terminalHandler) Execute(ctx context.Context, args []string, emit ipc.Events) error {
 	return fmt.Errorf("terminal requires bidirectional stream")
 }
 
-func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, emit handler.Events, input <-chan []byte) error {
+func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, emit ipc.Events, input <-chan []byte) error {
 	// Parse terminal size from args (cols, rows)
 	cols, rows := 120, 32
 	if len(args) >= 2 {
@@ -116,7 +116,7 @@ func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, e
 
 	logger.Infof("[Terminal] Started for user=%s pid=%d", h.sess.User.Username, cmd.Process.Pid)
 
-	resizeChan, _ := handler.ResizeChannel(ctx)
+	resizeChan, _ := ipc.ResizeChannel(ctx)
 
 	// Start PTY output relay (PTY → client)
 	done := make(chan struct{})

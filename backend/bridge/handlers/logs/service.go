@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -69,7 +69,6 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	go func() {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil || frame.Opcode == ipc.OpStreamClose {
-			logger.Debugf("[ServiceLogs] client closed stream")
 			cancel()
 		}
 	}()
@@ -80,7 +79,6 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 		// Check if context was cancelled
 		select {
 		case <-ctx.Done():
-			logger.Debugf("[ServiceLogs] context cancelled, stopping stream")
 			_ = cmd.Process.Kill()
 			sendStreamClose(stream)
 			return nil
@@ -104,7 +102,6 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 			Payload:  []byte(line),
 		}
 		if err := ipc.WriteRelayFrame(stream, frame); err != nil {
-			logger.Debugf("[ServiceLogs] write to stream failed: %v", err)
 			break
 		}
 	}
@@ -113,6 +110,5 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	_ = cmd.Wait()
 
 	sendStreamClose(stream)
-	logger.Infof("[ServiceLogs] Stream closed for service=%s", serviceName)
 	return nil
 }

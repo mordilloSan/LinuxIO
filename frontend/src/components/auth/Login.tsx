@@ -22,9 +22,17 @@ const fieldSx = (theme: any) => ({
 
   // outline: static on idle/hover, primary on focus
   "& .MuiOutlinedInput-root": {
+    borderRadius: 3,
     "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: BORDER_COLOR },
     "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
       borderColor: theme.palette.primary.main,
+    },
+  },
+
+  // Smaller size on smaller screens
+  "& .MuiOutlinedInput-input": {
+    [theme.breakpoints.down("md")]: {
+      padding: "8.5px 14px",
     },
   },
 });
@@ -109,10 +117,14 @@ function LogIn() {
         fullWidth
         color="primary"
         disabled={loading}
-        sx={{
+        sx={(theme) => ({
           my: 2,
           py: 2,
-        }}
+          borderRadius: 3,
+          [theme.breakpoints.down("md")]: {
+            py: 1.25,
+          },
+        })}
       >
         Log in
       </Button>

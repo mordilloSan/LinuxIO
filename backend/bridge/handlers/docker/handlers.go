@@ -3,12 +3,12 @@ package docker
 import (
 	"context"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 // RegisterHandlers registers all docker handlers with the global registry
 func RegisterHandlers() {
-	handler.RegisterFunc("docker", "list_containers", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "list_containers", func(ctx context.Context, args []string, emit ipc.Events) error {
 		containers, err := ListContainers()
 		if err != nil {
 			return err
@@ -16,9 +16,9 @@ func RegisterHandlers() {
 		return emit.Result(containers)
 	})
 
-	handler.RegisterFunc("docker", "start_container", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "start_container", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := StartContainer(args[0])
 		if err != nil {
@@ -27,9 +27,9 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("docker", "stop_container", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "stop_container", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := StopContainer(args[0])
 		if err != nil {
@@ -38,9 +38,9 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("docker", "remove_container", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "remove_container", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := RemoveContainer(args[0])
 		if err != nil {
@@ -49,9 +49,9 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("docker", "restart_container", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "restart_container", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := RestartContainer(args[0])
 		if err != nil {
@@ -60,7 +60,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("docker", "list_images", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "list_images", func(ctx context.Context, args []string, emit ipc.Events) error {
 		images, err := ListImages()
 		if err != nil {
 			return err
@@ -68,7 +68,7 @@ func RegisterHandlers() {
 		return emit.Result(images)
 	})
 
-	handler.RegisterFunc("docker", "list_networks", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "list_networks", func(ctx context.Context, args []string, emit ipc.Events) error {
 		networks, err := ListDockerNetworks()
 		if err != nil {
 			return err
@@ -76,9 +76,9 @@ func RegisterHandlers() {
 		return emit.Result(networks)
 	})
 
-	handler.RegisterFunc("docker", "create_network", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "create_network", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := CreateDockerNetwork(args[0])
 		if err != nil {
@@ -87,9 +87,9 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("docker", "delete_network", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "delete_network", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := DeleteDockerNetwork(args[0])
 		if err != nil {
@@ -98,7 +98,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("docker", "list_volumes", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "list_volumes", func(ctx context.Context, args []string, emit ipc.Events) error {
 		volumes, err := ListVolumes()
 		if err != nil {
 			return err
@@ -106,9 +106,9 @@ func RegisterHandlers() {
 		return emit.Result(volumes)
 	})
 
-	handler.RegisterFunc("docker", "create_volume", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "create_volume", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := CreateVolume(args[0])
 		if err != nil {
@@ -117,9 +117,9 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("docker", "delete_volume", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("docker", "delete_volume", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := DeleteVolume(args[0])
 		if err != nil {

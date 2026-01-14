@@ -5,20 +5,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handler"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 // RegisterHandlers registers dbus handlers with the new handler system
 func RegisterHandlers() {
 	// System control
-	handler.RegisterFunc("dbus", "Reboot", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "Reboot", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if err := CallLogin1Action("Reboot"); err != nil {
 			return err
 		}
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "PowerOff", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "PowerOff", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if err := CallLogin1Action("PowerOff"); err != nil {
 			return err
 		}
@@ -26,7 +26,7 @@ func RegisterHandlers() {
 	})
 
 	// Updates management
-	handler.RegisterFunc("dbus", "GetUpdates", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "GetUpdates", func(ctx context.Context, args []string, emit ipc.Events) error {
 		updates, err := GetUpdatesWithDetails()
 		if err != nil {
 			return err
@@ -34,7 +34,7 @@ func RegisterHandlers() {
 		return emit.Result(updates)
 	})
 
-	handler.RegisterFunc("dbus", "GetUpdatesBasic", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "GetUpdatesBasic", func(ctx context.Context, args []string, emit ipc.Events) error {
 		updates, err := GetUpdatesBasic()
 		if err != nil {
 			return err
@@ -42,9 +42,9 @@ func RegisterHandlers() {
 		return emit.Result(updates)
 	})
 
-	handler.RegisterFunc("dbus", "GetUpdateDetail", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "GetUpdateDetail", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		detail, err := GetSingleUpdateDetail(args[0])
 		if err != nil {
@@ -53,9 +53,9 @@ func RegisterHandlers() {
 		return emit.Result(detail)
 	})
 
-	handler.RegisterFunc("dbus", "InstallPackage", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "InstallPackage", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := InstallPackage(args[0]); err != nil {
 			return err
@@ -63,7 +63,7 @@ func RegisterHandlers() {
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "GetAutoUpdates", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "GetAutoUpdates", func(ctx context.Context, args []string, emit ipc.Events) error {
 		state, err := getAutoUpdates()
 		if err != nil {
 			return err
@@ -71,9 +71,9 @@ func RegisterHandlers() {
 		return emit.Result(state)
 	})
 
-	handler.RegisterFunc("dbus", "SetAutoUpdates", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "SetAutoUpdates", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) != 1 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		result, err := setAutoUpdates(args[0])
 		if err != nil {
@@ -82,7 +82,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("dbus", "ApplyOfflineUpdates", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "ApplyOfflineUpdates", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := applyOfflineUpdates()
 		if err != nil {
 			return err
@@ -90,7 +90,7 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
-	handler.RegisterFunc("dbus", "GetUpdateHistory", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "GetUpdateHistory", func(ctx context.Context, args []string, emit ipc.Events) error {
 		history, err := GetUpdateHistory()
 		if err != nil {
 			return err
@@ -99,7 +99,7 @@ func RegisterHandlers() {
 	})
 
 	// Service management
-	handler.RegisterFunc("dbus", "ListServices", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "ListServices", func(ctx context.Context, args []string, emit ipc.Events) error {
 		services, err := ListServices()
 		if err != nil {
 			return err
@@ -107,9 +107,9 @@ func RegisterHandlers() {
 		return emit.Result(services)
 	})
 
-	handler.RegisterFunc("dbus", "GetServiceInfo", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "GetServiceInfo", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		info, err := GetServiceInfo(args[0])
 		if err != nil {
@@ -118,9 +118,9 @@ func RegisterHandlers() {
 		return emit.Result(info)
 	})
 
-	handler.RegisterFunc("dbus", "StartService", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "StartService", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := StartService(args[0]); err != nil {
 			return err
@@ -128,9 +128,9 @@ func RegisterHandlers() {
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "StopService", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "StopService", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := StopService(args[0]); err != nil {
 			return err
@@ -138,9 +138,9 @@ func RegisterHandlers() {
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "RestartService", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "RestartService", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := RestartService(args[0]); err != nil {
 			return err
@@ -148,9 +148,9 @@ func RegisterHandlers() {
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "ReloadService", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "ReloadService", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := ReloadService(args[0]); err != nil {
 			return err
@@ -158,9 +158,9 @@ func RegisterHandlers() {
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "EnableService", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "EnableService", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := EnableService(args[0]); err != nil {
 			return err
@@ -168,9 +168,9 @@ func RegisterHandlers() {
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "DisableService", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "DisableService", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := DisableService(args[0]); err != nil {
 			return err
@@ -178,9 +178,9 @@ func RegisterHandlers() {
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "MaskService", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "MaskService", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := MaskService(args[0]); err != nil {
 			return err
@@ -188,9 +188,9 @@ func RegisterHandlers() {
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "UnmaskService", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "UnmaskService", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := UnmaskService(args[0]); err != nil {
 			return err
@@ -199,7 +199,7 @@ func RegisterHandlers() {
 	})
 
 	// Network information
-	handler.RegisterFunc("dbus", "GetNetworkInfo", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "GetNetworkInfo", func(ctx context.Context, args []string, emit ipc.Events) error {
 		info, err := GetNetworkInfo()
 		if err != nil {
 			return err
@@ -208,9 +208,9 @@ func RegisterHandlers() {
 	})
 
 	// Network configuration - IPv4
-	handler.RegisterFunc("dbus", "SetIPv4Manual", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "SetIPv4Manual", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 4 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		iface := args[0]
 		addressCIDR := args[1]
@@ -222,9 +222,9 @@ func RegisterHandlers() {
 		return emit.Result(nil)
 	})
 
-	handler.RegisterFunc("dbus", "SetIPv4", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "SetIPv4", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 2 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		iface, method := args[0], strings.ToLower(args[1])
 		switch method {
@@ -239,9 +239,9 @@ func RegisterHandlers() {
 	})
 
 	// Network configuration - IPv6
-	handler.RegisterFunc("dbus", "SetIPv6", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "SetIPv6", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 2 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		iface, method := args[0], strings.ToLower(args[1])
 		switch method {
@@ -252,7 +252,7 @@ func RegisterHandlers() {
 			return emit.Result(nil)
 		case "static":
 			if len(args) != 3 {
-				return handler.ErrInvalidArgs
+				return ipc.ErrInvalidArgs
 			}
 			if err := SetIPv6Static(iface, args[2]); err != nil {
 				return err
@@ -264,9 +264,9 @@ func RegisterHandlers() {
 	})
 
 	// Network configuration - Other
-	handler.RegisterFunc("dbus", "SetMTU", func(ctx context.Context, args []string, emit handler.Events) error {
+	ipc.RegisterFunc("dbus", "SetMTU", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) != 2 {
-			return handler.ErrInvalidArgs
+			return ipc.ErrInvalidArgs
 		}
 		if err := SetMTU(args[0], args[1]); err != nil {
 			return err
