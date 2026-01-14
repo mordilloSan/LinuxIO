@@ -10,7 +10,7 @@ import {
   STREAM_CHUNK_SIZE,
   UPLOAD_WINDOW_SIZE,
 } from "@/api/linuxio";
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 
 // Stream types matching backend constants
 const STREAM_TYPE_FB_DOWNLOAD = "fb-download";

@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 
 /* ================= helpers ================= */
 
@@ -103,6 +103,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+
+  // Mutations
+  const { mutateAsync: setIPv4 } = linuxio.dbus.SetIPv4.useMutation();
+  const { mutateAsync: setIPv4Manual } =
+    linuxio.dbus.SetIPv4Manual.useMutation();
 
   // Compute sane defaults from iface (will be used to prefill manual fields)
   const defaults = useMemo(() => {
@@ -196,7 +201,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     try {
       if (mode === "auto") {
         // SetIPv4 with method "dhcp"
-        await linuxio.call("dbus", "SetIPv4", [iface.name, "dhcp"]);
+        await setIPv4([iface.name, "dhcp"]);
         toast.success("Switched to DHCP mode");
       } else {
         const ipv4 = (editForm.ipv4 || "").trim();
@@ -247,12 +252,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         }
 
         // SetIPv4Manual: args = [interface, addressCIDR, gateway, ...dnsServers]
-        await linuxio.call("dbus", "SetIPv4Manual", [
-          iface.name,
-          ipv4,
-          gateway,
-          ...dnsServers,
-        ]);
+        await setIPv4Manual([iface.name, ipv4, gateway, ...dnsServers]);
 
         toast.success("Manual configuration saved");
       }

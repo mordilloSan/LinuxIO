@@ -18,7 +18,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import { useStreamMux } from "@/api/linuxio";
-import * as linuxio from "@/api/linuxio-core";
+import linuxio from "@/api/react-query";
 import { encodeString, decodeString } from "@/api/StreamMultiplexer";
 import type { Stream } from "@/api/StreamMultiplexer";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -52,44 +52,35 @@ const TerminalDialog: React.FC<Props> = ({
   const streamRef = useRef<Stream | null>(null);
 
   const [terminalKey, setTerminalKey] = useState(0);
-  const [shell, setShell] = useState("");
-  const [availableShells, setAvailableShells] = useState<string[]>([]);
-  const [loadingShells, setLoadingShells] = useState(false);
-  const [hasLoadedShells, setHasLoadedShells] = useState(false);
+  const [selectedShell, setSelectedShell] = useState<string | null>(null);
 
   const { isOpen, openStream } = useStreamMux();
   const theme = useTheme();
 
   // Fetch available shells when dialog opens
-  const fetchShells = useCallback(async () => {
-    if (!containerId) return;
+  const {
+    data: shells,
+    isLoading: loadingShells,
+    isFetched: hasFetchedShells,
+  } = linuxio.terminal.list_shells.useQuery(containerId, {
+    enabled: open && !!containerId,
+  });
 
-    setLoadingShells(true);
-    try {
-      const shells = await linuxio.call<string[]>("terminal", "list_shells", [
-        containerId,
-      ]);
-      const validShells = shells.filter(
-        (s: string) => s && typeof s === "string" && s.trim() !== "",
-      );
-      setAvailableShells(validShells);
-      setShell(validShells.length > 0 ? validShells[0] : "");
-      setHasLoadedShells(true);
-    } catch (error) {
-      console.error("Failed to fetch container shells:", error);
-      setAvailableShells([]);
-      setHasLoadedShells(true);
-    } finally {
-      setLoadingShells(false);
+  const availableShells = React.useMemo(() => {
+    if (!shells) return [];
+    return shells.filter((s) => s && typeof s === "string" && s.trim() !== "");
+  }, [shells]);
+
+  const activeShell = React.useMemo(() => {
+    if (selectedShell && availableShells.includes(selectedShell)) {
+      return selectedShell;
     }
-  }, [containerId]);
+    return availableShells[0] ?? "";
+  }, [selectedShell, availableShells]);
 
   const handleDialogEntered = useCallback(() => {
-    setShell("");
-    setAvailableShells([]);
-    setHasLoadedShells(false);
-    fetchShells();
-  }, [fetchShells]);
+    setSelectedShell(null);
+  }, []);
 
   const handleDialogExited = useCallback(() => {
     // Close stream on dialog exit
@@ -97,10 +88,7 @@ const TerminalDialog: React.FC<Props> = ({
       streamRef.current.close();
       streamRef.current = null;
     }
-    setShell("");
-    setAvailableShells([]);
-    setHasLoadedShells(false);
-    setLoadingShells(false);
+    setSelectedShell(null);
     xterm.current?.dispose();
     xterm.current = null;
     fitAddon.current = null;
@@ -112,7 +100,7 @@ const TerminalDialog: React.FC<Props> = ({
       !open ||
       !termRef.current ||
       availableShells.length === 0 ||
-      !shell ||
+      !activeShell ||
       !isOpen
     )
       return;
@@ -154,7 +142,7 @@ const TerminalDialog: React.FC<Props> = ({
     // Open container terminal stream
     const cols = xterm.current.cols;
     const rows = xterm.current.rows;
-    const payload = buildContainerPayload(containerId, shell, cols, rows);
+    const payload = buildContainerPayload(containerId, activeShell, cols, rows);
     const stream = openStream("container", payload);
 
     if (stream) {
@@ -210,7 +198,7 @@ const TerminalDialog: React.FC<Props> = ({
     };
   }, [
     open,
-    shell,
+    activeShell,
     containerId,
     isOpen,
     openStream,
@@ -228,7 +216,7 @@ const TerminalDialog: React.FC<Props> = ({
       streamRef.current.close();
       streamRef.current = null;
     }
-    setShell(newShell);
+    setSelectedShell(newShell);
     setTerminalKey((k) => k + 1); // Force remount of xterm
   };
 
@@ -261,7 +249,7 @@ const TerminalDialog: React.FC<Props> = ({
             <InputLabel id="shell-label">Shell</InputLabel>
             <Select
               labelId="shell-label"
-              value={shell}
+              value={activeShell}
               onChange={handleShellChange}
               sx={{ minWidth: 80 }}
               disabled={!isOpen || availableShells.length === 0}
@@ -289,7 +277,7 @@ const TerminalDialog: React.FC<Props> = ({
           <Box sx={{ p: 3, textAlign: "center" }}>
             <ComponentLoader />
           </Box>
-        ) : hasLoadedShells && availableShells.length === 0 ? (
+        ) : hasFetchedShells && availableShells.length === 0 ? (
           <Box sx={{ p: 3, color: "error.main", textAlign: "center" }}>
             No shell available in this container.
             <br />

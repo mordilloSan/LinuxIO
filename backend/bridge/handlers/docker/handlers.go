@@ -127,4 +127,68 @@ func RegisterHandlers() {
 		}
 		return emit.Result(result)
 	})
+
+	// Compose handlers
+	ipc.RegisterFunc("docker", "list_compose_projects", func(ctx context.Context, args []string, emit ipc.Events) error {
+		projects, err := ListComposeProjects()
+		if err != nil {
+			return err
+		}
+		return emit.Result(projects)
+	})
+
+	ipc.RegisterFunc("docker", "get_compose_project", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		project, err := GetComposeProject(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(project)
+	})
+
+	ipc.RegisterFunc("docker", "compose_up", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := ComposeUp(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "compose_down", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := ComposeDown(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "compose_stop", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := ComposeStop(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "compose_restart", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := ComposeRestart(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
 }

@@ -1,20 +1,19 @@
 /**
- * LinuxIO React Query API
+ * LinuxIO API Usage Guidelines:
  *
- * Two ways to call the API:
+ * 1. TYPE-SAFE API (PREFERRED for core handlers):
+ *    linuxio.docker.start_container.useMutation()
+ *    linuxio.filebrowser.resource_get.useQuery()
  *
- * 1. TYPE-SAFE API (recommended for built-in handlers)
- *    Full autocomplete and compile-time type checking.
+ * 2. STRING-BASED API (for modules and dynamic handlers):
+ *    linuxio.useCall("module.weather", "getForecast", ["London"])
+ *    linuxio.useMutate("module.lights", "toggle")
  *
- *    const { data } = linuxio.system.get_drive_info.useQuery();
- *    const { data } = linuxio.docker.list_containers.useQuery();
- *    const { mutate } = linuxio.docker.start_container.useMutation();
+ * 3. STREAMING API (for progress tracking):
+ *    linuxio.spawn("filebrowser", "compress", [...]).progress(...)
  *
- * 2. STRING-BASED API (for modules and dynamic handlers)
- *    Use when handler/command names are dynamic or for module calls.
- *
- *    const { data } = linuxio.useCall("module.weather", "getForecast", ["London"]);
- *    const { mutate } = linuxio.useMutate("module.lights", "toggle");
+ * 4. DIRECT API (for custom logic outside React):
+ *    await linuxio.call("handler", "command", [args])
  */
 
 import {
@@ -28,6 +27,7 @@ import * as core from "./linuxio-core";
 import { LinuxIOError } from "./linuxio-core";
 import {
   useStreamMux,
+  useIsUpdating,
   initStreamMux,
   closeStreamMux,
   waitForStreamMux,
@@ -59,11 +59,12 @@ export function useCall<T = unknown>(
   options?: Omit<UseQueryOptions<T, LinuxIOError>, "queryKey" | "queryFn">,
 ) {
   const { isOpen } = useStreamMux();
+  const isUpdating = useIsUpdating();
 
   return useQuery<T, LinuxIOError>({
     queryKey: ["linuxio", handler, command, ...args],
     queryFn: () => core.call<T>(handler, command, args),
-    enabled: isOpen && (options?.enabled ?? true),
+    enabled: isOpen && !isUpdating && (options?.enabled ?? true),
     ...options,
   });
 }
@@ -207,6 +208,7 @@ function createEndpoint<TResult>(
       ...params: Array<string | QueryOptions<TResult> | QueryConfig<TResult>>
     ) {
       const { isOpen } = useStreamMux();
+      const isUpdating = useIsUpdating();
 
       let args: unknown[] = [];
       let options: QueryOptions<TResult> | undefined;
@@ -247,7 +249,7 @@ function createEndpoint<TResult>(
         queryKey: ["linuxio", handler, command, ...serializedArgs],
         queryFn: () =>
           core.call<TResult>(handler, command, serializedArgs as string[]),
-        enabled: isOpen && (options?.enabled ?? true),
+        enabled: isOpen && !isUpdating && (options?.enabled ?? true),
         ...options,
       });
     },

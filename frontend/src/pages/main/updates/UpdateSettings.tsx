@@ -71,16 +71,8 @@ const UpdateSettings: React.FC = () => {
   }, [serverState, excludeInputOverride]);
 
   // -------- Mutations --------
-  // Use string-based API for complex object payloads
-  const setAutoUpdatesMutation = linuxio.useMutate<
-    AutoUpdateState,
-    AutoUpdateOptions
-  >("dbus", "SetAutoUpdates");
-
-  const applyOfflineMutation = linuxio.useMutate<{
-    status?: string;
-    error?: string;
-  }>("dbus", "ApplyOfflineUpdates");
+  const setAutoUpdatesMutation = linuxio.dbus.SetAutoUpdates.useMutation();
+  const applyOfflineMutation = linuxio.dbus.ApplyOfflineUpdates.useMutation();
 
   const saving =
     setAutoUpdatesMutation.isPending || applyOfflineMutation.isPending;
@@ -113,7 +105,7 @@ const UpdateSettings: React.FC = () => {
         .filter(Boolean),
     };
 
-    setAutoUpdatesMutation.mutate(payload, {
+    setAutoUpdatesMutation.mutate([payload], {
       onSuccess: () => {
         // Clear overrides - server now has the saved values
         setDraftOverrides(null);
@@ -127,7 +119,7 @@ const UpdateSettings: React.FC = () => {
 
   // -------- Apply at next reboot --------
   const handleApplyOffline = () => {
-    applyOfflineMutation.mutate(undefined, {
+    applyOfflineMutation.mutate([], {
       onSuccess: (result) => {
         if (result?.status && result.status !== "ok") {
           const errMsg = result.error || "Failed to schedule offline update";

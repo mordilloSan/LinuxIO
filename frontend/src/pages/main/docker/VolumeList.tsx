@@ -1,4 +1,5 @@
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import FolderIcon from "@mui/icons-material/Folder";
 import {
   Box,
   Table,
@@ -28,37 +29,22 @@ import {
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 
-const ImageList: React.FC = () => {
-  const { data: images = [] } = linuxio.docker.list_images.useQuery({
+const VolumeList: React.FC = () => {
+  const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,
   });
 
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  // Flatten images with multiple tags
-  const imageRows = images.flatMap((img) => {
-    const tags = img.RepoTags?.length ? img.RepoTags : ["<none>:<none>"];
-    return tags.map((tag) => {
-      const [repo, tagName] = tag.split(":");
-      return {
-        id: img.Id,
-        repo: repo || "<none>",
-        tag: tagName || "<none>",
-        shortId: img.Id?.slice(7, 19) || "",
-        size: (img.Size / (1024 * 1024)).toFixed(2),
-        created: new Date(img.Created * 1000).toLocaleString(),
-        containers: img.Containers || 0,
-        raw: img,
-      };
-    });
-  });
+  // Ensure volumes is an array (handle null/undefined from API)
+  const volumesList = Array.isArray(volumes) ? volumes : [];
 
-  const filtered = imageRows.filter(
-    (img) =>
-      img.repo.toLowerCase().includes(search.toLowerCase()) ||
-      img.tag.toLowerCase().includes(search.toLowerCase()) ||
-      img.shortId.toLowerCase().includes(search.toLowerCase()),
+  const filtered = volumesList.filter(
+    (vol) =>
+      vol.Name.toLowerCase().includes(search.toLowerCase()) ||
+      vol.Driver.toLowerCase().includes(search.toLowerCase()) ||
+      vol.Mountpoint?.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
@@ -67,7 +53,7 @@ const ImageList: React.FC = () => {
         <TextField
           variant="outlined"
           size="small"
-          placeholder="Search images…"
+          placeholder="Search volumes…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           sx={{
@@ -83,36 +69,39 @@ const ImageList: React.FC = () => {
         <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
           <TableHead>
             <TableRow sx={getTableHeaderStyles}>
-              <TableCell>Repository</TableCell>
-              <TableCell>Tag</TableCell>
-              <TableCell>Image ID</TableCell>
-              <TableCell align="right">Size</TableCell>
-              <TableCell>Created</TableCell>
-              <TableCell align="center">Used By</TableCell>
+              <TableCell>Volume Name</TableCell>
+              <TableCell>Driver</TableCell>
+              <TableCell>Mountpoint</TableCell>
+              <TableCell>Scope</TableCell>
               <TableCell />
             </TableRow>
           </TableHead>
           <TableBody>
-            {filtered.map((image, index) => {
-              const rowKey = `${image.id}-${image.tag}`;
+            {filtered.map((volume, index) => {
               const rowStyles = (theme: any) => getTableRowStyles(theme, index);
               const expandedRowStyles = (theme: any) =>
                 getExpandedRowStyles(theme, index);
               return (
-                <React.Fragment key={rowKey}>
+                <React.Fragment key={volume.Name}>
                   <TableRow sx={rowStyles}>
                     <TableCell>
-                      <Typography
-                        variant="body2"
-                        fontWeight="medium"
-                        sx={responsiveTextStyles}
-                      >
-                        {image.repo}
-                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "center" }}>
+                        <FolderIcon
+                          fontSize="small"
+                          sx={{ mr: 1, opacity: 0.7 }}
+                        />
+                        <Typography
+                          variant="body2"
+                          fontWeight="medium"
+                          sx={responsiveTextStyles}
+                        >
+                          {volume.Name}
+                        </Typography>
+                      </Box>
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={image.tag}
+                        label={volume.Driver}
                         size="small"
                         sx={{ fontSize: "0.75rem" }}
                       />
@@ -123,44 +112,30 @@ const ImageList: React.FC = () => {
                         sx={{
                           fontFamily: "monospace",
                           fontSize: "0.85rem",
-                          ...responsiveTextStyles,
+                          ...longTextStyles,
                         }}
                       >
-                        {image.shortId}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" sx={responsiveTextStyles}>
-                        {image.size} MB
+                        {volume.Mountpoint || "-"}
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontSize: "0.85rem", ...responsiveTextStyles }}
-                      >
-                        {image.created}
+                      <Typography variant="body2" sx={responsiveTextStyles}>
+                        {volume.Scope || "local"}
                       </Typography>
-                    </TableCell>
-                    <TableCell align="center">
-                      <Chip
-                        label={image.containers}
-                        size="small"
-                        color={image.containers > 0 ? "success" : "default"}
-                        sx={{ minWidth: 40 }}
-                      />
                     </TableCell>
                     <TableCell>
                       <IconButton
                         size="small"
                         onClick={() =>
-                          setExpanded(expanded === rowKey ? null : rowKey)
+                          setExpanded(
+                            expanded === volume.Name ? null : volume.Name,
+                          )
                         }
                       >
                         <ExpandMoreIcon
                           style={{
                             transform:
-                              expanded === rowKey
+                              expanded === volume.Name
                                 ? "rotate(180deg)"
                                 : "rotate(0deg)",
                             transition: "0.2s",
@@ -172,10 +147,10 @@ const ImageList: React.FC = () => {
                   <TableRow sx={expandedRowStyles}>
                     <TableCell
                       style={{ paddingBottom: 0, paddingTop: 0 }}
-                      colSpan={7}
+                      colSpan={5}
                     >
                       <Collapse
-                        in={expanded === rowKey}
+                        in={expanded === volume.Name}
                         timeout="auto"
                         unmountOnExit
                       >
@@ -183,10 +158,10 @@ const ImageList: React.FC = () => {
                           component={motion.div}
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          sx={getExpandedContentStyles}
+                          sx={(theme) => getExpandedContentStyles(theme)}
                         >
                           <Typography variant="subtitle2" gutterBottom>
-                            <b>Full Image ID:</b>
+                            <b>Full Mountpoint:</b>
                           </Typography>
                           <Typography
                             variant="body2"
@@ -197,8 +172,22 @@ const ImageList: React.FC = () => {
                               ...longTextStyles,
                             }}
                           >
-                            {image.id}
+                            {volume.Mountpoint || "-"}
                           </Typography>
+
+                          {volume.CreatedAt && (
+                            <>
+                              <Typography variant="subtitle2" gutterBottom>
+                                <b>Created:</b>
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{ mb: 2, fontSize: "0.85rem" }}
+                              >
+                                {new Date(volume.CreatedAt).toLocaleString()}
+                              </Typography>
+                            </>
+                          )}
 
                           <Typography variant="subtitle2" gutterBottom>
                             <b>Labels:</b>
@@ -206,9 +195,9 @@ const ImageList: React.FC = () => {
                           <Box
                             sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}
                           >
-                            {image.raw.Labels &&
-                            Object.keys(image.raw.Labels).length > 0 ? (
-                              Object.entries(image.raw.Labels).map(
+                            {volume.Labels &&
+                            Object.keys(volume.Labels).length > 0 ? (
+                              Object.entries(volume.Labels).map(
                                 ([key, val]) => (
                                   <Chip
                                     key={key}
@@ -233,31 +222,31 @@ const ImageList: React.FC = () => {
                           </Box>
 
                           <Typography variant="subtitle2" gutterBottom>
-                            <b>Image Digests:</b>
+                            <b>Options:</b>
                           </Typography>
                           <Box>
-                            {image.raw.RepoDigests &&
-                            image.raw.RepoDigests.length > 0 ? (
-                              image.raw.RepoDigests.map((digest) => (
-                                <Typography
-                                  key={digest}
-                                  variant="body2"
-                                  sx={{
-                                    fontFamily: "monospace",
-                                    fontSize: "0.8rem",
-                                    mb: 0.5,
-                                    ...longTextStyles,
-                                  }}
-                                >
-                                  {digest}
-                                </Typography>
-                              ))
+                            {volume.Options &&
+                            Object.keys(volume.Options).length > 0 ? (
+                              Object.entries(volume.Options).map(
+                                ([key, val]) => (
+                                  <Chip
+                                    key={key}
+                                    label={`${key}: ${val}`}
+                                    size="small"
+                                    sx={{
+                                      mr: 1,
+                                      mb: 1,
+                                      ...wrappableChipStyles,
+                                    }}
+                                  />
+                                ),
+                              )
                             ) : (
                               <Typography
                                 variant="body2"
                                 color="text.secondary"
                               >
-                                (no digests)
+                                (no options)
                               </Typography>
                             )}
                           </Box>
@@ -274,7 +263,7 @@ const ImageList: React.FC = () => {
       {filtered.length === 0 && (
         <Box textAlign="center" py={4}>
           <Typography variant="body2" color="text.secondary">
-            No images found.
+            No volumes found.
           </Typography>
         </Box>
       )}
@@ -282,4 +271,4 @@ const ImageList: React.FC = () => {
   );
 };
 
-export default ImageList;
+export default VolumeList;

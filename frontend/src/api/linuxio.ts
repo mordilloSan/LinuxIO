@@ -117,6 +117,34 @@ export function useStreamMux() {
   };
 }
 
+/**
+ * Hook to track system update status.
+ * Returns true when a system update is in progress and all API queries should be paused.
+ */
+export function useIsUpdating(): boolean {
+  const [isUpdating, setIsUpdating] = useState<boolean>(() => {
+    const mux = getStreamMux();
+    return mux?.isUpdating ?? false;
+  });
+
+  useEffect(() => {
+    const mux = getStreamMux();
+    if (!mux) return;
+
+    // Update immediately
+    setIsUpdating(mux.isUpdating);
+
+    // Subscribe to changes
+    const unsubscribe = mux.addUpdatingListener((value: boolean) => {
+      setIsUpdating(value);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return isUpdating;
+}
+
 // ============================================================================
 // Payload Helpers (using new bridge protocol)
 // ============================================================================

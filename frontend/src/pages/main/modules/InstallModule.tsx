@@ -9,12 +9,11 @@ import {
   Typography,
   CircularProgress,
 } from "@mui/material";
-import { useMutation } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
-import * as linuxio from "@/api/linuxio-core";
-import type { InstallResult, ValidationResult } from "@/types/module";
+import linuxio from "@/api/react-query";
+import type { ValidationResult, InstallResult } from "@/types/module";
 
 interface InstallModuleProps {
   onInstalled: () => void;
@@ -28,15 +27,11 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
     useState<ValidationResult | null>(null);
 
   // Mutations
-  const validateMutation = useMutation<ValidationResult, Error, string>({
-    mutationFn: (path: string) =>
-      linuxio.call<ValidationResult>("modules", "ValidateModule", [path]),
-  });
+  const { mutate: validateMutation, isPending: validatePending } =
+    linuxio.modules.ValidateModule.useMutation();
 
-  const installMutation = useMutation<InstallResult, Error, string[]>({
-    mutationFn: (args: string[]) =>
-      linuxio.call<InstallResult>("modules", "InstallModule", args),
-  });
+  const { mutate: installMutation, isPending: installPending } =
+    linuxio.modules.InstallModule.useMutation();
 
   const handleValidate = () => {
     if (!path) {
@@ -45,7 +40,7 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
     }
 
     setValidationResult(null);
-    validateMutation.mutate(path, {
+    validateMutation([path], {
       onSuccess: (result) => {
         setValidationResult(result);
         if (result.valid) {
@@ -66,23 +61,20 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
       return;
     }
 
-    installMutation.mutate(
-      [path, targetName, createSymlink ? "true" : "false"],
-      {
-        onSuccess: (result) => {
-          toast.success(result.message || "Module installed successfully!");
+    installMutation([path, targetName, createSymlink ? "true" : "false"], {
+      onSuccess: (result: InstallResult) => {
+        toast.success(result.message || "Module installed successfully!");
 
-          // Reset form
-          setPath("");
-          setTargetName("");
-          setCreateSymlink(false);
-          setValidationResult(null);
+        // Reset form
+        setPath("");
+        setTargetName("");
+        setCreateSymlink(false);
+        setValidationResult(null);
 
-          // Navigate to installed modules
-          onInstalled();
-        },
+        // Navigate to installed modules
+        onInstalled();
       },
-    );
+    });
   };
 
   return (
@@ -134,28 +126,16 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
             <Button
               variant="outlined"
               onClick={handleValidate}
-              disabled={
-                validateMutation.isPending || installMutation.isPending || !path
-              }
+              disabled={validatePending || installPending || !path}
             >
-              {validateMutation.isPending ? (
-                <CircularProgress size={20} />
-              ) : (
-                "Validate"
-              )}
+              {validatePending ? <CircularProgress size={20} /> : "Validate"}
             </Button>
             <Button
               variant="contained"
               onClick={handleInstall}
-              disabled={
-                validateMutation.isPending || installMutation.isPending || !path
-              }
+              disabled={validatePending || installPending || !path}
             >
-              {installMutation.isPending ? (
-                <CircularProgress size={20} />
-              ) : (
-                "Install"
-              )}
+              {installPending ? <CircularProgress size={20} /> : "Install"}
             </Button>
           </Box>
 

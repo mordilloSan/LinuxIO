@@ -144,6 +144,9 @@ export interface DockerImage {
   RepoTags: string[];
   Size: number;
   Created: number;
+  Containers?: number;
+  Labels?: Record<string, string>;
+  RepoDigests?: string[];
 }
 
 export interface DockerNetwork {
@@ -151,12 +154,54 @@ export interface DockerNetwork {
   Name: string;
   Driver: string;
   Scope: string;
+  Internal?: boolean;
+  EnableIPv4?: boolean;
+  EnableIPv6?: boolean;
+  IPAM?: {
+    Config?: Array<{
+      Subnet: string;
+      Gateway: string;
+    }>;
+  };
+  Options?: Record<string, string>;
+  Labels?: Record<string, string>;
+  Containers?: Record<
+    string,
+    {
+      Name: string;
+      IPv4Address?: string;
+      IPv6Address?: string;
+      MacAddress?: string;
+    }
+  >;
 }
 
 export interface DockerVolume {
   Name: string;
   Driver: string;
   Mountpoint: string;
+  CreatedAt?: string;
+  Labels?: Record<string, string>;
+  Options?: Record<string, string>;
+  Scope?: string;
+}
+
+export interface ComposeService {
+  name: string;
+  image: string;
+  status: string;
+  state: string;
+  container_count: number;
+  container_ids: string[];
+  ports: string[];
+}
+
+export interface ComposeProject {
+  name: string;
+  status: string;
+  services: Record<string, ComposeService>;
+  config_files: string[];
+  working_dir: string;
 }
 
 // ============================================================================
@@ -219,6 +264,7 @@ export interface ApiResource {
   type: string;
   items?: ApiResource[];
   path: string;
+  content?: string;
 }
 
 export interface FileResource {
@@ -246,6 +292,7 @@ export interface SubfoldersResponse {
 }
 
 export interface SearchResponse {
+  query: string;
   results: Array<{
     path: string;
     name: string;
@@ -253,6 +300,7 @@ export interface SearchResponse {
     size: number;
     modified: string;
   }>;
+  count: number;
 }
 
 export interface UsersGroupsResponse {
@@ -276,12 +324,18 @@ export interface VersionResponse {
 // ============================================================================
 
 export interface Peer {
-  publicKey: string;
-  allowedIPs: string[];
+  name: string;
+  public_key: string;
+  allowed_ips?: string[];
   endpoint?: string;
-  lastHandshake?: string;
-  transferRx?: number;
-  transferTx?: number;
+  preshared_key?: string;
+  persistent_keepalive?: number;
+  last_handshake?: string; // RFC3339 or "never"
+  last_handshake_unix?: number; // 0 if never
+  rx_bytes?: number;
+  tx_bytes?: number;
+  rx_bps?: number; // bytes/sec
+  tx_bps?: number; // bytes/sec
 }
 
 export interface PeerConfigDownload {
@@ -331,6 +385,15 @@ export interface LinuxIOSchema {
     list_volumes: { args: []; result: DockerVolume[] };
     create_volume: { args: [name: string]; result: void };
     delete_volume: { args: [name: string]; result: void };
+    list_compose_projects: { args: []; result: ComposeProject[] };
+    get_compose_project: {
+      args: [projectName: string];
+      result: ComposeProject;
+    };
+    compose_up: { args: [projectName: string]; result: any };
+    compose_down: { args: [projectName: string]; result: any };
+    compose_stop: { args: [projectName: string]; result: any };
+    compose_restart: { args: [projectName: string]; result: any };
   };
 
   dbus: {
@@ -375,7 +438,10 @@ export interface LinuxIOSchema {
   };
 
   filebrowser: {
-    resource_get: { args: [path: string]; result: ApiResource };
+    resource_get: {
+      args: [path: string, unused?: string, getContent?: string];
+      result: ApiResource;
+    };
     resource_stat: { args: [path: string]; result: ResourceStatData };
     resource_delete: { args: [path: string]; result: void };
     resource_post: { args: [path: string, action: string]; result: void };
@@ -385,7 +451,10 @@ export interface LinuxIOSchema {
     };
     dir_size: { args: [path: string]; result: DirectorySizeData };
     subfolders: { args: [path: string]; result: SubfoldersResponse };
-    search: { args: [path: string, query: string]; result: SearchResponse };
+    search: {
+      args: [query: string, limit?: string, basePath?: string];
+      result: SearchResponse;
+    };
     indexer_status: {
       args: [];
       result: { running: boolean; progress: number };
@@ -454,7 +523,10 @@ export interface LinuxIOSchema {
   };
 
   terminal: {
-    list_shells: { args: []; result: Array<{ id: string; command: string }> };
+    list_shells: {
+      args: [containerId: string];
+      result: string[];
+    };
   };
 }
 
