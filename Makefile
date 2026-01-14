@@ -9,6 +9,8 @@ VITE_DEV_PORT = 3000
 DEV_LOG_LINES ?= 25
 VITE_DEV_LOG  ?= frontend/.vite-dev.log
 VITE_DEV_PID  ?= frontend/.vite-dev.pid
+SCRIPT_SERVER_PORT ?= 9999
+SCRIPT_SERVER_PID  ?= .script-server.pid
 VERBOSE      ?= true
 
 # --- Go project root autodetection ---
@@ -444,12 +446,13 @@ dev-prep:
 
 dev: setup dev-prep
 	@echo ""
-	@echo "🚀 Starting frontend dev server (detached)..."
+	@echo "🚀 Starting development servers..."
 	@echo "   Backend must be running via: sudo systemctl start linuxio"
-	@echo "   Vite proxies /ws and /auth to port 8090"
+	@echo "   Vite proxies /ws, /auth, /api to port 8090"
 	@echo "   Vite log: $(VITE_DEV_LOG)"
 	@echo ""
 	@STARTED_VITE=0
+	@STARTED_SCRIPT_SERVER=0
 	@cleanup() { \
 	  if [ "$$STARTED_VITE" = "1" ]; then \
 	    if [ -f "$(VITE_DEV_PID)" ]; then \
@@ -461,7 +464,26 @@ dev: setup dev-prep
 	    fi; \
 	    rm -f "$(VITE_DEV_LOG)"; \
 	  fi; \
+	  if [ "$$STARTED_SCRIPT_SERVER" = "1" ]; then \
+	    if [ -f "$(SCRIPT_SERVER_PID)" ]; then \
+	      pid="$$(cat "$(SCRIPT_SERVER_PID)")"; \
+	      if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+	        kill "$$pid" 2>/dev/null || true; \
+	      fi; \
+	      rm -f "$(SCRIPT_SERVER_PID)"; \
+	    fi; \
+	  fi; \
 	}
+	@if [ -f "$(SCRIPT_SERVER_PID)" ] && kill -0 "$$(cat "$(SCRIPT_SERVER_PID)")" 2>/dev/null; then \
+	  echo "⚠️  Dev script server already running (pid $$(cat "$(SCRIPT_SERVER_PID)"))"; \
+	else \
+	  rm -f "$(SCRIPT_SERVER_PID)"; \
+	  nohup bash -c 'cd packaging/scripts && exec python3 -m http.server $(SCRIPT_SERVER_PORT)' >/dev/null 2>&1 & \
+	  echo $$! > "$(SCRIPT_SERVER_PID)"; \
+	  STARTED_SCRIPT_SERVER=1; \
+	  echo "✅ Dev script server started (pid $$(cat "$(SCRIPT_SERVER_PID)"))"; \
+	  echo "   ➜  Serving:  http://localhost:$(SCRIPT_SERVER_PORT)/"; \
+	fi
 	@if [ -f "$(VITE_DEV_PID)" ] && kill -0 "$$(cat "$(VITE_DEV_PID)")" 2>/dev/null; then \
 	  echo "⚠️  Vite already running (pid $$(cat "$(VITE_DEV_PID)"))"; \
 	else \
@@ -473,7 +495,7 @@ dev: setup dev-prep
 	@if [ -f "$(VITE_DEV_PID)" ]; then \
 	  echo "✅ Vite started (pid $$(cat "$(VITE_DEV_PID)"))"; \
 	  echo "   ➜  Local:   http://localhost:$(VITE_DEV_PORT)/"; \
-	  echo "   Stop with: kill $$(cat "$(VITE_DEV_PID)")"; \
+	  echo "   Stop with: kill $$(cat "$(VITE_DEV_PID)") $$(cat "$(SCRIPT_SERVER_PID)")"; \
 	else \
 	  echo "❌ Failed to capture Vite PID. Check $(VITE_DEV_LOG) for details."; \
 	fi
@@ -504,6 +526,7 @@ clean:
 	@rm -f ./linuxio-webserver || true
 	@rm -f ./linuxio-bridge || true
 	@rm -f ./linuxio-auth || true
+	@rm -f $(VITE_DEV_PID) $(VITE_DEV_LOG) $(SCRIPT_SERVER_PID) || true
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
 	@find "$(BACKEND_DIR)/webserver/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
