@@ -264,6 +264,7 @@ export interface ApiResource {
   type: string;
   items?: ApiResource[];
   path: string;
+  content?: string;
 }
 
 export interface FileResource {

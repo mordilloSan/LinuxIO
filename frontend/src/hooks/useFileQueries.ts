@@ -132,14 +132,9 @@ export const useFileQueries = ({
 
   // Editing file resource with content flag
   const { data: editingFileResource, isPending: isEditingFileLoading } =
-    linuxio.filebrowser.resource_get.useQuery(
-      editingPath || "",
-      "",
-      "true",
-      {
-        enabled: !!editingPath,
-      },
-    );
+    linuxio.filebrowser.resource_get.useQuery(editingPath || "", "", "true", {
+      enabled: !!editingPath,
+    });
 
   const shouldShowDetailLoader =
     (hasSingleDetailTarget && isDetailPending) ||
