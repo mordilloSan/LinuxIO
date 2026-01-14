@@ -50,6 +50,7 @@ import {
   getExpandedRowStyles,
   getExpandedContentStyles,
   tableContainerStyles,
+  responsiveTextStyles,
 } from "@/styles/tableStyles";
 
 const DEFAULT_TAIL = "200";
@@ -198,8 +199,8 @@ const GeneralLogsPage: React.FC = () => {
         const timestamp = data.__REALTIME_TIMESTAMP
           ? new Date(
               parseInt(data.__REALTIME_TIMESTAMP) / 1000,
-            ).toLocaleString()
-          : new Date().toLocaleString();
+            ).toLocaleTimeString([], { hour12: false })
+          : new Date().toLocaleTimeString([], { hour12: false });
 
         const message = data.MESSAGE || "";
 
@@ -629,11 +630,10 @@ const GeneralLogsPage: React.FC = () => {
                     <TableCell>
                       <Typography
                         variant="body2"
-                        noWrap
                         sx={{
-                          maxWidth: 600,
                           fontFamily: "monospace",
                           fontSize: "0.85rem",
+                          ...responsiveTextStyles,
                         }}
                       >
                         {log.message}
@@ -689,6 +689,8 @@ const GeneralLogsPage: React.FC = () => {
                               fontSize: "0.85rem",
                               whiteSpace: "pre-wrap",
                               wordBreak: "break-word",
+                              maxWidth: "100%",
+                              overflowX: "auto",
                             })}
                           >
                             {log.message}
@@ -710,9 +712,18 @@ const GeneralLogsPage: React.FC = () => {
                                   fontSize: "0.75rem",
                                   maxHeight: 300,
                                   overflowY: "auto",
+                                  maxWidth: "100%",
+                                  overflowX: "auto",
                                 })}
                               >
-                                <pre style={{ margin: 0 }}>
+                                <pre
+                                  style={{
+                                    margin: 0,
+                                    whiteSpace: "pre-wrap",
+                                    wordBreak: "break-word",
+                                    overflowWrap: "anywhere",
+                                  }}
+                                >
                                   {JSON.stringify(log.rawJson, null, 2)}
                                 </pre>
                               </Paper>
