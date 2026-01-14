@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-systemd/activation"
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go_logger/v2/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/auth"
@@ -29,7 +29,11 @@ func RunServer(cfg ServerConfig) {
 	// Logging (from flags)
 	// -------------------------------------------------------------------------
 	verbose := cfg.Verbose
-	logger.Init("production", verbose)
+	logger.Init(logger.Config{
+		Levels:          logger.AllLevels(),
+		Colorize:        false,
+		OmitLevelPrefix: true,
+	})
 	logger.InfoKV("server starting", "verbose", verbose)
 
 	// -------------------------------------------------------------------------

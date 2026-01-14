@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go_logger/v2/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
@@ -87,11 +87,12 @@ func main() {
 		Motd: bootCfg.Motd,
 	}
 
-	// All config comes from binary bootstrap on stdin
-	verbose := bootCfg.Verbose
-
 	// Initialize logger (stdout/stderr → systemd journal)
-	logger.Init("production", verbose)
+	logger.Init(logger.Config{
+		Levels:          logger.AllLevels(),
+		Colorize:        false,
+		OmitLevelPrefix: true,
+	})
 
 	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID)

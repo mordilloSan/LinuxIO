@@ -168,17 +168,6 @@ func runLogs(args []string) {
 		}
 	}
 
-	// Pipe through awk to remove hostname (4th field) and colorize log levels
-	awkScript := `{
-		$4=""
-		gsub(/\[DEBUG\]/, "\033[36m[DEBUG]\033[0m")
-		gsub(/\[INFO\]/, "\033[32m[INFO]\033[0m")
-		gsub(/\[WARN\]/, "\033[33m[WARN]\033[0m")
-		gsub(/\[WARNING\]/, "\033[33m[WARNING]\033[0m")
-		gsub(/\[ERROR\]/, "\033[31m[ERROR]\033[0m")
-		print $0
-	}`
-
 	allUnits := []string{
 		"_SYSTEMD_UNIT=linuxio.target",
 		"_SYSTEMD_UNIT=linuxio-webserver.service",
@@ -219,7 +208,29 @@ func runLogs(args []string) {
 	}
 
 	journalMatch := strings.Join(journalTerms, " + ")
-	shellCmd := fmt.Sprintf("journalctl %s -f -n %d --no-pager | awk '%s'", journalMatch, lines, awkScript)
+
+	// Use jq to parse JSON output and reconstruct the journalctl short format with colorized level prefix
+	// PRIORITY levels: 7=DEBUG(cyan), 6=INFO(green), 5=NOTICE(green), 4=WARN(yellow), 3=ERROR(red), 0-2=ERROR(red)
+	jqScript := `
+		(.__REALTIME_TIMESTAMP | tonumber / 1000000 | strftime("%b %d %H:%M:%S")) as $time |
+		(._SYSTEMD_UNIT // .SYSLOG_IDENTIFIER // "unknown") as $unit |
+		(._PID // .SYSLOG_PID // "") as $pid |
+		(.MESSAGE // "") as $msg |
+		(if .PRIORITY == "7" then "\u001b[36m[DEBUG]\u001b[0m"
+		 elif .PRIORITY == "6" or .PRIORITY == "5" then "\u001b[32m[INFO]\u001b[0m"
+		 elif .PRIORITY == "4" then "\u001b[33m[WARN]\u001b[0m"
+		 elif .PRIORITY == "3" or .PRIORITY == "2" or .PRIORITY == "1" or .PRIORITY == "0" then "\u001b[31m[ERROR]\u001b[0m"
+		 else ""
+		 end) as $level |
+		($unit | gsub("\\.service$"; "") | gsub("\\.socket$"; "")) as $short_unit |
+		if $pid != "" then
+			"\($time)  \($short_unit)[\($pid)]: \($level) \($msg)"
+		else
+			"\($time)  \($short_unit): \($level) \($msg)"
+		end
+	`
+
+	shellCmd := fmt.Sprintf("journalctl %s -f -n %d --no-pager -o json | jq -r '%s'", journalMatch, lines, jqScript)
 
 	cmd := exec.Command("sh", "-c", shellCmd)
 	cmd.Stdout = os.Stdout

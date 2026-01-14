@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/go_logger/logger"
+	"github.com/mordilloSan/go_logger/v2/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
