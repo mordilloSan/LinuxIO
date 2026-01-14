@@ -1,4 +1,6 @@
 import { Button } from "@mui/material";
+import { useState } from "react";
+import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 
 /**
  * Dev-only tool to force an update notification for testing.
@@ -7,6 +9,7 @@ import { Button } from "@mui/material";
 export const ForceUpdateNotification = () => {
   // Check if update notification is currently shown
   const shown = !!sessionStorage.getItem("dev_update_forced");
+  const [isDevtoolsOpen, setIsDevtoolsOpen] = useState(false);
 
   const forceUpdateNotification = () => {
     const fakeUpdateInfo = {
@@ -32,45 +35,90 @@ export const ForceUpdateNotification = () => {
   }
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: 20,
-        right: 20,
-        zIndex: 9999,
-        background: "#1976d2",
-        color: "white",
-        padding: "12px 16px",
-        borderRadius: 8,
-        boxShadow: "0 4px 6px rgba(0,0,0,0.3)",
-        fontSize: 14,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
-    >
-      <div style={{ fontWeight: "bold", marginBottom: 4 }}>🛠️ Dev Tools</div>
-      {!shown ? (
+    <>
+      <div
+        style={{
+          position: "fixed",
+          bottom: 20,
+          right: 20,
+          zIndex: 9999,
+          color: "white",
+          padding: "12px 16px",
+          borderRadius: 8,
+          boxShadow: "0 4px 6px rgba(0,0,0,0.3)",
+          fontSize: 14,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <div style={{ fontWeight: "bold", marginBottom: 4 }}>🛠️ Dev Tools</div>
         <Button
           variant="contained"
-          color="warning"
+          color="primary"
           size="small"
-          onClick={forceUpdateNotification}
+          onClick={() => setIsDevtoolsOpen(!isDevtoolsOpen)}
           fullWidth
         >
-          Show Update Notification
+          {isDevtoolsOpen ? "Close" : "Open"} React Query Devtools
         </Button>
-      ) : (
-        <Button
-          variant="contained"
-          color="secondary"
-          size="small"
-          onClick={clearUpdateNotification}
-          fullWidth
-        >
-          Hide Update Notification
-        </Button>
+        {!shown ? (
+          <Button
+            variant="contained"
+            color="warning"
+            size="small"
+            onClick={forceUpdateNotification}
+            fullWidth
+          >
+            Show Update Notification
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            color="secondary"
+            size="small"
+            onClick={clearUpdateNotification}
+            fullWidth
+          >
+            Hide Update Notification
+          </Button>
+        )}
+      </div>
+      {isDevtoolsOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              zIndex: 9997,
+            }}
+            onClick={() => setIsDevtoolsOpen(false)}
+          />
+          {/* Devtools Panel */}
+          <div
+            style={{
+              position: "fixed",
+              top: "5%",
+              left: "5%",
+              width: "90%",
+              height: "90%",
+              zIndex: 9998,
+              borderRadius: 12,
+              overflow: "hidden",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            <ReactQueryDevtoolsPanel
+              onClose={() => setIsDevtoolsOpen(false)}
+            />
+          </div>
+        </>
       )}
-    </div>
+    </>
   );
 };
