@@ -1,169 +1,298 @@
-import { Box, Typography, Chip } from "@mui/material";
-import { useState } from "react";
-
-import CollapsibleCard from "./DockerImageCard"; // ← new import
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import {
+  Box,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  TextField,
+  Collapse,
+  Chip,
+  Typography,
+} from "@mui/material";
+import { motion } from "framer-motion";
+import React, { useState } from "react";
 
 import linuxio from "@/api/react-query";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { CollapsibleColumn } from "@/types/collapsible";
 
-const formatImageRows = (images: any[]) =>
-  images.flatMap((img) =>
-    (img.RepoTags?.length ? img.RepoTags : ["<none>:<none>"]).map(
-      (tag: string) => {
-        const [repo, tagName] = tag.split(":");
-        return {
-          repo,
-          tag: tagName,
-          id: img.Id?.slice(7, 19),
-          size: (img.Size / (1024 * 1024)).toFixed(2) + " MB",
-          created: new Date(img.Created * 1000).toLocaleString(),
-          containers: img.Containers,
-          raw: img,
-        };
-      },
-    ),
+interface DockerImage {
+  Id: string;
+  RepoTags: string[];
+  Size: number;
+  Created: number;
+  Containers: number;
+  Labels?: Record<string, string>;
+  RepoDigests?: string[];
+}
+
+const ImageList: React.FC = () => {
+  const { data: images = [] } = linuxio.docker.list_images.useQuery({
+    refetchInterval: 10000,
+  });
+
+  const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Flatten images with multiple tags
+  const imageRows = images.flatMap((img) => {
+    const tags = img.RepoTags?.length ? img.RepoTags : ["<none>:<none>"];
+    return tags.map((tag) => {
+      const [repo, tagName] = tag.split(":");
+      return {
+        id: img.Id,
+        repo: repo || "<none>",
+        tag: tagName || "<none>",
+        shortId: img.Id?.slice(7, 19) || "",
+        size: (img.Size / (1024 * 1024)).toFixed(2),
+        created: new Date(img.Created * 1000).toLocaleString(),
+        containers: img.Containers || 0,
+        raw: img,
+      };
+    });
+  });
+
+  const filtered = imageRows.filter(
+    (img) =>
+      img.repo.toLowerCase().includes(search.toLowerCase()) ||
+      img.tag.toLowerCase().includes(search.toLowerCase()) ||
+      img.shortId.toLowerCase().includes(search.toLowerCase()),
   );
-
-const imageColumns: CollapsibleColumn[] = [
-  { field: "repo", headerName: "Repository", align: "left" },
-  { field: "tag", headerName: "Tag", align: "left" },
-  { field: "id", headerName: "Image ID", align: "left" },
-  { field: "size", headerName: "Size", align: "right" },
-  { field: "created", headerName: "Created", align: "left" },
-  { field: "containers", headerName: "Used By", align: "right" },
-];
-
-function renderCollapseContent(row: any) {
-  const img = row.raw as any;
-
-  const labelEntries =
-    img && img.Labels
-      ? Object.entries(img.Labels as Record<string, unknown>)
-      : [];
-  const hasLabels = labelEntries.length > 0;
-
-  const digests: string[] = Array.isArray(img?.RepoDigests)
-    ? img.RepoDigests
-    : [];
-  const hasDigests = digests.length > 0;
 
   return (
     <Box>
-      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-        Labels:
-      </Typography>
-      <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
-        {hasLabels ? (
-          <>
-            {labelEntries.map(([key, val]) => {
-              const label = `${key}: ${String(val)}`;
+      <Box mb={2} display="flex" alignItems="center" gap={2}>
+        <TextField
+          variant="outlined"
+          size="small"
+          placeholder="Search images…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ width: 320 }}
+        />
+        <Box fontWeight="bold">{filtered.length} shown</Box>
+      </Box>
+      <TableContainer>
+        <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
+          <TableHead>
+            <TableRow
+              sx={(theme) => ({
+                "& .MuiTableCell-root": { borderBottom: "none" },
+                backgroundColor:
+                  theme.palette.mode === "dark"
+                    ? "rgba(255,255,255,0.08)"
+                    : "rgba(0,0,0,0.08)",
+                borderRadius: "6px",
+                boxShadow: "none",
+              })}
+            >
+              <TableCell>Repository</TableCell>
+              <TableCell>Tag</TableCell>
+              <TableCell>Image ID</TableCell>
+              <TableCell align="right">Size</TableCell>
+              <TableCell>Created</TableCell>
+              <TableCell align="center">Used By</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filtered.map((image, index) => {
+              const rowKey = `${image.id}-${image.tag}`;
               return (
-                <Chip
-                  key={label}
-                  label={label}
-                  size="small"
-                  sx={{
-                    mr: 1,
-                    mb: 1,
-                    fontSize: { xs: "0.75rem", sm: "0.875rem" },
-                    height: { xs: 22, sm: 26 },
-                  }}
-                />
+                <React.Fragment key={rowKey}>
+                  <TableRow
+                    sx={(theme) => ({
+                      "& .MuiTableCell-root": { borderBottom: "none" },
+                      backgroundColor:
+                        index % 2 === 0
+                          ? "transparent"
+                          : theme.palette.mode === "dark"
+                            ? "rgba(255,255,255,0.04)"
+                            : "rgba(0,0,0,0.05)",
+                    })}
+                  >
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="medium">
+                        {image.repo}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={image.tag}
+                        size="small"
+                        sx={{ fontSize: "0.75rem" }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        variant="body2"
+                        sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+                      >
+                        {image.shortId}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2">{image.size} MB</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontSize: "0.85rem" }}>
+                        {image.created}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="center">
+                      <Chip
+                        label={image.containers}
+                        size="small"
+                        color={image.containers > 0 ? "success" : "default"}
+                        sx={{ minWidth: 40 }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <IconButton
+                        size="small"
+                        onClick={() =>
+                          setExpanded(expanded === rowKey ? null : rowKey)
+                        }
+                      >
+                        <ExpandMoreIcon
+                          style={{
+                            transform:
+                              expanded === rowKey
+                                ? "rotate(180deg)"
+                                : "rotate(0deg)",
+                            transition: "0.2s",
+                          }}
+                        />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow
+                    sx={(theme) => ({
+                      "& .MuiTableCell-root": { borderBottom: "none" },
+                      backgroundColor:
+                        index % 2 === 0
+                          ? "transparent"
+                          : theme.palette.mode === "dark"
+                            ? "rgba(255,255,255,0.08)"
+                            : "rgba(0,0,0,0.05)",
+                    })}
+                  >
+                    <TableCell
+                      style={{ paddingBottom: 0, paddingTop: 0 }}
+                      colSpan={7}
+                    >
+                      <Collapse
+                        in={expanded === rowKey}
+                        timeout="auto"
+                        unmountOnExit
+                      >
+                        <Box
+                          component={motion.div}
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          sx={{
+                            margin: 2,
+                            borderRadius: 2,
+                            p: 2,
+                            bgcolor: (theme) =>
+                              theme.palette.mode === "dark"
+                                ? "rgba(255,255,255,0.05)"
+                                : "rgba(0,0,0,0.03)",
+                          }}
+                        >
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Full Image ID:</b>
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontFamily: "monospace",
+                              fontSize: "0.85rem",
+                              mb: 2,
+                              wordBreak: "break-all",
+                            }}
+                          >
+                            {image.id}
+                          </Typography>
+
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Labels:</b>
+                          </Typography>
+                          <Box
+                            sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}
+                          >
+                            {image.raw.Labels &&
+                            Object.keys(image.raw.Labels).length > 0 ? (
+                              Object.entries(image.raw.Labels).map(
+                                ([key, val]) => (
+                                  <Chip
+                                    key={key}
+                                    label={`${key}: ${val}`}
+                                    size="small"
+                                    sx={{ mr: 1, mb: 1 }}
+                                  />
+                                ),
+                              )
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                (no labels)
+                              </Typography>
+                            )}
+                          </Box>
+
+                          <Typography variant="subtitle2" gutterBottom>
+                            <b>Image Digests:</b>
+                          </Typography>
+                          <Box>
+                            {image.raw.RepoDigests &&
+                            image.raw.RepoDigests.length > 0 ? (
+                              image.raw.RepoDigests.map((digest) => (
+                                <Typography
+                                  key={digest}
+                                  variant="body2"
+                                  sx={{
+                                    fontFamily: "monospace",
+                                    fontSize: "0.8rem",
+                                    mb: 0.5,
+                                    wordBreak: "break-all",
+                                  }}
+                                >
+                                  {digest}
+                                </Typography>
+                              ))
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                (no digests)
+                              </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                </React.Fragment>
               );
             })}
-          </>
-        ) : (
+          </TableBody>
+        </Table>
+      </TableContainer>
+      {filtered.length === 0 && (
+        <Box textAlign="center" py={4}>
           <Typography variant="body2" color="text.secondary">
-            (no labels)
+            No images found.
           </Typography>
-        )}
-      </Box>
-
-      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-        Image Digests:
-      </Typography>
-      <Box sx={{ display: "flex", flexWrap: "wrap" }}>
-        {hasDigests ? (
-          <>
-            {digests.map((digest) => (
-              <Typography
-                variant="body2"
-                key={digest}
-                sx={{
-                  mr: 2,
-                  mb: 0.5,
-                  wordBreak: "break-all",
-                  fontSize: { xs: "0.8rem", sm: "1rem" },
-                }}
-              >
-                {digest}
-              </Typography>
-            ))}
-          </>
-        ) : (
-          <Typography variant="body2" color="text.secondary">
-            (no digests)
-          </Typography>
-        )}
-      </Box>
+        </Box>
+      )}
     </Box>
   );
-}
+};
 
-export default function ImageList() {
-  const { data = [], isPending: isLoading } =
-    linuxio.docker.list_images.useQuery();
-
-  const rows = formatImageRows(data);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-
-  if (isLoading) {
-    return (
-      <Box
-        sx={{ width: "100%", mt: 4, display: "flex", justifyContent: "center" }}
-      >
-        <ComponentLoader />
-      </Box>
-    );
-  }
-
-  return (
-    <Box
-      sx={{
-        width: "100%",
-        maxWidth: "var(--page-content-width, 100%)",
-        mx: "auto",
-        mt: 2,
-        px: { xs: 2, md: 3 },
-        boxSizing: "border-box",
-        position: "relative",
-      }}
-    >
-      {rows.map((row, idx) => {
-        const key = String(row.id ?? idx);
-        const isSelected = selected.has(key);
-        return (
-          <CollapsibleCard
-            key={key}
-            row={row}
-            columns={imageColumns}
-            renderCollapseContent={renderCollapseContent}
-            selected={isSelected}
-            onToggleSelected={() =>
-              setSelected((prev) => {
-                const next = new Set(prev);
-                if (next.has(key)) {
-                  next.delete(key);
-                } else {
-                  next.add(key);
-                }
-                return next;
-              })
-            }
-          />
-        );
-      })}
-    </Box>
-  );
-}
+export default ImageList;

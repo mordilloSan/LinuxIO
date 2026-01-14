@@ -29,3 +29,5 @@ modules/
 .claude/
 *.swp
 frontend/.eslintcache
+.script-server.pid
+backend/backend
