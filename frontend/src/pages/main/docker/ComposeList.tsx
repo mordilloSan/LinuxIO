@@ -90,7 +90,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
     {
       field: "status",
       headerName: "Status",
-      sx: { display: { xs: "none", sm: "table-cell" } },
+      width: "100px",
     },
     { field: "name", headerName: "Stack Name" },
     { field: "containers", headerName: "Containers" },
@@ -107,7 +107,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
     (project: ComposeProject) => {
       return (
         <>
-          <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+          <TableCell>
             <Box sx={{ display: "flex", alignItems: "center" }}>
               <Box
                 component="span"
@@ -117,7 +117,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   height: 12,
                   borderRadius: "50%",
                   bgcolor: getStatusColor(project.status),
-                  mr: 1,
+                  mr: { xs: 0, sm: 1 },
                 }}
               />
               <Chip
@@ -126,6 +126,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 sx={{
                   textTransform: "capitalize",
                   fontSize: "0.75rem",
+                  display: { xs: "none", sm: "inline-flex" },
                 }}
               />
             </Box>

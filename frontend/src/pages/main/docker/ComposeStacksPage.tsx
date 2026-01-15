@@ -1,7 +1,6 @@
-import { Add as AddIcon } from "@mui/icons-material";
-import { Box, Button, Typography } from "@mui/material";
+import { Box } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { Suspense, useCallback, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import ComposeList from "./ComposeList";
@@ -18,7 +17,13 @@ import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";
 import { ValidationResult } from "@/components/docker/ComposeValidationFeedback";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
-const ComposeStacksPage: React.FC = () => {
+interface ComposeStacksPageProps {
+  onMountCreateHandler?: (handler: () => void) => void;
+}
+
+const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
+  onMountCreateHandler,
+}) => {
   const queryClient = useQueryClient();
 
   // Editor state
@@ -107,13 +112,20 @@ const ComposeStacksPage: React.FC = () => {
   const isLoading = isStarting || isStopping || isRestarting || isDowning;
 
   // Create stack handler
-  const handleCreateStack = () => {
+  const handleCreateStack = useCallback(() => {
     setEditorMode("create");
     setEditingStackName("");
     setEditingFilePath("");
     setEditingContent("");
     setEditorOpen(true);
-  };
+  }, []);
+
+  // Mount handler to parent
+  useEffect(() => {
+    if (onMountCreateHandler) {
+      onMountCreateHandler(handleCreateStack);
+    }
+  }, [onMountCreateHandler, handleCreateStack]);
 
   // Edit stack handler
   const handleEditStack = useCallback(
@@ -299,24 +311,6 @@ const ComposeStacksPage: React.FC = () => {
   return (
     <Suspense fallback={<ComponentLoader />}>
       <Box>
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            mb: 2,
-          }}
-        >
-          <Typography variant="h5">Docker Compose Stacks</Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleCreateStack}
-          >
-            Create Stack
-          </Button>
-        </Box>
-
         {isPending ? (
           <ComponentLoader />
         ) : (

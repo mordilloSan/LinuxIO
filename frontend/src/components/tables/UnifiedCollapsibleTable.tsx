@@ -143,15 +143,10 @@ function UnifiedCollapsibleTable<T>({
                     </TableCell>
                   </TableRow>
                   <TableRow
-                    sx={(theme) => ({
+                    sx={{
                       "& .MuiTableCell-root": { borderBottom: "none" },
-                      backgroundColor:
-                        index % 2 === 0
-                          ? "transparent"
-                          : theme.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.08)"
-                            : "rgba(0,0,0,0.05)",
-                    })}
+                      backgroundColor: "transparent",
+                    }}
                   >
                     <TableCell
                       style={{ paddingBottom: 0, paddingTop: 0 }}
