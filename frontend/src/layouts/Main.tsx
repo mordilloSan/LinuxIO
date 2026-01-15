@@ -3,8 +3,6 @@ import { useTheme } from "@mui/material/styles";
 import { Suspense, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
-import { ForceUpdateNotification } from "../dev-tools/ForceUpdateNotification";
-
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import Footer from "@/components/footer/Footer";
 import PageLoader from "@/components/loaders/PageLoader";
@@ -82,7 +80,6 @@ const Dashboard: React.FC = () => {
       <Box sx={{ flexShrink: 0, width: "100%" }}>
         <Footer />
       </Box>
-      <ForceUpdateNotification />
     </Box>
   );
 };

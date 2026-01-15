@@ -1,9 +1,9 @@
 import { Box, useTheme, Typography } from "@mui/material";
-import React from "react";
 
 import linuxio from "@/api/react-query";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import FileNotifications from "@/components/filebrowser/FileNotifications";
+import DevToolsButton from "@/components/footer/DevToolsButton";
 
 function Footer() {
   const theme = useTheme();
@@ -56,9 +56,13 @@ function Footer() {
           sx={{
             display: "flex",
             alignItems: "center",
+            gap: 1,
             ml: "auto",
           }}
         >
+          <ErrorBoundary>
+            <DevToolsButton />
+          </ErrorBoundary>
           <ErrorBoundary>
             <FileNotifications />
           </ErrorBoundary>
