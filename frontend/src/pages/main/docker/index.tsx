@@ -1,4 +1,6 @@
-import React from "react";
+import { Add as AddIcon } from "@mui/icons-material";
+import { Button } from "@mui/material";
+import React, { useState } from "react";
 
 import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerList from "./ContainerList";
@@ -9,6 +11,10 @@ import VolumeList from "./VolumeList";
 import { TabContainer } from "@/components/tabbar";
 
 const DockerPage: React.FC = () => {
+  const [createStackHandler, setCreateStackHandler] = useState<
+    (() => void) | null
+  >(null);
+
   return (
     <TabContainer
       tabs={[
@@ -20,7 +26,23 @@ const DockerPage: React.FC = () => {
         {
           value: "compose",
           label: "Stacks",
-          component: <ComposeStacksPage />,
+          component: (
+            <ComposeStacksPage
+              onMountCreateHandler={(handler) =>
+                setCreateStackHandler(() => handler)
+              }
+            />
+          ),
+          rightContent: createStackHandler ? (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={createStackHandler}
+            >
+              Create Stack
+            </Button>
+          ) : undefined,
         },
         {
           value: "networks",

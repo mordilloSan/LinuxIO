@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/mordilloSan/go-logger/logger"
 
@@ -56,6 +57,13 @@ func ListDockerNetworks() (any, error) {
 		}
 		results = append(results, result)
 	}
+
+	// Sort networks by Name alphabetically
+	sort.Slice(results, func(i, j int) bool {
+		nameI, _ := results[i]["Name"].(string)
+		nameJ, _ := results[j]["Name"].(string)
+		return nameI < nameJ
+	})
 
 	return results, nil
 }
