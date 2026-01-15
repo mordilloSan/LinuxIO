@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 	"github.com/goccy/go-yaml"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/go-logger/logger"
@@ -68,10 +69,46 @@ func ListComposeProjects() (any, error) {
 
 		// Initialize project if not exists
 		if _, exists := projects[projectName]; !exists {
+			parsedConfigFiles := parseConfigFiles(configFiles)
+
+			// Translate container paths to host paths for config files
+			translatedConfigFiles := make([]string, 0, len(parsedConfigFiles))
+			for _, configFile := range parsedConfigFiles {
+				// Check if the config file path exists on the host as-is
+				if _, err := os.Stat(configFile); err == nil {
+					// Path exists on host, use it directly
+					translatedConfigFiles = append(translatedConfigFiles, configFile)
+				} else {
+					// Path doesn't exist, try to translate from container path to host path
+					translatedPath := translateContainerPathToHost(cli, configFile)
+					if translatedPath != configFile {
+						// Translation succeeded, use translated path
+						translatedConfigFiles = append(translatedConfigFiles, translatedPath)
+					}
+				}
+			}
+			parsedConfigFiles = translatedConfigFiles
+
+			// Fallback: if config_files label is empty, infer from working_dir
+			if len(parsedConfigFiles) == 0 && workingDir != "" {
+				// Try to translate container paths to host paths
+				translatedWorkingDir := translateContainerPathToHost(cli, workingDir)
+
+				// Check common compose file names in the working directory
+				composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+				for _, fileName := range composeFileNames {
+					possiblePath := filepath.Join(translatedWorkingDir, fileName)
+					if _, err := os.Stat(possiblePath); err == nil {
+						parsedConfigFiles = []string{possiblePath}
+						break
+					}
+				}
+			}
+
 			projects[projectName] = &ComposeProject{
 				Name:        projectName,
 				Services:    make(map[string]*ComposeService),
-				ConfigFiles: parseConfigFiles(configFiles),
+				ConfigFiles: parsedConfigFiles,
 				WorkingDir:  workingDir,
 			}
 		}
@@ -276,6 +313,99 @@ func ComposeStop(projectName string) (any, error) {
 }
 
 // Helper functions
+
+// translateContainerPathToHost attempts to translate a container path to a host path
+// by inspecting volume mounts across all containers to find the correct mount source
+func translateContainerPathToHost(cli *client.Client, containerPath string) string {
+	// First, get all running containers to search for the correct mount
+	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
+	if err != nil {
+		logger.Warnf("failed to list containers: %v", err)
+		return containerPath
+	}
+
+	// Priority containers to check first (e.g., Portainer, Docker-in-Docker)
+	priorityNames := []string{"portainer", "portainer-ce", "portainer-ee", "dind"}
+
+	// Check priority containers first
+	for _, priorityName := range priorityNames {
+		for _, ctr := range containers {
+			// Check if container name contains the priority name
+			containerName := strings.TrimPrefix(ctr.Names[0], "/")
+			if strings.Contains(strings.ToLower(containerName), priorityName) {
+				if hostPath := tryTranslatePath(cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
+					return hostPath
+				}
+			}
+		}
+	}
+
+	// Check all other containers
+	for _, ctr := range containers {
+		containerName := strings.TrimPrefix(ctr.Names[0], "/")
+		if hostPath := tryTranslatePath(cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
+			return hostPath
+		}
+	}
+
+	logger.Debugf("no mount found for container path %s, using original", containerPath)
+	return containerPath // Return original path if no mount translation found
+}
+
+// tryTranslatePath attempts to translate a path using a specific container's mounts
+func tryTranslatePath(cli *client.Client, containerID, containerPath, containerName string) string {
+	containerJSON, err := cli.ContainerInspect(context.Background(), containerID)
+	if err != nil {
+		return containerPath
+	}
+
+	// Check each mount to see if the container path is within it
+	for _, mount := range containerJSON.Mounts {
+		// Check if the container path starts with this mount's destination
+		if relPath, found := strings.CutPrefix(containerPath, mount.Destination); found {
+			// Remove leading slash if any
+			relPath = strings.TrimPrefix(relPath, "/")
+
+			// Construct the host path
+			if mount.Source != "" {
+				hostPath := filepath.Join(mount.Source, relPath)
+
+				// Check if this is a bind mount (user-accessible) or volume (Docker-managed)
+				// For bind mounts, the source is a regular filesystem path
+				// For volumes, the source is typically /var/lib/docker/volumes/...
+				isVolume := mount.Type == "volume"
+				isBindMount := mount.Type == "bind"
+
+				// Verify the path exists and is accessible
+				if stat, err := os.Stat(hostPath); err == nil {
+					// Check if it's a Docker volume path
+					if isVolume && strings.HasPrefix(mount.Source, "/var/lib/docker/volumes/") {
+						logger.Debugf("found path in Docker volume %s (path: %s) - may require elevated permissions", mount.Name, hostPath)
+						// Still return it - it exists and might be accessible
+					} else if isBindMount {
+						logger.Debugf("translated container path %s to host path %s via bind mount in container %s", containerPath, hostPath, containerName)
+					}
+
+					// Only return if it's a regular file or directory
+					if stat.IsDir() || stat.Mode().IsRegular() {
+						return hostPath
+					}
+				} else {
+					// If the exact path doesn't exist, try checking parent directory + filename
+					// This handles cases where we're translating a full file path
+					parentDir := filepath.Dir(hostPath)
+					if parentStat, err := os.Stat(parentDir); err == nil && parentStat.IsDir() {
+						// Parent directory exists, return the path even if file doesn't exist yet
+						logger.Debugf("translated container path %s to host path %s (parent dir verified) via container %s", containerPath, hostPath, containerName)
+						return hostPath
+					}
+				}
+			}
+		}
+	}
+
+	return containerPath
+}
 
 func parseConfigFiles(configFilesStr string) []string {
 	if configFilesStr == "" {
