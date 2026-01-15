@@ -68,10 +68,12 @@ function UnifiedCollapsibleTable<T>({
                 boxShadow: "none",
               })}
             >
-              <TableCell
-                width="40px"
-                sx={{ padding: "8px 4px 8px 12px" }}
-              ></TableCell>
+              {renderFirstCell && (
+                <TableCell
+                  width="40px"
+                  sx={{ padding: "8px 4px 8px 4px" }}
+                ></TableCell>
+              )}
               {columns.map((column) => (
                 <TableCell
                   key={column.field}
@@ -115,12 +117,14 @@ function UnifiedCollapsibleTable<T>({
                       },
                     })}
                   >
-                    <TableCell
-                      width="40px"
-                      sx={{ padding: "8px 4px 8px 12px" }}
-                    >
-                      {renderFirstCell && renderFirstCell(row, index)}
-                    </TableCell>
+                    {renderFirstCell && (
+                      <TableCell
+                        width="40px"
+                        sx={{ padding: "8px 4px 8px 4px" }}
+                      >
+                        {renderFirstCell(row, index)}
+                      </TableCell>
+                    )}
                     {renderMainRow(row, index)}
                     <TableCell>
                       <IconButton
@@ -151,7 +155,7 @@ function UnifiedCollapsibleTable<T>({
                   >
                     <TableCell
                       style={{ paddingBottom: 0, paddingTop: 0 }}
-                      colSpan={columns.length + 2}
+                      colSpan={columns.length + (renderFirstCell ? 2 : 1)}
                     >
                       <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                         <Box
