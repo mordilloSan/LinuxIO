@@ -68,7 +68,10 @@ function UnifiedCollapsibleTable<T>({
                 boxShadow: "none",
               })}
             >
-              <TableCell width="40px" sx={{ padding: "8px 4px 8px 12px" }}></TableCell>
+              <TableCell
+                width="40px"
+                sx={{ padding: "8px 4px 8px 12px" }}
+              ></TableCell>
               {columns.map((column) => (
                 <TableCell
                   key={column.field}
