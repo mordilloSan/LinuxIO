@@ -22,7 +22,12 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
     y: Math.max(20, (window.innerHeight - 500) / 2),
   }));
   const [isDragging, setIsDragging] = useState(false);
-  const dragRef = useRef<{ startX: number; startY: number; initialX: number; initialY: number } | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    initialX: number;
+    initialY: number;
+  } | null>(null);
 
   const forceUpdateNotification = () => {
     const fakeUpdateInfo = {
@@ -44,7 +49,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.drag-handle')) {
+    if ((e.target as HTMLElement).closest(".drag-handle")) {
       setIsDragging(true);
       dragRef.current = {
         startX: e.clientX,
@@ -83,11 +88,11 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
     };
 
     if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
       };
     }
   }, [isDragging, position.x, position.y]);
@@ -116,7 +121,15 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
           minWidth: 200,
         }}
       >
-        <div style={{ fontWeight: "bold", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div
+          style={{
+            fontWeight: "bold",
+            marginBottom: 4,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <span>🛠️ Dev Tools</span>
           <button
             onClick={onClose}
@@ -231,7 +244,9 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
               </button>
             </div>
             <div style={{ flex: 1, overflow: "hidden" }}>
-              <ReactQueryDevtoolsPanel onClose={() => setIsDevtoolsOpen(false)} />
+              <ReactQueryDevtoolsPanel
+                onClose={() => setIsDevtoolsOpen(false)}
+              />
             </div>
           </div>
         </>
