@@ -46,6 +46,7 @@ function UnifiedCollapsibleTable<T>({
   return (
     <Box>
       <TableContainer
+        className="custom-scrollbar"
         sx={{
           overflowX: "auto",
           "@media (max-width: 600px)": {

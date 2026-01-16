@@ -126,7 +126,7 @@ func AddInterface(args []string) (any, error) {
 	// Prefer the gateway of the selected egress nic
 	gatewayDNS, _ := getGatewayForInterfaceIPv4(egressNic)
 	if gatewayDNS == "" {
-		logger.Warnf("AddInterface: could not determine gateway DNS for %s", egressNic)
+		logger.Debugf("AddInterface: no gateway DNS found for %s (optional - will use interface DNS if configured)", egressNic)
 	}
 
 	// Export peer configs (need ipManager for consistent offset-based naming)
@@ -310,7 +310,7 @@ func AddPeer(args []string) (any, error) {
 	}
 	gatewayDNS, _ := getDefaultGatewayIPv4()
 	if gatewayDNS == "" {
-		logger.Warnf("AddPeer: could not determine default gateway DNS")
+		logger.Debugf("AddPeer: no default gateway DNS found (optional - will use interface DNS if configured)")
 	}
 
 	// Add peer to config temporarily for export (needed for server pubkey)
