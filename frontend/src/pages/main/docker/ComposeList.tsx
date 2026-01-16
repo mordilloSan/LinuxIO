@@ -90,16 +90,16 @@ const ComposeList: React.FC<ComposeListProps> = ({
     {
       field: "status",
       headerName: "Status",
-      width: "100px",
+      width: "120px",
     },
     { field: "name", headerName: "Stack Name" },
-    { field: "containers", headerName: "Containers" },
+    { field: "containers", headerName: "Containers", width: "120px" },
     {
       field: "config",
       headerName: "Config Files",
       sx: { display: { xs: "none", sm: "table-cell" } },
     },
-    { field: "actions", headerName: "Actions", align: "right" },
+    { field: "actions", headerName: "Actions", align: "right", width: "180px" },
   ];
 
   // Render main row content
@@ -222,17 +222,23 @@ const ComposeList: React.FC<ComposeListProps> = ({
           <TableHead>
             <TableRow>
               <TableCell>Service Name</TableCell>
-              <TableCell>Image</TableCell>
+              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                Image
+              </TableCell>
               <TableCell>State</TableCell>
-              <TableCell>Containers</TableCell>
-              <TableCell>Ports</TableCell>
+              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                Containers
+              </TableCell>
+              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                Ports
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {Object.values(project.services).map((service) => (
               <TableRow key={service.name}>
                 <TableCell>{service.name}</TableCell>
-                <TableCell>
+                <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
                   <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
                     {service.image}
                   </Typography>
@@ -245,8 +251,10 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     sx={{ textTransform: "capitalize" }}
                   />
                 </TableCell>
-                <TableCell>{service.container_count}</TableCell>
-                <TableCell>
+                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                  {service.container_count}
+                </TableCell>
+                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                   {service.ports.length > 0 ? service.ports.join(", ") : "-"}
                 </TableCell>
               </TableRow>

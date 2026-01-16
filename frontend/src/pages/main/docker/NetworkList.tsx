@@ -38,12 +38,42 @@ const NetworkList: React.FC = () => {
 
   const columns: UnifiedTableColumn[] = [
     { field: "name", headerName: "Network Name", align: "left" },
-    { field: "driver", headerName: "Driver", align: "left", width: "100px" },
-    { field: "scope", headerName: "Scope", align: "left", width: "80px" },
-    { field: "internal", headerName: "Internal", align: "center", width: "90px" },
-    { field: "ipv4", headerName: "IPv4", align: "center", width: "80px" },
-    { field: "ipv6", headerName: "IPv6", align: "center", width: "80px" },
-    { field: "id", headerName: "Network ID", align: "left", width: "120px" },
+    { field: "driver", headerName: "Driver", align: "left", width: "120px" },
+    {
+      field: "scope",
+      headerName: "Scope",
+      align: "left",
+      width: "100px",
+      sx: { display: { xs: "none", md: "table-cell" } },
+    },
+    {
+      field: "internal",
+      headerName: "Internal",
+      align: "left",
+      width: "100px",
+      sx: { display: { xs: "none", md: "table-cell" } },
+    },
+    {
+      field: "ipv4",
+      headerName: "IPv4",
+      align: "left",
+      width: "100px",
+      sx: { display: { xs: "none", lg: "table-cell" } },
+    },
+    {
+      field: "ipv6",
+      headerName: "IPv6",
+      align: "left",
+      width: "100px",
+      sx: { display: { xs: "none", lg: "table-cell" } },
+    },
+    {
+      field: "id",
+      headerName: "Network ID",
+      align: "left",
+      width: "140px",
+      sx: { display: { xs: "none", md: "table-cell" } },
+    },
   ];
 
   return (
@@ -89,33 +119,33 @@ const NetworkList: React.FC = () => {
                 sx={{ fontSize: "0.75rem" }}
               />
             </TableCell>
-            <TableCell>
+            <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
               <Typography variant="body2" sx={responsiveTextStyles}>
                 {network.Scope}
               </Typography>
             </TableCell>
-            <TableCell align="center">
+            <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
               <Chip
                 label={network.Internal ? "Yes" : "No"}
                 size="small"
                 color={network.Internal ? "warning" : "default"}
               />
             </TableCell>
-            <TableCell align="center">
+            <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
               <Chip
                 label={network.EnableIPv4 !== false ? "Yes" : "No"}
                 size="small"
                 color={network.EnableIPv4 !== false ? "success" : "default"}
               />
             </TableCell>
-            <TableCell align="center">
+            <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
               <Chip
                 label={network.EnableIPv6 ? "Yes" : "No"}
                 size="small"
                 color={network.EnableIPv6 ? "success" : "default"}
               />
             </TableCell>
-            <TableCell>
+            <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
               <Typography
                 variant="body2"
                 sx={{

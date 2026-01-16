@@ -31,9 +31,26 @@ const VolumeList: React.FC = () => {
 
   const columns: UnifiedTableColumn[] = [
     { field: "name", headerName: "Volume Name", align: "left" },
-    { field: "driver", headerName: "Driver", align: "left", width: "120px" },
-    { field: "mountpoint", headerName: "Mountpoint", align: "left" },
-    { field: "scope", headerName: "Scope", align: "left", width: "100px" },
+    {
+      field: "driver",
+      headerName: "Driver",
+      align: "left",
+      width: "120px",
+      sx: { display: { xs: "none", sm: "table-cell" } },
+    },
+    {
+      field: "mountpoint",
+      headerName: "Mountpoint",
+      align: "left",
+      sx: { display: { xs: "none", md: "table-cell" } },
+    },
+    {
+      field: "scope",
+      headerName: "Scope",
+      align: "left",
+      width: "100px",
+      sx: { display: { xs: "none", sm: "table-cell" } },
+    },
   ];
 
   return (
@@ -72,14 +89,14 @@ const VolumeList: React.FC = () => {
                 {volume.Name}
               </Typography>
             </TableCell>
-            <TableCell>
+            <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
               <Chip
                 label={volume.Driver}
                 size="small"
                 sx={{ fontSize: "0.75rem" }}
               />
             </TableCell>
-            <TableCell>
+            <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
               <Typography
                 variant="body2"
                 sx={{
@@ -91,7 +108,7 @@ const VolumeList: React.FC = () => {
                 {volume.Mountpoint || "-"}
               </Typography>
             </TableCell>
-            <TableCell>
+            <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
               <Typography variant="body2" sx={responsiveTextStyles}>
                 {volume.Scope || "local"}
               </Typography>
