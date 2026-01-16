@@ -5,4 +5,5 @@ export type WireGuardInterface = {
   address: string;
   port: number;
   peerCount: number;
+  isEnabled: boolean;
 };

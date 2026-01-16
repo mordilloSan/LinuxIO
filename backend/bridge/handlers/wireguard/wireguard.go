@@ -53,6 +53,7 @@ func ListInterfaces([]string) (any, error) {
 			Address:     strings.Join(cfg.Address, ", "),
 			Port:        cfg.ListenPort,
 			PeerCount:   len(cfg.Peers),
+			IsEnabled:   isInterfaceEnabled(name),
 		})
 	}
 
@@ -73,6 +74,11 @@ func AddInterface(args []string) (any, error) {
 	}
 
 	addresses := normalizeAddresses(parseCSV(args[1]))
+	if len(addresses) == 0 {
+		logger.Errorf("AddInterface: no addresses provided")
+		return nil, fmt.Errorf("at least one address is required")
+	}
+
 	listenPort, err := strconv.Atoi(args[2])
 	if err != nil {
 		logger.Errorf("AddInterface: invalid listen port %q: %v", args[2], err)
@@ -123,16 +129,32 @@ func AddInterface(args []string) (any, error) {
 		logger.Warnf("AddInterface: could not determine gateway DNS for %s", egressNic)
 	}
 
-	// Export peer configs
-	for _, peer := range peers {
-		peerNumber := extractHostOctet(peer.AllowedIPs[0])
-		if _, err := ExportPeerConfig(name, peer, cfg, publicIP, peerNumber, gatewayDNS); err != nil {
-			logger.Warnf("AddInterface: failed to export config for peer %s: %v", peer.PublicKey, err)
+	// Export peer configs (need ipManager for consistent offset-based naming)
+	if len(peers) > 0 {
+		ipMgr, err := newIPManager(addresses[0])
+		if err != nil {
+			logger.Errorf("AddInterface: init IP manager for peer export failed: %v", err)
+			return nil, fmt.Errorf("init IP manager: %w", err)
+		}
+
+		for _, peer := range peers {
+			if len(peer.AllowedIPs) == 0 {
+				logger.Warnf("AddInterface: peer %s has no AllowedIPs, skipping export", peer.PublicKey)
+				continue
+			}
+			peerOffset := ipMgr.extractHostOffset(peer.AllowedIPs[0])
+			if peerOffset < 0 {
+				logger.Warnf("AddInterface: peer %s has invalid AllowedIP %q, skipping export", peer.PublicKey, peer.AllowedIPs[0])
+				continue
+			}
+			if _, err := ExportPeerConfig(name, peer, cfg, publicIP, peerOffset, gatewayDNS); err != nil {
+				logger.Warnf("AddInterface: failed to export config for peer %s: %v", peer.PublicKey, err)
+			}
 		}
 	}
 
-	// Write main config
-	if err := WriteWireGuardConfigWithPostUpDown(configPath(name), cfg, egressNic); err != nil {
+	// Write main config (without PostUp/PostDown - we manage NAT programmatically)
+	if err := WriteWireGuardConfig(configPath(name), cfg); err != nil {
 		logger.Errorf("AddInterface: write config failed for %s: %v", name, err)
 		return nil, fmt.Errorf("write config: %w", err)
 	}
@@ -143,7 +165,23 @@ func AddInterface(args []string) (any, error) {
 		return nil, err
 	}
 
-	logger.Infof("AddInterface: interface %s created and brought up", name)
+	// Setup NAT rules using iptables library
+	subnet := addresses[0]
+	if err := SetupNAT(name, egressNic, subnet); err != nil {
+		logger.Errorf("AddInterface: failed to setup NAT for %s: %v", name, err)
+		// Bring down interface since NAT setup failed
+		if _, downErr := DownInterface([]string{name}); downErr != nil {
+			logger.Warnf("AddInterface: failed to bring down %s after NAT failure: %v", name, downErr)
+		}
+		return nil, fmt.Errorf("setup NAT: %w", err)
+	}
+
+	// Save NAT config for cleanup later
+	if err := SaveNATConfig(name, egressNic, subnet); err != nil {
+		logger.Warnf("AddInterface: failed to save NAT config for %s: %v", name, err)
+	}
+
+	logger.Infof("AddInterface: interface %s created and brought up with NAT", name)
 
 	return map[string]any{
 		"status":      "created",
@@ -165,6 +203,18 @@ func RemoveInterface(args []string) (any, error) {
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	logger.Infof("RemoveInterface: removing interface %s", name)
+
+	// Cleanup NAT rules before bringing down the interface
+	if natCfg, err := LoadNATConfig(name); err != nil {
+		logger.Warnf("RemoveInterface: failed to load NAT config for %s: %v", name, err)
+	} else if natCfg != nil {
+		if err := CleanupNAT(name, natCfg.EgressNic, natCfg.Subnet); err != nil {
+			logger.Warnf("RemoveInterface: failed to cleanup NAT for %s: %v", name, err)
+		}
+		if err := RemoveNATConfig(name); err != nil {
+			logger.Warnf("RemoveInterface: failed to remove NAT config for %s: %v", name, err)
+		}
+	}
 
 	// Best-effort: bring it down, but don't abort on failure.
 	if _, err := DownInterface([]string{name}); err != nil {
@@ -252,14 +302,8 @@ func AddPeer(args []string) (any, error) {
 		Name:                fmt.Sprintf("Peer%d", peerNumber),
 	}
 
-	// Update config (write to disk)
-	cfg.Peers = append(cfg.Peers, peer)
-	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
-		logger.Errorf("AddPeer: write config failed for %s: %v", interfaceName, err)
-		return nil, fmt.Errorf("write config: %w", err)
-	}
-
-	// Export peer config
+	// Export peer config first (before modifying main config)
+	// This ensures we don't end up with a peer in main config but no exported file
 	publicIP, _ := utils.GetPublicIP()
 	if publicIP == "" {
 		logger.Warnf("AddPeer: GetPublicIP returned empty string")
@@ -268,9 +312,24 @@ func AddPeer(args []string) (any, error) {
 	if gatewayDNS == "" {
 		logger.Warnf("AddPeer: could not determine default gateway DNS")
 	}
-	if _, err := ExportPeerConfig(interfaceName, peer, cfg, publicIP, peerNumber, gatewayDNS); err != nil {
+
+	// Add peer to config temporarily for export (needed for server pubkey)
+	cfgWithPeer := cfg
+	cfgWithPeer.Peers = append(cfgWithPeer.Peers, peer)
+	if _, err := ExportPeerConfig(interfaceName, peer, cfgWithPeer, publicIP, peerNumber, gatewayDNS); err != nil {
 		logger.Errorf("AddPeer: export peer config failed: %v", err)
 		return nil, fmt.Errorf("export peer config: %w", err)
+	}
+
+	// Now update main config (write to disk)
+	cfg.Peers = append(cfg.Peers, peer)
+	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
+		logger.Errorf("AddPeer: write config failed for %s: %v", interfaceName, err)
+		// Rollback: remove the exported peer config
+		if rmErr := os.Remove(peerConfigPath(interfaceName, peer.Name)); rmErr != nil {
+			logger.Warnf("AddPeer: rollback failed, could not remove peer config: %v", rmErr)
+		}
+		return nil, fmt.Errorf("write config: %w", err)
 	}
 
 	// Apply peer to running interface using wgctrl (no restart needed)
@@ -365,8 +424,9 @@ func RemovePeerByName(args []string) (any, error) {
 		return nil, fmt.Errorf("read main config: %w", err)
 	}
 
-	// Remove peer from config
+	// Remove peer from config and capture its public key
 	found := false
+	var removedPeerPubKey string
 	newPeers := make([]PeerConfig, 0, len(cfg.Peers))
 	for _, p := range cfg.Peers {
 		// Check if this peer matches the AllowedIP
@@ -375,6 +435,7 @@ func RemovePeerByName(args []string) (any, error) {
 			if ip == allowedIP {
 				match = true
 				found = true
+				removedPeerPubKey = p.PublicKey
 				break
 			}
 		}
@@ -394,6 +455,32 @@ func RemovePeerByName(args []string) (any, error) {
 	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
 		logger.Errorf("RemovePeerByName: write updated config failed: %v", err)
 		return nil, fmt.Errorf("write config: %w", err)
+	}
+
+	// Remove peer from running interface if active
+	if isInterfaceUp(interfaceName) && removedPeerPubKey != "" {
+		pubKey, err := wgtypes.ParseKey(removedPeerPubKey)
+		if err != nil {
+			logger.Warnf("RemovePeerByName: parse public key failed: %v", err)
+		} else {
+			client, err := wgctrl.New()
+			if err != nil {
+				logger.Warnf("RemovePeerByName: wgctrl.New failed: %v", err)
+			} else {
+				defer client.Close()
+				peerCfg := wgtypes.PeerConfig{
+					PublicKey: pubKey,
+					Remove:    true,
+				}
+				if err := client.ConfigureDevice(interfaceName, wgtypes.Config{
+					Peers: []wgtypes.PeerConfig{peerCfg},
+				}); err != nil {
+					logger.Warnf("RemovePeerByName: failed to remove peer from running interface: %v", err)
+				} else {
+					logger.Infof("RemovePeerByName: removed peer from running interface %s", interfaceName)
+				}
+			}
+		}
 	}
 
 	// Remove peer config file
@@ -713,5 +800,73 @@ func GetKeys(args []string) (any, error) {
 	return map[string]string{
 		"private_key": cfg.PrivateKey,
 		"public_key":  key.PublicKey().String(),
+	}, nil
+}
+
+func EnableInterface(args []string) (any, error) {
+	if len(args) < 1 {
+		logger.Errorf("EnableInterface: invalid arguments: %v", args)
+		return nil, fmt.Errorf("usage: enable_interface <name>")
+	}
+
+	name := args[0]
+	if err := validateInterfaceName(name); err != nil {
+		logger.Errorf("EnableInterface: invalid interface name %q: %v", name, err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
+
+	serviceName := fmt.Sprintf("wg-quick@%s", name)
+	cmd := exec.Command("systemctl", "enable", serviceName)
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+	}
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	cmd.Dir = "/"
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		logger.Errorf("EnableInterface: failed to enable %s: %v (%s)", serviceName, err, string(out))
+		return nil, fmt.Errorf("enable interface: %w", err)
+	}
+
+	logger.Infof("EnableInterface: %s enabled for boot persistence", name)
+	return map[string]any{
+		"status": "enabled",
+		"output": string(out),
+	}, nil
+}
+
+func DisableInterface(args []string) (any, error) {
+	if len(args) < 1 {
+		logger.Errorf("DisableInterface: invalid arguments: %v", args)
+		return nil, fmt.Errorf("usage: disable_interface <name>")
+	}
+
+	name := args[0]
+	if err := validateInterfaceName(name); err != nil {
+		logger.Errorf("DisableInterface: invalid interface name %q: %v", name, err)
+		return nil, fmt.Errorf("invalid interface name: %w", err)
+	}
+
+	serviceName := fmt.Sprintf("wg-quick@%s", name)
+	cmd := exec.Command("systemctl", "disable", serviceName)
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+	}
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	cmd.Dir = "/"
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		logger.Errorf("DisableInterface: failed to disable %s: %v (%s)", serviceName, err, string(out))
+		return nil, fmt.Errorf("disable interface: %w", err)
+	}
+
+	logger.Infof("DisableInterface: %s disabled from boot persistence", name)
+	return map[string]any{
+		"status": "disabled",
+		"output": string(out),
 	}, nil
 }

@@ -37,6 +37,10 @@ const WireGuardDashboard: React.FC = () => {
   const addPeerMutation = linuxio.wireguard.add_peer.useMutation();
   const upInterfaceMutation = linuxio.wireguard.up_interface.useMutation();
   const downInterfaceMutation = linuxio.wireguard.down_interface.useMutation();
+  const enableInterfaceMutation =
+    linuxio.wireguard.enable_interface.useMutation();
+  const disableInterfaceMutation =
+    linuxio.wireguard.disable_interface.useMutation();
 
   const WGinterfaces = Array.isArray(interfaceData) ? interfaceData : [];
 
@@ -110,6 +114,31 @@ const WireGuardDashboard: React.FC = () => {
     });
   };
 
+  const handleToggleBootPersistence = (
+    interfaceName: string,
+    isEnabled: boolean,
+  ) => {
+    const mutation = isEnabled
+      ? disableInterfaceMutation
+      : enableInterfaceMutation;
+
+    mutation.mutate([interfaceName], {
+      onSuccess: () => {
+        toast.success(
+          `WireGuard interface "${interfaceName}" ${isEnabled ? "disabled" : "enabled"} for boot persistence.`,
+          wireguardToastMeta,
+        );
+        refetch();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          `Failed to ${isEnabled ? "disable" : "enable"} boot persistence: ${error.message}`,
+          wireguardToastMeta,
+        );
+      },
+    });
+  };
+
   const handleSelectInterface = (iface: WireGuardInterface) => {
     setSelectedInterface(iface.name === selectedInterface ? null : iface.name);
   };
@@ -139,6 +168,7 @@ const WireGuardDashboard: React.FC = () => {
                     }
                     handleSelectInterface={handleSelectInterface}
                     handleToggleInterface={handleToggleInterface}
+                    handleToggleBootPersistence={handleToggleBootPersistence}
                     handleDelete={handleDelete}
                     handleAddPeer={handleAddPeer}
                   />

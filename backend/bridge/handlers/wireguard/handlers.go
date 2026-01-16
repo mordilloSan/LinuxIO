@@ -95,4 +95,20 @@ func RegisterHandlers() {
 		}
 		return emit.Result(result)
 	})
+
+	ipc.RegisterFunc("wireguard", "enable_interface", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := EnableInterface(args)
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("wireguard", "disable_interface", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := DisableInterface(args)
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
 }

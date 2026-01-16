@@ -538,6 +538,8 @@ export interface LinuxIOSchema {
     get_keys: { args: []; result: { publicKey: string; privateKey: string } };
     up_interface: { args: [name: string]; result: void };
     down_interface: { args: [name: string]; result: void };
+    enable_interface: { args: [name: string]; result: void };
+    disable_interface: { args: [name: string]; result: void };
   };
 
   terminal: {
