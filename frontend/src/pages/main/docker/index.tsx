@@ -1,5 +1,5 @@
 import { Add as AddIcon } from "@mui/icons-material";
-import { Button } from "@mui/material";
+import { Box, Button } from "@mui/material";
 import React, { useState } from "react";
 
 import ComposeStacksPage from "./ComposeStacksPage";
@@ -37,10 +37,17 @@ const DockerPage: React.FC = () => {
             <Button
               variant="contained"
               size="small"
-              startIcon={<AddIcon />}
+              startIcon={<AddIcon sx={{ display: { xs: "none", sm: "block" } }} />}
               onClick={createStackHandler}
+              sx={{
+                minWidth: { xs: "auto", sm: "auto" },
+                px: { xs: 1, sm: 2 },
+              }}
             >
-              Create Stack
+              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
+                Create Stack
+              </Box>
+              <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
             </Button>
           ) : undefined,
         },

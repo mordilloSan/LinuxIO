@@ -46,9 +46,20 @@ const ImageList: React.FC = () => {
   const columns: UnifiedTableColumn[] = [
     { field: "repo", headerName: "Repository", align: "left" },
     { field: "tag", headerName: "Tag", align: "left", width: "120px" },
-    { field: "id", headerName: "Image ID", align: "left", width: "140px" },
+    {
+      field: "id",
+      headerName: "Image ID",
+      align: "left",
+      width: "140px",
+      sx: { display: { xs: "none", md: "table-cell" } },
+    },
     { field: "size", headerName: "Size", align: "right", width: "100px" },
-    { field: "created", headerName: "Created", align: "left" },
+    {
+      field: "created",
+      headerName: "Created",
+      align: "left",
+      sx: { display: { xs: "none", sm: "table-cell" } },
+    },
     { field: "usedBy", headerName: "Used By", align: "center", width: "100px" },
   ];
 
@@ -92,7 +103,7 @@ const ImageList: React.FC = () => {
                 sx={{ fontSize: "0.75rem" }}
               />
             </TableCell>
-            <TableCell>
+            <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
               <Typography
                 variant="body2"
                 sx={{
@@ -109,7 +120,7 @@ const ImageList: React.FC = () => {
                 {image.size} MB
               </Typography>
             </TableCell>
-            <TableCell>
+            <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
               <Typography
                 variant="body2"
                 sx={{ fontSize: "0.85rem", ...responsiveTextStyles }}
