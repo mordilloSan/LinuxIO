@@ -89,17 +89,22 @@ const ComposeList: React.FC<ComposeListProps> = ({
   const columns: UnifiedTableColumn[] = [
     {
       field: "status",
-      headerName: "Status",
-      width: "120px",
+      headerName: "",
+      width: "40px",
     },
-    { field: "name", headerName: "Stack Name" },
-    { field: "containers", headerName: "Containers", width: "120px" },
+    { field: "name", headerName: "Stack" },
+    {
+      field: "containers",
+      headerName: "Containers",
+      width: "100px",
+      align: "center",
+    },
     {
       field: "config",
       headerName: "Config Files",
       sx: { display: { xs: "none", sm: "table-cell" } },
     },
-    { field: "actions", headerName: "Actions", align: "right", width: "180px" },
+    { field: "actions", headerName: "Actions", align: "center", width: "200px" },
   ];
 
   // Render main row content
@@ -107,7 +112,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
     (project: ComposeProject) => {
       return (
         <>
-          <TableCell>
+          <TableCell sx={{ px: { xs: 1, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
             <Box sx={{ display: "flex", alignItems: "center" }}>
               <Box
                 component="span"
@@ -136,7 +141,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
               {project.name}
             </Typography>
           </TableCell>
-          <TableCell>{getTotalContainers(project)}</TableCell>
+          <TableCell align="center">{getTotalContainers(project)}</TableCell>
           <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
             <Tooltip title={project.config_files.join(", ") || "Unknown"}>
               <Box sx={{ display: "flex", alignItems: "center" }}>
@@ -152,58 +157,71 @@ const ComposeList: React.FC<ComposeListProps> = ({
             </Tooltip>
           </TableCell>
           <TableCell align="right">
-            {onEdit && project.config_files.length > 0 && (
-              <Tooltip title="Edit">
-                <IconButton
-                  size="small"
-                  onClick={() => onEdit(project.name, project.config_files[0])}
-                  disabled={isLoading}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-            {project.status === "running" || project.status === "partial" ? (
-              <>
-                <Tooltip title="Restart">
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: { xs: 0, sm: 0.5 },
+              }}
+            >
+              {onEdit && project.config_files.length > 0 && (
+                <Tooltip title="Edit">
                   <IconButton
                     size="small"
-                    onClick={() => onRestart(project.name)}
+                    onClick={() => onEdit(project.name, project.config_files[0])}
                     disabled={isLoading}
+                    sx={{ p: { xs: 0.5, sm: 1 } }}
                   >
-                    <RestartAltIcon fontSize="small" />
+                    <EditIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Stop">
+              )}
+              {project.status === "running" || project.status === "partial" ? (
+                <>
+                  <Tooltip title="Restart">
+                    <IconButton
+                      size="small"
+                      onClick={() => onRestart(project.name)}
+                      disabled={isLoading}
+                      sx={{ p: { xs: 0.5, sm: 1 } }}
+                    >
+                      <RestartAltIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Stop">
+                    <IconButton
+                      size="small"
+                      onClick={() => onStop(project.name)}
+                      disabled={isLoading}
+                      sx={{ p: { xs: 0.5, sm: 1 } }}
+                    >
+                      <StopCircleIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Down (stop & remove)">
+                    <IconButton
+                      size="small"
+                      onClick={() => onDown(project.name)}
+                      disabled={isLoading}
+                      sx={{ p: { xs: 0.5, sm: 1 } }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </>
+              ) : (
+                <Tooltip title="Start">
                   <IconButton
                     size="small"
-                    onClick={() => onStop(project.name)}
+                    onClick={() => onStart(project.name)}
                     disabled={isLoading}
+                    sx={{ p: { xs: 0.5, sm: 1 } }}
                   >
-                    <StopCircleIcon fontSize="small" />
+                    <PlayArrowIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Down (stop & remove)">
-                  <IconButton
-                    size="small"
-                    onClick={() => onDown(project.name)}
-                    disabled={isLoading}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </>
-            ) : (
-              <Tooltip title="Start">
-                <IconButton
-                  size="small"
-                  onClick={() => onStart(project.name)}
-                  disabled={isLoading}
-                >
-                  <PlayArrowIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
+              )}
+            </Box>
           </TableCell>
         </>
       );
@@ -262,10 +280,18 @@ const ComposeList: React.FC<ComposeListProps> = ({
           </TableBody>
         </Table>
         <Box mt={2}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+          >
             <b>Working Directory:</b> {project.working_dir || "-"}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+          >
             <b>Config Files:</b> {project.config_files.join(", ") || "-"}
           </Typography>
         </Box>

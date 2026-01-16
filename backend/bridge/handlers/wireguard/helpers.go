@@ -281,7 +281,7 @@ func getGatewayFromNetlink(linkIndex int) (string, error) {
 		return r.Gw.String(), nil
 	}
 
-	logger.Errorf("getGatewayFromNetlink: default gateway not found (linkIndex=%d)", linkIndex)
+	logger.Debugf("getGatewayFromNetlink: no default gateway found (linkIndex=%d)", linkIndex)
 	return "", fmt.Errorf("default gateway not found")
 }
 

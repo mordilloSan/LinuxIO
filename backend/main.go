@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
@@ -210,43 +213,111 @@ func runLogs(args []string) {
 		journalTerms = append(journalTerms, "SYSLOG_IDENTIFIER=linuxio-auth")
 	}
 
-	journalMatch := strings.Join(journalTerms, " + ")
+	// Build journalctl arguments
+	journalctlArgs := append(strings.Fields(strings.Join(journalTerms, " + ")), "-f", "-n", strconv.Itoa(lines), "--no-pager", "-o", "json")
+	cmd := exec.Command("journalctl", journalctlArgs...)
 
-	// Use jq to parse JSON output and reconstruct the journalctl short format with colorized level prefix
-	// PRIORITY levels: 7=DEBUG(cyan), 6=INFO(green), 5=NOTICE(green), 4=WARNING(yellow), 3=ERROR(red), 0-2=ERROR(red)
-	jqScript := `
-		(.__REALTIME_TIMESTAMP | tonumber / 1000000 | strftime("%b %d %H:%M:%S")) as $time |
-		(._SYSTEMD_UNIT // .SYSLOG_IDENTIFIER // "unknown") as $unit |
-		(._PID // .SYSLOG_PID // "") as $pid |
-		(.MESSAGE // "") as $msg |
-		(if .PRIORITY == "7" then "\u001b[36m[DEBUG]\u001b[0m"
-		 elif .PRIORITY == "6" or .PRIORITY == "5" then "\u001b[32m[INFO]\u001b[0m"
-		 elif .PRIORITY == "4" then "\u001b[33m[WARNING]\u001b[0m"
-		 elif .PRIORITY == "3" or .PRIORITY == "2" or .PRIORITY == "1" or .PRIORITY == "0" then "\u001b[31m[ERROR]\u001b[0m"
-		 else ""
-		 end) as $level |
-		($unit | gsub("@.*$"; "") | gsub("\\.service$"; "") | gsub("\\.socket$"; "")) as $short_unit |
-		if $pid != "" then
-			"\($time)  \($short_unit)[\($pid)]: \($level) \($msg)"
-		else
-			"\($time)  \($short_unit): \($level) \($msg)"
-		end
-	`
+	// Get stdout pipe to read JSON
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create pipe: %v\n", err)
+		os.Exit(1)
+	}
 
-	shellCmd := fmt.Sprintf("journalctl %s -f -n %d --no-pager -o json | jq -r '%s'", journalMatch, lines, jqScript)
-
-	cmd := exec.Command("sh", "-c", shellCmd)
-	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start journalctl: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Parse and format JSON lines
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		line := scanner.Text()
+		formatted := formatJournalEntry(line)
+		if formatted != "" {
+			fmt.Println(formatted)
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
 		// Don't exit with error for Ctrl+C
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 130 {
 			os.Exit(0)
 		}
 		os.Exit(1)
 	}
+}
+
+// formatJournalEntry parses a journalctl JSON line and formats it with colors
+// PRIORITY levels: 7=DEBUG(cyan), 6,5=INFO(green), 4=WARNING(yellow), 3,2,1,0=ERROR(red)
+func formatJournalEntry(jsonLine string) string {
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(jsonLine), &entry); err != nil {
+		return ""
+	}
+
+	// Extract timestamp
+	var timestamp string
+	if ts, ok := entry["__REALTIME_TIMESTAMP"].(string); ok {
+		if usec, err := strconv.ParseInt(ts, 10, 64); err == nil {
+			t := time.Unix(0, usec*1000)
+			timestamp = t.Format("Jan 02 15:04:05")
+		}
+	}
+	if timestamp == "" {
+		timestamp = time.Now().Format("Jan 02 15:04:05")
+	}
+
+	// Extract unit name
+	unit := "unknown"
+	if u, ok := entry["_SYSTEMD_UNIT"].(string); ok {
+		unit = u
+	} else if u, ok := entry["SYSLOG_IDENTIFIER"].(string); ok {
+		unit = u
+	}
+
+	// Clean unit name (remove @.* suffix, .service, .socket)
+	unit = strings.Split(unit, "@")[0]
+	unit = strings.TrimSuffix(unit, ".service")
+	unit = strings.TrimSuffix(unit, ".socket")
+
+	// Extract PID
+	var pid string
+	if p, ok := entry["_PID"].(string); ok {
+		pid = p
+	} else if p, ok := entry["SYSLOG_PID"].(string); ok {
+		pid = p
+	}
+
+	// Extract message
+	message := ""
+	if msg, ok := entry["MESSAGE"].(string); ok {
+		message = msg
+	}
+
+	// Map priority to colorized level
+	level := ""
+	if priority, ok := entry["PRIORITY"].(string); ok {
+		switch priority {
+		case "7":
+			level = "\033[36m[DEBUG]\033[0m"
+		case "6", "5":
+			level = "\033[32m[INFO]\033[0m"
+		case "4":
+			level = "\033[33m[WARNING]\033[0m"
+		case "3", "2", "1", "0":
+			level = "\033[31m[ERROR]\033[0m"
+		}
+	}
+
+	// Format output
+	if pid != "" {
+		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, message)
+	}
+	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, message)
 }
 
 type ModuleConfig struct {
