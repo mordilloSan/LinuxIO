@@ -159,8 +159,7 @@ const ImageList: React.FC = () => {
               <b>Labels:</b>
             </Typography>
             <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
-              {image.raw.Labels &&
-              Object.keys(image.raw.Labels).length > 0 ? (
+              {image.raw.Labels && Object.keys(image.raw.Labels).length > 0 ? (
                 Object.entries(image.raw.Labels).map(([key, val]) => (
                   <Chip
                     key={key}

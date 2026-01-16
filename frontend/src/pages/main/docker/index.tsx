@@ -37,14 +37,19 @@ const DockerPage: React.FC = () => {
             <Button
               variant="contained"
               size="small"
-              startIcon={<AddIcon sx={{ display: { xs: "none", sm: "block" } }} />}
+              startIcon={
+                <AddIcon sx={{ display: { xs: "none", sm: "block" } }} />
+              }
               onClick={createStackHandler}
               sx={{
                 minWidth: { xs: "auto", sm: "auto" },
                 px: { xs: 1, sm: 2 },
               }}
             >
-              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
+              <Box
+                component="span"
+                sx={{ display: { xs: "none", sm: "inline" } }}
+              >
                 Create Stack
               </Box>
               <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
