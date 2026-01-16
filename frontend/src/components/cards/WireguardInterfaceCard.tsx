@@ -1,6 +1,7 @@
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import {
   Card,
   CardContent,
@@ -23,6 +24,7 @@ interface InterfaceCardProps {
   primaryColor?: string;
   handleSelectInterface: (iface: WireGuardInterface) => void;
   handleToggleInterface: (name: string, status: "up" | "down") => void;
+  handleToggleBootPersistence: (name: string, isEnabled: boolean) => void;
   handleDelete: (name: string) => void;
   handleAddPeer: (name: string, peerData: any) => void;
 }
@@ -33,6 +35,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
   selectedCardRef,
   handleSelectInterface,
   handleToggleInterface,
+  handleToggleBootPersistence,
   handleDelete,
   handleAddPeer,
 }) => {
@@ -101,15 +104,26 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   <PowerSettingsNewIcon />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Delete Interface">
+              <Tooltip
+                title={
+                  iface.isEnabled
+                    ? "Disable Boot Persistence"
+                    : "Enable Boot Persistence"
+                }
+              >
                 <IconButton
+                  sx={{
+                    color: iface.isEnabled
+                      ? theme.palette.success.main
+                      : "gray",
+                  }}
+                  aria-label="Boot Persistence"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDelete(iface.name);
+                    handleToggleBootPersistence(iface.name, iface.isEnabled);
                   }}
-                  sx={{ color: "red" }}
                 >
-                  <DeleteIcon />
+                  <RestartAltIcon />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Add Peer">
@@ -120,6 +134,17 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   }}
                 >
                   <AddIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete Interface">
+                <IconButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(iface.name);
+                  }}
+                  sx={{ color: "red" }}
+                >
+                  <DeleteIcon />
                 </IconButton>
               </Tooltip>
             </Box>
