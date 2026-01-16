@@ -277,7 +277,10 @@ const NetworkList: React.FC = () => {
                       ([id, info]: [string, any]) => (
                         <TableRow key={id}>
                           <TableCell>
-                            <Typography variant="body2" sx={responsiveTextStyles}>
+                            <Typography
+                              variant="body2"
+                              sx={responsiveTextStyles}
+                            >
                               {info.Name || "-"}
                             </Typography>
                           </TableCell>
