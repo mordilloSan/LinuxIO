@@ -61,14 +61,19 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     }
   }, []);
 
-  // Reset state when dialog closes
+  // Reset state helper - called from transition callbacks, not effects
+  const resetState = useCallback(() => {
+    closeStream();
+    setOutput([]);
+    setIsRunning(true);
+    setError(null);
+    setSuccess(false);
+  }, [closeStream]);
+
+  // Cleanup stream when dialog closes (only close stream, not state)
   useEffect(() => {
     if (!open) {
       closeStream();
-      setOutput([]);
-      setIsRunning(true);
-      setError(null);
-      setSuccess(false);
     }
   }, [open, closeStream]);
 
@@ -83,12 +88,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       return;
     }
 
-    setIsRunning(true);
-
-    setError(null);
-
-    setSuccess(false);
-
     // Build payload: [action, projectName, composePath?]
     const args = [action, projectName];
     if (composePath) {
@@ -99,8 +98,10 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     const stream = openStream("docker-compose", payload);
 
     if (!stream) {
-      setError("Failed to start compose operation");
-      setIsRunning(false);
+      queueMicrotask(() => {
+        setError("Failed to start compose operation");
+        setIsRunning(false);
+      });
       return;
     }
 
@@ -174,6 +175,9 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
             backgroundColor: theme.palette.background.default,
             maxHeight: "80vh",
           },
+        },
+        transition: {
+          onExited: resetState,
         },
       }}
     >
