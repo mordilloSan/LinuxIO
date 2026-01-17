@@ -13,6 +13,7 @@ import {
 } from "@/api/linuxio";
 import linuxio from "@/api/react-query";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
+import ComposeOperationDialog from "@/components/docker/ComposeOperationDialog";
 import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";
 import { ValidationResult } from "@/components/docker/ComposeValidationFeedback";
 import StackSetupDialog from "@/components/docker/StackSetupDialog";
@@ -21,10 +22,12 @@ import { useConfig } from "@/hooks/useConfig";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
+  onMountReindexHandler?: (handler: () => void) => void;
 }
 
 const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   onMountCreateHandler,
+  onMountReindexHandler,
 }) => {
   const queryClient = useQueryClient();
   const { config } = useConfig();
@@ -47,76 +50,82 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     "new" | "running" | "stopped"
   >("new");
 
+  // Compose operation dialog state
+  const [operationDialogOpen, setOperationDialogOpen] = useState(false);
+  const [operationAction, setOperationAction] = useState<
+    "up" | "down" | "stop" | "restart"
+  >("up");
+  const [operationProjectName, setOperationProjectName] = useState("");
+  const [operationComposePath, setOperationComposePath] = useState<
+    string | undefined
+  >(undefined);
+
   const { data: projects = [], isPending } =
     linuxio.docker.list_compose_projects.useQuery({
       refetchInterval: 5000,
     });
 
-  const { mutate: startProjectMutation, isPending: isStarting } =
-    linuxio.docker.compose_up.useMutation({
-      onSuccess: () => {
-        toast.success("Stack started successfully");
-        queryClient.invalidateQueries({
-          queryKey: ["docker", "list_compose_projects"],
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(`Failed to start stack: ${error.message}`);
-      },
+  // Handle operation dialog close
+  const handleOperationDialogClose = useCallback(() => {
+    setOperationDialogOpen(false);
+    // Refresh projects after operation completes
+    queryClient.invalidateQueries({
+      queryKey: ["docker", "list_compose_projects"],
     });
+  }, [queryClient]);
 
-  const startProject = (projectName: string, filePath?: string) =>
-    startProjectMutation(filePath ? [projectName, filePath] : [projectName]);
+  const startProject = useCallback((projectName: string, filePath?: string) => {
+    setOperationAction("up");
+    setOperationProjectName(projectName);
+    setOperationComposePath(filePath);
+    setOperationDialogOpen(true);
+  }, []);
 
-  const { mutate: stopProjectMutation, isPending: isStopping } =
-    linuxio.docker.compose_stop.useMutation({
-      onSuccess: () => {
-        toast.success("Stack stopped successfully");
-        queryClient.invalidateQueries({
-          queryKey: ["docker", "list_compose_projects"],
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(`Failed to stop stack: ${error.message}`);
-      },
-    });
+  const stopProject = useCallback((projectName: string) => {
+    setOperationAction("stop");
+    setOperationProjectName(projectName);
+    setOperationComposePath(undefined);
+    setOperationDialogOpen(true);
+  }, []);
 
-  const stopProject = (projectName: string) =>
-    stopProjectMutation([projectName]);
+  const restartProject = useCallback((projectName: string) => {
+    setOperationAction("restart");
+    setOperationProjectName(projectName);
+    setOperationComposePath(undefined);
+    setOperationDialogOpen(true);
+  }, []);
 
-  const { mutate: restartProjectMutation, isPending: isRestarting } =
-    linuxio.docker.compose_restart.useMutation({
-      onSuccess: () => {
-        toast.success("Stack restarted successfully");
-        queryClient.invalidateQueries({
-          queryKey: ["docker", "list_compose_projects"],
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(`Failed to restart stack: ${error.message}`);
-      },
-    });
+  const downProject = useCallback((projectName: string) => {
+    setOperationAction("down");
+    setOperationProjectName(projectName);
+    setOperationComposePath(undefined);
+    setOperationDialogOpen(true);
+  }, []);
 
-  const restartProject = (projectName: string) =>
-    restartProjectMutation([projectName]);
+  const [isReindexing, setIsReindexing] = useState(false);
 
-  const { mutate: downProjectMutation, isPending: isDowning } =
-    linuxio.docker.compose_down.useMutation({
-      onSuccess: () => {
-        toast.success("Stack removed successfully");
-        queryClient.invalidateQueries({
-          queryKey: ["docker", "list_compose_projects"],
-        });
-      },
-      onError: (error: Error) => {
-        toast.error(`Failed to remove stack: ${error.message}`);
-      },
-    });
+  const handleReindex = useCallback(async () => {
+    setIsReindexing(true);
+    try {
+      await linuxio.call<{ message: string; status: string }>(
+        "docker",
+        "reindex_docker_folder",
+        [],
+      );
+      toast.success("Docker folder reindexed successfully");
+      queryClient.invalidateQueries({
+        queryKey: ["docker", "list_compose_projects"],
+      });
+    } catch (error) {
+      toast.error(
+        `Failed to reindex: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    } finally {
+      setIsReindexing(false);
+    }
+  }, [queryClient]);
 
-  const downProject = (projectName: string) =>
-    downProjectMutation([projectName]);
-
-  const isLoading = isStarting || isStopping || isRestarting || isDowning;
+  const isLoading = isReindexing || operationDialogOpen;
 
   // Create stack handler - open setup dialog first
   const handleCreateStack = useCallback(() => {
@@ -136,12 +145,18 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     [],
   );
 
-  // Mount handler to parent
+  // Mount handlers to parent
   useEffect(() => {
     if (onMountCreateHandler) {
       onMountCreateHandler(handleCreateStack);
     }
   }, [onMountCreateHandler, handleCreateStack]);
+
+  useEffect(() => {
+    if (onMountReindexHandler) {
+      onMountReindexHandler(handleReindex);
+    }
+  }, [onMountReindexHandler, handleReindex]);
 
   // Edit stack handler
   const handleEditStack = useCallback(
@@ -360,7 +375,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           onStart={handlePostSaveStart}
           onRestart={handlePostSaveRestart}
           onDoNothing={handlePostSaveDoNothing}
-          isExecuting={isStarting || isRestarting}
+          isExecuting={operationDialogOpen}
         />
 
         <StackSetupDialog
@@ -368,6 +383,14 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           onClose={() => setSetupDialogOpen(false)}
           onConfirm={handleSetupConfirm}
           defaultWorkingDir={config.dockerFolder}
+        />
+
+        <ComposeOperationDialog
+          open={operationDialogOpen}
+          onClose={handleOperationDialogClose}
+          action={operationAction}
+          projectName={operationProjectName}
+          composePath={operationComposePath}
         />
       </Box>
     </Suspense>

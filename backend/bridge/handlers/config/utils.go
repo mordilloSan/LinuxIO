@@ -82,7 +82,22 @@ func CheckConfig(path string) (bool, error) {
 	return false, err
 }
 
-// writeConfig writes a default config atomically to the given path (0o664)
+// guardConfigPath rejects symlinked config paths; it is a no-op if the file doesn't exist.
+func guardConfigPath(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("config path must not be a symlink")
+	}
+	return nil
+}
+
+// writeConfig writes a default config atomically to the given path (filePerm)
 // and ensures the parent directory exists with dirPerm.
 func writeConfig(path string, base string) error {
 	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {

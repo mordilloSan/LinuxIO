@@ -1,11 +1,15 @@
 package docker
 
 import (
+	"bufio"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 
 	"github.com/docker/docker/api/types/container"
@@ -15,11 +19,15 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-const StreamTypeDockerLogs = "docker-logs"
+const (
+	StreamTypeDockerLogs    = "docker-logs"
+	StreamTypeDockerCompose = "docker-compose"
+)
 
 // RegisterStreamHandlers registers all docker stream handlers.
 func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
 	handlers[StreamTypeDockerLogs] = HandleDockerLogsStream
+	handlers[StreamTypeDockerCompose] = HandleDockerComposeStream
 }
 
 // HandleDockerLogsStream streams container logs in real-time.
@@ -143,4 +151,170 @@ func sendStreamClose(stream net.Conn) {
 		StreamID: 1,
 	}
 	_ = ipc.WriteRelayFrame(stream, frame)
+}
+
+// ComposeStreamMessage represents a message sent during compose streaming
+type ComposeStreamMessage struct {
+	Type    string `json:"type"`    // "stdout", "stderr", "error", "complete"
+	Message string `json:"message"` // The actual message content
+	Code    int    `json:"code,omitempty"`
+}
+
+// HandleDockerComposeStream streams docker compose command output in real-time.
+// Args: [action, projectName, composePath (optional)]
+// action can be: "up", "down", "stop", "restart"
+func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []string) error {
+	if len(args) < 2 {
+		logger.Errorf("[DockerCompose] missing required arguments")
+		sendComposeError(stream, "missing required arguments: action, projectName")
+		return errors.New("missing required arguments")
+	}
+
+	action := args[0]
+	projectName := args[1]
+	username := sess.User.Username
+	var composePath string
+	if len(args) >= 3 {
+		composePath = args[2]
+	}
+
+	logger.Debugf("[DockerCompose] action=%s project=%s composePath=%s", action, projectName, composePath)
+
+	// Determine config file and working directory
+	var configFile string
+	var workingDir string
+
+	if composePath != "" {
+		configFile = composePath
+		workingDir = filepath.Dir(composePath)
+	} else {
+		// Try to find the compose file
+		var err error
+		configFile, workingDir, err = findComposeFile(username, projectName)
+		if err != nil {
+			sendComposeError(stream, "compose file not found: "+err.Error())
+			return err
+		}
+	}
+
+	// Build docker compose command based on action
+	var cmdArgs []string
+	switch action {
+	case "up":
+		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "up", "-d"}
+	case "down":
+		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "down"}
+	case "stop":
+		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "stop"}
+	case "restart":
+		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "restart"}
+	default:
+		sendComposeError(stream, "unsupported action: "+action)
+		return errors.New("unsupported action")
+	}
+
+	// Create context that can be cancelled
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Monitor for client disconnect in background
+	go func() {
+		frame, err := ipc.ReadRelayFrame(stream)
+		if err != nil || frame.Opcode == ipc.OpStreamClose {
+			logger.Debugf("[DockerCompose] client disconnected, cancelling command")
+			cancel()
+		}
+	}()
+
+	// Execute docker compose command
+	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
+	cmd.Dir = workingDir
+
+	// Get stdout and stderr pipes
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		sendComposeError(stream, "failed to create stdout pipe: "+err.Error())
+		return err
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		sendComposeError(stream, "failed to create stderr pipe: "+err.Error())
+		return err
+	}
+
+	// Start the command
+	if err = cmd.Start(); err != nil {
+		sendComposeError(stream, "failed to start command: "+err.Error())
+		return err
+	}
+
+	// ANSI escape code regex for stripping colors
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+	// Stream stdout in a goroutine
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			// Strip ANSI codes
+			cleanLine := ansiRegex.ReplaceAllString(line, "")
+			sendComposeMessage(stream, "stdout", cleanLine)
+		}
+	}()
+
+	// Stream stderr in a goroutine
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			// Strip ANSI codes
+			cleanLine := ansiRegex.ReplaceAllString(line, "")
+			sendComposeMessage(stream, "stderr", cleanLine)
+		}
+	}()
+
+	// Wait for command to complete
+	err = cmd.Wait()
+	if err != nil {
+		if ctx.Err() == context.Canceled {
+			sendComposeMessage(stream, "error", "operation cancelled")
+		} else {
+			sendComposeError(stream, "command failed: "+err.Error())
+		}
+		return err
+	}
+
+	// Send completion message
+	sendComposeMessage(stream, "complete", "operation completed successfully")
+	sendStreamClose(stream)
+	return nil
+}
+
+func sendComposeMessage(stream net.Conn, msgType, message string) {
+	msg := ComposeStreamMessage{
+		Type:    msgType,
+		Message: message,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		logger.Errorf("[DockerCompose] failed to marshal message: %v", err)
+		return
+	}
+
+	frame := &ipc.StreamFrame{
+		Opcode:   ipc.OpStreamData,
+		StreamID: 1,
+		Payload:  data,
+	}
+
+	if err := ipc.WriteRelayFrame(stream, frame); err != nil {
+		logger.Debugf("[DockerCompose] failed to write frame: %v", err)
+	}
+}
+
+func sendComposeError(stream net.Conn, message string) {
+	sendComposeMessage(stream, "error", message)
+	sendStreamClose(stream)
 }
