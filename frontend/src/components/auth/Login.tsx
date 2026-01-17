@@ -22,7 +22,7 @@ const reveal = keyframes`
 const revealSx = (delayMs: number) => ({
   opacity: 0,
   transform: "translateY(10px)",
-  animation: `${reveal} 0.6s ease forwards`,
+  animation: `${reveal} 0.45s ease forwards`,
   animationDelay: `${delayMs}ms`,
   "@media (prefers-reduced-motion: reduce)": {
     animation: "none",

@@ -205,7 +205,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       <StopCircleIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Down (stop & remove)">
+                  <Tooltip title="Down (remove containers & networks)">
                     <IconButton
                       size="small"
                       onClick={() => onDown(project.name)}
@@ -217,16 +217,28 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   </Tooltip>
                 </>
               ) : (
-                <Tooltip title="Start">
-                  <IconButton
-                    size="small"
-                    onClick={() => onStart(project.name)}
-                    disabled={isLoading}
-                    sx={{ p: { xs: 0.5, sm: 1 } }}
-                  >
-                    <PlayArrowIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                <>
+                  <Tooltip title="Start">
+                    <IconButton
+                      size="small"
+                      onClick={() => onStart(project.name)}
+                      disabled={isLoading}
+                      sx={{ p: { xs: 0.5, sm: 1 } }}
+                    >
+                      <PlayArrowIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete (remove containers & networks)">
+                    <IconButton
+                      size="small"
+                      onClick={() => onDown(project.name)}
+                      disabled={isLoading}
+                      sx={{ p: { xs: 0.5, sm: 1 } }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </>
               )}
             </Box>
           </TableCell>
