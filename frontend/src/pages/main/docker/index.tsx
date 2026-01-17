@@ -17,6 +17,12 @@ const DockerPage: React.FC = () => {
   const [createNetworkHandler, setCreateNetworkHandler] = useState<
     (() => void) | null
   >(null);
+  const [createVolumeHandler, setCreateVolumeHandler] = useState<
+    (() => void) | null
+  >(null);
+  const [createImageHandler, setCreateImageHandler] = useState<
+    (() => void) | null
+  >(null);
 
   return (
     <TabContainer
@@ -40,19 +46,18 @@ const DockerPage: React.FC = () => {
             <Button
               variant="contained"
               size="small"
-              startIcon={
-                <AddIcon sx={{ display: { xs: "none", sm: "block" } }} />
-              }
               onClick={createStackHandler}
               sx={{
-                minWidth: { xs: "auto", sm: "auto" },
+                minWidth: { xs: "40px", sm: "auto" },
                 px: { xs: 1, sm: 2 },
+                "& .MuiButton-startIcon": {
+                  display: { xs: "none", sm: "flex" },
+                  margin: { xs: 0, sm: "0 8px 0 -4px" },
+                },
               }}
+              startIcon={<AddIcon />}
             >
-              <Box
-                component="span"
-                sx={{ display: { xs: "none", sm: "inline" } }}
-              >
+              <Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center" }}>
                 Create Stack
               </Box>
               <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
@@ -73,19 +78,18 @@ const DockerPage: React.FC = () => {
             <Button
               variant="contained"
               size="small"
-              startIcon={
-                <AddIcon sx={{ display: { xs: "none", sm: "block" } }} />
-              }
               onClick={createNetworkHandler}
               sx={{
-                minWidth: { xs: "auto", sm: "auto" },
+                minWidth: { xs: "40px", sm: "auto" },
                 px: { xs: 1, sm: 2 },
+                "& .MuiButton-startIcon": {
+                  display: { xs: "none", sm: "flex" },
+                  margin: { xs: 0, sm: "0 8px 0 -4px" },
+                },
               }}
+              startIcon={<AddIcon />}
             >
-              <Box
-                component="span"
-                sx={{ display: { xs: "none", sm: "inline" } }}
-              >
+              <Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center" }}>
                 Add Network
               </Box>
               <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
@@ -95,12 +99,66 @@ const DockerPage: React.FC = () => {
         {
           value: "volumes",
           label: "Volumes",
-          component: <VolumeList />,
+          component: (
+            <VolumeList
+              onMountCreateHandler={(handler) =>
+                setCreateVolumeHandler(() => handler)
+              }
+            />
+          ),
+          rightContent: createVolumeHandler ? (
+            <Button
+              variant="contained"
+              size="small"
+              onClick={createVolumeHandler}
+              sx={{
+                minWidth: { xs: "40px", sm: "auto" },
+                px: { xs: 1, sm: 2 },
+                "& .MuiButton-startIcon": {
+                  display: { xs: "none", sm: "flex" },
+                  margin: { xs: 0, sm: "0 8px 0 -4px" },
+                },
+              }}
+              startIcon={<AddIcon />}
+            >
+              <Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center" }}>
+                Add Volume
+              </Box>
+              <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
+            </Button>
+          ) : undefined,
         },
         {
           value: "images",
           label: "Images",
-          component: <ImageList />,
+          component: (
+            <ImageList
+              onMountCreateHandler={(handler) =>
+                setCreateImageHandler(() => handler)
+              }
+            />
+          ),
+          rightContent: createImageHandler ? (
+            <Button
+              variant="contained"
+              size="small"
+              onClick={createImageHandler}
+              sx={{
+                minWidth: { xs: "40px", sm: "auto" },
+                px: { xs: 1, sm: 2 },
+                "& .MuiButton-startIcon": {
+                  display: { xs: "none", sm: "flex" },
+                  margin: { xs: 0, sm: "0 8px 0 -4px" },
+                },
+              }}
+              startIcon={<AddIcon />}
+            >
+              <Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center" }}>
+                Add Image
+              </Box>
+              <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
+            </Button>
+          ) : undefined,
         },
       ]}
       defaultTab="containers"

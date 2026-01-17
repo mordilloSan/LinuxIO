@@ -1,6 +1,6 @@
 import FolderIcon from "@mui/icons-material/Folder";
 import { Box, TableCell, TextField, Chip, Typography } from "@mui/material";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import linuxio from "@/api/react-query";
 import UnifiedCollapsibleTable, {
@@ -12,7 +12,11 @@ import {
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 
-const VolumeList: React.FC = () => {
+interface VolumeListProps {
+  onMountCreateHandler?: (handler: () => void) => void;
+}
+
+const VolumeList: React.FC<VolumeListProps> = ({ onMountCreateHandler }) => {
   const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,
   });
@@ -21,6 +25,19 @@ const VolumeList: React.FC = () => {
 
   // Ensure volumes is an array (handle null/undefined from API)
   const volumesList = Array.isArray(volumes) ? volumes : [];
+
+  // Create volume handler
+  const handleCreateVolume = useCallback(() => {
+    // TODO: Open volume creation dialog
+    console.log("Create volume clicked");
+  }, []);
+
+  // Mount handler to parent
+  useEffect(() => {
+    if (onMountCreateHandler) {
+      onMountCreateHandler(handleCreateVolume);
+    }
+  }, [onMountCreateHandler, handleCreateVolume]);
 
   const filtered = volumesList.filter(
     (vol) =>
