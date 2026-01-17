@@ -88,13 +88,13 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       return;
     }
 
-    // Build payload: [action, projectName, composePath?]
-    const args = [action, projectName];
+    // Build payload: docker-compose\0action\0projectName\0composePath
+    let payloadStr = `docker-compose\0${action}\0${projectName}`;
     if (composePath) {
-      args.push(composePath);
+      payloadStr += `\0${composePath}`;
     }
 
-    const payload = encodeString(JSON.stringify(args));
+    const payload = encodeString(payloadStr);
     const stream = openStream("docker-compose", payload);
 
     if (!stream) {

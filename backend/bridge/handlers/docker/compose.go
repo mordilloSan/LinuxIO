@@ -1017,14 +1017,31 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 			continue
 		}
 
-		// Extract project name from the file path
-		projectName := getProjectNameFromComposePath(yamlFile.Path)
-		if projectName == "" {
-			continue
+		composeDir := filepath.Dir(yamlFile.Path)
+
+		// Check if this compose file is already associated with an existing project
+		// Match by: 1) config file path, or 2) working directory
+		var existingProject *ComposeProject
+		for _, project := range projects {
+			// Check if config file already listed
+			for _, cf := range project.ConfigFiles {
+				if cf == yamlFile.Path {
+					existingProject = project
+					break
+				}
+			}
+			if existingProject != nil {
+				break
+			}
+
+			// Check if working directory matches
+			if project.WorkingDir != "" && project.WorkingDir == composeDir {
+				existingProject = project
+				break
+			}
 		}
 
-		// Check if project already exists (from containers)
-		if existingProject, exists := projects[projectName]; exists {
+		if existingProject != nil {
 			// Project exists with containers, just ensure config file is listed
 			configFileExists := false
 			for _, cf := range existingProject.ConfigFiles {
@@ -1038,8 +1055,17 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 			}
 			// Update working dir if not set
 			if existingProject.WorkingDir == "" {
-				existingProject.WorkingDir = filepath.Dir(yamlFile.Path)
+				existingProject.WorkingDir = composeDir
 			}
+			logger.DebugKV("matched compose file to existing project",
+				"compose_file", yamlFile.Path,
+				"project", existingProject.Name)
+			continue
+		}
+
+		// Extract project name from the file path for new offline projects
+		projectName := getProjectNameFromComposePath(yamlFile.Path)
+		if projectName == "" {
 			continue
 		}
 
@@ -1053,7 +1079,7 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 			Status:      "stopped", // No containers, so it's stopped
 			Services:    make(map[string]*ComposeService),
 			ConfigFiles: []string{yamlFile.Path},
-			WorkingDir:  filepath.Dir(yamlFile.Path),
+			WorkingDir:  composeDir,
 		}
 	}
 
