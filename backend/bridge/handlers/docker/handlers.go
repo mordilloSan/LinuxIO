@@ -132,7 +132,7 @@ func RegisterHandlers(sess *session.Session) {
 
 	// Compose handlers
 	ipc.RegisterFunc("docker", "list_compose_projects", func(ctx context.Context, args []string, emit ipc.Events) error {
-		projects, err := ListComposeProjects()
+		projects, err := ListComposeProjects(username)
 		if err != nil {
 			return err
 		}
@@ -143,7 +143,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
-		project, err := GetComposeProject(args[0])
+		project, err := GetComposeProject(username, args[0])
 		if err != nil {
 			return err
 		}
@@ -170,7 +170,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
-		result, err := ComposeDown(args[0])
+		result, err := ComposeDown(username, args[0])
 		if err != nil {
 			return err
 		}
@@ -181,7 +181,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
-		result, err := ComposeStop(args[0])
+		result, err := ComposeStop(username, args[0])
 		if err != nil {
 			return err
 		}
@@ -192,7 +192,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
-		result, err := ComposeRestart(args[0])
+		result, err := ComposeRestart(username, args[0])
 		if err != nil {
 			return err
 		}
@@ -235,6 +235,14 @@ func RegisterHandlers(sess *session.Session) {
 			return ipc.ErrInvalidArgs
 		}
 		result, err := ValidateStackDirectory(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "reindex_docker_folder", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := ReindexDockerFolder(username)
 		if err != nil {
 			return err
 		}

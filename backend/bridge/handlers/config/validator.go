@@ -28,10 +28,33 @@ func repairConfig(cfgPath, base string) error {
 		return writeConfig(cfgPath, base)
 	}
 
+	defaults := DefaultSettings(base)
+	changed := false
+	if errs := ValidateConfig(&cfg); len(errs) > 0 {
+		logger.Warnf("config validation issues: %s", strings.Join(errs, "; "))
+
+		if cfg.AppSettings.Theme != ThemeLight && cfg.AppSettings.Theme != ThemeDark {
+			cfg.AppSettings.Theme = defaults.AppSettings.Theme
+			changed = true
+		}
+		if !IsValidCSSColor(string(cfg.AppSettings.PrimaryColor)) {
+			cfg.AppSettings.PrimaryColor = defaults.AppSettings.PrimaryColor
+			changed = true
+		}
+		if strings.TrimSpace(string(cfg.Docker.Folder)) == "" {
+			cfg.Docker.Folder = defaults.Docker.Folder
+			changed = true
+		}
+	}
+
 	// Check if Docker.Folder exists but is a file (edge case)
 	if fi, statErr := os.Stat(string(cfg.Docker.Folder)); statErr == nil && !fi.IsDir() {
 		logger.Warnf("docker.folder %q exists as file, resetting to default", cfg.Docker.Folder)
-		cfg.Docker.Folder = DefaultDocker(base).Folder
+		cfg.Docker.Folder = defaults.Docker.Folder
+		changed = true
+	}
+
+	if changed {
 		return writeConfigFrom(cfgPath, cfg)
 	}
 

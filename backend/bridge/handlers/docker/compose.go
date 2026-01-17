@@ -2,12 +2,17 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -36,8 +41,8 @@ type ComposeProject struct {
 	WorkingDir  string                     `json:"working_dir"`
 }
 
-// ListComposeProjects discovers all compose projects by analyzing container labels
-func ListComposeProjects() (any, error) {
+// ListComposeProjects discovers all compose projects by analyzing container labels and indexer
+func ListComposeProjects(username string) (any, error) {
 	cli, err := getClient()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
@@ -142,6 +147,12 @@ func ListComposeProjects() (any, error) {
 		}
 	}
 
+	// Query indexer for offline stacks (compose files without running containers)
+	if err := discoverOfflineStacks(username, projects); err != nil {
+		// Log but don't fail - indexer might be unavailable
+		logger.Debugf("failed to discover offline stacks from indexer: %v", err)
+	}
+
 	// Calculate overall project status
 	for _, project := range projects {
 		project.Status = calculateProjectStatus(project)
@@ -162,8 +173,8 @@ func ListComposeProjects() (any, error) {
 }
 
 // GetComposeProject returns detailed information about a specific compose project
-func GetComposeProject(projectName string) (any, error) {
-	projects, err := ListComposeProjects()
+func GetComposeProject(username, projectName string) (any, error) {
+	projects, err := ListComposeProjects(username)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +204,7 @@ func ComposeUp(username, projectName, composePath string) (any, error) {
 		workingDir = filepath.Dir(composePath)
 	} else {
 		// Try to get the project from existing containers first
-		project, err := GetComposeProject(projectName)
+		project, err := GetComposeProject(username, projectName)
 		if err == nil {
 			// Project exists with containers
 			composeProject, ok := project.(*ComposeProject)
@@ -273,8 +284,8 @@ func findComposeFile(username, projectName string) (string, string, error) {
 }
 
 // ComposeDown stops and removes a compose project
-func ComposeDown(projectName string) (any, error) {
-	project, err := GetComposeProject(projectName)
+func ComposeDown(username, projectName string) (any, error) {
+	project, err := GetComposeProject(username, projectName)
 	if err != nil {
 		return nil, err
 	}
@@ -305,8 +316,8 @@ func ComposeDown(projectName string) (any, error) {
 }
 
 // ComposeRestart restarts a compose project
-func ComposeRestart(projectName string) (any, error) {
-	project, err := GetComposeProject(projectName)
+func ComposeRestart(username, projectName string) (any, error) {
+	project, err := GetComposeProject(username, projectName)
 	if err != nil {
 		return nil, err
 	}
@@ -337,8 +348,8 @@ func ComposeRestart(projectName string) (any, error) {
 }
 
 // ComposeStop stops a compose project without removing containers
-func ComposeStop(projectName string) (any, error) {
-	project, err := GetComposeProject(projectName)
+func ComposeStop(username, projectName string) (any, error) {
+	project, err := GetComposeProject(username, projectName)
 	if err != nil {
 		return nil, err
 	}
@@ -790,4 +801,261 @@ func ValidateStackDirectory(dirPath string) (any, error) {
 	result.Valid = true
 
 	return result, nil
+}
+
+// indexerHTTPClient is a shared HTTP client for communicating with the indexer daemon.
+var indexerHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{
+				Timeout:   2 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}
+			return dialer.DialContext(ctx, "unix", "/var/run/indexer.sock")
+		},
+	},
+	Timeout: 10 * time.Second,
+}
+
+// indexerSearchResult represents a search result from the indexer
+type indexerSearchResult struct {
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Size    int64  `json:"size"`
+	ModTime string `json:"mod_time"`
+	IsDir   bool   `json:"isDir"`
+}
+
+// searchIndexerForYAML searches the indexer for YAML files in the specified base path
+func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
+	// Normalize the base path
+	normPath := basePath
+	if normPath == "" || normPath == "/" {
+		normPath = "/"
+	} else {
+		normPath = strings.TrimRight(normPath, "/")
+		if !strings.HasPrefix(normPath, "/") {
+			normPath = "/" + normPath
+		}
+	}
+
+	// Search for .yml and .yaml files in the base path
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/entries", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build indexer request: %w", err)
+	}
+
+	q := req.URL.Query()
+	q.Set("path", normPath)
+	q.Set("recursive", "true")
+	q.Set("limit", "1000")
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := indexerHTTPClient.Do(req)
+	if err != nil {
+		logger.Debugf("indexer search request failed (indexer may be offline): %v", err)
+		return nil, fmt.Errorf("indexer unavailable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Debugf("indexer returned non-OK status: %s", resp.Status)
+		return nil, fmt.Errorf("indexer returned status %s", resp.Status)
+	}
+
+	var results []indexerSearchResult
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		return nil, fmt.Errorf("failed to decode indexer response: %w", err)
+	}
+
+	// Filter for YAML files only
+	var yamlFiles []indexerSearchResult
+	for _, result := range results {
+		if result.IsDir {
+			continue
+		}
+		lowerName := strings.ToLower(result.Name)
+		if strings.HasSuffix(lowerName, ".yml") || strings.HasSuffix(lowerName, ".yaml") {
+			yamlFiles = append(yamlFiles, result)
+		}
+	}
+
+	return yamlFiles, nil
+}
+
+// isValidComposeFile checks if a file is a valid docker-compose file
+func isValidComposeFile(filePath string) bool {
+	// Check if file exists
+	if _, err := os.Stat(filePath); err != nil {
+		return false
+	}
+
+	// Read the file
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return false
+	}
+
+	// Try to parse as YAML
+	var content map[string]interface{}
+	if err := yaml.Unmarshal(data, &content); err != nil {
+		return false
+	}
+
+	// Check for compose-specific fields
+	// Valid compose files should have at least one of: services, version, or networks/volumes with services implied
+	if _, hasServices := content["services"]; hasServices {
+		return true
+	}
+
+	// Some compose files might have version without services (edge case)
+	if version, hasVersion := content["version"]; hasVersion {
+		// If it has a version field and it looks like a compose version, consider it valid
+		if vStr, ok := version.(string); ok {
+			if strings.HasPrefix(vStr, "2") || strings.HasPrefix(vStr, "3") || vStr == "3.8" || vStr == "3.9" {
+				return true
+			}
+		}
+		if vFloat, ok := version.(float64); ok {
+			if vFloat >= 2.0 && vFloat < 4.0 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// getProjectNameFromComposePath extracts the likely project name from a compose file path
+// For files in the docker folder structure like /path/to/docker/stackname/docker-compose.yml
+// it returns "stackname". Otherwise, it returns the parent directory name.
+func getProjectNameFromComposePath(composePath string) string {
+	// Get the directory containing the compose file
+	dir := filepath.Dir(composePath)
+	// Return the base name of that directory
+	return filepath.Base(dir)
+}
+
+// reindexDockerFolder triggers a reindex of the user's docker folder in the indexer
+func reindexDockerFolder(username string) error {
+	// Get the user's docker folder from config
+	cfg, _, err := config.Load(username)
+	if err != nil {
+		return fmt.Errorf("failed to load user config: %w", err)
+	}
+
+	if cfg.Docker.Folder == "" {
+		return fmt.Errorf("docker folder not configured for user")
+	}
+
+	dockerFolder := string(cfg.Docker.Folder)
+
+	// Trigger reindex of the docker folder
+	reindexURL := fmt.Sprintf("http://unix/reindex?path=%s", url.QueryEscape(dockerFolder))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, reindexURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build reindex request: %w", err)
+	}
+
+	resp, err := indexerHTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("indexer reindex request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("indexer reindex returned status %s", resp.Status)
+	}
+
+	logger.InfoKV("triggered reindex of docker folder", "path", dockerFolder, "user", username)
+
+	return nil
+}
+
+// ReindexDockerFolder is the handler function for reindexing the docker folder
+func ReindexDockerFolder(username string) (any, error) {
+	if err := reindexDockerFolder(username); err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"message": "Reindex started",
+		"status":  "running",
+	}, nil
+}
+
+// discoverOfflineStacks searches the indexer for compose files and adds them as offline stacks
+// It merges with existing projects to handle duplicates
+func discoverOfflineStacks(username string, projects map[string]*ComposeProject) error {
+	// Get the user's docker folder from config
+	cfg, _, err := config.Load(username)
+	if err != nil {
+		return fmt.Errorf("failed to load user config: %w", err)
+	}
+
+	// If no docker folder is configured, skip indexer search
+	if cfg.Docker.Folder == "" {
+		logger.Debugf("no docker folder configured for user %s, skipping offline stack discovery", username)
+		return nil
+	}
+
+	dockerFolder := string(cfg.Docker.Folder)
+
+	// Search indexer for YAML files in the docker folder
+	yamlFiles, err := searchIndexerForYAML(dockerFolder)
+	if err != nil {
+		return fmt.Errorf("failed to search indexer: %w", err)
+	}
+
+	logger.Debugf("found %d YAML files in docker folder via indexer", len(yamlFiles))
+
+	// Check each YAML file to see if it's a valid compose file
+	for _, yamlFile := range yamlFiles {
+		// Check if this is a valid docker compose file
+		if !isValidComposeFile(yamlFile.Path) {
+			continue
+		}
+
+		// Extract project name from the file path
+		projectName := getProjectNameFromComposePath(yamlFile.Path)
+		if projectName == "" {
+			continue
+		}
+
+		// Check if project already exists (from containers)
+		if existingProject, exists := projects[projectName]; exists {
+			// Project exists with containers, just ensure config file is listed
+			configFileExists := false
+			for _, cf := range existingProject.ConfigFiles {
+				if cf == yamlFile.Path {
+					configFileExists = true
+					break
+				}
+			}
+			if !configFileExists {
+				existingProject.ConfigFiles = append(existingProject.ConfigFiles, yamlFile.Path)
+			}
+			// Update working dir if not set
+			if existingProject.WorkingDir == "" {
+				existingProject.WorkingDir = filepath.Dir(yamlFile.Path)
+			}
+			continue
+		}
+
+		// Create new offline project
+		logger.InfoKV("discovered offline stack via indexer",
+			"project", projectName,
+			"compose_file", yamlFile.Path)
+
+		projects[projectName] = &ComposeProject{
+			Name:        projectName,
+			Status:      "stopped", // No containers, so it's stopped
+			Services:    make(map[string]*ComposeService),
+			ConfigFiles: []string{yamlFile.Path},
+			WorkingDir:  filepath.Dir(yamlFile.Path),
+		}
+	}
+
+	return nil
 }
