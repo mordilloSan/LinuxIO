@@ -13,9 +13,9 @@ import {
 } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-import { useStreamMux, decodeString, encodeString } from "@/api/linuxio";
-import linuxio from "@/api/react-query";
+import { useStreamMux, encodeString } from "@/api/linuxio";
 import type { Stream } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 
 interface ReindexDialogProps {
   open: boolean;
@@ -131,18 +131,17 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     streamRef.current = stream;
 
     // Handle progress updates
-    stream.onProgress = (progressData: ReindexProgress) => {
+    stream.onProgress = (progress) => {
+      // Cast to ReindexProgress since docker-reindex uses custom progress format
+      const progressData = progress as unknown as ReindexProgress;
       setProgress(progressData);
     };
 
     // Handle result
-    stream.onResult = (resultFrame: {
-      status: string;
-      data?: ReindexResult;
-      error?: string;
-    }) => {
+    stream.onResult = (resultFrame) => {
       if (resultFrame.status === "ok" && resultFrame.data) {
-        setResult(resultFrame.data);
+        const reindexResult = resultFrame.data as ReindexResult;
+        setResult(reindexResult);
         setSuccess(true);
         setIsRunning(false);
         // Fetch stacks summary
@@ -162,7 +161,15 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
         setIsRunning(false);
       }
     };
-  }, [open, muxIsOpen, openStream, onComplete, success, error, fetchStacksSummary]);
+  }, [
+    open,
+    muxIsOpen,
+    openStream,
+    onComplete,
+    success,
+    error,
+    fetchStacksSummary,
+  ]);
 
   const handleClose = () => {
     if (isRunning) {
@@ -263,7 +270,11 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
               <Typography variant="body2" color="success.main" gutterBottom>
                 ✓ Reindex completed successfully!
               </Typography>
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                display="block"
+              >
                 Indexed {result.files_indexed.toLocaleString()} files and{" "}
                 {result.dirs_indexed.toLocaleString()} directories in{" "}
                 {(result.duration_ms / 1000).toFixed(2)}s

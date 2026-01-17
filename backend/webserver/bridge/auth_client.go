@@ -26,7 +26,6 @@ const (
 type AuthResult struct {
 	Conn       net.Conn // Connection to bridge (same socket, now connected to forked bridge)
 	Privileged bool
-	Motd       string
 }
 
 // Authenticate sends an auth request to the auth daemon.
@@ -84,7 +83,6 @@ func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 	return &AuthResult{
 		Conn:       conn,
 		Privileged: privileged,
-		Motd:       resp.Motd,
 	}, nil
 }
 
