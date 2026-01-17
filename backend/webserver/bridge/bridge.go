@@ -59,7 +59,7 @@ const bridgeBinaryPath = config.BinDir + "/linuxio-bridge"
 
 // StartBridge launches linuxio-bridge via the auth daemon.
 // On success, creates a yamux session for the bridge connection and stores it.
-// Returns (privilegedMode, motd, error). privilegedMode reflects the daemon's decision.
+// Returns (privilegedMode, error). privilegedMode reflects the daemon's decision.
 func StartBridge(sess *session.Session, password string, verbose bool) (bool, error) {
 	// Validate bridge binary hash before proceeding
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {

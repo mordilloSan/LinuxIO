@@ -43,7 +43,6 @@
  * Format:
  *   [magic:4][status:1][mode:1][reserved:2]  (8 bytes fixed header)
  *   [len:2][error]      (only if status == error)
- *   [len:2][motd]       (only if status == ok)
  *
  * All multi-byte integers are big-endian.
  * ========================================================================== */
@@ -65,7 +64,6 @@
  *   [magic:4][uid:4][gid:4][flags:1]  (13 bytes fixed header)
  *   [len:2][session_id]
  *   [len:2][username]
- *   [len:2][motd]
  *
  * All multi-byte integers are big-endian.
  * ========================================================================== */
@@ -83,7 +81,6 @@
 #define PROTO_MAX_USERNAME           256
 #define PROTO_MAX_PASSWORD           2048
 #define PROTO_MAX_SESSION_ID         64
-#define PROTO_MAX_MOTD               4096
 #define PROTO_MAX_ERROR              256
 
 /* ==========================================================================
