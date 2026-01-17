@@ -1,3 +1,8 @@
+import DeviceHubIcon from "@mui/icons-material/DeviceHub";
+import ComputerIcon from "@mui/icons-material/Computer";
+import BlockIcon from "@mui/icons-material/Block";
+import LayersIcon from "@mui/icons-material/Layers";
+import SettingsEthernetIcon from "@mui/icons-material/SettingsEthernet";
 import HubIcon from "@mui/icons-material/Hub";
 import {
   Box,
@@ -9,8 +14,9 @@ import {
   TextField,
   Chip,
   Typography,
+  Tooltip,
 } from "@mui/material";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import linuxio from "@/api/react-query";
 import UnifiedCollapsibleTable, {
@@ -22,19 +28,70 @@ import {
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 
-const NetworkList: React.FC = () => {
+interface NetworkListProps {
+  onMountCreateHandler?: (handler: () => void) => void;
+}
+
+const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
   const { data: networks = [] } = linuxio.docker.list_networks.useQuery({
     refetchInterval: 10000,
   });
 
   const [search, setSearch] = useState("");
 
-  const filtered = networks.filter(
-    (net) =>
-      net.Name.toLowerCase().includes(search.toLowerCase()) ||
-      net.Driver.toLowerCase().includes(search.toLowerCase()) ||
-      net.Scope.toLowerCase().includes(search.toLowerCase()),
+  const filtered = networks.filter((net) =>
+    net.Name.toLowerCase().includes(search.toLowerCase()),
   );
+
+  // Create network handler
+  const handleCreateNetwork = useCallback(() => {
+    // TODO: Open network creation dialog
+    console.log("Create network clicked");
+  }, []);
+
+  // Mount handler to parent
+  useEffect(() => {
+    if (onMountCreateHandler) {
+      onMountCreateHandler(handleCreateNetwork);
+    }
+  }, [onMountCreateHandler, handleCreateNetwork]);
+
+  const getNetworkIcon = (driver: string) => {
+    const iconProps = { fontSize: "small" as const, sx: { opacity: 0.7 } };
+
+    let icon: React.ReactNode;
+
+    switch (driver.toLowerCase()) {
+      case "host":
+        icon = <ComputerIcon {...iconProps} />;
+        break;
+      case "null":
+      case "none":
+        icon = <BlockIcon {...iconProps} />;
+        break;
+      case "overlay":
+        icon = <LayersIcon {...iconProps} />;
+        break;
+      case "macvlan":
+      case "ipvlan":
+        icon = <SettingsEthernetIcon {...iconProps} />;
+        break;
+      case "bridge":
+        icon = <DeviceHubIcon {...iconProps} />;
+        break;
+      default:
+        icon = <HubIcon {...iconProps} />;
+        break;
+    }
+
+    return (
+      <Tooltip title={driver} arrow placement="right">
+        <Box component="span" sx={{ display: "inline-flex" }}>
+          {icon}
+        </Box>
+      </Tooltip>
+    );
+  };
 
   const columns: UnifiedTableColumn[] = [
     { field: "name", headerName: "Network Name", align: "left" },
@@ -98,9 +155,7 @@ const NetworkList: React.FC = () => {
         data={filtered}
         columns={columns}
         getRowKey={(network) => network.Id}
-        renderFirstCell={() => (
-          <HubIcon fontSize="small" sx={{ opacity: 0.7 }} />
-        )}
+        renderFirstCell={(network) => getNetworkIcon(network.Driver)}
         renderMainRow={(network) => (
           <>
             <TableCell>
