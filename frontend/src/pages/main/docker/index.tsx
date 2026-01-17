@@ -57,7 +57,12 @@ const DockerPage: React.FC = () => {
               }}
               startIcon={<AddIcon />}
             >
-              <Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center" }}>
+              <Box
+                sx={{
+                  display: { xs: "none", sm: "flex" },
+                  alignItems: "center",
+                }}
+              >
                 Create Stack
               </Box>
               <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
@@ -89,7 +94,12 @@ const DockerPage: React.FC = () => {
               }}
               startIcon={<AddIcon />}
             >
-              <Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center" }}>
+              <Box
+                sx={{
+                  display: { xs: "none", sm: "flex" },
+                  alignItems: "center",
+                }}
+              >
                 Add Network
               </Box>
               <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
@@ -121,7 +131,12 @@ const DockerPage: React.FC = () => {
               }}
               startIcon={<AddIcon />}
             >
-              <Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center" }}>
+              <Box
+                sx={{
+                  display: { xs: "none", sm: "flex" },
+                  alignItems: "center",
+                }}
+              >
                 Add Volume
               </Box>
               <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
@@ -153,7 +168,12 @@ const DockerPage: React.FC = () => {
               }}
               startIcon={<AddIcon />}
             >
-              <Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center" }}>
+              <Box
+                sx={{
+                  display: { xs: "none", sm: "flex" },
+                  alignItems: "center",
+                }}
+              >
                 Add Image
               </Box>
               <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />

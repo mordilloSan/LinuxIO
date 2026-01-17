@@ -621,3 +621,117 @@ func sanitizeStackName(name string) string {
 
 	return sanitized
 }
+
+// DirectoryValidationResult represents the result of directory validation
+type DirectoryValidationResult struct {
+	Valid       bool   `json:"valid"`
+	Exists      bool   `json:"exists"`
+	CanCreate   bool   `json:"canCreate"`
+	CanWrite    bool   `json:"canWrite"`
+	Error       string `json:"error,omitempty"`
+	IsDirectory bool   `json:"isDirectory"`
+}
+
+// ValidateStackDirectory validates if a directory path is suitable for creating a stack
+func ValidateStackDirectory(dirPath string) (any, error) {
+	result := DirectoryValidationResult{
+		Valid:       false,
+		Exists:      false,
+		CanCreate:   false,
+		CanWrite:    false,
+		IsDirectory: false,
+	}
+
+	// Check if path is absolute
+	if !filepath.IsAbs(dirPath) {
+		result.Error = "Path must be absolute"
+		return result, nil
+	}
+
+	// Clean the path
+	dirPath = filepath.Clean(dirPath)
+
+	// Check if path exists
+	info, err := os.Stat(dirPath)
+	if err == nil {
+		// Path exists
+		result.Exists = true
+
+		// Check if it's a directory
+		if !info.IsDir() {
+			result.Error = "Path exists but is not a directory"
+			return result, nil
+		}
+
+		result.IsDirectory = true
+
+		// Check write permissions by trying to create a temp file
+		testFile := filepath.Join(dirPath, ".linuxio-write-test")
+		f, err := os.Create(testFile)
+		if err != nil {
+			result.Error = "No write permission in directory"
+			return result, nil
+		}
+		f.Close()
+		os.Remove(testFile)
+
+		result.CanWrite = true
+		result.Valid = true
+		return result, nil
+	}
+
+	// Path doesn't exist - check if we can create it
+	if !os.IsNotExist(err) {
+		result.Error = fmt.Sprintf("Error accessing path: %v", err)
+		return result, nil
+	}
+
+	// Check parent directory
+	parentDir := filepath.Dir(dirPath)
+	parentInfo, err := os.Stat(parentDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			result.Error = "Parent directory does not exist"
+		} else {
+			result.Error = fmt.Sprintf("Error accessing parent directory: %v", err)
+		}
+		return result, nil
+	}
+
+	if !parentInfo.IsDir() {
+		result.Error = "Parent path is not a directory"
+		return result, nil
+	}
+
+	// Try to create the directory to verify permissions
+	err = os.MkdirAll(dirPath, 0755)
+	if err != nil {
+		result.Error = fmt.Sprintf("Cannot create directory: %v", err)
+		return result, nil
+	}
+
+	// Successfully created, now check write permissions
+	testFile := filepath.Join(dirPath, ".linuxio-write-test")
+	f, err := os.Create(testFile)
+	if err != nil {
+		result.Error = "Cannot write to created directory"
+		// Clean up the directory we created
+		os.RemoveAll(dirPath)
+		return result, nil
+	}
+	f.Close()
+	os.Remove(testFile)
+
+	// Clean up the test directory - we only wanted to verify permissions
+	// The actual directory will be created when the stack is saved
+	err = os.RemoveAll(dirPath)
+	if err != nil {
+		logger.Warnf("Failed to clean up test directory %s: %v", dirPath, err)
+	}
+
+	result.CanCreate = true
+	result.CanWrite = true
+	result.Valid = true
+
+	return result, nil
+}

@@ -15,7 +15,9 @@ import linuxio from "@/api/react-query";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
 import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";
 import { ValidationResult } from "@/components/docker/ComposeValidationFeedback";
+import StackSetupDialog from "@/components/docker/StackSetupDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useConfig } from "@/hooks/useConfig";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -25,6 +27,10 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   onMountCreateHandler,
 }) => {
   const queryClient = useQueryClient();
+  const { config } = useConfig();
+
+  // Setup dialog state
+  const [setupDialogOpen, setSetupDialogOpen] = useState(false);
 
   // Editor state
   const [editorOpen, setEditorOpen] = useState(false);
@@ -111,14 +117,23 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
   const isLoading = isStarting || isStopping || isRestarting || isDowning;
 
-  // Create stack handler
+  // Create stack handler - open setup dialog first
   const handleCreateStack = useCallback(() => {
-    setEditorMode("create");
-    setEditingStackName("");
-    setEditingFilePath("");
-    setEditingContent("");
-    setEditorOpen(true);
+    setSetupDialogOpen(true);
   }, []);
+
+  // Setup dialog confirm - open editor with configured values
+  const handleSetupConfirm = useCallback(
+    (stackName: string, workingDir: string) => {
+      setSetupDialogOpen(false);
+      setEditorMode("create");
+      setEditingStackName(stackName);
+      setEditingFilePath(`${workingDir}/docker-compose.yml`);
+      setEditingContent("");
+      setEditorOpen(true);
+    },
+    [],
+  );
 
   // Mount handler to parent
   useEffect(() => {
@@ -344,6 +359,13 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           onRestart={handlePostSaveRestart}
           onDoNothing={handlePostSaveDoNothing}
           isExecuting={isStarting || isRestarting}
+        />
+
+        <StackSetupDialog
+          open={setupDialogOpen}
+          onClose={() => setSetupDialogOpen(false)}
+          onConfirm={handleSetupConfirm}
+          defaultWorkingDir={config.dockerFolder}
         />
       </Box>
     </Suspense>

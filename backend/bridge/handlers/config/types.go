@@ -8,6 +8,25 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+// Settings holds the persisted configuration.
+type Settings struct {
+	AppSettings AppSettings `json:"appSettings" yaml:"appSettings"`
+	Docker      Docker      `json:"docker" yaml:"docker"`
+}
+
+// AppSettings holds UI-related settings
+type AppSettings struct {
+	Theme            Theme    `json:"theme" yaml:"theme"`
+	PrimaryColor     CSSColor `json:"primaryColor" yaml:"primaryColor"`
+	SidebarCollapsed bool     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
+	ShowHiddenFiles  bool     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
+}
+
+// Docker holds Docker-related settings
+type Docker struct {
+	Folder AbsolutePath `json:"folder" yaml:"folder"`
+}
+
 // Theme represents a validated theme value (LIGHT or DARK)
 type Theme string
 
@@ -80,23 +99,4 @@ func (p *AbsolutePath) UnmarshalYAML(data []byte) error {
 // String returns the path as a string
 func (p AbsolutePath) String() string {
 	return string(p)
-}
-
-// Settings holds the persisted configuration.
-type Settings struct {
-	AppSettings AppSettings `json:"appSettings" yaml:"appSettings"`
-	Docker      Docker      `json:"docker" yaml:"docker"`
-}
-
-// AppSettings holds UI-related settings
-type AppSettings struct {
-	Theme            Theme    `json:"theme" yaml:"theme"`
-	PrimaryColor     CSSColor `json:"primaryColor" yaml:"primaryColor"`
-	SidebarCollapsed bool     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
-	ShowHiddenFiles  bool     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
-}
-
-// Docker holds Docker-related settings
-type Docker struct {
-	Folder AbsolutePath `json:"folder" yaml:"folder"`
 }

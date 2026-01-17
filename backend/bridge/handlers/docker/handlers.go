@@ -224,4 +224,15 @@ func RegisterHandlers(sess *session.Session) {
 		}
 		return emit.Result(result)
 	})
+
+	ipc.RegisterFunc("docker", "validate_stack_directory", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := ValidateStackDirectory(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
 }

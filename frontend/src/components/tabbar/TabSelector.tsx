@@ -82,7 +82,9 @@ const TabSelector: React.FC<TabSelectorProps> = ({
       </Paper>
 
       {rightContent && (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
+        <Box
+          sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}
+        >
           {rightContent}
         </Box>
       )}
