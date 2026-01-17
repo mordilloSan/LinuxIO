@@ -14,6 +14,9 @@ const DockerPage: React.FC = () => {
   const [createStackHandler, setCreateStackHandler] = useState<
     (() => void) | null
   >(null);
+  const [createNetworkHandler, setCreateNetworkHandler] = useState<
+    (() => void) | null
+  >(null);
 
   return (
     <TabContainer
@@ -59,7 +62,35 @@ const DockerPage: React.FC = () => {
         {
           value: "networks",
           label: "Networks",
-          component: <DockerNetworksTable />,
+          component: (
+            <DockerNetworksTable
+              onMountCreateHandler={(handler) =>
+                setCreateNetworkHandler(() => handler)
+              }
+            />
+          ),
+          rightContent: createNetworkHandler ? (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={
+                <AddIcon sx={{ display: { xs: "none", sm: "block" } }} />
+              }
+              onClick={createNetworkHandler}
+              sx={{
+                minWidth: { xs: "auto", sm: "auto" },
+                px: { xs: 1, sm: 2 },
+              }}
+            >
+              <Box
+                component="span"
+                sx={{ display: { xs: "none", sm: "inline" } }}
+              >
+                Add Network
+              </Box>
+              <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
+            </Button>
+          ) : undefined,
         },
         {
           value: "volumes",
