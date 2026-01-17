@@ -40,7 +40,7 @@ const Login: React.FC = () => {
           alignItems: "center",
           gap: 1,
           backdropFilter: "blur(10px)",
-          animation: `${float} 6s ease-in-out infinite`,
+          animation: `${float} 4.5s ease-in-out infinite`,
           "@media (prefers-reduced-motion: reduce)": {
             animation: "none",
           },
@@ -86,7 +86,7 @@ const Login: React.FC = () => {
           backdropFilter: "blur(14px)",
           opacity: 0,
           transform: "translateY(18px) scale(0.98)",
-          animation: `${liftIn} 0.7s ease forwards`,
+          animation: `${liftIn} 0.5s ease forwards`,
           "@media (prefers-reduced-motion: reduce)": {
             animation: "none",
             opacity: 1,
