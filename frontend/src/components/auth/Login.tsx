@@ -41,18 +41,19 @@ const fieldSx = (theme: any) => ({
 
   "& .MuiOutlinedInput-root": {
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: "rgba(15,23,42,0.65)",
     transition: "box-shadow 0.2s ease, border-color 0.2s ease",
-    "& fieldset": { borderColor: "rgba(15,23,42,0.12)" },
-    "&:hover fieldset": { borderColor: "rgba(14,165,164,0.4)" },
+    "& fieldset": { borderColor: "rgba(148,163,184,0.3)" },
+    "&:hover fieldset": { borderColor: "rgba(148,163,184,0.55)" },
     "&.Mui-focused fieldset": { borderColor: theme.palette.primary.main },
     "&.Mui-focused": {
-      boxShadow: "0 0 0 3px rgba(14,165,164,0.18)",
+      boxShadow: "0 0 0 3px rgba(64,122,214,0.35)",
     },
   },
 
   // Smaller size on smaller screens
   "& .MuiOutlinedInput-input": {
+    color: theme.palette.text.primary,
     [theme.breakpoints.down("md")]: {
       padding: "8.5px 14px",
     },
@@ -99,8 +100,8 @@ function LogIn() {
           sx={{
             mb: 2,
             borderRadius: 2,
-            border: "1px solid rgba(249,115,22,0.25)",
-            backgroundColor: "rgba(249,115,22,0.12)",
+            border: "1px solid rgba(249,115,22,0.35)",
+            backgroundColor: "rgba(249,115,22,0.18)",
             color: "text.primary",
             ...revealSx(60),
           }}
@@ -165,12 +166,12 @@ function LogIn() {
             fontWeight: 600,
             letterSpacing: "0.02em",
             backgroundImage:
-              "linear-gradient(135deg, var(--accent), #22c55e)",
-            boxShadow: "0 18px 40px -26px rgba(14,165,164,0.8)",
+              "linear-gradient(135deg, var(--accent), var(--accent-soft))",
+            boxShadow: "0 18px 40px -26px rgba(64,122,214,0.75)",
             "&:hover": {
               backgroundImage:
-                "linear-gradient(135deg, var(--accent-strong), #16a34a)",
-              boxShadow: "0 22px 46px -28px rgba(14,165,164,0.9)",
+                "linear-gradient(135deg, var(--accent-strong), var(--accent))",
+              boxShadow: "0 22px 46px -28px rgba(64,122,214,0.9)",
             },
             "&:active": { transform: "translateY(1px)" },
             [theme.breakpoints.down("md")]: {

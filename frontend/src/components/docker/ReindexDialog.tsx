@@ -1,7 +1,6 @@
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloseIcon from "@mui/icons-material/Close";
 import ErrorIcon from "@mui/icons-material/Error";
-import FolderIcon from "@mui/icons-material/Folder";
 import {
   Dialog,
   DialogTitle,
@@ -15,6 +14,7 @@ import {
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
 import { useStreamMux, decodeString, encodeString } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import type { Stream } from "@/api/linuxio";
 
 interface ReindexDialogProps {
@@ -52,9 +52,32 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [result, setResult] = useState<ReindexResult | null>(null);
+  const [stacksSummary, setStacksSummary] = useState<{
+    total: number;
+    running: number;
+    stopped: number;
+  } | null>(null);
   const streamRef = useRef<Stream | null>(null);
 
   const { isOpen: muxIsOpen, openStream } = useStreamMux();
+
+  // Fetch stacks after successful reindex
+  const fetchStacksSummary = useCallback(async () => {
+    try {
+      const projects = await linuxio.call<
+        Array<{ status: string; name: string }>
+      >("docker", "list_compose_projects", []);
+
+      const summary = {
+        total: projects.length,
+        running: projects.filter((p) => p.status === "running").length,
+        stopped: projects.filter((p) => p.status === "stopped").length,
+      };
+      setStacksSummary(summary);
+    } catch (err) {
+      console.error("Failed to fetch stacks summary:", err);
+    }
+  }, []);
 
   // Close stream helper
   const closeStream = useCallback(() => {
@@ -72,6 +95,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     setError(null);
     setSuccess(false);
     setResult(null);
+    setStacksSummary(null);
   }, [closeStream]);
 
   // Cleanup stream when dialog closes
@@ -121,6 +145,8 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
         setResult(resultFrame.data);
         setSuccess(true);
         setIsRunning(false);
+        // Fetch stacks summary
+        fetchStacksSummary();
         if (onComplete) {
           onComplete();
         }
@@ -136,7 +162,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
         setIsRunning(false);
       }
     };
-  }, [open, muxIsOpen, openStream, onComplete, success, error]);
+  }, [open, muxIsOpen, openStream, onComplete, success, error, fetchStacksSummary]);
 
   const handleClose = () => {
     if (isRunning) {
@@ -231,35 +257,64 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
             </Box>
           )}
 
-          {/* Current path */}
-          {progress.current_path && (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <FolderIcon fontSize="small" color="action" />
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {progress.current_path}
-              </Typography>
-            </Box>
-          )}
-
           {/* Success result */}
           {success && result && (
             <Box sx={{ mt: 2 }}>
               <Typography variant="body2" color="success.main" gutterBottom>
                 ✓ Reindex completed successfully!
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" display="block">
                 Indexed {result.files_indexed.toLocaleString()} files and{" "}
                 {result.dirs_indexed.toLocaleString()} directories in{" "}
                 {(result.duration_ms / 1000).toFixed(2)}s
               </Typography>
+
+              {/* Stacks summary */}
+              {stacksSummary && (
+                <Box
+                  sx={{
+                    mt: 2,
+                    p: 2,
+                    backgroundColor:
+                      theme.palette.mode === "dark" ? "#1e1e1e" : "#f5f5f5",
+                    borderRadius: 1,
+                  }}
+                >
+                  <Typography
+                    variant="subtitle2"
+                    color="text.primary"
+                    gutterBottom
+                  >
+                    Docker Compose Stacks Found:
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 3, mt: 1 }}>
+                    <Box>
+                      <Typography variant="h5" color="primary">
+                        {stacksSummary.total}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Total stacks
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="h5" color="success.main">
+                        {stacksSummary.running}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Running
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="h5" color="text.secondary">
+                        {stacksSummary.stopped}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Stopped
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              )}
             </Box>
           )}
 

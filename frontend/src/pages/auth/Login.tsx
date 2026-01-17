@@ -27,35 +27,47 @@ const Login: React.FC = () => {
       <Box
         sx={{
           position: "absolute",
-          top: { xs: -44, sm: -56 },
+          top: { xs: -80, sm: -96 },
           left: "50%",
-          width: { xs: 72, sm: 84 },
-          height: { xs: 72, sm: 84 },
-          borderRadius: 4,
-          border: "1px solid rgba(15,23,42,0.08)",
+          px: { xs: 2, sm: 2.5 },
+          py: { xs: 1.05, sm: 1.25 },
+          borderRadius: 999,
+          border: "1px solid rgba(148,163,184,0.25)",
           background:
-            "linear-gradient(160deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.75) 100%)",
-          boxShadow: "0 18px 40px -26px rgba(15,23,42,0.55)",
-          display: "grid",
-          placeItems: "center",
+            "linear-gradient(160deg, rgba(35,48,68,0.95) 0%, rgba(15,23,42,0.92) 100%)",
+          boxShadow: "0 24px 54px -36px rgba(0,0,0,0.85)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 1,
+          backdropFilter: "blur(10px)",
           animation: `${float} 6s ease-in-out infinite`,
           "@media (prefers-reduced-motion: reduce)": {
             animation: "none",
           },
         }}
       >
+        <Typography
+          sx={{
+            fontWeight: 600,
+            fontSize: { xs: "0.78rem", sm: "0.82rem" },
+            letterSpacing: "0.06em",
+            color: "text.primary",
+          }}
+        >
+          Linux
+        </Typography>
         <Box
           sx={(theme) => ({
-            width: 40,
-            height: 40,
+            width: { xs: 30, sm: 34 },
+            height: { xs: 30, sm: 34 },
             borderRadius: "50%",
-            border: `3px solid ${theme.palette.primary.main}`,
+            border: `2px solid ${theme.palette.primary.main}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontWeight: 800,
+            fontWeight: 700,
             color: theme.palette.primary.main,
-            fontSize: "0.95rem",
+            fontSize: "0.8rem",
             letterSpacing: "-0.02em",
           })}
         >
@@ -68,10 +80,10 @@ const Login: React.FC = () => {
           p: { xs: 3, sm: 4.5 },
           pt: { xs: 6, sm: 7 },
           borderRadius: 4,
-          backgroundColor: "rgba(255,255,255,0.86)",
-          border: "1px solid rgba(15,23,42,0.08)",
-          boxShadow: "0 26px 60px -40px rgba(15,23,42,0.55)",
-          backdropFilter: "blur(10px)",
+          backgroundColor: "rgba(17,25,40,0.9)",
+          border: "1px solid rgba(148,163,184,0.2)",
+          boxShadow: "0 26px 60px -40px rgba(0,0,0,0.75)",
+          backdropFilter: "blur(14px)",
           opacity: 0,
           transform: "translateY(18px) scale(0.98)",
           animation: `${liftIn} 0.7s ease forwards`,
