@@ -1,9 +1,9 @@
-import DeviceHubIcon from "@mui/icons-material/DeviceHub";
-import ComputerIcon from "@mui/icons-material/Computer";
 import BlockIcon from "@mui/icons-material/Block";
+import ComputerIcon from "@mui/icons-material/Computer";
+import DeviceHubIcon from "@mui/icons-material/DeviceHub";
+import HubIcon from "@mui/icons-material/Hub";
 import LayersIcon from "@mui/icons-material/Layers";
 import SettingsEthernetIcon from "@mui/icons-material/SettingsEthernet";
-import HubIcon from "@mui/icons-material/Hub";
 import {
   Box,
   Table,

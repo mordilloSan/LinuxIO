@@ -104,7 +104,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
       headerName: "Config Files",
       sx: { display: { xs: "none", sm: "table-cell" } },
     },
-    { field: "actions", headerName: "Actions", align: "center", width: "200px" },
+    {
+      field: "actions",
+      headerName: "Actions",
+      align: "center",
+      width: "200px",
+    },
   ];
 
   // Render main row content
@@ -168,7 +173,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 <Tooltip title="Edit">
                   <IconButton
                     size="small"
-                    onClick={() => onEdit(project.name, project.config_files[0])}
+                    onClick={() =>
+                      onEdit(project.name, project.config_files[0])
+                    }
                     disabled={isLoading}
                     sx={{ p: { xs: 0.5, sm: 1 } }}
                   >

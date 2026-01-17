@@ -13,15 +13,54 @@ import linuxio, { LinuxIOError } from "@/api/react-query";
 import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
+  BackendSettings,
   ConfigContextType,
   ConfigProviderProps,
 } from "@/types/config";
+
+// Transform backend settings to frontend flat config
+const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
+  theme: settings.appSettings.theme,
+  primaryColor: settings.appSettings.primaryColor,
+  sidebarCollapsed: settings.appSettings.sidebarCollapsed,
+  showHiddenFiles: settings.appSettings.showHiddenFiles,
+  dockerFolder: settings.docker.folder,
+});
+
+// Transform frontend config to backend settings format (partial update)
+const toBackendSettings = (config: Partial<AppConfig>) => {
+  const payload: any = {};
+
+  // Map flat config to nested structure
+  if (
+    config.theme !== undefined ||
+    config.primaryColor !== undefined ||
+    config.sidebarCollapsed !== undefined ||
+    config.showHiddenFiles !== undefined
+  ) {
+    payload.appSettings = {};
+    if (config.theme !== undefined) payload.appSettings.theme = config.theme;
+    if (config.primaryColor !== undefined)
+      payload.appSettings.primaryColor = config.primaryColor;
+    if (config.sidebarCollapsed !== undefined)
+      payload.appSettings.sidebarCollapsed = config.sidebarCollapsed;
+    if (config.showHiddenFiles !== undefined)
+      payload.appSettings.showHiddenFiles = config.showHiddenFiles;
+  }
+
+  if (config.dockerFolder !== undefined) {
+    payload.docker = { folder: config.dockerFolder };
+  }
+
+  return payload;
+};
 
 const defaultConfig: AppConfig = {
   theme: "DARK",
   primaryColor: "#2196f3",
   sidebarCollapsed: false,
   showHiddenFiles: false,
+  dockerFolder: undefined,
 };
 
 const applyDefaults = (
@@ -31,6 +70,7 @@ const applyDefaults = (
   primaryColor: cfg?.primaryColor ?? defaultConfig.primaryColor,
   sidebarCollapsed: cfg?.sidebarCollapsed ?? defaultConfig.sidebarCollapsed,
   showHiddenFiles: cfg?.showHiddenFiles ?? defaultConfig.showHiddenFiles,
+  dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,
 });
 
 export const ConfigContext = createContext<ConfigContextType | undefined>(
@@ -69,9 +109,10 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
           return;
         }
 
-        const data = await linuxio.call<AppConfig>("config", "theme_get");
+        const settings = await linuxio.call<BackendSettings>("config", "get");
+
         if (!cancelled) {
-          setConfig(applyDefaults(data));
+          setConfig(applyDefaults(fromBackendSettings(settings)));
           setCanSave(true); // Successfully loaded from backend, allow saves
           setLoaded(true);
         }
@@ -112,9 +153,8 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const save = useCallback(
     (cfg: AppConfig) => {
       if (!canSave) return; // Only save if we successfully loaded from backend
-      linuxio
-        .call("config", "theme_set", [JSON.stringify(cfg)])
-        .catch(() => {});
+      const payload = toBackendSettings(cfg);
+      linuxio.call("config", "set", [JSON.stringify(payload)]).catch(() => {});
     },
     [canSave],
   );
