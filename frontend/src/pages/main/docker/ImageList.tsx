@@ -1,5 +1,5 @@
 import { Box, TableCell, TextField, Chip, Typography } from "@mui/material";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import linuxio from "@/api/react-query";
 import UnifiedCollapsibleTable, {
@@ -11,12 +11,29 @@ import {
   wrappableChipStyles,
 } from "@/theme/tableStyles";
 
-const ImageList: React.FC = () => {
+interface ImageListProps {
+  onMountCreateHandler?: (handler: () => void) => void;
+}
+
+const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
   const { data: images = [] } = linuxio.docker.list_images.useQuery({
     refetchInterval: 10000,
   });
 
   const [search, setSearch] = useState("");
+
+  // Create image handler
+  const handleCreateImage = useCallback(() => {
+    // TODO: Open image pull/import dialog
+    console.log("Add image clicked");
+  }, []);
+
+  // Mount handler to parent
+  useEffect(() => {
+    if (onMountCreateHandler) {
+      onMountCreateHandler(handleCreateImage);
+    }
+  }, [onMountCreateHandler, handleCreateImage]);
 
   // Flatten images with multiple tags
   const imageRows = images.flatMap((img) => {
