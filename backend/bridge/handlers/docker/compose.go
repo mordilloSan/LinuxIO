@@ -183,26 +183,41 @@ func GetComposeProject(projectName string) (any, error) {
 }
 
 // ComposeUp starts a compose project
-func ComposeUp(projectName string) (any, error) {
-	project, err := GetComposeProject(projectName)
-	if err != nil {
-		return nil, err
-	}
+func ComposeUp(username, projectName, composePath string) (any, error) {
+	var configFile string
+	var workingDir string
 
-	composeProject, ok := project.(*ComposeProject)
-	if !ok {
-		return nil, fmt.Errorf("invalid project format")
-	}
+	// If compose path is provided, use it directly
+	if composePath != "" {
+		configFile = composePath
+		workingDir = filepath.Dir(composePath)
+	} else {
+		// Try to get the project from existing containers first
+		project, err := GetComposeProject(projectName)
+		if err == nil {
+			// Project exists with containers
+			composeProject, ok := project.(*ComposeProject)
+			if !ok {
+				return nil, fmt.Errorf("invalid project format")
+			}
 
-	// Get the first config file path
-	if len(composeProject.ConfigFiles) == 0 {
-		return nil, fmt.Errorf("no config files found for project '%s'", projectName)
-	}
+			if len(composeProject.ConfigFiles) == 0 {
+				return nil, fmt.Errorf("no config files found for project '%s'", projectName)
+			}
 
-	configFile := composeProject.ConfigFiles[0]
-	workingDir := composeProject.WorkingDir
-	if workingDir == "" {
-		workingDir = filepath.Dir(configFile)
+			configFile = composeProject.ConfigFiles[0]
+			workingDir = composeProject.WorkingDir
+			if workingDir == "" {
+				workingDir = filepath.Dir(configFile)
+			}
+		} else {
+			// Project not found in containers - might be a new stack
+			// Try to find the compose file in standard locations
+			configFile, workingDir, err = findComposeFile(username, projectName)
+			if err != nil {
+				return nil, fmt.Errorf("project '%s' not found and no compose file found: %w", projectName, err)
+			}
+		}
 	}
 
 	// Execute docker compose up -d
@@ -214,6 +229,47 @@ func ComposeUp(projectName string) (any, error) {
 	}
 
 	return map[string]string{"message": "Project started successfully", "output": string(output)}, nil
+}
+
+// findComposeFile attempts to locate a compose file for a project
+func findComposeFile(username, projectName string) (string, string, error) {
+	// Common compose file names
+	composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+
+	// Try to get user's docker folder from config
+	cfg, _, err := config.Load(username)
+	if err == nil && cfg.Docker.Folder != "" {
+		sanitized := sanitizeStackName(projectName)
+		stackDir := filepath.Join(string(cfg.Docker.Folder), sanitized)
+
+		for _, fileName := range composeFileNames {
+			composePath := filepath.Join(stackDir, fileName)
+			if _, err := os.Stat(composePath); err == nil {
+				return composePath, stackDir, nil
+			}
+		}
+	}
+
+	// Fallback to common paths
+	commonBasePaths := []string{
+		filepath.Join(os.Getenv("HOME"), "docker"),
+		filepath.Join(os.Getenv("HOME"), "Docker"),
+		"/opt/docker",
+	}
+
+	sanitized := sanitizeStackName(projectName)
+
+	for _, basePath := range commonBasePaths {
+		stackDir := filepath.Join(basePath, sanitized)
+		for _, fileName := range composeFileNames {
+			composePath := filepath.Join(stackDir, fileName)
+			if _, err := os.Stat(composePath); err == nil {
+				return composePath, stackDir, nil
+			}
+		}
+	}
+
+	return "", "", fmt.Errorf("no compose file found for project '%s'", projectName)
 }
 
 // ComposeDown stops and removes a compose project
@@ -667,8 +723,8 @@ func ValidateStackDirectory(dirPath string) (any, error) {
 
 		// Check write permissions by trying to create a temp file
 		testFile := filepath.Join(dirPath, ".linuxio-write-test")
-		f, err := os.Create(testFile)
-		if err != nil {
+		f, createErr := os.Create(testFile)
+		if createErr != nil {
 			result.Error = "No write permission in directory"
 			return result, nil
 		}
@@ -712,8 +768,8 @@ func ValidateStackDirectory(dirPath string) (any, error) {
 
 	// Successfully created, now check write permissions
 	testFile := filepath.Join(dirPath, ".linuxio-write-test")
-	f, err := os.Create(testFile)
-	if err != nil {
+	f, createErr := os.Create(testFile)
+	if createErr != nil {
 		result.Error = "Cannot write to created directory"
 		// Clean up the directory we created
 		os.RemoveAll(dirPath)

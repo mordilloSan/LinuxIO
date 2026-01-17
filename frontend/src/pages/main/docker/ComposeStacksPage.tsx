@@ -42,6 +42,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   // Post-save dialog state
   const [postSaveDialogOpen, setPostSaveDialogOpen] = useState(false);
   const [postSaveStackName, setPostSaveStackName] = useState("");
+  const [postSaveFilePath, setPostSaveFilePath] = useState("");
   const [postSaveStackState, setPostSaveStackState] = useState<
     "new" | "running" | "stopped"
   >("new");
@@ -64,8 +65,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       },
     });
 
-  const startProject = (projectName: string) =>
-    startProjectMutation([projectName]);
+  const startProject = (projectName: string, filePath?: string) =>
+    startProjectMutation(filePath ? [projectName, filePath] : [projectName]);
 
   const { mutate: stopProjectMutation, isPending: isStopping } =
     linuxio.docker.compose_stop.useMutation({
@@ -296,6 +297,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
         // Show post-save dialog
         setPostSaveStackName(stackName);
+        setPostSaveFilePath(filePath);
         setPostSaveStackState(state);
         setPostSaveDialogOpen(true);
       } catch (error) {
@@ -310,7 +312,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
   // Post-save action handlers
   const handlePostSaveStart = () => {
-    startProject(postSaveStackName);
+    startProject(postSaveStackName, postSaveFilePath);
     setPostSaveDialogOpen(false);
   };
 
