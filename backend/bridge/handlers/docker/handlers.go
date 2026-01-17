@@ -154,7 +154,12 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
-		result, err := ComposeUp(args[0])
+		projectName := args[0]
+		var composePath string
+		if len(args) >= 2 {
+			composePath = args[1]
+		}
+		result, err := ComposeUp(username, projectName, composePath)
 		if err != nil {
 			return err
 		}
