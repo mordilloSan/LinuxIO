@@ -1,11 +1,10 @@
-1 - docker compose UI
+1 - chunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts
 
-3 - chunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts
+2 - Notifications!!!! See notifications.md
 
-6 - Notifications!!!! See notifications.md
+3 - exec.command safety and efeciency?
 
-4 - exec.command safety and efeciency?
-
+Docker compose UI - Done
 Right now hash can be reproduced if build from same code base. - DONE
 fix indexer status check and calls. DONE
 for service logs we could use real streaming????? DONE
