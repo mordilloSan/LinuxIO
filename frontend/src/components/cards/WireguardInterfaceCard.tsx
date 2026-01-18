@@ -3,7 +3,6 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import {
-  Card,
   CardContent,
   Typography,
   Box,
@@ -14,6 +13,7 @@ import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { RefObject } from "react";
 
+import FrostedCard from "@/components/cards/RootCard";
 import { WireGuardInterface } from "@/types/wireguard";
 
 // Props type
@@ -57,7 +57,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
       transition={{ duration: 0.3 }}
       layout
     >
-      <Card
+      <FrostedCard
         ref={iface.name === selectedInterface ? selectedCardRef : null}
         sx={{
           cursor: "pointer",
@@ -159,7 +159,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
             Peers: {iface.peerCount}
           </Typography>
         </CardContent>
-      </Card>
+      </FrostedCard>
     </motion.div>
   );
 };

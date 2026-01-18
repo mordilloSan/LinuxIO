@@ -3,7 +3,6 @@ import GetAppIcon from "@mui/icons-material/GetApp";
 import QrCodeIcon from "@mui/icons-material/QrCode";
 import {
   Grid,
-  Card,
   CardContent,
   Typography,
   Box,
@@ -18,6 +17,7 @@ import { toast } from "sonner";
 
 import type { Peer } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
+import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const wireguardToastMeta = {
@@ -200,7 +200,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                 size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
                 key={peer.name || idx}
               >
-                <Card>
+                <FrostedCard>
                   <CardContent>
                     <Box
                       display="flex"
@@ -281,7 +281,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                       Keep Alive: {peer.persistent_keepalive ?? "-"}
                     </Typography>
                   </CardContent>
-                </Card>
+                </FrostedCard>
               </Grid>
             );
           })
