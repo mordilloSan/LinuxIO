@@ -113,7 +113,7 @@ static void journal_errorf(const char *fmt, ...)
   va_end(ap);
 #ifdef HAVE_SD_JOURNAL
   (void)sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_ERR,
-                        "SYSLOG_IDENTIFIER=linuxio-auth");
+                        "SYSLOG_IDENTIFIER=linuxio-auth", NULL);
 #else
   openlog("linuxio-auth", LOG_PID, LOG_AUTHPRIV);
   syslog(LOG_ERR, "%s", buf);
@@ -130,7 +130,7 @@ static void journal_infof(const char *fmt, ...)
   va_end(ap);
 #ifdef HAVE_SD_JOURNAL
   (void)sd_journal_send("MESSAGE=%s", buf, "PRIORITY=%i", LOG_INFO,
-                        "SYSLOG_IDENTIFIER=linuxio-auth");
+                        "SYSLOG_IDENTIFIER=linuxio-auth", NULL);
 #else
   openlog("linuxio-auth", LOG_PID, LOG_AUTHPRIV);
   syslog(LOG_INFO, "%s", buf);
