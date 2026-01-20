@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import ComposeList from "./ComposeList";
+import ComposeList, { type ComposeProject } from "./ComposeList";
 
 import {
   encodeString,
@@ -24,6 +24,9 @@ import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
 import ComposeOperationDialog from "@/components/docker/ComposeOperationDialog";
 import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";
 import { ValidationResult } from "@/components/docker/ComposeValidationFeedback";
+import DeleteStackDialog, {
+  type DeleteOption,
+} from "@/components/docker/DeleteStackDialog";
 import ReindexDialog from "@/components/docker/ReindexDialog";
 import StackSetupDialog from "@/components/docker/StackSetupDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -80,6 +83,12 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   // Reindex dialog state
   const [reindexDialogOpen, setReindexDialogOpen] = useState(false);
 
+  // Delete stack dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteDialogProject, setDeleteDialogProject] =
+    useState<ComposeProject | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const { data: projects = [], isPending } =
     linuxio.docker.list_compose_projects.useQuery({
       refetchInterval: 5000,
@@ -115,12 +124,71 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     setOperationDialogOpen(true);
   }, []);
 
-  const downProject = useCallback((projectName: string) => {
-    setOperationAction("down");
-    setOperationProjectName(projectName);
-    setOperationComposePath(undefined);
-    setOperationDialogOpen(true);
+  // Open delete dialog with project info
+  const handleOpenDeleteDialog = useCallback((project: ComposeProject) => {
+    setDeleteDialogProject(project);
+    setDeleteDialogOpen(true);
   }, []);
+
+  // Handle delete confirmation based on selected option
+  const handleDeleteConfirm = useCallback(
+    async (option: DeleteOption) => {
+      if (!deleteDialogProject) return;
+
+      const projectName = deleteDialogProject.name;
+      setDeleteLoading(true);
+
+      try {
+        if (option === "containers") {
+          // Just run docker compose down via operation dialog
+          setDeleteDialogOpen(false);
+          setDeleteDialogProject(null);
+          setDeleteLoading(false);
+          setOperationAction("down");
+          setOperationProjectName(projectName);
+          setOperationComposePath(undefined);
+          setOperationDialogOpen(true);
+        } else {
+          // Use the delete_stack endpoint with options
+          const deleteFile = option === "file" || option === "directory";
+          const deleteDirectory = option === "directory";
+
+          await linuxio.call("docker", "delete_stack", [
+            projectName,
+            deleteFile ? "true" : "false",
+            deleteDirectory ? "true" : "false",
+          ]);
+
+          const successMsg =
+            option === "directory"
+              ? `Stack ${projectName} and its directory deleted successfully`
+              : `Stack ${projectName} and compose file deleted successfully`;
+          toast.success(successMsg);
+
+          queryClient.invalidateQueries({
+            queryKey: ["docker", "list_compose_projects"],
+          });
+
+          setDeleteDialogOpen(false);
+          setDeleteDialogProject(null);
+        }
+      } catch (error) {
+        toast.error(
+          `Failed to delete stack: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      } finally {
+        setDeleteLoading(false);
+      }
+    },
+    [deleteDialogProject, queryClient],
+  );
+
+  const handleDeleteDialogClose = useCallback(() => {
+    if (!deleteLoading) {
+      setDeleteDialogOpen(false);
+      setDeleteDialogProject(null);
+    }
+  }, [deleteLoading]);
 
   const handleReindex = useCallback(() => {
     setReindexDialogOpen(true);
@@ -424,7 +492,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             onStart={startProject}
             onStop={stopProject}
             onRestart={restartProject}
-            onDown={downProject}
+            onDelete={handleOpenDeleteDialog}
             onEdit={handleEditStack}
             isLoading={isLoading}
           />
@@ -470,6 +538,16 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           open={reindexDialogOpen}
           onClose={() => setReindexDialogOpen(false)}
           onComplete={handleReindexComplete}
+        />
+
+        <DeleteStackDialog
+          open={deleteDialogOpen}
+          onClose={handleDeleteDialogClose}
+          onConfirm={handleDeleteConfirm}
+          projectName={deleteDialogProject?.name || ""}
+          configFiles={deleteDialogProject?.config_files || []}
+          workingDir={deleteDialogProject?.working_dir || ""}
+          isLoading={deleteLoading}
         />
 
         <Dialog

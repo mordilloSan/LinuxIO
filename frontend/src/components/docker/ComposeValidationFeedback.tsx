@@ -12,6 +12,7 @@ export interface ValidationError {
 export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
+  normalized_content?: string; // Auto-normalized content with container_name added
 }
 
 interface ComposeValidationFeedbackProps {

@@ -367,6 +367,18 @@ install_systemd_files() {
         fi
     fi
 
+    # Install tmpfiles.d configuration for icon cache
+    log_info "Installing tmpfiles.d configuration..."
+    mkdir -p /usr/lib/tmpfiles.d
+    if ! curl -fsSL "${RAW_BASE}/systemd/linuxio-tmpfiles.conf" -o /usr/lib/tmpfiles.d/linuxio.conf; then
+        log_warn "Failed to download tmpfiles.d config (non-critical)"
+    else
+        chmod 0644 /usr/lib/tmpfiles.d/linuxio.conf
+        # Create the directories now (don't wait for reboot)
+        systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf 2>/dev/null || true
+        log_ok "Installed tmpfiles.d configuration"
+    fi
+
     # Reload systemd
     log_info "Reloading systemd daemon..."
     systemctl daemon-reload
@@ -598,6 +610,7 @@ Options:
 What gets installed:
   • Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth
   • Systemd:      /etc/systemd/system/linuxio-webserver.service, linuxio-webserver.socket
+  • Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates /run/linuxio/icons)
   • PAM:          /etc/pam.d/linuxio
   • Config:       /etc/linuxio/disallowed-users
 
