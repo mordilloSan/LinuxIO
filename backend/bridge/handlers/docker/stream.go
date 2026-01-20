@@ -229,7 +229,8 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 	case "stop":
 		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "stop"}
 	case "restart":
-		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "restart"}
+		// Use 'up -d --remove-orphans' instead of 'restart' to apply compose file changes
+		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "up", "-d", "--remove-orphans"}
 	default:
 		sendComposeError(stream, "unsupported action: "+action)
 		return errors.New("unsupported action")

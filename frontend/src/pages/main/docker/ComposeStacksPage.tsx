@@ -117,12 +117,15 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     setOperationDialogOpen(true);
   }, []);
 
-  const restartProject = useCallback((projectName: string) => {
-    setOperationAction("restart");
-    setOperationProjectName(projectName);
-    setOperationComposePath(undefined);
-    setOperationDialogOpen(true);
-  }, []);
+  const restartProject = useCallback(
+    (projectName: string, filePath?: string) => {
+      setOperationAction("restart");
+      setOperationProjectName(projectName);
+      setOperationComposePath(filePath);
+      setOperationDialogOpen(true);
+    },
+    [],
+  );
 
   // Open delete dialog with project info
   const handleOpenDeleteDialog = useCallback((project: ComposeProject) => {
@@ -473,7 +476,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   };
 
   const handlePostSaveRestart = () => {
-    restartProject(postSaveStackName);
+    restartProject(postSaveStackName, postSaveFilePath);
     setPostSaveDialogOpen(false);
   };
 

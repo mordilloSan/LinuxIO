@@ -444,48 +444,95 @@ func ComposeRestart(username, projectName string) (any, error) {
 	project, err := GetComposeProject(username, projectName)
 	if err == nil {
 		composeProject, ok := project.(*ComposeProject)
-		if ok && len(composeProject.ConfigFiles) > 0 {
-			configFile = composeProject.ConfigFiles[0]
-			workingDir = composeProject.WorkingDir
-			if workingDir == "" {
-				workingDir = filepath.Dir(configFile)
-			}
-
-			// Verify the config file still exists at the labeled path
-			if _, statErr := os.Stat(configFile); statErr != nil {
-				logger.WarnKV("compose file from container labels not found, will search for it",
-					"project", projectName,
-					"labeled_path", configFile,
-					"error", statErr.Error())
-				configFile = ""
-			}
-		} else if ok && composeProject.WorkingDir != "" {
-			// Config files list is empty but we have a working directory
-			// This can happen with Portainer where config_files label is empty
-			// Try to translate container path to host path and find compose file
+		if ok {
+			// Get a Docker client for path translation
 			cli, cliErr := getClient()
-			if cliErr == nil {
-				translatedWorkingDir := translateContainerPathToHost(cli, composeProject.WorkingDir)
-				cli.Close()
-
-				logger.DebugKV("translating working directory",
+			if cliErr != nil {
+				logger.WarnKV("failed to get Docker client for path translation",
 					"project", projectName,
-					"container_path", composeProject.WorkingDir,
-					"host_path", translatedWorkingDir)
+					"error", cliErr.Error())
+			}
 
-				// Try common compose file names in the translated working directory
-				composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
-				for _, fileName := range composeFileNames {
-					possiblePath := filepath.Join(translatedWorkingDir, fileName)
-					if _, statErr := os.Stat(possiblePath); statErr == nil {
-						configFile = possiblePath
-						workingDir = translatedWorkingDir
-						logger.InfoKV("found compose file via working_dir translation",
+			if len(composeProject.ConfigFiles) > 0 {
+				configFile = composeProject.ConfigFiles[0]
+				workingDir = composeProject.WorkingDir
+
+				// Check if the config file exists at the labeled path
+				if _, statErr := os.Stat(configFile); statErr != nil {
+					// Path doesn't exist on host - might be a container path (e.g., Portainer)
+					// Try to translate it to a host path
+					if cli != nil {
+						translatedConfigFile := translateContainerPathToHost(cli, configFile)
+						if translatedConfigFile != configFile {
+							// Translation succeeded, check if translated path exists
+							if _, translatedStatErr := os.Stat(translatedConfigFile); translatedStatErr == nil {
+								logger.InfoKV("translated container config path to host path",
+									"project", projectName,
+									"container_path", configFile,
+									"host_path", translatedConfigFile)
+								configFile = translatedConfigFile
+								// Also translate working dir if needed
+								if workingDir != "" {
+									translatedWorkingDir := translateContainerPathToHost(cli, workingDir)
+									if translatedWorkingDir != workingDir {
+										workingDir = translatedWorkingDir
+									}
+								}
+							} else {
+								logger.WarnKV("translated path does not exist",
+									"project", projectName,
+									"translated_path", translatedConfigFile)
+								configFile = ""
+							}
+						} else {
+							logger.WarnKV("compose file from container labels not found and translation failed",
+								"project", projectName,
+								"labeled_path", configFile,
+								"error", statErr.Error())
+							configFile = ""
+						}
+					} else {
+						logger.WarnKV("compose file from container labels not found",
 							"project", projectName,
-							"path", configFile)
-						break
+							"labeled_path", configFile,
+							"error", statErr.Error())
+						configFile = ""
 					}
 				}
+
+				if workingDir == "" && configFile != "" {
+					workingDir = filepath.Dir(configFile)
+				}
+			} else if composeProject.WorkingDir != "" {
+				// Config files list is empty but we have a working directory
+				// This can happen with Portainer where config_files label is empty
+				// Try to translate container path to host path and find compose file
+				if cli != nil {
+					translatedWorkingDir := translateContainerPathToHost(cli, composeProject.WorkingDir)
+
+					logger.DebugKV("translating working directory",
+						"project", projectName,
+						"container_path", composeProject.WorkingDir,
+						"host_path", translatedWorkingDir)
+
+					// Try common compose file names in the translated working directory
+					composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+					for _, fileName := range composeFileNames {
+						possiblePath := filepath.Join(translatedWorkingDir, fileName)
+						if _, statErr := os.Stat(possiblePath); statErr == nil {
+							configFile = possiblePath
+							workingDir = translatedWorkingDir
+							logger.InfoKV("found compose file via working_dir translation",
+								"project", projectName,
+								"path", configFile)
+							break
+						}
+					}
+				}
+			}
+
+			if cli != nil {
+				cli.Close()
 			}
 		}
 	}
