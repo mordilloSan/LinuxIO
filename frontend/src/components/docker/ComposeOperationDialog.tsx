@@ -12,6 +12,7 @@ import {
   useTheme,
 } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "sonner";
 
 import { useStreamMux, decodeString, encodeString } from "@/api/linuxio";
 import type { Stream } from "@/api/linuxio";
@@ -101,6 +102,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       queueMicrotask(() => {
         setError("Failed to start compose operation");
         setIsRunning(false);
+        toast.error("Failed to start compose operation");
       });
       return;
     }
@@ -121,6 +123,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           case "error":
             setError(msg.message);
             setIsRunning(false);
+            toast.error(`Failed to ${action} stack: ${msg.message}`);
             break;
           case "complete":
             setSuccess(true);
