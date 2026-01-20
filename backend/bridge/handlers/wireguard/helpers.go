@@ -1,19 +1,19 @@
 package wireguard
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
@@ -55,6 +55,12 @@ func isInterfaceUp(name string) bool {
 	return exec.Command("wg", "show", name).Run() == nil
 }
 
+func isInterfaceEnabled(name string) bool {
+	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
+	cmd := exec.Command("systemctl", "is-enabled", serviceName)
+	return cmd.Run() == nil
+}
+
 func parseCSV(s string) []string {
 	if s == "" {
 		return nil
@@ -71,51 +77,88 @@ func parseCSV(s string) []string {
 }
 
 func newIPManager(serverCIDR string) (*ipManager, error) {
-	normalized, serverHost, err := normalizeCIDRv4Host(serverCIDR)
+	ip, ipNet, err := net.ParseCIDR(strings.TrimSpace(serverCIDR))
 	if err != nil {
-		logger.Errorf("newIPManager: normalizeCIDRv4Host failed for %s: %v", serverCIDR, err)
-		return nil, err
+		logger.Errorf("newIPManager: parse CIDR failed for %s: %v", serverCIDR, err)
+		return nil, fmt.Errorf("invalid CIDR %q: %w", serverCIDR, err)
 	}
 
-	netBase, err := ipv4NetBase(normalized)
-	if err != nil {
-		logger.Errorf("newIPManager: ipv4NetBase failed for %s: %v", normalized, err)
-		return nil, err
+	// Ensure IPv4 only
+	v4 := ip.To4()
+	if v4 == nil {
+		logger.Errorf("newIPManager: %s is not an IPv4 address", serverCIDR)
+		return nil, fmt.Errorf("IPv6 addresses are not supported: %s", serverCIDR)
+	}
+
+	maskBits, totalBits := ipNet.Mask.Size()
+	if totalBits != 32 {
+		logger.Errorf("newIPManager: unexpected mask size for %s", serverCIDR)
+		return nil, fmt.Errorf("invalid IPv4 mask for %s", serverCIDR)
+	}
+
+	// Only support subnets within a /24 boundary (mask >= 24)
+	// This simplifies IP math to last-octet operations
+	if maskBits < 24 {
+		logger.Errorf("newIPManager: subnet %s too large, max supported is /24", serverCIDR)
+		return nil, fmt.Errorf("subnet too large: max supported is /24, got /%d", maskBits)
+	}
+
+	// Calculate host range based on subnet mask
+	// For /24: hostBits=8, maxHost=254 (2^8-2)
+	// For /28: hostBits=4, maxHost=14 (2^4-2)
+	hostBits := 32 - maskBits
+	if hostBits < 2 {
+		logger.Errorf("newIPManager: subnet %s too small for peer allocation", serverCIDR)
+		return nil, fmt.Errorf("subnet too small: need at least /30, got /%d", maskBits)
+	}
+	maxHost := (1 << hostBits) - 2 // -2 for network and broadcast
+
+	// Server is always at host offset 1 (first usable IP)
+	// Peers start at offset 2 (minHostOffset)
+	if maxHost < minHostOffset {
+		logger.Errorf("newIPManager: subnet %s has no room for peers (server uses only usable IP)", serverCIDR)
+		return nil, fmt.Errorf("subnet /%d too small: no room for peers after server", maskBits)
+	}
+
+	// Get network base address
+	netBase := ipNet.IP.To4()
+	if netBase == nil {
+		logger.Errorf("newIPManager: could not get network base for %s", serverCIDR)
+		return nil, fmt.Errorf("could not determine network base for %s", serverCIDR)
 	}
 
 	return &ipManager{
 		netBase:    netBase,
-		serverHost: serverHost,
+		serverHost: 1, // Always offset 1 from network base
+		maskBits:   maskBits,
+		maxHost:    maxHost,
 	}, nil
 }
 
 func (m *ipManager) findNextAvailable(peers []PeerConfig) (string, int, error) {
 	used := m.buildUsedIPMap(peers)
 
-	for i := minHostIP; i <= maxHostIP; i++ {
-		if !used[i] {
-			return m.makeIP(i), i, nil
+	for offset := minHostOffset; offset <= m.maxHost; offset++ {
+		if !used[offset] {
+			return m.makeIP(offset), offset, nil
 		}
 	}
 
-	logger.Errorf("ipManager: no available IPs in subnet %v", m.netBase)
+	logger.Errorf("ipManager: no available IPs in subnet %v (max host offset: %d)", m.netBase, m.maxHost)
 	return "", 0, fmt.Errorf("no available IPs in subnet")
 }
 
 func (m *ipManager) buildUsedIPMap(peers []PeerConfig) map[int]bool {
 	used := map[int]bool{
-		0:   true, // network
-		255: true, // broadcast
-	}
-
-	if m.serverHost > 0 {
-		used[m.serverHost] = true
+		0:             true, // network address (offset 0)
+		m.maxHost + 1: true, // broadcast address
+		m.serverHost:  true, // server always at offset 1
 	}
 
 	for _, p := range peers {
 		for _, ip := range p.AllowedIPs {
-			if host := extractHostOctet(ip); host > 0 {
-				used[host] = true
+			if offset := m.extractHostOffset(ip); offset > 0 {
+				used[offset] = true
 			}
 		}
 	}
@@ -123,26 +166,52 @@ func (m *ipManager) buildUsedIPMap(peers []PeerConfig) map[int]bool {
 	return used
 }
 
-func (m *ipManager) makeIP(host int) string {
-	return fmt.Sprintf("%d.%d.%d.%d/32", m.netBase[0], m.netBase[1], m.netBase[2], host)
+// makeIP creates a /32 CIDR from a host offset within the subnet.
+// For subnet 10.0.0.16/28 with offset 2: produces 10.0.0.18/32
+func (m *ipManager) makeIP(hostOffset int) string {
+	if len(m.netBase) < 4 {
+		logger.Errorf("ipManager.makeIP: invalid netBase")
+		return ""
+	}
+	// Add host offset to the network base's last octet
+	lastOctet := int(m.netBase[3]) + hostOffset
+	return fmt.Sprintf("%d.%d.%d.%d/32", m.netBase[0], m.netBase[1], m.netBase[2], lastOctet)
 }
 
-func extractHostOctet(ip string) int {
-	parts := strings.Split(ip, ".")
-	if len(parts) != 4 {
+// extractHostOffset calculates the host offset from the network base.
+// For subnet 10.0.0.16/28 and IP 10.0.0.18: returns 2
+func (m *ipManager) extractHostOffset(ipCIDR string) int {
+	ipStr := ipCIDR
+	if idx := strings.Index(ipCIDR, "/"); idx != -1 {
+		ipStr = ipCIDR[:idx]
+	}
+
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
 		return -1
 	}
 
-	last := parts[3]
-	if idx := strings.Index(last, "/"); idx != -1 {
-		last = last[:idx]
+	v4 := ip.To4()
+	if v4 == nil {
+		return -1 // Not IPv4
 	}
 
-	host, err := strconv.Atoi(last)
-	if err != nil {
+	if len(m.netBase) < 4 {
 		return -1
 	}
-	return host
+
+	// Verify first 3 octets match the network base
+	if v4[0] != m.netBase[0] || v4[1] != m.netBase[1] || v4[2] != m.netBase[2] {
+		return -1 // Different subnet
+	}
+
+	// Calculate offset from network base
+	offset := int(v4[3]) - int(m.netBase[3])
+	if offset < 0 || offset > m.maxHost+1 {
+		return -1 // Outside subnet range
+	}
+
+	return offset
 }
 
 // --- IPv4 Helper Functions ---
@@ -171,66 +240,49 @@ func normalizeCIDRv4Host(cidr string) (string, int, error) {
 	return fmt.Sprintf("%s/%d", v4.String(), ones), int(v4[3]), nil
 }
 
-func ipv4NetBase(cidr string) (net.IP, error) {
-	_, ipNet, err := net.ParseCIDR(strings.TrimSpace(cidr))
-	if err != nil {
-		return nil, err
-	}
-	return ipNet.IP.To4(), nil
-}
-
-// getDefaultGatewayIPv4 reads /proc/net/route and returns the default gateway.
+// getDefaultGatewayIPv4 returns the default IPv4 gateway.
 func getDefaultGatewayIPv4() (string, error) {
-	return getGatewayFromRouteFile("")
+	return getGatewayFromNetlink(0)
 }
 
-// getGatewayForInterfaceIPv4 returns the default gateway for a specific interface.
+// getGatewayForInterfaceIPv4 returns the default IPv4 gateway for a specific interface.
 func getGatewayForInterfaceIPv4(iface string) (string, error) {
-	return getGatewayFromRouteFile(iface)
+	link, err := netlink.LinkByName(iface)
+	if err != nil {
+		logger.Errorf("getGatewayForInterfaceIPv4: lookup %s failed: %v", iface, err)
+		return "", fmt.Errorf("lookup interface %s: %w", iface, err)
+	}
+	return getGatewayFromNetlink(link.Attrs().Index)
 }
 
-func getGatewayFromRouteFile(matchIface string) (string, error) {
-	data, err := os.ReadFile("/proc/net/route")
-	if err != nil {
-		logger.Errorf("getGatewayFromRouteFile: read /proc/net/route failed: %v", err)
-		return "", fmt.Errorf("read /proc/net/route: %w", err)
+func getGatewayFromNetlink(linkIndex int) (string, error) {
+	filter := &netlink.Route{
+		Table: syscall.RT_TABLE_MAIN,
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	// fields: Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT
-	for i := 1; i < len(lines); i++ {
-		fields := strings.Fields(lines[i])
-		if len(fields) < 3 {
-			continue
-		}
-		iface := fields[0]
-		dest := fields[1]
-		gwHex := fields[2]
+	mask := netlink.RT_FILTER_TABLE
+	if linkIndex > 0 {
+		filter.LinkIndex = linkIndex
+		mask |= netlink.RT_FILTER_OIF
+	}
 
-		// Only default route (Destination == 00000000)
-		if dest != "00000000" {
-			continue
-		}
-		if matchIface != "" && iface != matchIface {
-			continue
-		}
-		gwIP, err := hexLEToIPv4(gwHex)
-		if err != nil || gwIP == "0.0.0.0" {
-			continue
-		}
-		return gwIP, nil
+	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, filter, mask)
+	if err != nil {
+		logger.Errorf("getGatewayFromNetlink: list routes failed: %v", err)
+		return "", fmt.Errorf("list routes: %w", err)
 	}
-	logger.Errorf("getGatewayFromRouteFile: default gateway not found (iface=%q)", matchIface)
+
+	for _, r := range routes {
+		if r.Dst != nil {
+			continue
+		}
+		if r.Gw == nil || r.Gw.IsUnspecified() {
+			continue
+		}
+		return r.Gw.String(), nil
+	}
+
+	logger.Debugf("getGatewayFromNetlink: no default gateway found (linkIndex=%d)", linkIndex)
 	return "", fmt.Errorf("default gateway not found")
-}
-
-func hexLEToIPv4(hexStr string) (string, error) {
-	u, err := strconv.ParseUint(hexStr, 16, 32)
-	if err != nil {
-		return "", err
-	}
-	var b [4]byte
-	binary.LittleEndian.PutUint32(b[:], uint32(u))
-	return net.IPv4(b[0], b[1], b[2], b[3]).String(), nil
 }
 
 // --- Helper functions ---
@@ -283,21 +335,21 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 	used := ipMgr.buildUsedIPMap(nil)
 
 	for i := 0; i < count; i++ {
-		// Find next available IP
+		// Find next available IP using ipManager's computed maxHost
 		var peerIP string
-		var host int
-		for h := minHostIP; h <= maxHostIP; h++ {
-			if !used[h] {
-				peerIP = ipMgr.makeIP(h)
-				host = h
-				used[h] = true
+		var hostOffset int
+		for offset := minHostOffset; offset <= ipMgr.maxHost; offset++ {
+			if !used[offset] {
+				peerIP = ipMgr.makeIP(offset)
+				hostOffset = offset
+				used[offset] = true
 				break
 			}
 		}
 
 		if peerIP == "" {
-			logger.Errorf("generatePeers: insufficient IPs for %d peers", count)
-			return nil, fmt.Errorf("insufficient IPs for %d peers", count)
+			logger.Errorf("generatePeers: insufficient IPs for %d peers (subnet /%d)", count, ipMgr.maskBits)
+			return nil, fmt.Errorf("insufficient IPs for %d peers in /%d subnet", count, ipMgr.maskBits)
 		}
 
 		// Generate keys
@@ -312,7 +364,7 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 			PrivateKey:          privKey.String(),
 			AllowedIPs:          []string{peerIP},
 			PersistentKeepalive: defaultKeepalive,
-			Name:                fmt.Sprintf("Peer%d", host),
+			Name:                fmt.Sprintf("Peer%d", hostOffset),
 		})
 	}
 
@@ -337,16 +389,6 @@ func setKeyIfPositive(section *ini.Section, key string, value int) {
 	if value > 0 {
 		setKey(section, key, strconv.Itoa(value))
 	}
-}
-
-func cleanBackticks(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	cleaned := strings.ReplaceAll(string(data), "`", "")
-	return os.WriteFile(path, []byte(cleaned), 0o600)
 }
 
 // for wireguard stats

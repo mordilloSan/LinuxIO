@@ -394,6 +394,24 @@ export interface LinuxIOSchema {
     compose_down: { args: [projectName: string]; result: any };
     compose_stop: { args: [projectName: string]; result: any };
     compose_restart: { args: [projectName: string]; result: any };
+    get_docker_folder: { args: []; result: { folder: string } };
+    validate_compose: {
+      args: [content: string];
+      result: {
+        valid: boolean;
+        errors: Array<{
+          line?: number;
+          column?: number;
+          field?: string;
+          message: string;
+          type: "error" | "warning";
+        }>;
+      };
+    };
+    get_compose_file_path: {
+      args: [stackName: string];
+      result: { path: string; exists: boolean; directory: string };
+    };
   };
 
   dbus: {
@@ -520,6 +538,8 @@ export interface LinuxIOSchema {
     get_keys: { args: []; result: { publicKey: string; privateKey: string } };
     up_interface: { args: [name: string]; result: void };
     down_interface: { args: [name: string]; result: void };
+    enable_interface: { args: [name: string]; result: void };
+    disable_interface: { args: [name: string]; result: void };
   };
 
   terminal: {

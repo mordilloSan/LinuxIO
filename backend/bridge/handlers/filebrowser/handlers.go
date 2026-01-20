@@ -244,13 +244,24 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 		return fmt.Errorf("invalid size: %w", err)
 	}
 
+	// Check for override flag (optional third argument)
+	override := false
+	if len(args) >= 3 {
+		override = args[2] == "true"
+	}
+
 	realPath := filepath.Clean(path)
 
-	// Check if file exists to preserve permissions
+	// Check if file exists
 	existingStat, existsErr := os.Stat(realPath)
 	var preserveMode os.FileMode
 	var preserveUID, preserveGID int
 	if existsErr == nil {
+		// File exists - check if we're allowed to overwrite
+		if !override {
+			return fmt.Errorf("bad_request:file already exists. Set override=true to overwrite")
+		}
+		// Preserve permissions and ownership
 		preserveMode = existingStat.Mode()
 		if sysStat, ok := existingStat.Sys().(*syscall.Stat_t); ok {
 			preserveUID = int(sysStat.Uid)

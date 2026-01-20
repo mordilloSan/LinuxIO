@@ -3,7 +3,6 @@ import GetAppIcon from "@mui/icons-material/GetApp";
 import QrCodeIcon from "@mui/icons-material/QrCode";
 import {
   Grid,
-  Card,
   CardContent,
   Typography,
   Box,
@@ -18,6 +17,7 @@ import { toast } from "sonner";
 
 import type { Peer } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
+import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const wireguardToastMeta = {
@@ -117,7 +117,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   }, [peers, currentTime]);
 
   const handleDeletePeer = (peerName: string) => {
-    deletePeerMutation.mutate([[interfaceName, peerName]], {
+    deletePeerMutation.mutate([interfaceName, peerName], {
       onSuccess: () => {
         toast.success(
           `WireGuard Peer '${peerName}' deleted`,
@@ -125,11 +125,17 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
         );
         refetch();
       },
+      onError: (error: Error) => {
+        toast.error(
+          `Failed to delete peer: ${error.message}`,
+          wireguardToastMeta,
+        );
+      },
     });
   };
 
   const handleDownloadConfig = (peername: string) => {
-    downloadConfigMutation.mutate([[interfaceName, peername]], {
+    downloadConfigMutation.mutate([interfaceName, peername], {
       onSuccess: (result) => {
         // Create blob from config text
         const blob = new Blob([result.content], { type: "text/plain" });
@@ -146,16 +152,28 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
           wireguardToastMeta,
         );
       },
+      onError: (error: Error) => {
+        toast.error(
+          `Failed to download config: ${error.message}`,
+          wireguardToastMeta,
+        );
+      },
     });
   };
 
   const handleViewQrCode = (peername: string) => {
-    qrCodeMutation.mutate([[interfaceName, peername]], {
+    qrCodeMutation.mutate([interfaceName, peername], {
       onSuccess: (result) => {
         setQrCode(result.qrcode);
         setOpenDialog(true);
         toast.success(
           `QR code for '${peername}' loaded successfully`,
+          wireguardToastMeta,
+        );
+      },
+      onError: (error: Error) => {
+        toast.error(
+          `Failed to load QR code: ${error.message}`,
           wireguardToastMeta,
         );
       },
@@ -182,7 +200,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                 size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}
                 key={peer.name || idx}
               >
-                <Card>
+                <FrostedCard>
                   <CardContent>
                     <Box
                       display="flex"
@@ -263,7 +281,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                       Keep Alive: {peer.persistent_keepalive ?? "-"}
                     </Typography>
                   </CardContent>
-                </Card>
+                </FrostedCard>
               </Grid>
             );
           })

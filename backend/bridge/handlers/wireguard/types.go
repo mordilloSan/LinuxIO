@@ -9,8 +9,7 @@ const (
 	wgConfigDir      = "/etc/wireguard"
 	configExt        = ".conf"
 	defaultKeepalive = 25
-	maxHostIP        = 254
-	minHostIP        = 2
+	minHostOffset    = 2 // Peers start at host offset 2 (offset 1 is reserved for server)
 )
 
 // --- Types ---
@@ -40,6 +39,7 @@ type WireGuardInterfaceUI struct {
 	Address     string `json:"address"`
 	Port        int    `json:"port"`
 	PeerCount   int    `json:"peerCount"`
+	IsEnabled   bool   `json:"isEnabled"`
 }
 
 type PeerInfo struct {
@@ -56,4 +56,12 @@ type PeerInfo struct {
 type ipManager struct {
 	netBase    net.IP
 	serverHost int
+	maskBits   int // subnet mask size (e.g., 24 for /24)
+	maxHost    int // maximum host number based on mask
+}
+
+// NATConfig stores NAT configuration for cleanup purposes
+type NATConfig struct {
+	EgressNic string `json:"egress_nic"`
+	Subnet    string `json:"subnet"`
 }

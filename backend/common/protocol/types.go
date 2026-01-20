@@ -14,7 +14,6 @@ const (
 	MaxUsername  = 256
 	MaxPassword  = 8192
 	MaxSessionID = 64
-	MaxMotd      = 4096
 	MaxError     = 256
 )
 
@@ -48,7 +47,6 @@ type AuthResponse struct {
 	Status uint8
 	Mode   uint8
 	Error  string
-	Motd   string
 }
 
 // WriteAuthRequest writes a binary auth request to the writer.
@@ -105,20 +103,13 @@ func ReadAuthResponse(r io.Reader) (*AuthResponse, error) {
 		Mode:   header[5],
 	}
 
-	// Read error or motd based on status
-	switch resp.Status {
-	case StatusError:
+	// Read error message if status is error
+	if resp.Status == StatusError {
 		errStr, err := readLenStr(r)
 		if err != nil {
 			return nil, fmt.Errorf("read error: %w", err)
 		}
 		resp.Error = errStr
-	case StatusOK:
-		motd, err := readLenStr(r)
-		if err != nil {
-			return nil, fmt.Errorf("read motd: %w", err)
-		}
-		resp.Motd = motd
 	}
 
 	return resp, nil

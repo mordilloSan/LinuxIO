@@ -1,7 +1,6 @@
 import BugReportIcon from "@mui/icons-material/BugReport";
 import DownloadIcon from "@mui/icons-material/Download";
 import ErrorIcon from "@mui/icons-material/Error";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FileCopyIcon from "@mui/icons-material/FileCopy";
 import InfoIcon from "@mui/icons-material/Info";
 import SearchIcon from "@mui/icons-material/Search";
@@ -11,7 +10,6 @@ import {
   Autocomplete,
   Box,
   Chip,
-  Collapse,
   FormControl,
   FormControlLabel,
   IconButton,
@@ -21,17 +19,11 @@ import {
   Paper,
   Select,
   Switch,
-  Table,
-  TableBody,
   TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import { motion } from "framer-motion";
 import React, {
   useCallback,
   useEffect,
@@ -43,14 +35,8 @@ import React, {
 import { useStreamMux, generalLogsPayload, decodeString } from "@/api/linuxio";
 import type { Stream } from "@/api/linuxio";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import {
-  getTableHeaderStyles,
-  getTableRowStyles,
-  getExpandedRowStyles,
-  getExpandedContentStyles,
-  tableContainerStyles,
-  responsiveTextStyles,
-} from "@/theme/tableStyles";
+import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
+import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 
 const DEFAULT_TAIL = "200";
 
@@ -146,13 +132,24 @@ const GeneralLogsPage: React.FC = () => {
   const [identifierFilter, setIdentifierFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<number | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<Stream | null>(null);
   const hasReceivedData = useRef(false);
   const hasOpenedOnce = useRef(false);
 
   const { isOpen: muxIsOpen, openStream } = useStreamMux();
+
+  // Table columns configuration - icon goes in the first empty cell, not in columns array
+  const columns: UnifiedTableColumn[] = [
+    {
+      field: "priority",
+      headerName: "Priority",
+      sx: { display: { xs: "none", sm: "table-cell" } },
+    },
+    { field: "identifier", headerName: "Identifier" },
+    { field: "timestamp", headerName: "Timestamp" },
+    { field: "message", headerName: "Message" },
+  ];
 
   // Extract priority from message content
   const extractPriorityFromMessage = useCallback(
@@ -434,6 +431,148 @@ const GeneralLogsPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  // Render icon for first cell
+  const renderIcon = useCallback((log: LogEntry) => {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          color:
+            getPriorityColor(log.priority) === "error"
+              ? "#ff5252"
+              : getPriorityColor(log.priority) === "warning"
+                ? "#ff9800"
+                : getPriorityColor(log.priority) === "info"
+                  ? "#2196f3"
+                  : getPriorityColor(log.priority) === "success"
+                    ? "#00e676"
+                    : "#9e9e9e",
+        }}
+      >
+        {getPriorityIcon(log.priority)}
+      </Box>
+    );
+  }, []);
+
+  // Render main row content (without icon - icon goes in first cell)
+  const renderMainRow = useCallback((log: LogEntry) => {
+    return (
+      <>
+        <TableCell
+          sx={{
+            width: "1%",
+            display: { xs: "none", sm: "table-cell" },
+          }}
+        >
+          <Chip
+            label={getPriorityLabel(log.priority)}
+            size="small"
+            color={getPriorityColor(log.priority) as any}
+            sx={{
+              fontWeight: 600,
+              fontSize: "0.7rem",
+            }}
+          />
+        </TableCell>
+        <TableCell sx={{ width: "1%" }}>
+          <Chip
+            label={log.identifier}
+            size="small"
+            variant="outlined"
+            sx={{ fontSize: "0.75rem" }}
+          />
+        </TableCell>
+        <TableCell sx={{ width: "1%" }}>
+          <Typography
+            variant="body2"
+            sx={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
+          >
+            {log.timestamp}
+          </Typography>
+        </TableCell>
+        <TableCell sx={{ maxWidth: 0 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontFamily: "monospace",
+              fontSize: "0.85rem",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {log.message}
+          </Typography>
+        </TableCell>
+      </>
+    );
+  }, []);
+
+  // Render expanded content
+  const renderExpandedContent = useCallback((log: LogEntry) => {
+    return (
+      <>
+        <Typography variant="subtitle2" gutterBottom>
+          <b>Full Message:</b>
+        </Typography>
+        <Paper
+          sx={(theme) => ({
+            p: 2,
+            mb: 2,
+            bgcolor:
+              theme.palette.mode === "dark"
+                ? "rgba(0,0,0,0.3)"
+                : "rgba(0,0,0,0.02)",
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            maxWidth: "100%",
+            overflowX: "auto",
+          })}
+        >
+          {log.message}
+        </Paper>
+
+        {log.rawJson && (
+          <>
+            <Typography variant="subtitle2" gutterBottom>
+              <b>Raw Journal Entry:</b>
+            </Typography>
+            <Paper
+              className="custom-scrollbar"
+              sx={(theme) => ({
+                p: 2,
+                bgcolor:
+                  theme.palette.mode === "dark"
+                    ? "rgba(0,0,0,0.3)"
+                    : "rgba(0,0,0,0.02)",
+                fontFamily: "monospace",
+                fontSize: "0.75rem",
+                maxHeight: 300,
+                overflowY: "auto",
+                maxWidth: "100%",
+                overflowX: "auto",
+              })}
+            >
+              <pre
+                style={{
+                  margin: 0,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {JSON.stringify(log.rawJson, null, 2)}
+              </pre>
+            </Paper>
+          </>
+        )}
+      </>
+    );
+  }, []);
+
   return (
     <Box>
       {/* Filters */}
@@ -570,184 +709,18 @@ const GeneralLogsPage: React.FC = () => {
       {error && <Alert severity="error">{error}</Alert>}
 
       {!isLoading && !error && (
-        <TableContainer ref={logsBoxRef} sx={tableContainerStyles}>
-          <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
-            <TableHead>
-              <TableRow sx={getTableHeaderStyles}>
-                <TableCell width="40px"></TableCell>
-                <TableCell>Priority</TableCell>
-                <TableCell>Identifier</TableCell>
-                <TableCell>Timestamp</TableCell>
-                <TableCell>Message</TableCell>
-                <TableCell width="40px" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredLogs.map((log, index) => (
-                <React.Fragment key={index}>
-                  <TableRow sx={(theme) => getTableRowStyles(theme, index)}>
-                    <TableCell>
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          color:
-                            getPriorityColor(log.priority) === "error"
-                              ? "#ff5252"
-                              : getPriorityColor(log.priority) === "warning"
-                                ? "#ff9800"
-                                : getPriorityColor(log.priority) === "info"
-                                  ? "#2196f3"
-                                  : getPriorityColor(log.priority) === "success"
-                                    ? "#00e676"
-                                    : "#9e9e9e",
-                        }}
-                      >
-                        {getPriorityIcon(log.priority)}
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={getPriorityLabel(log.priority)}
-                        size="small"
-                        color={getPriorityColor(log.priority) as any}
-                        sx={{
-                          fontWeight: 600,
-                          fontSize: "0.7rem",
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={log.identifier}
-                        size="small"
-                        variant="outlined"
-                        sx={{ fontSize: "0.75rem" }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontSize: "0.85rem" }}>
-                        {log.timestamp}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontFamily: "monospace",
-                          fontSize: "0.85rem",
-                          ...responsiveTextStyles,
-                        }}
-                      >
-                        {log.message}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <IconButton
-                        size="small"
-                        onClick={() =>
-                          setExpanded(expanded === index ? null : index)
-                        }
-                      >
-                        <ExpandMoreIcon
-                          style={{
-                            transform:
-                              expanded === index
-                                ? "rotate(180deg)"
-                                : "rotate(0deg)",
-                            transition: "0.2s",
-                          }}
-                        />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow sx={(theme) => getExpandedRowStyles(theme, index)}>
-                    <TableCell
-                      style={{ paddingBottom: 0, paddingTop: 0 }}
-                      colSpan={6}
-                    >
-                      <Collapse
-                        in={expanded === index}
-                        timeout="auto"
-                        unmountOnExit
-                      >
-                        <Box
-                          component={motion.div}
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          sx={(theme) => getExpandedContentStyles(theme)}
-                        >
-                          <Typography variant="subtitle2" gutterBottom>
-                            <b>Full Message:</b>
-                          </Typography>
-                          <Paper
-                            sx={(theme) => ({
-                              p: 2,
-                              mb: 2,
-                              bgcolor:
-                                theme.palette.mode === "dark"
-                                  ? "rgba(0,0,0,0.3)"
-                                  : "rgba(0,0,0,0.02)",
-                              fontFamily: "monospace",
-                              fontSize: "0.85rem",
-                              whiteSpace: "pre-wrap",
-                              wordBreak: "break-word",
-                              maxWidth: "100%",
-                              overflowX: "auto",
-                            })}
-                          >
-                            {log.message}
-                          </Paper>
-
-                          {log.rawJson && (
-                            <>
-                              <Typography variant="subtitle2" gutterBottom>
-                                <b>Raw Journal Entry:</b>
-                              </Typography>
-                              <Paper
-                                sx={(theme) => ({
-                                  p: 2,
-                                  bgcolor:
-                                    theme.palette.mode === "dark"
-                                      ? "rgba(0,0,0,0.3)"
-                                      : "rgba(0,0,0,0.02)",
-                                  fontFamily: "monospace",
-                                  fontSize: "0.75rem",
-                                  maxHeight: 300,
-                                  overflowY: "auto",
-                                  maxWidth: "100%",
-                                  overflowX: "auto",
-                                })}
-                              >
-                                <pre
-                                  style={{
-                                    margin: 0,
-                                    whiteSpace: "pre-wrap",
-                                    wordBreak: "break-word",
-                                    overflowWrap: "anywhere",
-                                  }}
-                                >
-                                  {JSON.stringify(log.rawJson, null, 2)}
-                                </pre>
-                              </Paper>
-                            </>
-                          )}
-                        </Box>
-                      </Collapse>
-                    </TableCell>
-                  </TableRow>
-                </React.Fragment>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-
-      {!isLoading && !error && filteredLogs.length === 0 && (
-        <Box textAlign="center" py={4}>
-          <Typography variant="body2" color="text.secondary">
-            {logs.length === 0 ? "No logs available." : "No matching logs."}
-          </Typography>
+        <Box ref={logsBoxRef}>
+          <UnifiedCollapsibleTable
+            data={filteredLogs}
+            columns={columns}
+            getRowKey={(_, index) => index}
+            renderFirstCell={renderIcon}
+            renderMainRow={renderMainRow}
+            renderExpandedContent={renderExpandedContent}
+            emptyMessage={
+              logs.length === 0 ? "No logs available." : "No matching logs."
+            }
+          />
         </Box>
       )}
     </Box>

@@ -13,10 +13,15 @@ func Save(username string, cfg *Settings) (string, error) {
 		}
 	}
 	cfgPath := filepath.Join(base, cfgFileName)
-	if err := writeConfigFrom(cfgPath, *cfg); err != nil {
+	if err = guardConfigPath(cfgPath); err != nil {
 		return "", err
 	}
-	_ = ensureFilePerms(cfgPath, filePerm)
+	if err = writeConfigFrom(cfgPath, *cfg); err != nil {
+		return "", err
+	}
+	if err = ensureFilePerms(cfgPath, filePerm); err != nil {
+		return "", err
+	}
 	return cfgPath, nil
 }
 
@@ -31,6 +36,9 @@ func Load(username string) (*Settings, string, error) {
 		}
 	}
 	cfgPath := filepath.Join(base, cfgFileName)
+	if err = guardConfigPath(cfgPath); err != nil {
+		return nil, "", err
+	}
 
 	// strict read (unknown keys rejected); your repair path runs in Initialize.
 	cfg, err := readConfigStrict(cfgPath)

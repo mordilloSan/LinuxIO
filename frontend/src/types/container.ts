@@ -3,6 +3,8 @@ export interface ContainerInfo {
   Names: string[];
   State: string;
   Status: string;
+  icon?: string;
+  url?: string;
   metrics?: {
     cpu_percent: number;
     mem_usage: number;

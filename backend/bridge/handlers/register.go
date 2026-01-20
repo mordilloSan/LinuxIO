@@ -34,7 +34,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 
 	// Register all handlers using the handler.Register() system
 	system.RegisterHandlers()
-	docker.RegisterHandlers()
+	docker.RegisterHandlers(sess)
 	filebrowser.RegisterHandlers()
 	config.RegisterHandlers(sess)
 	control.RegisterHandlers(shutdownChan)
