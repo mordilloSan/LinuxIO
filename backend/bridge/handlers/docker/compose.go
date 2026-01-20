@@ -17,14 +17,17 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/goccy/go-yaml"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/go-logger/logger"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 )
 
 // ComposeService represents a service within a compose project
 type ComposeService struct {
 	Name           string   `json:"name"`
 	Image          string   `json:"image"`
+	Icon           string   `json:"icon,omitempty"`
+	URL            string   `json:"url,omitempty"`
 	Status         string   `json:"status"`
 	State          string   `json:"state"`
 	ContainerCount int      `json:"container_count"`
@@ -35,6 +38,7 @@ type ComposeService struct {
 // ComposeProject represents a docker compose stack
 type ComposeProject struct {
 	Name        string                     `json:"name"`
+	Icon        string                     `json:"icon,omitempty"`
 	Status      string                     `json:"status"` // "running", "partial", "stopped"
 	Services    map[string]*ComposeService `json:"services"`
 	ConfigFiles []string                   `json:"config_files"`
@@ -71,6 +75,8 @@ func ListComposeProjects(username string) (any, error) {
 		serviceName := ctr.Labels["com.docker.compose.service"]
 		configFiles := ctr.Labels["com.docker.compose.project.config_files"]
 		workingDir := ctr.Labels["com.docker.compose.project.working_dir"]
+		containerIcon := ctr.Labels["io.linuxio.container.icon"]
+		containerURL := ctr.Labels["io.linuxio.container.url"]
 
 		// Initialize project if not exists
 		if _, exists := projects[projectName]; !exists {
@@ -116,6 +122,13 @@ func ListComposeProjects(username string) (any, error) {
 				ConfigFiles: parsedConfigFiles,
 				WorkingDir:  workingDir,
 			}
+
+			// Extract stack icon from compose file if available
+			if len(parsedConfigFiles) > 0 {
+				if icon, err := extractStackIcon(parsedConfigFiles[0]); err == nil && icon != "" {
+					projects[projectName].Icon = icon
+				}
+			}
 		}
 
 		project := projects[projectName]
@@ -137,6 +150,15 @@ func ListComposeProjects(username string) (any, error) {
 		service.Image = ctr.Image
 		service.State = ctr.State
 		service.Status = ctr.Status
+
+		// Set icon and URL if not already set (use first container's values)
+		if service.Icon == "" {
+			// Resolve icon with fallback to service name, then image name
+			service.Icon = ResolveIconIdentifier(containerIcon, serviceName)
+		}
+		if service.URL == "" && containerURL != "" {
+			service.URL = containerURL
+		}
 
 		// Collect port mappings
 		for _, port := range ctr.Ports {
@@ -315,11 +337,26 @@ func ComposeDown(username, projectName string) (any, error) {
 	return map[string]string{"message": "Project stopped successfully", "output": string(output)}, nil
 }
 
-// ComposeRestart restarts a compose project
-func ComposeRestart(username, projectName string) (any, error) {
+// DeleteStackOptions defines what to delete when removing a stack
+type DeleteStackOptions struct {
+	DeleteFile      bool `json:"delete_file"`      // Delete the compose file
+	DeleteDirectory bool `json:"delete_directory"` // Delete the entire stack directory
+}
+
+// DeleteStack removes a compose stack with options to delete files
+func DeleteStack(username, projectName string, options DeleteStackOptions) (any, error) {
+	// Get project info first
 	project, err := GetComposeProject(username, projectName)
 	if err != nil {
-		return nil, err
+		// Project might not exist in Docker, but we might still have files to delete
+		// Try to find compose file via indexer
+		configFile, workingDir, findErr := findComposeFile(username, projectName)
+		if findErr != nil {
+			return nil, fmt.Errorf("project '%s' not found: %w", projectName, err)
+		}
+
+		// No containers, just handle file deletion
+		return deleteStackFiles(projectName, configFile, workingDir, options)
 	}
 
 	composeProject, ok := project.(*ComposeProject)
@@ -327,17 +364,147 @@ func ComposeRestart(username, projectName string) (any, error) {
 		return nil, fmt.Errorf("invalid project format")
 	}
 
-	if len(composeProject.ConfigFiles) == 0 {
-		return nil, fmt.Errorf("no config files found for project '%s'", projectName)
+	var configFile string
+	var workingDir string
+
+	if len(composeProject.ConfigFiles) > 0 {
+		configFile = composeProject.ConfigFiles[0]
+		workingDir = composeProject.WorkingDir
+		if workingDir == "" {
+			workingDir = filepath.Dir(configFile)
+		}
 	}
 
-	configFile := composeProject.ConfigFiles[0]
-	workingDir := composeProject.WorkingDir
-	if workingDir == "" {
-		workingDir = filepath.Dir(configFile)
+	// First, run docker compose down to remove containers and networks
+	if configFile != "" {
+		cmd := exec.Command("docker", "compose", "-f", configFile, "-p", projectName, "down")
+		cmd.Dir = workingDir
+		output, cmdErr := cmd.CombinedOutput()
+		if cmdErr != nil {
+			logger.Warnf("docker compose down failed for %s: %v, output: %s", projectName, cmdErr, string(output))
+			// Continue with file deletion even if down fails
+		}
 	}
 
-	cmd := exec.Command("docker", "compose", "-f", configFile, "-p", projectName, "restart")
+	// Handle file deletion
+	return deleteStackFiles(projectName, configFile, workingDir, options)
+}
+
+// deleteStackFiles handles the file/directory deletion part of stack removal
+func deleteStackFiles(projectName, configFile, workingDir string, options DeleteStackOptions) (any, error) {
+	result := map[string]any{
+		"message":       "Stack removed successfully",
+		"project":       projectName,
+		"files_deleted": false,
+		"dir_deleted":   false,
+		"deleted_path":  "",
+	}
+
+	// Delete entire directory
+	if options.DeleteDirectory && workingDir != "" {
+		// Safety check: don't delete root or home directories
+		if workingDir == "/" || workingDir == os.Getenv("HOME") || workingDir == "/home" {
+			return nil, fmt.Errorf("refusing to delete protected directory: %s", workingDir)
+		}
+
+		// Check if directory exists
+		if _, err := os.Stat(workingDir); err == nil {
+			if err := os.RemoveAll(workingDir); err != nil {
+				return nil, fmt.Errorf("failed to delete directory %s: %w", workingDir, err)
+			}
+			result["dir_deleted"] = true
+			result["deleted_path"] = workingDir
+			logger.InfoKV("deleted stack directory", "project", projectName, "path", workingDir)
+		}
+
+		return result, nil
+	}
+
+	// Delete only the compose file
+	if options.DeleteFile && configFile != "" {
+		if _, err := os.Stat(configFile); err == nil {
+			if err := os.Remove(configFile); err != nil {
+				return nil, fmt.Errorf("failed to delete compose file %s: %w", configFile, err)
+			}
+			result["files_deleted"] = true
+			result["deleted_path"] = configFile
+			logger.InfoKV("deleted compose file", "project", projectName, "path", configFile)
+		}
+	}
+
+	return result, nil
+}
+
+// ComposeRestart restarts a compose project
+func ComposeRestart(username, projectName string) (any, error) {
+	var configFile string
+	var workingDir string
+
+	// Try to get the project from existing containers first
+	project, err := GetComposeProject(username, projectName)
+	if err == nil {
+		composeProject, ok := project.(*ComposeProject)
+		if ok && len(composeProject.ConfigFiles) > 0 {
+			configFile = composeProject.ConfigFiles[0]
+			workingDir = composeProject.WorkingDir
+			if workingDir == "" {
+				workingDir = filepath.Dir(configFile)
+			}
+
+			// Verify the config file still exists at the labeled path
+			if _, statErr := os.Stat(configFile); statErr != nil {
+				logger.WarnKV("compose file from container labels not found, will search for it",
+					"project", projectName,
+					"labeled_path", configFile,
+					"error", statErr.Error())
+				configFile = ""
+			}
+		} else if ok && composeProject.WorkingDir != "" {
+			// Config files list is empty but we have a working directory
+			// This can happen with Portainer where config_files label is empty
+			// Try to translate container path to host path and find compose file
+			cli, cliErr := getClient()
+			if cliErr == nil {
+				translatedWorkingDir := translateContainerPathToHost(cli, composeProject.WorkingDir)
+				cli.Close()
+
+				logger.DebugKV("translating working directory",
+					"project", projectName,
+					"container_path", composeProject.WorkingDir,
+					"host_path", translatedWorkingDir)
+
+				// Try common compose file names in the translated working directory
+				composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+				for _, fileName := range composeFileNames {
+					possiblePath := filepath.Join(translatedWorkingDir, fileName)
+					if _, statErr := os.Stat(possiblePath); statErr == nil {
+						configFile = possiblePath
+						workingDir = translatedWorkingDir
+						logger.InfoKV("found compose file via working_dir translation",
+							"project", projectName,
+							"path", configFile)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// If we couldn't get a valid config file from container labels, search for it
+	if configFile == "" {
+		var findErr error
+		configFile, workingDir, findErr = findComposeFile(username, projectName)
+		if findErr != nil {
+			return nil, fmt.Errorf("compose file not found: %w", findErr)
+		}
+		logger.InfoKV("found compose file via search",
+			"project", projectName,
+			"path", configFile)
+	}
+
+	// Use 'docker compose up -d' instead of 'restart' to recreate containers with updated config
+	// This ensures that changes to the compose file (like service name changes) are applied
+	cmd := exec.Command("docker", "compose", "-f", configFile, "-p", projectName, "up", "-d", "--remove-orphans")
 	cmd.Dir = workingDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -521,8 +688,9 @@ type ValidationError struct {
 
 // ValidationResult represents the result of compose file validation
 type ValidationResult struct {
-	Valid  bool              `json:"valid"`
-	Errors []ValidationError `json:"errors"`
+	Valid             bool              `json:"valid"`
+	Errors            []ValidationError `json:"errors"`
+	NormalizedContent string            `json:"normalized_content,omitempty"` // Auto-normalized content with container_name added
 }
 
 // ComposeFilePathInfo represents information about a compose file path
@@ -530,6 +698,55 @@ type ComposeFilePathInfo struct {
 	Path      string `json:"path"`
 	Exists    bool   `json:"exists"`
 	Directory string `json:"directory"`
+}
+
+// NormalizeComposeFile automatically adds container_name to services that don't have it
+// This prevents Docker from using auto-generated names like "project-service-1"
+func NormalizeComposeFile(content string) (string, error) {
+	var composeData map[string]interface{}
+	if err := yaml.Unmarshal([]byte(content), &composeData); err != nil {
+		// Return original content if we can't parse it (validation will catch this later)
+		return content, nil
+	}
+
+	// Get services section
+	services, hasServices := composeData["services"]
+	if !hasServices {
+		return content, nil
+	}
+
+	servicesMap, ok := services.(map[string]interface{})
+	if !ok {
+		return content, nil
+	}
+
+	// Add container_name to each service that doesn't have it
+	modified := false
+	for serviceName, serviceData := range servicesMap {
+		serviceMap, ok := serviceData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Check if container_name is already set
+		if _, hasContainerName := serviceMap["container_name"]; !hasContainerName {
+			serviceMap["container_name"] = serviceName
+			modified = true
+		}
+	}
+
+	// If nothing was modified, return original content
+	if !modified {
+		return content, nil
+	}
+
+	// Marshal back to YAML
+	normalized, err := yaml.Marshal(composeData)
+	if err != nil {
+		return content, err
+	}
+
+	return string(normalized), nil
 }
 
 // ValidateComposeFile validates docker-compose YAML syntax and structure
@@ -617,6 +834,16 @@ func ValidateComposeFile(content string) (any, error) {
 		} else if versionStr != "" {
 			// Just a warning for information
 			logger.Debugf("Compose file version: %s", versionStr)
+		}
+	}
+
+	// Normalize the compose file (add container_name where missing)
+	if result.Valid {
+		if normalized, normErr := NormalizeComposeFile(content); normErr == nil {
+			result.NormalizedContent = normalized
+		} else {
+			// Normalization failed, but validation passed - just use original content
+			result.NormalizedContent = content
 		}
 	}
 
@@ -985,6 +1212,28 @@ func ReindexDockerFolder(username string) (any, error) {
 	}, nil
 }
 
+// extractStackIcon parses a docker-compose file and extracts the stack icon from x-linuxio-stack metadata
+func extractStackIcon(composePath string) (string, error) {
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		return "", err
+	}
+
+	var composeData map[string]any
+	if err := yaml.Unmarshal(data, &composeData); err != nil {
+		return "", err
+	}
+
+	// Look for x-linuxio-stack.icon extension field
+	if stackMeta, ok := composeData["x-linuxio-stack"].(map[string]any); ok {
+		if icon, ok := stackMeta["icon"].(string); ok {
+			return icon, nil
+		}
+	}
+
+	return "", nil
+}
+
 // discoverOfflineStacks searches the indexer for compose files and adds them as offline stacks
 // It merges with existing projects to handle duplicates
 func discoverOfflineStacks(username string, projects map[string]*ComposeProject) error {
@@ -1057,6 +1306,12 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 			if existingProject.WorkingDir == "" {
 				existingProject.WorkingDir = composeDir
 			}
+			// Extract stack icon if not already set
+			if existingProject.Icon == "" {
+				if icon, err := extractStackIcon(yamlFile.Path); err == nil && icon != "" {
+					existingProject.Icon = icon
+				}
+			}
 			logger.DebugKV("matched compose file to existing project",
 				"compose_file", yamlFile.Path,
 				"project", existingProject.Name)
@@ -1074,8 +1329,15 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 			"project", projectName,
 			"compose_file", yamlFile.Path)
 
+		// Extract stack icon from compose file
+		stackIcon := ""
+		if icon, err := extractStackIcon(yamlFile.Path); err == nil && icon != "" {
+			stackIcon = icon
+		}
+
 		projects[projectName] = &ComposeProject{
 			Name:        projectName,
+			Icon:        stackIcon,
 			Status:      "stopped", // No containers, so it's stopped
 			Services:    make(map[string]*ComposeService),
 			ConfigFiles: []string{yamlFile.Path},
@@ -1083,5 +1345,85 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 		}
 	}
 
+	return nil
+}
+
+// DeleteComposeStack runs docker compose down and deletes the compose file(s)
+func DeleteComposeStack(username, projectName string) error {
+	// Get project details to find config files
+	projects, err := ListComposeProjects(username)
+	if err != nil {
+		return fmt.Errorf("failed to list compose projects: %w", err)
+	}
+
+	projectsList, ok := projects.([]*ComposeProject)
+	if !ok {
+		return fmt.Errorf("invalid projects format")
+	}
+
+	// Find the project in the slice
+	var project *ComposeProject
+	for _, p := range projectsList {
+		if p.Name == projectName {
+			project = p
+			break
+		}
+	}
+
+	if project == nil {
+		return fmt.Errorf("project %s not found", projectName)
+	}
+
+	// Run docker compose down first to clean up containers/networks
+	if len(project.ConfigFiles) > 0 && project.WorkingDir != "" {
+		logger.InfoKV("running docker compose down before deleting files",
+			"project", projectName,
+			"working_dir", project.WorkingDir)
+
+		cmd := exec.Command("docker", "compose", "down", "--remove-orphans")
+		cmd.Dir = project.WorkingDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			logger.WarnKV("failed to run docker compose down",
+				"project", projectName,
+				"error", err.Error(),
+				"output", string(output))
+			// Don't fail here - continue with file deletion even if down fails
+		}
+	}
+
+	// Delete all config files
+	for _, configFile := range project.ConfigFiles {
+		logger.InfoKV("deleting compose file",
+			"project", projectName,
+			"file", configFile)
+
+		if err := os.Remove(configFile); err != nil {
+			if os.IsNotExist(err) {
+				logger.WarnKV("compose file already deleted", "file", configFile)
+			} else {
+				return fmt.Errorf("failed to delete compose file %s: %w", configFile, err)
+			}
+		}
+	}
+
+	// Try to delete working directory if it's empty
+	if project.WorkingDir != "" {
+		entries, err := os.ReadDir(project.WorkingDir)
+		if err == nil && len(entries) == 0 {
+			logger.InfoKV("removing empty working directory",
+				"project", projectName,
+				"dir", project.WorkingDir)
+
+			if err := os.Remove(project.WorkingDir); err != nil {
+				logger.WarnKV("failed to remove working directory",
+					"dir", project.WorkingDir,
+					"error", err.Error())
+				// Don't fail - directory removal is optional
+			}
+		}
+	}
+
+	logger.InfoKV("compose stack deleted successfully", "project", projectName)
 	return nil
 }

@@ -19,12 +19,15 @@ import {
 } from "@mui/material";
 import React, { useCallback, useState } from "react";
 
+import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 
 interface ComposeService {
   name: string;
   image: string;
+  icon?: string;
+  url?: string;
   status: string;
   state: string;
   container_count: number;
@@ -34,6 +37,7 @@ interface ComposeService {
 
 export interface ComposeProject {
   name: string;
+  icon?: string;
   status: string; // "running", "partial", "stopped"
   services: Record<string, ComposeService>;
   config_files: string[];
@@ -45,7 +49,7 @@ interface ComposeListProps {
   onStart: (projectName: string) => void;
   onStop: (projectName: string) => void;
   onRestart: (projectName: string) => void;
-  onDown: (projectName: string) => void;
+  onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
   isLoading?: boolean;
 }
@@ -55,7 +59,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
   onStart,
   onStop,
   onRestart,
-  onDown,
+  onDelete,
   onEdit,
   isLoading = false,
 }) => {
@@ -142,9 +146,16 @@ const ComposeList: React.FC<ComposeListProps> = ({
             </Box>
           </TableCell>
           <TableCell>
-            <Typography variant="body2" fontWeight="bold">
-              {project.name}
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+              <DockerIcon
+                identifier={project.icon}
+                size={28}
+                alt={project.name}
+              />
+              <Typography variant="body2" fontWeight="bold">
+                {project.name}
+              </Typography>
+            </Box>
           </TableCell>
           <TableCell align="center">{getTotalContainers(project)}</TableCell>
           <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
@@ -205,10 +216,10 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       <StopCircleIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Down (remove containers & networks)">
+                  <Tooltip title="Delete">
                     <IconButton
                       size="small"
-                      onClick={() => onDown(project.name)}
+                      onClick={() => onDelete(project)}
                       disabled={isLoading}
                       sx={{ p: { xs: 0.5, sm: 1 } }}
                     >
@@ -228,10 +239,10 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       <PlayArrowIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Delete (remove containers & networks)">
+                  <Tooltip title="Delete">
                     <IconButton
                       size="small"
-                      onClick={() => onDown(project.name)}
+                      onClick={() => onDelete(project)}
                       disabled={isLoading}
                       sx={{ p: { xs: 0.5, sm: 1 } }}
                     >
@@ -245,7 +256,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
         </>
       );
     },
-    [onEdit, isLoading, onRestart, onStop, onDown, onStart],
+    [onEdit, isLoading, onRestart, onStop, onDelete, onStart],
   );
 
   // Render expanded content
@@ -274,7 +285,16 @@ const ComposeList: React.FC<ComposeListProps> = ({
           <TableBody>
             {Object.values(project.services).map((service) => (
               <TableRow key={service.name}>
-                <TableCell>{service.name}</TableCell>
+                <TableCell>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <DockerIcon
+                      identifier={service.icon}
+                      size={20}
+                      alt={service.name}
+                    />
+                    {service.name}
+                  </Box>
+                </TableCell>
                 <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
                   <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
                     {service.image}

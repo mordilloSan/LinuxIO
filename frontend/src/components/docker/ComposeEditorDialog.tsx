@@ -120,6 +120,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
 
     try {
       const content = editorRef.current.getContent();
+      let contentToSave = content;
 
       // Run validation before save
       if (onValidate) {
@@ -131,10 +132,15 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
           setIsValidating(false);
           return;
         }
+
+        // Use normalized content if available (auto-adds container_name)
+        if (validationResult.normalized_content) {
+          contentToSave = validationResult.normalized_content;
+        }
       }
 
-      // Save the file
-      await onSave(content, stackName.trim(), filePath);
+      // Save the file (with normalized content)
+      await onSave(contentToSave, stackName.trim(), filePath);
 
       // Reset dirty state after successful save
       setIsEditorDirty(false);

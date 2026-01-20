@@ -10,18 +10,11 @@ import ComponentLoader from "../loaders/ComponentLoader";
 
 import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
+import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
-
-const getContainerIconUrl = (name: string) => {
-  const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase();
-  return `https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/${sanitized}.svg`;
-};
-
-const fallbackDockerIcon =
-  "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/docker.svg";
 
 const getStatusColor = (container: ContainerInfo) => {
   const status = container.Status.toLowerCase();
@@ -60,7 +53,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     () => container.Names?.[0]?.replace("/", "") || "Unnamed",
     [container.Names],
   );
-  const iconUrl = useMemo(() => getContainerIconUrl(name), [name]);
 
   // ---- actions (start/stop/restart/remove) ----
   const { mutate: startContainer, isPending: isStartPending } =
@@ -190,23 +182,18 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           }}
         >
           <Box
-            component="img"
-            src={iconUrl}
-            alt={name}
             sx={{
               width: 48,
               height: 48,
               minWidth: 48,
               minHeight: 48,
-              objectFit: "contain",
               flexShrink: 0,
               mr: 1.5,
               alignSelf: "flex-start",
             }}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = fallbackDockerIcon;
-            }}
-          />
+          >
+            <DockerIcon identifier={container.icon} size={48} alt={name} />
+          </Box>
           <Box sx={{ flex: 0.95, minWidth: 0 }}>
             <Typography
               variant="subtitle1"
