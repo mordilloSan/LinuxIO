@@ -57,21 +57,12 @@ func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 }
 
 func WriteWireGuardConfig(path string, cfg InterfaceConfig) error {
-	return writeConfig(path, cfg, "", false)
-}
-
-func WriteWireGuardConfigWithPostUpDown(path string, cfg InterfaceConfig, egressNic string) error {
-	return writeConfig(path, cfg, egressNic, true)
-}
-
-// Unified config writer
-func writeConfig(path string, cfg InterfaceConfig, egressNic string, includePostUpDown bool) error {
 	iniFile := ini.Empty(ini.LoadOptions{AllowNonUniqueSections: true})
 
 	// Create Interface section
 	ifSec, err := iniFile.NewSection("Interface")
 	if err != nil {
-		logger.Errorf("writeConfig: create interface section failed for %s: %v", path, err)
+		logger.Errorf("WriteWireGuardConfig: create interface section failed for %s: %v", path, err)
 		return fmt.Errorf("create interface section: %w", err)
 	}
 
@@ -82,46 +73,20 @@ func writeConfig(path string, cfg InterfaceConfig, egressNic string, includePost
 	setKeyIfNotEmpty(ifSec, "DNS", strings.Join(cfg.DNS, ","))
 	setKeyIfPositive(ifSec, "MTU", cfg.MTU)
 
-	// Add PostUp/PostDown for NAT if requested
-	if includePostUpDown && egressNic != "" {
-		// Get the subnet from the first address
-		subnet := cfg.Address[0]
-
-		postUp := "sysctl -w net.ipv4.ip_forward=1; "
-		postUp += fmt.Sprintf("iptables -I FORWARD 1 -i %%i -o %s -j ACCEPT; ", egressNic)
-		postUp += fmt.Sprintf("iptables -I FORWARD 1 -o %%i -i %s -m state --state RELATED,ESTABLISHED -j ACCEPT; ", egressNic)
-		postUp += fmt.Sprintf("iptables -t nat -A POSTROUTING -o %s -s %s -j MASQUERADE", egressNic, subnet)
-
-		postDown := fmt.Sprintf("iptables -D FORWARD -i %%i -o %s -j ACCEPT; ", egressNic)
-		postDown += fmt.Sprintf("iptables -D FORWARD -o %%i -i %s -m state --state RELATED,ESTABLISHED -j ACCEPT; ", egressNic)
-		postDown += fmt.Sprintf("iptables -t nat -D POSTROUTING -o %s -s %s -j MASQUERADE", egressNic, subnet)
-
-		setKey(ifSec, "PostUp", postUp)
-		setKey(ifSec, "PostDown", postDown)
-	}
-
 	// Create Peer sections
 	for _, peer := range cfg.Peers {
 		if err := addPeerSection(iniFile, peer); err != nil {
-			logger.Warnf("writeConfig: failed to add peer %s: %v", peer.PublicKey, err)
+			logger.Warnf("WriteWireGuardConfig: failed to add peer %s: %v", peer.PublicKey, err)
 			continue
 		}
 	}
 
 	// Save file
 	if err := iniFile.SaveTo(path); err != nil {
-		logger.Errorf("writeConfig: save to %s failed: %v", path, err)
+		logger.Errorf("WriteWireGuardConfig: save to %s failed: %v", path, err)
 		return fmt.Errorf("save config: %w", err)
 	}
 
-	// Remove backticks if PostUp/PostDown were added
-	if includePostUpDown {
-		if err := cleanBackticks(path); err != nil {
-			logger.Warnf("writeConfig: cleanBackticks failed for %s: %v", path, err)
-			return err
-		}
-	}
-
-	logger.Infof("writeConfig: wrote WireGuard config to %s", path)
+	logger.Infof("WriteWireGuardConfig: wrote WireGuard config to %s", path)
 	return nil
 }

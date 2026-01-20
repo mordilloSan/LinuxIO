@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/mordilloSan/go-logger/logger"
 
@@ -26,7 +27,11 @@ func ListVolumes() (any, error) {
 		return nil, fmt.Errorf("failed to list volumes: %w", err)
 	}
 
-	// Return the Volumes array from the response
+	// Sort volumes by Name alphabetically
+	sort.Slice(volumesResp.Volumes, func(i, j int) bool {
+		return volumesResp.Volumes[i].Name < volumesResp.Volumes[j].Name
+	})
+
 	return volumesResp.Volumes, nil
 }
 

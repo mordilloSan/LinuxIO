@@ -2,7 +2,10 @@ package control
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,7 +21,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
 )
 
-const InstallScriptURL = "https://raw.githubusercontent.com/" + config.RepoOwner + "/" + config.RepoName + "/main/packaging/scripts/install-linuxio-binaries.sh"
+// buildScriptURLs constructs URLs to download install script and checksum from a specific release
+func buildScriptURLs(version string) (scriptURL, checksumURL string) {
+	baseURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s",
+		config.RepoOwner, config.RepoName, version)
+	return baseURL + "/install-linuxio-binaries.sh",
+		baseURL + "/install-linuxio-binaries.sh.sha256"
+}
 
 // --- small helper for clean log lines (no ANSI) ---
 var ansiRE = regexp.MustCompile(`\x1B\[[0-9;]*[A-Za-z]`)
@@ -137,29 +146,41 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 // runInstallScript downloads the installer and runs it in a transient unit
 // with stdout/stderr piped back to this process (so logs appear in-order).
 func runInstallScript(version string) error {
-	// 1) Fetch the script in-process
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", InstallScriptURL, nil)
-	if err != nil {
-		return fmt.Errorf("build request failed: %w", err)
-	}
-	req.Header.Set("Accept", "text/plain")
-
 	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Do(req)
+
+	// Build URLs for the specific release version
+	scriptURL, checksumURL := buildScriptURLs(version)
+
+	// 1) Download checksum file
+	logger.Debugf("downloading checksum from %s", checksumURL)
+	expectedChecksum, err := downloadChecksum(ctx, client, checksumURL)
 	if err != nil {
-		return fmt.Errorf("download failed: %w", err)
+		return fmt.Errorf("download checksum failed: %w", err)
 	}
-	defer resp.Body.Close()
+	logger.Infof("expected checksum: %s", expectedChecksum)
 
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("download failed: status=%d body=%s", resp.StatusCode, string(b))
+	// 2) Download install script
+	logger.Debugf("downloading install script from %s", scriptURL)
+	scriptBytes, err := downloadScript(ctx, client, scriptURL)
+	if err != nil {
+		return fmt.Errorf("download script failed: %w", err)
 	}
+	logger.Debugf("downloaded %d bytes", len(scriptBytes))
 
-	// 2) Run a transient unit with unique name and feed script on STDIN
+	// 3) Verify checksum
+	actualChecksum := computeSHA256(scriptBytes)
+	logger.Debugf("computed checksum: %s", actualChecksum)
+
+	if actualChecksum != expectedChecksum {
+		logger.Errorf("SECURITY: checksum mismatch! expected=%s actual=%s", expectedChecksum, actualChecksum)
+		return fmt.Errorf("checksum verification failed: script integrity compromised")
+	}
+	logger.Infof("checksum verified successfully")
+
+	// 4) Run a transient unit with unique name and feed script on STDIN
 	unit := fmt.Sprintf("linuxio-updater-%d", time.Now().UnixNano())
 	args := []string{
 		"--unit=" + unit,
@@ -190,7 +211,7 @@ func runInstallScript(version string) error {
 	// Connect streams BEFORE Start
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
-	cmd.Stdin = resp.Body // Stream GitHub response directly
+	cmd.Stdin = bytes.NewReader(scriptBytes) // Feed verified script
 
 	err = cmd.Start()
 	if err != nil {
@@ -343,4 +364,70 @@ func isNewerVersion(latest, current string) bool {
 
 	// If all compared parts are equal, longer version is newer (e.g., 1.2.3 > 1.2)
 	return len(latestParts) > len(currentParts)
+}
+
+// downloadChecksum fetches the SHA256 checksum file from GitHub
+func downloadChecksum(ctx context.Context, client *http.Client, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Accept", "text/plain")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("http request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("http %d: %s", resp.StatusCode, string(body))
+	}
+
+	checksumBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read body: %w", err)
+	}
+
+	// Parse checksum (format: "abc123  filename" or just "abc123")
+	checksum := strings.Fields(string(checksumBytes))
+	if len(checksum) == 0 {
+		return "", fmt.Errorf("empty checksum file")
+	}
+
+	return strings.TrimSpace(checksum[0]), nil
+}
+
+// downloadScript fetches the install script from GitHub
+func downloadScript(ctx context.Context, client *http.Client, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Accept", "text/plain")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(body))
+	}
+
+	scriptBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	return scriptBytes, nil
+}
+
+// computeSHA256 computes the SHA256 hash of the given data
+func computeSHA256(data []byte) string {
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
 }

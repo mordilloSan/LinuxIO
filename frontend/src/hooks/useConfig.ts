@@ -3,7 +3,7 @@ import { useContext, useCallback } from "react";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { AppConfig } from "@/types/config";
 
-const useConfig = () => {
+export const useConfig = () => {
   const ctx = useContext(ConfigContext);
   if (!ctx) throw new Error("useConfig must be used within ConfigProvider");
   return ctx;

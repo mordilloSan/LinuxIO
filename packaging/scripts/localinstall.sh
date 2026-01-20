@@ -97,6 +97,19 @@ for file in linuxio.target linuxio-webserver.service linuxio-webserver.socket \
 done
 echo -e "${GREEN}✓ Systemd files installed${NC}"
 
+# Install tmpfiles.d configuration
+echo -e "${YELLOW}📦 Installing tmpfiles.d configuration...${NC}"
+mkdir -p /usr/lib/tmpfiles.d
+if [[ -f "$REPO_ROOT/packaging/systemd/linuxio-tmpfiles.conf" ]]; then
+    install -m 0644 "$REPO_ROOT/packaging/systemd/linuxio-tmpfiles.conf" /usr/lib/tmpfiles.d/linuxio.conf
+    echo "  • Installed /usr/lib/tmpfiles.d/linuxio.conf"
+    # Create the directories now (don't wait for reboot)
+    systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf 2>/dev/null || true
+    echo -e "${GREEN}✓ Tmpfiles.d configuration installed${NC}"
+else
+    echo -e "${YELLOW}  ⚠  Warning: linuxio-tmpfiles.conf not found${NC}"
+fi
+
 # Install configuration files
 echo -e "${YELLOW}📦 Installing configuration files...${NC}"
 mkdir -p /etc/linuxio

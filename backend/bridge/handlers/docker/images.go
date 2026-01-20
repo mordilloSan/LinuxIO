@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/mordilloSan/go-logger/logger"
 
@@ -25,6 +26,11 @@ func ListImages() (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list images: %w", err)
 	}
+
+	// Sort images by Created date (newest first)
+	sort.Slice(images, func(i, j int) bool {
+		return images[i].Created > images[j].Created
+	})
 
 	return images, nil
 }

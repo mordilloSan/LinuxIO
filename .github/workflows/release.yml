@@ -83,9 +83,23 @@ jobs:
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout the tag’s commit
+      - name: Checkout the tag's commit
         run: |
           git checkout "${{ steps.tag.outputs.tag }}"
+
+      - name: Prepare install script for release
+        run: |
+          echo "Preparing install script for release..."
+
+          # Copy install script to release directory
+          cp packaging/scripts/install-linuxio-binaries.sh .
+
+          # Generate checksum for install script
+          sha256sum install-linuxio-binaries.sh > install-linuxio-binaries.sh.sha256
+
+          echo "✓ Install script prepared"
+          echo "Checksum:"
+          cat install-linuxio-binaries.sh.sha256
 
       - name: Resolve toolchain versions
         id: toolchain
@@ -158,7 +172,9 @@ jobs:
 
       - name: Generate checksums
         run: |
+          # Generate checksums for binaries and tarball
           sha256sum linuxio linuxio-webserver linuxio-bridge linuxio-auth *.tar.gz > SHA256SUMS
+          echo "=== Binary Checksums ==="
           cat SHA256SUMS
 
       - name: Verify binaries before release
@@ -231,6 +247,8 @@ jobs:
             linuxio-bridge
             linuxio-auth
             SHA256SUMS
+            install-linuxio-binaries.sh
+            install-linuxio-binaries.sh.sha256
 
       - name: Publish release atomically
         if: success()

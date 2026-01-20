@@ -19,6 +19,7 @@ export interface UnifiedTableColumn {
   headerName: string;
   align?: "left" | "center" | "right";
   width?: string | number;
+  sx?: object;
 }
 
 interface UnifiedCollapsibleTableProps<T> {
@@ -27,6 +28,7 @@ interface UnifiedCollapsibleTableProps<T> {
   getRowKey: (row: T, index: number) => string | number;
   renderMainRow: (row: T, index: number) => React.ReactNode;
   renderExpandedContent: (row: T, index: number) => React.ReactNode;
+  renderFirstCell?: (row: T, index: number) => React.ReactNode;
   emptyMessage?: string;
 }
 
@@ -36,6 +38,7 @@ function UnifiedCollapsibleTable<T>({
   getRowKey,
   renderMainRow,
   renderExpandedContent,
+  renderFirstCell,
   emptyMessage = "No data available.",
 }: UnifiedCollapsibleTableProps<T>) {
   const [expanded, setExpanded] = useState<string | number | null>(null);
@@ -43,6 +46,7 @@ function UnifiedCollapsibleTable<T>({
   return (
     <Box>
       <TableContainer
+        className="custom-scrollbar"
         sx={{
           overflowX: "auto",
           "@media (max-width: 600px)": {
@@ -65,7 +69,12 @@ function UnifiedCollapsibleTable<T>({
                 boxShadow: "none",
               })}
             >
-              <TableCell width="40px"></TableCell>
+              {renderFirstCell && (
+                <TableCell
+                  width="40px"
+                  sx={{ padding: "8px 4px 8px 4px" }}
+                ></TableCell>
+              )}
               {columns.map((column) => (
                 <TableCell
                   key={column.field}
@@ -76,6 +85,7 @@ function UnifiedCollapsibleTable<T>({
                       fontSize: "0.75rem",
                       padding: "8px 4px",
                     },
+                    ...column.sx,
                   }}
                 >
                   {column.headerName}
@@ -108,7 +118,14 @@ function UnifiedCollapsibleTable<T>({
                       },
                     })}
                   >
-                    <TableCell></TableCell>
+                    {renderFirstCell && (
+                      <TableCell
+                        width="40px"
+                        sx={{ padding: "8px 4px 8px 4px" }}
+                      >
+                        {renderFirstCell(row, index)}
+                      </TableCell>
+                    )}
                     {renderMainRow(row, index)}
                     <TableCell>
                       <IconButton
@@ -127,19 +144,14 @@ function UnifiedCollapsibleTable<T>({
                     </TableCell>
                   </TableRow>
                   <TableRow
-                    sx={(theme) => ({
+                    sx={{
                       "& .MuiTableCell-root": { borderBottom: "none" },
-                      backgroundColor:
-                        index % 2 === 0
-                          ? "transparent"
-                          : theme.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.08)"
-                            : "rgba(0,0,0,0.05)",
-                    })}
+                      backgroundColor: "transparent",
+                    }}
                   >
                     <TableCell
                       style={{ paddingBottom: 0, paddingTop: 0 }}
-                      colSpan={columns.length + 2}
+                      colSpan={columns.length + (renderFirstCell ? 2 : 1)}
                     >
                       <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                         <Box

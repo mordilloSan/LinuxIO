@@ -29,18 +29,23 @@ const TabSelector: React.FC<TabSelectorProps> = ({
         justifyContent: "space-between",
         gap: 2,
         mb: 2,
+        width: "100%",
+        minWidth: 0,
       }}
     >
       <Paper
         elevation={0}
+        className="custom-scrollbar"
         sx={{
           display: "flex",
-          justifyContent: "center",
           p: 0.5,
-          width: "fit-content",
+          flex: "1 1 auto",
+          minWidth: 0,
           borderRadius: "999px",
           backgroundColor: "transparent",
           backdropFilter: "none",
+          overflowX: "auto",
+          overflowY: "hidden",
         }}
       >
         <ToggleButtonGroup
@@ -49,6 +54,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
           onChange={(_, newValue) => newValue && onChange(newValue)}
           size="small"
           sx={{
+            flexWrap: "nowrap",
             "& .MuiToggleButton-root": {
               color: "text.secondary",
               border: "none",
@@ -58,6 +64,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
               py: 0,
               fontWeight: 500,
               transition: "background 0.1s",
+              whiteSpace: "nowrap",
             },
             "& .MuiToggleButton-root.Mui-selected": {
               backgroundColor: primaryHex,
@@ -75,7 +82,9 @@ const TabSelector: React.FC<TabSelectorProps> = ({
       </Paper>
 
       {rightContent && (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Box
+          sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}
+        >
           {rightContent}
         </Box>
       )}

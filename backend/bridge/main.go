@@ -84,7 +84,6 @@ func main() {
 			UID:      bootCfg.UID,
 			GID:      bootCfg.GID,
 		},
-		Motd: bootCfg.Motd,
 	}
 
 	// Initialize logger (stdout/stderr → systemd journal)
