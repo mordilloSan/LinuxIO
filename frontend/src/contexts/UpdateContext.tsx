@@ -331,6 +331,14 @@ const useUpdateController = (): UpdateContextValue => {
         const updateStatus = await fetchUpdateStatus();
 
         if (!updateStatus || updateStatus.status === "unknown") {
+          // If we know the update started (received output), the server is likely just
+          // restarting. Don't fail immediately - proceed to verification and keep polling.
+          if (updateStartedRef.current) {
+            setStatus("Update in progress - service restarting...");
+            setProgress((prev) => Math.max(prev, 60));
+            beginVerification();
+            return;
+          }
           failUpdate(fallbackError || "Stream closed before update started");
           return;
         }

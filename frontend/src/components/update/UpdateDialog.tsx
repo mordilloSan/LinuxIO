@@ -103,17 +103,20 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
             </Box>
           )}
 
-          {/* Status - hide when complete */}
-          {!updateComplete && (
-            <Box>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Status
-              </Typography>
-              <Typography variant="body1" fontWeight="medium">
-                {status || "Preparing..."}
-              </Typography>
-            </Box>
-          )}
+          {/* Status - show during update and when failed */}
+          {(!updateComplete || (updateComplete && !updateSuccess)) &&
+            status && (
+              <Box>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  {updateComplete && !updateSuccess
+                    ? "Error Details"
+                    : "Status"}
+                </Typography>
+                <Typography variant="body1" fontWeight="medium">
+                  {status || "Preparing..."}
+                </Typography>
+              </Box>
+            )}
 
           {/* Progress bar - hide when complete */}
           {!updateComplete && progress < 100 && (
