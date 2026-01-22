@@ -25,6 +25,7 @@ import {
   Switch,
 } from "@mui/material";
 import React, { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import linuxio from "@/api/react-query";
 import UnifiedCollapsibleTable, {
@@ -67,9 +68,12 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
     setError(null);
     try {
       await createNetworkMutation.mutateAsync([networkName]);
+      toast.success(`Network "${networkName}" created successfully`);
       handleClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to create network");
+      const errorMessage = err?.message || "Failed to create network";
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -192,9 +196,16 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
         await deleteNetworkMutation.mutateAsync([id]);
       }
       onSuccess();
+      const successMessage =
+        networkNames.length === 1
+          ? `Network "${networkNames[0]}" deleted successfully`
+          : `${networkNames.length} networks deleted successfully`;
+      toast.success(successMessage);
       handleClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to delete network(s)");
+      const errorMessage = err?.message || "Failed to delete network(s)";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsDeleting(false);
     }
