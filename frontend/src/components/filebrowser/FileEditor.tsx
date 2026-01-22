@@ -118,19 +118,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       [filePath, initialContent],
     );
 
-    useEffect(() => {
-      onDirtyChange?.(isDirty);
-    }, [isDirty, onDirtyChange]);
-
-    const handleContentChange = (newValue: string) => {
-      updateEditorState((state) => ({
-        ...state,
-        content: newValue,
-        isDirty: newValue !== state.baseContent,
-      }));
-    };
-
-    const handleSave = async () => {
+        const handleSave = async () => {
       try {
         await onSave(content);
         updateEditorState((state) => ({
@@ -142,6 +130,35 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
         // Error is handled by parent component
       }
     };
+
+    useEffect(() => {
+      onDirtyChange?.(isDirty);
+    }, [isDirty, onDirtyChange]);
+
+    // Add Ctrl+S keyboard shortcut
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+          e.preventDefault();
+          if (!isSaving) {
+            handleSave();
+          }
+        }
+      };
+
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [handleSave, isSaving]);
+
+    const handleContentChange = (newValue: string) => {
+      updateEditorState((state) => ({
+        ...state,
+        content: newValue,
+        isDirty: newValue !== state.baseContent,
+      }));
+    };
+
+
 
     useImperativeHandle(ref, () => ({
       save: handleSave,

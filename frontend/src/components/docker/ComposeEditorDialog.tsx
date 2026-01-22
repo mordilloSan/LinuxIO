@@ -162,6 +162,23 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
     }
   };
 
+  // Add Ctrl+S keyboard shortcut
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        if (!isSaving && !isValidating) {
+          handleSave();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, isSaving, isValidating]);
+
   const sanitizeStackName = (name: string): string => {
     return name
       .toLowerCase()
