@@ -21,7 +21,7 @@ const (
 	urlCacheDir            = "/run/linuxio/icons/url-cache"
 	userIconsDir           = "/run/linuxio/icons/user"
 
-	// Dashboard Icons CDN (homarr-labs) - primary source for container icons
+	// Dashboard Icons CDN (homarr-labs)
 	dashboardIconsCDN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons@main/svg"
 	// Simple Icons CDN - for brand icons via si: prefix
 	simpleIconsCDN = "https://cdn.simpleicons.org"
@@ -34,7 +34,6 @@ var httpClient = &http.Client{
 	Timeout: httpClientTimeout,
 }
 
-// IconType represents the type of icon identifier
 type IconType string
 
 const (

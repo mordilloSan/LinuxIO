@@ -1,9 +1,4 @@
-import BlockIcon from "@mui/icons-material/Block";
-import ComputerIcon from "@mui/icons-material/Computer";
-import DeviceHubIcon from "@mui/icons-material/DeviceHub";
-import HubIcon from "@mui/icons-material/Hub";
-import LayersIcon from "@mui/icons-material/Layers";
-import SettingsEthernetIcon from "@mui/icons-material/SettingsEthernet";
+import DeleteIcon from "@mui/icons-material/Delete";
 import {
   Box,
   Table,
@@ -14,7 +9,20 @@ import {
   TextField,
   Chip,
   Typography,
-  Tooltip,
+  Checkbox,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
+  Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormControlLabel,
+  Switch,
 } from "@mui/material";
 import React, { useCallback, useEffect, useState } from "react";
 
@@ -32,21 +40,247 @@ interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;
 }
 
+interface CreateNetworkDialogProps {
+  open: boolean;
+  onClose: () => void;
+  existingNames: string[];
+}
+
+const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
+  open,
+  onClose,
+  existingNames,
+}) => {
+  const [networkName, setNetworkName] = useState("");
+  const [driver, setDriver] = useState("bridge");
+  const [internal, setInternal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const createNetworkMutation = linuxio.docker.create_network.useMutation();
+
+  const nameTaken = networkName && existingNames.includes(networkName);
+  const isValidName = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(networkName);
+
+  const handleCreate = async () => {
+    if (!networkName || nameTaken || !isValidName) return;
+
+    setError(null);
+    try {
+      await createNetworkMutation.mutateAsync([networkName]);
+      handleClose();
+    } catch (err: any) {
+      setError(err?.message || "Failed to create network");
+    }
+  };
+
+  const handleClose = () => {
+    setNetworkName("");
+    setDriver("bridge");
+    setInternal(false);
+    setError(null);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xs">
+      <DialogTitle>Create Network</DialogTitle>
+      <DialogContent>
+        <Box mt={2}>
+          <TextField
+            label="Network Name"
+            value={networkName}
+            onChange={(e) => setNetworkName(e.target.value)}
+            fullWidth
+            margin="normal"
+            error={!!nameTaken || (networkName.length > 0 && !isValidName)}
+            helperText={
+              nameTaken
+                ? "This network name already exists."
+                : networkName.length > 0 && !isValidName
+                  ? "Name must start with alphanumeric and contain only alphanumeric, _, ., or -"
+                  : ""
+            }
+            disabled={createNetworkMutation.isPending}
+            autoFocus
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel id="driver-select-label">Driver</InputLabel>
+            <Select
+              labelId="driver-select-label"
+              value={driver}
+              onChange={(e) => setDriver(e.target.value)}
+              label="Driver"
+              disabled={createNetworkMutation.isPending}
+            >
+              <MenuItem value="bridge">bridge</MenuItem>
+              <MenuItem value="host">host</MenuItem>
+              <MenuItem value="overlay">overlay</MenuItem>
+              <MenuItem value="macvlan">macvlan</MenuItem>
+              <MenuItem value="none">none</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={internal}
+                onChange={(e) => setInternal(e.target.checked)}
+                disabled={createNetworkMutation.isPending}
+              />
+            }
+            label="Internal network (no external connectivity)"
+            sx={{ mt: 1 }}
+          />
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          )}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button
+          onClick={handleClose}
+          color="secondary"
+          disabled={createNetworkMutation.isPending}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleCreate}
+          variant="contained"
+          disabled={
+            !networkName ||
+            !!nameTaken ||
+            !isValidName ||
+            createNetworkMutation.isPending
+          }
+        >
+          {createNetworkMutation.isPending ? "Creating..." : "Create"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+interface DeleteNetworkDialogProps {
+  open: boolean;
+  onClose: () => void;
+  networkNames: string[];
+  networkIds: string[];
+  onSuccess: () => void;
+}
+
+const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
+  open,
+  onClose,
+  networkNames,
+  networkIds,
+  onSuccess,
+}) => {
+  const [error, setError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const deleteNetworkMutation = linuxio.docker.delete_network.useMutation();
+
+  const handleDelete = async () => {
+    setError(null);
+    setIsDeleting(true);
+
+    try {
+      // Delete networks sequentially
+      for (const id of networkIds) {
+        await deleteNetworkMutation.mutateAsync([id]);
+      }
+      onSuccess();
+      handleClose();
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete network(s)");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleClose = () => {
+    setError(null);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Delete Network{networkNames.length > 1 ? "s" : ""}</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          Are you sure you want to delete the following network
+          {networkNames.length > 1 ? "s" : ""}?
+        </DialogContentText>
+        <Box sx={{ mt: 2, mb: 1 }}>
+          {networkNames.map((name) => (
+            <Chip
+              key={name}
+              label={name}
+              size="small"
+              sx={{ mr: 1, mb: 1 }}
+            />
+          ))}
+        </Box>
+        <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
+          This action cannot be undone. Networks with connected containers cannot
+          be deleted.
+        </DialogContentText>
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleClose} disabled={isDeleting}>
+          Cancel
+        </Button>
+        <Button
+          onClick={handleDelete}
+          variant="contained"
+          color="error"
+          disabled={isDeleting}
+        >
+          {isDeleting ? "Deleting..." : "Delete"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
   const { data: networks = [] } = linuxio.docker.list_networks.useQuery({
     refetchInterval: 10000,
   });
 
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const filtered = networks.filter((net) =>
     net.Name.toLowerCase().includes(search.toLowerCase()),
   );
 
+  // Clear selection when filtered list changes
+  useEffect(() => {
+    setSelected((prev) => {
+      const filteredIds = new Set(filtered.map((n) => n.Id));
+      const newSelected = new Set<string>();
+      prev.forEach((id) => {
+        if (filteredIds.has(id)) {
+          newSelected.add(id);
+        }
+      });
+      return newSelected;
+    });
+  }, [filtered.map((n) => n.Id).join(",")]);
+
   // Create network handler
   const handleCreateNetwork = useCallback(() => {
-    // TODO: Open network creation dialog
-    console.log("Create network clicked");
+    setCreateDialogOpen(true);
   }, []);
 
   // Mount handler to parent
@@ -56,42 +290,33 @@ const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
     }
   }, [onMountCreateHandler, handleCreateNetwork]);
 
-  const getNetworkIcon = (driver: string) => {
-    const iconProps = { fontSize: "small" as const, sx: { opacity: 0.7 } };
-
-    let icon: React.ReactNode;
-
-    switch (driver.toLowerCase()) {
-      case "host":
-        icon = <ComputerIcon {...iconProps} />;
-        break;
-      case "null":
-      case "none":
-        icon = <BlockIcon {...iconProps} />;
-        break;
-      case "overlay":
-        icon = <LayersIcon {...iconProps} />;
-        break;
-      case "macvlan":
-      case "ipvlan":
-        icon = <SettingsEthernetIcon {...iconProps} />;
-        break;
-      case "bridge":
-        icon = <DeviceHubIcon {...iconProps} />;
-        break;
-      default:
-        icon = <HubIcon {...iconProps} />;
-        break;
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelected(new Set(filtered.map((n) => n.Id)));
+    } else {
+      setSelected(new Set());
     }
-
-    return (
-      <Tooltip title={driver} arrow placement="right">
-        <Box component="span" sx={{ display: "inline-flex" }}>
-          {icon}
-        </Box>
-      </Tooltip>
-    );
   };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSuccess = () => {
+    setSelected(new Set());
+  };
+
+  const selectedNetworks = filtered.filter((n) => selected.has(n.Id));
+  const allSelected = filtered.length > 0 && selected.size === filtered.length;
+  const someSelected = selected.size > 0 && selected.size < filtered.length;
 
   const columns: UnifiedTableColumn[] = [
     { field: "name", headerName: "Network Name", align: "left" },
@@ -135,7 +360,7 @@ const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
 
   return (
     <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2}>
+      <Box mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
         <TextField
           variant="outlined"
           size="small"
@@ -150,12 +375,38 @@ const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
           }}
         />
         <Box fontWeight="bold">{filtered.length} shown</Box>
+        {selected.size > 0 && (
+          <Button
+            variant="contained"
+            color="error"
+            size="small"
+            startIcon={<DeleteIcon />}
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            Delete ({selected.size})
+          </Button>
+        )}
       </Box>
       <UnifiedCollapsibleTable
         data={filtered}
         columns={columns}
         getRowKey={(network) => network.Id}
-        renderFirstCell={(network) => getNetworkIcon(network.Driver)}
+        renderFirstCell={(network) => (
+          <Checkbox
+            size="small"
+            checked={selected.has(network.Id)}
+            onChange={(e) => handleSelectOne(network.Id, e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+        renderHeaderFirstCell={() => (
+          <Checkbox
+            size="small"
+            checked={allSelected}
+            indeterminate={someSelected}
+            onChange={(e) => handleSelectAll(e.target.checked)}
+          />
+        )}
         renderMainRow={(network) => (
           <>
             <TableCell>
@@ -395,6 +646,20 @@ const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
           </>
         )}
         emptyMessage="No networks found."
+      />
+
+      <CreateNetworkDialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        existingNames={networks.map((n) => n.Name)}
+      />
+
+      <DeleteNetworkDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        networkNames={selectedNetworks.map((n) => n.Name)}
+        networkIds={selectedNetworks.map((n) => n.Id)}
+        onSuccess={handleDeleteSuccess}
       />
     </Box>
   );
