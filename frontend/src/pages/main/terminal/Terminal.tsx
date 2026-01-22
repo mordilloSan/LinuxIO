@@ -1,4 +1,4 @@
-import { Box, IconButton, Typography } from "@mui/material";
+import { Box, IconButton, Typography, Menu, MenuItem } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -29,6 +29,10 @@ const TerminalXTerm: React.FC = () => {
 
   const { isOpen, openStream, getStream } = useStreamMux();
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+  } | null>(null);
 
   // Update xterm font size when fontSize changes
   useEffect(() => {
@@ -63,6 +67,30 @@ const TerminalXTerm: React.FC = () => {
     fitAddon.current = new FitAddon();
     xterm.current.loadAddon(fitAddon.current);
     xterm.current.open(termRef.current);
+
+    // Handle copy/paste with Shift+C/V
+    xterm.current.attachCustomKeyEventHandler((event) => {
+      // Shift+C - Copy
+      if (event.shiftKey && event.key === "C" && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        const selection = xterm.current?.getSelection();
+        if (selection) {
+          navigator.clipboard.writeText(selection);
+        }
+        return false; // Prevent default behavior
+      }
+
+      // Shift+V - Paste
+      if (event.shiftKey && event.key === "V" && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        navigator.clipboard.readText().then((text) => {
+          if (streamRef.current) {
+            streamRef.current.write(encodeString(text));
+          }
+        });
+        return false; // Prevent default behavior
+      }
+
+      return true; // Allow default behavior for other keys
+    });
 
     // Set custom scrollbar and connect to stream after DOM is ready
     requestAnimationFrame(() => {
@@ -220,6 +248,55 @@ const TerminalXTerm: React.FC = () => {
     xterm.current.focus();
   };
 
+  // Context menu handlers
+  const handleContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Always close first, then open at new position if it was closed
+    const wasOpen = contextMenu !== null;
+    setContextMenu(null);
+
+    if (!wasOpen) {
+      // Small timeout to ensure state updates
+      setTimeout(() => {
+        setContextMenu({ mouseX: event.clientX, mouseY: event.clientY });
+      }, 0);
+    }
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu(null);
+  };
+
+  // Close context menu when tab loses focus
+  useEffect(() => {
+    const handleBlur = () => {
+      setContextMenu(null);
+    };
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
+
+  const handleCopy = () => {
+    const selection = xterm.current?.getSelection();
+    if (selection) {
+      navigator.clipboard.writeText(selection);
+    }
+    handleCloseContextMenu();
+  };
+
+  const handlePaste = () => {
+    navigator.clipboard.readText().then((text) => {
+      if (streamRef.current) {
+        streamRef.current.write(encodeString(text));
+      }
+    });
+    handleCloseContextMenu();
+  };
+
   return (
     <Box
       sx={{
@@ -289,6 +366,7 @@ const TerminalXTerm: React.FC = () => {
       <Box
         ref={termRef}
         className="my-terminal-root"
+        onContextMenu={handleContextMenu}
         sx={{
           flex: 1,
           overflow: "hidden",
@@ -296,6 +374,49 @@ const TerminalXTerm: React.FC = () => {
           background: theme.palette.background.default,
         }}
       />
+      {/* CONTEXT MENU */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleCloseContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+        autoFocus={false}
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 2,
+            },
+          },
+          backdrop: {
+            onClick: handleCloseContextMenu,
+            onContextMenu: (e: React.MouseEvent) => {
+              e.preventDefault();
+              handleCloseContextMenu();
+            },
+          },
+        }}
+      >
+        <MenuItem onClick={handleCopy} sx={{ py: 1 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+            <span>Copy</span>
+            <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
+              Shift+C
+            </Typography>
+          </Box>
+        </MenuItem>
+        <MenuItem onClick={handlePaste} sx={{ py: 1 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", width: "100%", gap: 4 }}>
+            <span>Paste</span>
+            <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
+              Shift+V
+            </Typography>
+          </Box>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 };
