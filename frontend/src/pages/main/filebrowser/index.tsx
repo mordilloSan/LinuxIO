@@ -276,6 +276,26 @@ const FileBrowser: React.FC = () => {
     setSearchQuery("");
   }, [normalizedPath]);
 
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenuPosition(null);
+  }, [setContextMenuPosition]);
+
+  // Selection and clipboard management
+  const {
+    selectedPaths,
+    setSelectedPaths,
+    selectedItems,
+    clipboard,
+    handleCopy,
+    handleCut,
+    handlePaste,
+  } = useFileSelection({
+    resource,
+    normalizedPath,
+    copyItems,
+    moveItems,
+    onContextMenuClose: handleCloseContextMenu,
+  });
   // Add keyboard shortcuts for copy/cut/paste operations
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -301,26 +321,6 @@ const FileBrowser: React.FC = () => {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [editingPath, handleCopy, handleCut, handlePaste]);
 
-  const handleCloseContextMenu = useCallback(() => {
-    setContextMenuPosition(null);
-  }, [setContextMenuPosition]);
-
-  // Selection and clipboard management
-  const {
-    selectedPaths,
-    setSelectedPaths,
-    selectedItems,
-    clipboard,
-    handleCopy,
-    handleCut,
-    handlePaste,
-  } = useFileSelection({
-    resource,
-    normalizedPath,
-    copyItems,
-    moveItems,
-    onContextMenuClose: handleCloseContextMenu,
-  });
 
   const pendingArchiveNamesRef = useRef<Set<string>>(new Set());
   const pendingArchiveConflictNamesRef = useRef<Set<string>>(new Set());
