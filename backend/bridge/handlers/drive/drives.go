@@ -222,3 +222,48 @@ func GetNVMePowerState(device string) (*InferredPowerData, error) {
 		States:       states,
 	}, nil
 }
+
+// RunSmartTest starts a SMART self-test on the specified device.
+// testType can be "short" or "long" (extended).
+func RunSmartTest(device, testType string) (map[string]any, error) {
+	if !validDeviceNameRe.MatchString(device) {
+		return nil, errors.New("invalid device name")
+	}
+
+	// Validate test type
+	var smartTestArg string
+	switch testType {
+	case "short":
+		smartTestArg = "short"
+	case "long":
+		smartTestArg = "long"
+	default:
+		return nil, fmt.Errorf("invalid test type: %s (use 'short' or 'long')", testType)
+	}
+
+	smartctlPath, err := exec.LookPath("smartctl")
+	if err != nil {
+		return nil, fmt.Errorf("smartctl not found: %w", err)
+	}
+
+	// Run the self-test
+	cmd := exec.Command(smartctlPath, "-t", smartTestArg, "/dev/"+device)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// smartctl may return non-zero even on success for some operations
+		// Check if the output contains success indicators
+		outStr := string(out)
+		if !strings.Contains(outStr, "Testing has begun") &&
+			!strings.Contains(outStr, "Self-test routine") {
+			return nil, fmt.Errorf("smartctl self-test failed for %s: %w\nOutput: %s", device, err, outStr)
+		}
+	}
+
+	return map[string]any{
+		"success": true,
+		"device":  device,
+		"test":    testType,
+		"message": fmt.Sprintf("SMART %s self-test started on /dev/%s", testType, device),
+		"output":  string(out),
+	}, nil
+}

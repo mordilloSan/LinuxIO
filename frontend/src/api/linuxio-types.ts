@@ -417,6 +417,15 @@ export interface LinuxIOSchema {
     get_drive_info: { args: []; result: ApiDisk[] };
     get_updates_fast: { args: []; result: Update[] };
     get_network_info: { args: []; result: InterfaceStats[] };
+    run_smart_test: {
+      args: [device: string, testType: string];
+      result: {
+        success: boolean;
+        device: string;
+        test: string;
+        message: string;
+      };
+    };
   };
 
   docker: {

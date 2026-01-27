@@ -8,3 +8,8 @@ import (
 func FetchDriveInfoViaSystem() ([]map[string]any, error) {
 	return bridgedrive.FetchDriveInfo()
 }
+
+// RunSmartTest proxies to the drive package to run SMART self-tests.
+func RunSmartTest(device, testType string) (map[string]any, error) {
+	return bridgedrive.RunSmartTest(device, testType)
+}

@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import {
   Box,
+  Button,
   Chip,
   Collapse,
   Divider,
@@ -14,6 +15,9 @@ import { useTheme } from "@mui/material/styles";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useState } from "react";
 
+import DriveDetailsDialog from "./DriveDetailsDialog";
+
+import type { ApiDisk } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -139,9 +143,14 @@ const getTemperatureColor = (temp: number | null): string => {
 interface DriveDetailsProps {
   drive: DriveInfo;
   expanded: boolean;
+  onViewDetails: () => void;
 }
 
-const DriveDetails: React.FC<DriveDetailsProps> = ({ drive, expanded }) => {
+const DriveDetails: React.FC<DriveDetailsProps> = ({
+  drive,
+  expanded,
+  onViewDetails,
+}) => {
   const smart = drive.smart;
   const power = drive.power;
 
@@ -399,7 +408,9 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({ drive, expanded }) => {
                     variant={
                       ps.state === power.currentState ? "filled" : "outlined"
                     }
-                    color={ps.state === power.currentState ? "primary" : "default"}
+                    color={
+                      ps.state === power.currentState ? "primary" : "default"
+                    }
                     sx={{
                       fontSize: "0.7rem",
                       height: 22,
@@ -417,6 +428,20 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({ drive, expanded }) => {
             No detailed information available for this drive.
           </Typography>
         )}
+
+        {/* View Details Button */}
+        <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end" }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewDetails();
+            }}
+          >
+            View Details
+          </Button>
+        </Box>
       </Box>
     </Collapse>
   );
@@ -425,6 +450,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({ drive, expanded }) => {
 const DiskOverview: React.FC = () => {
   const theme = useTheme();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [detailsDrive, setDetailsDrive] = useState<ApiDisk | null>(null);
 
   const { data: rawDrives = [], isPending: drivesLoading } =
     linuxio.system.get_drive_info.useQuery({ refetchInterval: 30000 });
@@ -549,7 +575,9 @@ const DiskOverview: React.FC = () => {
                           <Typography
                             variant="body2"
                             fontWeight={600}
-                            color={getTemperatureColor(getTemperature(drive.smart))}
+                            color={getTemperatureColor(
+                              getTemperature(drive.smart),
+                            )}
                           >
                             {getTemperature(drive.smart)}°C
                           </Typography>
@@ -610,6 +638,12 @@ const DiskOverview: React.FC = () => {
                     <DriveDetails
                       drive={drive}
                       expanded={expanded === drive.name}
+                      onViewDetails={() => {
+                        const rawDrive = rawDrives.find(
+                          (d) => d.name === drive.name,
+                        );
+                        if (rawDrive) setDetailsDrive(rawDrive);
+                      }}
                     />
                   </FrostedCard>
                 </Grid>
@@ -671,6 +705,13 @@ const DiskOverview: React.FC = () => {
           ))
         )}
       </Grid>
+
+      {/* Drive Details Dialog */}
+      <DriveDetailsDialog
+        open={detailsDrive !== null}
+        onClose={() => setDetailsDrive(null)}
+        drive={detailsDrive}
+      />
     </Box>
   );
 };
