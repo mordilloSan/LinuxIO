@@ -1,5 +1,12 @@
 import { useTheme } from "@mui/material/styles";
-import React, { useMemo, useCallback, useState, useRef, useEffect } from "react";
+import React, {
+  useMemo,
+  useCallback,
+  useState,
+  useRef,
+  useEffect,
+  useEffectEvent,
+} from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
@@ -80,6 +87,10 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 
+    const syncRenameValue = useEffectEvent(() => {
+      setRenameValue(name);
+    });
+
     // Auto-focus and select text when entering rename mode
     useEffect(() => {
       if (isRenaming && inputRef.current) {
@@ -93,7 +104,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
         }
       }
       if (isRenaming) {
-        setRenameValue(name);
+        syncRenameValue();
       }
     }, [isRenaming, name, isDirectory]);
 
