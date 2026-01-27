@@ -1,5 +1,4 @@
 import DeleteIcon from "@mui/icons-material/Delete";
-import FolderIcon from "@mui/icons-material/Folder";
 import {
   Box,
   TableCell,
@@ -82,7 +81,9 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Delete Volume{volumeNames.length > 1 ? "s" : ""}</DialogTitle>
+      <DialogTitle>
+        Delete Volume{volumeNames.length > 1 ? "s" : ""}
+      </DialogTitle>
       <DialogContent>
         <DialogContentText>
           Are you sure you want to delete the following volume
@@ -90,12 +91,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
         </DialogContentText>
         <Box sx={{ mt: 2, mb: 1 }}>
           {volumeNames.map((name) => (
-            <Chip
-              key={name}
-              label={name}
-              size="small"
-              sx={{ mr: 1, mb: 1 }}
-            />
+            <Chip key={name} label={name} size="small" sx={{ mr: 1, mb: 1 }} />
           ))}
         </Box>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>

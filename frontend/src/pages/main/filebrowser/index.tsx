@@ -321,7 +321,6 @@ const FileBrowser: React.FC = () => {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [editingPath, handleCopy, handleCut, handlePaste]);
 
-
   const pendingArchiveNamesRef = useRef<Set<string>>(new Set());
   const pendingArchiveConflictNamesRef = useRef<Set<string>>(new Set());
 

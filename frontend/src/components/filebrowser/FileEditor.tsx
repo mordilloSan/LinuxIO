@@ -118,7 +118,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       [filePath, initialContent],
     );
 
-        const handleSave = async () => {
+    const handleSave = async () => {
       try {
         await onSave(content);
         updateEditorState((state) => ({
@@ -157,8 +157,6 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
         isDirty: newValue !== state.baseContent,
       }));
     };
-
-
 
     useImperativeHandle(ref, () => ({
       save: handleSave,

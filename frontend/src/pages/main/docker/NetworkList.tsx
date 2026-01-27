@@ -218,7 +218,9 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Delete Network{networkNames.length > 1 ? "s" : ""}</DialogTitle>
+      <DialogTitle>
+        Delete Network{networkNames.length > 1 ? "s" : ""}
+      </DialogTitle>
       <DialogContent>
         <DialogContentText>
           Are you sure you want to delete the following network
@@ -226,17 +228,12 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
         </DialogContentText>
         <Box sx={{ mt: 2, mb: 1 }}>
           {networkNames.map((name) => (
-            <Chip
-              key={name}
-              label={name}
-              size="small"
-              sx={{ mr: 1, mb: 1 }}
-            />
+            <Chip key={name} label={name} size="small" sx={{ mr: 1, mb: 1 }} />
           ))}
         </Box>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
-          This action cannot be undone. Networks with connected containers cannot
-          be deleted.
+          This action cannot be undone. Networks with connected containers
+          cannot be deleted.
         </DialogContentText>
         {error && (
           <Alert severity="error" sx={{ mt: 2 }}>

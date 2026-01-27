@@ -71,7 +71,13 @@ const TerminalXTerm: React.FC = () => {
     // Handle copy/paste with Shift+C/V
     xterm.current.attachCustomKeyEventHandler((event) => {
       // Shift+C - Copy
-      if (event.shiftKey && event.key === "C" && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (
+        event.shiftKey &&
+        event.key === "C" &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
         const selection = xterm.current?.getSelection();
         if (selection) {
           navigator.clipboard.writeText(selection);
@@ -80,7 +86,13 @@ const TerminalXTerm: React.FC = () => {
       }
 
       // Shift+V - Paste
-      if (event.shiftKey && event.key === "V" && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (
+        event.shiftKey &&
+        event.key === "V" &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
         navigator.clipboard.readText().then((text) => {
           if (streamRef.current) {
             streamRef.current.write(encodeString(text));
@@ -401,7 +413,13 @@ const TerminalXTerm: React.FC = () => {
         }}
       >
         <MenuItem onClick={handleCopy} sx={{ py: 1 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              width: "100%",
+            }}
+          >
             <span>Copy</span>
             <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
               Shift+C
@@ -409,7 +427,14 @@ const TerminalXTerm: React.FC = () => {
           </Box>
         </MenuItem>
         <MenuItem onClick={handlePaste} sx={{ py: 1 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", width: "100%", gap: 4 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              width: "100%",
+              gap: 4,
+            }}
+          >
             <span>Paste</span>
             <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
               Shift+V
