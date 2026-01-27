@@ -78,6 +78,17 @@ func FetchDriveInfo() ([]map[string]any, error) {
 			drive["smartError"] = err.Error()
 		} else {
 			drive["smart"] = smart
+
+			// Try to extract vendor from SMART data if lsblk didn't provide it
+			if drive["vendor"] == "" {
+				if modelName, ok := smart["model_name"].(string); ok && modelName != "" {
+					// Extract first word from model name as vendor
+					parts := strings.Fields(modelName)
+					if len(parts) > 0 {
+						drive["vendor"] = parts[0]
+					}
+				}
+			}
 		}
 
 		// NVMe power info if it's an NVMe device
