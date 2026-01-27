@@ -319,7 +319,8 @@ const FileBrowser: React.FC = () => {
 
   useEffect(() => {
     document.addEventListener("keydown", handleClipboardKeyDown);
-    return () => document.removeEventListener("keydown", handleClipboardKeyDown);
+    return () =>
+      document.removeEventListener("keydown", handleClipboardKeyDown);
   }, []);
 
   // Derive cut paths from clipboard for visual dimming

@@ -1,4 +1,10 @@
-import { useState, useCallback, useRef, useEffect, useEffectEvent } from "react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useEffectEvent,
+} from "react";
 import { FileItem } from "@/types/filebrowser";
 
 interface MarqueeBox {

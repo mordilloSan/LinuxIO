@@ -1,8 +1,10 @@
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -15,7 +17,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { NFSMount } from "@/api/linuxio-types";
@@ -63,8 +65,43 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const [customOptions, setCustomOptions] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isMounting, setIsMounting] = useState(false);
+  const [exports, setExports] = useState<string[]>([]);
+  const [loadingExports, setLoadingExports] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mountMutation = linuxio.storage.mount_nfs.useMutation();
+  const exportsMutation = linuxio.storage.list_nfs_exports.useMutation();
+
+  // Fetch exports when server changes (debounced)
+  useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    if (!server || server.length < 3) {
+      setExports([]);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setLoadingExports(true);
+      try {
+        const result = await exportsMutation.mutateAsync([server]);
+        setExports(result || []);
+      } catch {
+        setExports([]);
+      } finally {
+        setLoadingExports(false);
+      }
+    }, 500);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server]);
 
   const buildOptionsString = () => {
     const opts: string[] = [];
@@ -122,6 +159,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     setReadOnly(false);
     setMountAtBoot(false);
     setCustomOptions("");
+    setExports([]);
     setError(null);
     onClose();
   };
@@ -139,13 +177,31 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
             fullWidth
             size="small"
           />
-          <TextField
-            label="Path on Server"
+          <Autocomplete
+            freeSolo
+            options={exports}
             value={exportPath}
-            onChange={(e) => setExportPath(e.target.value)}
-            placeholder="e.g., /shared/data"
-            fullWidth
-            size="small"
+            onInputChange={(_, value) => setExportPath(value)}
+            loading={loadingExports}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Path on Server"
+                placeholder="e.g., /shared/data"
+                size="small"
+                slotProps={{
+                  input: {
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {loadingExports ? <CircularProgress size={20} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  },
+                }}
+              />
+            )}
           />
           <TextField
             label="Local Mountpoint"

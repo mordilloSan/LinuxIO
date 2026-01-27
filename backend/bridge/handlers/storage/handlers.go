@@ -76,6 +76,17 @@ func RegisterHandlers() {
 		return emit.Result(mounts)
 	})
 
+	ipc.RegisterFunc("storage", "list_nfs_exports", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		exports, err := ListNFSExports(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(exports)
+	})
+
 	ipc.RegisterFunc("storage", "mount_nfs", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 4 {
 			return ipc.ErrInvalidArgs

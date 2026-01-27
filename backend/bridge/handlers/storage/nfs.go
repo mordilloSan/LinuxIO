@@ -61,6 +61,38 @@ func parseNFSSource(source string) (server, exportPath string) {
 	return "", ""
 }
 
+// ListNFSExports queries an NFS server for available exports using showmount -e
+func ListNFSExports(server string) ([]string, error) {
+	// Validate server input
+	if !validNFSServer.MatchString(server) {
+		return nil, fmt.Errorf("invalid NFS server hostname")
+	}
+
+	// Run showmount -e to list exports
+	cmd := exec.Command("showmount", "-e", server, "--no-headers")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query NFS exports: %v", err)
+	}
+
+	var exports []string
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		// showmount output format: "/export/path  client1,client2,..."
+		// We only need the path (first field)
+		fields := strings.Fields(line)
+		if len(fields) >= 1 {
+			exports = append(exports, fields[0])
+		}
+	}
+
+	return exports, nil
+}
+
 // ListNFSMounts returns all mounted NFS shares
 func ListNFSMounts() ([]NFSMount, error) {
 	partitions, err := disk.Partitions(true)

@@ -619,6 +619,7 @@ export interface LinuxIOSchema {
 
     // NFS
     list_nfs_mounts: { args: []; result: NFSMount[] };
+    list_nfs_exports: { args: [server: string]; result: string[] };
     mount_nfs: {
       args: [
         server: string,
