@@ -8,22 +8,30 @@ import FileListRow from "@/components/filebrowser/FileListRow";
 interface FilesListProps {
   files: FileItem[];
   selectedPaths: Set<string>;
+  cutPaths: Set<string>;
   viewMode: ViewMode;
   onFileClick: (event: React.MouseEvent, path: string) => void;
   onDownloadFile: (item: FileItem) => void;
   onFileContextMenu: (event: React.MouseEvent, path: string) => void;
   isMarqueeSelecting?: boolean;
+  renamingPath: string | null;
+  onConfirmRename: (path: string, newName: string) => void;
+  onCancelRename: () => void;
 }
 
 const FilesList: React.FC<FilesListProps> = React.memo(
   ({
     files,
     selectedPaths,
+    cutPaths,
     viewMode,
     onFileClick,
     onDownloadFile,
     onFileContextMenu,
     isMarqueeSelecting = false,
+    renamingPath,
+    onConfirmRename,
+    onCancelRename,
   }) => {
     if (files.length === 0) {
       return null;
@@ -69,10 +77,14 @@ const FilesList: React.FC<FilesListProps> = React.memo(
               isSymlink={file.symlink}
               hidden={file.hidden}
               selected={selectedPaths.has(file.path)}
+              isCut={cutPaths.has(file.path)}
+              isRenaming={renamingPath === file.path}
               showFullPath={file.showFullPath}
               onClick={(event) => onFileClick(event, file.path)}
               onDoubleClick={() => onDownloadFile(file)}
               onContextMenu={(event) => onFileContextMenu(event, file.path)}
+              onConfirmRename={(newName) => onConfirmRename(file.path, newName)}
+              onCancelRename={onCancelRename}
               disableHover={isMarqueeSelecting}
             />
           ))}

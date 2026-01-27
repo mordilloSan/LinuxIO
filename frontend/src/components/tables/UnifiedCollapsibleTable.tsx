@@ -29,6 +29,7 @@ interface UnifiedCollapsibleTableProps<T> {
   renderMainRow: (row: T, index: number) => React.ReactNode;
   renderExpandedContent: (row: T, index: number) => React.ReactNode;
   renderFirstCell?: (row: T, index: number) => React.ReactNode;
+  renderHeaderFirstCell?: () => React.ReactNode;
   emptyMessage?: string;
 }
 
@@ -39,6 +40,7 @@ function UnifiedCollapsibleTable<T>({
   renderMainRow,
   renderExpandedContent,
   renderFirstCell,
+  renderHeaderFirstCell,
   emptyMessage = "No data available.",
 }: UnifiedCollapsibleTableProps<T>) {
   const [expanded, setExpanded] = useState<string | number | null>(null);
@@ -70,10 +72,9 @@ function UnifiedCollapsibleTable<T>({
               })}
             >
               {renderFirstCell && (
-                <TableCell
-                  width="40px"
-                  sx={{ padding: "8px 4px 8px 4px" }}
-                ></TableCell>
+                <TableCell width="40px" sx={{ padding: "8px 4px 8px 4px" }}>
+                  {renderHeaderFirstCell?.()}
+                </TableCell>
               )}
               {columns.map((column) => (
                 <TableCell
@@ -168,8 +169,6 @@ function UnifiedCollapsibleTable<T>({
                                 : "rgba(0,0,0,0.03)",
                             overflowX: "auto",
                             "@media (max-width: 600px)": {
-                              margin: 1,
-                              padding: 1,
                               fontSize: "0.85rem",
                             },
                           }}
