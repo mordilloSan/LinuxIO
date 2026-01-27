@@ -24,7 +24,7 @@ import {
   FormControlLabel,
   Switch,
 } from "@mui/material";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import linuxio from "@/api/react-query";
@@ -272,19 +272,17 @@ const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
     net.Name.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // Clear selection when filtered list changes
-  useEffect(() => {
-    setSelected((prev) => {
-      const filteredIds = new Set(filtered.map((n) => n.Id));
-      const newSelected = new Set<string>();
-      prev.forEach((id) => {
-        if (filteredIds.has(id)) {
-          newSelected.add(id);
-        }
-      });
-      return newSelected;
+  // Compute effective selection - only include items that are in the filtered list
+  const effectiveSelected = useMemo(() => {
+    const filteredIds = new Set(filtered.map((n) => n.Id));
+    const result = new Set<string>();
+    selected.forEach((id) => {
+      if (filteredIds.has(id)) {
+        result.add(id);
+      }
     });
-  }, [filtered.map((n) => n.Id).join(",")]);
+    return result;
+  }, [selected, filtered]);
 
   // Create network handler
   const handleCreateNetwork = useCallback(() => {
@@ -322,9 +320,11 @@ const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
     setSelected(new Set());
   };
 
-  const selectedNetworks = filtered.filter((n) => selected.has(n.Id));
-  const allSelected = filtered.length > 0 && selected.size === filtered.length;
-  const someSelected = selected.size > 0 && selected.size < filtered.length;
+  const selectedNetworks = filtered.filter((n) => effectiveSelected.has(n.Id));
+  const allSelected =
+    filtered.length > 0 && effectiveSelected.size === filtered.length;
+  const someSelected =
+    effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
 
   const columns: UnifiedTableColumn[] = [
     { field: "name", headerName: "Network Name", align: "left" },
@@ -383,7 +383,7 @@ const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
           }}
         />
         <Box fontWeight="bold">{filtered.length} shown</Box>
-        {selected.size > 0 && (
+        {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
             color="error"
@@ -391,7 +391,7 @@ const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
             startIcon={<DeleteIcon />}
             onClick={() => setDeleteDialogOpen(true)}
           >
-            Delete ({selected.size})
+            Delete ({effectiveSelected.size})
           </Button>
         )}
       </Box>
@@ -402,7 +402,7 @@ const NetworkList: React.FC<NetworkListProps> = ({ onMountCreateHandler }) => {
         renderFirstCell={(network) => (
           <Checkbox
             size="small"
-            checked={selected.has(network.Id)}
+            checked={effectiveSelected.has(network.Id)}
             onChange={(e) => handleSelectOne(network.Id, e.target.checked)}
             onClick={(e) => e.stopPropagation()}
           />

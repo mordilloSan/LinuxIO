@@ -118,7 +118,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       [filePath, initialContent],
     );
 
-    const handleSave = async () => {
+    const handleSave = useCallback(async () => {
       try {
         await onSave(content);
         updateEditorState((state) => ({
@@ -129,7 +129,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       } catch {
         // Error is handled by parent component
       }
-    };
+    }, [onSave, content, updateEditorState]);
 
     useEffect(() => {
       onDirtyChange?.(isDirty);

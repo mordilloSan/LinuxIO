@@ -14,7 +14,7 @@ import {
   DialogContentText,
   Alert,
 } from "@mui/material";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import linuxio from "@/api/react-query";
@@ -153,19 +153,17 @@ const VolumeList: React.FC<VolumeListProps> = ({ onMountCreateHandler }) => {
       vol.Mountpoint?.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // Clear selection when filtered list changes
-  useEffect(() => {
-    setSelected((prev) => {
-      const filteredNames = new Set(filtered.map((v) => v.Name));
-      const newSelected = new Set<string>();
-      prev.forEach((name) => {
-        if (filteredNames.has(name)) {
-          newSelected.add(name);
-        }
-      });
-      return newSelected;
+  // Compute effective selection - only include items that are in the filtered list
+  const effectiveSelected = useMemo(() => {
+    const filteredNames = new Set(filtered.map((v) => v.Name));
+    const result = new Set<string>();
+    selected.forEach((name) => {
+      if (filteredNames.has(name)) {
+        result.add(name);
+      }
     });
-  }, [filtered.map((v) => v.Name).join(",")]);
+    return result;
+  }, [selected, filtered]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -191,9 +189,11 @@ const VolumeList: React.FC<VolumeListProps> = ({ onMountCreateHandler }) => {
     setSelected(new Set());
   };
 
-  const selectedVolumes = filtered.filter((v) => selected.has(v.Name));
-  const allSelected = filtered.length > 0 && selected.size === filtered.length;
-  const someSelected = selected.size > 0 && selected.size < filtered.length;
+  const selectedVolumes = filtered.filter((v) => effectiveSelected.has(v.Name));
+  const allSelected =
+    filtered.length > 0 && effectiveSelected.size === filtered.length;
+  const someSelected =
+    effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
 
   const columns: UnifiedTableColumn[] = [
     { field: "name", headerName: "Volume Name", align: "left" },
@@ -236,7 +236,7 @@ const VolumeList: React.FC<VolumeListProps> = ({ onMountCreateHandler }) => {
           }}
         />
         <Box fontWeight="bold">{filtered.length} shown</Box>
-        {selected.size > 0 && (
+        {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
             color="error"
@@ -244,7 +244,7 @@ const VolumeList: React.FC<VolumeListProps> = ({ onMountCreateHandler }) => {
             startIcon={<DeleteIcon />}
             onClick={() => setDeleteDialogOpen(true)}
           >
-            Delete ({selected.size})
+            Delete ({effectiveSelected.size})
           </Button>
         )}
       </Box>
@@ -255,7 +255,7 @@ const VolumeList: React.FC<VolumeListProps> = ({ onMountCreateHandler }) => {
         renderFirstCell={(volume) => (
           <Checkbox
             size="small"
-            checked={selected.has(volume.Name)}
+            checked={effectiveSelected.has(volume.Name)}
             onChange={(e) => handleSelectOne(volume.Name, e.target.checked)}
             onClick={(e) => e.stopPropagation()}
           />
