@@ -108,7 +108,14 @@ export const useFileListKeyboardNavigation = ({
         }
       }
     },
-    [allItems, focusedIndex, onFocusChange, onSelectionChange, onDelete, onRename],
+    [
+      allItems,
+      focusedIndex,
+      onFocusChange,
+      onSelectionChange,
+      onDelete,
+      onRename,
+    ],
   );
 
   useEffect(() => {

@@ -461,7 +461,7 @@ const FileBrowser: React.FC = () => {
   }, [existingNames]);
 
   // Path utilities
-  const { joinPath, getParentPath, getBaseName } = useFilePathUtilities();
+  const { joinPath, getParentPath } = useFilePathUtilities();
 
   const handleDownloadCurrent = useCallback(
     (path: string) => {
@@ -583,8 +583,7 @@ const FileBrowser: React.FC = () => {
       }
 
       const target = resource?.items?.find((item) => item.path === path);
-      const isDirectory =
-        target?.type === "directory" || path.endsWith("/");
+      const isDirectory = target?.type === "directory" || path.endsWith("/");
       const parent = getParentPath(path);
       let destination = parent === "/" ? `/${trimmed}` : `${parent}/${trimmed}`;
       if (isDirectory && !destination.endsWith("/")) {
@@ -610,7 +609,6 @@ const FileBrowser: React.FC = () => {
   const handleRename = useCallback(() => {
     handleStartInlineRename();
   }, [handleStartInlineRename]);
-
 
   const handleDelete = useCallback(() => {
     handleCloseContextMenu();
@@ -1324,7 +1322,6 @@ const FileBrowser: React.FC = () => {
         onClose={() => setCreateFolderDialog(false)}
         onConfirm={handleConfirmCreateFolder}
       />
-
 
       <ConfirmDialog
         open={deleteDialog}

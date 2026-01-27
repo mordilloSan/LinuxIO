@@ -168,7 +168,9 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
               onFolderClick={onFolderClick}
               onOpenDirectory={onOpenDirectory}
               onFolderContextMenu={onFolderContextMenu}
-              onConfirmRename={(newName) => onConfirmRename(folder.path, newName)}
+              onConfirmRename={(newName) =>
+                onConfirmRename(folder.path, newName)
+              }
               onCancelRename={onCancelRename}
               disableHover={isMarqueeSelecting}
               subfoldersMap={subfoldersMap}
