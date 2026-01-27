@@ -72,10 +72,7 @@ function UnifiedCollapsibleTable<T>({
               })}
             >
               {renderFirstCell && (
-                <TableCell
-                  width="40px"
-                  sx={{ padding: "8px 4px 8px 4px" }}
-                >
+                <TableCell width="40px" sx={{ padding: "8px 4px 8px 4px" }}>
                   {renderHeaderFirstCell?.()}
                 </TableCell>
               )}
@@ -172,8 +169,6 @@ function UnifiedCollapsibleTable<T>({
                                 : "rgba(0,0,0,0.03)",
                             overflowX: "auto",
                             "@media (max-width: 600px)": {
-                              margin: 1,
-                              padding: 1,
                               fontSize: "0.85rem",
                             },
                           }}

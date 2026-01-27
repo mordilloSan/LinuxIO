@@ -109,6 +109,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
       sx: { display: { xs: "none", sm: "table-cell" } },
     },
     {
+      field: "location",
+      headerName: "Location",
+      sx: { display: { xs: "none", lg: "table-cell" } },
+    },
+    {
       field: "actions",
       headerName: "Actions",
       align: "center",
@@ -170,6 +175,21 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     "docker-compose.yml"}
                 </Typography>
               </Box>
+            </Tooltip>
+          </TableCell>
+          <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
+            <Tooltip title={project.working_dir || "Unknown"}>
+              <Typography
+                variant="body2"
+                noWrap
+                sx={{
+                  maxWidth: 600,
+                  fontSize: "0.85rem",
+                  color: "text.secondary",
+                }}
+              >
+                {project.working_dir || "-"}
+              </Typography>
             </Tooltip>
           </TableCell>
           <TableCell align="right">
@@ -263,9 +283,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
   const renderExpandedContent = useCallback((project: ComposeProject) => {
     return (
       <>
-        <Typography variant="subtitle2" gutterBottom>
-          <b>Services:</b>
-        </Typography>
         <Table size="small">
           <TableHead>
             <TableRow>
