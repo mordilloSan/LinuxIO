@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mordilloSan/go-logger/logger"
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
@@ -65,13 +66,16 @@ func parseNFSSource(source string) (server, exportPath string) {
 func ListNFSExports(server string) ([]string, error) {
 	// Validate server input
 	if !validNFSServer.MatchString(server) {
+		logger.Warnf("[NFS] Invalid server hostname: %s", server)
 		return nil, fmt.Errorf("invalid NFS server hostname")
 	}
 
 	// Run showmount -e to list exports
+	logger.Debugf("[NFS] Querying exports from server: %s", server)
 	cmd := exec.Command("showmount", "-e", server, "--no-headers")
 	output, err := cmd.Output()
 	if err != nil {
+		logger.Errorf("[NFS] Failed to query exports from %s: %v", server, err)
 		return nil, fmt.Errorf("failed to query NFS exports: %v", err)
 	}
 
@@ -90,6 +94,7 @@ func ListNFSExports(server string) ([]string, error) {
 		}
 	}
 
+	logger.Debugf("[NFS] Found %d exports from %s", len(exports), server)
 	return exports, nil
 }
 
@@ -146,17 +151,21 @@ func ListNFSMounts() ([]NFSMount, error) {
 func MountNFS(server, exportPath, mountpoint, optionsJSON string, persist bool) (map[string]any, error) {
 	// Validate inputs
 	if !validNFSServer.MatchString(server) {
+		logger.Warnf("[NFS] Invalid server hostname: %s", server)
 		return nil, fmt.Errorf("invalid NFS server hostname")
 	}
 	if !validPath.MatchString(exportPath) {
+		logger.Warnf("[NFS] Invalid export path: %s", exportPath)
 		return nil, fmt.Errorf("invalid export path")
 	}
 	if !validPath.MatchString(mountpoint) {
+		logger.Warnf("[NFS] Invalid mountpoint: %s", mountpoint)
 		return nil, fmt.Errorf("invalid mountpoint")
 	}
 
 	// Block dangerous mountpoints
 	if isSystemPath(mountpoint) {
+		logger.Warnf("[NFS] Blocked mount to system path: %s", mountpoint)
 		return nil, fmt.Errorf("cannot mount to system path: %s", mountpoint)
 	}
 
@@ -164,6 +173,7 @@ func MountNFS(server, exportPath, mountpoint, optionsJSON string, persist bool) 
 
 	// Create mountpoint if it doesn't exist
 	if err := os.MkdirAll(mountpoint, 0755); err != nil {
+		logger.Errorf("[NFS] Failed to create mountpoint %s: %v", mountpoint, err)
 		return nil, fmt.Errorf("failed to create mountpoint: %w", err)
 	}
 
@@ -178,11 +188,15 @@ func MountNFS(server, exportPath, mountpoint, optionsJSON string, persist bool) 
 	}
 	args = append(args, source, mountpoint)
 
+	logger.Debugf("[NFS] Executing: mount %v", args)
 	cmd := exec.Command("mount", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		logger.Errorf("[NFS] Mount failed for %s: %s", source, strings.TrimSpace(string(out)))
 		return nil, fmt.Errorf("mount failed: %s", strings.TrimSpace(string(out)))
 	}
+
+	logger.Infof("[NFS] Successfully mounted %s at %s", source, mountpoint)
 
 	result := map[string]any{
 		"success":    true,
@@ -193,7 +207,10 @@ func MountNFS(server, exportPath, mountpoint, optionsJSON string, persist bool) 
 	if persist {
 		options := parseOptionsString(optionsJSON)
 		if err := addToFstab(source, mountpoint, "nfs", options); err != nil {
+			logger.Warnf("[NFS] Mount succeeded but fstab update failed: %v", err)
 			result["warning"] = fmt.Sprintf("mount succeeded but fstab update failed: %v", err)
+		} else {
+			logger.Infof("[NFS] Added %s to fstab for persistence", mountpoint)
 		}
 	}
 
@@ -204,12 +221,14 @@ func MountNFS(server, exportPath, mountpoint, optionsJSON string, persist bool) 
 func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any, error) {
 	// Validate input
 	if !validPath.MatchString(mountpoint) {
+		logger.Warnf("[NFS] Invalid mountpoint: %s", mountpoint)
 		return nil, fmt.Errorf("invalid mountpoint")
 	}
 
 	// Get current mount info
 	partitions, err := disk.Partitions(true)
 	if err != nil {
+		logger.Errorf("[NFS] Failed to get mount info: %v", err)
 		return nil, fmt.Errorf("failed to get mount info: %w", err)
 	}
 
@@ -222,6 +241,7 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 	}
 
 	if currentMount == nil {
+		logger.Warnf("[NFS] Mount not found at %s", mountpoint)
 		return nil, fmt.Errorf("NFS mount not found at %s", mountpoint)
 	}
 
@@ -229,9 +249,11 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 	fstype := currentMount.Fstype
 
 	// Unmount first
+	logger.Debugf("[NFS] Unmounting %s for remount", mountpoint)
 	unmountCmd := exec.Command("umount", mountpoint)
 	out, err := unmountCmd.CombinedOutput()
 	if err != nil {
+		logger.Errorf("[NFS] Unmount failed for %s: %s", mountpoint, strings.TrimSpace(string(out)))
 		return nil, fmt.Errorf("unmount failed: %s", strings.TrimSpace(string(out)))
 	}
 
@@ -243,12 +265,15 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 	}
 	args = append(args, source, mountpoint)
 
+	logger.Debugf("[NFS] Remounting: mount %v", args)
 	mountCmd := exec.Command("mount", args...)
 	out, err = mountCmd.CombinedOutput()
 	if err != nil {
-		// Try to remount with original options on failure
+		logger.Errorf("[NFS] Remount failed for %s: %s", mountpoint, strings.TrimSpace(string(out)))
 		return nil, fmt.Errorf("remount failed: %s", strings.TrimSpace(string(out)))
 	}
+
+	logger.Infof("[NFS] Successfully remounted %s with new options", mountpoint)
 
 	result := map[string]any{
 		"success":    true,
@@ -258,7 +283,10 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 	// Update fstab if requested
 	if updateFstab {
 		if err := updateFstabOptions(mountpoint, options); err != nil {
+			logger.Warnf("[NFS] Remount succeeded but fstab update failed: %v", err)
 			result["warning"] = fmt.Sprintf("remount succeeded but fstab update failed: %v", err)
+		} else {
+			logger.Infof("[NFS] Updated fstab options for %s", mountpoint)
 		}
 	}
 
@@ -269,20 +297,28 @@ func RemountNFS(mountpoint, newOptions string, updateFstab bool) (map[string]any
 func UnmountNFS(mountpoint string, removeFstab bool) (map[string]any, error) {
 	// Validate input
 	if !validPath.MatchString(mountpoint) {
+		logger.Warnf("[NFS] Invalid mountpoint: %s", mountpoint)
 		return nil, fmt.Errorf("invalid mountpoint")
 	}
 
+	logger.Debugf("[NFS] Unmounting %s", mountpoint)
 	cmd := exec.Command("umount", mountpoint)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		logger.Errorf("[NFS] Unmount failed for %s: %s", mountpoint, strings.TrimSpace(string(out)))
 		return nil, fmt.Errorf("umount failed: %s", strings.TrimSpace(string(out)))
 	}
+
+	logger.Infof("[NFS] Successfully unmounted %s", mountpoint)
 
 	result := map[string]any{"success": true}
 
 	if removeFstab {
 		if err := removeFromFstab(mountpoint); err != nil {
+			logger.Warnf("[NFS] Unmount succeeded but fstab update failed: %v", err)
 			result["warning"] = fmt.Sprintf("unmount succeeded but fstab update failed: %v", err)
+		} else {
+			logger.Infof("[NFS] Removed %s from fstab", mountpoint)
 		}
 	}
 

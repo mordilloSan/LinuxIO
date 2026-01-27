@@ -25,6 +25,7 @@ import { toast } from "sonner";
 
 import type { ApiDisk } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
+import { cardBorderRadius } from "@/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 interface DriveDetailsDialogProps {
@@ -232,19 +233,22 @@ const DriveDetailsDialog: React.FC<DriveDetailsDialogProps> = ({
         },
         paper: {
           sx: {
+            borderRadius: cardBorderRadius,
             backgroundColor:
               theme.palette.mode === "dark"
-                ? "rgba(17,25,40,0.95)"
-                : "rgba(255,255,255,0.95)",
+                ? "rgba(17,25,40,0.6)"
+                : "rgba(255,255,255,0.82)",
             backgroundImage:
               theme.palette.mode === "dark"
-                ? "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.04) 100%)"
-                : "linear-gradient(180deg, rgba(226,232,240,0.72) 0%, rgba(255,255,255,0.95) 100%)",
-            backdropFilter: "blur(20px)",
-            border:
+                ? "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.14) 18%, rgba(255,255,255,0.11) 38%, rgba(255,255,255,0.09) 62%, rgba(255,255,255,0.08) 100%)"
+                : "linear-gradient(180deg, rgba(226,232,240,0.72) 0%, rgba(255,255,255,0.82) 18%, rgba(255,255,255,0.9) 40%, rgba(255,255,255,0.95) 70%, rgba(255,255,255,0.98) 100%)",
+            backdropFilter:
+              theme.palette.mode === "dark" ? "blur(20px)" : "blur(16px)",
+            border: "1px solid transparent",
+            boxShadow:
               theme.palette.mode === "dark"
-                ? "1px solid rgba(255,255,255,0.1)"
-                : "1px solid rgba(0,0,0,0.1)",
+                ? "0 16px 40px -28px rgba(0,0,0,0.6)"
+                : "0 18px 36px -28px rgba(15,23,42,0.18)",
             maxHeight: "85vh",
           },
         },
