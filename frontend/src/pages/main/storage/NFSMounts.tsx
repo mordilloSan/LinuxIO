@@ -73,7 +73,12 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
       opts.push("_netdev");
     }
     if (customOptions.trim()) {
-      opts.push(...customOptions.split(",").map((o) => o.trim()).filter(Boolean));
+      opts.push(
+        ...customOptions
+          .split(",")
+          .map((o) => o.trim())
+          .filter(Boolean),
+      );
     }
     return opts.join(",");
   };
@@ -315,15 +320,34 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
       // Filter out known/default options to get user-defined custom ones
       const knownOptions = [
         // Read/write
-        "ro", "rw",
+        "ro",
+        "rw",
         // Boot/network
-        "_netdev", "defaults", "nofail", "auto", "noauto",
+        "_netdev",
+        "defaults",
+        "nofail",
+        "auto",
+        "noauto",
         // Access time (system defaults)
-        "relatime", "noatime", "atime", "strictatime", "lazytime",
+        "relatime",
+        "noatime",
+        "atime",
+        "strictatime",
+        "lazytime",
         // Common defaults
-        "sync", "async", "exec", "noexec", "suid", "nosuid", "dev", "nodev",
+        "sync",
+        "async",
+        "exec",
+        "noexec",
+        "suid",
+        "nosuid",
+        "dev",
+        "nodev",
         // NFS common
-        "hard", "soft", "intr", "nointr",
+        "hard",
+        "soft",
+        "intr",
+        "nointr",
       ];
       const custom = opts.filter((o) => !knownOptions.includes(o));
       setCustomOptions(custom.join(","));
@@ -337,7 +361,12 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
       opts.push("_netdev");
     }
     if (customOptions.trim()) {
-      opts.push(...customOptions.split(",").map((o) => o.trim()).filter(Boolean));
+      opts.push(
+        ...customOptions
+          .split(",")
+          .map((o) => o.trim())
+          .filter(Boolean),
+      );
     }
     return opts.join(",");
   };
@@ -385,14 +414,14 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
           <TextField
             label="Server Address"
             value={server}
-            InputProps={{ readOnly: true }}
+            slotProps={{ input: { readOnly: true } }}
             fullWidth
             size="small"
           />
           <TextField
             label="Path on Server"
             value={exportPath}
-            InputProps={{ readOnly: true }}
+            slotProps={{ input: { readOnly: true } }}
             fullWidth
             size="small"
           />
@@ -400,7 +429,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
             <TextField
               label="Local Mountpoint"
               value={mount.mountpoint}
-              InputProps={{ readOnly: true }}
+              slotProps={{ input: { readOnly: true } }}
               fullWidth
               size="small"
             />
