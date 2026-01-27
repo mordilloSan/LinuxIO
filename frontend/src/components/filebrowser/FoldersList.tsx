@@ -17,16 +17,22 @@ interface FoldersListProps {
   isMarqueeSelecting?: boolean;
   subfoldersMap: Map<string, SubfolderData>;
   isLoadingSubfolders: boolean;
+  renamingPath: string | null;
+  onConfirmRename: (path: string, newName: string) => void;
+  onCancelRename: () => void;
 }
 
 interface FolderItemProps {
   folder: FileItem;
   selected: boolean;
   isCut: boolean;
+  isRenaming: boolean;
   viewMode: ViewMode;
   onFolderClick: (event: React.MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
   onFolderContextMenu: (event: React.MouseEvent, path: string) => void;
+  onConfirmRename: (newName: string) => void;
+  onCancelRename: () => void;
   disableHover?: boolean;
   subfoldersMap: Map<string, SubfolderData>;
   isLoadingSubfolders: boolean;
@@ -37,10 +43,13 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
     folder,
     selected,
     isCut,
+    isRenaming,
     viewMode,
     onFolderClick,
     onOpenDirectory,
     onFolderContextMenu,
+    onConfirmRename,
+    onCancelRename,
     disableHover = false,
     subfoldersMap,
     isLoadingSubfolders,
@@ -84,6 +93,7 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
         hidden={folder.hidden}
         selected={selected}
         isCut={isCut}
+        isRenaming={isRenaming}
         showFullPath={folder.showFullPath}
         directorySizeLoading={sizeIsLoading}
         directorySizeError={null}
@@ -91,6 +101,8 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
         onClick={(event) => onFolderClick(event, folder.path)}
         onDoubleClick={() => onOpenDirectory(folder.path)}
         onContextMenu={(event) => onFolderContextMenu(event, folder.path)}
+        onConfirmRename={onConfirmRename}
+        onCancelRename={onCancelRename}
         disableHover={disableHover}
       />
     );
@@ -111,6 +123,9 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
     isMarqueeSelecting = false,
     subfoldersMap,
     isLoadingSubfolders,
+    renamingPath,
+    onConfirmRename,
+    onCancelRename,
   }) => {
     if (folders.length === 0) {
       return null;
@@ -148,10 +163,13 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
               folder={folder}
               selected={selectedPaths.has(folder.path)}
               isCut={cutPaths.has(folder.path)}
+              isRenaming={renamingPath === folder.path}
               viewMode={viewMode}
               onFolderClick={onFolderClick}
               onOpenDirectory={onOpenDirectory}
               onFolderContextMenu={onFolderContextMenu}
+              onConfirmRename={(newName) => onConfirmRename(folder.path, newName)}
+              onCancelRename={onCancelRename}
               disableHover={isMarqueeSelecting}
               subfoldersMap={subfoldersMap}
               isLoadingSubfolders={isLoadingSubfolders}

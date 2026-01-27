@@ -17,6 +17,7 @@ import React from "react";
 
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
 
+import { isEditableFile } from "@/components/filebrowser/utils";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
@@ -89,8 +90,8 @@ const FileDetail: React.FC<FileDetailProps> = ({
   }
 
   const isSymlink = resource.symlink;
-  // Show edit button for all non-directory files (backend determines if truly editable)
-  const isEditableFile = !isDirectory;
+  // Show edit button only for text-based files that can be edited
+  const canEdit = !isDirectory && isEditableFile(resource.name);
 
   const getTypeIcon = () => {
     if (isSymlink) return <LinkIcon fontSize="large" />;
@@ -208,7 +209,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
             >
               Download
             </Button>
-            {isEditableFile && onEdit && (
+            {canEdit && onEdit && (
               <Button
                 variant="outlined"
                 startIcon={<EditIcon />}
