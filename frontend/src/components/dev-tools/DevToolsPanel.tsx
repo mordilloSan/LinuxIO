@@ -1,6 +1,6 @@
 import { Button } from "@mui/material";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useEffectEvent } from "react";
 
 interface DevToolsPanelProps {
   isOpen: boolean;
@@ -61,41 +61,41 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
     }
   };
 
+  const handleMouseMove = useEffectEvent((e: MouseEvent) => {
+    if (isDragging && dragRef.current) {
+      const deltaX = e.clientX - dragRef.current.startX;
+      const deltaY = e.clientY - dragRef.current.startY;
+
+      const newX = dragRef.current.initialX + deltaX;
+      const newY = dragRef.current.initialY + deltaY;
+
+      // Constrain to viewport - keep at least 50px of the panel visible
+      const minVisible = 50;
+      const maxX = window.innerWidth - minVisible;
+      const maxY = window.innerHeight - minVisible;
+
+      const constrainedX = Math.max(-550, Math.min(maxX, newX));
+      const constrainedY = Math.max(0, Math.min(maxY, newY));
+
+      setPosition({ x: constrainedX, y: constrainedY });
+    }
+  });
+
+  const handleDragMouseUp = useEffectEvent(() => {
+    setIsDragging(false);
+    dragRef.current = null;
+  });
+
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging && dragRef.current) {
-        const deltaX = e.clientX - dragRef.current.startX;
-        const deltaY = e.clientY - dragRef.current.startY;
-
-        const newX = dragRef.current.initialX + deltaX;
-        const newY = dragRef.current.initialY + deltaY;
-
-        // Constrain to viewport - keep at least 50px of the panel visible
-        const minVisible = 50;
-        const maxX = window.innerWidth - minVisible;
-        const maxY = window.innerHeight - minVisible;
-
-        const constrainedX = Math.max(-550, Math.min(maxX, newX));
-        const constrainedY = Math.max(0, Math.min(maxY, newY));
-
-        setPosition({ x: constrainedX, y: constrainedY });
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-      dragRef.current = null;
-    };
-
     if (isDragging) {
       document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
+      document.addEventListener("mouseup", handleDragMouseUp);
       return () => {
         document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleMouseUp);
+        document.removeEventListener("mouseup", handleDragMouseUp);
       };
     }
-  }, [isDragging, position.x, position.y]);
+  }, [isDragging]);
 
   if (!import.meta.env.DEV || !isOpen) {
     return null;

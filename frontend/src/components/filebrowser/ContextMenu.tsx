@@ -18,7 +18,7 @@ import {
   ListItemText,
   Divider,
 } from "@mui/material";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useEffectEvent, useRef } from "react";
 
 interface ContextMenuProps {
   anchorPosition: { top: number; left: number } | null;
@@ -76,18 +76,18 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   const renameDisabled = canRename === undefined ? !hasSelection : !canRename;
 
   // Close menu on Escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      onClose();
+    }
+  });
 
+  useEffect(() => {
     if (anchorPosition) {
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
     }
-  }, [anchorPosition, onClose]);
+  }, [Boolean(anchorPosition)]);
 
   return (
     <Menu

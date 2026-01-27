@@ -2,6 +2,7 @@ import { useTheme } from "@mui/material";
 import {
   useState,
   useEffect,
+  useEffectEvent,
   useImperativeHandle,
   forwardRef,
   useRef,
@@ -136,19 +137,19 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     }, [isDirty, onDirtyChange]);
 
     // Add Ctrl+S keyboard shortcut
-    useEffect(() => {
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-          e.preventDefault();
-          if (!isSaving) {
-            handleSave();
-          }
+    const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        if (!isSaving) {
+          handleSave();
         }
-      };
+      }
+    });
 
+    useEffect(() => {
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [handleSave, isSaving]);
+    }, []);
 
     const handleContentChange = (newValue: string) => {
       updateEditorState((state) => ({

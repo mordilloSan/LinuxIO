@@ -9,7 +9,7 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import ComposeValidationFeedback, {
   ValidationResult,
@@ -163,21 +163,21 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   }, [mode, stackName, onValidate, onSave, filePath]);
 
   // Add Ctrl+S keyboard shortcut
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      e.preventDefault();
+      if (!isSaving && !isValidating) {
+        handleSave();
+      }
+    }
+  });
+
   useEffect(() => {
     if (!open) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        if (!isSaving && !isValidating) {
-          handleSave();
-        }
-      }
-    };
-
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, isSaving, isValidating, handleSave]);
+  }, [open]);
 
   const sanitizeStackName = (name: string): string => {
     return name

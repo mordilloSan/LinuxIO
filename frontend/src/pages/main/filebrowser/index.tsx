@@ -19,6 +19,7 @@ import React, {
   ReactNode,
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -297,29 +298,29 @@ const FileBrowser: React.FC = () => {
     onContextMenuClose: handleCloseContextMenu,
   });
   // Add keyboard shortcuts for copy/cut/paste operations
+  const handleClipboardKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    // Only handle shortcuts when not editing a file
+    if (editingPath) return;
+
+    // Check if Ctrl (or Cmd on Mac) is pressed
+    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+    if (isCtrlOrCmd && e.key === "c") {
+      e.preventDefault();
+      handleCopy();
+    } else if (isCtrlOrCmd && e.key === "x") {
+      e.preventDefault();
+      handleCut();
+    } else if (isCtrlOrCmd && e.key === "v") {
+      e.preventDefault();
+      handlePaste();
+    }
+  });
+
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle shortcuts when not editing a file
-      if (editingPath) return;
-
-      // Check if Ctrl (or Cmd on Mac) is pressed
-      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-
-      if (isCtrlOrCmd && e.key === "c") {
-        e.preventDefault();
-        handleCopy();
-      } else if (isCtrlOrCmd && e.key === "x") {
-        e.preventDefault();
-        handleCut();
-      } else if (isCtrlOrCmd && e.key === "v") {
-        e.preventDefault();
-        handlePaste();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [editingPath, handleCopy, handleCut, handlePaste]);
+    document.addEventListener("keydown", handleClipboardKeyDown);
+    return () => document.removeEventListener("keydown", handleClipboardKeyDown);
+  }, []);
 
   // Derive cut paths from clipboard for visual dimming
   const cutPaths = useMemo(() => {
