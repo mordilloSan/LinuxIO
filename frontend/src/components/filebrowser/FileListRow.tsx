@@ -1,5 +1,12 @@
 import { useTheme } from "@mui/material/styles";
-import React, { useCallback, useMemo } from "react";
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+  useEffectEvent,
+} from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
@@ -17,6 +24,8 @@ export interface FileListRowProps {
   isSymlink?: boolean;
   selected?: boolean;
   hidden?: boolean;
+  isCut?: boolean;
+  isRenaming?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
   directorySizeLoading?: boolean;
   directorySizeError?: Error | null;
@@ -24,6 +33,8 @@ export interface FileListRowProps {
   onClick: (event: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
+  onConfirmRename?: (newName: string) => void;
+  onCancelRename?: () => void;
   borderRadius?: number | string;
   disableHover?: boolean;
 }
@@ -41,6 +52,8 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     isSymlink = false,
     selected = false,
     hidden = false,
+    isCut = false,
+    isRenaming = false,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
@@ -48,9 +61,61 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     onClick,
     onDoubleClick,
     onContextMenu,
+    onConfirmRename,
+    onCancelRename,
     borderRadius,
   }) => {
     const theme = useTheme();
+    const [renameValue, setRenameValue] = useState(name);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    const syncRenameValue = useEffectEvent(() => {
+      setRenameValue(name);
+    });
+
+    // Auto-focus and select text when entering rename mode
+    useEffect(() => {
+      if (isRenaming && inputRef.current) {
+        inputRef.current.focus();
+        // Select filename without extension for files, or full name for directories
+        const dotIndex = isDirectory ? -1 : name.lastIndexOf(".");
+        if (dotIndex > 0) {
+          inputRef.current.setSelectionRange(0, dotIndex);
+        } else {
+          inputRef.current.select();
+        }
+      }
+      if (isRenaming) {
+        syncRenameValue();
+      }
+    }, [isRenaming, name, isDirectory]);
+
+    const handleRenameKeyDown = useCallback(
+      (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const trimmed = renameValue.trim();
+          if (trimmed && trimmed !== name && onConfirmRename) {
+            onConfirmRename(trimmed);
+          } else {
+            onCancelRename?.();
+          }
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          onCancelRename?.();
+        }
+      },
+      [renameValue, name, onConfirmRename, onCancelRename],
+    );
+
+    const handleRenameBlur = useCallback(() => {
+      const trimmed = renameValue.trim();
+      if (trimmed && trimmed !== name && onConfirmRename) {
+        onConfirmRename(trimmed);
+      } else {
+        onCancelRename?.();
+      }
+    }, [renameValue, name, onConfirmRename, onCancelRename]);
 
     // For search results (showFullPath=true), fetch individual directory sizes
     const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
@@ -142,6 +207,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           cursor: "pointer",
           borderRadius: resolvedBorderRadius,
           userSelect: "none",
+          opacity: isCut ? 0.5 : 1,
         }}
       >
         {/* Name and Icon */}
@@ -183,17 +249,42 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
                 overflow: "hidden",
               }}
             >
-              <div
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
-                {name}
-              </div>
+              {isRenaming ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={handleRenameKeyDown}
+                  onBlur={handleRenameBlur}
+                  onClick={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  style={{
+                    fontSize: "0.9375rem",
+                    fontWeight: 500,
+                    color: theme.palette.text.primary,
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    outline: "none",
+                    flex: 1,
+                    minWidth: 0,
+                    boxSizing: "border-box",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  {name}
+                </div>
+              )}
               {showFullPath && (
                 <span
                   style={{
