@@ -37,6 +37,7 @@ const TerminalPage = lazy(() => import("@/pages/main/terminal"));
 const Shares = lazy(() => import("@/pages/main/shares"));
 const FileBrowser = lazy(() => import("@/pages/main/filebrowser"));
 const ModulesPage = lazy(() => import("@/pages/main/modules"));
+const StoragePage = lazy(() => import("@/pages/main/storage"));
 
 // Auth pages
 const SignIn = lazy(() => import("@/pages/auth/Login"));
@@ -105,7 +106,7 @@ const coreRoutes: RouteWithSidebar[] = [
   },
   {
     path: "storage",
-    element: null,
+    element: <StoragePage />,
     sidebar: {
       title: "Storage",
       icon: HardDrive,
