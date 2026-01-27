@@ -167,8 +167,10 @@ export const useFileMarqueeSelection = (
     setMarqueeBox(null);
   });
 
+  const isMarqueeActive = Boolean(marqueeBox);
+
   useEffect(() => {
-    if (!marqueeBox) return;
+    if (!isMarqueeActive) return;
 
     // Add event listeners to document for global tracking
     document.addEventListener("mousemove", handleMouseMove);
@@ -178,7 +180,7 @@ export const useFileMarqueeSelection = (
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [Boolean(marqueeBox)]);
+  }, [isMarqueeActive]);
 
   // Calculate visual selection box dimensions
   const selectionBox = marqueeBox

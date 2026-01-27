@@ -65,8 +65,10 @@ const WireGuardDashboard: React.FC = () => {
     },
   );
 
+  const hasSelectedInterface = Boolean(selectedInterface);
+
   useEffect(() => {
-    if (selectedInterface) {
+    if (hasSelectedInterface) {
       document.addEventListener("mousedown", handleClickOutside);
       document.addEventListener("keydown", handleClickOutside);
     }
@@ -74,7 +76,7 @@ const WireGuardDashboard: React.FC = () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleClickOutside);
     };
-  }, [Boolean(selectedInterface)]);
+  }, [hasSelectedInterface]);
 
   const handleDelete = (interfaceName: string) => {
     removeInterfaceMutation.mutate([interfaceName], {

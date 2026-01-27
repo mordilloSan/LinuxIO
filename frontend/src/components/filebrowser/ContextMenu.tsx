@@ -74,6 +74,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
     canCompress === undefined ? !hasSelection : !canCompress;
   const extractDisabled = canExtract === undefined ? true : !canExtract;
   const renameDisabled = canRename === undefined ? !hasSelection : !canRename;
+  const isOpen = Boolean(anchorPosition);
 
   // Close menu on Escape key
   const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
@@ -83,11 +84,11 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   });
 
   useEffect(() => {
-    if (anchorPosition) {
+    if (isOpen) {
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
     }
-  }, [Boolean(anchorPosition)]);
+  }, [isOpen]);
 
   return (
     <Menu

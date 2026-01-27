@@ -17,7 +17,13 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import type { NFSMount } from "@/api/linuxio-types";
@@ -72,6 +78,18 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const mountMutation = linuxio.storage.mount_nfs.useMutation();
   const exportsMutation = linuxio.storage.list_nfs_exports.useMutation();
 
+  const fetchExports = useEffectEvent(async (serverAddress: string) => {
+    setLoadingExports(true);
+    try {
+      const result = await exportsMutation.mutateAsync([serverAddress]);
+      setExports(result || []);
+    } catch {
+      setExports([]);
+    } finally {
+      setLoadingExports(false);
+    }
+  });
+
   // Fetch exports when server changes (debounced)
   useEffect(() => {
     if (debounceRef.current) {
@@ -83,16 +101,8 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
       return;
     }
 
-    debounceRef.current = setTimeout(async () => {
-      setLoadingExports(true);
-      try {
-        const result = await exportsMutation.mutateAsync([server]);
-        setExports(result || []);
-      } catch {
-        setExports([]);
-      } finally {
-        setLoadingExports(false);
-      }
+    debounceRef.current = setTimeout(() => {
+      fetchExports(server);
     }, 500);
 
     return () => {
@@ -100,7 +110,6 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
         clearTimeout(debounceRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server]);
 
   const buildOptionsString = () => {
