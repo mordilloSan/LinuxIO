@@ -17,6 +17,7 @@ export interface FileListRowProps {
   isSymlink?: boolean;
   selected?: boolean;
   hidden?: boolean;
+  isCut?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
   directorySizeLoading?: boolean;
   directorySizeError?: Error | null;
@@ -41,6 +42,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
     isSymlink = false,
     selected = false,
     hidden = false,
+    isCut = false,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
@@ -142,6 +144,7 @@ const FileListRow: React.FC<FileListRowProps> = React.memo(
           cursor: "pointer",
           borderRadius: resolvedBorderRadius,
           userSelect: "none",
+          opacity: isCut ? 0.5 : 1,
         }}
       >
         {/* Name and Icon */}

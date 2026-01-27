@@ -32,6 +32,7 @@ interface DirectoryListingProps {
   onOpenDirectory: (path: string) => void;
   onDownloadFile: (item: FileItem) => void;
   selectedPaths: Set<string>;
+  cutPaths: Set<string>;
   onSelectedPathsChange: (paths: Set<string>) => void;
   isContextMenuOpen: boolean;
   onDelete?: () => void;
@@ -46,6 +47,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   onOpenDirectory,
   onDownloadFile,
   selectedPaths,
+  cutPaths,
   onSelectedPathsChange,
   isContextMenuOpen,
   onDelete,
@@ -288,6 +290,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
       <FoldersList
         folders={folders}
         selectedPaths={selectedPaths}
+        cutPaths={cutPaths}
         viewMode={viewMode}
         onFolderClick={handleFolderClick}
         onOpenDirectory={onOpenDirectory}
@@ -300,6 +303,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
       <FilesList
         files={files}
         selectedPaths={selectedPaths}
+        cutPaths={cutPaths}
         viewMode={viewMode}
         onFileClick={handleFileClick}
         onDownloadFile={onDownloadFile}

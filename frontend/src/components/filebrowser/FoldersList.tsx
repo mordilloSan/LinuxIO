@@ -9,6 +9,7 @@ import { SubfolderData } from "@/hooks/useFileSubfolders";
 interface FoldersListProps {
   folders: FileItem[];
   selectedPaths: Set<string>;
+  cutPaths: Set<string>;
   viewMode: ViewMode;
   onFolderClick: (event: React.MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
@@ -21,6 +22,7 @@ interface FoldersListProps {
 interface FolderItemProps {
   folder: FileItem;
   selected: boolean;
+  isCut: boolean;
   viewMode: ViewMode;
   onFolderClick: (event: React.MouseEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
@@ -34,6 +36,7 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
   ({
     folder,
     selected,
+    isCut,
     viewMode,
     onFolderClick,
     onOpenDirectory,
@@ -80,6 +83,7 @@ const FolderItem: React.FC<FolderItemProps> = React.memo(
         isSymlink={folder.symlink}
         hidden={folder.hidden}
         selected={selected}
+        isCut={isCut}
         showFullPath={folder.showFullPath}
         directorySizeLoading={sizeIsLoading}
         directorySizeError={null}
@@ -99,6 +103,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
   ({
     folders,
     selectedPaths,
+    cutPaths,
     viewMode,
     onFolderClick,
     onOpenDirectory,
@@ -142,6 +147,7 @@ const FoldersList: React.FC<FoldersListProps> = React.memo(
               key={`${folder.path}-${folder.name}`}
               folder={folder}
               selected={selectedPaths.has(folder.path)}
+              isCut={cutPaths.has(folder.path)}
               viewMode={viewMode}
               onFolderClick={onFolderClick}
               onOpenDirectory={onOpenDirectory}

@@ -8,6 +8,7 @@ import FileListRow from "@/components/filebrowser/FileListRow";
 interface FilesListProps {
   files: FileItem[];
   selectedPaths: Set<string>;
+  cutPaths: Set<string>;
   viewMode: ViewMode;
   onFileClick: (event: React.MouseEvent, path: string) => void;
   onDownloadFile: (item: FileItem) => void;
@@ -19,6 +20,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(
   ({
     files,
     selectedPaths,
+    cutPaths,
     viewMode,
     onFileClick,
     onDownloadFile,
@@ -69,6 +71,7 @@ const FilesList: React.FC<FilesListProps> = React.memo(
               isSymlink={file.symlink}
               hidden={file.hidden}
               selected={selectedPaths.has(file.path)}
+              isCut={cutPaths.has(file.path)}
               showFullPath={file.showFullPath}
               onClick={(event) => onFileClick(event, file.path)}
               onDoubleClick={() => onDownloadFile(file)}

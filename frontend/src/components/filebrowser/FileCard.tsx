@@ -40,6 +40,7 @@ export interface FileCardProps {
   isSymlink?: boolean;
   selected?: boolean;
   hidden?: boolean;
+  isCut?: boolean;
   directorySizeLoading?: boolean;
   directorySizeError?: Error | null;
   directorySizeUnavailable?: boolean;
@@ -60,6 +61,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     isSymlink = false,
     selected = false,
     hidden = false,
+    isCut = false,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
@@ -166,6 +168,7 @@ const FileCard: React.FC<FileCardProps> = React.memo(
           cursor: "pointer",
           minHeight: "60px",
           userSelect: "none",
+          opacity: isCut ? 0.5 : 1,
         }}
       >
         <FileIcon
