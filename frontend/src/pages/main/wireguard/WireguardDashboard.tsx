@@ -1,6 +1,6 @@
 import { Grid, Typography, Box } from "@mui/material";
 import { motion, AnimatePresence } from "framer-motion";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
 
 import InterfaceDetails from "./InterfaceClients";
@@ -44,8 +44,8 @@ const WireGuardDashboard: React.FC = () => {
 
   const WGinterfaces = Array.isArray(interfaceData) ? interfaceData : [];
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent | KeyboardEvent) {
+  const handleClickOutside = useEffectEvent(
+    (event: MouseEvent | KeyboardEvent) => {
       if (event.type === "mousedown") {
         const mouseEvent = event as MouseEvent;
         if (
@@ -62,9 +62,13 @@ const WireGuardDashboard: React.FC = () => {
           setSelectedInterface(null);
         }
       }
-    }
+    },
+  );
 
-    if (selectedInterface) {
+  const hasSelectedInterface = Boolean(selectedInterface);
+
+  useEffect(() => {
+    if (hasSelectedInterface) {
       document.addEventListener("mousedown", handleClickOutside);
       document.addEventListener("keydown", handleClickOutside);
     }
@@ -72,7 +76,7 @@ const WireGuardDashboard: React.FC = () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleClickOutside);
     };
-  }, [selectedInterface]);
+  }, [hasSelectedInterface]);
 
   const handleDelete = (interfaceName: string) => {
     removeInterfaceMutation.mutate([interfaceName], {

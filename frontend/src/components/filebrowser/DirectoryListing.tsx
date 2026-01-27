@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useMemo,
   useEffect,
+  useEffectEvent,
 } from "react";
 
 import EmptyState from "./EmptyState";
@@ -158,23 +159,23 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     useFileMarqueeSelection(containerRef, allItems, onSelectedPathsChange);
 
   // Handle document click to clear selection
-  useEffect(() => {
-    const handleDocumentMouseDown = (event: MouseEvent) => {
-      if (isContextMenuOpen) {
-        return;
-      }
-      if (!containerRef.current) return;
-      if (containerRef.current.contains(event.target as Node)) {
-        return;
-      }
-      clearSelection();
-    };
+  const handleDocumentMouseDown = useEffectEvent((event: MouseEvent) => {
+    if (isContextMenuOpen) {
+      return;
+    }
+    if (!containerRef.current) return;
+    if (containerRef.current.contains(event.target as Node)) {
+      return;
+    }
+    clearSelection();
+  });
 
+  useEffect(() => {
     document.addEventListener("mousedown", handleDocumentMouseDown);
     return () => {
       document.removeEventListener("mousedown", handleDocumentMouseDown);
     };
-  }, [clearSelection, isContextMenuOpen]);
+  }, []);
 
   useEffect(() => {
     onSelectedPathsChange(new Set());

@@ -309,6 +309,54 @@ export interface UsersGroupsResponse {
 }
 
 // ============================================================================
+// Storage Types (LVM & NFS)
+// ============================================================================
+
+export interface PhysicalVolume {
+  name: string;
+  vgName: string;
+  size: number;
+  free: number;
+  attributes: string;
+  format: string;
+}
+
+export interface VolumeGroup {
+  name: string;
+  size: number;
+  free: number;
+  pvCount: number;
+  lvCount: number;
+  attributes: string;
+  pvNames: string[];
+}
+
+export interface LogicalVolume {
+  name: string;
+  vgName: string;
+  size: number;
+  path: string;
+  attributes: string;
+  mountpoint: string;
+  fsType: string;
+  usedPct: number;
+}
+
+export interface NFSMount {
+  source: string;
+  server: string;
+  exportPath: string;
+  mountpoint: string;
+  fsType: string;
+  options: string[];
+  size: number;
+  used: number;
+  free: number;
+  usedPct: number;
+  inFstab: boolean;
+}
+
+// ============================================================================
 // Control Types
 // ============================================================================
 
@@ -546,6 +594,49 @@ export interface LinuxIOSchema {
     list_shells: {
       args: [containerId: string];
       result: string[];
+    };
+  };
+
+  storage: {
+    // LVM Read
+    list_pvs: { args: []; result: PhysicalVolume[] };
+    list_vgs: { args: []; result: VolumeGroup[] };
+    list_lvs: { args: []; result: LogicalVolume[] };
+
+    // LVM Write
+    create_lv: {
+      args: [vgName: string, lvName: string, size: string];
+      result: { success: boolean; path: string };
+    };
+    delete_lv: {
+      args: [vgName: string, lvName: string];
+      result: { success: boolean };
+    };
+    resize_lv: {
+      args: [vgName: string, lvName: string, newSize: string];
+      result: { success: boolean };
+    };
+
+    // NFS
+    list_nfs_mounts: { args: []; result: NFSMount[] };
+    list_nfs_exports: { args: [server: string]; result: string[] };
+    mount_nfs: {
+      args: [
+        server: string,
+        exportPath: string,
+        mountpoint: string,
+        options: string,
+        persist: string,
+      ];
+      result: { success: boolean; mountpoint?: string; warning?: string };
+    };
+    unmount_nfs: {
+      args: [mountpoint: string, removeFstab: string];
+      result: { success: boolean; warning?: string };
+    };
+    remount_nfs: {
+      args: [mountpoint: string, options: string, updateFstab: string];
+      result: { success: boolean; mountpoint?: string; warning?: string };
     };
   };
 }

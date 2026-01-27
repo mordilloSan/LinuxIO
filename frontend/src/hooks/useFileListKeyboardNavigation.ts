@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useEffectEvent } from "react";
 import { FileItem } from "@/types/filebrowser";
 
 interface UseFileListKeyboardNavigationProps {
@@ -23,100 +23,90 @@ export const useFileListKeyboardNavigation = ({
   onRename,
   global = false,
 }: UseFileListKeyboardNavigationProps) => {
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      // Don't intercept keyboard events when user is typing in an input/textarea
-      const target = e.target as HTMLElement;
-      if (
-        target?.tagName === "INPUT" ||
-        target?.tagName === "TEXTAREA" ||
-        target?.isContentEditable
-      ) {
-        return;
-      }
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    // Don't intercept keyboard events when user is typing in an input/textarea
+    const target = e.target as HTMLElement;
+    if (
+      target?.tagName === "INPUT" ||
+      target?.tagName === "TEXTAREA" ||
+      target?.isContentEditable
+    ) {
+      return;
+    }
 
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onSelectionChange(new Set());
-        onFocusChange(-1);
-        return;
-      }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onSelectionChange(new Set());
+      onFocusChange(-1);
+      return;
+    }
 
-      // Delete key to delete selected items
-      if (e.key === "Delete") {
-        e.preventDefault();
-        if (onDelete) {
-          onDelete();
+    // Delete key to delete selected items
+    if (e.key === "Delete") {
+      e.preventDefault();
+      if (onDelete) {
+        onDelete();
+      }
+      return;
+    }
+
+    // F2 key to rename selected item
+    if (e.key === "F2") {
+      e.preventDefault();
+      if (onRename) {
+        onRename();
+      }
+      return;
+    }
+
+    // CTRL+A to select all
+    if (e.ctrlKey && e.key === "a") {
+      e.preventDefault();
+      const allPaths = new Set(allItems.map((item) => item.path));
+      onSelectionChange(allPaths);
+      return;
+    }
+
+    // Letter key navigation
+    if (
+      e.key.length === 1 &&
+      e.key.match(/[a-z]/i) &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.metaKey
+    ) {
+      e.preventDefault();
+      const letter = e.key.toLowerCase();
+
+      // Find next item starting with this letter
+      const currentIndex = focusedIndex;
+      let foundIndex = -1;
+
+      // Search from current position forward
+      for (let i = currentIndex + 1; i < allItems.length; i++) {
+        if (allItems[i].name.toLowerCase().startsWith(letter)) {
+          foundIndex = i;
+          break;
         }
-        return;
       }
 
-      // F2 key to rename selected item
-      if (e.key === "F2") {
-        e.preventDefault();
-        if (onRename) {
-          onRename();
-        }
-        return;
-      }
-
-      // CTRL+A to select all
-      if (e.ctrlKey && e.key === "a") {
-        e.preventDefault();
-        const allPaths = new Set(allItems.map((item) => item.path));
-        onSelectionChange(allPaths);
-        return;
-      }
-
-      // Letter key navigation
-      if (
-        e.key.length === 1 &&
-        e.key.match(/[a-z]/i) &&
-        !e.ctrlKey &&
-        !e.altKey &&
-        !e.metaKey
-      ) {
-        e.preventDefault();
-        const letter = e.key.toLowerCase();
-
-        // Find next item starting with this letter
-        const currentIndex = focusedIndex;
-        let foundIndex = -1;
-
-        // Search from current position forward
-        for (let i = currentIndex + 1; i < allItems.length; i++) {
+      // If not found, wrap around and search from beginning
+      if (foundIndex === -1) {
+        for (let i = 0; i <= currentIndex; i++) {
           if (allItems[i].name.toLowerCase().startsWith(letter)) {
             foundIndex = i;
             break;
           }
         }
-
-        // If not found, wrap around and search from beginning
-        if (foundIndex === -1) {
-          for (let i = 0; i <= currentIndex; i++) {
-            if (allItems[i].name.toLowerCase().startsWith(letter)) {
-              foundIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (foundIndex !== -1) {
-          onFocusChange(foundIndex);
-          const item = allItems[foundIndex];
-          onSelectionChange(new Set([item.path]));
-        }
       }
-    },
-    [
-      allItems,
-      focusedIndex,
-      onFocusChange,
-      onSelectionChange,
-      onDelete,
-      onRename,
-    ],
-  );
+
+      if (foundIndex !== -1) {
+        onFocusChange(foundIndex);
+        const item = allItems[foundIndex];
+        onSelectionChange(new Set([item.path]));
+      }
+    }
+  });
 
   useEffect(() => {
     if (global) {
@@ -139,7 +129,7 @@ export const useFileListKeyboardNavigation = ({
         }
       };
     }
-  }, [handleKeyDown, global]);
+  }, [global, containerRef]);
 
   // Scroll focused item into view
   useEffect(() => {

@@ -1,4 +1,10 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useEffectEvent,
+} from "react";
 import { FileItem } from "@/types/filebrowser";
 
 interface MarqueeBox {
@@ -121,48 +127,50 @@ export const useFileMarqueeSelection = (
     [containerRef],
   );
 
-  useEffect(() => {
-    if (!marqueeBox) return;
+  const handleMouseMove = useEffectEvent((event: MouseEvent) => {
+    if (!isSelectingRef.current || !marqueeBox) return;
 
     const container = containerRef.current;
     if (!container) return;
 
-    const handleMouseMove = (event: MouseEvent) => {
-      if (!isSelectingRef.current || !marqueeBox) return;
+    const rect = container.getBoundingClientRect();
 
-      const rect = container.getBoundingClientRect();
+    // Clamp coordinates to container boundaries
+    const scrollAwareX = event.clientX - rect.left + container.scrollLeft;
+    const scrollAwareY = event.clientY - rect.top + container.scrollTop;
 
-      // Clamp coordinates to container boundaries
-      const scrollAwareX = event.clientX - rect.left + container.scrollLeft;
-      const scrollAwareY = event.clientY - rect.top + container.scrollTop;
+    const maxX = container.scrollWidth;
+    const maxY = container.scrollHeight;
 
-      const maxX = container.scrollWidth;
-      const maxY = container.scrollHeight;
+    const currentX = Math.max(0, Math.min(scrollAwareX, maxX));
+    const currentY = Math.max(0, Math.min(scrollAwareY, maxY));
 
-      const currentX = Math.max(0, Math.min(scrollAwareX, maxX));
-      const currentY = Math.max(0, Math.min(scrollAwareY, maxY));
-
-      const newBox = {
-        ...marqueeBox,
-        currentX,
-        currentY,
-      };
-
-      setMarqueeBox(newBox);
-
-      // Update selection dynamically during drag
-      const selectedPaths = calculateSelectedItems(newBox);
-      onSelectionChange(selectedPaths);
+    const newBox = {
+      ...marqueeBox,
+      currentX,
+      currentY,
     };
 
-    const handleMouseUp = () => {
-      if (!isSelectingRef.current) return;
+    setMarqueeBox(newBox);
 
-      // Selection has already been updated dynamically during drag
-      // Just reset the marquee state
-      isSelectingRef.current = false;
-      setMarqueeBox(null);
-    };
+    // Update selection dynamically during drag
+    const selectedPaths = calculateSelectedItems(newBox);
+    onSelectionChange(selectedPaths);
+  });
+
+  const handleMouseUp = useEffectEvent(() => {
+    if (!isSelectingRef.current) return;
+
+    // Selection has already been updated dynamically during drag
+    // Just reset the marquee state
+    isSelectingRef.current = false;
+    setMarqueeBox(null);
+  });
+
+  const isMarqueeActive = Boolean(marqueeBox);
+
+  useEffect(() => {
+    if (!isMarqueeActive) return;
 
     // Add event listeners to document for global tracking
     document.addEventListener("mousemove", handleMouseMove);
@@ -172,7 +180,7 @@ export const useFileMarqueeSelection = (
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [marqueeBox, containerRef, calculateSelectedItems, onSelectionChange]);
+  }, [isMarqueeActive]);
 
   // Calculate visual selection box dimensions
   const selectionBox = marqueeBox
