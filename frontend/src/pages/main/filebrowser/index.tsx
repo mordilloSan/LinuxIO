@@ -321,6 +321,14 @@ const FileBrowser: React.FC = () => {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [editingPath, handleCopy, handleCut, handlePaste]);
 
+  // Derive cut paths from clipboard for visual dimming
+  const cutPaths = useMemo(() => {
+    if (clipboard?.operation === "cut") {
+      return new Set(clipboard.paths);
+    }
+    return new Set<string>();
+  }, [clipboard]);
+
   const pendingArchiveNamesRef = useRef<Set<string>>(new Set());
   const pendingArchiveConflictNamesRef = useRef<Set<string>>(new Set());
 
@@ -1159,6 +1167,7 @@ const FileBrowser: React.FC = () => {
                   onOpenDirectory={handleOpenDirectory}
                   onDownloadFile={handleDoubleClickFile}
                   selectedPaths={selectedPaths}
+                  cutPaths={cutPaths}
                   onSelectedPathsChange={setSelectedPaths}
                   isContextMenuOpen={Boolean(contextMenuPosition)}
                   onDelete={handleDelete}
