@@ -49,6 +49,7 @@ import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog"
 import {
   ensureZipExtension,
   isArchiveFile,
+  isEditableFile,
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -111,8 +112,6 @@ const FileBrowser: React.FC = () => {
     setDetailTarget,
     permissionsDialog,
     setPermissionsDialog,
-    renameDialog,
-    setRenameDialog,
   } = useFileDialogs();
 
   // Editor state
@@ -143,6 +142,7 @@ const FileBrowser: React.FC = () => {
   } = useFileUpload();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { startDownload, startUpload } = useFileTransfers();
@@ -391,9 +391,13 @@ const FileBrowser: React.FC = () => {
 
   const handleDoubleClickFile = useCallback(
     (item: FileItem) => {
-      setDetailTarget([item.path]);
+      if (isEditableFile(item.name)) {
+        setEditingPath(item.path);
+      } else {
+        toast.warning("This file type cannot be edited");
+      }
     },
-    [setDetailTarget],
+    [setEditingPath],
   );
 
   const downloadPaths = useCallback(
@@ -561,37 +565,26 @@ const FileBrowser: React.FC = () => {
     setPermissionsDialog,
   ]);
 
-  const handleRename = useCallback(() => {
+  const handleStartInlineRename = useCallback(() => {
     handleCloseContextMenu();
     if (selectedPaths.size !== 1) {
-      toast.error("Select a single item to rename");
       return;
     }
     const selectedPath = Array.from(selectedPaths)[0];
-    const target = selectedItems.find((i) => i.path === selectedPath);
-    const isDirectory =
-      target?.type === "directory" || selectedPath.endsWith("/");
-    const baseName = getBaseName(selectedPath);
-    setRenameDialog({
-      path: selectedPath,
-      name: baseName,
-      isDirectory,
-    });
-  }, [
-    getBaseName,
-    handleCloseContextMenu,
-    selectedItems,
-    selectedPaths,
-    setRenameDialog,
-  ]);
+    setRenamingPath(selectedPath);
+  }, [handleCloseContextMenu, selectedPaths]);
 
-  const handleConfirmRename = useCallback(
-    async (newName: string) => {
-      if (!renameDialog) return;
+  const handleConfirmInlineRename = useCallback(
+    async (path: string, newName: string) => {
       const trimmed = newName.trim();
-      if (!trimmed) return;
+      if (!trimmed) {
+        setRenamingPath(null);
+        return;
+      }
 
-      const { path, isDirectory } = renameDialog;
+      const target = resource?.items?.find((item) => item.path === path);
+      const isDirectory =
+        target?.type === "directory" || path.endsWith("/");
       const parent = getParentPath(path);
       let destination = parent === "/" ? `/${trimmed}` : `${parent}/${trimmed}`;
       if (isDirectory && !destination.endsWith("/")) {
@@ -600,17 +593,24 @@ const FileBrowser: React.FC = () => {
 
       try {
         await renameItem({ from: path, destination });
-        setRenameDialog(null);
+        setRenamingPath(null);
       } catch {
         // errors handled by mutation toast
+        setRenamingPath(null);
       }
     },
-    [getParentPath, renameDialog, renameItem, setRenameDialog],
+    [getParentPath, renameItem, resource?.items],
   );
 
-  const handleCloseRenameDialog = useCallback(() => {
-    setRenameDialog(null);
-  }, [setRenameDialog]);
+  const handleCancelInlineRename = useCallback(() => {
+    setRenamingPath(null);
+  }, []);
+
+  // Keep dialog-based rename for backward compatibility (context menu)
+  const handleRename = useCallback(() => {
+    handleStartInlineRename();
+  }, [handleStartInlineRename]);
+
 
   const handleDelete = useCallback(() => {
     handleCloseContextMenu();
@@ -1171,6 +1171,10 @@ const FileBrowser: React.FC = () => {
                   onSelectedPathsChange={setSelectedPaths}
                   isContextMenuOpen={Boolean(contextMenuPosition)}
                   onDelete={handleDelete}
+                  renamingPath={renamingPath}
+                  onStartRename={handleStartInlineRename}
+                  onConfirmRename={handleConfirmInlineRename}
+                  onCancelRename={handleCancelInlineRename}
                 />
               )}
 
@@ -1321,17 +1325,6 @@ const FileBrowser: React.FC = () => {
         onConfirm={handleConfirmCreateFolder}
       />
 
-      {renameDialog && (
-        <InputDialog
-          open
-          title="Rename"
-          label="New Name"
-          defaultValue={renameDialog.name}
-          onClose={handleCloseRenameDialog}
-          onConfirm={handleConfirmRename}
-          confirmText="Rename"
-        />
-      )}
 
       <ConfirmDialog
         open={deleteDialog}

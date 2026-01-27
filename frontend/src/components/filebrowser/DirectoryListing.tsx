@@ -36,6 +36,10 @@ interface DirectoryListingProps {
   onSelectedPathsChange: (paths: Set<string>) => void;
   isContextMenuOpen: boolean;
   onDelete?: () => void;
+  renamingPath: string | null;
+  onStartRename: () => void;
+  onConfirmRename: (path: string, newName: string) => void;
+  onCancelRename: () => void;
 }
 
 const DirectoryListing: React.FC<DirectoryListingProps> = ({
@@ -51,6 +55,10 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   onSelectedPathsChange,
   isContextMenuOpen,
   onDelete,
+  renamingPath,
+  onStartRename,
+  onConfirmRename,
+  onCancelRename,
 }) => {
   const [focusState, setFocusState] = useState<{
     path: string;
@@ -141,6 +149,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
     onFocusChange: setFocusedIndex,
     onSelectionChange: onSelectedPathsChange,
     onDelete: onDelete,
+    onRename: onStartRename,
     global: true, // Enable global keyboard navigation
   });
 
@@ -298,6 +307,9 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
         isMarqueeSelecting={isSelecting}
         subfoldersMap={subfoldersMap}
         isLoadingSubfolders={isLoadingSubfolders}
+        renamingPath={renamingPath}
+        onConfirmRename={onConfirmRename}
+        onCancelRename={onCancelRename}
       />
 
       <FilesList
@@ -309,6 +321,9 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
         onDownloadFile={onDownloadFile}
         onFileContextMenu={handleItemContextMenu}
         isMarqueeSelecting={isSelecting}
+        renamingPath={renamingPath}
+        onConfirmRename={onConfirmRename}
+        onCancelRename={onCancelRename}
       />
 
       {isSelecting && selectionBox && (

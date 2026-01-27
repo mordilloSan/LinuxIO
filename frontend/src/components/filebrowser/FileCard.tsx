@@ -1,5 +1,5 @@
 import { useTheme } from "@mui/material/styles";
-import React, { useMemo, useCallback } from "react";
+import React, { useMemo, useCallback, useState, useRef, useEffect } from "react";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import { useFileDirectorySize } from "@/hooks/useFileDirectorySize";
@@ -41,6 +41,7 @@ export interface FileCardProps {
   selected?: boolean;
   hidden?: boolean;
   isCut?: boolean;
+  isRenaming?: boolean;
   directorySizeLoading?: boolean;
   directorySizeError?: Error | null;
   directorySizeUnavailable?: boolean;
@@ -48,6 +49,8 @@ export interface FileCardProps {
   onClick: (event: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
+  onConfirmRename?: (newName: string) => void;
+  onCancelRename?: () => void;
   disableHover?: boolean;
 }
 
@@ -62,15 +65,64 @@ const FileCard: React.FC<FileCardProps> = React.memo(
     selected = false,
     hidden = false,
     isCut = false,
+    isRenaming = false,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
     onClick,
     onDoubleClick,
     onContextMenu,
+    onConfirmRename,
+    onCancelRename,
     disableHover = false,
   }) => {
     const theme = useTheme();
+    const [renameValue, setRenameValue] = useState(name);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Auto-focus and select text when entering rename mode
+    useEffect(() => {
+      if (isRenaming && inputRef.current) {
+        inputRef.current.focus();
+        // Select filename without extension for files, or full name for directories
+        const dotIndex = isDirectory ? -1 : name.lastIndexOf(".");
+        if (dotIndex > 0) {
+          inputRef.current.setSelectionRange(0, dotIndex);
+        } else {
+          inputRef.current.select();
+        }
+      }
+      if (isRenaming) {
+        setRenameValue(name);
+      }
+    }, [isRenaming, name, isDirectory]);
+
+    const handleRenameKeyDown = useCallback(
+      (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const trimmed = renameValue.trim();
+          if (trimmed && trimmed !== name && onConfirmRename) {
+            onConfirmRename(trimmed);
+          } else {
+            onCancelRename?.();
+          }
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          onCancelRename?.();
+        }
+      },
+      [renameValue, name, onConfirmRename, onCancelRename],
+    );
+
+    const handleRenameBlur = useCallback(() => {
+      const trimmed = renameValue.trim();
+      if (trimmed && trimmed !== name && onConfirmRename) {
+        onConfirmRename(trimmed);
+      } else {
+        onCancelRename?.();
+      }
+    }, [renameValue, name, onConfirmRename, onCancelRename]);
 
     // For search results (showFullPath=true), fetch individual directory sizes
     const needsIndividualDirSize = showFullPath && isDirectory && !isSymlink;
@@ -185,20 +237,45 @@ const FileCard: React.FC<FileCardProps> = React.memo(
             flexDirection: "column",
           }}
         >
-          <div
-            style={{
-              fontWeight: 400,
-              fontSize: "0.90rem",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              color: theme.palette.text.primary,
-              lineHeight: 1.2,
-              opacity: 1,
-            }}
-          >
-            {name}
-          </div>
+          {isRenaming ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={handleRenameKeyDown}
+              onBlur={handleRenameBlur}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              style={{
+                fontWeight: 400,
+                fontSize: "0.90rem",
+                color: theme.palette.text.primary,
+                lineHeight: 1.2,
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                outline: "none",
+                width: "100%",
+                boxSizing: "border-box",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                fontWeight: 400,
+                fontSize: "0.90rem",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                color: theme.palette.text.primary,
+                lineHeight: 1.2,
+                opacity: 1,
+              }}
+            >
+              {name}
+            </div>
+          )}
 
           {/* Directory path and type badge for search results */}
           {showFullPath && (

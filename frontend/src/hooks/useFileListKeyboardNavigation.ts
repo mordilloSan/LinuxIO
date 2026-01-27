@@ -9,6 +9,7 @@ interface UseFileListKeyboardNavigationProps {
   onFocusChange: (index: number) => void;
   onSelectionChange: (paths: Set<string>) => void;
   onDelete?: () => void;
+  onRename?: () => void;
   global?: boolean; // Listen to document events instead of container events
 }
 
@@ -19,6 +20,7 @@ export const useFileListKeyboardNavigation = ({
   onFocusChange,
   onSelectionChange,
   onDelete,
+  onRename,
   global = false,
 }: UseFileListKeyboardNavigationProps) => {
   const handleKeyDown = useCallback(
@@ -45,6 +47,15 @@ export const useFileListKeyboardNavigation = ({
         e.preventDefault();
         if (onDelete) {
           onDelete();
+        }
+        return;
+      }
+
+      // F2 key to rename selected item
+      if (e.key === "F2") {
+        e.preventDefault();
+        if (onRename) {
+          onRename();
         }
         return;
       }
@@ -97,7 +108,7 @@ export const useFileListKeyboardNavigation = ({
         }
       }
     },
-    [allItems, focusedIndex, onFocusChange, onSelectionChange, onDelete],
+    [allItems, focusedIndex, onFocusChange, onSelectionChange, onDelete, onRename],
   );
 
   useEffect(() => {
