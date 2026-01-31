@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
@@ -93,14 +92,6 @@ func RegisterHandlers() {
 		return emit.Result(gpuInfo)
 	})
 
-	ipc.RegisterFunc("system", "get_drive_info", func(ctx context.Context, args []string, emit ipc.Events) error {
-		driveInfo, err := FetchDriveInfoViaSystem()
-		if err != nil {
-			return err
-		}
-		return emit.Result(driveInfo)
-	})
-
 	ipc.RegisterFunc("system", "get_updates_fast", func(ctx context.Context, args []string, emit ipc.Events) error {
 		updates, err := GetUpdatesFast()
 		if err != nil {
@@ -115,18 +106,5 @@ func RegisterHandlers() {
 			return err
 		}
 		return emit.Result(networks)
-	})
-
-	ipc.RegisterFunc("system", "run_smart_test", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) < 2 {
-			return fmt.Errorf("run_smart_test requires device name and test type (short/long)")
-		}
-		device := args[0]
-		testType := args[1]
-		result, err := RunSmartTest(device, testType)
-		if err != nil {
-			return err
-		}
-		return emit.Result(result)
 	})
 }

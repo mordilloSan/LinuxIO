@@ -3,20 +3,34 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Collapse,
   Divider,
   Fade,
   Grid,
   LinearProgress,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Tabs,
   Tooltip,
   Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { AnimatePresence, motion } from "framer-motion";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
-import DriveDetailsDialog from "./DriveDetailsDialog";
-
+import {
+  encodeString,
+  getStreamMux,
+  type ResultFrame,
+  type Stream,
+} from "@/api/linuxio";
 import type { ApiDisk } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
@@ -72,6 +86,32 @@ interface DriveInfo {
   power?: PowerData;
 }
 
+interface SmartTestProgressEvent {
+  type: "status" | "progress";
+  device?: string;
+  test_type?: "short" | "long";
+  status?:
+    | "starting"
+    | "running"
+    | "completed"
+    | "aborted"
+    | "failed"
+    | "error"
+    | "unknown";
+  message?: string;
+  percentage?: number;
+  remaining_percent?: number;
+  remaining_minutes?: number;
+}
+
+interface SmartTestResult {
+  device?: string;
+  test_type?: "short" | "long";
+  status?: string;
+  message?: string;
+  duration_ms?: number;
+}
+
 function parseSizeToBytes(input: string | undefined | null): number {
   if (!input) return 0;
   const s = String(input).trim().toUpperCase();
@@ -121,7 +161,7 @@ const formatDataUnits = (units?: number): string => {
   if (units === undefined) return "N/A";
   // NVMe data units are in 512KB blocks
   const bytes = units * 512 * 1000;
-  return formatFileSize(bytes);
+  return `${units.toLocaleString()} [${formatFileSize(bytes)}]`;
 };
 
 const getTemperature = (smart?: SmartData): number | null => {
@@ -140,17 +180,234 @@ const getTemperatureColor = (temp: number | null): string => {
   return "success.main";
 };
 
+// Helper functions for SMART data
+const getSmartValue = (
+  val: unknown,
+  preferString = true,
+): string | number | null => {
+  if (val === undefined || val === null) return null;
+  if (typeof val === "string" || typeof val === "number") return val;
+  if (typeof val === "object") {
+    const obj = val as { string?: string; value?: number };
+    if (preferString && obj.string !== undefined) return obj.string;
+    if (obj.value !== undefined) return obj.value;
+    if (obj.string !== undefined) return obj.string;
+  }
+  return null;
+};
+
+const getSmartNumber = (val: unknown): number | null => {
+  const result = getSmartValue(val, false);
+  if (typeof result === "number") return result;
+  if (typeof result === "string") {
+    const parsed = parseFloat(result);
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
+};
+
+const getSmartString = (val: unknown): string | null => {
+  const result = getSmartValue(val, true);
+  return result !== null ? String(result) : null;
+};
+
+// Tab Panel Component
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
+  return (
+    <Box
+      role="tabpanel"
+      hidden={value !== index}
+      sx={{ py: 2, display: value === index ? "block" : "none" }}
+    >
+      {children}
+    </Box>
+  );
+};
+
+// Info Row Component
+const InfoRow: React.FC<{
+  label: string;
+  value: React.ReactNode;
+  valueColor?: string;
+}> = ({ label, value, valueColor }) => (
+  <Box
+    sx={{
+      display: "flex",
+      justifyContent: "space-between",
+      py: 1,
+      borderBottom: "1px solid",
+      borderColor: "divider",
+    }}
+  >
+    <Typography variant="body2" color="text.secondary">
+      {label}
+    </Typography>
+    <Typography
+      variant="body2"
+      fontWeight={500}
+      color={valueColor || "text.primary"}
+    >
+      {value}
+    </Typography>
+  </Box>
+);
+
 interface DriveDetailsProps {
   drive: DriveInfo;
   expanded: boolean;
-  onViewDetails: () => void;
+  rawDrive: ApiDisk | null;
 }
+
+const STREAM_TYPE_SMART_TEST = "smart-test";
 
 const DriveDetails: React.FC<DriveDetailsProps> = ({
   drive,
   expanded,
-  onViewDetails,
+  rawDrive,
 }) => {
+  const [tabIndex, setTabIndex] = useState(0);
+  const [startPending, setStartPending] = useState<"short" | "long" | null>(
+    null,
+  );
+  const [testProgress, setTestProgress] =
+    useState<SmartTestProgressEvent | null>(null);
+  const streamRef = useRef<Stream | null>(null);
+
+  const { mutateAsync: runSmartTest } =
+    linuxio.storage.run_smart_test.useMutation();
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.close();
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleRunTest = async (testType: "short" | "long") => {
+    if (!rawDrive) return;
+
+    setStartPending(testType);
+    setTestProgress({
+      type: "status",
+      status: "starting",
+      test_type: testType,
+      device: rawDrive.name,
+      message: `Starting SMART ${testType} self-test`,
+    });
+
+    const mux = getStreamMux();
+    if (!mux || mux.status !== "open") {
+      try {
+        await runSmartTest([rawDrive.name, testType]);
+        toast.success(
+          `${testType === "short" ? "Short" : "Extended"} self-test started on /dev/${rawDrive.name}`,
+        );
+      } catch (err) {
+        toast.error(
+          `Failed to start test: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+        setTestProgress((prev) =>
+          prev
+            ? { ...prev, status: "error", message: "Failed to start test" }
+            : null,
+        );
+      } finally {
+        setStartPending(null);
+      }
+      return;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.close();
+    }
+
+    const payload = encodeString(
+      `${STREAM_TYPE_SMART_TEST}\0${rawDrive.name}\0${testType}`,
+    );
+    const stream = mux.openStream(STREAM_TYPE_SMART_TEST, payload);
+    streamRef.current = stream;
+
+    stream.onProgress = (progressData: unknown) => {
+      const data = progressData as SmartTestProgressEvent;
+      setTestProgress((prev) => ({
+        ...(prev || {}),
+        ...data,
+        test_type: data.test_type ?? prev?.test_type ?? testType,
+        device: data.device ?? prev?.device ?? rawDrive.name,
+      }));
+      if (data.status && data.status !== "starting") {
+        setStartPending(null);
+      }
+    };
+
+    stream.onResult = (result: ResultFrame) => {
+      streamRef.current = null;
+      setStartPending(null);
+
+      if (result.status === "ok") {
+        const data = result.data as SmartTestResult;
+        const finalStatus = data?.status ?? "completed";
+        setTestProgress((prev) => ({
+          ...(prev || {}),
+          type: "status",
+          status: finalStatus as SmartTestProgressEvent["status"],
+          message: data?.message ?? prev?.message,
+          test_type: data?.test_type ?? prev?.test_type ?? testType,
+          device: data?.device ?? prev?.device ?? rawDrive.name,
+        }));
+
+        if (finalStatus === "completed") {
+          toast.success(
+            `${testType === "short" ? "Short" : "Extended"} self-test completed on /dev/${rawDrive.name}`,
+          );
+        } else {
+          toast.error(
+            `${testType === "short" ? "Short" : "Extended"} self-test ${finalStatus}`,
+          );
+        }
+      } else {
+        setTestProgress((prev) => ({
+          ...(prev || {}),
+          type: "status",
+          status: "error",
+          message: result.error || "SMART self-test failed",
+          test_type: prev?.test_type ?? testType,
+          device: prev?.device ?? rawDrive.name,
+        }));
+        toast.error(result.error || "SMART self-test failed");
+      }
+    };
+
+    stream.onClose = () => {
+      streamRef.current = null;
+      setStartPending(null);
+      if (
+        testProgress?.status === "running" ||
+        testProgress?.status === "starting"
+      ) {
+        setTestProgress((prev) => ({
+          ...(prev || {}),
+          type: "status",
+          status: "error",
+          message: "SMART self-test stream closed unexpectedly",
+        }));
+        toast.error("SMART self-test stream closed unexpectedly");
+      }
+    };
+  };
+
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    setTabIndex(newValue);
+  };
+
   const smart = drive.smart;
   const power = drive.power;
 
@@ -158,6 +415,24 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   const isNvme = drive.transport === "nvme";
   const nvmeHealth = smart?.nvme_smart_health_information_log;
   const ataAttrs = smart?.ata_smart_attributes?.table;
+
+  const smartData = rawDrive?.smart as Record<string, unknown> | undefined;
+  const deviceInfo = smartData?.device as Record<string, unknown> | undefined;
+  const smartHealth = smartData?.smart_status as
+    | { passed?: boolean }
+    | undefined;
+
+  // Access full SMART data for detailed attributes
+  const nvmeHealthRaw = smartData?.nvme_smart_health_information_log as
+    | Record<string, unknown>
+    | undefined;
+
+  const selfTestLog = smartData?.ata_smart_self_test_log as
+    | { standard?: { table?: unknown[] } }
+    | undefined;
+  const nvmeSelfTestLog = smartData?.nvme_self_test_log as
+    | { table?: unknown[] }
+    | undefined;
 
   // Get temperature
   const temperature =
@@ -183,71 +458,29 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   const reallocatedSectors = findAtaAttr(5);
   const pendingSectors = findAtaAttr(197);
 
+  if (!expanded) return null;
+
   return (
     <Collapse in={expanded} timeout="auto" unmountOnExit>
-      <Divider sx={{ my: 2 }} />
-      <Box>
-        {/* Basic Info */}
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ textTransform: "uppercase", fontWeight: 600 }}
-        >
-          Drive Information
-        </Typography>
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 1,
-            mt: 1,
-            mb: 2,
-          }}
-        >
-          <Box>
-            <Typography variant="body2" color="text.secondary">
-              Serial
-            </Typography>
-            <Typography variant="body2" fontWeight={500} noWrap>
-              {drive.serial || "N/A"}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="body2" color="text.secondary">
-              Vendor
-            </Typography>
-            <Typography variant="body2" fontWeight={500}>
-              {drive.vendor || "N/A"}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="body2" color="text.secondary">
-              Read Only
-            </Typography>
-            <Typography variant="body2" fontWeight={500}>
-              {drive.ro ? "Yes" : "No"}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="body2" color="text.secondary">
-              Transport
-            </Typography>
-            <Typography variant="body2" fontWeight={500}>
-              {drive.transport.toUpperCase()}
-            </Typography>
-          </Box>
+      <Box onClick={(e) => e.stopPropagation()}>
+        <Divider sx={{ my: 2 }} />
+
+        {/* Tabs */}
+        <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+          <Tabs value={tabIndex} onChange={handleTabChange}>
+            <Tab label="Overview" />
+            <Tab label="SMART Attributes" />
+            <Tab label="Drive Information" />
+            {isNvme && power && <Tab label="Power States" />}
+            <Tab label="Self-Tests" />
+          </Tabs>
         </Box>
 
-        {/* SMART Data */}
-        {smart && (
-          <>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ textTransform: "uppercase", fontWeight: 600 }}
-            >
-              Health & Statistics
-            </Typography>
+        {/* Tab Panels */}
+
+        {/* Overview Tab */}
+        <TabPanel value={tabIndex} index={0}>
+          <Box>
             <Box
               sx={{
                 display: "grid",
@@ -257,191 +490,735 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
                 mb: 2,
               }}
             >
-              {temperature !== null && (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Temperature
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={500}
-                    color={
-                      temperature > 70
-                        ? "error.main"
-                        : temperature > 50
-                          ? "warning.main"
-                          : "text.primary"
-                    }
-                  >
-                    {temperature}°C
-                  </Typography>
-                </Box>
-              )}
-              {powerOnHours !== null && (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Power On Time
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {formatPowerOnTime(powerOnHours)}
-                  </Typography>
-                </Box>
-              )}
-              {powerCycles !== null && (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Power Cycles
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {powerCycles.toLocaleString()}
-                  </Typography>
-                </Box>
-              )}
-              {isNvme && percentageUsed !== undefined && (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Life Used
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={500}
-                    color={
-                      percentageUsed > 90
-                        ? "error.main"
-                        : percentageUsed > 70
-                          ? "warning.main"
-                          : "text.primary"
-                    }
-                  >
-                    {percentageUsed}%
-                  </Typography>
-                </Box>
-              )}
-              {isNvme && dataRead !== undefined && (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Data Read
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {formatDataUnits(dataRead)}
-                  </Typography>
-                </Box>
-              )}
-              {isNvme && dataWritten !== undefined && (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Data Written
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {formatDataUnits(dataWritten)}
-                  </Typography>
-                </Box>
-              )}
-              {!isNvme && reallocatedSectors && (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Reallocated Sectors
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={500}
-                    color={
-                      reallocatedSectors.raw.value > 0
-                        ? "warning.main"
-                        : "text.primary"
-                    }
-                  >
-                    {reallocatedSectors.raw.value}
-                  </Typography>
-                </Box>
-              )}
-              {!isNvme && pendingSectors && (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Pending Sectors
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={500}
-                    color={
-                      pendingSectors.raw.value > 0
-                        ? "warning.main"
-                        : "text.primary"
-                    }
-                  >
-                    {pendingSectors.raw.value}
-                  </Typography>
-                </Box>
-              )}
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Serial
+                </Typography>
+                <Typography variant="body2" fontWeight={500} noWrap>
+                  {drive.serial || "N/A"}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Vendor
+                </Typography>
+                <Typography variant="body2" fontWeight={500}>
+                  {drive.vendor || "N/A"}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Read Only
+                </Typography>
+                <Typography variant="body2" fontWeight={500}>
+                  {drive.ro ? "Yes" : "No"}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Transport
+                </Typography>
+                <Typography variant="body2" fontWeight={500}>
+                  {drive.transport.toUpperCase()}
+                </Typography>
+              </Box>
             </Box>
-          </>
+
+            {/* SMART Data */}
+            {smart && (
+              <>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ textTransform: "uppercase", fontWeight: 600 }}
+                >
+                  Health & Statistics
+                </Typography>
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 1,
+                    mt: 1,
+                    mb: 2,
+                  }}
+                >
+                  {temperature !== null && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Temperature
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        fontWeight={500}
+                        color={
+                          temperature > 70
+                            ? "error.main"
+                            : temperature > 50
+                              ? "warning.main"
+                              : "text.primary"
+                        }
+                      >
+                        {temperature}°C
+                      </Typography>
+                    </Box>
+                  )}
+                  {powerOnHours !== null && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Power On Time
+                      </Typography>
+                      <Typography variant="body2" fontWeight={500}>
+                        {formatPowerOnTime(powerOnHours)}
+                      </Typography>
+                    </Box>
+                  )}
+                  {powerCycles !== null && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Power Cycles
+                      </Typography>
+                      <Typography variant="body2" fontWeight={500}>
+                        {powerCycles.toLocaleString()}
+                      </Typography>
+                    </Box>
+                  )}
+                  {isNvme && percentageUsed !== undefined && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Life Used
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        fontWeight={500}
+                        color={
+                          percentageUsed > 90
+                            ? "error.main"
+                            : percentageUsed > 70
+                              ? "warning.main"
+                              : "text.primary"
+                        }
+                      >
+                        {percentageUsed}%
+                      </Typography>
+                    </Box>
+                  )}
+                  {isNvme && dataRead !== undefined && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Data Read
+                      </Typography>
+                      <Typography variant="body2" fontWeight={500}>
+                        {formatDataUnits(dataRead)}
+                      </Typography>
+                    </Box>
+                  )}
+                  {isNvme && dataWritten !== undefined && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Data Written
+                      </Typography>
+                      <Typography variant="body2" fontWeight={500}>
+                        {formatDataUnits(dataWritten)}
+                      </Typography>
+                    </Box>
+                  )}
+                  {!isNvme && reallocatedSectors && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Reallocated Sectors
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        fontWeight={500}
+                        color={
+                          reallocatedSectors.raw.value > 0
+                            ? "warning.main"
+                            : "text.primary"
+                        }
+                      >
+                        {reallocatedSectors.raw.value}
+                      </Typography>
+                    </Box>
+                  )}
+                  {!isNvme && pendingSectors && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Pending Sectors
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        fontWeight={500}
+                        color={
+                          pendingSectors.raw.value > 0
+                            ? "warning.main"
+                            : "text.primary"
+                        }
+                      >
+                        {pendingSectors.raw.value}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </>
+            )}
+
+            {/* NVMe Power States Summary */}
+            {power && (
+              <>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ textTransform: "uppercase", fontWeight: 600 }}
+                >
+                  Power
+                </Typography>
+                <Box sx={{ mt: 1 }}>
+                  <Box display="flex" gap={1} alignItems="center" mb={1}>
+                    <Chip
+                      label={`State ${power.currentState}`}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                    />
+                    <Typography variant="body2" color="text.secondary">
+                      ~{power.estimatedW.toFixed(2)}W
+                    </Typography>
+                  </Box>
+                </Box>
+              </>
+            )}
+
+            {!smart && !power && (
+              <Typography variant="body2" color="text.secondary">
+                No detailed information available for this drive.
+              </Typography>
+            )}
+          </Box>
+        </TabPanel>
+
+        {/* SMART Attributes Tab */}
+        <TabPanel value={tabIndex} index={1}>
+          {isNvme && nvmeHealthRaw ? (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Attribute</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }} align="right">
+                      Value
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {getSmartNumber(nvmeHealthRaw.critical_warning) !== null && (
+                    <TableRow>
+                      <TableCell>Critical Warning</TableCell>
+                      <TableCell align="right">
+                        0x
+                        {(getSmartNumber(nvmeHealthRaw.critical_warning) ?? 0)
+                          .toString(16)
+                          .padStart(2, "0")
+                          .toUpperCase()}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.temperature) !== null && (
+                    <TableRow>
+                      <TableCell>Temperature</TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color:
+                            (getSmartNumber(nvmeHealthRaw.temperature) ?? 0) >
+                            70
+                              ? "error.main"
+                              : (getSmartNumber(nvmeHealthRaw.temperature) ??
+                                    0) > 50
+                                ? "warning.main"
+                                : "inherit",
+                        }}
+                      >
+                        {getSmartNumber(nvmeHealthRaw.temperature)} Celsius
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.available_spare) !== null && (
+                    <TableRow>
+                      <TableCell>Available Spare</TableCell>
+                      <TableCell align="right">
+                        {getSmartNumber(nvmeHealthRaw.available_spare)}%
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.available_spare_threshold) !==
+                    null && (
+                    <TableRow>
+                      <TableCell>Available Spare Threshold</TableCell>
+                      <TableCell align="right">
+                        {getSmartNumber(
+                          nvmeHealthRaw.available_spare_threshold,
+                        )}
+                        %
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.percentage_used) !== null && (
+                    <TableRow>
+                      <TableCell>Percentage Used</TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color:
+                            (getSmartNumber(nvmeHealthRaw.percentage_used) ??
+                              0) > 90
+                              ? "error.main"
+                              : (getSmartNumber(
+                                    nvmeHealthRaw.percentage_used,
+                                  ) ?? 0) > 70
+                                ? "warning.main"
+                                : "inherit",
+                        }}
+                      >
+                        {getSmartNumber(nvmeHealthRaw.percentage_used)}%
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.data_units_read) !== null && (
+                    <TableRow>
+                      <TableCell>Data Units Read</TableCell>
+                      <TableCell align="right">
+                        {formatDataUnits(
+                          getSmartNumber(nvmeHealthRaw.data_units_read) ??
+                            undefined,
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.data_units_written) !==
+                    null && (
+                    <TableRow>
+                      <TableCell>Data Units Written</TableCell>
+                      <TableCell align="right">
+                        {formatDataUnits(
+                          getSmartNumber(nvmeHealthRaw.data_units_written) ??
+                            undefined,
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.host_reads) !== null && (
+                    <TableRow>
+                      <TableCell>Host Read Commands</TableCell>
+                      <TableCell align="right">
+                        {getSmartNumber(
+                          nvmeHealthRaw.host_reads,
+                        )?.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.host_writes) !== null && (
+                    <TableRow>
+                      <TableCell>Host Write Commands</TableCell>
+                      <TableCell align="right">
+                        {getSmartNumber(
+                          nvmeHealthRaw.host_writes,
+                        )?.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.controller_busy_time) !==
+                    null && (
+                    <TableRow>
+                      <TableCell>Controller Busy Time</TableCell>
+                      <TableCell align="right">
+                        {getSmartNumber(
+                          nvmeHealthRaw.controller_busy_time,
+                        )?.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.power_cycles) !== null && (
+                    <TableRow>
+                      <TableCell>Power Cycles</TableCell>
+                      <TableCell align="right">
+                        {getSmartNumber(
+                          nvmeHealthRaw.power_cycles,
+                        )?.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.power_on_hours) !== null && (
+                    <TableRow>
+                      <TableCell>Power On Hours</TableCell>
+                      <TableCell align="right">
+                        {formatPowerOnTime(
+                          getSmartNumber(nvmeHealthRaw.power_on_hours) ??
+                            undefined,
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.unsafe_shutdowns) !== null && (
+                    <TableRow>
+                      <TableCell>Unsafe Shutdowns</TableCell>
+                      <TableCell align="right">
+                        {getSmartNumber(
+                          nvmeHealthRaw.unsafe_shutdowns,
+                        )?.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.media_errors) !== null && (
+                    <TableRow>
+                      <TableCell>Media and Data Integrity Errors</TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color:
+                            (getSmartNumber(nvmeHealthRaw.media_errors) ?? 0) >
+                            0
+                              ? "error.main"
+                              : "inherit",
+                        }}
+                      >
+                        {getSmartNumber(
+                          nvmeHealthRaw.media_errors,
+                        )?.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {getSmartNumber(nvmeHealthRaw.num_err_log_entries) !==
+                    null && (
+                    <TableRow>
+                      <TableCell>Error Information Log Entries</TableCell>
+                      <TableCell align="right">
+                        {getSmartNumber(
+                          nvmeHealthRaw.num_err_log_entries,
+                        )?.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : ataAttrs && ataAttrs.length > 0 ? (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>#</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Attribute</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }} align="right">
+                      Value
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 600 }} align="right">
+                      Worst
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 600 }} align="right">
+                      Thresh
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 600 }} align="right">
+                      Raw
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {ataAttrs.map((attr) => (
+                    <TableRow key={attr.id}>
+                      <TableCell>{attr.id}</TableCell>
+                      <TableCell>{attr.name}</TableCell>
+                      <TableCell align="right">{attr.value}</TableCell>
+                      <TableCell align="right">{attr.worst}</TableCell>
+                      <TableCell align="right">{attr.thresh}</TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color:
+                            // Highlight concerning attributes
+                            [5, 196, 197, 198].includes(attr.id) &&
+                            attr.raw?.value &&
+                            attr.raw.value > 0
+                              ? "warning.main"
+                              : "inherit",
+                        }}
+                      >
+                        {attr.raw?.string || attr.raw?.value?.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Typography color="text.secondary">
+              No SMART attributes available for this drive.
+            </Typography>
+          )}
+        </TabPanel>
+
+        {/* Drive Information Tab */}
+        <TabPanel value={tabIndex} index={2}>
+          <Box sx={{ maxWidth: 600 }}>
+            <InfoRow label="Model" value={drive.model || "N/A"} />
+            <InfoRow label="Serial Number" value={drive.serial || "N/A"} />
+            <InfoRow label="Vendor" value={drive.vendor || "N/A"} />
+            <InfoRow
+              label="Firmware Version"
+              value={getSmartString(smartData?.firmware_version) || "N/A"}
+            />
+            <InfoRow label="Capacity" value={rawDrive?.size || "N/A"} />
+            <InfoRow
+              label="Transport"
+              value={drive.transport?.toUpperCase() || "N/A"}
+            />
+            <InfoRow label="Read Only" value={drive.ro ? "Yes" : "No"} />
+            {isNvme && (
+              <>
+                <InfoRow
+                  label="NVMe Version"
+                  value={getSmartString(smartData?.nvme_version) || "N/A"}
+                />
+                <InfoRow
+                  label="Number of Namespaces"
+                  value={
+                    getSmartNumber(
+                      smartData?.nvme_number_of_namespaces,
+                    )?.toString() || "N/A"
+                  }
+                />
+              </>
+            )}
+            {deviceInfo && (
+              <>
+                <InfoRow
+                  label="Device Type"
+                  value={getSmartString(deviceInfo.type) || "N/A"}
+                />
+                <InfoRow
+                  label="Protocol"
+                  value={getSmartString(deviceInfo.protocol) || "N/A"}
+                />
+              </>
+            )}
+            <InfoRow
+              label="SMART Health"
+              value={
+                smartHealth?.passed === true
+                  ? "Passed"
+                  : smartHealth?.passed === false
+                    ? "Failed"
+                    : "Unknown"
+              }
+              valueColor={
+                smartHealth?.passed === true
+                  ? "success.main"
+                  : smartHealth?.passed === false
+                    ? "error.main"
+                    : undefined
+              }
+            />
+          </Box>
+        </TabPanel>
+
+        {/* Power States Tab (NVMe only) */}
+        {isNvme && power && (
+          <TabPanel value={tabIndex} index={3}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Current State
+              </Typography>
+              <Box display="flex" gap={2} alignItems="center">
+                <Chip
+                  label={`Power State ${power.currentState}`}
+                  color="primary"
+                />
+                <Typography variant="body2" color="text.secondary">
+                  Estimated Power: ~{power.estimatedW.toFixed(2)}W
+                </Typography>
+              </Box>
+            </Box>
+
+            <Typography variant="subtitle2" gutterBottom>
+              Supported Power States
+            </Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>State</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Op</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }} align="right">
+                      Max Power
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {power.states.map((ps) => (
+                    <TableRow
+                      key={ps.state}
+                      selected={ps.state === power.currentState}
+                    >
+                      <TableCell>{ps.state}</TableCell>
+                      <TableCell>+</TableCell>
+                      <TableCell align="right">{ps.maxPowerW}W</TableCell>
+                      <TableCell sx={{ fontSize: "0.75rem" }}>
+                        {ps.description}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
         )}
 
-        {/* NVMe Power States */}
-        {power && (
-          <>
+        {/* Self-Tests Tab */}
+        <TabPanel value={tabIndex} index={isNvme && power ? 4 : 3}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Run SMART Self-Test
+            </Typography>
+            <Box display="flex" gap={2} alignItems="center">
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={startPending !== null}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRunTest("short");
+                }}
+                startIcon={
+                  startPending === "short" ? (
+                    <CircularProgress size={16} />
+                  ) : undefined
+                }
+              >
+                {startPending === "short" ? "Starting..." : "Short Test"}
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={startPending !== null}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRunTest("long");
+                }}
+                startIcon={
+                  startPending === "long" ? (
+                    <CircularProgress size={16} />
+                  ) : undefined
+                }
+              >
+                {startPending === "long" ? "Starting..." : "Extended Test"}
+              </Button>
+            </Box>
             <Typography
               variant="caption"
               color="text.secondary"
-              sx={{ textTransform: "uppercase", fontWeight: 600 }}
+              sx={{ mt: 1, display: "block" }}
             >
-              Power
+              Short test takes ~2 minutes. Extended test can take hours
+              depending on drive size.
             </Typography>
-            <Box sx={{ mt: 1 }}>
-              <Box display="flex" gap={1} alignItems="center" mb={1}>
-                <Chip
-                  label={`State ${power.currentState}`}
-                  size="small"
-                  color="primary"
-                  variant="outlined"
-                />
-                <Typography variant="body2" color="text.secondary">
-                  ~{power.estimatedW.toFixed(2)}W
-                </Typography>
-              </Box>
-              <Box display="flex" gap={0.5} flexWrap="wrap">
-                {power.states.map((ps) => (
-                  <Chip
-                    key={ps.state}
-                    label={`PS${ps.state}: ${ps.maxPowerW}W`}
-                    size="small"
-                    variant={
-                      ps.state === power.currentState ? "filled" : "outlined"
-                    }
-                    color={
-                      ps.state === power.currentState ? "primary" : "default"
-                    }
-                    sx={{
-                      fontSize: "0.7rem",
-                      height: 22,
-                      opacity: ps.state === power.currentState ? 1 : 0.7,
-                    }}
-                  />
-                ))}
-              </Box>
-            </Box>
-          </>
-        )}
+          </Box>
 
-        {!smart && !power && (
-          <Typography variant="body2" color="text.secondary">
-            No detailed information available for this drive.
+          <Typography variant="subtitle2" gutterBottom>
+            Self-Test History
           </Typography>
-        )}
-
-        {/* View Details Button */}
-        <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end" }}>
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              onViewDetails();
-            }}
-          >
-            View Details
-          </Button>
-        </Box>
+          {selfTestLog?.standard?.table &&
+          (selfTestLog.standard.table as unknown[]).length > 0 ? (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>#</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }} align="right">
+                      Lifetime Hours
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(
+                    selfTestLog.standard.table as {
+                      num?: number;
+                      type?: { string?: string };
+                      status?: { string?: string; passed?: boolean };
+                      lifetime_hours?: number;
+                    }[]
+                  ).map((entry, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>{entry.num ?? idx + 1}</TableCell>
+                      <TableCell>{entry.type?.string || "Unknown"}</TableCell>
+                      <TableCell
+                        sx={{
+                          color: entry.status?.passed
+                            ? "success.main"
+                            : "error.main",
+                        }}
+                      >
+                        {entry.status?.string || "Unknown"}
+                      </TableCell>
+                      <TableCell align="right">
+                        {entry.lifetime_hours?.toLocaleString() || "N/A"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : nvmeSelfTestLog?.table &&
+            (nvmeSelfTestLog.table as unknown[]).length > 0 ? (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Result</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }} align="right">
+                      Power On Hours
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(
+                    nvmeSelfTestLog.table as {
+                      self_test_code?: { string?: string };
+                      self_test_result?: { string?: string; value?: number };
+                      power_on_hours?: number;
+                    }[]
+                  ).map((entry, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>
+                        {entry.self_test_code?.string || "Unknown"}
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          color:
+                            entry.self_test_result?.value === 0
+                              ? "success.main"
+                              : "error.main",
+                        }}
+                      >
+                        {entry.self_test_result?.string || "Unknown"}
+                      </TableCell>
+                      <TableCell align="right">
+                        {entry.power_on_hours?.toLocaleString() || "N/A"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Typography color="text.secondary">
+              No self-test history available.
+            </Typography>
+          )}
+        </TabPanel>
       </Box>
     </Collapse>
   );
@@ -450,10 +1227,9 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
 const DiskOverview: React.FC = () => {
   const theme = useTheme();
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [detailsDrive, setDetailsDrive] = useState<ApiDisk | null>(null);
 
   const { data: rawDrives = [], isPending: drivesLoading } =
-    linuxio.system.get_drive_info.useQuery({ refetchInterval: 30000 });
+    linuxio.storage.get_drive_info.useQuery({ refetchInterval: 30000 });
 
   const { data: filesystems = [], isPending: fsLoading } =
     linuxio.system.get_fs_info.useQuery({ refetchInterval: 10000 });
@@ -554,7 +1330,37 @@ const DiskOverview: React.FC = () => {
                     }}
                     onClick={() => handleToggle(drive.name)}
                   >
-                    {getTemperature(drive.smart) !== null && (
+                    {drive.transport.toLowerCase() === "usb" ? (
+                      <Tooltip
+                        title="Create Bootable USB"
+                        placement="top"
+                        arrow
+                        slots={{ transition: Fade }}
+                        slotProps={{ transition: { timeout: 300 } }}
+                      >
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            top: 8,
+                            right: 8,
+                            cursor: "pointer",
+                            "&:hover": {
+                              opacity: 0.7,
+                            },
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // TODO: Add handler for bootable USB creation
+                          }}
+                        >
+                          <Icon
+                            icon="mdi:pencil"
+                            width={20}
+                            color={theme.palette.text.secondary}
+                          />
+                        </Box>
+                      </Tooltip>
+                    ) : getTemperature(drive.smart) !== null ? (
                       <Tooltip
                         title="Drive Temperature"
                         placement="top"
@@ -583,7 +1389,7 @@ const DiskOverview: React.FC = () => {
                           </Typography>
                         </Box>
                       </Tooltip>
-                    )}
+                    ) : null}
                     <Box display="flex" alignItems="center" mb={1.5}>
                       <Icon
                         icon={
@@ -638,12 +1444,9 @@ const DiskOverview: React.FC = () => {
                     <DriveDetails
                       drive={drive}
                       expanded={expanded === drive.name}
-                      onViewDetails={() => {
-                        const rawDrive = rawDrives.find(
-                          (d) => d.name === drive.name,
-                        );
-                        if (rawDrive) setDetailsDrive(rawDrive);
-                      }}
+                      rawDrive={
+                        rawDrives.find((d) => d.name === drive.name) || null
+                      }
                     />
                   </FrostedCard>
                 </Grid>
@@ -653,65 +1456,62 @@ const DiskOverview: React.FC = () => {
         </AnimatePresence>
       </Grid>
 
-      <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-        Filesystems
-      </Typography>
-      <Grid container spacing={3}>
-        {relevantFS.length === 0 ? (
-          <Grid size={{ xs: 12 }}>
-            <Typography color="text.secondary">
-              No filesystems found.
-            </Typography>
+      {!expanded && (
+        <>
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+            Filesystems
+          </Typography>
+          <Grid container spacing={3}>
+            {relevantFS.length === 0 ? (
+              <Grid size={{ xs: 12 }}>
+                <Typography color="text.secondary">
+                  No filesystems found.
+                </Typography>
+              </Grid>
+            ) : (
+              relevantFS.map((fs) => (
+                <Grid key={fs.mountpoint} size={{ xs: 12, sm: 6, md: 4 }}>
+                  <FrostedCard sx={{ p: 2 }}>
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={600}
+                      noWrap
+                      title={fs.mountpoint}
+                    >
+                      {fs.mountpoint}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      noWrap
+                      sx={{ mb: 1.5 }}
+                      title={`${fs.device} (${fs.fstype})`}
+                    >
+                      {fs.device} ({fs.fstype})
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={fs.usedPercent}
+                      sx={{ height: 8, borderRadius: 4, mb: 1 }}
+                      color={
+                        fs.usedPercent > 90
+                          ? "error"
+                          : fs.usedPercent > 70
+                            ? "warning"
+                            : "primary"
+                      }
+                    />
+                    <Typography variant="body2" color="text.secondary">
+                      {formatFileSize(fs.used)} / {formatFileSize(fs.total)} (
+                      {fs.usedPercent.toFixed(1)}%)
+                    </Typography>
+                  </FrostedCard>
+                </Grid>
+              ))
+            )}
           </Grid>
-        ) : (
-          relevantFS.map((fs) => (
-            <Grid key={fs.mountpoint} size={{ xs: 12, sm: 6, md: 4 }}>
-              <FrostedCard sx={{ p: 2 }}>
-                <Typography
-                  variant="subtitle2"
-                  fontWeight={600}
-                  noWrap
-                  title={fs.mountpoint}
-                >
-                  {fs.mountpoint}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  noWrap
-                  sx={{ mb: 1.5 }}
-                  title={`${fs.device} (${fs.fstype})`}
-                >
-                  {fs.device} ({fs.fstype})
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={fs.usedPercent}
-                  sx={{ height: 8, borderRadius: 4, mb: 1 }}
-                  color={
-                    fs.usedPercent > 90
-                      ? "error"
-                      : fs.usedPercent > 70
-                        ? "warning"
-                        : "primary"
-                  }
-                />
-                <Typography variant="body2" color="text.secondary">
-                  {formatFileSize(fs.used)} / {formatFileSize(fs.total)} (
-                  {fs.usedPercent.toFixed(1)}%)
-                </Typography>
-              </FrostedCard>
-            </Grid>
-          ))
-        )}
-      </Grid>
-
-      {/* Drive Details Dialog */}
-      <DriveDetailsDialog
-        open={detailsDrive !== null}
-        onClose={() => setDetailsDrive(null)}
-        drive={detailsDrive}
-      />
+        </>
+      )}
     </Box>
   );
 };

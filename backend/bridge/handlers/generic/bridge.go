@@ -20,7 +20,7 @@ const sessionContextKey contextKey = "session"
 // It replaces both HandleJSONStream and individual stream handlers.
 //
 // Protocol: "bridge\0handlerType\0command\0arg1\0arg2..."
-// Example: "bridge\0system\0get_drive_info"
+// Example: "bridge\0storage\0get_drive_info"
 func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 2 {
 		err := fmt.Errorf("invalid bridge args: expected [type, command, ...args], got %v", args)

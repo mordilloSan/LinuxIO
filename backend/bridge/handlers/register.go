@@ -28,7 +28,7 @@ var StreamHandlers = map[string]func(*session.Session, net.Conn, []string) error
 
 func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	// Register the universal bridge stream handler
-	// Frontend calls linuxio.call("system", "get_drive_info") -> opens "bridge" stream
+	// Frontend calls linuxio.call("storage", "get_drive_info") -> opens "bridge" stream
 	StreamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
 		return generic.HandleBridgeStream(s, conn, args)
 	}

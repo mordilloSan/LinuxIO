@@ -414,18 +414,8 @@ export interface LinuxIOSchema {
     get_fs_info: { args: []; result: FilesystemInfo[] };
     get_processes: { args: []; result: ProcessInfo[] };
     get_gpu_info: { args: []; result: GpuDevice[] };
-    get_drive_info: { args: []; result: ApiDisk[] };
     get_updates_fast: { args: []; result: Update[] };
     get_network_info: { args: []; result: InterfaceStats[] };
-    run_smart_test: {
-      args: [device: string, testType: string];
-      result: {
-        success: boolean;
-        device: string;
-        test: string;
-        message: string;
-      };
-    };
   };
 
   docker: {
@@ -625,7 +615,17 @@ export interface LinuxIOSchema {
       args: [vgName: string, lvName: string, newSize: string];
       result: { success: boolean };
     };
-
+    // Drive
+    get_drive_info: { args: []; result: ApiDisk[] };
+    run_smart_test: {
+      args: [device: string, testType: string];
+      result: {
+        success: boolean;
+        device: string;
+        test: string;
+        message: string;
+      };
+    };
     // NFS
     list_nfs_mounts: { args: []; result: NFSMount[] };
     list_nfs_exports: { args: [server: string]; result: string[] };

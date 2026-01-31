@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/go-logger/logger"
@@ -168,6 +169,27 @@ func RegisterHandlers() {
 			return err
 		}
 		logger.Infof("[Storage] Successfully remounted NFS at %s", args[0])
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("storage", "get_drive_info", func(ctx context.Context, args []string, emit ipc.Events) error {
+		driveInfo, err := FetchDriveInfo()
+		if err != nil {
+			return err
+		}
+		return emit.Result(driveInfo)
+	})
+
+	ipc.RegisterFunc("storage", "run_smart_test", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 2 {
+			return fmt.Errorf("run_smart_test requires device name and test type (short/long)")
+		}
+		device := args[0]
+		testType := args[1]
+		result, err := RunSmartTest(device, testType)
+		if err != nil {
+			return err
+		}
 		return emit.Result(result)
 	})
 }
