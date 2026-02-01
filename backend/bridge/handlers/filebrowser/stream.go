@@ -30,6 +30,8 @@ const (
 	StreamTypeFBCompress = "fb-compress" // Create archive from paths
 	StreamTypeFBExtract  = "fb-extract"  // Extract archive to destination
 	StreamTypeFBReindex  = "fb-reindex"  // Reindex filesystem with progress
+	StreamTypeFBCopy     = "fb-copy"     // Copy file or directory with progress
+	StreamTypeFBMove     = "fb-move"     // Move file or directory with progress
 )
 
 const (
@@ -80,6 +82,16 @@ func HandleReindexStream(sess *session.Session, stream net.Conn, args []string) 
 	return handleReindex(stream, args)
 }
 
+// HandleCopyStream handles a copy stream with real-time progress.
+func HandleCopyStream(sess *session.Session, stream net.Conn, args []string) error {
+	return handleCopy(stream, args)
+}
+
+// HandleMoveStream handles a move stream with real-time progress.
+func HandleMoveStream(sess *session.Session, stream net.Conn, args []string) error {
+	return handleMove(stream, args)
+}
+
 // RegisterStreamHandlers registers all filebrowser stream handlers.
 func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
 	handlers[StreamTypeFBDownload] = HandleDownloadStream
@@ -88,6 +100,8 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 	handlers[StreamTypeFBCompress] = HandleCompressStream
 	handlers[StreamTypeFBExtract] = HandleExtractStream
 	handlers[StreamTypeFBReindex] = HandleReindexStream
+	handlers[StreamTypeFBCopy] = HandleCopyStream
+	handlers[StreamTypeFBMove] = HandleMoveStream
 }
 
 // handleDownload streams a single file to the client.
@@ -1008,4 +1022,255 @@ func handleReindex(stream net.Conn, args []string) error {
 	_ = ipc.WriteResultError(stream, 0, "indexer stream ended unexpectedly", 500)
 	_ = ipc.WriteStreamClose(stream, 0)
 	return fmt.Errorf("indexer stream ended unexpectedly")
+}
+
+// handleCopy copies a file or directory with progress feedback.
+// args: [source, destination, overwrite?]
+func handleCopy(stream net.Conn, args []string) error {
+	if len(args) < 2 {
+		_ = ipc.WriteResultError(stream, 0, "missing source or destination", 400)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("missing source or destination")
+	}
+
+	source := filepath.Clean(args[0])
+	destination := filepath.Clean(args[1])
+	overwrite := false
+	if len(args) > 2 {
+		overwrite = args[2] == "true"
+	}
+
+	// Validate source exists
+	sourceInfo, err := os.Stat(source)
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("source not found: %v", err), 404)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("source not found: %w", err)
+	}
+
+	// Check if destination is a directory - if so, append source filename
+	destInfo, destErr := os.Stat(destination)
+	if destErr == nil && destInfo.IsDir() {
+		destination = filepath.Join(destination, filepath.Base(source))
+		// Re-check the new destination path
+		destInfo, destErr = os.Stat(destination)
+	}
+
+	// Check destination conflicts
+	if destErr == nil {
+		if !overwrite {
+			_ = ipc.WriteResultError(stream, 0, "destination already exists", 409)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("destination exists")
+		}
+		if sourceInfo.IsDir() != destInfo.IsDir() {
+			_ = ipc.WriteResultError(stream, 0, "source and destination types don't match", 400)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("type mismatch")
+		}
+	}
+
+	// Set up abort monitoring
+	cancelFn, cleanup := ipc.AbortMonitor(stream)
+	defer cleanup()
+
+	// Compute total size for progress
+	totalSize, err := services.ComputeCopySize(source)
+	if err != nil {
+		logger.Debugf("[FBStream] Failed to compute copy size: %v", err)
+		totalSize = 0
+	}
+
+	// Send initial progress
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
+		Total: totalSize,
+		Phase: "preparing",
+	})
+
+	// Create callbacks for progress tracking
+	var bytesProcessed int64
+	var lastProgress int64
+	opts := &ipc.OperationCallbacks{
+		Progress: func(n int64) {
+			bytesProcessed += n
+			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
+				pct := int(bytesProcessed * 100 / totalSize)
+				if pct > 100 {
+					pct = 100
+				}
+				_ = ipc.WriteProgress(stream, 0, FileProgress{
+					Bytes: bytesProcessed,
+					Total: totalSize,
+					Pct:   pct,
+					Phase: "copying",
+				})
+				lastProgress = bytesProcessed
+			}
+		},
+		Cancel: cancelFn,
+	}
+
+	// Perform the copy operation
+	err = services.CopyFileWithCallbacks(source, destination, overwrite, opts)
+	if err == ipc.ErrAborted {
+		logger.Infof("[FBStream] Copy aborted: %s -> %s", source, destination)
+		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("copy aborted")
+	}
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("copy failed: %v", err), 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("copy failed: %w", err)
+	}
+
+	// Notify indexer about the copied file/directory (non-blocking)
+	go func() {
+		if info, err := os.Stat(destination); err == nil {
+			if err := addToIndexer(destination, info); err != nil {
+				logger.Debugf("[FBStream] Failed to update indexer: %v", err)
+			}
+		}
+	}()
+
+	// Send success result
+	_ = ipc.WriteResultOK(stream, 0, map[string]any{
+		"source":      source,
+		"destination": destination,
+		"size":        totalSize,
+	})
+
+	// Close stream
+	_ = ipc.WriteStreamClose(stream, 0)
+
+	logger.Infof("[FBStream] Copy complete: %s -> %s size=%d", source, destination, totalSize)
+	return nil
+}
+
+// handleMove moves a file or directory with progress feedback.
+// args: [source, destination, overwrite?]
+func handleMove(stream net.Conn, args []string) error {
+	if len(args) < 2 {
+		_ = ipc.WriteResultError(stream, 0, "missing source or destination", 400)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("missing source or destination")
+	}
+
+	source := filepath.Clean(args[0])
+	destination := filepath.Clean(args[1])
+	overwrite := false
+	if len(args) > 2 {
+		overwrite = args[2] == "true"
+	}
+
+	// Validate source exists
+	sourceInfo, err := os.Stat(source)
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("source not found: %v", err), 404)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("source not found: %w", err)
+	}
+
+	// Check if destination is a directory - if so, append source filename
+	destInfo, destErr := os.Stat(destination)
+	if destErr == nil && destInfo.IsDir() {
+		destination = filepath.Join(destination, filepath.Base(source))
+		// Re-check the new destination path
+		destInfo, destErr = os.Stat(destination)
+	}
+
+	// Check destination conflicts
+	if destErr == nil {
+		if !overwrite {
+			_ = ipc.WriteResultError(stream, 0, "destination already exists", 409)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("destination exists")
+		}
+		if sourceInfo.IsDir() != destInfo.IsDir() {
+			_ = ipc.WriteResultError(stream, 0, "source and destination types don't match", 400)
+			_ = ipc.WriteStreamClose(stream, 0)
+			return fmt.Errorf("type mismatch")
+		}
+	}
+
+	// Set up abort monitoring
+	cancelFn, cleanup := ipc.AbortMonitor(stream)
+	defer cleanup()
+
+	// Compute total size for progress (in case we need to copy)
+	totalSize, err := services.ComputeCopySize(source)
+	if err != nil {
+		logger.Debugf("[FBStream] Failed to compute move size: %v", err)
+		totalSize = 0
+	}
+
+	// Send initial progress
+	_ = ipc.WriteProgress(stream, 0, FileProgress{
+		Total: totalSize,
+		Phase: "preparing",
+	})
+
+	// Create callbacks for progress tracking
+	var bytesProcessed int64
+	var lastProgress int64
+	opts := &ipc.OperationCallbacks{
+		Progress: func(n int64) {
+			bytesProcessed += n
+			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
+				pct := int(bytesProcessed * 100 / totalSize)
+				if pct > 100 {
+					pct = 100
+				}
+				_ = ipc.WriteProgress(stream, 0, FileProgress{
+					Bytes: bytesProcessed,
+					Total: totalSize,
+					Pct:   pct,
+					Phase: "moving",
+				})
+				lastProgress = bytesProcessed
+			}
+		},
+		Cancel: cancelFn,
+	}
+
+	// Perform the move operation
+	err = services.MoveFileWithCallbacks(source, destination, overwrite, opts)
+	if err == ipc.ErrAborted {
+		logger.Infof("[FBStream] Move aborted: %s -> %s", source, destination)
+		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("move aborted")
+	}
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("move failed: %v", err), 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("move failed: %w", err)
+	}
+
+	// Notify indexer about the move (non-blocking)
+	go func() {
+		// Delete source from indexer
+		if err := deleteFromIndexer(source); err != nil {
+			logger.Debugf("[FBStream] Failed to delete from indexer: %v", err)
+		}
+		// Add destination to indexer
+		if info, err := os.Stat(destination); err == nil {
+			if err := addToIndexer(destination, info); err != nil {
+				logger.Debugf("[FBStream] Failed to update indexer: %v", err)
+			}
+		}
+	}()
+
+	// Send success result
+	_ = ipc.WriteResultOK(stream, 0, map[string]any{
+		"source":      source,
+		"destination": destination,
+		"size":        totalSize,
+	})
+
+	// Close stream
+	_ = ipc.WriteStreamClose(stream, 0)
+
+	logger.Infof("[FBStream] Move complete: %s -> %s size=%d", source, destination, totalSize)
+	return nil
 }

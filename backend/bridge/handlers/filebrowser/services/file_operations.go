@@ -13,6 +13,7 @@ import (
 	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 var (
@@ -155,6 +156,221 @@ func copyDirectory(source, dest string) error {
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+// CopyFileWithCallbacks copies a file or directory with progress callbacks.
+// It handles both files and directories, copying recursively as needed.
+func CopyFileWithCallbacks(source, dest string, overwrite bool, opts *ipc.OperationCallbacks) error {
+	// Validate the copy operation before executing
+	if err := validateMoveDestination(source, dest); err != nil {
+		return err
+	}
+
+	// Check if the source exists and whether it's a file or directory.
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+
+	if err := prepareDestination(info.IsDir(), dest, overwrite); err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		// If the source is a directory, copy it recursively.
+		return copyDirectoryWithCallbacks(source, dest, opts)
+	}
+
+	// If the source is a file, copy the file.
+	return copySingleFileWithCallbacks(source, dest, opts)
+}
+
+// copySingleFileWithCallbacks handles copying a single file with progress callbacks.
+func copySingleFileWithCallbacks(source, dest string, opts *ipc.OperationCallbacks) error {
+	// Check for cancellation
+	if opts != nil && opts.Cancel != nil && opts.Cancel() {
+		return ipc.ErrAborted
+	}
+
+	// Open the source file.
+	src, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	// Create the destination directory if needed.
+	err = os.MkdirAll(filepath.Dir(dest), PermDir)
+	if err != nil {
+		return err
+	}
+
+	// Create the destination file.
+	dst, err := os.OpenFile(dest, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	// Copy the contents of the file with progress tracking.
+	buf := make([]byte, 32*1024) // 32KB buffer
+	for {
+		// Check for cancellation
+		if opts != nil && opts.Cancel != nil && opts.Cancel() {
+			return ipc.ErrAborted
+		}
+
+		n, readErr := src.Read(buf)
+		if n > 0 {
+			_, writeErr := dst.Write(buf[:n])
+			if writeErr != nil {
+				return writeErr
+			}
+
+			// Report progress
+			if opts != nil && opts.Progress != nil {
+				opts.Progress(int64(n))
+			}
+		}
+
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+
+	// Set the configured file permissions instead of copying from source
+	err = os.Chmod(dest, PermFile)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// copyDirectoryWithCallbacks handles copying directories recursively with progress callbacks.
+func copyDirectoryWithCallbacks(source, dest string, opts *ipc.OperationCallbacks) error {
+	// Check for cancellation
+	if opts != nil && opts.Cancel != nil && opts.Cancel() {
+		return ipc.ErrAborted
+	}
+
+	// Create the destination directory.
+	err := os.MkdirAll(dest, PermDir)
+	if err != nil {
+		return err
+	}
+
+	// Read the contents of the source directory.
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+
+	// Iterate over each entry in the directory.
+	for _, entry := range entries {
+		srcPath := filepath.Join(source, entry.Name())
+		destPath := filepath.Join(dest, entry.Name())
+
+		if entry.IsDir() {
+			// Recursively copy subdirectories.
+			err = copyDirectoryWithCallbacks(srcPath, destPath, opts)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Copy files.
+			err = copySingleFileWithCallbacks(srcPath, destPath, opts)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// ComputeCopySize calculates the total size of files to be copied.
+// For directories, it recursively sums the sizes of all contained files.
+func ComputeCopySize(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+
+	if !info.IsDir() {
+		return info.Size(), nil
+	}
+
+	var totalSize int64
+	err = filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+		}
+		return nil
+	})
+
+	return totalSize, err
+}
+
+// MoveFileWithCallbacks moves a file from src to dst with progress callbacks.
+// By default, the rename system call is used. If src and dst point to different volumes,
+// the file copy with callbacks is used as a fallback, followed by deletion of the source.
+func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationCallbacks) error {
+	// Validate the move operation before executing
+	if err := validateMoveDestination(src, dst); err != nil {
+		return err
+	}
+
+	// Check for cancellation
+	if opts != nil && opts.Cancel != nil && opts.Cancel() {
+		return ipc.ErrAborted
+	}
+
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	if destErr := prepareDestination(srcInfo.IsDir(), dst, overwrite); destErr != nil {
+		return destErr
+	}
+
+	// Try rename first (instant, no progress needed)
+	err = os.Rename(src, dst)
+	if err == nil {
+		// Rename succeeded - update progress to 100%
+		if opts != nil && opts.Progress != nil {
+			totalSize, _ := ComputeCopySize(dst)
+			opts.Progress(totalSize)
+		}
+		return nil
+	}
+
+	// Rename failed (likely different volumes) - fallback to copy with callbacks
+	err = CopyFileWithCallbacks(src, dst, overwrite, opts)
+	if err != nil {
+		logger.Errorf("CopyFileWithCallbacks failed %v %v %v ", src, dst, err)
+		return err
+	}
+
+	// Check for cancellation before deleting source
+	if opts != nil && opts.Cancel != nil && opts.Cancel() {
+		return ipc.ErrAborted
+	}
+
+	// Delete source after successful copy
+	if removeErr := os.RemoveAll(src); removeErr != nil {
+		logger.Errorf("os.RemoveAll failed %v %v ", src, removeErr)
+		return fmt.Errorf("failed to remove source after copy: %w", removeErr)
 	}
 
 	return nil

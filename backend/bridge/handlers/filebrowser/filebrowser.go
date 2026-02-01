@@ -23,6 +23,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
 var (
@@ -219,9 +220,9 @@ func resourcePost(args []string) (any, error) {
 	return map[string]any{"message": "created"}, nil
 }
 
-// resourcePatch performs patch operations (move, copy, rename)
+// resourcePatchWithProgress performs patch operations with progress feedback
 // Args: [action, from, destination, overwrite?]
-func resourcePatch(args []string) (any, error) {
+func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Events) (any, error) {
 	if len(args) < 3 {
 		return nil, fmt.Errorf("bad_request:missing action, from, or destination")
 	}
@@ -241,23 +242,38 @@ func resourcePatch(args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:cannot modify root directory")
 	}
 
+	// Strip trailing slashes from dst for proper parent directory calculation
+	// filepath.Dir("/a/b/c/") incorrectly returns "/a/b/c" instead of "/a/b"
+	dstClean := strings.TrimRight(dst, "/")
+
 	// Check parent dir exists
-	parentDir := filepath.Dir(dst)
+	parentDir := filepath.Dir(dstClean)
 	_, statErr := os.Stat(parentDir)
 	if statErr != nil {
-		logger.Debugf("could not get parent dir: %v", statErr)
+		logger.Debugf("parent directory not found: %s (error: %v)", parentDir, statErr)
 		return nil, fmt.Errorf("bad_request:parent directory not found")
 	}
 
 	overwrite := len(args) > 3 && args[3] == "true"
 
-	realDest := filepath.Join(parentDir, filepath.Base(dst))
+	// Reconstruct destination path from parent and base name
+	// Preserve trailing slash for directories
+	baseName := filepath.Base(dstClean)
+	realDest := filepath.Join(parentDir, baseName)
+	if strings.HasSuffix(dst, "/") && !strings.HasSuffix(realDest, "/") {
+		realDest += "/"
+	}
 	realSrc := filepath.Join(src)
 
 	srcInfo, err := os.Stat(realSrc)
 	if err != nil {
 		logger.Debugf("error getting source info: %v", err)
 		return nil, fmt.Errorf("bad_request:source not found")
+	}
+
+	// If copying to the same location, generate a unique name
+	if realSrc == realDest && action == "copy" {
+		realDest = generateUniquePath(realDest, srcInfo.IsDir())
 	}
 
 	destInfo, destErr := os.Stat(realDest)
@@ -279,13 +295,66 @@ func resourcePatch(args []string) (any, error) {
 		}
 	}
 
+	// Compute total size for progress
+	totalSize, err := services.ComputeCopySize(realSrc)
+	if err != nil {
+		logger.Debugf("failed to compute size: %v", err)
+		totalSize = 0
+	}
+
+	// Send initial progress
+	logger.Infof("[FBHandler] Starting %s operation: %s -> %s (size=%d)", action, realSrc, realDest, totalSize)
+	_ = emit.Progress(FileProgress{
+		Total: totalSize,
+		Phase: "preparing",
+	})
+
+	// Create progress callbacks
+	var bytesProcessed int64
+	var lastProgress int64
+	progressInterval := int64(2 * 1024 * 1024) // 2MB
+
+	opts := &ipc.OperationCallbacks{
+		Progress: func(n int64) {
+			bytesProcessed += n
+			if totalSize > 0 && (bytesProcessed-lastProgress >= progressInterval || bytesProcessed >= totalSize) {
+				pct := int(bytesProcessed * 100 / totalSize)
+				if pct > 100 {
+					pct = 100
+				}
+				phase := "copying"
+				if action == "move" || action == "rename" {
+					phase = "moving"
+				}
+				logger.Debugf("[FBHandler] Progress: %d/%d bytes (%d%%) - %s", bytesProcessed, totalSize, pct, phase)
+				_ = emit.Progress(FileProgress{
+					Bytes: bytesProcessed,
+					Total: totalSize,
+					Pct:   pct,
+					Phase: phase,
+				})
+				lastProgress = bytesProcessed
+			}
+		},
+		Cancel: func() bool {
+			// Check if context is cancelled
+			select {
+			case <-ctx.Done():
+				return true
+			default:
+				return false
+			}
+		},
+	}
+
 	switch action {
 	case "copy":
-		err := services.CopyFile(realSrc, realDest, overwrite)
+		err := services.CopyFileWithCallbacks(realSrc, realDest, overwrite, opts)
 		if err != nil {
 			logger.Debugf("error copying resource: %v", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
+		logger.Infof("[FBHandler] Copy complete: %s -> %s (bytes=%d)", realSrc, realDest, bytesProcessed)
 		// Notify indexer about the copied file/directory
 		if info, err := os.Stat(realDest); err == nil {
 			if err := addToIndexer(dst, info); err != nil {
@@ -293,11 +362,12 @@ func resourcePatch(args []string) (any, error) {
 			}
 		}
 	case "rename", "move":
-		err := services.MoveFile(realSrc, realDest, overwrite)
+		err := services.MoveFileWithCallbacks(realSrc, realDest, overwrite, opts)
 		if err != nil {
 			logger.Debugf("error moving/renaming resource: %v", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
+		logger.Infof("[FBHandler] Move complete: %s -> %s (bytes=%d)", realSrc, realDest, bytesProcessed)
 		// Notify indexer about the move: delete source, add destination
 		if err := deleteFromIndexer(src); err != nil {
 			logger.Debugf("failed to update indexer after move (delete source): %v", err)
@@ -312,6 +382,39 @@ func resourcePatch(args []string) (any, error) {
 	}
 
 	return map[string]any{"message": "operation completed"}, nil
+}
+
+// generateUniquePath generates a unique path by appending a suffix like " (copy)" or " (copy 2)"
+func generateUniquePath(path string, isDir bool) string {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+
+	// For files, split name and extension
+	var name, ext string
+	if !isDir {
+		ext = filepath.Ext(base)
+		name = strings.TrimSuffix(base, ext)
+	} else {
+		name = base
+	}
+
+	// Try "name (copy).ext" first
+	newPath := filepath.Join(dir, name+" (copy)"+ext)
+	if _, err := os.Stat(newPath); os.IsNotExist(err) {
+		return newPath
+	}
+
+	// Try "name (copy 2).ext", "name (copy 3).ext", etc.
+	for i := 2; i < 1000; i++ {
+		newPath = filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, i, ext))
+		if _, err := os.Stat(newPath); os.IsNotExist(err) {
+			return newPath
+		}
+	}
+
+	// Fallback to timestamp-based name
+	timestamp := time.Now().Unix()
+	return filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, timestamp, ext))
 }
 
 func normalizeIndexerPath(path string) string {

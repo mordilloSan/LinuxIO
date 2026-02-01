@@ -50,7 +50,8 @@ export const useFileMutations = ({
   onDeleteSuccess,
 }: UseFileMutationsParams) => {
   const queryClient = providedQueryClient ?? useQueryClient();
-  const { startCompression, startExtraction } = useFileTransfers();
+  const { startCompression, startExtraction, startCopy, startMove } =
+    useFileTransfers();
 
   const invalidateListing = () => {
     queryClient.invalidateQueries({
@@ -221,18 +222,14 @@ export const useFileMutations = ({
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
-          // Args: [action, from, destination]
-          return linuxio.call("filebrowser", "resource_patch", [
-            "copy",
-            sourcePath,
+          // Use startCopy for progress tracking
+          return startCopy({
+            source: sourcePath,
             destination,
-          ]);
+            onComplete: invalidateListing,
+          });
         }),
       );
-    },
-    onSuccess: () => {
-      invalidateListing();
-      toast.success("Items copied successfully");
     },
     onError: (error: unknown) => {
       toast.error(getErrorMessage(error, "Failed to copy items"));
@@ -254,18 +251,14 @@ export const useFileMutations = ({
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
-          // Args: [action, from, destination]
-          return linuxio.call("filebrowser", "resource_patch", [
-            "move",
-            sourcePath,
+          // Use startMove for progress tracking
+          return startMove({
+            source: sourcePath,
             destination,
-          ]);
+            onComplete: invalidateListing,
+          });
         }),
       );
-    },
-    onSuccess: () => {
-      invalidateListing();
-      toast.success("Items moved successfully");
     },
     onError: (error: unknown) => {
       toast.error(getErrorMessage(error, "Failed to move items"));

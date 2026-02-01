@@ -22,14 +22,14 @@ const StreamTypeServiceLogs = "service-logs"
 func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		logger.Errorf("[ServiceLogs] missing service name")
-		sendStreamClose(stream)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return errors.New("missing service name")
 	}
 
 	serviceName := strings.TrimSpace(args[0])
 	if serviceName == "" {
 		logger.Errorf("[ServiceLogs] empty service name")
-		sendStreamClose(stream)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return errors.New("empty service name")
 	}
 
@@ -55,13 +55,13 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		logger.Errorf("[ServiceLogs] failed to create stdout pipe: %v", err)
-		sendStreamClose(stream)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return err
 	}
 
 	if err := cmd.Start(); err != nil {
 		logger.Errorf("[ServiceLogs] failed to start journalctl: %v", err)
-		sendStreamClose(stream)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return err
 	}
 
@@ -80,7 +80,7 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 		select {
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
-			sendStreamClose(stream)
+			_ = ipc.WriteStreamClose(stream, 1)
 			return nil
 		default:
 		}
@@ -109,6 +109,6 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	// Wait for command to finish
 	_ = cmd.Wait()
 
-	sendStreamClose(stream)
+	_ = ipc.WriteStreamClose(stream, 1)
 	return nil
 }

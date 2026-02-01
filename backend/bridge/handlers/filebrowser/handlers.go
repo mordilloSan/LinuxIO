@@ -50,7 +50,7 @@ func RegisterHandlers() {
 	})
 
 	ipc.RegisterFunc("filebrowser", "resource_patch", func(ctx context.Context, args []string, emit ipc.Events) error {
-		result, err := resourcePatch(args)
+		result, err := resourcePatchWithProgress(ctx, args, emit)
 		if err != nil {
 			return err
 		}
