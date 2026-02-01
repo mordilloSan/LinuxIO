@@ -190,7 +190,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
               <Tooltip
                 title={
                   isReindexing
-                    ? currentReindex?.label || "Reindexing..."
+                    ? "Reindexing..."
                     : indexerAvailable === false
                       ? "Indexer unavailable"
                       : "Reindex filesystem"
