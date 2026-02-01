@@ -1123,7 +1123,6 @@ func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
 	q := req.URL.Query()
 	q.Set("path", normPath)
 	q.Set("recursive", "true")
-	q.Set("limit", "1000")
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := indexerHTTPClient.Do(req)
