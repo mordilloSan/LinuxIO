@@ -4,14 +4,6 @@
 
 3 - exec.command safety and efeciency?
 
-4 - reverse proxy?
-
-5 - docker autoupdate
-
-6 - docker auto start
-
-7 - docker start order
-
 Docker compose UI - Done
 Right now hash can be reproduced if build from same code base. - DONE
 fix indexer status check and calls. DONE
