@@ -9,7 +9,7 @@ import {
   Chip,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
@@ -154,9 +154,17 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     return { ipv4, gateway, dns: dnsArr.join(", ") };
   }, [iface]);
 
+  const syncModeWithIface = useEffectEvent(() => {
+    setMode(iface.ipv4_method === "manual" ? "manual" : "auto");
+  });
+
+  const resetDirtyState = useEffectEvent(() => {
+    setDirty(false);
+  });
+
   // Keep mode in sync with iface
   useEffect(() => {
-    setMode(iface.ipv4_method === "manual" ? "manual" : "auto");
+    syncModeWithIface();
   }, [iface.ipv4_method]);
 
   // Prefill when expanded + manual (without clobbering user input)
@@ -178,7 +186,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   // Reset dirty when switching to another interface
   useEffect(() => {
-    setDirty(false);
+    resetDirtyState();
   }, [iface.name]);
 
   const handleModeChange = (
