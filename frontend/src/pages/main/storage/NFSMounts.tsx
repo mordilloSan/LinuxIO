@@ -69,8 +69,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const [readOnly, setReadOnly] = useState(false);
   const [mountAtBoot, setMountAtBoot] = useState(false);
   const [customOptions, setCustomOptions] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isMounting, setIsMounting] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [exports, setExports] = useState<string[]>([]);
   const [loadingExports, setLoadingExports] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,12 +130,11 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
 
   const handleMount = async () => {
     if (!server || !exportPath || !mountpoint) {
-      setError("Server, export path, and mountpoint are required");
+      setValidationError("Server, export path, and mountpoint are required");
       return;
     }
 
-    setError(null);
-    setIsMounting(true);
+    setValidationError(null);
 
     try {
       const result = await mountMutation.mutateAsync([
@@ -155,9 +153,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
       onSuccess();
       handleClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to mount NFS share");
-    } finally {
-      setIsMounting(false);
+      toast.error(err?.message || "Failed to mount NFS share");
     }
   };
 
@@ -169,7 +165,8 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     setMountAtBoot(false);
     setCustomOptions("");
     setExports([]);
-    setError(null);
+    setValidationError(null);
+    mountMutation.reset();
     onClose();
   };
 
@@ -250,15 +247,22 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
             fullWidth
             size="small"
           />
-          {error && <Alert severity="error">{error}</Alert>}
+          {validationError && <Alert severity="error">{validationError}</Alert>}
+          {mountMutation.error && (
+            <Alert severity="error">{mountMutation.error.message}</Alert>
+          )}
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isMounting}>
+        <Button onClick={handleClose} disabled={mountMutation.isPending}>
           Cancel
         </Button>
-        <Button onClick={handleMount} variant="contained" disabled={isMounting}>
-          {isMounting ? "Mounting..." : "Mount"}
+        <Button
+          onClick={handleMount}
+          variant="contained"
+          disabled={mountMutation.isPending}
+        >
+          {mountMutation.isPending ? "Mounting..." : "Mount"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -272,16 +276,11 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
   onSuccess,
 }) => {
   const [removeFstab, setRemoveFstab] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isUnmounting, setIsUnmounting] = useState(false);
 
   const unmountMutation = linuxio.storage.unmount_nfs.useMutation();
 
   const handleUnmount = async () => {
     if (!mount) return;
-
-    setError(null);
-    setIsUnmounting(true);
 
     try {
       const result = await unmountMutation.mutateAsync([
@@ -297,15 +296,13 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
       onSuccess();
       handleClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to unmount");
-    } finally {
-      setIsUnmounting(false);
+      toast.error(err?.message || "Failed to unmount");
     }
   };
 
   const handleClose = () => {
     setRemoveFstab(false);
-    setError(null);
+    unmountMutation.reset();
     onClose();
   };
 
@@ -335,23 +332,23 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
           }
           label="Also remove from /etc/fstab"
         />
-        {error && (
+        {unmountMutation.error && (
           <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
+            {unmountMutation.error.message}
           </Alert>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isUnmounting}>
+        <Button onClick={handleClose} disabled={unmountMutation.isPending}>
           Cancel
         </Button>
         <Button
           onClick={handleUnmount}
           variant="contained"
           color="error"
-          disabled={isUnmounting}
+          disabled={unmountMutation.isPending}
         >
-          {isUnmounting ? "Unmounting..." : "Unmount"}
+          {unmountMutation.isPending ? "Unmounting..." : "Unmount"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -367,8 +364,6 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   const [readOnly, setReadOnly] = useState(false);
   const [mountAtBoot, setMountAtBoot] = useState(false);
   const [customOptions, setCustomOptions] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
 
   const remountMutation = linuxio.storage.remount_nfs.useMutation();
 
@@ -439,9 +434,6 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   const handleSave = async () => {
     if (!mount) return;
 
-    setError(null);
-    setIsSaving(true);
-
     try {
       const result = await remountMutation.mutateAsync([
         mount.mountpoint,
@@ -457,9 +449,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
       onSuccess();
       handleClose();
     } catch (err: any) {
-      setError(err?.message || "Failed to update mount options");
-    } finally {
-      setIsSaving(false);
+      toast.error(err?.message || "Failed to update mount options");
     }
   };
 
@@ -467,7 +457,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
     setReadOnly(false);
     setMountAtBoot(false);
     setCustomOptions("");
-    setError(null);
+    remountMutation.reset();
     onClose();
   };
 
@@ -529,15 +519,21 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
             fullWidth
             size="small"
           />
-          {error && <Alert severity="error">{error}</Alert>}
+          {remountMutation.error && (
+            <Alert severity="error">{remountMutation.error.message}</Alert>
+          )}
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isSaving}>
+        <Button onClick={handleClose} disabled={remountMutation.isPending}>
           Cancel
         </Button>
-        <Button onClick={handleSave} variant="contained" disabled={isSaving}>
-          {isSaving ? "Saving..." : "Save"}
+        <Button
+          onClick={handleSave}
+          variant="contained"
+          disabled={remountMutation.isPending}
+        >
+          {remountMutation.isPending ? "Saving..." : "Save"}
         </Button>
       </DialogActions>
     </Dialog>

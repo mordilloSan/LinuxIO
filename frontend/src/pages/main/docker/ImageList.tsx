@@ -46,13 +46,9 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
   imageTags,
   onSuccess,
 }) => {
-  const [error, setError] = useState<string | null>(null);
-
   const deleteImageMutation = linuxio.docker.delete_image.useMutation();
 
   const handleDelete = async () => {
-    setError(null);
-
     try {
       // Delete images sequentially
       for (const id of imageIds) {
@@ -66,22 +62,18 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
       toast.success(successMessage);
       handleClose();
     } catch (err: any) {
-      const errorMessage = err?.message || "Failed to delete image(s)";
-      setError(errorMessage);
-      toast.error(errorMessage);
+      toast.error(err?.message || "Failed to delete image(s)");
     }
   };
 
   const handleClose = () => {
-    setError(null);
+    deleteImageMutation.reset();
     onClose();
   };
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        Delete Image{imageIds.length > 1 ? "s" : ""}
-      </DialogTitle>
+      <DialogTitle>Delete Image{imageIds.length > 1 ? "s" : ""}</DialogTitle>
       <DialogContent>
         <DialogContentText>
           Are you sure you want to delete the following image
@@ -89,16 +81,21 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
         </DialogContentText>
         <Box sx={{ mt: 2, mb: 1 }}>
           {imageTags.map((tag, idx) => (
-            <Chip key={`${tag}-${idx}`} label={tag} size="small" sx={{ mr: 1, mb: 1 }} />
+            <Chip
+              key={`${tag}-${idx}`}
+              label={tag}
+              size="small"
+              sx={{ mr: 1, mb: 1 }}
+            />
           ))}
         </Box>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
           This action cannot be undone. Images in use by containers cannot be
           deleted.
         </DialogContentText>
-        {error && (
+        {deleteImageMutation.error && (
           <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
+            {deleteImageMutation.error.message}
           </Alert>
         )}
       </DialogContent>
@@ -202,7 +199,9 @@ const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
     setSelected(new Set());
   };
 
-  const selectedImages = filtered.filter((img) => effectiveSelected.has(img.id));
+  const selectedImages = filtered.filter((img) =>
+    effectiveSelected.has(img.id),
+  );
   const allSelected =
     filtered.length > 0 && effectiveSelected.size === filtered.length;
   const someSelected =

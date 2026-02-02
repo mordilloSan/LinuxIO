@@ -44,15 +44,9 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   volumeNames,
   onSuccess,
 }) => {
-  const [error, setError] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
   const deleteVolumeMutation = linuxio.docker.delete_volume.useMutation();
 
   const handleDelete = async () => {
-    setError(null);
-    setIsDeleting(true);
-
     try {
       // Delete volumes sequentially
       for (const name of volumeNames) {
@@ -66,16 +60,12 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
       toast.success(successMessage);
       handleClose();
     } catch (err: any) {
-      const errorMessage = err?.message || "Failed to delete volume(s)";
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setIsDeleting(false);
+      toast.error(err?.message || "Failed to delete volume(s)");
     }
   };
 
   const handleClose = () => {
-    setError(null);
+    deleteVolumeMutation.reset();
     onClose();
   };
 
@@ -98,23 +88,23 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
           This action cannot be undone. Volumes in use by containers cannot be
           deleted.
         </DialogContentText>
-        {error && (
+        {deleteVolumeMutation.error && (
           <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
+            {deleteVolumeMutation.error.message}
           </Alert>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isDeleting}>
+        <Button onClick={handleClose} disabled={deleteVolumeMutation.isPending}>
           Cancel
         </Button>
         <Button
           onClick={handleDelete}
           variant="contained"
           color="error"
-          disabled={isDeleting}
+          disabled={deleteVolumeMutation.isPending}
         >
-          {isDeleting ? "Deleting..." : "Delete"}
+          {deleteVolumeMutation.isPending ? "Deleting..." : "Delete"}
         </Button>
       </DialogActions>
     </Dialog>
