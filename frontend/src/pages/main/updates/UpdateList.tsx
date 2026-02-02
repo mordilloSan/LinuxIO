@@ -8,11 +8,13 @@ import {
   CircularProgress,
 } from "@mui/material";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface Props {
   updates: Update[];
@@ -37,32 +39,34 @@ const UpdateList: React.FC<Props> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Mutation for fetching changelog details
-  const { mutate: fetchChangelogMutation } =
-    linuxio.dbus.GetUpdateDetail.useMutation();
+  const { mutate: fetchChangelog } = linuxio.dbus.GetUpdateDetail.useMutation({
+    onSuccess: (detail, variables) => {
+      const packageId = variables[0] as string;
+      setChangelogs((prev) => ({
+        ...prev,
+        [packageId]: detail.changelog || "No changelog available",
+      }));
+      setLoadingChangelog(null);
+    },
+    onError: (error: Error, variables) => {
+      const packageId = variables[0] as string;
+      setChangelogs((prev) => ({
+        ...prev,
+        [packageId]: "Failed to load changelog",
+      }));
+      setLoadingChangelog(null);
+      toast.error(getMutationErrorMessage(error, "Failed to load changelog"));
+    },
+  });
 
-  const fetchChangelog = useCallback(
+  const handleFetchChangelog = useCallback(
     (packageId: string) => {
       if (changelogs[packageId]) return; // Already loaded
 
       setLoadingChangelog(packageId);
-      fetchChangelogMutation([packageId], {
-        onSuccess: (detail) => {
-          setChangelogs((prev) => ({
-            ...prev,
-            [packageId]: detail.changelog || "No changelog available",
-          }));
-          setLoadingChangelog(null);
-        },
-        onError: () => {
-          setChangelogs((prev) => ({
-            ...prev,
-            [packageId]: "Failed to load changelog",
-          }));
-          setLoadingChangelog(null);
-        },
-      });
+      fetchChangelog([packageId]);
     },
-    [changelogs, fetchChangelogMutation],
+    [changelogs, fetchChangelog],
   );
 
   const toggleExpanded = (index: number, packageId: string) => {
@@ -70,7 +74,7 @@ const UpdateList: React.FC<Props> = ({
       setExpandedIdx(null);
     } else {
       setExpandedIdx(index);
-      fetchChangelog(packageId);
+      handleFetchChangelog(packageId);
     }
   };
 

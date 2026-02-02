@@ -29,8 +29,25 @@ function NavbarUserDropdown() {
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
 
   // Mutations for power actions
-  const rebootMutation = linuxio.dbus.Reboot.useMutation();
-  const poweroffMutation = linuxio.dbus.PowerOff.useMutation();
+  const { mutate: reboot } = linuxio.dbus.Reboot.useMutation({
+    onSuccess: () => {
+      // Server may die before responding - this is expected
+    },
+    onError: (error: Error) => {
+      // Server may die before responding - this is expected, so we don't show error
+      console.warn("Reboot error (may be expected):", error);
+    },
+  });
+
+  const { mutate: powerOff } = linuxio.dbus.PowerOff.useMutation({
+    onSuccess: () => {
+      // Server may die before responding - this is expected
+    },
+    onError: (error: Error) => {
+      // Server may die before responding - this is expected, so we don't show error
+      console.warn("Power off error (may be expected):", error);
+    },
+  });
 
   const toggleMenu = (event: React.SyntheticEvent<HTMLElement>) => {
     setAnchorMenu(event.currentTarget);
@@ -52,18 +69,10 @@ function NavbarUserDropdown() {
     // Show overlay immediately
     if (action === "reboot") {
       triggerReboot();
-      rebootMutation.mutate([], {
-        onError: () => {
-          // Server may die before responding - this is expected
-        },
-      });
+      reboot([]);
     } else if (action === "poweroff") {
       triggerPowerOff();
-      poweroffMutation.mutate([], {
-        onError: () => {
-          // Server may die before responding - this is expected
-        },
-      });
+      powerOff([]);
     }
   };
 

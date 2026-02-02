@@ -30,6 +30,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -41,6 +42,7 @@ import type {
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface LVMManagementProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -73,29 +75,40 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   volumeGroups,
   onSuccess,
 }) => {
+  const queryClient = useQueryClient();
   const [vgName, setVgName] = useState("");
   const [lvName, setLvName] = useState("");
   const [size, setSize] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const createMutation = linuxio.storage.create_lv.useMutation();
+  const { mutate: createLV, isPending: isCreating } =
+    linuxio.storage.create_lv.useMutation({
+      onSuccess: () => {
+        toast.success(`Logical volume ${lvName} created successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_lvs"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_vgs"],
+        });
+        onSuccess();
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to create logical volume"),
+        );
+      },
+    });
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     if (!vgName || !lvName || !size) {
       setValidationError("All fields are required");
       return;
     }
 
     setValidationError(null);
-
-    try {
-      await createMutation.mutateAsync([vgName, lvName, size]);
-      toast.success(`Logical volume ${lvName} created successfully`);
-      onSuccess();
-      handleClose();
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to create logical volume");
-    }
+    createLV([vgName, lvName, size]);
   };
 
   const handleClose = () => {
@@ -103,7 +116,6 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
     setLvName("");
     setSize("");
     setValidationError(null);
-    createMutation.reset();
     onClose();
   };
 
@@ -149,21 +161,18 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
             fullWidth
           />
           {validationError && <Alert severity="error">{validationError}</Alert>}
-          {createMutation.error && (
-            <Alert severity="error">{createMutation.error.message}</Alert>
-          )}
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={createMutation.isPending}>
+        <Button onClick={handleClose} disabled={isCreating}>
           Cancel
         </Button>
         <Button
           onClick={handleCreate}
           variant="contained"
-          disabled={createMutation.isPending}
+          disabled={isCreating}
         >
-          {createMutation.isPending ? "Creating..." : "Create"}
+          {isCreating ? "Creating..." : "Create"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -176,6 +185,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   lv,
   onSuccess,
 }) => {
+  const queryClient = useQueryClient();
   // Pre-fill with current size in GB
   const [newSize, setNewSize] = useState(() => {
     if (lv) {
@@ -186,30 +196,39 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   });
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const resizeMutation = linuxio.storage.resize_lv.useMutation();
+  const { mutate: resizeLV, isPending: isResizing } =
+    linuxio.storage.resize_lv.useMutation({
+      onSuccess: () => {
+        toast.success(`Logical volume ${lv?.name} resized successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_lvs"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_vgs"],
+        });
+        onSuccess();
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to resize logical volume"),
+        );
+      },
+    });
 
-  const handleResize = async () => {
+  const handleResize = () => {
     if (!lv || !newSize) {
       setValidationError("Size is required");
       return;
     }
 
     setValidationError(null);
-
-    try {
-      await resizeMutation.mutateAsync([lv.vgName, lv.name, newSize]);
-      toast.success(`Logical volume ${lv.name} resized successfully`);
-      onSuccess();
-      handleClose();
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to resize logical volume");
-    }
+    resizeLV([lv.vgName, lv.name, newSize]);
   };
 
   const handleClose = () => {
     setNewSize("");
     setValidationError(null);
-    resizeMutation.reset();
     onClose();
   };
 
@@ -243,21 +262,18 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
             fullWidth
           />
           {validationError && <Alert severity="error">{validationError}</Alert>}
-          {resizeMutation.error && (
-            <Alert severity="error">{resizeMutation.error.message}</Alert>
-          )}
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={resizeMutation.isPending}>
+        <Button onClick={handleClose} disabled={isResizing}>
           Cancel
         </Button>
         <Button
           onClick={handleResize}
           variant="contained"
-          disabled={resizeMutation.isPending}
+          disabled={isResizing}
         >
-          {resizeMutation.isPending ? "Resizing..." : "Resize"}
+          {isResizing ? "Resizing..." : "Resize"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -270,27 +286,34 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
   lv,
   onSuccess,
 }) => {
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const deleteMutation = linuxio.storage.delete_lv.useMutation();
+  const { mutate: deleteLV, isPending: isDeleting } =
+    linuxio.storage.delete_lv.useMutation({
+      onSuccess: () => {
+        toast.success(`Logical volume ${lv?.name} deleted successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_lvs"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_vgs"],
+        });
+        onSuccess();
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to delete logical volume"),
+        );
+      },
+    });
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!lv) return;
-
-    setError(null);
-
-    try {
-      await deleteMutation.mutateAsync([lv.vgName, lv.name]);
-      toast.success(`Logical volume ${lv.name} deleted successfully`);
-      onSuccess();
-      handleClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to delete logical volume");
-    }
+    deleteLV([lv.vgName, lv.name]);
   };
 
   const handleClose = () => {
-    setError(null);
     onClose();
   };
 
@@ -311,23 +334,18 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
         <DialogContentText sx={{ mt: 2, color: "error.main" }}>
           This action cannot be undone. All data on this volume will be lost.
         </DialogContentText>
-        {deleteMutation.error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {deleteMutation.error.message}
-          </Alert>
-        )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={deleteMutation.isPending}>
+        <Button onClick={handleClose} disabled={isDeleting}>
           Cancel
         </Button>
         <Button
           onClick={handleDelete}
           variant="contained"
           color="error"
-          disabled={deleteMutation.isPending || !!lv?.mountpoint}
+          disabled={isDeleting || !!lv?.mountpoint}
         >
-          {deleteMutation.isPending ? "Deleting..." : "Delete"}
+          {isDeleting ? "Deleting..." : "Delete"}
         </Button>
       </DialogActions>
     </Dialog>

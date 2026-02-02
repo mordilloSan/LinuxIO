@@ -16,7 +16,6 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
-  Alert,
   FormControl,
   InputLabel,
   Select,
@@ -24,6 +23,7 @@ import {
   FormControlLabel,
   Switch,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -36,6 +36,7 @@ import {
   longTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -52,32 +53,37 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
   onClose,
   existingNames,
 }) => {
+  const queryClient = useQueryClient();
   const [networkName, setNetworkName] = useState("");
   const [driver, setDriver] = useState("bridge");
   const [internal, setInternal] = useState(false);
 
-  const createNetworkMutation = linuxio.docker.create_network.useMutation();
+  const { mutate: createNetwork, isPending: isCreating } =
+    linuxio.docker.create_network.useMutation({
+      onSuccess: () => {
+        toast.success(`Network "${networkName}" created successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "docker", "list_networks"],
+        });
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(getMutationErrorMessage(error, "Failed to create network"));
+      },
+    });
 
   const nameTaken = networkName && existingNames.includes(networkName);
   const isValidName = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(networkName);
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     if (!networkName || nameTaken || !isValidName) return;
-
-    try {
-      await createNetworkMutation.mutateAsync([networkName]);
-      toast.success(`Network "${networkName}" created successfully`);
-      handleClose();
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to create network");
-    }
+    createNetwork([networkName]);
   };
 
   const handleClose = () => {
     setNetworkName("");
     setDriver("bridge");
     setInternal(false);
-    createNetworkMutation.reset();
     onClose();
   };
 
@@ -100,7 +106,7 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
                   ? "Name must start with alphanumeric and contain only alphanumeric, _, ., or -"
                   : ""
             }
-            disabled={createNetworkMutation.isPending}
+            disabled={isCreating}
             autoFocus
           />
           <FormControl fullWidth margin="normal">
@@ -110,7 +116,7 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
               value={driver}
               onChange={(e) => setDriver(e.target.value)}
               label="Driver"
-              disabled={createNetworkMutation.isPending}
+              disabled={isCreating}
             >
               <MenuItem value="bridge">bridge</MenuItem>
               <MenuItem value="host">host</MenuItem>
@@ -124,38 +130,24 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
               <Switch
                 checked={internal}
                 onChange={(e) => setInternal(e.target.checked)}
-                disabled={createNetworkMutation.isPending}
+                disabled={isCreating}
               />
             }
             label="Internal network (no external connectivity)"
             sx={{ mt: 1 }}
           />
-          {createNetworkMutation.error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {createNetworkMutation.error.message}
-            </Alert>
-          )}
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button
-          onClick={handleClose}
-          color="secondary"
-          disabled={createNetworkMutation.isPending}
-        >
+        <Button onClick={handleClose} color="secondary" disabled={isCreating}>
           Cancel
         </Button>
         <Button
           onClick={handleCreate}
           variant="contained"
-          disabled={
-            !networkName ||
-            !!nameTaken ||
-            !isValidName ||
-            createNetworkMutation.isPending
-          }
+          disabled={!networkName || !!nameTaken || !isValidName || isCreating}
         >
-          {createNetworkMutation.isPending ? "Creating..." : "Create"}
+          {isCreating ? "Creating..." : "Create"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -177,28 +169,35 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
   networkIds,
   onSuccess,
 }) => {
-  const deleteNetworkMutation = linuxio.docker.delete_network.useMutation();
+  const queryClient = useQueryClient();
+
+  const { mutateAsync: deleteNetwork, isPending: isDeleting } =
+    linuxio.docker.delete_network.useMutation({
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to delete network(s)"),
+        );
+      },
+    });
 
   const handleDelete = async () => {
-    try {
-      // Delete networks sequentially
-      for (const id of networkIds) {
-        await deleteNetworkMutation.mutateAsync([id]);
-      }
-      onSuccess();
-      const successMessage =
-        networkNames.length === 1
-          ? `Network "${networkNames[0]}" deleted successfully`
-          : `${networkNames.length} networks deleted successfully`;
-      toast.success(successMessage);
-      handleClose();
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to delete network(s)");
+    // Delete networks sequentially
+    for (const id of networkIds) {
+      await deleteNetwork([id]);
     }
+    const successMessage =
+      networkNames.length === 1
+        ? `Network "${networkNames[0]}" deleted successfully`
+        : `${networkNames.length} networks deleted successfully`;
+    toast.success(successMessage);
+    queryClient.invalidateQueries({
+      queryKey: ["linuxio", "docker", "list_networks"],
+    });
+    onSuccess();
+    handleClose();
   };
 
   const handleClose = () => {
-    deleteNetworkMutation.reset();
     onClose();
   };
 
@@ -221,26 +220,18 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
           This action cannot be undone. Networks with connected containers
           cannot be deleted.
         </DialogContentText>
-        {deleteNetworkMutation.error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {deleteNetworkMutation.error.message}
-          </Alert>
-        )}
       </DialogContent>
       <DialogActions>
-        <Button
-          onClick={handleClose}
-          disabled={deleteNetworkMutation.isPending}
-        >
+        <Button onClick={handleClose} disabled={isDeleting}>
           Cancel
         </Button>
         <Button
           onClick={handleDelete}
           variant="contained"
           color="error"
-          disabled={deleteNetworkMutation.isPending}
+          disabled={isDeleting}
         >
-          {deleteNetworkMutation.isPending ? "Deleting..." : "Delete"}
+          {isDeleting ? "Deleting..." : "Delete"}
         </Button>
       </DialogActions>
     </Dialog>

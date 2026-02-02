@@ -7,7 +7,6 @@ import {
   DialogContentText,
   DialogTitle,
 } from "@mui/material";
-import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -41,7 +40,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   onMountCreateHandler,
   onMountReindexHandler,
 }) => {
-  const queryClient = useQueryClient();
   const { config } = useConfig();
 
   // Setup dialog state
@@ -89,19 +87,20 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     useState<ComposeProject | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const { data: projects = [], isPending } =
-    linuxio.docker.list_compose_projects.useQuery({
-      refetchInterval: 5000,
-    });
+  const {
+    data: projects = [],
+    isPending,
+    refetch,
+  } = linuxio.docker.list_compose_projects.useQuery({
+    refetchInterval: 5000,
+  });
 
   // Handle operation dialog close
   const handleOperationDialogClose = useCallback(() => {
     setOperationDialogOpen(false);
     // Refresh projects after operation completes
-    queryClient.invalidateQueries({
-      queryKey: ["docker", "list_compose_projects"],
-    });
-  }, [queryClient]);
+    refetch();
+  }, [refetch]);
 
   const startProject = useCallback((projectName: string, filePath?: string) => {
     setOperationAction("up");
@@ -168,9 +167,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
               : `Stack ${projectName} and compose file deleted successfully`;
           toast.success(successMsg);
 
-          queryClient.invalidateQueries({
-            queryKey: ["docker", "list_compose_projects"],
-          });
+          refetch();
 
           setDeleteDialogOpen(false);
           setDeleteDialogProject(null);
@@ -183,7 +180,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         setDeleteLoading(false);
       }
     },
-    [deleteDialogProject, queryClient],
+    [deleteDialogProject, refetch],
   );
 
   const handleDeleteDialogClose = useCallback(() => {
@@ -198,11 +195,9 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   }, []);
 
   const handleReindexComplete = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: ["docker", "list_compose_projects"],
-    });
+    refetch();
     toast.success("Docker folder reindexed successfully");
-  }, [queryClient]);
+  }, [refetch]);
 
   const isLoading = operationDialogOpen || reindexDialogOpen;
 
@@ -364,9 +359,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       toast.success("Compose file saved successfully");
 
       // Invalidate queries
-      queryClient.invalidateQueries({
-        queryKey: ["docker", "list_compose_projects"],
-      });
+      refetch();
 
       // Close editor
       setEditorOpen(false);
@@ -388,7 +381,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       setPostSaveStackState(state);
       setPostSaveDialogOpen(true);
     },
-    [projects, queryClient],
+    [projects, refetch],
   );
 
   // Save compose file with overwrite protection

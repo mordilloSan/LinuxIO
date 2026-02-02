@@ -9,6 +9,7 @@ import linuxio from "@/api/react-query";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { WireGuardInterface } from "@/types/wireguard";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 const wireguardToastMeta = {
   meta: { href: "/wireguard", label: "Open WireGuard" },
@@ -32,15 +33,112 @@ const WireGuardDashboard: React.FC = () => {
   });
 
   // Mutations
-  const removeInterfaceMutation =
-    linuxio.wireguard.remove_interface.useMutation();
-  const addPeerMutation = linuxio.wireguard.add_peer.useMutation();
-  const upInterfaceMutation = linuxio.wireguard.up_interface.useMutation();
-  const downInterfaceMutation = linuxio.wireguard.down_interface.useMutation();
-  const enableInterfaceMutation =
-    linuxio.wireguard.enable_interface.useMutation();
-  const disableInterfaceMutation =
-    linuxio.wireguard.disable_interface.useMutation();
+  const { mutate: removeInterface } =
+    linuxio.wireguard.remove_interface.useMutation({
+      onSuccess: (_, variables) => {
+        const [interfaceName] = variables;
+        toast.success(
+          `WireGuard interface '${interfaceName}' deleted`,
+          wireguardToastMeta,
+        );
+        setSelectedInterface(null);
+        refetch();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(
+            error,
+            "Failed to remove WireGuard interface",
+          ),
+          wireguardToastMeta,
+        );
+      },
+    });
+
+  const { mutate: addPeer } = linuxio.wireguard.add_peer.useMutation({
+    onSuccess: (_, variables) => {
+      const [interfaceName] = variables;
+      toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
+      refetch();
+    },
+    onError: (error: Error) => {
+      toast.error(
+        getMutationErrorMessage(error, "Failed to add peer"),
+        wireguardToastMeta,
+      );
+    },
+  });
+
+  const { mutate: upInterface } = linuxio.wireguard.up_interface.useMutation({
+    onSuccess: (_, variables) => {
+      const [interfaceName] = variables;
+      toast.success(
+        `WireGuard interface "${interfaceName}" turned on.`,
+        wireguardToastMeta,
+      );
+      refetch();
+    },
+    onError: (error: Error) => {
+      toast.error(
+        getMutationErrorMessage(error, "Failed to bring interface up"),
+        wireguardToastMeta,
+      );
+    },
+  });
+
+  const { mutate: downInterface } =
+    linuxio.wireguard.down_interface.useMutation({
+      onSuccess: (_, variables) => {
+        const [interfaceName] = variables;
+        toast.success(
+          `WireGuard interface "${interfaceName}" turned off.`,
+          wireguardToastMeta,
+        );
+        refetch();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to bring interface down"),
+          wireguardToastMeta,
+        );
+      },
+    });
+
+  const { mutate: enableInterface } =
+    linuxio.wireguard.enable_interface.useMutation({
+      onSuccess: (_, variables) => {
+        const [interfaceName] = variables;
+        toast.success(
+          `WireGuard interface "${interfaceName}" enabled for boot persistence.`,
+          wireguardToastMeta,
+        );
+        refetch();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to enable boot persistence"),
+          wireguardToastMeta,
+        );
+      },
+    });
+
+  const { mutate: disableInterface } =
+    linuxio.wireguard.disable_interface.useMutation({
+      onSuccess: (_, variables) => {
+        const [interfaceName] = variables;
+        toast.success(
+          `WireGuard interface "${interfaceName}" disabled for boot persistence.`,
+          wireguardToastMeta,
+        );
+        refetch();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to disable boot persistence"),
+          wireguardToastMeta,
+        );
+      },
+    });
 
   const WGinterfaces = Array.isArray(interfaceData) ? interfaceData : [];
 
@@ -79,68 +177,27 @@ const WireGuardDashboard: React.FC = () => {
   }, [hasSelectedInterface]);
 
   const handleDelete = (interfaceName: string) => {
-    removeInterfaceMutation.mutate([interfaceName], {
-      onSuccess: () => {
-        toast.success(
-          `WireGuard interface '${interfaceName}' deleted`,
-          wireguardToastMeta,
-        );
-        refetch();
-        setSelectedInterface(null);
-      },
-    });
+    removeInterface([interfaceName]);
   };
 
   const handleAddPeer = (interfaceName: string) => {
-    addPeerMutation.mutate([interfaceName], {
-      onSuccess: () => {
-        toast.success(`Peer added to '${interfaceName}'`, wireguardToastMeta);
-        refetch();
-      },
-    });
+    addPeer([interfaceName]);
   };
 
   const handleToggleInterface = (
     interfaceName: string,
     status: "up" | "down",
   ) => {
-    const mutation =
-      status === "up" ? upInterfaceMutation : downInterfaceMutation;
-
-    mutation.mutate([interfaceName], {
-      onSuccess: () => {
-        toast.success(
-          `WireGuard interface "${interfaceName}" turned ${status === "up" ? "on" : "off"}.`,
-          wireguardToastMeta,
-        );
-        refetch();
-      },
-    });
+    const mutation = status === "up" ? upInterface : downInterface;
+    mutation([interfaceName]);
   };
 
   const handleToggleBootPersistence = (
     interfaceName: string,
     isEnabled: boolean,
   ) => {
-    const mutation = isEnabled
-      ? disableInterfaceMutation
-      : enableInterfaceMutation;
-
-    mutation.mutate([interfaceName], {
-      onSuccess: () => {
-        toast.success(
-          `WireGuard interface "${interfaceName}" ${isEnabled ? "disabled" : "enabled"} for boot persistence.`,
-          wireguardToastMeta,
-        );
-        refetch();
-      },
-      onError: (error: Error) => {
-        toast.error(
-          `Failed to ${isEnabled ? "disable" : "enable"} boot persistence: ${error.message}`,
-          wireguardToastMeta,
-        );
-      },
-    });
+    const mutation = isEnabled ? disableInterface : enableInterface;
+    mutation([interfaceName]);
   };
 
   const handleSelectInterface = (iface: WireGuardInterface) => {

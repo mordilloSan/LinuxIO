@@ -12,8 +12,8 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
-  Alert,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -26,6 +26,7 @@ import {
   longTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -44,28 +45,35 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   volumeNames,
   onSuccess,
 }) => {
-  const deleteVolumeMutation = linuxio.docker.delete_volume.useMutation();
+  const queryClient = useQueryClient();
+
+  const { mutateAsync: deleteVolume, isPending: isDeleting } =
+    linuxio.docker.delete_volume.useMutation({
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to delete volume(s)"),
+        );
+      },
+    });
 
   const handleDelete = async () => {
-    try {
-      // Delete volumes sequentially
-      for (const name of volumeNames) {
-        await deleteVolumeMutation.mutateAsync([name]);
-      }
-      onSuccess();
-      const successMessage =
-        volumeNames.length === 1
-          ? `Volume "${volumeNames[0]}" deleted successfully`
-          : `${volumeNames.length} volumes deleted successfully`;
-      toast.success(successMessage);
-      handleClose();
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to delete volume(s)");
+    // Delete volumes sequentially
+    for (const name of volumeNames) {
+      await deleteVolume([name]);
     }
+    const successMessage =
+      volumeNames.length === 1
+        ? `Volume "${volumeNames[0]}" deleted successfully`
+        : `${volumeNames.length} volumes deleted successfully`;
+    toast.success(successMessage);
+    queryClient.invalidateQueries({
+      queryKey: ["linuxio", "docker", "list_volumes"],
+    });
+    onSuccess();
+    handleClose();
   };
 
   const handleClose = () => {
-    deleteVolumeMutation.reset();
     onClose();
   };
 
@@ -88,23 +96,18 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
           This action cannot be undone. Volumes in use by containers cannot be
           deleted.
         </DialogContentText>
-        {deleteVolumeMutation.error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {deleteVolumeMutation.error.message}
-          </Alert>
-        )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={deleteVolumeMutation.isPending}>
+        <Button onClick={handleClose} disabled={isDeleting}>
           Cancel
         </Button>
         <Button
           onClick={handleDelete}
           variant="contained"
           color="error"
-          disabled={deleteVolumeMutation.isPending}
+          disabled={isDeleting}
         >
-          {deleteVolumeMutation.isPending ? "Deleting..." : "Delete"}
+          {isDeleting ? "Deleting..." : "Delete"}
         </Button>
       </DialogActions>
     </Dialog>

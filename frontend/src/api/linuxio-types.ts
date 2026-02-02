@@ -510,9 +510,9 @@ export interface LinuxIOSchema {
     };
     resource_stat: { args: [path: string]; result: ResourceStatData };
     resource_delete: { args: [path: string]; result: void };
-    resource_post: { args: [path: string, action: string]; result: void };
+    resource_post: { args: [path: string, action?: string]; result: void };
     resource_patch: {
-      args: [src: string, dst: string, action: string];
+      args: [action: string, src: string, dst: string];
       result: void;
     };
     dir_size: { args: [path: string]; result: DirectorySizeData };
@@ -525,7 +525,16 @@ export interface LinuxIOSchema {
       args: [];
       result: { running: boolean; progress: number };
     };
-    chmod: { args: [path: string, mode: string]; result: void };
+    chmod: {
+      args: [
+        path: string,
+        mode: string,
+        owner?: string,
+        group?: string,
+        recursive?: string,
+      ];
+      result: void;
+    };
     users_groups: { args: []; result: UsersGroupsResponse };
     file_update_from_temp: {
       args: [tempPath: string, targetPath: string];

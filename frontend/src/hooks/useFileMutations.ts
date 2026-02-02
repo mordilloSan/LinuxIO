@@ -6,8 +6,9 @@ import {
 import { toast } from "sonner";
 
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
-import linuxio, { LinuxIOError } from "@/api/react-query";
+import linuxio from "@/api/react-query";
 import { useFileTransfers } from "./useFileTransfers";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 type UseFileMutationsParams = {
   normalizedPath: string;
@@ -60,16 +61,6 @@ export const useFileMutations = ({
     clearFileSubfoldersCache(queryClient);
   };
 
-  const getErrorMessage = (error: unknown, fallback: string): string => {
-    if (error instanceof LinuxIOError) {
-      return error.message || fallback;
-    }
-    if (error instanceof Error) {
-      return error.message || fallback;
-    }
-    return fallback;
-  };
-
   const { mutate: createFile } = useMutation({
     mutationFn: async (fileName: string) => {
       const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
@@ -81,7 +72,7 @@ export const useFileMutations = ({
       toast.success("File created successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to create file"));
+      toast.error(getMutationErrorMessage(error, "Failed to create file"));
     },
   });
 
@@ -96,7 +87,7 @@ export const useFileMutations = ({
       toast.success("Folder created successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to create folder"));
+      toast.error(getMutationErrorMessage(error, "Failed to create folder"));
     },
   });
 
@@ -104,7 +95,6 @@ export const useFileMutations = ({
     mutationFn: async (paths: string[]) => {
       await Promise.all(
         paths.map((path) =>
-          // Args: [path]
           linuxio.call("filebrowser", "resource_delete", [path]),
         ),
       );
@@ -115,7 +105,7 @@ export const useFileMutations = ({
       toast.success("Items deleted successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to delete items"));
+      toast.error(getMutationErrorMessage(error, "Failed to delete items"));
     },
   });
 
@@ -182,7 +172,9 @@ export const useFileMutations = ({
       toast.success("Permissions changed successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to change permissions"));
+      toast.error(
+        getMutationErrorMessage(error, "Failed to change permissions"),
+      );
     },
   });
 
@@ -203,7 +195,7 @@ export const useFileMutations = ({
       toast.success("Item renamed successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to rename item"));
+      toast.error(getMutationErrorMessage(error, "Failed to rename item"));
     },
   });
 
@@ -232,7 +224,7 @@ export const useFileMutations = ({
       );
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to copy items"));
+      toast.error(getMutationErrorMessage(error, "Failed to copy items"));
     },
   });
 
@@ -261,7 +253,7 @@ export const useFileMutations = ({
       );
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to move items"));
+      toast.error(getMutationErrorMessage(error, "Failed to move items"));
     },
   });
 

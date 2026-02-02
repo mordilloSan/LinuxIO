@@ -36,6 +36,7 @@ import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface SmartAttribute {
   id: number;
@@ -262,6 +263,7 @@ interface DriveDetailsProps {
   drive: DriveInfo;
   expanded: boolean;
   rawDrive: ApiDisk | null;
+  refetchDrives: () => void;
 }
 
 const STREAM_TYPE_SMART_TEST = "smart-test";
@@ -270,6 +272,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   drive,
   expanded,
   rawDrive,
+  refetchDrives,
 }) => {
   const [tabIndex, setTabIndex] = useState(0);
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
@@ -279,8 +282,14 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
     useState<SmartTestProgressEvent | null>(null);
   const streamRef = useRef<Stream | null>(null);
 
-  const { mutateAsync: runSmartTest } =
-    linuxio.storage.run_smart_test.useMutation();
+  const { mutate: runSmartTest } = linuxio.storage.run_smart_test.useMutation({
+    onSuccess: () => {
+      refetchDrives();
+    },
+    onError: (error: Error) => {
+      toast.error(getMutationErrorMessage(error, "Failed to start SMART test"));
+    },
+  });
 
   useEffect(() => {
     return () => {
@@ -291,7 +300,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
     };
   }, []);
 
-  const handleRunTest = async (testType: "short" | "long") => {
+  const handleRunTest = (testType: "short" | "long") => {
     if (!rawDrive) return;
 
     setStartPending(testType);
@@ -305,23 +314,22 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
 
     const mux = getStreamMux();
     if (!mux || mux.status !== "open") {
-      try {
-        await runSmartTest([rawDrive.name, testType]);
-        toast.success(
-          `${testType === "short" ? "Short" : "Extended"} self-test started on /dev/${rawDrive.name}`,
-        );
-      } catch (err) {
-        toast.error(
-          `Failed to start test: ${err instanceof Error ? err.message : "Unknown error"}`,
-        );
-        setTestProgress((prev) =>
-          prev
-            ? { ...prev, status: "error", message: "Failed to start test" }
-            : null,
-        );
-      } finally {
-        setStartPending(null);
-      }
+      runSmartTest([rawDrive.name, testType], {
+        onSuccess: () => {
+          toast.success(
+            `${testType === "short" ? "Short" : "Extended"} self-test started on /dev/${rawDrive.name}`,
+          );
+          setStartPending(null);
+        },
+        onError: () => {
+          setTestProgress((prev) =>
+            prev
+              ? { ...prev, status: "error", message: "Failed to start test" }
+              : null,
+          );
+          setStartPending(null);
+        },
+      });
       return;
     }
 
@@ -1228,8 +1236,11 @@ const DiskOverview: React.FC = () => {
   const theme = useTheme();
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const { data: rawDrives = [], isPending: drivesLoading } =
-    linuxio.storage.get_drive_info.useQuery({ refetchInterval: 30000 });
+  const {
+    data: rawDrives = [],
+    isPending: drivesLoading,
+    refetch: refetchDrives,
+  } = linuxio.storage.get_drive_info.useQuery({ refetchInterval: 30000 });
 
   const { data: filesystems = [], isPending: fsLoading } =
     linuxio.system.get_fs_info.useQuery({ refetchInterval: 10000 });
@@ -1447,6 +1458,7 @@ const DiskOverview: React.FC = () => {
                       rawDrive={
                         rawDrives.find((d) => d.name === drive.name) || null
                       }
+                      refetchDrives={refetchDrives}
                     />
                   </FrostedCard>
                 </Grid>

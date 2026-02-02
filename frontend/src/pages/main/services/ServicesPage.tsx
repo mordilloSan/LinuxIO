@@ -1,5 +1,5 @@
 import { Box, Alert } from "@mui/material";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import React, { useState, useCallback } from "react";
 import { toast } from "sonner";
 
@@ -8,23 +8,24 @@ import ServiceTable, { Service } from "./ServiceTable";
 
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 const ServicesList: React.FC = () => {
   const [logsDrawerOpen, setLogsDrawerOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<string>("");
+  const queryClient = useQueryClient();
 
   const {
     data,
     isPending: isLoading,
     isError,
     error,
-    refetch,
   } = linuxio.dbus.ListServices.useQuery({
     refetchInterval: 2000,
   });
 
   // Service action mutation with dynamic command mapping
-  const { mutate: mutateServiceAction, isPending: isActionPending } =
+  const { mutate: performServiceAction, isPending: isActionPending } =
     useMutation({
       mutationFn: async (variables: {
         serviceName: string;
@@ -50,24 +51,39 @@ const ServicesList: React.FC = () => {
       onSuccess: (_, variables) => {
         const { serviceName, action } = variables;
         toast.success(`Service ${serviceName} ${action}ed successfully`);
-        refetch();
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "dbus", "ListServices"],
+        });
+      },
+      onError: (error: Error, variables) => {
+        const { serviceName, action } = variables;
+        toast.error(
+          getMutationErrorMessage(
+            error,
+            `Failed to ${action} service ${serviceName}`,
+          ),
+        );
       },
     });
 
-  // Service action handler
-  const performServiceAction = useCallback(
-    (serviceName: string, action: string) => {
-      mutateServiceAction({ serviceName, action });
-    },
-    [mutateServiceAction],
+  // Service action handlers
+  const handleRestart = useCallback(
+    (service: Service) =>
+      performServiceAction({ serviceName: service.name, action: "restart" }),
+    [performServiceAction],
   );
 
-  const handleRestart = (service: Service) =>
-    performServiceAction(service.name, "restart");
-  const handleStop = (service: Service) =>
-    performServiceAction(service.name, "stop");
-  const handleStart = (service: Service) =>
-    performServiceAction(service.name, "start");
+  const handleStop = useCallback(
+    (service: Service) =>
+      performServiceAction({ serviceName: service.name, action: "stop" }),
+    [performServiceAction],
+  );
+
+  const handleStart = useCallback(
+    (service: Service) =>
+      performServiceAction({ serviceName: service.name, action: "start" }),
+    [performServiceAction],
+  );
 
   const handleViewLogs = (service: Service) => {
     setSelectedService(service.name);

@@ -12,8 +12,8 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
-  Alert,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -26,6 +26,7 @@ import {
   longTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -46,28 +47,35 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
   imageTags,
   onSuccess,
 }) => {
-  const deleteImageMutation = linuxio.docker.delete_image.useMutation();
+  const queryClient = useQueryClient();
+
+  const { mutateAsync: deleteImage, isPending: isDeleting } =
+    linuxio.docker.delete_image.useMutation({
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to delete image(s)"),
+        );
+      },
+    });
 
   const handleDelete = async () => {
-    try {
-      // Delete images sequentially
-      for (const id of imageIds) {
-        await deleteImageMutation.mutateAsync([id]);
-      }
-      onSuccess();
-      const successMessage =
-        imageIds.length === 1
-          ? `Image "${imageTags[0]}" deleted successfully`
-          : `${imageIds.length} images deleted successfully`;
-      toast.success(successMessage);
-      handleClose();
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to delete image(s)");
+    // Delete images sequentially
+    for (const id of imageIds) {
+      await deleteImage([id]);
     }
+    const successMessage =
+      imageIds.length === 1
+        ? `Image "${imageTags[0]}" deleted successfully`
+        : `${imageIds.length} images deleted successfully`;
+    toast.success(successMessage);
+    queryClient.invalidateQueries({
+      queryKey: ["linuxio", "docker", "list_images"],
+    });
+    onSuccess();
+    handleClose();
   };
 
   const handleClose = () => {
-    deleteImageMutation.reset();
     onClose();
   };
 
@@ -93,23 +101,18 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
           This action cannot be undone. Images in use by containers cannot be
           deleted.
         </DialogContentText>
-        {deleteImageMutation.error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {deleteImageMutation.error.message}
-          </Alert>
-        )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={deleteImageMutation.isPending}>
+        <Button onClick={handleClose} disabled={isDeleting}>
           Cancel
         </Button>
         <Button
           onClick={handleDelete}
           variant="contained"
           color="error"
-          disabled={deleteImageMutation.isPending}
+          disabled={isDeleting}
         >
-          {deleteImageMutation.isPending ? "Deleting..." : "Delete"}
+          {isDeleting ? "Deleting..." : "Delete"}
         </Button>
       </DialogActions>
     </Dialog>
