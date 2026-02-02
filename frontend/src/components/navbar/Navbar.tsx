@@ -20,7 +20,7 @@ import { getHoverBackground } from "@/theme/components";
 
 interface NavbarProps {
   onDrawerToggle: React.MouseEventHandler<HTMLElement>;
-};
+}
 
 const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
   const theme = useTheme();

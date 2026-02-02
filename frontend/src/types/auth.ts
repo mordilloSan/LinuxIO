@@ -18,7 +18,7 @@ export interface AuthUser {
   id: string;
   /** Friendly display name for the user. */
   name: string;
-};
+}
 
 /**
  * Reducer-managed state representing the authentication context.
@@ -29,7 +29,7 @@ export interface AuthState {
   user: AuthUser | null;
   privileged: boolean;
   indexerAvailable: boolean | null;
-};
+}
 
 /**
  * The shape of the public API exposed by `useAuth()` or `AuthContext`.
@@ -43,7 +43,7 @@ export interface AuthContextType {
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-};
+}
 
 /**
  * Enum-like constants for reducer action types.

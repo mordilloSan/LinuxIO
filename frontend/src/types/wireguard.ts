@@ -6,4 +6,4 @@ export interface WireGuardInterface {
   port: number;
   peerCount: number;
   isEnabled: boolean;
-};
+}

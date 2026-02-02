@@ -96,7 +96,7 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
       percentage: number;
       strokeDasharray: string;
       rotation: number;
-    };
+    }
 
     const result = data.reduce(
       (acc, { item, percentage, degrees }) => {

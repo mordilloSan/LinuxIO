@@ -4,7 +4,7 @@ interface DroppedEntry {
   file?: File;
   relativePath: string;
   isDirectory: boolean;
-};
+}
 
 const normalizeRelativePath = (path: string) =>
   path

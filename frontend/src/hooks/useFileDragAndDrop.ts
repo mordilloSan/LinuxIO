@@ -13,7 +13,7 @@ interface UseDragAndDropUploadParams {
   editingPath?: string | null;
   startUpload: FileTransferContextValue["startUpload"];
   onUploadComplete: () => void;
-};
+}
 
 interface UseDragAndDropUploadResult {
   isDragOver: boolean;
@@ -25,7 +25,7 @@ interface UseDragAndDropUploadResult {
   handleConfirmOverwrite: () => Promise<void>;
   handleCancelOverwrite: () => void;
   setOverwriteTargets: (targets: DroppedEntry[] | null) => void;
-};
+}
 
 export const useFileDragAndDrop = ({
   normalizedPath,

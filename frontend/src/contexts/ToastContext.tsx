@@ -10,7 +10,7 @@ import { toast, useSonner, Toaster, type ToastT } from "sonner";
 export interface ToastMeta {
   href?: string;
   label?: string;
-};
+}
 
 export interface ToastHistoryItem {
   id: string | number;
@@ -19,7 +19,7 @@ export interface ToastHistoryItem {
   type?: ToastT["type"];
   createdAt: number;
   meta?: ToastMeta;
-};
+}
 
 const STORAGE_KEY = "linuxio.toastHistory";
 const MAX_STORED_TOASTS = 50;

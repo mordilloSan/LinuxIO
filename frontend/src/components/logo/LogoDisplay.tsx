@@ -4,7 +4,7 @@ import React from "react";
 
 interface LogoDisplayProps {
   showText?: boolean;
-};
+}
 
 const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
   const theme = useTheme();

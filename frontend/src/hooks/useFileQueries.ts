@@ -12,7 +12,7 @@ interface useFileQueriesParams {
   editingPath: string | null;
   hasSingleDetailTarget: boolean;
   hasMultipleDetailTargets: boolean;
-};
+}
 
 export const useFileQueries = ({
   normalizedPath,

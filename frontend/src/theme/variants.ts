@@ -155,13 +155,13 @@ export interface VariantType {
     footer: ColorBgType;
     badge: ColorBgType;
   };
-};
+}
 
 interface MainContrastTextType {
   main: string;
   contrastText: string;
-};
+}
 interface ColorBgType {
   color: string;
   background: string;
-};
+}

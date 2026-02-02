@@ -19,11 +19,11 @@ interface Update {
   cve: string[];
   restart: number;
   state: number;
-};
+}
 
 interface SystemUpdatesResponse {
   updates: Update[];
-};
+}
 
 // --- Component ---
 const SystemHealth = () => {

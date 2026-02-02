@@ -18,7 +18,7 @@ interface Props<T extends Record<string, any>> {
   renderCollapseContent: CollapsibleTableProps<T>["renderCollapseContent"];
   selected: boolean;
   onToggleSelected: () => void;
-};
+}
 
 export default function CollapsibleCard<T extends Record<string, any>>({
   row,

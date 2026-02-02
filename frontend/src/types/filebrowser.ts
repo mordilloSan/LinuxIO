@@ -10,7 +10,7 @@ interface ItemMetadata {
   hasPreview?: boolean;
   symlink?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
-};
+}
 
 type ItemWithPath = ItemMetadata & {
   path: string;
@@ -22,7 +22,7 @@ interface DirectoryListing {
   files?: ApiItem[];
   folders?: ApiItem[];
   parentDirItems?: ApiItem[];
-};
+}
 
 export type ApiResource = ItemWithPath &
   DirectoryListing & {
@@ -49,7 +49,7 @@ export interface ResourceStatData {
   path: string;
   realPath: string;
   name: string;
-};
+}
 
 export type MultiStatsItem = Pick<
   FileItem,
@@ -65,4 +65,4 @@ export interface MultiStatsResponse {
   totalFolders: number;
   items: MultiStatsItem[];
   count: number;
-};
+}

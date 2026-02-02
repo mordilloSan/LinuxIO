@@ -7,4 +7,4 @@ export interface Update {
   cve: string[];
   restart: number;
   state: number;
-};
+}

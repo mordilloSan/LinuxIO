@@ -5,7 +5,7 @@ export interface BreadcrumbItem {
   label: string;
   path: string;
   isLast: boolean;
-};
+}
 
 interface FilebrowserBreadcrumbsProps {
   path: string;
@@ -13,7 +13,7 @@ interface FilebrowserBreadcrumbsProps {
   showGallerySize?: boolean;
   gallerySize?: number;
   onGallerySizeChange?: (next: number) => void;
-};
+}
 
 // Static CSS styles (injected once)
 // Uses MUI CSS variables and light-dark() function for theme-aware colors

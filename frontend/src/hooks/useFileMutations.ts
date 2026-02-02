@@ -14,18 +14,18 @@ interface UseFileMutationsParams {
   normalizedPath: string;
   queryClient?: QueryClient;
   onDeleteSuccess?: () => void;
-};
+}
 
 interface CompressPayload {
   paths: string[];
   archiveName?: string;
   destination?: string;
-};
+}
 
 interface ExtractPayload {
   archivePath: string;
   destination?: string;
-};
+}
 
 interface ChmodPayload {
   path: string;
@@ -33,17 +33,17 @@ interface ChmodPayload {
   recursive?: boolean;
   owner?: string;
   group?: string;
-};
+}
 
 interface CopyMovePayload {
   sourcePaths: string[];
   destinationDir: string;
-};
+}
 
 interface RenamePayload {
   from: string;
   destination: string;
-};
+}
 
 export const useFileMutations = ({
   normalizedPath,

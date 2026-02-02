@@ -69,7 +69,7 @@ interface EditorState {
   baseContent: string;
   content: string;
   isDirty: boolean;
-};
+}
 
 const createEditorState = (
   filePath: string,

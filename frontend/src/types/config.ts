@@ -9,7 +9,7 @@ export interface BackendSettings {
   docker: {
     folder: string;
   };
-};
+}
 
 // Flattened config for frontend use
 export interface AppConfig {
@@ -18,7 +18,7 @@ export interface AppConfig {
   sidebarCollapsed: boolean;
   showHiddenFiles: boolean;
   dockerFolder?: string;
-};
+}
 
 export interface ConfigContextType {
   config: AppConfig;
@@ -30,8 +30,8 @@ export interface ConfigContextType {
     value: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K]),
   ) => void;
   isLoaded: boolean;
-};
+}
 
 export interface ConfigProviderProps {
   children: React.ReactNode;
-};
+}

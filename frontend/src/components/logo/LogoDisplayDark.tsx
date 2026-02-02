@@ -9,7 +9,7 @@ const PALETTE = {
 
 interface LogoDisplayDarkProps {
   showText?: boolean;
-};
+}
 
 const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
   showText = false,
