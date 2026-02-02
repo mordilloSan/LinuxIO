@@ -71,29 +71,6 @@ rm -f /etc/motd.d/linuxio 2>/dev/null || true
 
 echo -e "${GREEN}✓ Runtime files removed${NC}"
 
-# ========== REMOVE OLD STATIC GROUP/USER (IF EXISTS) ==========
-echo -e "${YELLOW}🗑️  Removing old static accounts (if they exist)...${NC}"
-
-# Remove static linuxio user if it exists
-if getent passwd linuxio >/dev/null 2>&1; then
-    userdel linuxio 2>/dev/null || true
-    echo -e "${GREEN}✓ Removed static 'linuxio' user${NC}"
-fi
-
-# Remove static linuxio group if it exists
-if getent group linuxio >/dev/null 2>&1; then
-    groupdel linuxio 2>/dev/null || true
-    echo -e "${GREEN}✓ Removed static 'linuxio' group${NC}"
-fi
-
-# Remove user from linuxio group if they were added (for current non-root user)
-if [[ -n "${SUDO_USER:-}" ]]; then
-    if id -nG "$SUDO_USER" 2>/dev/null | tr ' ' '\n' | grep -qx linuxio; then
-        gpasswd -d "$SUDO_USER" linuxio 2>/dev/null || true
-        echo -e "${GREEN}✓ Removed $SUDO_USER from 'linuxio' group${NC}"
-    fi
-fi
-
 # ========== REMOVE DEV FILES ==========
 echo -e "${YELLOW}🗑️  Removing development files...${NC}"
 rm -rf /tmp/linuxio

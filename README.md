@@ -90,13 +90,13 @@ curl -fsSL https://get.docker.com | sudo sh
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt install -y libpam0g-dev libsystemd-dev cppcheck clang-tools bear
+sudo apt install -y libpam0g-dev libsystemd-dev cppcheck clang-tools bear debhelper
 ```
 
 **Fedora/RHEL/CentOS:**
 
 ```bash
-sudo dnf install -y pam-devel systemd-devel cppcheck clang-tools-extra bear
+sudo dnf install -y pam-devel systemd-devel cppcheck clang-tools-extra bear debhelper
 ```
 
 > Note: `libsystemd-dev` is optional but recommended - without it, auth worker logs fall back to syslog instead of journald. `scan-build` ships with `clang-tools`/`clang-tools-extra` and is optional for `make analyze-auth`.
