@@ -25,8 +25,12 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
 }) => {
   if (isNvme && nvmeHealthRaw) {
     return (
-      <TableContainer>
-        <Table size="small">
+      <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+        <Table
+          size="small"
+          stickyHeader
+          sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+        >
           <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 600 }}>Attribute</TableCell>
@@ -211,8 +215,12 @@ export const SmartAttributesTab: React.FC<SmartAttributesTabProps> = ({
 
   if (ataAttrs && ataAttrs.length > 0) {
     return (
-      <TableContainer>
-        <Table size="small">
+      <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+        <Table
+          size="small"
+          stickyHeader
+          sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+        >
           <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 600 }}>#</TableCell>

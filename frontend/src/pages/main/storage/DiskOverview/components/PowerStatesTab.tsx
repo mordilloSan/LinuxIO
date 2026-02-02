@@ -35,8 +35,12 @@ export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
       <Typography variant="subtitle2" gutterBottom>
         Supported Power States
       </Typography>
-      <TableContainer>
-        <Table size="small">
+      <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+        <Table
+          size="small"
+          stickyHeader
+          sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+        >
           <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 600 }}>State</TableCell>

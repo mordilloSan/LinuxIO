@@ -235,7 +235,32 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
         <Divider sx={{ my: 2 }} />
 
         <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-          <Tabs value={tabIndex} onChange={handleTabChange}>
+          <Tabs
+            value={tabIndex}
+            onChange={handleTabChange}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{
+              "& .MuiTabs-scroller": {
+                "&::-webkit-scrollbar": {
+                  height: 8,
+                },
+                "&::-webkit-scrollbar-thumb": {
+                  backgroundColor: "rgba(100, 100, 100, 0.2)",
+                  borderRadius: 8,
+                  border: "2px solid transparent",
+                  backgroundClip: "content-box",
+                },
+                "&::-webkit-scrollbar-track": {
+                  background: "transparent",
+                  borderRadius: 8,
+                },
+                "&::-webkit-scrollbar-thumb:hover": {
+                  backgroundColor: "rgba(100, 100, 100, 0.45)",
+                },
+              },
+            }}
+          >
             <Tab label="Overview" />
             <Tab label="SMART Attributes" />
             <Tab label="Drive Information" />

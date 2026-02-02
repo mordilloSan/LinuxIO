@@ -80,8 +80,12 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
       </Typography>
       {selfTestLog?.standard?.table &&
       (selfTestLog.standard.table as unknown[]).length > 0 ? (
-        <TableContainer>
-          <Table size="small">
+        <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+          <Table
+            size="small"
+            stickyHeader
+            sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+          >
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>#</TableCell>
@@ -123,8 +127,12 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
         </TableContainer>
       ) : nvmeSelfTestLog?.table &&
         (nvmeSelfTestLog.table as unknown[]).length > 0 ? (
-        <TableContainer>
-          <Table size="small">
+        <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+          <Table
+            size="small"
+            stickyHeader
+            sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+          >
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>

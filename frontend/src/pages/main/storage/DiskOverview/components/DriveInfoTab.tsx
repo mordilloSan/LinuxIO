@@ -1,9 +1,15 @@
-import { Box } from "@mui/material";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+} from "@mui/material";
 import React from "react";
 
 import type { DriveInfo } from "../types";
 import { getSmartNumber, getSmartString } from "../utils";
-import { InfoRow } from "./InfoRow";
 
 interface DriveInfoTabProps {
   drive: DriveInfo;
@@ -23,65 +29,109 @@ export const DriveInfoTab: React.FC<DriveInfoTabProps> = ({
   const isNvme = drive.transport === "nvme";
 
   return (
-    <Box sx={{ maxWidth: 600 }}>
-      <InfoRow label="Model" value={drive.model || "N/A"} />
-      <InfoRow label="Serial Number" value={drive.serial || "N/A"} />
-      <InfoRow label="Vendor" value={drive.vendor || "N/A"} />
-      <InfoRow
-        label="Firmware Version"
-        value={getSmartString(smartData?.firmware_version) || "N/A"}
-      />
-      <InfoRow label="Capacity" value={rawDriveSize || "N/A"} />
-      <InfoRow
-        label="Transport"
-        value={drive.transport?.toUpperCase() || "N/A"}
-      />
-      <InfoRow label="Read Only" value={drive.ro ? "Yes" : "No"} />
-      {isNvme && (
-        <>
-          <InfoRow
-            label="NVMe Version"
-            value={getSmartString(smartData?.nvme_version) || "N/A"}
-          />
-          <InfoRow
-            label="Number of Namespaces"
-            value={
-              getSmartNumber(
-                smartData?.nvme_number_of_namespaces,
-              )?.toString() || "N/A"
-            }
-          />
-        </>
-      )}
-      {deviceInfo && (
-        <>
-          <InfoRow
-            label="Device Type"
-            value={getSmartString(deviceInfo.type) || "N/A"}
-          />
-          <InfoRow
-            label="Protocol"
-            value={getSmartString(deviceInfo.protocol) || "N/A"}
-          />
-        </>
-      )}
-      <InfoRow
-        label="SMART Health"
-        value={
-          smartHealth?.passed === true
-            ? "Passed"
-            : smartHealth?.passed === false
-              ? "Failed"
-              : "Unknown"
-        }
-        valueColor={
-          smartHealth?.passed === true
-            ? "success.main"
-            : smartHealth?.passed === false
-              ? "error.main"
-              : undefined
-        }
-      />
-    </Box>
+    <TableContainer className="custom-scrollbar" sx={{ maxHeight: 400 }}>
+      <Table
+        size="small"
+        stickyHeader
+        sx={{ "& .MuiTableCell-root": { borderColor: "divider" } }}
+      >
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ fontWeight: 600 }}>Property</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="right">
+              Value
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          <TableRow>
+            <TableCell>Model</TableCell>
+            <TableCell align="right">{drive.model || "N/A"}</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>Serial Number</TableCell>
+            <TableCell align="right">{drive.serial || "N/A"}</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>Vendor</TableCell>
+            <TableCell align="right">{drive.vendor || "N/A"}</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>Firmware Version</TableCell>
+            <TableCell align="right">
+              {getSmartString(smartData?.firmware_version) || "N/A"}
+            </TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>Capacity</TableCell>
+            <TableCell align="right">{rawDriveSize || "N/A"}</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>Transport</TableCell>
+            <TableCell align="right">
+              {drive.transport?.toUpperCase() || "N/A"}
+            </TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>Read Only</TableCell>
+            <TableCell align="right">{drive.ro ? "Yes" : "No"}</TableCell>
+          </TableRow>
+          {isNvme && (
+            <>
+              <TableRow>
+                <TableCell>NVMe Version</TableCell>
+                <TableCell align="right">
+                  {getSmartString(smartData?.nvme_version) || "N/A"}
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Number of Namespaces</TableCell>
+                <TableCell align="right">
+                  {getSmartNumber(
+                    smartData?.nvme_number_of_namespaces,
+                  )?.toString() || "N/A"}
+                </TableCell>
+              </TableRow>
+            </>
+          )}
+          {deviceInfo && (
+            <>
+              <TableRow>
+                <TableCell>Device Type</TableCell>
+                <TableCell align="right">
+                  {getSmartString(deviceInfo.type) || "N/A"}
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Protocol</TableCell>
+                <TableCell align="right">
+                  {getSmartString(deviceInfo.protocol) || "N/A"}
+                </TableCell>
+              </TableRow>
+            </>
+          )}
+          <TableRow>
+            <TableCell>SMART Health</TableCell>
+            <TableCell
+              align="right"
+              sx={{
+                color:
+                  smartHealth?.passed === true
+                    ? "success.main"
+                    : smartHealth?.passed === false
+                      ? "error.main"
+                      : "inherit",
+              }}
+            >
+              {smartHealth?.passed === true
+                ? "Passed"
+                : smartHealth?.passed === false
+                  ? "Failed"
+                  : "Unknown"}
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 };
