@@ -19,19 +19,20 @@ make build-rpm
 make build-packages
 ```
 
+Artifacts are written to `dist/`.
+
 ## Directory Structure
 
 ```
 packaging/
 ├── debian/          # Debian package configuration
-│   ├── control      # Package metadata
-│   ├── rules        # Build instructions
-│   ├── changelog    # Version history
+│   ├── control.in   # Package metadata template
+│   ├── conffiles    # Config files (dpkg conffiles)
 │   ├── postinst     # Post-installation script
 │   ├── prerm        # Pre-removal script
 │   └── postrm       # Post-removal script
 ├── rpm/             # RPM package configuration
-│   └── linuxio.spec # RPM spec file
+│   └── linuxio.spec.in # RPM spec template
 ├── systemd/         # Systemd unit files
 │   ├── linuxio.target
 │   ├── linuxio-webserver.service
@@ -50,6 +51,9 @@ packaging/
 │   ├── localinstall.sh
 │   ├── uninstall.sh
 │   ├── install-dependencies.sh
+│   ├── build-deb.sh
+│   ├── build-rpm.sh
+│   ├── package-stage.sh
 │   └── update-issue
 ├── PACKAGING.md     # Detailed packaging guide
 └── README.md        # This file
@@ -95,6 +99,8 @@ sudo dnf install ~/rpmbuild/RPMS/x86_64/linuxio-*.rpm
 - gcc
 - PAM development libraries
 - systemd development libraries
+- dpkg-deb (Debian/Ubuntu)
+- rpmbuild (RHEL/Fedora)
 
 ### Runtime Requirements
 - Docker

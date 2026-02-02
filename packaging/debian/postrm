@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "purge" ]]; then
+  rm -f /etc/motd.d/linuxio >/dev/null 2>&1 || true
+fi
+
+systemctl daemon-reload >/dev/null 2>&1 || true
+
+exit 0

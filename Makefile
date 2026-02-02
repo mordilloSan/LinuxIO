@@ -55,6 +55,8 @@ GIT_COMMIT        := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
 BUILD_TIME        := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+PKG_OUTPUT_DIR ?= $(CURDIR)/dist
+PKG_SKIP_BUILD ?= 0
 
 # Determine version: prioritize dev branch, then tag, then commit
 ifneq ($(findstring dev/,$(GIT_BRANCH)),)
@@ -72,6 +74,10 @@ GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(s
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
+SHA256_CMD := $(shell \
+  if command -v sha256sum >/dev/null 2>&1; then echo "sha256sum"; \
+  elif command -v shasum >/dev/null 2>&1; then echo "shasum -a 256"; \
+  else echo ""; fi)
 
 # ---- toolchain --------------------------------------------------------------
 CC       ?= gcc
@@ -371,7 +377,11 @@ build-backend: ensure-go
 	echo "📄 Path: $(PWD)/linuxio-webserver" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
 	echo "📊 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
-	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
+	if [ -n "$(SHA256_CMD)" ]; then \
+	  echo "🔐 SHA256: $$($(SHA256_CMD) ../linuxio-webserver | awk '{ print $$1 }')"; \
+	else \
+	  echo "🔐 SHA256: (sha256sum not available)"; \
+	fi
 
 build-bridge: ensure-go
 	@echo ""
@@ -393,7 +403,11 @@ build-bridge: ensure-go
 	echo "📄 Path: $(PWD)/linuxio-bridge" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
 	echo "📊 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
-	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
+	if [ -n "$(SHA256_CMD)" ]; then \
+	  echo "🔐 SHA256: $$($(SHA256_CMD) ../linuxio-bridge | awk '{ print $$1 }')"; \
+	else \
+	  echo "🔐 SHA256: (sha256sum not available)"; \
+	fi
 
 build-auth:
 	@echo ""
@@ -415,7 +429,11 @@ build-auth:
 	echo "✅ Session helper built successfully!"; \
 	echo "📄 Path: $$PWD/linuxio-auth"; \
 	echo "📊 Size: $$(du -h linuxio-auth | cut -f1)"; \
-	echo "🔐 SHA256: $$(shasum -a 256 linuxio-auth | awk '{ print $$1 }')"; \
+	if [ -n "$(SHA256_CMD)" ]; then \
+	  echo "🔐 SHA256: $$($(SHA256_CMD) linuxio-auth | awk '{ print $$1 }')"; \
+	else \
+	  echo "🔐 SHA256: (sha256sum not available)"; \
+	fi; \
 	if command -v checksec >/dev/null 2>&1; then \
 	  echo "🔎 checksec:"; checksec --file=linuxio-auth || true; \
 	fi
@@ -508,7 +526,11 @@ dev: setup dev-prep
 _build-binaries:
 	@echo ""
 	@echo "🔐 Capturing bridge hash for backend build..."
-	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
+	@if [ -z "$(SHA256_CMD)" ]; then \
+	  echo "ERROR: sha256sum or shasum is required to compute bridge hash" >&2; \
+	  exit 1; \
+	fi; \
+	BRIDGE_HASH=$$($(SHA256_CMD) linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
 	@$(MAKE) --no-print-directory build-auth
@@ -553,6 +575,30 @@ fullinstall: uninstall
 	@echo ""
 	@echo "📦 Installing LinuxIO from GitHub repo..."
 	@sudo ./packaging/scripts/install-linuxio-binaries.sh
+
+# ========== Packaging Targets ==========
+
+build-deb:
+	@if [ "$(PKG_SKIP_BUILD)" != "1" ]; then \
+	  echo "🏗️  Building binaries for packaging..."; \
+	  $(MAKE) --no-print-directory build-vite build-bridge _build-binaries; \
+	else \
+	  echo "⏭️  Skipping build (PKG_SKIP_BUILD=1)"; \
+	fi
+	@GIT_VERSION="$(GIT_VERSION)" GIT_COMMIT_SHORT="$(GIT_COMMIT_SHORT)" PKG_OUTPUT_DIR="$(PKG_OUTPUT_DIR)" \
+	  ./packaging/scripts/build-deb.sh
+
+build-rpm:
+	@if [ "$(PKG_SKIP_BUILD)" != "1" ]; then \
+	  echo "🏗️  Building binaries for packaging..."; \
+	  $(MAKE) --no-print-directory build-vite build-bridge _build-binaries; \
+	else \
+	  echo "⏭️  Skipping build (PKG_SKIP_BUILD=1)"; \
+	fi
+	@GIT_VERSION="$(GIT_VERSION)" GIT_COMMIT_SHORT="$(GIT_COMMIT_SHORT)" PKG_OUTPUT_DIR="$(PKG_OUTPUT_DIR)" \
+	  ./packaging/scripts/build-rpm.sh
+
+build-packages: build-deb build-rpm
 
 help:
 	@$(PRINTC) ""

@@ -1,0 +1,63 @@
+Name:           linuxio
+Version:        @VERSION@
+Release:        @RELEASE@%{?dist}
+Summary:        LinuxIO - web dashboard to manage Linux systems
+
+License:        Apache-2.0
+URL:            https://github.com/mordilloSan/LinuxIO
+Source0:        %{name}-%{version}.tar.gz
+BuildArch:      %{_arch}
+Requires:       systemd
+Requires:       pam
+Requires:       polkit
+Recommends:     smartmontools
+Recommends:     lm_sensors
+Recommends:     docker
+
+%description
+LinuxIO provides a web UI for managing Docker, WireGuard, updates,
+users, shares, sensors, and more from a single interface.
+
+%prep
+%setup -q
+
+%install
+rm -rf %{buildroot}
+mkdir -p %{buildroot}
+cp -a * %{buildroot}/
+
+%files
+%license /usr/share/doc/linuxio/LICENSE
+%config(noreplace) /etc/linuxio/disallowed-users
+%config(noreplace) /etc/pam.d/linuxio
+/usr/local/bin/linuxio
+/usr/local/bin/linuxio-webserver
+/usr/local/bin/linuxio-bridge
+/usr/local/bin/linuxio-auth
+/usr/lib/systemd/system/linuxio.target
+/usr/lib/systemd/system/linuxio-webserver.socket
+/usr/lib/systemd/system/linuxio-webserver.service
+/usr/lib/systemd/system/linuxio-auth.socket
+/usr/lib/systemd/system/linuxio-auth@.service
+/usr/lib/systemd/system/linuxio-bridge-socket-user.service
+/usr/lib/systemd/system/linuxio-issue.service
+/usr/lib/tmpfiles.d/linuxio.conf
+/usr/share/linuxio/issue/update-issue
+
+%post
+/usr/bin/systemctl daemon-reload >/dev/null 2>&1 || true
+/usr/bin/systemctl enable linuxio.target >/dev/null 2>&1 || true
+/usr/bin/systemctl start linuxio.target >/dev/null 2>&1 || true
+/usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf >/dev/null 2>&1 || true
+if [ -d /etc/motd.d ]; then
+  ln -sf ../../run/linuxio/issue /etc/motd.d/linuxio >/dev/null 2>&1 || true
+fi
+
+%preun
+if [ "$1" -eq 0 ]; then
+  /usr/bin/systemctl stop linuxio.target >/dev/null 2>&1 || true
+  /usr/bin/systemctl disable linuxio.target >/dev/null 2>&1 || true
+fi
+
+%postun
+/usr/bin/systemctl daemon-reload >/dev/null 2>&1 || true

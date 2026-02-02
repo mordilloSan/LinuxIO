@@ -9,6 +9,8 @@ frontend/vite.config.module-build.tmp.js
 linuxio-webserver
 linuxio-auth
 linuxio-bridge
+dist/
+packaging/build/
 
 .cache
 .go-cache

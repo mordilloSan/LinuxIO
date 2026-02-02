@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "remove" || "${1:-}" == "upgrade" ]]; then
+  systemctl stop linuxio.target >/dev/null 2>&1 || true
+  systemctl disable linuxio.target >/dev/null 2>&1 || true
+fi
+
+exit 0
