@@ -46,6 +46,12 @@ export interface MemoryInfoResponse {
     swapTotal: number;
     swapFree: number;
   };
+  docker: {
+    used: number;
+  };
+  zfs: {
+    arc: number;
+  };
 }
 
 export interface GpuDevice {

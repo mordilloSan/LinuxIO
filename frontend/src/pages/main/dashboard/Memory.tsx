@@ -53,6 +53,10 @@ const MemoryUsage = () => {
           {formatFileSize(memoryData?.system?.active ?? 0, 2)}
         </Typography>
         <Typography variant="body1">
+          <strong>Docker:</strong>{" "}
+          {formatFileSize(memoryData?.docker?.used ?? 0, 2)}
+        </Typography>
+        <Typography variant="body1">
           <strong>Swap:</strong>{" "}
           {formatFileSize(
             (memoryData?.system?.swapTotal ?? 0) -
