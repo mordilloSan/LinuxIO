@@ -4,9 +4,9 @@ export DH_VERBOSE = 1
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export GOFLAGS = -buildvcs=false -tags=nomsgpack
 
-# Get version from debian/changelog
-GIT_VERSION := $(shell dpkg-parsechangelog -S Version | sed 's/-[^-]*$$//')
-GIT_COMMIT_SHORT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "packaged")
+# Get version from git or debian/changelog
+GIT_VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "$(shell git rev-parse --abbrev-ref HEAD | sed 's/dev\//dev-/')")
+GIT_COMMIT_SHORT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 MODULE_PATH := github.com/mordilloSan/LinuxIO
 
@@ -91,6 +91,3 @@ override_dh_auto_clean:
 	rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth
 	rm -rf frontend/dist frontend/node_modules
 	rm -rf backend/webserver/web/frontend
-
-# Override dh_usrlocal - we intentionally install to /usr/local/bin
-override_dh_usrlocal:
