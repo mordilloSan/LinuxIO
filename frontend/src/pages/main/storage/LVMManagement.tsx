@@ -176,18 +176,17 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   lv,
   onSuccess,
 }) => {
-  const [newSize, setNewSize] = useState("");
+  // Pre-fill with current size in GB
+  const [newSize, setNewSize] = useState(() => {
+    if (lv) {
+      const sizeGB = Math.round(lv.size / (1024 * 1024 * 1024));
+      return `${sizeGB}G`;
+    }
+    return "";
+  });
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const resizeMutation = linuxio.storage.resize_lv.useMutation();
-
-  useEffect(() => {
-    if (lv) {
-      // Pre-fill with current size in GB
-      const sizeGB = Math.round(lv.size / (1024 * 1024 * 1024));
-      setNewSize(`${sizeGB}G`);
-    }
-  }, [lv]);
 
   const handleResize = async () => {
     if (!lv || !newSize) {
@@ -215,7 +214,13 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog
+      key={lv?.path}
+      open={open}
+      onClose={handleClose}
+      maxWidth="sm"
+      fullWidth
+    >
       <DialogTitle>Resize Logical Volume</DialogTitle>
       <DialogContent>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>

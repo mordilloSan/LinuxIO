@@ -361,22 +361,19 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   mount,
   onSuccess,
 }) => {
-  const [readOnly, setReadOnly] = useState(false);
-  const [mountAtBoot, setMountAtBoot] = useState(false);
-  const [customOptions, setCustomOptions] = useState("");
-
-  const remountMutation = linuxio.storage.remount_nfs.useMutation();
-
   // Use server and exportPath directly from mount data
   const server = mount?.server || "";
   const exportPath = mount?.exportPath || "";
 
-  useEffect(() => {
+  // Initialize state from mount prop
+  const [readOnly, setReadOnly] = useState(() => {
+    const opts = mount?.options || [];
+    return opts.includes("ro");
+  });
+  const [mountAtBoot, setMountAtBoot] = useState(() => mount?.inFstab ?? false);
+  const [customOptions, setCustomOptions] = useState(() => {
     if (mount) {
       const opts = mount.options || [];
-      setReadOnly(opts.includes("ro"));
-      // Use the inFstab field from backend to determine if mount is persistent
-      setMountAtBoot(mount.inFstab);
       // Filter out known/default options to get user-defined custom ones
       const knownOptions = [
         // Read/write
@@ -410,9 +407,12 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
         "nointr",
       ];
       const custom = opts.filter((o) => !knownOptions.includes(o));
-      setCustomOptions(custom.join(","));
+      return custom.join(",");
     }
-  }, [mount]);
+    return "";
+  });
+
+  const remountMutation = linuxio.storage.remount_nfs.useMutation();
 
   const buildOptionsString = () => {
     const opts: string[] = [];
@@ -462,7 +462,13 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog
+      key={mount?.mountpoint}
+      open={open}
+      onClose={handleClose}
+      maxWidth="sm"
+      fullWidth
+    >
       <DialogTitle>Edit NFS Mount Options</DialogTitle>
       <DialogContent>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
