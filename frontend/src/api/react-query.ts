@@ -247,7 +247,8 @@ function createEndpoint<TResult>(
 
       return useQuery<TResult, LinuxIOError>({
         queryKey: ["linuxio", handler, command, ...serializedArgs],
-        queryFn: () => core.call<TResult>(handler, command, serializedArgs),
+        queryFn: () =>
+          core.call<TResult>(handler, command, serializedArgs),
         enabled: isOpen && !isUpdating && (options?.enabled ?? true),
         ...options,
       });
