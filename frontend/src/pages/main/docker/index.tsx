@@ -62,7 +62,7 @@ const DockerPage: React.FC = () => {
                   }}
                 >
                   <Box sx={{ display: { xs: "none", sm: "block" } }}>
-                    Reindex
+                    Scan
                   </Box>
                   <Box sx={{ display: { xs: "block", sm: "none" } }}>↻</Box>
                 </Button>

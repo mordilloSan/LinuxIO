@@ -26,7 +26,6 @@ import {
   longTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -51,23 +50,43 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
 
   const { mutateAsync: deleteImage, isPending: isDeleting } =
     linuxio.docker.delete_image.useMutation({
-      onError: (error: Error) => {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to delete image(s)"),
-        );
+      onError: () => {
+        // Suppress global error handler - errors handled manually in handleDelete
       },
     });
 
   const handleDelete = async () => {
-    // Delete images sequentially
-    for (const id of imageIds) {
-      await deleteImage([id]);
+    // Delete images sequentially, tracking successes and failures
+    const results = await Promise.all(
+      imageIds.map(async (id, index) => {
+        try {
+          await deleteImage([id]);
+          return { success: true, tag: imageTags[index] };
+        } catch {
+          return { success: false, tag: imageTags[index] };
+        }
+      }),
+    );
+
+    const succeeded = results.filter((r) => r.success);
+    const failed = results.filter((r) => !r.success);
+
+    if (succeeded.length > 0) {
+      const successMessage =
+        succeeded.length === 1
+          ? `Image "${succeeded[0].tag}" deleted successfully`
+          : `${succeeded.length} images deleted successfully`;
+      toast.success(successMessage);
     }
-    const successMessage =
-      imageIds.length === 1
-        ? `Image "${imageTags[0]}" deleted successfully`
-        : `${imageIds.length} images deleted successfully`;
-    toast.success(successMessage);
+
+    if (failed.length > 0) {
+      const failMessage =
+        failed.length === 1
+          ? `Could not delete "${failed[0].tag}" (likely in use)`
+          : `Could not delete ${failed.length} images (likely in use)`;
+      toast.error(failMessage);
+    }
+
     queryClient.invalidateQueries({
       queryKey: ["linuxio", "docker", "list_images"],
     });
