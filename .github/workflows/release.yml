@@ -114,7 +114,7 @@ jobs:
       - name: Install system build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpam0g-dev libdbus-1-dev libsystemd-dev pkg-config build-essential rpm
+          sudo apt-get install -y libpam0g-dev libdbus-1-dev libsystemd-dev pkg-config build-essential
 
       - name: Use Go (from Makefile)
         uses: actions/setup-go@v5
@@ -160,11 +160,6 @@ jobs:
         env: { GOOS: linux, GOARCH: amd64 }
         run: make build-cli
 
-      - name: Build packages (deb/rpm)
-        run: |
-          make build-deb PKG_SKIP_BUILD=1
-          make build-rpm PKG_SKIP_BUILD=1
-
       - name: Make artifacts executable
         run: chmod +x linuxio linuxio-webserver linuxio-bridge linuxio-auth
 
@@ -178,9 +173,7 @@ jobs:
       - name: Generate checksums
         run: |
           # Generate checksums for binaries and tarball
-          shopt -s nullglob
-          files=(linuxio linuxio-webserver linuxio-bridge linuxio-auth *.tar.gz dist/*.deb dist/*.rpm)
-          sha256sum "${files[@]}" > SHA256SUMS
+          sha256sum linuxio linuxio-webserver linuxio-bridge linuxio-auth *.tar.gz > SHA256SUMS
           echo "=== Binary Checksums ==="
           cat SHA256SUMS
 
@@ -253,8 +246,6 @@ jobs:
             linuxio-webserver
             linuxio-bridge
             linuxio-auth
-            dist/*.deb
-            dist/*.rpm
             SHA256SUMS
             install-linuxio-binaries.sh
             install-linuxio-binaries.sh.sha256

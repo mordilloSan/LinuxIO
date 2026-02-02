@@ -88,16 +88,6 @@ download_binaries() {
 verify_checksums() {
     log_info "Verifying checksums..."
 
-    local -a hash_cmd
-    if command -v sha256sum >/dev/null 2>&1; then
-        hash_cmd=(sha256sum)
-    elif command -v shasum >/dev/null 2>&1; then
-        hash_cmd=(shasum -a 256)
-    else
-        log_error "Missing sha256 tool (need sha256sum or shasum)"
-        return 1
-    fi
-
     local checksum_file="${STAGING}/SHA256SUMS"
     if [[ ! -f "$checksum_file" ]]; then
         log_error "SHA256SUMS file not found"
@@ -121,7 +111,7 @@ verify_checksums() {
 
         log_info "Verifying ${filename}..."
         local actual_hash
-        actual_hash=$("${hash_cmd[@]}" "$filename" | awk '{print $1}')
+        actual_hash=$(sha256sum "$filename" | awk '{print $1}')
 
         if [[ "$actual_hash" != "$expected_hash" ]]; then
             log_error "Checksum mismatch for ${filename}"
