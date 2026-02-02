@@ -54,8 +54,8 @@ override_dh_auto_build:
 		-o ../linuxio ./
 
 override_dh_auto_test:
-	# Run tests
-	cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx
+	# Run tests (with caching for speed)
+	cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --cache
 	cd frontend && npx tsc --noEmit
 	cd backend && go test ./... -count=1 -timeout 5m
 

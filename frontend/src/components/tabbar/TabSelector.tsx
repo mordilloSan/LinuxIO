@@ -54,7 +54,9 @@ const TabSelector: React.FC<TabSelectorProps> = ({
         <ToggleButtonGroup
           value={value}
           exclusive
-          onChange={(_, newValue) => newValue && onChange(newValue)}
+          onChange={(_: React.MouseEvent<HTMLElement>, newValue: string) =>
+            newValue && onChange(newValue)
+          }
           size="small"
           sx={{
             flexWrap: "nowrap",

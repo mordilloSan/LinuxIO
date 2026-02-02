@@ -38,7 +38,7 @@ export const useFileQueries = ({
   const errorMessage = useMemo(() => {
     if (!isError || error === null || error === undefined) return null;
 
-    const err = error;
+    const err = error as Error;
     if (err instanceof LinuxIOError) {
       if (err.code === 403) {
         return `Permission denied: You don't have access to "${normalizedPath}".`;

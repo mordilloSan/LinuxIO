@@ -57,6 +57,7 @@ export type MultiStatsItem = Pick<
 > & {
   fileCount?: number;
   folderCount?: number;
+  aggregateSize?: number;
 };
 
 export interface MultiStatsResponse {
