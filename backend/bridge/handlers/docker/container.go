@@ -36,6 +36,30 @@ func getClient() (*client.Client, error) {
 	return client.NewClientWithOpts(client.FromEnv)
 }
 
+// CheckDockerAvailability verifies that Docker is installed and accessible
+func CheckDockerAvailability() (any, error) {
+	cli, err := getClient()
+	if err != nil {
+		return nil, fmt.Errorf("docker client error: %w", err)
+	}
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
+
+	// Try to ping Docker daemon to verify it's accessible
+	_, err = cli.Ping(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("docker daemon not accessible: %w", err)
+	}
+
+	return map[string]interface{}{
+		"available": true,
+		"message":   "Docker is available and accessible",
+	}, nil
+}
+
 // Helper to get full system mm
 func getSystemMemoryTotal() (uint64, error) {
 	var info unix.Sysinfo_t

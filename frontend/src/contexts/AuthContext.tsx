@@ -26,6 +26,7 @@ const initialState: AuthState = {
   isInitialized: false,
   user: null,
   privileged: false,
+  dockerAvailable: null,
   indexerAvailable: null,
 };
 
@@ -40,6 +41,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: true,
         user: action.payload.user,
         privileged: action.payload.privileged,
+        dockerAvailable: action.payload.dockerAvailable ?? null,
         indexerAvailable: action.payload.indexerAvailable ?? null,
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
@@ -49,6 +51,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: false,
         user: null,
         privileged: false,
+        dockerAvailable: null,
         indexerAvailable: null,
       };
     case AUTH_ACTIONS.SIGN_IN:
@@ -57,6 +60,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: true,
         user: action.payload.user,
         privileged: action.payload.privileged,
+        dockerAvailable: action.payload.dockerAvailable ?? null,
         indexerAvailable: action.payload.indexerAvailable ?? null,
       };
     case AUTH_ACTIONS.SIGN_OUT:
@@ -65,6 +69,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: false,
         user: null,
         privileged: false,
+        dockerAvailable: null,
         indexerAvailable: null,
       };
     default: {
@@ -209,6 +214,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       payload: {
         user,
         privileged: data.privileged,
+        dockerAvailable: data.docker_available ?? null,
         indexerAvailable: data.indexer_available ?? null,
       },
     });

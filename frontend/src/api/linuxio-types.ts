@@ -582,10 +582,6 @@ export interface LinuxIOSchema {
       args: [query: string, limit?: string, basePath?: string];
       result: SearchResponse;
     };
-    indexer_status: {
-      args: [];
-      result: { running: boolean; progress: number };
-    };
     chmod: {
       args: [
         path: string,

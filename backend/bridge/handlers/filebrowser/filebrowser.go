@@ -572,9 +572,9 @@ func deleteFromIndexer(path string) error {
 	return nil
 }
 
-// checkIndexerStatus checks if the indexer daemon is running via systemd.
+// CheckIndexerAvailability checks if the indexer daemon is running via systemd.
 // Returns true if the service is active.
-func checkIndexerStatus() (bool, error) {
+func CheckIndexerAvailability() (bool, error) {
 	info, err := dbus.GetServiceInfo(indexerServiceName)
 	if err != nil {
 		setIndexerAvailability(false)
@@ -604,22 +604,6 @@ func checkIndexerStatus() (bool, error) {
 	}
 
 	return true, nil
-}
-
-// indexerStatus checks if the indexer daemon is running and returns its status.
-// Args: []
-func indexerStatus(_ []string) (any, error) {
-	available, err := checkIndexerStatus()
-	if err != nil {
-		return map[string]any{
-			"available": false,
-			"error":     err.Error(),
-		}, nil
-	}
-
-	return map[string]any{
-		"available": available,
-	}, nil
 }
 
 type indexerDirSizeResponse struct {

@@ -28,6 +28,7 @@ export interface AuthState {
   isInitialized: boolean;
   user: AuthUser | null;
   privileged: boolean;
+  dockerAvailable: boolean | null;
   indexerAvailable: boolean | null;
 }
 
@@ -39,6 +40,7 @@ export interface AuthContextType {
   isInitialized: boolean;
   user: AuthUser | null;
   privileged: boolean;
+  dockerAvailable: boolean | null;
   indexerAvailable: boolean | null;
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
@@ -75,12 +77,14 @@ export interface AuthActionTypes {
   [AUTH_ACTIONS.INITIALIZE_SUCCESS]: {
     user: AuthUser;
     privileged: boolean;
+    dockerAvailable?: boolean | null;
     indexerAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
   [AUTH_ACTIONS.SIGN_IN]: {
     user: AuthUser;
     privileged: boolean;
+    dockerAvailable?: boolean | null;
     indexerAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
@@ -100,6 +104,7 @@ export interface LoginResponse {
   success: boolean;
   privileged: boolean;
   update?: UpdateInfo;
+  docker_available?: boolean;
   indexer_available?: boolean;
 }
 /**

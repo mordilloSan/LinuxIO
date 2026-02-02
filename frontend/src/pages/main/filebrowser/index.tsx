@@ -2,6 +2,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import GridViewIcon from "@mui/icons-material/GridView";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import {
+  Alert,
+  AlertTitle,
   Box,
   Button,
   Dialog,
@@ -54,6 +56,7 @@ import {
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import useAuth from "@/hooks/useAuth";
 import { useFileDialogs } from "@/hooks/useFileDialogs";
 import { useFileDragAndDrop } from "@/hooks/useFileDragAndDrop";
 import { useFileEditor } from "@/hooks/useFileEditor";
@@ -147,6 +150,7 @@ const FileBrowser: React.FC = () => {
 
   const queryClient = useQueryClient();
   const { startDownload, startUpload } = useFileTransfers();
+  const { indexerAvailable } = useAuth();
 
   // Extract path from URL: /filebrowser/path/to/dir -> /path/to/dir
   // Decode each segment to handle URL-encoded characters (spaces, parentheses, etc.)
@@ -1107,6 +1111,19 @@ const FileBrowser: React.FC = () => {
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
         />
+
+        {/* Indexer unavailable warning */}
+        {indexerAvailable === false && !editingPath && (
+          <Alert severity="info" sx={{ mx: 2, mt: 1 }}>
+            <AlertTitle>Indexer Service Unavailable</AlertTitle>
+            <Typography variant="body2">
+              Directory size calculations and file search are disabled. Start
+              the <strong>linuxio-indexer.service</strong> to enable these
+              features.
+            </Typography>
+          </Alert>
+        )}
+
         <Box
           sx={{
             px: editingPath ? 0 : 2,

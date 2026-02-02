@@ -7,6 +7,8 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
@@ -66,6 +68,12 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		"privileged": privileged,
 	}
 
+	// Check Docker availability
+	response["docker_available"] = CheckDockerAvailability()
+
+	// Check indexer availability
+	response["indexer_available"] = CheckIndexerAvailability()
+
 	// Only check for updates if user is privileged
 	if privileged {
 		if updateInfo := CheckForUpdate(); updateInfo != nil {
@@ -118,4 +126,19 @@ func (h *Handlers) createUserSession(req LoginRequest) (*session.Session, error)
 		return nil, err
 	}
 	return sess, nil
+}
+
+// CheckDockerAvailability checks if Docker is installed and accessible
+func CheckDockerAvailability() bool {
+	_, err := docker.CheckDockerAvailability()
+	return err == nil
+}
+
+// CheckIndexerAvailability checks if the indexer service is running
+func CheckIndexerAvailability() bool {
+	available, err := filebrowser.CheckIndexerAvailability()
+	if err != nil {
+		return false
+	}
+	return available
 }
