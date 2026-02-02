@@ -853,6 +853,70 @@ list-modules:
 	@echo "To create a new module:"
 	@echo "  make create-module my-module"
 
+# ============================================================================
+# Package Building
+# ============================================================================
+
+# Build Debian package
+build-deb: ensure-go ensure-node
+	@echo ""
+	@echo "📦 Building Debian package..."
+	@if ! command -v dpkg-buildpackage >/dev/null 2>&1; then \
+		echo "❌ dpkg-buildpackage not found. Install with:"; \
+		echo "   sudo apt-get install dpkg-dev debhelper"; \
+		exit 1; \
+	fi
+	@# Create debian directory in project root (dpkg expects it there)
+	@rm -rf debian
+	@cp -r packaging/debian .
+	@chmod +x debian/rules debian/postinst debian/prerm debian/postrm
+	@# Build the package (skip dependency checks with -d since we have tools installed locally)
+	@dpkg-buildpackage -us -uc -b -d
+	@# Clean up
+	@rm -rf debian
+	@echo ""
+	@echo "✅ Debian package built successfully!"
+	@echo "📦 Package files:"
+	@ls -lh ../linuxio_*.deb 2>/dev/null || ls -lh ../linuxio*.deb
+	@echo ""
+	@echo "To install:"
+	@echo "  sudo dpkg -i ../linuxio_$(GIT_VERSION)-1_amd64.deb"
+	@echo "  sudo apt-get install -f  # Fix dependencies if needed"
+
+# Build RPM package
+build-rpm: ensure-go ensure-node
+	@echo ""
+	@echo "📦 Building RPM package..."
+	@if ! command -v rpmbuild >/dev/null 2>&1; then \
+		echo "❌ rpmbuild not found. Install with:"; \
+		echo "   Fedora/RHEL: sudo dnf install rpm-build rpmdevtools"; \
+		echo "   Debian/Ubuntu: sudo apt-get install rpm"; \
+		exit 1; \
+	fi
+	@# Set up RPM build tree
+	@rpmdev-setuptree 2>/dev/null || mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	@# Create source tarball
+	@echo "Creating source tarball..."
+	@git archive --format=tar.gz --prefix=linuxio-$(GIT_VERSION)/ HEAD > ~/rpmbuild/SOURCES/linuxio-$(GIT_VERSION).tar.gz
+	@# Copy spec file
+	@cp packaging/rpm/linuxio.spec ~/rpmbuild/SPECS/
+	@# Build the package
+	@rpmbuild -bb ~/rpmbuild/SPECS/linuxio.spec
+	@echo ""
+	@echo "✅ RPM package built successfully!"
+	@echo "📦 Package files:"
+	@ls -lh ~/rpmbuild/RPMS/x86_64/linuxio-*.rpm
+	@echo ""
+	@echo "To install:"
+	@echo "  sudo rpm -ivh ~/rpmbuild/RPMS/x86_64/linuxio-$(GIT_VERSION)-1.*.rpm"
+	@echo "  or"
+	@echo "  sudo dnf install ~/rpmbuild/RPMS/x86_64/linuxio-$(GIT_VERSION)-1.*.rpm"
+
+# Build both packages
+build-packages: build-deb build-rpm
+	@echo ""
+	@echo "✅ All packages built successfully!"
+
 .PHONY: \
   default help clean run \
   build fastbuild _build-binaries build-vite build-backend build-bridge build-auth build-cli \
@@ -860,3 +924,4 @@ list-modules:
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
   create-module build-module link-module unlink-module deploy-module install-module uninstall-module clean-module list-modules \
+  build-deb build-rpm build-packages

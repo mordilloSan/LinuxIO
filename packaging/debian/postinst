@@ -1,0 +1,50 @@
+#!/bin/bash
+set -e
+
+# Automatically added by dh_systemd_enable/13
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+    # Create runtime directories via tmpfiles
+    if [ -x /bin/systemd-tmpfiles ]; then
+        systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf >/dev/null 2>&1 || true
+    fi
+
+    # Create motd symlink for SSH login banner
+    if [ -d /etc/motd.d ]; then
+        ln -sf ../../run/linuxio/issue /etc/motd.d/linuxio 2>/dev/null || true
+    fi
+
+    # Reload systemd daemon
+    if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+    fi
+
+    # Enable and restart services if already running, otherwise just enable
+    if [ -d /run/systemd/system ]; then
+        systemctl enable linuxio.target >/dev/null 2>&1 || true
+
+        # Check if services are already running (upgrade case)
+        if systemctl is-active --quiet linuxio.target; then
+            echo ""
+            echo "LinuxIO is already running. Restarting services with new binaries..."
+            systemctl restart linuxio.target >/dev/null 2>&1 || true
+            echo "✓ Services restarted successfully!"
+        else
+            # Fresh install
+            echo ""
+            echo "LinuxIO has been installed successfully!"
+            echo ""
+            echo "To start LinuxIO, run:"
+            echo "  sudo systemctl start linuxio.target"
+            echo ""
+            echo "Or use the CLI:"
+            echo "  sudo linuxio start"
+        fi
+        echo ""
+        echo "Access the web interface at: https://localhost:8090"
+        echo ""
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+
+if [ "$1" = "purge" ]; then
+    # Remove configuration files on purge
+    rm -rf /etc/linuxio
+    rm -f /etc/pam.d/linuxio
+    rm -rf /run/linuxio
+    rm -rf /var/lib/linuxIO
+    rm -f /etc/motd.d/linuxio 2>/dev/null || true
+
+    echo "LinuxIO configuration files have been removed."
+fi
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    # Reload systemd daemon
+    if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        systemctl reset-failed >/dev/null 2>&1 || true
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,96 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export GOFLAGS = -buildvcs=false -tags=nomsgpack
+
+# Get version from debian/changelog
+GIT_VERSION := $(shell dpkg-parsechangelog -S Version | sed 's/-[^-]*$$//')
+GIT_COMMIT_SHORT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "packaged")
+BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+MODULE_PATH := github.com/mordilloSan/LinuxIO
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Build frontend
+	cd frontend && npm ci && npx vite build
+
+	# Build bridge first (needed for hash)
+	cd backend && go build \
+		-ldflags "\
+			-s -w \
+			-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
+			-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
+			-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
+		-o ../linuxio-bridge ./bridge
+
+	# Capture bridge hash for backend build
+	BRIDGE_SHA256=$$(shasum -a 256 linuxio-bridge | awk '{print $$1}'); \
+	cd backend && go build \
+		-ldflags "\
+			-s -w \
+			-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
+			-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
+			-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)' \
+			-X '$(MODULE_PATH)/common/config.BridgeSHA256=$$BRIDGE_SHA256'" \
+		-o ../linuxio-webserver ./webserver/
+
+	# Build auth helper
+	gcc $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) \
+		-DLINUXIO_VERSION=\"$(GIT_VERSION)\" \
+		-o linuxio-auth backend/auth/linuxio-auth.c \
+		-lpam -lsystemd
+	strip --strip-unneeded linuxio-auth
+
+	# Build CLI
+	cd backend && go build \
+		-ldflags "\
+			-s -w \
+			-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
+			-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
+			-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
+		-o ../linuxio ./
+
+override_dh_auto_test:
+	# Run tests (with caching for speed)
+	cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --cache
+	cd frontend && npx tsc --noEmit
+	cd backend && go test ./... -count=1 -timeout 5m
+
+override_dh_auto_install:
+	# Install binaries
+	install -D -m 0755 linuxio $(CURDIR)/debian/linuxio/usr/local/bin/linuxio
+	install -D -m 0755 linuxio-webserver $(CURDIR)/debian/linuxio/usr/local/bin/linuxio-webserver
+	install -D -m 0755 linuxio-bridge $(CURDIR)/debian/linuxio/usr/local/bin/linuxio-bridge
+	install -D -m 0755 linuxio-auth $(CURDIR)/debian/linuxio/usr/local/bin/linuxio-auth
+
+	# Install systemd units
+	install -D -m 0644 packaging/systemd/linuxio.target $(CURDIR)/debian/linuxio/etc/systemd/system/linuxio.target
+	install -D -m 0644 packaging/systemd/linuxio-webserver.service $(CURDIR)/debian/linuxio/etc/systemd/system/linuxio-webserver.service
+	install -D -m 0644 packaging/systemd/linuxio-webserver.socket $(CURDIR)/debian/linuxio/etc/systemd/system/linuxio-webserver.socket
+	install -D -m 0644 packaging/systemd/linuxio-auth.socket $(CURDIR)/debian/linuxio/etc/systemd/system/linuxio-auth.socket
+	install -D -m 0644 packaging/systemd/linuxio-auth@.service $(CURDIR)/debian/linuxio/etc/systemd/system/linuxio-auth@.service
+	install -D -m 0644 packaging/systemd/linuxio-bridge-socket-user.service $(CURDIR)/debian/linuxio/etc/systemd/system/linuxio-bridge-socket-user.service
+	install -D -m 0644 packaging/systemd/linuxio-issue.service $(CURDIR)/debian/linuxio/etc/systemd/system/linuxio-issue.service
+
+	# Install tmpfiles.d
+	install -D -m 0644 packaging/systemd/linuxio-tmpfiles.conf $(CURDIR)/debian/linuxio/usr/lib/tmpfiles.d/linuxio.conf
+
+	# Install config files
+	install -D -m 0644 packaging/etc/linuxio/disallowed-users $(CURDIR)/debian/linuxio/etc/linuxio/disallowed-users
+
+	# Install PAM config
+	install -D -m 0644 packaging/etc/pam.d/linuxio $(CURDIR)/debian/linuxio/etc/pam.d/linuxio
+
+	# Install issue updater
+	install -D -m 0755 packaging/scripts/update-issue $(CURDIR)/debian/linuxio/usr/share/linuxio/issue/update-issue
+
+override_dh_auto_clean:
+	rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth
+	rm -rf frontend/dist frontend/node_modules
+	rm -rf backend/webserver/web/frontend
+
+# Override dh_usrlocal - we intentionally install to /usr/local/bin
+override_dh_usrlocal:
