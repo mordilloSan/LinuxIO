@@ -309,6 +309,59 @@ export interface UsersGroupsResponse {
 }
 
 // ============================================================================
+// Accounts Types
+// ============================================================================
+
+export interface AccountUser {
+  username: string;
+  uid: number;
+  gid: number;
+  gecos: string;
+  homeDir: string;
+  shell: string;
+  primaryGroup: string;
+  groups: string[];
+  isSystem: boolean;
+  isLocked: boolean;
+  lastLogin: string;
+}
+
+export interface AccountGroup {
+  name: string;
+  gid: number;
+  members: string[];
+  isSystem: boolean;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  fullName?: string;
+  homeDir?: string;
+  shell?: string;
+  groups?: string[];
+  createHome?: boolean;
+}
+
+export interface ModifyUserRequest {
+  username: string;
+  fullName?: string;
+  homeDir?: string;
+  shell?: string;
+  groups?: string[];
+}
+
+export interface CreateGroupRequest {
+  name: string;
+  gid?: number;
+}
+
+export interface ModifyGroupMembersRequest {
+  groupName: string;
+  members: string[];
+}
+
+// ============================================================================
 // Storage Types (LVM & NFS)
 // ============================================================================
 
@@ -606,6 +659,29 @@ export interface LinuxIOSchema {
       args: [containerId: string];
       result: string[];
     };
+  };
+
+  accounts: {
+    // User management
+    list_users: { args: []; result: AccountUser[] };
+    get_user: { args: [username: string]; result: AccountUser };
+    create_user: { args: [request: string]; result: void };
+    delete_user: { args: [username: string]; result: void };
+    modify_user: { args: [request: string]; result: void };
+    change_password: {
+      args: [username: string, password: string];
+      result: void;
+    };
+    lock_user: { args: [username: string]; result: void };
+    unlock_user: { args: [username: string]; result: void };
+    // Group management
+    list_groups: { args: []; result: AccountGroup[] };
+    get_group: { args: [groupName: string]; result: AccountGroup };
+    create_group: { args: [request: string]; result: void };
+    delete_group: { args: [groupName: string]; result: void };
+    modify_group_members: { args: [request: string]; result: void };
+    // Utility
+    list_shells: { args: []; result: string[] };
   };
 
   storage: {

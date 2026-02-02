@@ -61,9 +61,7 @@ const DockerPage: React.FC = () => {
                     mr: 1,
                   }}
                 >
-                  <Box sx={{ display: { xs: "none", sm: "block" } }}>
-                    Scan
-                  </Box>
+                  <Box sx={{ display: { xs: "none", sm: "block" } }}>Scan</Box>
                   <Box sx={{ display: { xs: "block", sm: "none" } }}>↻</Box>
                 </Button>
               )}

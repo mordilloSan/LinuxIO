@@ -3,6 +3,7 @@ package handlers
 import (
 	"net"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
@@ -35,6 +36,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 
 	// Register all handlers using the handler.Register() system
 	system.RegisterHandlers()
+	accounts.RegisterHandlers()
 	docker.RegisterHandlers(sess)
 	filebrowser.RegisterHandlers()
 	config.RegisterHandlers(sess)
