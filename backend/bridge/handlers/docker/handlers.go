@@ -78,6 +78,17 @@ func RegisterHandlers(sess *session.Session) {
 		return emit.Result(images)
 	})
 
+	ipc.RegisterFunc("docker", "delete_image", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := DeleteImage(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
 	ipc.RegisterFunc("docker", "list_networks", func(ctx context.Context, args []string, emit ipc.Events) error {
 		networks, err := ListDockerNetworks()
 		if err != nil {

@@ -58,6 +58,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     stopped: number;
   } | null>(null);
   const streamRef = useRef<Stream | null>(null);
+  const hasCompletedRef = useRef(false);
 
   const { isOpen: muxIsOpen, openStream } = useStreamMux();
 
@@ -96,6 +97,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     setSuccess(false);
     setResult(null);
     setStacksSummary(null);
+    hasCompletedRef.current = false;
   }, [closeStream]);
 
   // Cleanup stream when dialog closes
@@ -111,8 +113,8 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
       return;
     }
 
-    // Don't create duplicate streams
-    if (streamRef.current) {
+    // Don't create duplicate streams or recreate after completion
+    if (streamRef.current || hasCompletedRef.current) {
       return;
     }
 
@@ -140,6 +142,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     // Handle result
     stream.onResult = (resultFrame) => {
       if (resultFrame.status === "ok" && resultFrame.data) {
+        hasCompletedRef.current = true;
         const reindexResult = resultFrame.data as ReindexResult;
         setResult(reindexResult);
         setSuccess(true);
@@ -150,6 +153,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
           onComplete();
         }
       } else {
+        hasCompletedRef.current = true;
         setError(resultFrame.error || "Reindex failed");
         setIsRunning(false);
       }

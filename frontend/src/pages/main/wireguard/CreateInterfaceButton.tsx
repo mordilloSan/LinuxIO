@@ -1,4 +1,5 @@
 import { Button } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
@@ -6,6 +7,7 @@ import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
 import type { NetworkInterface } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 const wireguardToastMeta = {
   meta: { href: "/wireguard", label: "Open WireGuard" },
@@ -24,6 +26,7 @@ const CreateInterfaceButton = () => {
   const [error, setError] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [dns, setDns] = useState("");
+  const queryClient = useQueryClient();
 
   // Fetch network info via stream API
   const {
@@ -33,11 +36,24 @@ const CreateInterfaceButton = () => {
   } = linuxio.dbus.GetNetworkInfo.useQuery();
 
   // Fetch existing WireGuard interfaces via stream API
-  const { data: wgInterfaces, refetch: refetchInterfaces } =
-    linuxio.wireguard.list_interfaces.useQuery();
+  const { data: wgInterfaces } = linuxio.wireguard.list_interfaces.useQuery();
 
   // Mutation for adding interface
-  const addInterfaceMutation = linuxio.wireguard.add_interface.useMutation();
+  const { mutate: addInterface, isPending: isAddingInterface } =
+    linuxio.wireguard.add_interface.useMutation({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "wireguard", "list_interfaces"],
+        });
+      },
+      onError: (error: Error) => {
+        const msg = getMutationErrorMessage(
+          error,
+          "Failed to create WireGuard interface",
+        );
+        setError(msg);
+      },
+    });
 
   // Memoize WireGuard interfaces array
   const wgArray = useMemo(
@@ -169,7 +185,7 @@ const CreateInterfaceButton = () => {
       String(peers), // numPeers
     ];
 
-    addInterfaceMutation.mutate(args, {
+    addInterface(args, {
       onSuccess: () => {
         toast.success(
           `WireGuard interface '${serverName}' created`,
@@ -177,11 +193,6 @@ const CreateInterfaceButton = () => {
         );
         setShowDialog(false);
         setDns("");
-        refetchInterfaces();
-      },
-      onError: (error: any) => {
-        const msg = error.message || "Unknown error";
-        setError(msg);
       },
     });
   };
@@ -203,7 +214,7 @@ const CreateInterfaceButton = () => {
         open={showDialog}
         onClose={() => setShowDialog(false)}
         onCreate={handleCreateInterface}
-        loading={addInterfaceMutation.isPending}
+        loading={isAddingInterface}
         error={error || undefined}
         serverName={serverName}
         setServerName={setServerName}

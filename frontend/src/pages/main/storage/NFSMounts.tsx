@@ -17,6 +17,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, {
   useCallback,
   useEffect,
@@ -33,6 +34,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import { formatFileSize } from "@/utils/formaters";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface NFSMountsProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -63,20 +65,41 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const queryClient = useQueryClient();
   const [server, setServer] = useState("");
   const [exportPath, setExportPath] = useState("");
   const [mountpoint, setMountpoint] = useState("");
   const [readOnly, setReadOnly] = useState(false);
   const [mountAtBoot, setMountAtBoot] = useState(false);
   const [customOptions, setCustomOptions] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isMounting, setIsMounting] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [exports, setExports] = useState<string[]>([]);
   const [loadingExports, setLoadingExports] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const mountMutation = linuxio.storage.mount_nfs.useMutation();
+  // Keep exportsMutation as-is since it's used for background fetching
   const exportsMutation = linuxio.storage.list_nfs_exports.useMutation();
+
+  const { mutate: mountNFS, isPending: isMounting } =
+    linuxio.storage.mount_nfs.useMutation({
+      onSuccess: (result) => {
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success(`NFS share mounted at ${mountpoint}`);
+        }
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_nfs_mounts"],
+        });
+        onSuccess();
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to mount NFS share"),
+        );
+      },
+    });
 
   const fetchExports = useEffectEvent(async (serverAddress: string) => {
     setLoadingExports(true);
@@ -129,36 +152,20 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     return opts.join(",");
   };
 
-  const handleMount = async () => {
+  const handleMount = () => {
     if (!server || !exportPath || !mountpoint) {
-      setError("Server, export path, and mountpoint are required");
+      setValidationError("Server, export path, and mountpoint are required");
       return;
     }
 
-    setError(null);
-    setIsMounting(true);
-
-    try {
-      const result = await mountMutation.mutateAsync([
-        server,
-        exportPath,
-        mountpoint,
-        buildOptionsString(),
-        mountAtBoot ? "true" : "false",
-      ]);
-
-      if (result.warning) {
-        toast.warning(result.warning);
-      } else {
-        toast.success(`NFS share mounted at ${mountpoint}`);
-      }
-      onSuccess();
-      handleClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to mount NFS share");
-    } finally {
-      setIsMounting(false);
-    }
+    setValidationError(null);
+    mountNFS([
+      server,
+      exportPath,
+      mountpoint,
+      buildOptionsString(),
+      mountAtBoot ? "true" : "false",
+    ]);
   };
 
   const handleClose = () => {
@@ -169,7 +176,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     setMountAtBoot(false);
     setCustomOptions("");
     setExports([]);
-    setError(null);
+    setValidationError(null);
     onClose();
   };
 
@@ -250,7 +257,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
             fullWidth
             size="small"
           />
-          {error && <Alert severity="error">{error}</Alert>}
+          {validationError && <Alert severity="error">{validationError}</Alert>}
         </Box>
       </DialogContent>
       <DialogActions>
@@ -271,41 +278,35 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
   mount,
   onSuccess,
 }) => {
+  const queryClient = useQueryClient();
   const [removeFstab, setRemoveFstab] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isUnmounting, setIsUnmounting] = useState(false);
 
-  const unmountMutation = linuxio.storage.unmount_nfs.useMutation();
+  const { mutate: unmountNFS, isPending: isUnmounting } =
+    linuxio.storage.unmount_nfs.useMutation({
+      onSuccess: (result) => {
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success(`Unmounted ${mount?.mountpoint}`);
+        }
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_nfs_mounts"],
+        });
+        onSuccess();
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(getMutationErrorMessage(error, "Failed to unmount"));
+      },
+    });
 
-  const handleUnmount = async () => {
+  const handleUnmount = () => {
     if (!mount) return;
-
-    setError(null);
-    setIsUnmounting(true);
-
-    try {
-      const result = await unmountMutation.mutateAsync([
-        mount.mountpoint,
-        removeFstab ? "true" : "false",
-      ]);
-
-      if (result.warning) {
-        toast.warning(result.warning);
-      } else {
-        toast.success(`Unmounted ${mount.mountpoint}`);
-      }
-      onSuccess();
-      handleClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to unmount");
-    } finally {
-      setIsUnmounting(false);
-    }
+    unmountNFS([mount.mountpoint, removeFstab ? "true" : "false"]);
   };
 
   const handleClose = () => {
     setRemoveFstab(false);
-    setError(null);
     onClose();
   };
 
@@ -335,11 +336,6 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
           }
           label="Also remove from /etc/fstab"
         />
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={isUnmounting}>
@@ -364,24 +360,20 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   mount,
   onSuccess,
 }) => {
-  const [readOnly, setReadOnly] = useState(false);
-  const [mountAtBoot, setMountAtBoot] = useState(false);
-  const [customOptions, setCustomOptions] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const remountMutation = linuxio.storage.remount_nfs.useMutation();
-
+  const queryClient = useQueryClient();
   // Use server and exportPath directly from mount data
   const server = mount?.server || "";
   const exportPath = mount?.exportPath || "";
 
-  useEffect(() => {
+  // Initialize state from mount prop
+  const [readOnly, setReadOnly] = useState(() => {
+    const opts = mount?.options || [];
+    return opts.includes("ro");
+  });
+  const [mountAtBoot, setMountAtBoot] = useState(() => mount?.inFstab ?? false);
+  const [customOptions, setCustomOptions] = useState(() => {
     if (mount) {
       const opts = mount.options || [];
-      setReadOnly(opts.includes("ro"));
-      // Use the inFstab field from backend to determine if mount is persistent
-      setMountAtBoot(mount.inFstab);
       // Filter out known/default options to get user-defined custom ones
       const knownOptions = [
         // Read/write
@@ -415,9 +407,31 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
         "nointr",
       ];
       const custom = opts.filter((o) => !knownOptions.includes(o));
-      setCustomOptions(custom.join(","));
+      return custom.join(",");
     }
-  }, [mount]);
+    return "";
+  });
+
+  const { mutate: remountNFS, isPending: isRemounting } =
+    linuxio.storage.remount_nfs.useMutation({
+      onSuccess: (result) => {
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success(`NFS mount options updated`);
+        }
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_nfs_mounts"],
+        });
+        onSuccess();
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to update mount options"),
+        );
+      },
+    });
 
   const buildOptionsString = () => {
     const opts: string[] = [];
@@ -436,43 +450,30 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
     return opts.join(",");
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!mount) return;
-
-    setError(null);
-    setIsSaving(true);
-
-    try {
-      const result = await remountMutation.mutateAsync([
-        mount.mountpoint,
-        buildOptionsString(),
-        mountAtBoot ? "true" : "false",
-      ]);
-
-      if (result.warning) {
-        toast.warning(result.warning);
-      } else {
-        toast.success(`NFS mount options updated`);
-      }
-      onSuccess();
-      handleClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to update mount options");
-    } finally {
-      setIsSaving(false);
-    }
+    remountNFS([
+      mount.mountpoint,
+      buildOptionsString(),
+      mountAtBoot ? "true" : "false",
+    ]);
   };
 
   const handleClose = () => {
     setReadOnly(false);
     setMountAtBoot(false);
     setCustomOptions("");
-    setError(null);
     onClose();
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog
+      key={mount?.mountpoint}
+      open={open}
+      onClose={handleClose}
+      maxWidth="sm"
+      fullWidth
+    >
       <DialogTitle>Edit NFS Mount Options</DialogTitle>
       <DialogContent>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
@@ -529,15 +530,18 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
             fullWidth
             size="small"
           />
-          {error && <Alert severity="error">{error}</Alert>}
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={isSaving}>
+        <Button onClick={handleClose} disabled={isRemounting}>
           Cancel
         </Button>
-        <Button onClick={handleSave} variant="contained" disabled={isSaving}>
-          {isSaving ? "Saving..." : "Save"}
+        <Button
+          onClick={handleSave}
+          variant="contained"
+          disabled={isRemounting}
+        >
+          {isRemounting ? "Saving..." : "Save"}
         </Button>
       </DialogActions>
     </Dialog>

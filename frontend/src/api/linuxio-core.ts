@@ -44,7 +44,7 @@ export interface SpawnOptions {
  * Returns a Promise that resolves with the result
  *
  * @example
- * const drives = await call<ApiDisk[]>("system", "get_drive_info");
+ * const drives = await call<ApiDisk[]>("storage", "get_drive_info");
  */
 export async function call<T = unknown>(
   handler: string,

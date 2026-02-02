@@ -23,6 +23,7 @@ import type {
 } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 const updatesToastMeta = { meta: { href: "/updates", label: "Open updates" } };
 
@@ -71,11 +72,60 @@ const UpdateSettings: React.FC = () => {
   }, [serverState, excludeInputOverride]);
 
   // -------- Mutations --------
-  const setAutoUpdatesMutation = linuxio.dbus.SetAutoUpdates.useMutation();
-  const applyOfflineMutation = linuxio.dbus.ApplyOfflineUpdates.useMutation();
+  const { mutate: setAutoUpdates, isPending: isSettingAutoUpdates } =
+    linuxio.dbus.SetAutoUpdates.useMutation({
+      onSuccess: () => {
+        // Clear overrides - server now has the saved values
+        setDraftOverrides(null);
+        setExcludeInputOverride(null);
+        // Invalidate to update UI with server state
+        refetch();
+        toast.success("Automatic Updates Settings saved", updatesToastMeta);
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to save auto-update settings"),
+        );
+      },
+    });
 
-  const saving =
-    setAutoUpdatesMutation.isPending || applyOfflineMutation.isPending;
+  const { mutate: applyOfflineUpdates, isPending: isApplyingOffline } =
+    linuxio.dbus.ApplyOfflineUpdates.useMutation({
+      onSuccess: (result) => {
+        if (result?.status && result.status !== "ok") {
+          const errMsg = result.error || "Failed to schedule offline update";
+          // Show friendly info message for "no updates" case
+          if (
+            errMsg.includes("no updates available") ||
+            errMsg.includes("Prepared update not found")
+          ) {
+            toast.info("No updates available to schedule", updatesToastMeta);
+          }
+          // Other errors handled by global QueryClient config
+          return;
+        }
+        toast.success(
+          "Offline update scheduled for next reboot",
+          updatesToastMeta,
+        );
+      },
+      onError: (error: Error) => {
+        const errMsg = error?.message || String(error);
+        // Show friendly info message for "no updates" case
+        if (
+          errMsg.includes("no updates available") ||
+          errMsg.includes("Prepared update not found")
+        ) {
+          toast.info("No updates available to schedule", updatesToastMeta);
+        } else {
+          toast.error(
+            getMutationErrorMessage(error, "Failed to schedule offline update"),
+          );
+        }
+      },
+    });
+
+  const saving = isSettingAutoUpdates || isApplyingOffline;
 
   // dirty check for enabling Save/Cancel
   const dirty = useMemo(() => {
@@ -105,51 +155,12 @@ const UpdateSettings: React.FC = () => {
         .filter(Boolean),
     };
 
-    setAutoUpdatesMutation.mutate([payload], {
-      onSuccess: () => {
-        // Clear overrides - server now has the saved values
-        setDraftOverrides(null);
-        setExcludeInputOverride(null);
-        // Refetch to update UI with server state
-        refetch();
-        toast.success("Automatic Updates Settings saved", updatesToastMeta);
-      },
-    });
+    setAutoUpdates([payload]);
   };
 
   // -------- Apply at next reboot --------
   const handleApplyOffline = () => {
-    applyOfflineMutation.mutate([], {
-      onSuccess: (result) => {
-        if (result?.status && result.status !== "ok") {
-          const errMsg = result.error || "Failed to schedule offline update";
-          // Show friendly info message for "no updates" case
-          if (
-            errMsg.includes("no updates available") ||
-            errMsg.includes("Prepared update not found")
-          ) {
-            toast.info("No updates available to schedule", updatesToastMeta);
-          }
-          // Other errors handled by global QueryClient config
-          return;
-        }
-        toast.success(
-          "Offline update scheduled for next reboot",
-          updatesToastMeta,
-        );
-      },
-      onError: (err) => {
-        const errMsg = err?.message || String(err);
-        // Show friendly info message for "no updates" case
-        if (
-          errMsg.includes("no updates available") ||
-          errMsg.includes("Prepared update not found")
-        ) {
-          toast.info("No updates available to schedule", updatesToastMeta);
-        }
-        // Other errors handled by global QueryClient config
-      },
-    });
+    applyOfflineUpdates([]);
   };
 
   if (loading || !serverState || !currentOptions) {

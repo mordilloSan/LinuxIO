@@ -55,14 +55,12 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const { startReindex, isReindexing, reindexes } = useFileTransfers();
+  const { startReindex, isReindexing } = useFileTransfers();
   const { indexerAvailable } = useAuth();
 
   const handleReindex = () => {
     startReindex({});
   };
-
-  const currentReindex = reindexes[0];
 
   return (
     <Box
@@ -190,7 +188,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
               <Tooltip
                 title={
                   isReindexing
-                    ? currentReindex?.label || "Reindexing..."
+                    ? "Reindexing..."
                     : indexerAvailable === false
                       ? "Indexer unavailable"
                       : "Reindex filesystem"

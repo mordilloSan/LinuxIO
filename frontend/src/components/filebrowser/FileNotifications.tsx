@@ -14,7 +14,14 @@ import { useFileTransfers } from "@/hooks/useFileTransfers";
 
 interface CompletedTransfer {
   id: string;
-  type: "download" | "upload" | "compression" | "extraction" | "reindex";
+  type:
+    | "download"
+    | "upload"
+    | "compression"
+    | "extraction"
+    | "reindex"
+    | "copy"
+    | "move";
   label?: string;
   completedAt: Date;
 }
@@ -26,6 +33,8 @@ const FileNotifications: React.FC = () => {
     cancelUpload,
     cancelCompression,
     cancelExtraction,
+    cancelCopy,
+    cancelMove,
   } = useFileTransfers();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [completedTransfers, setCompletedTransfers] = React.useState<
@@ -102,6 +111,26 @@ const FileNotifications: React.FC = () => {
     return `${formatted} ${units[unitIndex]}`;
   };
 
+  const formatTimeRemaining = (seconds: number) => {
+    if (seconds < 0 || !isFinite(seconds)) {
+      return null;
+    }
+
+    if (seconds < 60) {
+      return `${Math.round(seconds)}s`;
+    }
+
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.round(seconds % 60);
+
+    if (hours > 0) {
+      return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+
+    return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
+  };
+
   const getTitle = (type: (typeof transfers)[number]["type"]) => {
     switch (type) {
       case "download":
@@ -114,6 +143,10 @@ const FileNotifications: React.FC = () => {
         return "Extraction Progress";
       case "reindex":
         return "Reindex Progress";
+      case "copy":
+        return "Copy Progress";
+      case "move":
+        return "Move Progress";
       default:
         return "Progress";
     }
@@ -132,6 +165,10 @@ const FileNotifications: React.FC = () => {
       cancelCompression(transfer.id);
     } else if (transfer.type === "extraction") {
       cancelExtraction(transfer.id);
+    } else if (transfer.type === "copy") {
+      cancelCopy(transfer.id);
+    } else if (transfer.type === "move") {
+      cancelMove(transfer.id);
     }
   };
 
@@ -254,7 +291,11 @@ const FileNotifications: React.FC = () => {
                               ? "Compressing selection..."
                               : transfer.type === "reindex"
                                 ? "Reindexing filesystem..."
-                                : "Extracting archive..."}
+                                : transfer.type === "copy"
+                                  ? "Copying..."
+                                  : transfer.type === "move"
+                                    ? "Moving..."
+                                    : "Extracting archive..."}
                     </Typography>
                     {transfer.type !== "reindex" && (
                       <IconButton
@@ -276,9 +317,42 @@ const FileNotifications: React.FC = () => {
                               : undefined,
                           )
                         : null;
-                    const tooltipTitle = speedText
-                      ? `${percentText} • ${speedText}`
-                      : percentText;
+
+                    // Calculate time remaining if we have speed and progress data
+                    let timeRemainingText: string | null = null;
+                    if (
+                      "speed" in transfer &&
+                      typeof (transfer as any).speed === "number" &&
+                      (transfer as any).speed > 0
+                    ) {
+                      // Get bytes and total from transfer if available
+                      const bytesProcessed =
+                        "bytes" in transfer
+                          ? (transfer as any).bytes
+                          : undefined;
+                      const totalBytes =
+                        "total" in transfer
+                          ? (transfer as any).total
+                          : undefined;
+
+                      if (
+                        bytesProcessed !== undefined &&
+                        totalBytes !== undefined &&
+                        totalBytes > 0
+                      ) {
+                        const remainingBytes = totalBytes - bytesProcessed;
+                        const secondsRemaining =
+                          remainingBytes / (transfer as any).speed;
+                        timeRemainingText =
+                          formatTimeRemaining(secondsRemaining);
+                      }
+                    }
+
+                    const tooltipParts = [percentText];
+                    if (speedText) tooltipParts.push(speedText);
+                    if (timeRemainingText) tooltipParts.push(timeRemainingText);
+                    const tooltipTitle = tooltipParts.join(" • ");
+
                     return (
                       <Tooltip title={tooltipTitle} arrow placement="top">
                         <LinearProgress
@@ -314,7 +388,13 @@ const FileNotifications: React.FC = () => {
                             ? "Upload complete"
                             : transfer.type === "compression"
                               ? "Compression complete"
-                              : "Extraction complete")}
+                              : transfer.type === "extraction"
+                                ? "Extraction complete"
+                                : transfer.type === "copy"
+                                  ? "Copy complete"
+                                  : transfer.type === "move"
+                                    ? "Move complete"
+                                    : "Operation complete")}
                     </Typography>
                     <Typography
                       variant="caption"

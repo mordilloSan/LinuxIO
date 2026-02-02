@@ -34,3 +34,23 @@ func ListImages() (any, error) {
 
 	return images, nil
 }
+
+// Delete an image
+func DeleteImage(imageID string) (any, error) {
+	cli, err := getClient()
+	if err != nil {
+		return nil, fmt.Errorf("docker client error: %w", err)
+	}
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
+
+	_, err = cli.ImageRemove(context.Background(), imageID, image.RemoveOptions{Force: false, PruneChildren: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to remove image: %w", err)
+	}
+
+	return nil, nil
+}

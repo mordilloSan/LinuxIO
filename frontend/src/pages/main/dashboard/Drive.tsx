@@ -53,7 +53,7 @@ const Drive: React.FC = () => {
     data: rawDrives = [],
     isPending: isLoading,
     isError,
-  } = linuxio.system.get_drive_info.useQuery();
+  } = linuxio.storage.get_drive_info.useQuery();
 
   // Normalize API → component shape
   const drives = useMemo<DriveInfo[]>(

@@ -338,7 +338,7 @@ const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
  * const { mutate } = linuxio.useMutate("module.lights", "toggle");
  *
  * // CORE API (non-React, Promise-based)
- * const drives = await linuxio.call("system", "get_drive_info");
+ * const drives = await linuxio.call("storage", "get_drive_info");
  * const result = await linuxio.spawn("filebrowser", "compress", [...])
  *   .progress(p => setProgress(p.pct));
  */

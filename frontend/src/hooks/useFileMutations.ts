@@ -6,8 +6,9 @@ import {
 import { toast } from "sonner";
 
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
-import linuxio, { LinuxIOError } from "@/api/react-query";
+import linuxio from "@/api/react-query";
 import { useFileTransfers } from "./useFileTransfers";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 type UseFileMutationsParams = {
   normalizedPath: string;
@@ -50,23 +51,14 @@ export const useFileMutations = ({
   onDeleteSuccess,
 }: UseFileMutationsParams) => {
   const queryClient = providedQueryClient ?? useQueryClient();
-  const { startCompression, startExtraction } = useFileTransfers();
+  const { startCompression, startExtraction, startCopy, startMove } =
+    useFileTransfers();
 
   const invalidateListing = () => {
     queryClient.invalidateQueries({
       queryKey: ["linuxio", "filebrowser", "resource_get", normalizedPath],
     });
     clearFileSubfoldersCache(queryClient);
-  };
-
-  const getErrorMessage = (error: unknown, fallback: string): string => {
-    if (error instanceof LinuxIOError) {
-      return error.message || fallback;
-    }
-    if (error instanceof Error) {
-      return error.message || fallback;
-    }
-    return fallback;
   };
 
   const { mutate: createFile } = useMutation({
@@ -80,7 +72,7 @@ export const useFileMutations = ({
       toast.success("File created successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to create file"));
+      toast.error(getMutationErrorMessage(error, "Failed to create file"));
     },
   });
 
@@ -95,7 +87,7 @@ export const useFileMutations = ({
       toast.success("Folder created successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to create folder"));
+      toast.error(getMutationErrorMessage(error, "Failed to create folder"));
     },
   });
 
@@ -103,7 +95,6 @@ export const useFileMutations = ({
     mutationFn: async (paths: string[]) => {
       await Promise.all(
         paths.map((path) =>
-          // Args: [path]
           linuxio.call("filebrowser", "resource_delete", [path]),
         ),
       );
@@ -114,7 +105,7 @@ export const useFileMutations = ({
       toast.success("Items deleted successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to delete items"));
+      toast.error(getMutationErrorMessage(error, "Failed to delete items"));
     },
   });
 
@@ -181,7 +172,9 @@ export const useFileMutations = ({
       toast.success("Permissions changed successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to change permissions"));
+      toast.error(
+        getMutationErrorMessage(error, "Failed to change permissions"),
+      );
     },
   });
 
@@ -202,7 +195,7 @@ export const useFileMutations = ({
       toast.success("Item renamed successfully");
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to rename item"));
+      toast.error(getMutationErrorMessage(error, "Failed to rename item"));
     },
   });
 
@@ -221,21 +214,17 @@ export const useFileMutations = ({
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
-          // Args: [action, from, destination]
-          return linuxio.call("filebrowser", "resource_patch", [
-            "copy",
-            sourcePath,
+          // Use startCopy for progress tracking
+          return startCopy({
+            source: sourcePath,
             destination,
-          ]);
+            onComplete: invalidateListing,
+          });
         }),
       );
     },
-    onSuccess: () => {
-      invalidateListing();
-      toast.success("Items copied successfully");
-    },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to copy items"));
+      toast.error(getMutationErrorMessage(error, "Failed to copy items"));
     },
   });
 
@@ -254,21 +243,17 @@ export const useFileMutations = ({
             throw new Error(`Invalid source path: "${sourcePath}"`);
           }
           const destination = `${destinationDir}${destinationDir.endsWith("/") ? "" : "/"}${fileName}`;
-          // Args: [action, from, destination]
-          return linuxio.call("filebrowser", "resource_patch", [
-            "move",
-            sourcePath,
+          // Use startMove for progress tracking
+          return startMove({
+            source: sourcePath,
             destination,
-          ]);
+            onComplete: invalidateListing,
+          });
         }),
       );
     },
-    onSuccess: () => {
-      invalidateListing();
-      toast.success("Items moved successfully");
-    },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to move items"));
+      toast.error(getMutationErrorMessage(error, "Failed to move items"));
     },
   });
 

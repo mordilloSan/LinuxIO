@@ -57,7 +57,7 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		logger.Errorf("[DockerLogs] missing containerID")
-		sendStreamClose(stream)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return errors.New("missing containerID")
 	}
 
@@ -72,7 +72,7 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 	cli, err := getClient()
 	if err != nil {
 		logger.Errorf("[DockerLogs] docker client error: %v", err)
-		sendStreamClose(stream)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return err
 	}
 	defer func() {
@@ -96,7 +96,7 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 	reader, err := cli.ContainerLogs(ctx, containerID, options)
 	if err != nil {
 		logger.Errorf("[DockerLogs] failed to get logs: %v", err)
-		sendStreamClose(stream)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return err
 	}
 	defer reader.Close()
@@ -118,7 +118,7 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		// Check if context was cancelled
 		select {
 		case <-ctx.Done():
-			sendStreamClose(stream)
+			_ = ipc.WriteStreamClose(stream, 1)
 			return nil
 		default:
 		}
@@ -163,16 +163,8 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		}
 	}
 
-	sendStreamClose(stream)
+	_ = ipc.WriteStreamClose(stream, 1)
 	return nil
-}
-
-func sendStreamClose(stream net.Conn) {
-	frame := &ipc.StreamFrame{
-		Opcode:   ipc.OpStreamClose,
-		StreamID: 1,
-	}
-	_ = ipc.WriteRelayFrame(stream, frame)
 }
 
 // ComposeStreamMessage represents a message sent during compose streaming
@@ -310,7 +302,7 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 
 	// Send completion message
 	sendComposeMessage(stream, "complete", "operation completed successfully")
-	sendStreamClose(stream)
+	_ = ipc.WriteStreamClose(stream, 1)
 	return nil
 }
 
@@ -339,7 +331,7 @@ func sendComposeMessage(stream net.Conn, msgType, message string) {
 
 func sendComposeError(stream net.Conn, message string) {
 	sendComposeMessage(stream, "error", message)
-	sendStreamClose(stream)
+	_ = ipc.WriteStreamClose(stream, 1)
 }
 
 // ReindexProgress represents progress for docker folder reindex operations

@@ -13,17 +13,25 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 export type { NetworkInterface };
 
+// NetworkManager device states
+// 10=unmanaged, 20=unavailable, 30=disconnected, 40-90=connecting stages, 100=activated, 110=deactivating, 120=failed
 const getStatusColor = (state: number) => {
-  if (state === 100) return "success.main";
-  if (state === 30) return "warning.main";
-  if (state === 20) return "error.main";
+  if (state === 100) return "success.main"; // Activated/Connected
+  if (state >= 40 && state <= 90) return "warning.main"; // Connecting (prepare/config/ip-config/etc)
+  if (state === 30) return "error.main"; // Disconnected
+  if (state === 20) return "grey.500"; // Unavailable (no carrier)
+  if (state === 120) return "error.main"; // Failed
   return "grey.500";
 };
 
 const getStatusTooltip = (state: number) => {
   if (state === 100) return "Connected";
-  if (state === 30) return "Connecting";
-  if (state === 20) return "Disconnected";
+  if (state === 110) return "Deactivating";
+  if (state >= 40 && state <= 90) return "Connecting";
+  if (state === 30) return "Disconnected";
+  if (state === 20) return "Unavailable";
+  if (state === 120) return "Failed";
+  if (state === 10) return "Unmanaged";
   return "Unknown";
 };
 

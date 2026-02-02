@@ -587,7 +587,7 @@ const FileBrowser: React.FC = () => {
       const target = resource?.items?.find((item) => item.path === path);
       const isDirectory = target?.type === "directory" || path.endsWith("/");
       const parent = getParentPath(path);
-      let destination = parent === "/" ? `/${trimmed}` : `${parent}/${trimmed}`;
+      let destination = joinPath(parent, trimmed);
       if (isDirectory && !destination.endsWith("/")) {
         destination += "/";
       }
@@ -600,7 +600,7 @@ const FileBrowser: React.FC = () => {
         setRenamingPath(null);
       }
     },
-    [getParentPath, renameItem, resource?.items],
+    [joinPath, getParentPath, renameItem, resource?.items],
   );
 
   const handleCancelInlineRename = useCallback(() => {

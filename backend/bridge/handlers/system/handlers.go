@@ -92,14 +92,6 @@ func RegisterHandlers() {
 		return emit.Result(gpuInfo)
 	})
 
-	ipc.RegisterFunc("system", "get_drive_info", func(ctx context.Context, args []string, emit ipc.Events) error {
-		driveInfo, err := FetchDriveInfoViaSystem()
-		if err != nil {
-			return err
-		}
-		return emit.Result(driveInfo)
-	})
-
 	ipc.RegisterFunc("system", "get_updates_fast", func(ctx context.Context, args []string, emit ipc.Events) error {
 		updates, err := GetUpdatesFast()
 		if err != nil {

@@ -59,7 +59,7 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 	u, err := user.LookupId(strconv.FormatUint(uint64(sess.User.UID), 10))
 	if err != nil {
 		logger.Errorf("[StreamTerminal] lookup user %s failed: %v", sess.User.Username, err)
-		sendStreamClose(stream, 1) // streamID 1 for terminal
+		_ = ipc.WriteStreamClose(stream, 1) // streamID 1 for terminal
 		return fmt.Errorf("lookup user: %w", err)
 	}
 
@@ -97,7 +97,7 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		logger.Errorf("[StreamTerminal] pty start failed: %v", err)
-		sendStreamClose(stream, 1)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return err
 	}
 
@@ -152,7 +152,7 @@ func (sts *StreamTerminalSession) relayPTYToStream() {
 		}
 		if err != nil {
 			// Send close frame
-			sendStreamClose(sts.Stream, 1)
+			_ = ipc.WriteStreamClose(sts.Stream, 1)
 			return
 		}
 	}
@@ -222,14 +222,6 @@ func (sts *StreamTerminalSession) cleanup() {
 	}
 }
 
-func sendStreamClose(stream net.Conn, streamID uint32) {
-	frame := &ipc.StreamFrame{
-		Opcode:   ipc.OpStreamClose,
-		StreamID: streamID,
-	}
-	_ = ipc.WriteRelayFrame(stream, frame)
-}
-
 func safeUint16(val int) uint16 {
 	if val < 0 {
 		return 0
@@ -245,7 +237,7 @@ func safeUint16(val int) uint16 {
 func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 2 {
 		logger.Errorf("[ContainerTerminal] missing containerID or shell")
-		sendStreamClose(stream, 1)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return fmt.Errorf("missing containerID or shell")
 	}
 
@@ -278,7 +270,7 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		logger.Errorf("[ContainerTerminal] pty start failed: %v", err)
-		sendStreamClose(stream, 1)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return err
 	}
 

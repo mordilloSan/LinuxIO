@@ -12,6 +12,7 @@ import {
   Chip,
   Tooltip,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -19,6 +20,7 @@ import type { Peer } from "@/api/linuxio-types";
 import linuxio from "@/api/react-query";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 const wireguardToastMeta = {
   meta: { href: "/wireguard", label: "Open WireGuard" },
@@ -76,6 +78,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
+  const queryClient = useQueryClient();
 
   const interfaceName = params.id;
 
@@ -91,7 +94,6 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
     data: peersData,
     isPending: isLoading,
     isError,
-    refetch,
   } = linuxio.wireguard.list_peers.useQuery(interfaceName, {
     enabled: !!interfaceName,
     // poll so bps updates
@@ -99,10 +101,39 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   });
 
   // Mutations
-  const deletePeerMutation = linuxio.wireguard.remove_peer.useMutation();
-  const downloadConfigMutation =
-    linuxio.wireguard.peer_config_download.useMutation();
-  const qrCodeMutation = linuxio.wireguard.peer_qrcode.useMutation();
+  const { mutate: deletePeer } = linuxio.wireguard.remove_peer.useMutation({
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["linuxio", "wireguard", "list_peers"],
+      });
+    },
+    onError: (error: Error) => {
+      toast.error(
+        getMutationErrorMessage(error, "Failed to delete peer"),
+        wireguardToastMeta,
+      );
+    },
+  });
+
+  const { mutate: downloadConfig } =
+    linuxio.wireguard.peer_config_download.useMutation({
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to download config"),
+          wireguardToastMeta,
+        );
+      },
+    });
+
+  const { mutate: getQrCode, isPending: isLoadingQrCode } =
+    linuxio.wireguard.peer_qrcode.useMutation({
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to load QR code"),
+          wireguardToastMeta,
+        );
+      },
+    });
 
   // Type-safe API returns Peer[] directly
   const peers: Peer[] = useMemo(() => peersData || [], [peersData]);
@@ -117,17 +148,10 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   }, [peers, currentTime]);
 
   const handleDeletePeer = (peerName: string) => {
-    deletePeerMutation.mutate([interfaceName, peerName], {
+    deletePeer([interfaceName, peerName], {
       onSuccess: () => {
         toast.success(
           `WireGuard Peer '${peerName}' deleted`,
-          wireguardToastMeta,
-        );
-        refetch();
-      },
-      onError: (error: Error) => {
-        toast.error(
-          `Failed to delete peer: ${error.message}`,
           wireguardToastMeta,
         );
       },
@@ -135,7 +159,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   };
 
   const handleDownloadConfig = (peername: string) => {
-    downloadConfigMutation.mutate([interfaceName, peername], {
+    downloadConfig([interfaceName, peername], {
       onSuccess: (result) => {
         // Create blob from config text
         const blob = new Blob([result.content], { type: "text/plain" });
@@ -152,28 +176,16 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
           wireguardToastMeta,
         );
       },
-      onError: (error: Error) => {
-        toast.error(
-          `Failed to download config: ${error.message}`,
-          wireguardToastMeta,
-        );
-      },
     });
   };
 
   const handleViewQrCode = (peername: string) => {
-    qrCodeMutation.mutate([interfaceName, peername], {
+    getQrCode([interfaceName, peername], {
       onSuccess: (result) => {
         setQrCode(result.qrcode);
         setOpenDialog(true);
         toast.success(
           `QR code for '${peername}' loaded successfully`,
-          wireguardToastMeta,
-        );
-      },
-      onError: (error: Error) => {
-        toast.error(
-          `Failed to load QR code: ${error.message}`,
           wireguardToastMeta,
         );
       },
@@ -296,7 +308,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
         }}
       >
         <DialogContent>
-          {qrCodeMutation.isPending ? (
+          {isLoadingQrCode ? (
             <Typography>Loading QR code...</Typography>
           ) : qrCode ? (
             <img

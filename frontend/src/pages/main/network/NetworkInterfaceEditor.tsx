@@ -7,13 +7,17 @@ import {
   ToggleButtonGroup,
   Typography,
   Chip,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
-import React, { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 import linuxio from "@/api/react-query";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 /* ================= helpers ================= */
 
@@ -101,13 +105,89 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   onSave,
 }) => {
   const [mode, setMode] = useState<"auto" | "manual">("auto");
-  const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const queryClient = useQueryClient();
 
   // Mutations
-  const { mutateAsync: setIPv4 } = linuxio.dbus.SetIPv4.useMutation();
-  const { mutateAsync: setIPv4Manual } =
-    linuxio.dbus.SetIPv4Manual.useMutation();
+  const { mutate: setIPv4, isPending: isSettingIPv4 } =
+    linuxio.dbus.SetIPv4.useMutation({
+      onSuccess: () => {
+        toast.success("Switched to DHCP mode");
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "dbus", "ListNetworkInterfaces"],
+        });
+        onSave(iface);
+        onClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to set DHCP configuration"),
+        );
+      },
+    });
+
+  const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
+    linuxio.dbus.SetIPv4Manual.useMutation({
+      onSuccess: () => {
+        toast.success("Manual configuration saved");
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "dbus", "ListNetworkInterfaces"],
+        });
+        onSave(iface);
+        onClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(
+            error,
+            "Failed to save network configuration",
+          ),
+        );
+      },
+    });
+
+  const { mutate: enableConnection, isPending: isEnabling } =
+    linuxio.dbus.EnableConnection.useMutation({
+      onSuccess: () => {
+        toast.success("Connection enabled");
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+        });
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to enable connection"),
+        );
+      },
+    });
+
+  const { mutate: disableConnection, isPending: isDisabling } =
+    linuxio.dbus.DisableConnection.useMutation({
+      onSuccess: () => {
+        toast.success("Connection disabled");
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+        });
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to disable connection"),
+        );
+      },
+    });
+
+  const saving = isSettingIPv4 || isSettingIPv4Manual;
+  const toggling = isEnabling || isDisabling;
+  const isConnected = iface.state === 100;
+  const isConnecting = iface.state >= 40 && iface.state <= 90;
+
+  const handleConnectionToggle = () => {
+    if (isConnected || isConnecting) {
+      disableConnection([iface.name]);
+    } else {
+      enableConnection([iface.name]);
+    }
+  };
 
   // Compute sane defaults from iface (will be used to prefill manual fields)
   const defaults = useMemo(() => {
@@ -117,9 +197,17 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     return { ipv4, gateway, dns: dnsArr.join(", ") };
   }, [iface]);
 
+  const syncModeWithIface = useEffectEvent(() => {
+    setMode(iface.ipv4_method === "manual" ? "manual" : "auto");
+  });
+
+  const resetDirtyState = useEffectEvent(() => {
+    setDirty(false);
+  });
+
   // Keep mode in sync with iface
   useEffect(() => {
-    setMode(iface.ipv4_method === "manual" ? "manual" : "auto");
+    syncModeWithIface();
   }, [iface.ipv4_method]);
 
   // Prefill when expanded + manual (without clobbering user input)
@@ -141,7 +229,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   // Reset dirty when switching to another interface
   useEffect(() => {
-    setDirty(false);
+    resetDirtyState();
   }, [iface.name]);
 
   const handleModeChange = (
@@ -196,73 +284,60 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     });
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      if (mode === "auto") {
-        // SetIPv4 with method "dhcp"
-        await setIPv4([iface.name, "dhcp"]);
-        toast.success("Switched to DHCP mode");
-      } else {
-        const ipv4 = (editForm.ipv4 || "").trim();
-        const gateway = (editForm.gateway || "").trim();
-        const dnsInput = (editForm.dns || "").trim();
+  const handleSave = () => {
+    if (mode === "auto") {
+      // SetIPv4 with method "dhcp"
+      setIPv4([iface.name, "dhcp"]);
+    } else {
+      const ipv4 = (editForm.ipv4 || "").trim();
+      const gateway = (editForm.gateway || "").trim();
+      const dnsInput = (editForm.dns || "").trim();
 
-        if (!ipv4) {
-          toast.error("IP address is required");
-          return;
-        }
-        if (!validateIPv4CIDR(ipv4)) {
-          toast.error(
-            "Invalid IPv4 address. Use CIDR format (e.g., 192.168.1.10/24)",
-          );
-          return;
-        }
-        if (!gateway) {
-          toast.error("Gateway is required");
-          return;
-        }
-        if (!validateIPv4(gateway)) {
-          toast.error("Invalid gateway address");
-          return;
-        }
-        if (!dnsInput) {
-          toast.error("At least one DNS server is required");
-          return;
-        }
-
-        const dnsServers: string[] = Array.from(
-          new Set(
-            dnsInput
-              .split(/[,\s]+/)
-              .map((s: string) => s.trim())
-              .filter(Boolean),
-          ),
+      if (!ipv4) {
+        toast.error("IP address is required");
+        return;
+      }
+      if (!validateIPv4CIDR(ipv4)) {
+        toast.error(
+          "Invalid IPv4 address. Use CIDR format (e.g., 192.168.1.10/24)",
         );
-
-        if (dnsServers.length === 0) {
-          toast.error("At least one DNS server is required");
-          return;
-        }
-        for (const dns of dnsServers) {
-          if (!validateIPv4(dns)) {
-            toast.error(`Invalid DNS server: ${dns}`);
-            return;
-          }
-        }
-
-        // SetIPv4Manual: args = [interface, addressCIDR, gateway, ...dnsServers]
-        await setIPv4Manual([iface.name, ipv4, gateway, ...dnsServers]);
-
-        toast.success("Manual configuration saved");
+        return;
+      }
+      if (!gateway) {
+        toast.error("Gateway is required");
+        return;
+      }
+      if (!validateIPv4(gateway)) {
+        toast.error("Invalid gateway address");
+        return;
+      }
+      if (!dnsInput) {
+        toast.error("At least one DNS server is required");
+        return;
       }
 
-      onSave(iface);
-      onClose();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to save network configuration");
-    } finally {
-      setSaving(false);
+      const dnsServers: string[] = Array.from(
+        new Set(
+          dnsInput
+            .split(/[,\s]+/)
+            .map((s: string) => s.trim())
+            .filter(Boolean),
+        ),
+      );
+
+      if (dnsServers.length === 0) {
+        toast.error("At least one DNS server is required");
+        return;
+      }
+      for (const dns of dnsServers) {
+        if (!validateIPv4(dns)) {
+          toast.error(`Invalid DNS server: ${dns}`);
+          return;
+        }
+      }
+
+      // SetIPv4Manual: args = [interface, addressCIDR, gateway, ...dnsServers]
+      setIPv4Manual([iface.name, ipv4, gateway, ...dnsServers]);
     }
   };
 
@@ -275,7 +350,24 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           justifyContent="space-between"
           sx={{ mb: 2 }}
         >
-          <Typography variant="subtitle2">Configuration Mode</Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isConnected || isConnecting}
+                onChange={handleConnectionToggle}
+                disabled={toggling}
+              />
+            }
+            label={
+              toggling
+                ? "Toggling..."
+                : isConnected
+                  ? "Enabled"
+                  : isConnecting
+                    ? "Connecting..."
+                    : "Disabled"
+            }
+          />
           <Chip
             size="small"
             color="primary"

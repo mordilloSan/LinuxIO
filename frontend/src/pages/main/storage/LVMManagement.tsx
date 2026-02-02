@@ -30,6 +30,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -41,6 +42,7 @@ import type {
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface LVMManagementProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -73,40 +75,47 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   volumeGroups,
   onSuccess,
 }) => {
+  const queryClient = useQueryClient();
   const [vgName, setVgName] = useState("");
   const [lvName, setLvName] = useState("");
   const [size, setSize] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  const createMutation = linuxio.storage.create_lv.useMutation();
+  const { mutate: createLV, isPending: isCreating } =
+    linuxio.storage.create_lv.useMutation({
+      onSuccess: () => {
+        toast.success(`Logical volume ${lvName} created successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_lvs"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_vgs"],
+        });
+        onSuccess();
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to create logical volume"),
+        );
+      },
+    });
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     if (!vgName || !lvName || !size) {
-      setError("All fields are required");
+      setValidationError("All fields are required");
       return;
     }
 
-    setError(null);
-    setIsCreating(true);
-
-    try {
-      await createMutation.mutateAsync([vgName, lvName, size]);
-      toast.success(`Logical volume ${lvName} created successfully`);
-      onSuccess();
-      handleClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to create logical volume");
-    } finally {
-      setIsCreating(false);
-    }
+    setValidationError(null);
+    createLV([vgName, lvName, size]);
   };
 
   const handleClose = () => {
     setVgName("");
     setLvName("");
     setSize("");
-    setError(null);
+    setValidationError(null);
     onClose();
   };
 
@@ -151,7 +160,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
             helperText="Use K, M, G, T suffix for size units"
             fullWidth
           />
-          {error && <Alert severity="error">{error}</Alert>}
+          {validationError && <Alert severity="error">{validationError}</Alert>}
         </Box>
       </DialogContent>
       <DialogActions>
@@ -176,49 +185,61 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   lv,
   onSuccess,
 }) => {
-  const [newSize, setNewSize] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isResizing, setIsResizing] = useState(false);
-
-  const resizeMutation = linuxio.storage.resize_lv.useMutation();
-
-  useEffect(() => {
+  const queryClient = useQueryClient();
+  // Pre-fill with current size in GB
+  const [newSize, setNewSize] = useState(() => {
     if (lv) {
-      // Pre-fill with current size in GB
       const sizeGB = Math.round(lv.size / (1024 * 1024 * 1024));
-      setNewSize(`${sizeGB}G`);
+      return `${sizeGB}G`;
     }
-  }, [lv]);
+    return "";
+  });
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  const handleResize = async () => {
+  const { mutate: resizeLV, isPending: isResizing } =
+    linuxio.storage.resize_lv.useMutation({
+      onSuccess: () => {
+        toast.success(`Logical volume ${lv?.name} resized successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_lvs"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_vgs"],
+        });
+        onSuccess();
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to resize logical volume"),
+        );
+      },
+    });
+
+  const handleResize = () => {
     if (!lv || !newSize) {
-      setError("Size is required");
+      setValidationError("Size is required");
       return;
     }
 
-    setError(null);
-    setIsResizing(true);
-
-    try {
-      await resizeMutation.mutateAsync([lv.vgName, lv.name, newSize]);
-      toast.success(`Logical volume ${lv.name} resized successfully`);
-      onSuccess();
-      handleClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to resize logical volume");
-    } finally {
-      setIsResizing(false);
-    }
+    setValidationError(null);
+    resizeLV([lv.vgName, lv.name, newSize]);
   };
 
   const handleClose = () => {
     setNewSize("");
-    setError(null);
+    setValidationError(null);
     onClose();
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog
+      key={lv?.path}
+      open={open}
+      onClose={handleClose}
+      maxWidth="sm"
+      fullWidth
+    >
       <DialogTitle>Resize Logical Volume</DialogTitle>
       <DialogContent>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
@@ -240,7 +261,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
             helperText="Use K, M, G, T suffix for size units"
             fullWidth
           />
-          {error && <Alert severity="error">{error}</Alert>}
+          {validationError && <Alert severity="error">{validationError}</Alert>}
         </Box>
       </DialogContent>
       <DialogActions>
@@ -265,31 +286,34 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
   lv,
   onSuccess,
 }) => {
-  const [error, setError] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const queryClient = useQueryClient();
 
-  const deleteMutation = linuxio.storage.delete_lv.useMutation();
+  const { mutate: deleteLV, isPending: isDeleting } =
+    linuxio.storage.delete_lv.useMutation({
+      onSuccess: () => {
+        toast.success(`Logical volume ${lv?.name} deleted successfully`);
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_lvs"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "storage", "list_vgs"],
+        });
+        onSuccess();
+        handleClose();
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to delete logical volume"),
+        );
+      },
+    });
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!lv) return;
-
-    setError(null);
-    setIsDeleting(true);
-
-    try {
-      await deleteMutation.mutateAsync([lv.vgName, lv.name]);
-      toast.success(`Logical volume ${lv.name} deleted successfully`);
-      onSuccess();
-      handleClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to delete logical volume");
-    } finally {
-      setIsDeleting(false);
-    }
+    deleteLV([lv.vgName, lv.name]);
   };
 
   const handleClose = () => {
-    setError(null);
     onClose();
   };
 
@@ -310,11 +334,6 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
         <DialogContentText sx={{ mt: 2, color: "error.main" }}>
           This action cannot be undone. All data on this volume will be lost.
         </DialogContentText>
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={isDeleting}>

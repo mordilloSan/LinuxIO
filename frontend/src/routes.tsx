@@ -38,6 +38,7 @@ const Shares = lazy(() => import("@/pages/main/shares"));
 const FileBrowser = lazy(() => import("@/pages/main/filebrowser"));
 const ModulesPage = lazy(() => import("@/pages/main/modules"));
 const StoragePage = lazy(() => import("@/pages/main/storage"));
+const AccountsPage = lazy(() => import("@/pages/main/accounts"));
 
 // Auth pages
 const SignIn = lazy(() => import("@/pages/auth/Login"));
@@ -124,7 +125,7 @@ const coreRoutes: RouteWithSidebar[] = [
   },
   {
     path: "accounts",
-    element: null,
+    element: <AccountsPage />,
     sidebar: {
       title: "Accounts",
       icon: Users,

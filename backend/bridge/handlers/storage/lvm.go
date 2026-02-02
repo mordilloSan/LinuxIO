@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mordilloSan/go-logger/logger"
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
@@ -151,21 +152,27 @@ func ListLogicalVolumes() ([]LogicalVolume, error) {
 func CreateLogicalVolume(vgName, lvName, size string) (map[string]any, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
+		logger.Warnf("[LVM] Invalid volume group name: %s", vgName)
 		return nil, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
+		logger.Warnf("[LVM] Invalid logical volume name: %s", lvName)
 		return nil, fmt.Errorf("invalid logical volume name")
 	}
 	if !validSize.MatchString(size) {
+		logger.Warnf("[LVM] Invalid size format: %s", size)
 		return nil, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
 	}
 
+	logger.Debugf("[LVM] Executing: lvcreate -L %s -n %s %s", size, lvName, vgName)
 	cmd := exec.Command("lvcreate", "-L", size, "-n", lvName, vgName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		logger.Errorf("[LVM] lvcreate failed: %s", strings.TrimSpace(string(out)))
 		return nil, fmt.Errorf("lvcreate failed: %s", strings.TrimSpace(string(out)))
 	}
 
+	logger.Infof("[LVM] Created logical volume /dev/%s/%s with size %s", vgName, lvName, size)
 	return map[string]any{
 		"success": true,
 		"path":    fmt.Sprintf("/dev/%s/%s", vgName, lvName),
@@ -176,9 +183,11 @@ func CreateLogicalVolume(vgName, lvName, size string) (map[string]any, error) {
 func DeleteLogicalVolume(vgName, lvName string) (map[string]any, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
+		logger.Warnf("[LVM] Invalid volume group name: %s", vgName)
 		return nil, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
+		logger.Warnf("[LVM] Invalid logical volume name: %s", lvName)
 		return nil, fmt.Errorf("invalid logical volume name")
 	}
 
@@ -188,16 +197,20 @@ func DeleteLogicalVolume(vgName, lvName string) (map[string]any, error) {
 	partitions, _ := disk.Partitions(true)
 	for _, p := range partitions {
 		if p.Device == lvPath {
+			logger.Warnf("[LVM] Cannot delete %s - mounted at %s", lvPath, p.Mountpoint)
 			return nil, fmt.Errorf("logical volume is mounted at %s - unmount first", p.Mountpoint)
 		}
 	}
 
+	logger.Debugf("[LVM] Executing: lvremove -f %s", lvPath)
 	cmd := exec.Command("lvremove", "-f", lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		logger.Errorf("[LVM] lvremove failed: %s", strings.TrimSpace(string(out)))
 		return nil, fmt.Errorf("lvremove failed: %s", strings.TrimSpace(string(out)))
 	}
 
+	logger.Infof("[LVM] Deleted logical volume %s", lvPath)
 	return map[string]any{"success": true}, nil
 }
 
@@ -205,24 +218,30 @@ func DeleteLogicalVolume(vgName, lvName string) (map[string]any, error) {
 func ResizeLogicalVolume(vgName, lvName, newSize string) (map[string]any, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
+		logger.Warnf("[LVM] Invalid volume group name: %s", vgName)
 		return nil, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
+		logger.Warnf("[LVM] Invalid logical volume name: %s", lvName)
 		return nil, fmt.Errorf("invalid logical volume name")
 	}
 	if !validSize.MatchString(newSize) {
+		logger.Warnf("[LVM] Invalid size format: %s", newSize)
 		return nil, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
 	}
 
 	lvPath := fmt.Sprintf("/dev/%s/%s", vgName, lvName)
 
 	// Use lvresize -r to also resize filesystem if present
+	logger.Debugf("[LVM] Executing: lvresize -r -L %s %s", newSize, lvPath)
 	cmd := exec.Command("lvresize", "-r", "-L", newSize, lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		logger.Errorf("[LVM] lvresize failed: %s", strings.TrimSpace(string(out)))
 		return nil, fmt.Errorf("lvresize failed: %s", strings.TrimSpace(string(out)))
 	}
 
+	logger.Infof("[LVM] Resized logical volume %s to %s", lvPath, newSize)
 	return map[string]any{"success": true}, nil
 }
 

@@ -76,13 +76,13 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		logger.Errorf("[GeneralLogs] failed to create stdout pipe: %v", err)
-		sendStreamClose(stream)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return err
 	}
 
 	if err := cmd.Start(); err != nil {
 		logger.Errorf("[GeneralLogs] failed to start journalctl: %v", err)
-		sendStreamClose(stream)
+		_ = ipc.WriteStreamClose(stream, 1)
 		return err
 	}
 
@@ -101,7 +101,7 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 		select {
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
-			sendStreamClose(stream)
+			_ = ipc.WriteStreamClose(stream, 1)
 			return nil
 		default:
 		}
@@ -130,6 +130,6 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 	// Wait for command to finish
 	_ = cmd.Wait()
 
-	sendStreamClose(stream)
+	_ = ipc.WriteStreamClose(stream, 1)
 	return nil
 }

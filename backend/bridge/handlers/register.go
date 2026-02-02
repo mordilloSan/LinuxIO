@@ -3,6 +3,7 @@ package handlers
 import (
 	"net"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
@@ -28,13 +29,14 @@ var StreamHandlers = map[string]func(*session.Session, net.Conn, []string) error
 
 func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	// Register the universal bridge stream handler
-	// Frontend calls linuxio.call("system", "get_drive_info") -> opens "bridge" stream
+	// Frontend calls linuxio.call("storage", "get_drive_info") -> opens "bridge" stream
 	StreamHandlers["bridge"] = func(s *session.Session, conn net.Conn, args []string) error {
 		return generic.HandleBridgeStream(s, conn, args)
 	}
 
 	// Register all handlers using the handler.Register() system
 	system.RegisterHandlers()
+	accounts.RegisterHandlers()
 	docker.RegisterHandlers(sess)
 	filebrowser.RegisterHandlers()
 	config.RegisterHandlers(sess)

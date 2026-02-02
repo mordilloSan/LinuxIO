@@ -273,4 +273,25 @@ func RegisterHandlers() {
 		}
 		return emit.Result(nil)
 	})
+
+	// Network connection enable/disable
+	ipc.RegisterFunc("dbus", "EnableConnection", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) != 1 {
+			return ipc.ErrInvalidArgs
+		}
+		if err := EnableConnection(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
+
+	ipc.RegisterFunc("dbus", "DisableConnection", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) != 1 {
+			return ipc.ErrInvalidArgs
+		}
+		if err := DisableConnection(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	})
 }

@@ -309,6 +309,59 @@ export interface UsersGroupsResponse {
 }
 
 // ============================================================================
+// Accounts Types
+// ============================================================================
+
+export interface AccountUser {
+  username: string;
+  uid: number;
+  gid: number;
+  gecos: string;
+  homeDir: string;
+  shell: string;
+  primaryGroup: string;
+  groups: string[];
+  isSystem: boolean;
+  isLocked: boolean;
+  lastLogin: string;
+}
+
+export interface AccountGroup {
+  name: string;
+  gid: number;
+  members: string[];
+  isSystem: boolean;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  fullName?: string;
+  homeDir?: string;
+  shell?: string;
+  groups?: string[];
+  createHome?: boolean;
+}
+
+export interface ModifyUserRequest {
+  username: string;
+  fullName?: string;
+  homeDir?: string;
+  shell?: string;
+  groups?: string[];
+}
+
+export interface CreateGroupRequest {
+  name: string;
+  gid?: number;
+}
+
+export interface ModifyGroupMembersRequest {
+  groupName: string;
+  members: string[];
+}
+
+// ============================================================================
 // Storage Types (LVM & NFS)
 // ============================================================================
 
@@ -414,7 +467,6 @@ export interface LinuxIOSchema {
     get_fs_info: { args: []; result: FilesystemInfo[] };
     get_processes: { args: []; result: ProcessInfo[] };
     get_gpu_info: { args: []; result: GpuDevice[] };
-    get_drive_info: { args: []; result: ApiDisk[] };
     get_updates_fast: { args: []; result: Update[] };
     get_network_info: { args: []; result: InterfaceStats[] };
   };
@@ -427,6 +479,7 @@ export interface LinuxIOSchema {
     remove_container: { args: [containerId: string]; result: void };
     restart_container: { args: [containerId: string]; result: void };
     list_images: { args: []; result: DockerImage[] };
+    delete_image: { args: [imageId: string]; result: void };
     list_networks: { args: []; result: DockerNetwork[] };
     create_network: { args: [name: string]; result: void };
     delete_network: { args: [id: string]; result: void };
@@ -501,6 +554,8 @@ export interface LinuxIOSchema {
     SetIPv4: { args: [iface: string, method: string]; result: void };
     SetIPv6: { args: [iface: string, method: string]; result: void };
     SetMTU: { args: [iface: string, mtu: string]; result: void };
+    EnableConnection: { args: [iface: string]; result: void };
+    DisableConnection: { args: [iface: string]; result: void };
   };
 
   filebrowser: {
@@ -510,9 +565,9 @@ export interface LinuxIOSchema {
     };
     resource_stat: { args: [path: string]; result: ResourceStatData };
     resource_delete: { args: [path: string]; result: void };
-    resource_post: { args: [path: string, action: string]; result: void };
+    resource_post: { args: [path: string, action?: string]; result: void };
     resource_patch: {
-      args: [src: string, dst: string, action: string];
+      args: [action: string, src: string, dst: string];
       result: void;
     };
     dir_size: { args: [path: string]; result: DirectorySizeData };
@@ -525,7 +580,16 @@ export interface LinuxIOSchema {
       args: [];
       result: { running: boolean; progress: number };
     };
-    chmod: { args: [path: string, mode: string]; result: void };
+    chmod: {
+      args: [
+        path: string,
+        mode: string,
+        owner?: string,
+        group?: string,
+        recursive?: string,
+      ];
+      result: void;
+    };
     users_groups: { args: []; result: UsersGroupsResponse };
     file_update_from_temp: {
       args: [tempPath: string, targetPath: string];
@@ -597,6 +661,29 @@ export interface LinuxIOSchema {
     };
   };
 
+  accounts: {
+    // User management
+    list_users: { args: []; result: AccountUser[] };
+    get_user: { args: [username: string]; result: AccountUser };
+    create_user: { args: [request: string]; result: void };
+    delete_user: { args: [username: string]; result: void };
+    modify_user: { args: [request: string]; result: void };
+    change_password: {
+      args: [username: string, password: string];
+      result: void;
+    };
+    lock_user: { args: [username: string]; result: void };
+    unlock_user: { args: [username: string]; result: void };
+    // Group management
+    list_groups: { args: []; result: AccountGroup[] };
+    get_group: { args: [groupName: string]; result: AccountGroup };
+    create_group: { args: [request: string]; result: void };
+    delete_group: { args: [groupName: string]; result: void };
+    modify_group_members: { args: [request: string]; result: void };
+    // Utility
+    list_shells: { args: []; result: string[] };
+  };
+
   storage: {
     // LVM Read
     list_pvs: { args: []; result: PhysicalVolume[] };
@@ -616,7 +703,17 @@ export interface LinuxIOSchema {
       args: [vgName: string, lvName: string, newSize: string];
       result: { success: boolean };
     };
-
+    // Drive
+    get_drive_info: { args: []; result: ApiDisk[] };
+    run_smart_test: {
+      args: [device: string, testType: string];
+      result: {
+        success: boolean;
+        device: string;
+        test: string;
+        message: string;
+      };
+    };
     // NFS
     list_nfs_mounts: { args: []; result: NFSMount[] };
     list_nfs_exports: { args: [server: string]; result: string[] };

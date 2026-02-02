@@ -18,6 +18,8 @@ const STREAM_TYPE_FB_UPLOAD = "fb-upload";
 const STREAM_TYPE_FB_COMPRESS = "fb-compress";
 const STREAM_TYPE_FB_EXTRACT = "fb-extract";
 const STREAM_TYPE_FB_REINDEX = "fb-reindex";
+const STREAM_TYPE_FB_COPY = "fb-copy";
+const STREAM_TYPE_FB_MOVE = "fb-move";
 
 interface Download {
   id: string;
@@ -80,7 +82,42 @@ interface Reindex {
   stream?: Stream | null;
 }
 
-type Transfer = Download | Upload | Compression | Extraction | Reindex;
+interface Copy {
+  id: string;
+  type: "copy";
+  source: string;
+  destination: string;
+  progress: number;
+  label: string;
+  speed?: number;
+  bytes?: number;
+  total?: number;
+  abortController: AbortController;
+  stream?: Stream | null;
+}
+
+interface Move {
+  id: string;
+  type: "move";
+  source: string;
+  destination: string;
+  progress: number;
+  label: string;
+  speed?: number;
+  bytes?: number;
+  total?: number;
+  abortController: AbortController;
+  stream?: Stream | null;
+}
+
+type Transfer =
+  | Download
+  | Upload
+  | Compression
+  | Extraction
+  | Reindex
+  | Copy
+  | Move;
 
 export interface FileTransferContextValue {
   downloads: Download[];
@@ -88,6 +125,8 @@ export interface FileTransferContextValue {
   compressions: Compression[];
   extractions: Extraction[];
   reindexes: Reindex[];
+  copies: Copy[];
+  moves: Move[];
   transfers: Transfer[];
   startDownload: (paths: string[]) => Promise<void>;
   cancelDownload: (id: string) => void;
@@ -114,6 +153,18 @@ export interface FileTransferContextValue {
     }) => void;
   }) => Promise<void>;
   isReindexing: boolean;
+  startCopy: (options: {
+    source: string;
+    destination: string;
+    onComplete?: () => void;
+  }) => Promise<void>;
+  cancelCopy: (id: string) => void;
+  startMove: (options: {
+    source: string;
+    destination: string;
+    onComplete?: () => void;
+  }) => Promise<void>;
+  cancelMove: (id: string) => void;
   startUpload: (
     entries: Array<{ file?: File; relativePath: string; isDirectory: boolean }>,
     targetPath: string,
@@ -141,9 +192,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [compressions, setCompressions] = useState<Compression[]>([]);
   const [extractions, setExtractions] = useState<Extraction[]>([]);
   const [reindexes, setReindexes] = useState<Reindex[]>([]);
+  const [copies, setCopies] = useState<Copy[]>([]);
+  const [moves, setMoves] = useState<Move[]>([]);
   const activeCompressionIdsRef = useRef<Set<string>>(new Set());
   const activeExtractionIdsRef = useRef<Set<string>>(new Set());
   const activeReindexIdsRef = useRef<Set<string>>(new Set());
+  const activeCopyIdsRef = useRef<Set<string>>(new Set());
+  const activeMoveIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
   const downloadLabelAssignmentRef = useRef<Map<string, string>>(new Map());
   const transferRatesRef = useRef<
@@ -240,6 +295,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     ...compressions,
     ...extractions,
     ...reindexes,
+    ...copies,
+    ...moves,
   ];
 
   const isReindexing = reindexes.length > 0;
@@ -789,6 +846,24 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     }
     activeReindexIdsRef.current.delete(id);
     setReindexes((prev) => prev.filter((r) => r.id !== id));
+    streamRefsRef.current.delete(id);
+  }, []);
+
+  const removeCopy = useCallback((id: string) => {
+    if (!activeCopyIdsRef.current.has(id)) {
+      return;
+    }
+    activeCopyIdsRef.current.delete(id);
+    setCopies((prev) => prev.filter((c) => c.id !== id));
+    streamRefsRef.current.delete(id);
+  }, []);
+
+  const removeMove = useCallback((id: string) => {
+    if (!activeMoveIdsRef.current.has(id)) {
+      return;
+    }
+    activeMoveIdsRef.current.delete(id);
+    setMoves((prev) => prev.filter((m) => m.id !== id));
     streamRefsRef.current.delete(id);
   }, []);
 
@@ -1382,6 +1457,290 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [uploads, removeUpload],
   );
 
+  const startCopy = useCallback(
+    async ({
+      source,
+      destination,
+      onComplete,
+    }: {
+      source: string;
+      destination: string;
+      onComplete?: () => void;
+    }) => {
+      if (!source || !destination) {
+        throw new Error("Invalid copy parameters");
+      }
+
+      const id = crypto.randomUUID();
+      const abortController = new AbortController();
+
+      const deriveLabelBase = () => {
+        const trimmed = source.replace(/\/+$/, "");
+        const parts = trimmed.split("/");
+        return parts[parts.length - 1] || "item";
+      };
+      const labelBase = deriveLabelBase();
+
+      const copy: Copy = {
+        id,
+        type: "copy",
+        source,
+        destination,
+        progress: 0,
+        label: `Copying ${labelBase} (0%)`,
+        speed: undefined,
+        abortController,
+      };
+
+      setCopies((prev) => [...prev, copy]);
+      activeCopyIdsRef.current.add(id);
+
+      const mux = getStreamMux();
+      if (!mux || mux.status !== "open") {
+        toast.error("Stream connection not ready");
+        removeCopy(id);
+        return;
+      }
+
+      // Use direct stream handler for proper abort support
+      // Args: [source, destination]
+      const payloadParts = [STREAM_TYPE_FB_COPY, source, destination];
+      const payload = encodeString(payloadParts.join("\0"));
+
+      const stream = mux.openStream(STREAM_TYPE_FB_COPY, payload);
+      if (!stream) {
+        toast.error("Failed to open copy stream");
+        removeCopy(id);
+        return;
+      }
+
+      // Track speed calculation
+      let lastBytes = 0;
+      let lastTime = Date.now();
+
+      // Set up event handlers BEFORE storing stream in state
+      stream.onProgress = (progress: ProgressFrame) => {
+        const percent = Math.min(99, progress.pct);
+
+        // Calculate speed
+        const now = Date.now();
+        const deltaBytes = progress.bytes - lastBytes;
+        const deltaMs = now - lastTime;
+
+        let speed: number | undefined;
+        if (deltaMs > 500 && deltaBytes > 0) {
+          speed = deltaBytes / (deltaMs / 1000);
+          lastBytes = progress.bytes;
+          lastTime = now;
+        }
+
+        setCopies((prev) =>
+          prev.map((c) => {
+            if (c.id !== id) return c;
+            const next = Math.max(c.progress, percent);
+            if (next === c.progress && speed === undefined) return c;
+            return {
+              ...c,
+              progress: next,
+              label: `Copying ${labelBase} (${next}%)`,
+              bytes: progress.bytes,
+              total: progress.total,
+              ...(speed !== undefined && { speed }),
+            };
+          }),
+        );
+      };
+
+      stream.onResult = (result: ResultFrame) => {
+        streamRefsRef.current.delete(id);
+        setCopies((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, stream: null } : c)),
+        );
+
+        if (result.status === "ok") {
+          toast.success(`Copied ${labelBase}`);
+          onComplete?.();
+        } else {
+          toast.error(result.error || "Copy failed");
+        }
+        removeCopy(id);
+      };
+
+      stream.onClose = () => {
+        streamRefsRef.current.delete(id);
+        // If aborted, handle cleanup
+        if (abortController.signal.aborted) {
+          removeCopy(id);
+        }
+      };
+
+      // Store stream reference for cancellation AFTER setting up handlers
+      streamRefsRef.current.set(id, stream);
+      setCopies((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, stream } : c)),
+      );
+    },
+    [removeCopy],
+  );
+
+  const cancelCopy = useCallback(
+    (id: string) => {
+      const copy = copies.find((c) => c.id === id);
+      if (copy) {
+        const stream = streamRefsRef.current.get(id) || copy.stream;
+        if (stream) {
+          stream.abort();
+          streamRefsRef.current.delete(id);
+        }
+        copy.abortController.abort();
+        toast.info("Copy cancelled");
+        removeCopy(id);
+      }
+    },
+    [copies, removeCopy],
+  );
+
+  const startMove = useCallback(
+    async ({
+      source,
+      destination,
+      onComplete,
+    }: {
+      source: string;
+      destination: string;
+      onComplete?: () => void;
+    }) => {
+      if (!source || !destination) {
+        throw new Error("Invalid move parameters");
+      }
+
+      const id = crypto.randomUUID();
+      const abortController = new AbortController();
+
+      const deriveLabelBase = () => {
+        const trimmed = source.replace(/\/+$/, "");
+        const parts = trimmed.split("/");
+        return parts[parts.length - 1] || "item";
+      };
+      const labelBase = deriveLabelBase();
+
+      const move: Move = {
+        id,
+        type: "move",
+        source,
+        destination,
+        progress: 0,
+        label: `Moving ${labelBase} (0%)`,
+        speed: undefined,
+        abortController,
+      };
+
+      setMoves((prev) => [...prev, move]);
+      activeMoveIdsRef.current.add(id);
+
+      const mux = getStreamMux();
+      if (!mux || mux.status !== "open") {
+        toast.error("Stream connection not ready");
+        removeMove(id);
+        return;
+      }
+
+      // Use direct stream handler for proper abort support
+      // Args: [source, destination]
+      const payloadParts = [STREAM_TYPE_FB_MOVE, source, destination];
+      const payload = encodeString(payloadParts.join("\0"));
+
+      const stream = mux.openStream(STREAM_TYPE_FB_MOVE, payload);
+      if (!stream) {
+        toast.error("Failed to open move stream");
+        removeMove(id);
+        return;
+      }
+
+      // Track speed calculation
+      let lastBytes = 0;
+      let lastTime = Date.now();
+
+      // Set up event handlers BEFORE storing stream in state
+      stream.onProgress = (progress: ProgressFrame) => {
+        const percent = Math.min(99, progress.pct);
+
+        // Calculate speed
+        const now = Date.now();
+        const deltaBytes = progress.bytes - lastBytes;
+        const deltaMs = now - lastTime;
+
+        let speed: number | undefined;
+        if (deltaMs > 500 && deltaBytes > 0) {
+          speed = deltaBytes / (deltaMs / 1000);
+          lastBytes = progress.bytes;
+          lastTime = now;
+        }
+
+        setMoves((prev) =>
+          prev.map((m) => {
+            if (m.id !== id) return m;
+            const next = Math.max(m.progress, percent);
+            if (next === m.progress && speed === undefined) return m;
+            return {
+              ...m,
+              progress: next,
+              label: `Moving ${labelBase} (${next}%)`,
+              bytes: progress.bytes,
+              total: progress.total,
+              ...(speed !== undefined && { speed }),
+            };
+          }),
+        );
+      };
+
+      stream.onResult = (result: ResultFrame) => {
+        streamRefsRef.current.delete(id);
+        setMoves((prev) =>
+          prev.map((m) => (m.id === id ? { ...m, stream: null } : m)),
+        );
+
+        if (result.status === "ok") {
+          toast.success(`Moved ${labelBase}`);
+          onComplete?.();
+        } else {
+          toast.error(result.error || "Move failed");
+        }
+        removeMove(id);
+      };
+
+      stream.onClose = () => {
+        streamRefsRef.current.delete(id);
+        // If aborted, handle cleanup
+        if (abortController.signal.aborted) {
+          removeMove(id);
+        }
+      };
+
+      // Store stream reference for cancellation AFTER setting up handlers
+      streamRefsRef.current.set(id, stream);
+      setMoves((prev) => prev.map((m) => (m.id === id ? { ...m, stream } : m)));
+    },
+    [removeMove],
+  );
+
+  const cancelMove = useCallback(
+    (id: string) => {
+      const move = moves.find((m) => m.id === id);
+      if (move) {
+        const stream = streamRefsRef.current.get(id) || move.stream;
+        if (stream) {
+          stream.abort();
+          streamRefsRef.current.delete(id);
+        }
+        move.abortController.abort();
+        toast.info("Move cancelled");
+        removeMove(id);
+      }
+    },
+    [moves, removeMove],
+  );
+
   return (
     <FileTransferContext.Provider
       value={{
@@ -1390,6 +1749,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         compressions,
         extractions,
         reindexes,
+        copies,
+        moves,
         transfers,
         startDownload,
         cancelDownload,
@@ -1399,6 +1760,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         cancelExtraction,
         startReindex,
         isReindexing,
+        startCopy,
+        cancelCopy,
+        startMove,
+        cancelMove,
         startUpload,
         cancelUpload,
       }}

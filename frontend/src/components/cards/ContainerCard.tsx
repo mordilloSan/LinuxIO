@@ -15,6 +15,7 @@ import MetricBar from "@/components/gauge/MetricBar";
 import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 const getStatusColor = (container: ContainerInfo) => {
   const status = container.Status.toLowerCase();
@@ -63,6 +64,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           queryKey: ["stream", "docker", "list_containers"],
         });
       },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, `Failed to start container ${name}`),
+        );
+      },
     });
 
   const { mutate: stopContainer, isPending: isStopPending } =
@@ -72,6 +78,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         queryClient.invalidateQueries({
           queryKey: ["stream", "docker", "list_containers"],
         });
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, `Failed to stop container ${name}`),
+        );
       },
     });
 
@@ -83,6 +94,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           queryKey: ["stream", "docker", "list_containers"],
         });
       },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, `Failed to restart container ${name}`),
+        );
+      },
     });
 
   const { mutate: removeContainer, isPending: isRemovePending } =
@@ -92,6 +108,11 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         queryClient.invalidateQueries({
           queryKey: ["stream", "docker", "list_containers"],
         });
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, `Failed to remove container ${name}`),
+        );
       },
     });
 

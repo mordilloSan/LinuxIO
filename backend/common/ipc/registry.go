@@ -14,7 +14,7 @@ var (
 //
 // Example:
 //
-//	ipc.Register("system", "get_drive_info", myHandler)
+//	ipc.Register("storage", "get_drive_info", myHandler)
 //
 // Panics if handlerType or command is empty.
 func Register(handlerType, command string, handler Handler) {
@@ -55,7 +55,7 @@ func RegisterFunc(handlerType, command string, fn HandlerFunc) {
 //
 // Example:
 //
-//	handler, ok := ipc.Get("system", "get_drive_info")
+//	handler, ok := ipc.Get("storage", "get_drive_info")
 //	if !ok {
 //	    return errors.New("handler not found")
 //	}
