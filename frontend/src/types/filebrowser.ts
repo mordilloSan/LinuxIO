@@ -1,6 +1,6 @@
 export type ViewMode = "card" | "list";
 
-type ItemMetadata = {
+interface ItemMetadata {
   name: string;
   type: string;
   size?: number;
@@ -18,7 +18,7 @@ type ItemWithPath = ItemMetadata & {
 
 export type ApiItem = ItemMetadata;
 
-type DirectoryListing = {
+interface DirectoryListing {
   files?: ApiItem[];
   folders?: ApiItem[];
   parentDirItems?: ApiItem[];
@@ -38,7 +38,7 @@ export type FileResource = Omit<ApiResource, "files" | "folders"> & {
 export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
 
-export type ResourceStatData = {
+export interface ResourceStatData {
   mode: string;
   owner: string;
   group: string;
@@ -59,7 +59,7 @@ export type MultiStatsItem = Pick<
   folderCount?: number;
 };
 
-export type MultiStatsResponse = {
+export interface MultiStatsResponse {
   totalSize: number;
   totalFiles: number;
   totalFolders: number;

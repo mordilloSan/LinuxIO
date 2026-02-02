@@ -2,7 +2,7 @@ import { Box, Typography, useTheme } from "@mui/material";
 import { motion } from "framer-motion";
 import React from "react";
 
-type LogoDisplayProps = {
+interface LogoDisplayProps {
   showText?: boolean;
 };
 

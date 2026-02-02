@@ -163,7 +163,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
     (key, value) => {
       setConfig((prev) => {
         const nextVal =
-          typeof value === "function" ? (value as any)(prev[key]) : value;
+          typeof value === "function" ? value(prev[key]) : value;
         if (Object.is(prev[key], nextVal)) return prev;
         const next = applyDefaults({ ...prev, [key]: nextVal });
         save(next);

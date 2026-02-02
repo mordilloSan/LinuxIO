@@ -175,7 +175,7 @@ interface CommandEndpoint<TResult> {
    * useQuery({ args: ["arg1", { complex: "object" }], staleTime: 60000 })
    */
   useQuery: (
-    ...params: Array<string | QueryOptions<TResult> | QueryConfig<TResult>>
+    ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
   ) => ReturnType<typeof useQuery<TResult, LinuxIOError>>;
 
   /**
@@ -205,7 +205,7 @@ function createEndpoint<TResult>(
 ): CommandEndpoint<TResult> {
   return {
     useQuery(
-      ...params: Array<string | QueryOptions<TResult> | QueryConfig<TResult>>
+      ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
     ) {
       const { isOpen } = useStreamMux();
       const isUpdating = useIsUpdating();
@@ -220,7 +220,7 @@ function createEndpoint<TResult>(
         typeof params[0] === "object" &&
         "args" in params[0]
       ) {
-        const config = params[0] as QueryConfig<TResult>;
+        const config = params[0];
         args = config.args ?? [];
         options = config;
       } else {
@@ -248,7 +248,7 @@ function createEndpoint<TResult>(
       return useQuery<TResult, LinuxIOError>({
         queryKey: ["linuxio", handler, command, ...serializedArgs],
         queryFn: () =>
-          core.call<TResult>(handler, command, serializedArgs as string[]),
+          core.call<TResult>(handler, command, serializedArgs),
         enabled: isOpen && !isUpdating && (options?.enabled ?? true),
         ...options,
       });

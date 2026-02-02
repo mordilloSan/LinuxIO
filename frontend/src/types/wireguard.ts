@@ -1,5 +1,5 @@
 // Define the interface type
-export type WireGuardInterface = {
+export interface WireGuardInterface {
   name: string;
   isConnected: "Active" | "Inactive" | string;
   address: string;

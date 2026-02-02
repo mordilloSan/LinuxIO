@@ -10,7 +10,7 @@ import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 // --- Types ---
-type Update = {
+interface Update {
   package_id: string;
   summary: string;
   version: string;
@@ -21,7 +21,7 @@ type Update = {
   state: number;
 };
 
-type SystemUpdatesResponse = {
+interface SystemUpdatesResponse {
   updates: Update[];
 };
 

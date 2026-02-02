@@ -1,4 +1,4 @@
-export type Update = {
+export interface Update {
   package_id: string;
   summary: string;
   version: string;

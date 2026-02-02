@@ -18,7 +18,7 @@ import NavbarUserDropdown from "./NavbarUserDropdown";
 
 import { getHoverBackground } from "@/theme/components";
 
-type NavbarProps = {
+interface NavbarProps {
   onDrawerToggle: React.MouseEventHandler<HTMLElement>;
 };
 

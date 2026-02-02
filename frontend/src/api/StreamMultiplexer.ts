@@ -361,14 +361,14 @@ class StreamImpl implements Stream {
 
 export class StreamMultiplexer {
   private ws: WebSocket | null = null;
-  private streams: Map<number, StreamImpl> = new Map();
-  private streamsByType: Map<StreamType, StreamImpl> = new Map();
+  private streams = new Map<number, StreamImpl>();
+  private streamsByType = new Map<StreamType, StreamImpl>();
   private nextStreamID = 1; // Client uses odd numbers
   private _status: MuxStatus = "connecting";
   private _isUpdating = false; // Flag to pause all API requests during system update
   private url: string;
-  private statusListeners: Set<(status: MuxStatus) => void> = new Set();
-  private updatingListeners: Set<(isUpdating: boolean) => void> = new Set();
+  private statusListeners = new Set<(status: MuxStatus) => void>();
+  private updatingListeners = new Set<(isUpdating: boolean) => void>();
 
   constructor(url: string) {
     this.url = url;

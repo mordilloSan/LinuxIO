@@ -251,8 +251,8 @@ const TerminalDialog: React.FC<Props> = ({
   ]);
 
   // Shell picker handler
-  const handleShellChange = (e: SelectChangeEvent<string>) => {
-    const newShell = e.target.value as string;
+  const handleShellChange = (e: SelectChangeEvent) => {
+    const newShell = e.target.value;
     // Close existing stream
     if (streamRef.current) {
       streamRef.current.close();

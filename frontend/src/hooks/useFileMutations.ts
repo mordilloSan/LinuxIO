@@ -10,24 +10,24 @@ import linuxio from "@/api/react-query";
 import { useFileTransfers } from "./useFileTransfers";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-type UseFileMutationsParams = {
+interface UseFileMutationsParams {
   normalizedPath: string;
   queryClient?: QueryClient;
   onDeleteSuccess?: () => void;
 };
 
-type CompressPayload = {
+interface CompressPayload {
   paths: string[];
   archiveName?: string;
   destination?: string;
 };
 
-type ExtractPayload = {
+interface ExtractPayload {
   archivePath: string;
   destination?: string;
 };
 
-type ChmodPayload = {
+interface ChmodPayload {
   path: string;
   mode: string;
   recursive?: boolean;
@@ -35,12 +35,12 @@ type ChmodPayload = {
   group?: string;
 };
 
-type CopyMovePayload = {
+interface CopyMovePayload {
   sourcePaths: string[];
   destinationDir: string;
 };
 
-type RenamePayload = {
+interface RenamePayload {
   from: string;
   destination: string;
 };

@@ -14,13 +14,11 @@ interface DirectoryDetailsData {
 }
 
 interface UseMultipleDirectoryDetailsResult {
-  items: Array<
-    MultiStatsItem & {
-      isLoading: boolean;
-      error: Error | null;
-      aggregateSize?: number;
-    }
-  >;
+  items: (MultiStatsItem & {
+    isLoading: boolean;
+    error: Error | null;
+    aggregateSize?: number;
+  })[];
   totalSize: number;
   isAnyError: boolean;
   isAnyLoading: boolean;
@@ -89,7 +87,7 @@ export const useFileMultipleDirectoryDetails = (
           result.isAnyLoading = true;
         }
         if (query.isError && query.error) {
-          itemError = query.error as Error;
+          itemError = query.error;
         }
         aggregateSize = query.data?.size;
       }

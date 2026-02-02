@@ -1,13 +1,13 @@
 import { useMediaQuery, useTheme } from "@mui/material";
 import React, { useMemo } from "react";
 
-export type BreadcrumbItem = {
+export interface BreadcrumbItem {
   label: string;
   path: string;
   isLast: boolean;
 };
 
-type FilebrowserBreadcrumbsProps = {
+interface FilebrowserBreadcrumbsProps {
   path: string;
   onNavigate: (path: string) => void;
   showGallerySize?: boolean;

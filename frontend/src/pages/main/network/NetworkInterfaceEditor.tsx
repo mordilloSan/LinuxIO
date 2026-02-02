@@ -26,7 +26,7 @@ const isIPv4 = (s: string) =>
 
 const toCIDR = (addr?: string, prefix?: number | string) => {
   const p =
-    typeof prefix === "string" ? parseInt(prefix, 10) : (prefix as number);
+    typeof prefix === "string" ? parseInt(prefix, 10) : prefix!;
   return addr && Number.isInteger(p) ? `${addr}/${p}` : "";
 };
 
@@ -74,7 +74,7 @@ function getDNSv4List(i: any): string[] {
     [];
   if (typeof list === "string") list = list.split(/[,\s]+/);
   if (!Array.isArray(list)) return [];
-  return (list as any[])
+  return list
     .map((item: any) => String(item))
     .map((s: string) => s.trim())
     .filter((s: string) => isIPv4(s));
@@ -191,9 +191,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   // Compute sane defaults from iface (will be used to prefill manual fields)
   const defaults = useMemo(() => {
-    const ipv4 = getIPv4FromIface(iface as any);
-    const gateway = getGatewayV4(iface as any);
-    const dnsArr = getDNSv4List(iface as any);
+    const ipv4 = getIPv4FromIface(iface);
+    const gateway = getGatewayV4(iface);
+    const dnsArr = getDNSv4List(iface);
     return { ipv4, gateway, dns: dnsArr.join(", ") };
   }, [iface]);
 

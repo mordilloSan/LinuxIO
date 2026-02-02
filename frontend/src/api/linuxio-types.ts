@@ -36,7 +36,7 @@ export interface CPUInfoResponse {
     load15: number;
   };
   perCoreUsage: number[];
-  temperature: { [core: string]: number };
+  temperature: Record<string, number>;
 }
 
 export interface MemoryInfoResponse {
@@ -164,10 +164,10 @@ export interface DockerNetwork {
   EnableIPv4?: boolean;
   EnableIPv6?: boolean;
   IPAM?: {
-    Config?: Array<{
+    Config?: {
       Subnet: string;
       Gateway: string;
-    }>;
+    }[];
   };
   Options?: Record<string, string>;
   Labels?: Record<string, string>;
@@ -299,13 +299,13 @@ export interface SubfoldersResponse {
 
 export interface SearchResponse {
   query: string;
-  results: Array<{
+  results: {
     path: string;
     name: string;
     isDir: boolean;
     size: number;
     modified: string;
-  }>;
+  }[];
   count: number;
 }
 
@@ -506,13 +506,13 @@ export interface LinuxIOSchema {
       args: [content: string];
       result: {
         valid: boolean;
-        errors: Array<{
+        errors: {
           line?: number;
           column?: number;
           field?: string;
           message: string;
           type: "error" | "warning";
-        }>;
+        }[];
       };
     };
     get_compose_file_path: {

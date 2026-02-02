@@ -53,7 +53,7 @@ function getColorForPercentage(pct: number, colors: string[]): string {
 // 1. Multi-Value Circular Gauge
 // ============================================
 interface MultiValueGaugeProps {
-  values: Array<{ value: number; color: string; label?: string }>;
+  values: { value: number; color: string; label?: string }[];
   size?: number;
   thickness?: number;
   gap?: number;
@@ -89,7 +89,7 @@ export const MultiValueCircularGauge: React.FC<MultiValueGaugeProps> = ({
     });
 
     // Build segments with an immutable running offset (no reassignments)
-    type Seg = {
+    interface Seg {
       value: number;
       color: string;
       label?: string;

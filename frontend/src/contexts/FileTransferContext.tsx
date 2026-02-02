@@ -166,17 +166,17 @@ export interface FileTransferContextValue {
   }) => Promise<void>;
   cancelMove: (id: string) => void;
   startUpload: (
-    entries: Array<{ file?: File; relativePath: string; isDirectory: boolean }>,
+    entries: { file?: File; relativePath: string; isDirectory: boolean }[],
     targetPath: string,
     override?: boolean,
   ) => Promise<{
-    conflicts: Array<{
+    conflicts: {
       file?: File;
       relativePath: string;
       isDirectory: boolean;
-    }>;
+    }[];
     uploaded: number;
-    failures: Array<{ path: string; message: string }>;
+    failures: { path: string; message: string }[];
   }>;
   cancelUpload: (id: string) => void;
 }
@@ -1172,11 +1172,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const startUpload = useCallback(
     async (
-      entries: Array<{
+      entries: {
         file?: File;
         relativePath: string;
         isDirectory: boolean;
-      }>,
+      }[],
       targetPath: string,
       override?: boolean,
     ) => {

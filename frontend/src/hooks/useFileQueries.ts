@@ -6,7 +6,7 @@ import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirector
 import { ApiResource, FileResource } from "@/types/filebrowser";
 import linuxio, { LinuxIOError } from "@/api/react-query";
 
-type useFileQueriesParams = {
+interface useFileQueriesParams {
   normalizedPath: string;
   detailTarget: string[] | null;
   editingPath: string | null;
@@ -38,7 +38,7 @@ export const useFileQueries = ({
   const errorMessage = useMemo(() => {
     if (!isError || error === null || error === undefined) return null;
 
-    const err = error as Error | LinuxIOError;
+    const err = error;
     if (err instanceof LinuxIOError) {
       if (err.code === 403) {
         return `Permission denied: You don't have access to "${normalizedPath}".`;

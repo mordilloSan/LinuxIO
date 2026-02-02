@@ -18,7 +18,7 @@ import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 import useSidebar from "@/hooks/useSidebar";
 import { SidebarItemsType } from "@/types/sidebar";
 
-export type SidebarProps = { items: SidebarItemsType[] };
+export interface SidebarProps { items: SidebarItemsType[] }
 
 const Sidebar: React.FC<SidebarProps> = ({ items }) => {
   const theme = useTheme();

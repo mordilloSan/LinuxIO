@@ -1,6 +1,6 @@
 import React from "react";
 
-export type SidebarItemsType = {
+export interface SidebarItemsType {
   href: string;
   title: string;
   icon?: React.ElementType | string;

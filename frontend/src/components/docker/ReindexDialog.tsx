@@ -66,7 +66,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   const fetchStacksSummary = useCallback(async () => {
     try {
       const projects = await linuxio.call<
-        Array<{ status: string; name: string }>
+        { status: string; name: string }[]
       >("docker", "list_compose_projects", []);
 
       const summary = {

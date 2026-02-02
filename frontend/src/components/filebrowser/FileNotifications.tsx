@@ -312,8 +312,8 @@ const FileNotifications: React.FC = () => {
                     const speedText =
                       "speed" in transfer
                         ? formatSpeed(
-                            typeof (transfer as any).speed === "number"
-                              ? (transfer as any).speed
+                            typeof transfer.speed === "number"
+                              ? transfer.speed
                               : undefined,
                           )
                         : null;
@@ -322,17 +322,17 @@ const FileNotifications: React.FC = () => {
                     let timeRemainingText: string | null = null;
                     if (
                       "speed" in transfer &&
-                      typeof (transfer as any).speed === "number" &&
-                      (transfer as any).speed > 0
+                      typeof transfer.speed === "number" &&
+                      transfer.speed > 0
                     ) {
                       // Get bytes and total from transfer if available
                       const bytesProcessed =
                         "bytes" in transfer
-                          ? (transfer as any).bytes
+                          ? transfer.bytes
                           : undefined;
                       const totalBytes =
                         "total" in transfer
-                          ? (transfer as any).total
+                          ? transfer.total
                           : undefined;
 
                       if (
@@ -342,7 +342,7 @@ const FileNotifications: React.FC = () => {
                       ) {
                         const remainingBytes = totalBytes - bytesProcessed;
                         const secondsRemaining =
-                          remainingBytes / (transfer as any).speed;
+                          remainingBytes / transfer.speed;
                         timeRemainingText =
                           formatTimeRemaining(secondsRemaining);
                       }

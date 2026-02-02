@@ -54,7 +54,7 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
 
-  const handleSelectionChange = (event: SelectChangeEvent<string>) => {
+  const handleSelectionChange = (event: SelectChangeEvent) => {
     onSelect?.(event.target.value);
   };
 

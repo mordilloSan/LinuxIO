@@ -7,12 +7,12 @@ import React, {
 } from "react";
 import { toast, useSonner, Toaster, type ToastT } from "sonner";
 
-export type ToastMeta = {
+export interface ToastMeta {
   href?: string;
   label?: string;
 };
 
-export type ToastHistoryItem = {
+export interface ToastHistoryItem {
   id: string | number;
   title: string;
   description?: string;

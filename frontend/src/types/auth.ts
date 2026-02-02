@@ -13,7 +13,7 @@ export type ActionMap<M extends Record<string, any>> = {
 /**
  * Represents an authenticated user in the session.
  */
-export type AuthUser = {
+export interface AuthUser {
   /** Unique user identifier (typically a username or UID). */
   id: string;
   /** Friendly display name for the user. */
@@ -23,7 +23,7 @@ export type AuthUser = {
 /**
  * Reducer-managed state representing the authentication context.
  */
-export type AuthState = {
+export interface AuthState {
   isAuthenticated: boolean;
   isInitialized: boolean;
   user: AuthUser | null;
@@ -34,7 +34,7 @@ export type AuthState = {
 /**
  * The shape of the public API exposed by `useAuth()` or `AuthContext`.
  */
-export type AuthContextType = {
+export interface AuthContextType {
   isAuthenticated: boolean;
   isInitialized: boolean;
   user: AuthUser | null;
@@ -70,7 +70,7 @@ export const AUTH_ACTIONS = {
  * Mapping between action types and their expected payloads.
  * Used to infer strong types for the reducer's action object.
  */
-export type AuthActionTypes = {
+export interface AuthActionTypes {
   [AUTH_ACTIONS.INITIALIZE_START]: undefined;
   [AUTH_ACTIONS.INITIALIZE_SUCCESS]: {
     user: AuthUser;

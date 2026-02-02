@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 
-type DroppedEntry = {
+interface DroppedEntry {
   file?: File;
   relativePath: string;
   isDirectory: boolean;

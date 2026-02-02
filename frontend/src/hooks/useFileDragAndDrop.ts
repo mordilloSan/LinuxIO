@@ -7,7 +7,7 @@ import { FileResource } from "@/types/filebrowser";
 
 import { DroppedEntry, useFileDroppedEntries } from "./useFileDroppedEntries";
 
-type UseDragAndDropUploadParams = {
+interface UseDragAndDropUploadParams {
   normalizedPath: string;
   resource?: FileResource | null;
   editingPath?: string | null;
@@ -15,7 +15,7 @@ type UseDragAndDropUploadParams = {
   onUploadComplete: () => void;
 };
 
-type UseDragAndDropUploadResult = {
+interface UseDragAndDropUploadResult {
   isDragOver: boolean;
   overwriteTargets: DroppedEntry[] | null;
   handleDragEnter: (event: React.DragEvent) => void;
