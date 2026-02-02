@@ -501,6 +501,8 @@ export interface LinuxIOSchema {
     SetIPv4: { args: [iface: string, method: string]; result: void };
     SetIPv6: { args: [iface: string, method: string]; result: void };
     SetMTU: { args: [iface: string, mtu: string]; result: void };
+    EnableConnection: { args: [iface: string]; result: void };
+    DisableConnection: { args: [iface: string]; result: void };
   };
 
   filebrowser: {

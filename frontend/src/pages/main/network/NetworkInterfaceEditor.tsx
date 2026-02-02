@@ -7,6 +7,8 @@ import {
   ToggleButtonGroup,
   Typography,
   Chip,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
@@ -144,7 +146,48 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       },
     });
 
+  const { mutate: enableConnection, isPending: isEnabling } =
+    linuxio.dbus.EnableConnection.useMutation({
+      onSuccess: () => {
+        toast.success("Connection enabled");
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+        });
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to enable connection"),
+        );
+      },
+    });
+
+  const { mutate: disableConnection, isPending: isDisabling } =
+    linuxio.dbus.DisableConnection.useMutation({
+      onSuccess: () => {
+        toast.success("Connection disabled");
+        queryClient.invalidateQueries({
+          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+        });
+      },
+      onError: (error: Error) => {
+        toast.error(
+          getMutationErrorMessage(error, "Failed to disable connection"),
+        );
+      },
+    });
+
   const saving = isSettingIPv4 || isSettingIPv4Manual;
+  const toggling = isEnabling || isDisabling;
+  const isConnected = iface.state === 100;
+  const isConnecting = iface.state >= 40 && iface.state <= 90;
+
+  const handleConnectionToggle = () => {
+    if (isConnected || isConnecting) {
+      disableConnection([iface.name]);
+    } else {
+      enableConnection([iface.name]);
+    }
+  };
 
   // Compute sane defaults from iface (will be used to prefill manual fields)
   const defaults = useMemo(() => {
@@ -307,7 +350,24 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           justifyContent="space-between"
           sx={{ mb: 2 }}
         >
-          <Typography variant="subtitle2">Configuration Mode</Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isConnected || isConnecting}
+                onChange={handleConnectionToggle}
+                disabled={toggling}
+              />
+            }
+            label={
+              toggling
+                ? "Toggling..."
+                : isConnected
+                  ? "Enabled"
+                  : isConnecting
+                    ? "Connecting..."
+                    : "Disabled"
+            }
+          />
           <Chip
             size="small"
             color="primary"

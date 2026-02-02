@@ -662,6 +662,137 @@ func SetIPv6Static(iface, addressCIDR string) error {
 
 // --- Other Network Configuration ---
 
+// --- Connection Enable/Disable ---
+
+// DisableConnection disconnects the network interface
+func DisableConnection(iface string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
+
+	if strings.TrimSpace(iface) == "" {
+		return fmt.Errorf("interface name is required")
+	}
+
+	return RetryOnceIfClosed(nil, func() error {
+		conn, err := godbus.SystemBus()
+		if err != nil {
+			return fmt.Errorf("connect system bus: %w", err)
+		}
+		defer conn.Close()
+
+		nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
+
+		// Find the device by interface name
+		var devicePaths []godbus.ObjectPath
+		if err := nm.Call("org.freedesktop.NetworkManager.GetDevices", 0).Store(&devicePaths); err != nil {
+			return fmt.Errorf("GetDevices failed: %w", err)
+		}
+
+		for _, devPath := range devicePaths {
+			dev := conn.Object("org.freedesktop.NetworkManager", devPath)
+			var devIface string
+			if err := dev.Call("org.freedesktop.DBus.Properties.Get", 0,
+				"org.freedesktop.NetworkManager.Device", "Interface").Store(&devIface); err != nil {
+				continue
+			}
+			if devIface != iface {
+				continue
+			}
+
+			// Disconnect the device
+			if err := dev.Call("org.freedesktop.NetworkManager.Device.Disconnect", 0).Err; err != nil {
+				return fmt.Errorf("failed to disconnect device: %w", err)
+			}
+			return nil
+		}
+
+		return fmt.Errorf("interface %s not found", iface)
+	})
+}
+
+// EnableConnection activates the network connection for the interface
+func EnableConnection(iface string) error {
+	systemDBusMu.Lock()
+	defer systemDBusMu.Unlock()
+
+	if strings.TrimSpace(iface) == "" {
+		return fmt.Errorf("interface name is required")
+	}
+
+	return RetryOnceIfClosed(nil, func() error {
+		conn, err := godbus.SystemBus()
+		if err != nil {
+			return fmt.Errorf("connect system bus: %w", err)
+		}
+		defer conn.Close()
+
+		nm := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager")
+
+		// Find the device by interface name
+		var devicePaths []godbus.ObjectPath
+		if err := nm.Call("org.freedesktop.NetworkManager.GetDevices", 0).Store(&devicePaths); err != nil {
+			return fmt.Errorf("GetDevices failed: %w", err)
+		}
+
+		var devicePath godbus.ObjectPath
+		for _, devPath := range devicePaths {
+			dev := conn.Object("org.freedesktop.NetworkManager", devPath)
+			var devIface string
+			if err := dev.Call("org.freedesktop.DBus.Properties.Get", 0,
+				"org.freedesktop.NetworkManager.Device", "Interface").Store(&devIface); err != nil {
+				continue
+			}
+			if devIface == iface {
+				devicePath = devPath
+				break
+			}
+		}
+
+		if devicePath == "" {
+			return fmt.Errorf("interface %s not found", iface)
+		}
+
+		// Find connection profiles that match this interface
+		settings := conn.Object("org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager/Settings")
+		var connPaths []godbus.ObjectPath
+		if err := settings.Call("org.freedesktop.NetworkManager.Settings.ListConnections", 0).Store(&connPaths); err != nil {
+			return fmt.Errorf("ListConnections failed: %w", err)
+		}
+
+		var matchingConnPath godbus.ObjectPath
+		for _, connPath := range connPaths {
+			settingsConn := conn.Object("org.freedesktop.NetworkManager", connPath)
+			var connSettings map[string]map[string]godbus.Variant
+			if err := settingsConn.Call("org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0).Store(&connSettings); err != nil {
+				continue
+			}
+
+			// Check if this connection is for our interface
+			if connection, ok := connSettings["connection"]; ok {
+				if ifaceVariant, ok := connection["interface-name"]; ok {
+					if connIface, ok := ifaceVariant.Value().(string); ok && connIface == iface {
+						matchingConnPath = connPath
+						break
+					}
+				}
+			}
+		}
+
+		if matchingConnPath == "" {
+			return fmt.Errorf("no connection profile found for interface %s", iface)
+		}
+
+		// Activate the connection
+		var specificObject godbus.ObjectPath = "/"
+		if err := nm.Call("org.freedesktop.NetworkManager.ActivateConnection", 0,
+			matchingConnPath, devicePath, specificObject).Err; err != nil {
+			return fmt.Errorf("failed to activate connection: %w", err)
+		}
+
+		return nil
+	})
+}
+
 func SetMTU(iface, mtu string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
