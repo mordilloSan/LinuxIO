@@ -327,13 +327,9 @@ const FileNotifications: React.FC = () => {
                     ) {
                       // Get bytes and total from transfer if available
                       const bytesProcessed =
-                        "bytes" in transfer
-                          ? transfer.bytes
-                          : undefined;
+                        "bytes" in transfer ? transfer.bytes : undefined;
                       const totalBytes =
-                        "total" in transfer
-                          ? transfer.total
-                          : undefined;
+                        "total" in transfer ? transfer.total : undefined;
 
                       if (
                         bytesProcessed !== undefined &&

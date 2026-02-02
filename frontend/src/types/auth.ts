@@ -84,7 +84,7 @@ export interface AuthActionTypes {
     indexerAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
-};
+}
 
 export type AuthActions =
   ActionMap<AuthActionTypes>[keyof ActionMap<AuthActionTypes>];

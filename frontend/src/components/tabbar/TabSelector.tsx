@@ -2,7 +2,10 @@ import { Paper, ToggleButton, ToggleButtonGroup, Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
-interface TabOption { value: string; label: string }
+interface TabOption {
+  value: string;
+  label: string;
+}
 interface TabSelectorProps {
   value: string;
   onChange: (value: string) => void;

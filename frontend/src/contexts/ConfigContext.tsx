@@ -162,8 +162,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const setKey: ConfigContextType["setKey"] = useCallback(
     (key, value) => {
       setConfig((prev) => {
-        const nextVal =
-          typeof value === "function" ? value(prev[key]) : value;
+        const nextVal = typeof value === "function" ? value(prev[key]) : value;
         if (Object.is(prev[key], nextVal)) return prev;
         const next = applyDefaults({ ...prev, [key]: nextVal });
         save(next);

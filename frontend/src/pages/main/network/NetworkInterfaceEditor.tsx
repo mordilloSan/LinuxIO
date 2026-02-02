@@ -25,8 +25,7 @@ const isIPv4 = (s: string) =>
   /^\s*(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\s*$/.test(s);
 
 const toCIDR = (addr?: string, prefix?: number | string) => {
-  const p =
-    typeof prefix === "string" ? parseInt(prefix, 10) : prefix!;
+  const p = typeof prefix === "string" ? parseInt(prefix, 10) : prefix!;
   return addr && Number.isInteger(p) ? `${addr}/${p}` : "";
 };
 
