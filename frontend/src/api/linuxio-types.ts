@@ -426,6 +426,7 @@ export interface LinuxIOSchema {
     remove_container: { args: [containerId: string]; result: void };
     restart_container: { args: [containerId: string]; result: void };
     list_images: { args: []; result: DockerImage[] };
+    delete_image: { args: [imageId: string]; result: void };
     list_networks: { args: []; result: DockerNetwork[] };
     create_network: { args: [name: string]; result: void };
     delete_network: { args: [id: string]; result: void };

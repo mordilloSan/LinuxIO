@@ -1,5 +1,21 @@
-import { Box, TableCell, TextField, Chip, Typography } from "@mui/material";
-import React, { useCallback, useEffect, useState } from "react";
+import DeleteIcon from "@mui/icons-material/Delete";
+import {
+  Box,
+  TableCell,
+  TextField,
+  Chip,
+  Typography,
+  Checkbox,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
+  Alert,
+} from "@mui/material";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import linuxio from "@/api/react-query";
 import UnifiedCollapsibleTable, {
@@ -15,12 +31,102 @@ interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
 }
 
+interface DeleteImageDialogProps {
+  open: boolean;
+  onClose: () => void;
+  imageIds: string[];
+  imageTags: string[];
+  onSuccess: () => void;
+}
+
+const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
+  open,
+  onClose,
+  imageIds,
+  imageTags,
+  onSuccess,
+}) => {
+  const [error, setError] = useState<string | null>(null);
+
+  const deleteImageMutation = linuxio.docker.delete_image.useMutation();
+
+  const handleDelete = async () => {
+    setError(null);
+
+    try {
+      // Delete images sequentially
+      for (const id of imageIds) {
+        await deleteImageMutation.mutateAsync([id]);
+      }
+      onSuccess();
+      const successMessage =
+        imageIds.length === 1
+          ? `Image "${imageTags[0]}" deleted successfully`
+          : `${imageIds.length} images deleted successfully`;
+      toast.success(successMessage);
+      handleClose();
+    } catch (err: any) {
+      const errorMessage = err?.message || "Failed to delete image(s)";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleClose = () => {
+    setError(null);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle>
+        Delete Image{imageIds.length > 1 ? "s" : ""}
+      </DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          Are you sure you want to delete the following image
+          {imageIds.length > 1 ? "s" : ""}?
+        </DialogContentText>
+        <Box sx={{ mt: 2, mb: 1 }}>
+          {imageTags.map((tag, idx) => (
+            <Chip key={`${tag}-${idx}`} label={tag} size="small" sx={{ mr: 1, mb: 1 }} />
+          ))}
+        </Box>
+        <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
+          This action cannot be undone. Images in use by containers cannot be
+          deleted.
+        </DialogContentText>
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleClose} disabled={deleteImageMutation.isPending}>
+          Cancel
+        </Button>
+        <Button
+          onClick={handleDelete}
+          variant="contained"
+          color="error"
+          disabled={deleteImageMutation.isPending}
+        >
+          {deleteImageMutation.isPending ? "Deleting..." : "Delete"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
   const { data: images = [] } = linuxio.docker.list_images.useQuery({
     refetchInterval: 10000,
   });
 
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Create image handler
   const handleCreateImage = useCallback(() => {
@@ -60,6 +166,48 @@ const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
       img.shortId.toLowerCase().includes(search.toLowerCase()),
   );
 
+  // Compute effective selection - only include items that are in the filtered list
+  const effectiveSelected = useMemo(() => {
+    const filteredIds = new Set(filtered.map((img) => img.id));
+    const result = new Set<string>();
+    selected.forEach((id) => {
+      if (filteredIds.has(id)) {
+        result.add(id);
+      }
+    });
+    return result;
+  }, [selected, filtered]);
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelected(new Set(filtered.map((img) => img.id)));
+    } else {
+      setSelected(new Set());
+    }
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSuccess = () => {
+    setSelected(new Set());
+  };
+
+  const selectedImages = filtered.filter((img) => effectiveSelected.has(img.id));
+  const allSelected =
+    filtered.length > 0 && effectiveSelected.size === filtered.length;
+  const someSelected =
+    effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
+
   const columns: UnifiedTableColumn[] = [
     { field: "repo", headerName: "Repository", align: "left" },
     { field: "tag", headerName: "Tag", align: "left", width: "120px" },
@@ -82,7 +230,7 @@ const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
 
   return (
     <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2}>
+      <Box mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
         <TextField
           variant="outlined"
           size="small"
@@ -97,11 +245,38 @@ const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
           }}
         />
         <Box fontWeight="bold">{filtered.length} shown</Box>
+        {effectiveSelected.size > 0 && (
+          <Button
+            variant="contained"
+            color="error"
+            size="small"
+            startIcon={<DeleteIcon />}
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            Delete ({effectiveSelected.size})
+          </Button>
+        )}
       </Box>
       <UnifiedCollapsibleTable
         data={filtered}
         columns={columns}
         getRowKey={(image) => `${image.id}-${image.tag}`}
+        renderFirstCell={(image) => (
+          <Checkbox
+            size="small"
+            checked={effectiveSelected.has(image.id)}
+            onChange={(e) => handleSelectOne(image.id, e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+        renderHeaderFirstCell={() => (
+          <Checkbox
+            size="small"
+            checked={allSelected}
+            indeterminate={someSelected}
+            onChange={(e) => handleSelectAll(e.target.checked)}
+          />
+        )}
         renderMainRow={(image) => (
           <>
             <TableCell>
@@ -220,6 +395,14 @@ const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
           </>
         )}
         emptyMessage="No images found."
+      />
+
+      <DeleteImageDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        imageIds={selectedImages.map((img) => img.id)}
+        imageTags={selectedImages.map((img) => `${img.repo}:${img.tag}`)}
+        onSuccess={handleDeleteSuccess}
       />
     </Box>
   );
