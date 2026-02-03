@@ -101,6 +101,13 @@ export interface HostInfo {
   kernelArch: string;
 }
 
+export interface CapabilitiesResponse {
+  docker_available: boolean;
+  indexer_available: boolean;
+  docker_error?: string;
+  indexer_error?: string;
+}
+
 export interface DistroInfo {
   name: string;
   version: string;
@@ -464,6 +471,7 @@ export interface QRCodeResponse {
  */
 export interface LinuxIOSchema {
   system: {
+    get_capabilities: { args: []; result: CapabilitiesResponse };
     get_cpu_info: { args: []; result: CPUInfoResponse };
     get_sensor_info: { args: []; result: unknown };
     get_motherboard_info: { args: []; result: MotherboardInfo };

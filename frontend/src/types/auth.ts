@@ -66,6 +66,9 @@ export const AUTH_ACTIONS = {
 
   /** Dispatched after logout or session expiration. */
   SIGN_OUT: "SIGN_OUT",
+
+  /** Dispatched after the bridge is connected to refresh capability flags. */
+  UPDATE_CAPABILITIES: "UPDATE_CAPABILITIES",
 } as const satisfies Record<string, string>;
 
 /**
@@ -88,10 +91,13 @@ export interface AuthActionTypes {
     indexerAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
+  [AUTH_ACTIONS.UPDATE_CAPABILITIES]: {
+    dockerAvailable: boolean;
+    indexerAvailable: boolean;
+  };
 }
 
-export type AuthActions =
-  ActionMap<AuthActionTypes>[keyof ActionMap<AuthActionTypes>];
+export type AuthActions = ActionMap<AuthActionTypes>[keyof AuthActionTypes];
 
 export interface UpdateInfo {
   available: boolean;

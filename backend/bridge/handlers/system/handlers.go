@@ -8,6 +8,8 @@ import (
 
 // RegisterHandlers registers all system handlers with the global registry
 func RegisterHandlers() {
+	registerCapabilitiesHandlers()
+
 	ipc.RegisterFunc("system", "get_cpu_info", func(ctx context.Context, args []string, emit ipc.Events) error {
 		cpuInfo, err := FetchCPUInfo()
 		if err != nil {

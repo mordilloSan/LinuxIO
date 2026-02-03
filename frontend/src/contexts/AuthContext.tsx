@@ -9,6 +9,8 @@ import {
 import { toast } from "sonner";
 
 import { initStreamMux, closeStreamMux, MuxStatus } from "@/api/linuxio";
+import { call as bridgeCall } from "@/api/linuxio-core";
+import type { CapabilitiesResponse } from "@/api/linuxio-types";
 import {
   AuthContextType,
   AuthState,
@@ -71,6 +73,12 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         privileged: false,
         dockerAvailable: null,
         indexerAvailable: null,
+      };
+    case AUTH_ACTIONS.UPDATE_CAPABILITIES:
+      return {
+        ...state,
+        dockerAvailable: action.payload.dockerAvailable,
+        indexerAvailable: action.payload.indexerAvailable,
       };
     default: {
       const exhaustiveCheck: never = action;
@@ -154,6 +162,28 @@ function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     if (state.isAuthenticated) {
       const mux = initStreamMux();
+
+      const refreshCapabilities = async () => {
+        try {
+          const caps = await bridgeCall<CapabilitiesResponse>(
+            "system",
+            "get_capabilities",
+          );
+          dispatch({
+            type: AUTH_ACTIONS.UPDATE_CAPABILITIES,
+            payload: {
+              dockerAvailable: caps.docker_available,
+              indexerAvailable: caps.indexer_available,
+            },
+          });
+        } catch (err) {
+          console.warn("[AuthContext] Failed to refresh capabilities:", err);
+        }
+      };
+
+      if (mux.status === "open") {
+        void refreshCapabilities();
+      }
       // Listen for WebSocket status changes
       const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
         if (status === "error") {
@@ -162,6 +192,8 @@ function AuthProvider({ children }: AuthProviderProps) {
           console.log("[AuthContext] Session invalid or expired");
           toast.error("Session expired. Please sign in again.");
           doLocalSignOut(false);
+        } else if (status === "open") {
+          void refreshCapabilities();
         } else if (status === "closed") {
           // Network issue or tab closed - don't logout
           // Session cookie might still be valid
@@ -214,8 +246,6 @@ function AuthProvider({ children }: AuthProviderProps) {
       payload: {
         user,
         privileged: data.privileged,
-        dockerAvailable: data.docker_available ?? null,
-        indexerAvailable: data.indexer_available ?? null,
       },
     });
 

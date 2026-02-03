@@ -4,6 +4,16 @@
 
 3 - exec.command safety and efeciency?
 
+4 - docker auto update
+
+5 - docker auto start
+
+6 - docker start order
+
+7 - migrate all tables to cards
+
+8 - different view modes on cards/tables with user config
+
 Docker compose UI - Done
 Right now hash can be reproduced if build from same code base. - DONE
 fix indexer status check and calls. DONE

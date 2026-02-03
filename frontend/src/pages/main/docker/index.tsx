@@ -37,6 +37,19 @@ const DockerPage: React.FC = () => {
     (() => void) | null
   >(null);
 
+  if (dockerAvailable === null) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="info">
+          <AlertTitle>Checking Docker</AlertTitle>
+          <Typography variant="body2">
+            Verifying Docker daemon access...
+          </Typography>
+        </Alert>
+      </Box>
+    );
+  }
+
   // Show error if Docker is not available
   if (dockerAvailable === false) {
     return (
