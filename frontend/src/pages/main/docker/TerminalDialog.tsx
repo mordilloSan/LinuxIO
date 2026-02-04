@@ -20,9 +20,9 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 
 import "@xterm/xterm/css/xterm.css";
 import { useStreamMux } from "@/api/linuxio";
-import linuxio from "@/api/react-query";
 import { encodeString, decodeString } from "@/api/linuxio";
 import type { Stream } from "@/api/linuxio";
+import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface Props {

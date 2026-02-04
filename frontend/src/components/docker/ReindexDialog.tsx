@@ -52,35 +52,23 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [result, setResult] = useState<ReindexResult | null>(null);
-  const [stacksSummary, setStacksSummary] = useState<{
-    total: number;
-    running: number;
-    stopped: number;
-  } | null>(null);
   const streamRef = useRef<Stream | null>(null);
   const hasCompletedRef = useRef(false);
 
   const { isOpen: muxIsOpen, openStream } = useStreamMux();
 
-  // Fetch stacks after successful reindex
-  const fetchStacksSummary = useCallback(async () => {
-    try {
-      const projects = await linuxio.call<{ status: string; name: string }[]>(
-        "docker",
-        "list_compose_projects",
-        [],
-      );
+  const { data: composeProjects = [] } =
+    linuxio.docker.list_compose_projects.useQuery({
+      enabled: open && success,
+    });
 
-      const summary = {
-        total: projects.length,
-        running: projects.filter((p) => p.status === "running").length,
-        stopped: projects.filter((p) => p.status === "stopped").length,
-      };
-      setStacksSummary(summary);
-    } catch (err) {
-      console.error("Failed to fetch stacks summary:", err);
-    }
-  }, []);
+  const stacksSummary = success
+    ? {
+        total: composeProjects.length,
+        running: composeProjects.filter((p) => p.status === "running").length,
+        stopped: composeProjects.filter((p) => p.status === "stopped").length,
+      }
+    : null;
 
   // Close stream helper
   const closeStream = useCallback(() => {
@@ -98,7 +86,6 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     setError(null);
     setSuccess(false);
     setResult(null);
-    setStacksSummary(null);
     hasCompletedRef.current = false;
   }, [closeStream]);
 
@@ -149,8 +136,6 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
         setResult(reindexResult);
         setSuccess(true);
         setIsRunning(false);
-        // Fetch stacks summary
-        fetchStacksSummary();
         if (onComplete) {
           onComplete();
         }
@@ -167,15 +152,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
         setIsRunning(false);
       }
     };
-  }, [
-    open,
-    muxIsOpen,
-    openStream,
-    onComplete,
-    success,
-    error,
-    fetchStacksSummary,
-  ]);
+  }, [open, muxIsOpen, openStream, onComplete, success, error]);
 
   const handleClose = () => {
     if (isRunning) {

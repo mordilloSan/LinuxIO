@@ -461,6 +461,46 @@ export interface QRCodeResponse {
   qrcode: string;
 }
 
+export interface DeleteStackResult {
+  message: string;
+  project: string;
+  files_deleted: boolean;
+  dir_deleted: boolean;
+  deleted_path: string;
+}
+
+export interface ConfigSettings {
+  appSettings: {
+    theme: string;
+    primaryColor: string;
+    sidebarCollapsed: boolean;
+    showHiddenFiles: boolean;
+  };
+  docker: {
+    folder: string;
+  };
+}
+
+export interface ConfigSetResult {
+  message: string;
+  path: string;
+}
+
+export interface DockerConfigSetResult {
+  message: string;
+  path: string;
+  appliedFolder: string;
+}
+
+export interface DirectoryValidationResult {
+  valid: boolean;
+  exists: boolean;
+  canCreate: boolean;
+  canWrite: boolean;
+  error?: string;
+  isDirectory: boolean;
+}
+
 // ============================================================================
 // API Schema Definition
 // ============================================================================
@@ -509,6 +549,10 @@ export interface LinuxIOSchema {
     compose_down: { args: [projectName: string]; result: any };
     compose_stop: { args: [projectName: string]; result: any };
     compose_restart: { args: [projectName: string]; result: any };
+    delete_stack: {
+      args: [projectName: string, deleteFile: string, deleteDirectory: string];
+      result: DeleteStackResult;
+    };
     get_docker_folder: { args: []; result: { folder: string } };
     validate_compose: {
       args: [content: string];
@@ -526,6 +570,10 @@ export interface LinuxIOSchema {
     get_compose_file_path: {
       args: [stackName: string];
       result: { path: string; exists: boolean; directory: string };
+    };
+    validate_stack_directory: {
+      args: [dirPath: string];
+      result: DirectoryValidationResult;
     };
   };
 
@@ -615,8 +663,13 @@ export interface LinuxIOSchema {
   };
 
   config: {
-    theme_get: { args: []; result: string };
-    theme_set: { args: [theme: string]; result: void };
+    get: { args: []; result: ConfigSettings };
+    set: { args: [payload: string]; result: ConfigSetResult };
+    docker_config_get: { args: []; result: { folder: string } };
+    docker_config_set: {
+      args: [payload: string];
+      result: DockerConfigSetResult;
+    };
   };
 
   control: {

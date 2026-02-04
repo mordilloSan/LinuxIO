@@ -95,6 +95,15 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     refetchInterval: 5000,
   });
 
+  const { mutateAsync: deleteStack } =
+    linuxio.docker.delete_stack.useMutation();
+  const { mutateAsync: getResource } =
+    linuxio.filebrowser.resource_get.useMutation();
+  const { mutateAsync: validateCompose } =
+    linuxio.docker.validate_compose.useMutation();
+  const { mutateAsync: getComposeFilePath } =
+    linuxio.docker.get_compose_file_path.useMutation();
+
   // Handle operation dialog close
   const handleOperationDialogClose = useCallback(() => {
     setOperationDialogOpen(false);
@@ -155,7 +164,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           const deleteFile = option === "file" || option === "directory";
           const deleteDirectory = option === "directory";
 
-          await linuxio.call("docker", "delete_stack", [
+          await deleteStack([
             projectName,
             deleteFile ? "true" : "false",
             deleteDirectory ? "true" : "false",
@@ -180,7 +189,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         setDeleteLoading(false);
       }
     },
-    [deleteDialogProject, refetch],
+    [deleteDialogProject, deleteStack, refetch],
   );
 
   const handleDeleteDialogClose = useCallback(() => {
@@ -237,11 +246,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     async (projectName: string, configPath: string) => {
       try {
         // Fetch file content
-        const result = await linuxio.call<{ content?: string }>(
-          "filebrowser",
-          "resource_get",
-          [configPath, "", "true"],
-        );
+        const result = await getResource([configPath, "", "true"]);
 
         if (result && result.content) {
           setEditorMode("edit");
@@ -258,18 +263,14 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         );
       }
     },
-    [],
+    [getResource],
   );
 
   // Validate compose file
   const handleValidate = useCallback(
     async (content: string): Promise<ValidationResult> => {
       try {
-        const result = await linuxio.call<ValidationResult>(
-          "docker",
-          "validate_compose",
-          [content],
-        );
+        const result = await validateCompose([content]);
         return result;
       } catch (error) {
         return {
@@ -284,7 +285,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         };
       }
     },
-    [],
+    [validateCompose],
   );
 
   // Internal save function that performs the actual save
@@ -387,16 +388,12 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   // Save compose file with overwrite protection
   const handleSave = useCallback(
     async (content: string, stackName: string, existingFilePath: string) => {
+      let filePath = existingFilePath;
+
       try {
         // Get the file path (either from existing file or build new one)
-        let filePath = existingFilePath;
-
         if (editorMode === "create") {
-          const pathInfo = await linuxio.call<{
-            path: string;
-            exists: boolean;
-            directory: string;
-          }>("docker", "get_compose_file_path", [stackName]);
+          const pathInfo = await getComposeFilePath([stackName]);
           filePath = pathInfo.path;
         }
 
@@ -408,17 +405,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           error instanceof Error &&
           error.message.includes("file already exists")
         ) {
-          // Get file path for confirmation dialog
-          let filePath = existingFilePath;
-          if (editorMode === "create") {
-            const pathInfo = await linuxio.call<{
-              path: string;
-              exists: boolean;
-              directory: string;
-            }>("docker", "get_compose_file_path", [stackName]);
-            filePath = pathInfo.path;
-          }
-
           // Store pending save data and show confirmation dialog
           setPendingSaveData({ content, stackName, filePath });
           setOverwriteDialogOpen(true);
@@ -431,7 +417,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         }
       }
     },
-    [editorMode, performSave],
+    [editorMode, getComposeFilePath, performSave],
   );
 
   // Handle overwrite confirmation

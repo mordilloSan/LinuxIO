@@ -464,12 +464,13 @@ Complex types (objects, arrays) are JSON-serialized automatically when using the
 
 | Handler | Description | Example Commands |
 |---------|-------------|------------------|
-| `system` | System information | `get_drive_info`, `get_cpu_info`, `get_memory_info` |
+| `system` | System information | `get_cpu_info`, `get_memory_info`, `get_host_info` |
+| `storage` | Storage management | `get_drive_info`, `list_vgs`, `list_nfs_mounts` |
 | `docker` | Docker management | `list_containers`, `start_container`, `container_exec` |
 | `filebrowser` | File operations | `resource_get`, `subfolders`, `upload`, `download`, `compress` |
 | `dbus` | D-Bus services | `ListServices`, `GetUpdates`, `InstallPackages`, `SetAutoUpdates` |
 | `wireguard` | WireGuard VPN | `list_interfaces`, `add_peer`, `remove_peer` |
-| `config` | User configuration | `theme_get`, `theme_set` |
+| `config` | User configuration | `get`, `set` |
 | `control` | System control | `version`, `shutdown`, `update` |
 | `modules` | Module management | `GetModules`, `InstallModule`, `UninstallModule` |
 

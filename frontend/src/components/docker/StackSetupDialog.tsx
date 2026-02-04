@@ -39,6 +39,9 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
     workingDir?: string;
   }>({});
 
+  const { mutateAsync: validateStackDirectory } =
+    linuxio.docker.validate_stack_directory.useMutation();
+
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
@@ -108,14 +111,7 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
 
     try {
       // Validate the directory with the backend
-      const result = await linuxio.call<{
-        valid: boolean;
-        exists: boolean;
-        canCreate: boolean;
-        canWrite: boolean;
-        error?: string;
-        isDirectory: boolean;
-      }>("docker", "validate_stack_directory", [workingDir.trim()]);
+      const result = await validateStackDirectory([workingDir.trim()]);
 
       if (!result.valid) {
         setErrors({

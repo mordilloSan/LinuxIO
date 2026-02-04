@@ -69,7 +69,7 @@ import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useFileViewState } from "@/hooks/useFileViewState";
-import { ViewMode, FileItem, ResourceStatData } from "@/types/filebrowser";
+import { ViewMode, FileItem } from "@/types/filebrowser";
 import {
   buildEntriesFromFileList,
   mergeDroppedEntries,
@@ -176,6 +176,9 @@ const FileBrowser: React.FC = () => {
     queryClient,
     onDeleteSuccess: () => setSelectedPaths(new Set()),
   });
+
+  const { mutateAsync: resourceStat } =
+    linuxio.filebrowser.resource_stat.useMutation();
 
   const detailTargetCount = detailTarget?.length ?? 0;
   const hasSingleDetailTarget = detailTargetCount === 1;
@@ -540,11 +543,7 @@ const FileBrowser: React.FC = () => {
     try {
       // Fetch stat info to get current permissions (use first item as reference)
       // Args: [path]
-      const stat = await linuxio.call<ResourceStatData>(
-        "filebrowser",
-        "resource_stat",
-        [selectedPath],
-      );
+      const stat = await resourceStat([selectedPath]);
       const mode = stat.mode || "0644"; // Default if not available
       const isDirectory = stat.mode?.startsWith("d") || hasDirectorySelected;
       const owner = stat.owner || undefined;
@@ -566,6 +565,7 @@ const FileBrowser: React.FC = () => {
     }
   }, [
     handleCloseContextMenu,
+    resourceStat,
     selectedPaths,
     selectedItems,
     setPermissionsDialog,
