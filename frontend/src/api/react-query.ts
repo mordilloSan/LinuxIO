@@ -12,13 +12,18 @@
  * 3. STREAMING API (for progress tracking):
  *    linuxio.spawn("filebrowser", "compress", [...]).progress(...)
  *
- * 4. DIRECT API (for custom logic outside React):
- *    await linuxio.call("handler", "command", [args])
+ * 4. IMPERATIVE API (contexts/effects/non-hook code):
+ *    await linuxio.system.get_capabilities.call()
+ *    await queryClient.fetchQuery(linuxio.system.get_capabilities.queryOptions())
+ *
+ * For truly dynamic handlers/commands, use the core API:
+ *    await core.call("handler", "command", [args])
  */
 
 import {
   useQuery,
   useMutation,
+  type QueryKey,
   type UseQueryOptions,
   type UseMutationOptions,
 } from "@tanstack/react-query";
@@ -33,7 +38,22 @@ import {
   waitForStreamMux,
   getStreamMux,
 } from "./linuxio";
-import type { HandlerName, CommandName, CommandResult } from "./linuxio-types";
+import type {
+  HandlerName,
+  CommandName,
+  CommandArgs,
+  CommandResult,
+} from "./linuxio-types";
+
+function serializeArg(arg: unknown): string {
+  if (typeof arg === "string") return arg;
+  if (typeof arg === "object" || Array.isArray(arg)) return JSON.stringify(arg);
+  return String(arg);
+}
+
+function serializeArgs(args: readonly unknown[]): string[] {
+  return (args ?? []).filter((arg) => arg !== undefined).map(serializeArg);
+}
 
 // ============================================================================
 // String-based API (for dynamic handlers like modules)
@@ -156,6 +176,23 @@ type MutationOptions<TResult> = Omit<
  */
 interface CommandEndpoint<TResult> {
   /**
+   * Framework-agnostic call (Promise-based) using the same argument serialization
+   * and cache key scheme as the React Query hooks.
+   */
+  call: (...args: unknown[]) => Promise<TResult>;
+
+  /** Deterministic React Query key for this command */
+  queryKey: (...args: unknown[]) => QueryKey;
+
+  /**
+   * React Query options for `queryClient.fetchQuery/ensureQueryData`
+   * and non-hook integration points.
+   */
+  queryOptions: (
+    ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
+  ) => UseQueryOptions<TResult, LinuxIOError>;
+
+  /**
    * React Query hook for fetching data
    *
    * @example
@@ -196,6 +233,35 @@ interface CommandEndpoint<TResult> {
   ) => ReturnType<typeof useMutation<TResult, LinuxIOError, unknown[]>>;
 }
 
+function parseQueryParams<TResult>(
+  params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[],
+): { args: unknown[]; options: QueryOptions<TResult> | undefined } {
+  let args: unknown[] = [];
+  let options: QueryOptions<TResult> | undefined;
+
+  if (
+    params.length === 1 &&
+    params[0] &&
+    typeof params[0] === "object" &&
+    "args" in params[0]
+  ) {
+    const { args: explicitArgs, ...rest } = params[0] as QueryConfig<TResult>;
+    args = explicitArgs ?? [];
+    options = rest;
+    return { args, options };
+  }
+
+  for (const param of params) {
+    if (typeof param === "string") {
+      args.push(param);
+    } else if (param && typeof param === "object") {
+      options = param as QueryOptions<TResult>;
+    }
+  }
+
+  return { args, options };
+}
+
 /**
  * Create a command endpoint factory
  */
@@ -203,69 +269,51 @@ function createEndpoint<TResult>(
   handler: string,
   command: string,
 ): CommandEndpoint<TResult> {
+  const queryKey = (...rawArgs: unknown[]): QueryKey => {
+    const serialized = serializeArgs(rawArgs);
+    return ["linuxio", handler, command, ...serialized] as const;
+  };
+
+  const call = (...rawArgs: unknown[]): Promise<TResult> => {
+    const serialized = serializeArgs(rawArgs);
+    return core.call<TResult>(handler, command, serialized);
+  };
+
+  const queryOptions = (
+    ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
+  ): UseQueryOptions<TResult, LinuxIOError> => {
+    const { args, options } = parseQueryParams<TResult>(params);
+    const serializedArgs = serializeArgs(args);
+
+    return {
+      queryKey: ["linuxio", handler, command, ...serializedArgs],
+      queryFn: () => core.call<TResult>(handler, command, serializedArgs),
+      ...(options ?? {}),
+    };
+  };
+
   return {
+    call,
+    queryKey,
+    queryOptions,
     useQuery(
       ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
     ) {
       const { isOpen } = useStreamMux();
       const isUpdating = useIsUpdating();
 
-      let args: unknown[] = [];
-      let options: QueryOptions<TResult> | undefined;
-
-      // Check if first param is a config object with explicit args
-      if (
-        params.length === 1 &&
-        params[0] &&
-        typeof params[0] === "object" &&
-        "args" in params[0]
-      ) {
-        const config = params[0];
-        args = config.args ?? [];
-        options = config;
-      } else {
-        // Legacy mode: separate string args from options
-        for (const param of params) {
-          if (typeof param === "string") {
-            args.push(param);
-          } else if (param && typeof param === "object") {
-            options = param as QueryOptions<TResult>;
-          }
-        }
-      }
-
-      // Serialize args to strings (JSON for complex types)
-      const serializedArgs = args.map((arg) => {
-        if (typeof arg === "string") {
-          return arg;
-        }
-        if (typeof arg === "object" || Array.isArray(arg)) {
-          return JSON.stringify(arg);
-        }
-        return String(arg);
-      });
-
+      const baseOptions = queryOptions(...params);
       return useQuery<TResult, LinuxIOError>({
-        queryKey: ["linuxio", handler, command, ...serializedArgs],
-        queryFn: () => core.call<TResult>(handler, command, serializedArgs),
-        enabled: isOpen && !isUpdating && (options?.enabled ?? true),
-        ...options,
+        ...baseOptions,
+        enabled:
+          isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
       });
     },
 
     useMutation(options?: MutationOptions<TResult>) {
       return useMutation<TResult, LinuxIOError, unknown[]>({
         mutationFn: (args: unknown[]) => {
-          // Serialize args to strings (JSON for complex types)
-          const serializedArgs = (args ?? []).map((arg) => {
-            if (typeof arg === "string") {
-              return arg;
-            }
-            if (typeof arg === "object" || Array.isArray(arg)) {
-              return JSON.stringify(arg);
-            }
-            return String(arg);
-          });
+          const serializedArgs = serializeArgs(args ?? []);
           return core.call<TResult>(handler, command, serializedArgs);
         },
         ...options,
@@ -282,7 +330,17 @@ function createEndpoint<TResult>(
  * Maps a handler's commands to their endpoints
  */
 type HandlerEndpoints<H extends HandlerName> = {
-  [C in CommandName<H>]: CommandEndpoint<CommandResult<H, C>>;
+  [C in CommandName<H>]: CommandEndpoint<CommandResult<H, C>> & {
+    call: (...args: CommandArgs<H, C>) => Promise<CommandResult<H, C>>;
+    queryKey: (...args: CommandArgs<H, C>) => QueryKey;
+    queryOptions: (
+      ...params: (
+        | string
+        | QueryOptions<CommandResult<H, C>>
+        | QueryConfig<CommandResult<H, C>>
+      )[]
+    ) => UseQueryOptions<CommandResult<H, C>, LinuxIOError>;
+  };
 };
 
 /**

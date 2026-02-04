@@ -1265,12 +1265,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           try {
             // Check if aborted before making the call
             if (abortController.signal.aborted) break;
-            // Args: [path, override?] - directory path with trailing slash
-            const args = [dirPath];
-            if (override) {
-              args.push("true");
-            }
-            await linuxio.call("filebrowser", "resource_post", args);
+            await linuxio.filebrowser.resource_post.call(
+              dirPath,
+              override ? "true" : undefined,
+            );
             uploaded += 1;
           } catch (err: any) {
             if (abortController.signal.aborted) break;

@@ -1,4 +1,5 @@
 // src/contexts/ConfigContext.tsx
+import { useQueryClient } from "@tanstack/react-query";
 import React, {
   createContext,
   useEffect,
@@ -83,6 +84,8 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   // Track if we successfully loaded from backend - only allow saves if true
   const [canSave, setCanSave] = useState(false);
   const { signOut } = useAuth();
+  const queryClient = useQueryClient();
+  const { mutate: setConfigRemote } = linuxio.config.set.useMutation();
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +112,9 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
           return;
         }
 
-        const settings = await linuxio.call<BackendSettings>("config", "get");
+        const settings = await queryClient.fetchQuery<BackendSettings>(
+          linuxio.config.get.queryOptions({ staleTime: 0 }),
+        );
 
         if (!cancelled) {
           setConfig(applyDefaults(fromBackendSettings(settings)));
@@ -148,15 +153,15 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       cancelled = true;
       if (retryTimeout) clearTimeout(retryTimeout);
     };
-  }, [signOut]);
+  }, [queryClient, signOut]);
 
   const save = useCallback(
     (cfg: AppConfig) => {
       if (!canSave) return; // Only save if we successfully loaded from backend
       const payload = toBackendSettings(cfg);
-      linuxio.call("config", "set", [JSON.stringify(payload)]).catch(() => {});
+      setConfigRemote([JSON.stringify(payload)]);
     },
-    [canSave],
+    [canSave, setConfigRemote],
   );
 
   const setKey: ConfigContextType["setKey"] = useCallback(

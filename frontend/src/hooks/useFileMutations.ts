@@ -3,6 +3,7 @@ import {
   useQueryClient,
   QueryClient,
 } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { toast } from "sonner";
 
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
@@ -54,19 +55,14 @@ export const useFileMutations = ({
   const { startCompression, startExtraction, startCopy, startMove } =
     useFileTransfers();
 
-  const invalidateListing = () => {
+  const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: ["linuxio", "filebrowser", "resource_get", normalizedPath],
     });
     clearFileSubfoldersCache(queryClient);
-  };
+  }, [normalizedPath, queryClient]);
 
-  const { mutate: createFile } = useMutation({
-    mutationFn: async (fileName: string) => {
-      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
-      // Args: [path] - file path without trailing slash
-      await linuxio.call("filebrowser", "resource_post", [path]);
-    },
+  const createFileMutation = linuxio.filebrowser.resource_post.useMutation({
     onSuccess: () => {
       invalidateListing();
       toast.success("File created successfully");
@@ -76,12 +72,16 @@ export const useFileMutations = ({
     },
   });
 
-  const { mutate: createFolder } = useMutation({
-    mutationFn: async (folderName: string) => {
-      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
-      // Args: [path] - directory path with trailing slash
-      await linuxio.call("filebrowser", "resource_post", [path]);
+  const createFile = useCallback(
+    (fileName: string) => {
+      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${fileName}`;
+      // Args: [path] - file path without trailing slash
+      createFileMutation.mutate([path]);
     },
+    [createFileMutation, normalizedPath],
+  );
+
+  const createFolderMutation = linuxio.filebrowser.resource_post.useMutation({
     onSuccess: () => {
       invalidateListing();
       toast.success("Folder created successfully");
@@ -91,12 +91,21 @@ export const useFileMutations = ({
     },
   });
 
+  const createFolder = useCallback(
+    (folderName: string) => {
+      const path = `${normalizedPath}${normalizedPath.endsWith("/") ? "" : "/"}${folderName}/`;
+      // Args: [path] - directory path with trailing slash
+      createFolderMutation.mutate([path]);
+    },
+    [createFolderMutation, normalizedPath],
+  );
+
+  const deleteItemMutation = linuxio.filebrowser.resource_delete.useMutation();
+
   const { mutate: deleteItems } = useMutation({
     mutationFn: async (paths: string[]) => {
       await Promise.all(
-        paths.map((path) =>
-          linuxio.call("filebrowser", "resource_delete", [path]),
-        ),
+        paths.map((path) => deleteItemMutation.mutateAsync([path])),
       );
     },
     onSuccess: () => {
@@ -146,27 +155,7 @@ export const useFileMutations = ({
     },
   });
 
-  const { mutateAsync: changePermissions } = useMutation({
-    mutationFn: async ({
-      path,
-      mode,
-      recursive,
-      owner,
-      group,
-    }: ChmodPayload) => {
-      if (!path) {
-        throw new Error("No path provided");
-      }
-      if (!mode) {
-        throw new Error("No mode provided");
-      }
-      // Args: [path, mode, owner?, group?, recursive?]
-      const args = [path, mode, owner || "", group || ""];
-      if (recursive) {
-        args.push("true");
-      }
-      await linuxio.call("filebrowser", "chmod", args);
-    },
+  const chmodMutation = linuxio.filebrowser.chmod.useMutation({
     onSuccess: () => {
       invalidateListing();
       toast.success("Permissions changed successfully");
@@ -178,18 +167,25 @@ export const useFileMutations = ({
     },
   });
 
-  const { mutateAsync: renameItem } = useMutation({
-    mutationFn: async ({ from, destination }: RenamePayload) => {
-      if (!from || !destination) {
-        throw new Error("Invalid rename parameters");
+  const changePermissions = useCallback(
+    async ({ path, mode, recursive, owner, group }: ChmodPayload) => {
+      if (!path) {
+        throw new Error("No path provided");
       }
-      // Args: [action, from, destination]
-      await linuxio.call("filebrowser", "resource_patch", [
-        "rename",
-        from,
-        destination,
-      ]);
+      if (!mode) {
+        throw new Error("No mode provided");
+      }
+      // Args: [path, mode, owner?, group?, recursive?]
+      const args = [path, mode, owner || "", group || ""];
+      if (recursive) {
+        args.push("true");
+      }
+      await chmodMutation.mutateAsync(args);
     },
+    [chmodMutation],
+  );
+
+  const renameMutation = linuxio.filebrowser.resource_patch.useMutation({
     onSuccess: () => {
       invalidateListing();
       toast.success("Item renamed successfully");
@@ -198,6 +194,17 @@ export const useFileMutations = ({
       toast.error(getMutationErrorMessage(error, "Failed to rename item"));
     },
   });
+
+  const renameItem = useCallback(
+    async ({ from, destination }: RenamePayload) => {
+      if (!from || !destination) {
+        throw new Error("Invalid rename parameters");
+      }
+      // Args: [action, from, destination]
+      await renameMutation.mutateAsync(["rename", from, destination]);
+    },
+    [renameMutation],
+  );
 
   const { mutateAsync: copyItems } = useMutation({
     mutationFn: async ({ sourcePaths, destinationDir }: CopyMovePayload) => {

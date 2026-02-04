@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
-import { ApiResource, FileResource } from "@/types/filebrowser";
+import { FileResource } from "@/types/filebrowser";
+import { useIsUpdating, useStreamMux } from "@/api/linuxio";
 import linuxio, { LinuxIOError } from "@/api/react-query";
 
 interface useFileQueriesParams {
@@ -21,6 +22,8 @@ export const useFileQueries = ({
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
 }: useFileQueriesParams) => {
+  const { isOpen } = useStreamMux();
+  const isUpdating = useIsUpdating();
   const {
     data: resourceData,
     isPending,
@@ -93,18 +96,15 @@ export const useFileQueries = ({
         const results: Record<string, FileResource> = {};
         await Promise.all(
           currentDetailTarget.map(async (path) => {
-            // Args: [path]
-            const data = await linuxio.call<ApiResource>(
-              "filebrowser",
-              "resource_get",
-              [path],
-            );
+            const data = await linuxio.filebrowser.resource_get.call(path);
             results[path] = normalizeResource(data);
           }),
         );
         return results;
       },
       enabled:
+        isOpen &&
+        !isUpdating &&
         hasMultipleDetailTargets &&
         detailTarget !== null &&
         detailTarget.length > 1,

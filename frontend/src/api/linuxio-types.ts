@@ -575,6 +575,19 @@ export interface LinuxIOSchema {
       args: [dirPath: string];
       result: DirectoryValidationResult;
     };
+    get_icon_uri: {
+      args: [identifier: string];
+      result: { uri: string };
+    };
+    get_icon: {
+      args: [identifier: string];
+      result: { data: string };
+    };
+    get_icon_info: {
+      args: [identifier: string];
+      result: { type: string; identifier: string; cached: boolean };
+    };
+    clear_icon_cache: { args: []; result: { message: string } };
   };
 
   dbus: {
@@ -815,7 +828,11 @@ export type CommandName<H extends HandlerName> = keyof LinuxIOSchema[H];
 export type CommandArgs<
   H extends HandlerName,
   C extends CommandName<H>,
-> = LinuxIOSchema[H][C] extends { args: infer A } ? A : never;
+> = LinuxIOSchema[H][C] extends { args: infer A }
+  ? A extends unknown[]
+    ? A
+    : never
+  : never;
 
 /** Extract result type for a handler/command pair */
 export type CommandResult<

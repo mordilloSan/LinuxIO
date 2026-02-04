@@ -30,6 +30,14 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
   const [error, setError] = useState<string | null>(null);
   const streamRef = useRef<Stream | null>(null);
 
+  const { mutateAsync: installPackage } =
+    linuxio.dbus.InstallPackage.useMutation();
+
+  const { refetch: refetchUpdatesBasic } =
+    linuxio.dbus.GetUpdatesBasic.useQuery({
+      enabled: false,
+    });
+
   const updateOne = useCallback(
     async (pkg: string) => {
       setUpdatingPackage(extractPackageName(pkg));
@@ -37,7 +45,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       setStatus("Installing");
 
       try {
-        await linuxio.call("dbus", "InstallPackage", [pkg]);
+        await installPackage([pkg]);
         await onComplete();
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : "Update failed";
@@ -49,7 +57,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
         setStatus(null);
       }
     },
-    [onComplete],
+    [installPackage, onComplete],
   );
 
   const updateAll = useCallback(
@@ -171,7 +179,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
           setStatus("Installing");
 
           try {
-            await linuxio.call("dbus", "InstallPackage", [pkg]);
+            await installPackage([pkg]);
             updated.add(pkg);
 
             const totalProcessed = updated.size + failedPackages.length;
@@ -179,10 +187,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
               updated.size + failedPackages.length + remaining.length - 1;
             setProgress((totalProcessed / totalPackages) * 100);
 
-            const freshUpdates = await linuxio.call<{ package_id: string }[]>(
-              "dbus",
-              "GetUpdatesBasic",
-            );
+            const { data: freshUpdates } = await refetchUpdatesBasic();
             const fresh = freshUpdates || [];
 
             remaining = fresh
@@ -211,7 +216,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
         await onComplete();
       }
     },
-    [onComplete, status],
+    [installPackage, onComplete, refetchUpdatesBasic, status],
   );
 
   const cancelUpdate = useCallback(() => {

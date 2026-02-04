@@ -31,7 +31,7 @@ var (
 	errIndexerUnavailable = errors.New("indexer unavailable")
 )
 
-const indexerServiceName = "linuxio-indexer.service"
+const indexerServiceName = "indexer.service"
 
 func init() {
 	indexerAvailable.Store(true)
