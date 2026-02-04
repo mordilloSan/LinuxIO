@@ -61,7 +61,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       onSuccess: () => {
         toast.success(`Container ${name} started successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "list_containers"],
+          queryKey: ["linuxio", "docker", "list_containers"],
         });
       },
       onError: (error: Error) => {
@@ -76,7 +76,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       onSuccess: () => {
         toast.success(`Container ${name} stopped successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "list_containers"],
+          queryKey: ["linuxio", "docker", "list_containers"],
         });
       },
       onError: (error: Error) => {
@@ -91,7 +91,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       onSuccess: () => {
         toast.success(`Container ${name} restarted successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "list_containers"],
+          queryKey: ["linuxio", "docker", "list_containers"],
         });
       },
       onError: (error: Error) => {
@@ -106,7 +106,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       onSuccess: () => {
         toast.success(`Container ${name} removed successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "list_containers"],
+          queryKey: ["linuxio", "docker", "list_containers"],
         });
       },
       onError: (error: Error) => {

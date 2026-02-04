@@ -113,7 +113,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       onSuccess: () => {
         toast.success("Switched to DHCP mode");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "ListNetworkInterfaces"],
+          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
         });
         onSave(iface);
         onClose();
@@ -130,7 +130,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       onSuccess: () => {
         toast.success("Manual configuration saved");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "ListNetworkInterfaces"],
+          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
         });
         onSave(iface);
         onClose();

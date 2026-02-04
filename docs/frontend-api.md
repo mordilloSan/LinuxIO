@@ -67,7 +67,7 @@ Use `linuxio.handler.command.useQuery()` for fetching data:
 
 ```typescript
 // Basic usage - no arguments
-const { data, isLoading, error } = linuxio.system.get_drive_info.useQuery();
+const { data, isLoading, error } = linuxio.storage.get_drive_info.useQuery();
 
 // With string arguments
 const { data } = linuxio.docker.container_stats.useQuery(containerId);
@@ -181,7 +181,7 @@ Simple request/response call. Returns a Promise that rejects on timeout or if th
 
 ```typescript
 // Basic usage
-const drives = await linuxio.call<DiskInfo[]>("system", "get_drive_info");
+const drives = await linuxio.call<DiskInfo[]>("storage", "get_drive_info");
 
 // With arguments
 const stats = await linuxio.call<ContainerStats>(
@@ -360,7 +360,7 @@ import {
 } from "@/api/react-query";
 
 // Initialize connection (called by AuthContext on login)
-initStreamMux(wsUrl);
+initStreamMux();
 
 // Wait for connection to be ready
 await waitForStreamMux();
@@ -427,7 +427,7 @@ All API methods throw/reject with `LinuxIOError`:
 import { LinuxIOError } from "@/api/react-query";
 
 try {
-  await linuxio.call("system", "get_drive_info");
+  await linuxio.call("storage", "get_drive_info");
 } catch (error) {
   if (error instanceof LinuxIOError) {
     console.error(`Error ${error.code}: ${error.message}`);
@@ -503,10 +503,10 @@ If you're migrating from the old string-based API:
 
 ```typescript
 // Old (still works, but deprecated for built-in handlers)
-const { data } = useCall("system", "get_drive_info");
+const { data } = useCall("storage", "get_drive_info");
 
 // New (recommended)
-const { data } = linuxio.system.get_drive_info.useQuery();
+const { data } = linuxio.storage.get_drive_info.useQuery();
 
 // Old mutation
 const { mutate } = useMutate("docker", "start_container");

@@ -9,8 +9,8 @@ import {
 import { toast } from "sonner";
 
 import { initStreamMux, closeStreamMux, MuxStatus } from "@/api/linuxio";
-import { call as bridgeCall } from "@/api/linuxio-core";
 import type { CapabilitiesResponse } from "@/api/linuxio-types";
+import linuxio from "@/api/react-query";
 import {
   AuthContextType,
   AuthState,
@@ -165,7 +165,7 @@ function AuthProvider({ children }: AuthProviderProps) {
 
       const refreshCapabilities = async () => {
         try {
-          const caps = await bridgeCall<CapabilitiesResponse>(
+          const caps = await linuxio.call<CapabilitiesResponse>(
             "system",
             "get_capabilities",
           );

@@ -140,9 +140,9 @@ export const useFileMutations = ({
         onComplete: invalidateListing,
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       // Note: errors are also handled by FileTransferContext
-      toast.error(error.response?.data?.error || "Failed to extract archive");
+      toast.error(getMutationErrorMessage(error, "Failed to extract archive"));
     },
   });
 
