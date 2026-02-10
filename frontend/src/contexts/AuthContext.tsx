@@ -13,7 +13,6 @@ import {
   initStreamMux,
   closeStreamMux,
   type MuxStatus,
-  type CapabilitiesResponse,
 } from "@/api";
 import {
   AuthContextType,
@@ -169,10 +168,7 @@ function AuthProvider({ children }: AuthProviderProps) {
 
       const refreshCapabilities = async () => {
         try {
-          const caps = await linuxio.call<CapabilitiesResponse>(
-            "system",
-            "get_capabilities",
-          );
+          const caps = await linuxio.system.get_capabilities.call();
           dispatch({
             type: AUTH_ACTIONS.UPDATE_CAPABILITIES,
             payload: {

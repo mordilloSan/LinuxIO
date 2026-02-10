@@ -7,6 +7,7 @@ import {
   Collapse,
   CircularProgress,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -33,42 +34,38 @@ const UpdateList: React.FC<Props> = ({
   onComplete,
   isLoading,
 }) => {
+  const queryClient = useQueryClient();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [changelogs, setChangelogs] = useState<Record<string, string>>({});
   const [loadingChangelog, setLoadingChangelog] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Mutation for fetching changelog details
-  const { mutate: fetchChangelog } = linuxio.dbus.get_update_detail.useMutation(
-    {
-      onSuccess: (detail, variables) => {
-        const packageId = variables[0] as string;
+  const handleFetchChangelog = useCallback(
+    async (packageId: string) => {
+      if (changelogs[packageId]) return; // Already loaded
+
+      setLoadingChangelog(packageId);
+      try {
+        const detail = await queryClient.fetchQuery(
+          linuxio.dbus.get_update_detail.queryOptions(packageId, {
+            staleTime: 5 * 60 * 1000,
+          }),
+        );
         setChangelogs((prev) => ({
           ...prev,
           [packageId]: detail.changelog || "No changelog available",
         }));
-        setLoadingChangelog(null);
-      },
-      onError: (error: Error, variables) => {
-        const packageId = variables[0] as string;
+      } catch (error) {
         setChangelogs((prev) => ({
           ...prev,
           [packageId]: "Failed to load changelog",
         }));
-        setLoadingChangelog(null);
         toast.error(getMutationErrorMessage(error, "Failed to load changelog"));
-      },
+      } finally {
+        setLoadingChangelog(null);
+      }
     },
-  );
-
-  const handleFetchChangelog = useCallback(
-    (packageId: string) => {
-      if (changelogs[packageId]) return; // Already loaded
-
-      setLoadingChangelog(packageId);
-      fetchChangelog([packageId]);
-    },
-    [changelogs, fetchChangelog],
+    [changelogs, queryClient],
   );
 
   const toggleExpanded = (index: number, packageId: string) => {

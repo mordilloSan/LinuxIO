@@ -177,9 +177,6 @@ const FileBrowser: React.FC = () => {
     onDeleteSuccess: () => setSelectedPaths(new Set()),
   });
 
-  const { mutateAsync: resourceStat } =
-    linuxio.filebrowser.resource_stat.useMutation();
-
   const detailTargetCount = detailTarget?.length ?? 0;
   const hasSingleDetailTarget = detailTargetCount === 1;
   const hasMultipleDetailTargets = detailTargetCount > 1;
@@ -543,7 +540,11 @@ const FileBrowser: React.FC = () => {
     try {
       // Fetch stat info to get current permissions (use first item as reference)
       // Args: [path]
-      const stat = await resourceStat([selectedPath]);
+      const stat = await queryClient.fetchQuery(
+        linuxio.filebrowser.resource_stat.queryOptions(selectedPath, {
+          staleTime: 5_000,
+        }),
+      );
       const mode = stat.mode || "0644"; // Default if not available
       const isDirectory = stat.mode?.startsWith("d") || hasDirectorySelected;
       const owner = stat.owner || undefined;
@@ -565,7 +566,6 @@ const FileBrowser: React.FC = () => {
     }
   }, [
     handleCloseContextMenu,
-    resourceStat,
     selectedPaths,
     selectedItems,
     setPermissionsDialog,
@@ -845,14 +845,11 @@ const FileBrowser: React.FC = () => {
 
       // Invalidate the file cache so it reloads with new content
       queryClient.invalidateQueries({
-        queryKey: [
-          "linuxio",
-          "filebrowser",
-          "resource_get",
+        queryKey: linuxio.filebrowser.resource_get.queryKey(
           editingPath,
           "",
           "true",
-        ],
+        ),
       });
     } catch (error: any) {
       console.error("Save error:", error);
@@ -949,14 +946,11 @@ const FileBrowser: React.FC = () => {
       setCloseEditorDialog(false);
 
       queryClient.invalidateQueries({
-        queryKey: [
-          "linuxio",
-          "filebrowser",
-          "resource_get",
+        queryKey: linuxio.filebrowser.resource_get.queryKey(
           editingPath,
           "",
           "true",
-        ],
+        ),
       });
     } catch (error: any) {
       toast.error(error.message || "Failed to save file");

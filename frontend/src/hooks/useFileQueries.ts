@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
@@ -21,6 +21,7 @@ export const useFileQueries = ({
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
 }: useFileQueriesParams) => {
+  const queryClient = useQueryClient();
   const { isOpen } = useStreamMux();
   const isUpdating = useIsUpdating();
   const {
@@ -95,7 +96,11 @@ export const useFileQueries = ({
         const results: Record<string, FileResource> = {};
         await Promise.all(
           currentDetailTarget.map(async (path) => {
-            const data = await linuxio.filebrowser.resource_get.call(path);
+            const data = await queryClient.fetchQuery(
+              linuxio.filebrowser.resource_get.queryOptions(path, {
+                staleTime: 0,
+              }),
+            );
             results[path] = normalizeResource(data);
           }),
         );

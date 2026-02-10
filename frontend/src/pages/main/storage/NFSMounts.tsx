@@ -76,9 +76,6 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const [loadingExports, setLoadingExports] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep exportsMutation as-is since it's used for background fetching
-  const exportsMutation = linuxio.storage.list_nfs_exports.useMutation();
-
   const { mutate: mountNFS, isPending: isMounting } =
     linuxio.storage.mount_nfs.useMutation({
       onSuccess: (result) => {
@@ -103,7 +100,11 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const fetchExports = useEffectEvent(async (serverAddress: string) => {
     setLoadingExports(true);
     try {
-      const result = await exportsMutation.mutateAsync([serverAddress]);
+      const result = await queryClient.fetchQuery(
+        linuxio.storage.list_nfs_exports.queryOptions(serverAddress, {
+          staleTime: 30_000,
+        }),
+      );
       setExports(result || []);
     } catch {
       setExports([]);

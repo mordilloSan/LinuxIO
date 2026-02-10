@@ -7,6 +7,7 @@ import {
   DialogContentText,
   DialogTitle,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -40,6 +41,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   onMountCreateHandler,
   onMountReindexHandler,
 }) => {
+  const queryClient = useQueryClient();
   const { config } = useConfig();
 
   // Setup dialog state
@@ -97,12 +99,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
   const { mutateAsync: deleteStack } =
     linuxio.docker.delete_stack.useMutation();
-  const { mutateAsync: getResource } =
-    linuxio.filebrowser.resource_get.useMutation();
-  const { mutateAsync: validateCompose } =
-    linuxio.docker.validate_compose.useMutation();
-  const { mutateAsync: getComposeFilePath } =
-    linuxio.docker.get_compose_file_path.useMutation();
 
   // Handle operation dialog close
   const handleOperationDialogClose = useCallback(() => {
@@ -246,7 +242,16 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     async (projectName: string, configPath: string) => {
       try {
         // Fetch file content
-        const result = await getResource([configPath, "", "true"]);
+        const result = await queryClient.fetchQuery(
+          linuxio.filebrowser.resource_get.queryOptions(
+            configPath,
+            "",
+            "true",
+            {
+              staleTime: 0,
+            },
+          ),
+        );
 
         if (result && result.content) {
           setEditorMode("edit");
@@ -263,14 +268,14 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         );
       }
     },
-    [getResource],
+    [queryClient],
   );
 
   // Validate compose file
   const handleValidate = useCallback(
     async (content: string): Promise<ValidationResult> => {
       try {
-        const result = await validateCompose([content]);
+        const result = await linuxio.docker.validate_compose.call(content);
         return result;
       } catch (error) {
         return {
@@ -285,7 +290,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         };
       }
     },
-    [validateCompose],
+    [],
   );
 
   // Internal save function that performs the actual save
@@ -393,7 +398,11 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       try {
         // Get the file path (either from existing file or build new one)
         if (editorMode === "create") {
-          const pathInfo = await getComposeFilePath([stackName]);
+          const pathInfo = await queryClient.fetchQuery(
+            linuxio.docker.get_compose_file_path.queryOptions(stackName, {
+              staleTime: 0,
+            }),
+          );
           filePath = pathInfo.path;
         }
 
@@ -417,7 +426,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         }
       }
     },
-    [editorMode, getComposeFilePath, performSave],
+    [editorMode, performSave, queryClient],
   );
 
   // Handle overwrite confirmation

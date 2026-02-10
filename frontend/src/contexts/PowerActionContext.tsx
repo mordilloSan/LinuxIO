@@ -40,7 +40,10 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const poll = async () => {
       try {
-        const response = await fetch("/api/version");
+        const response = await fetch("/api/version", {
+          method: "GET",
+          cache: "no-store",
+        });
         if (response.ok && !cancelled) {
           window.location.href = "/sign-in";
         } else if (!cancelled) {
