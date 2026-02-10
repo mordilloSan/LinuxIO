@@ -1,8 +1,13 @@
 // src/hooks/usePackageUpdater.ts
 import { useState, useCallback, useRef } from "react";
 
-import linuxio from "@/api/react-query";
-import { getStreamMux, Stream, ResultFrame, encodeString } from "@/api/linuxio";
+import {
+  linuxio,
+  getStreamMux,
+  encodeString,
+  type Stream,
+  type ResultFrame,
+} from "@/api";
 
 // Stream type for package updates (must match backend ipc.StreamTypePkgUpdate)
 const STREAM_TYPE_PKG_UPDATE = "pkg-update";
@@ -31,10 +36,10 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
   const streamRef = useRef<Stream | null>(null);
 
   const { mutateAsync: installPackage } =
-    linuxio.dbus.InstallPackage.useMutation();
+    linuxio.dbus.install_package.useMutation();
 
   const { refetch: refetchUpdatesBasic } =
-    linuxio.dbus.GetUpdatesBasic.useQuery({
+    linuxio.dbus.get_updates_basic.useQuery({
       enabled: false,
     });
 

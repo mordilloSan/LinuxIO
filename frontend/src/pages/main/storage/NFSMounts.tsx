@@ -27,8 +27,7 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-import type { NFSMount } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, type NFSMount } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -89,7 +88,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
           toast.success(`NFS share mounted at ${mountpoint}`);
         }
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_nfs_mounts"],
+          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
         });
         onSuccess();
         handleClose();
@@ -290,7 +289,7 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
           toast.success(`Unmounted ${mount?.mountpoint}`);
         }
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_nfs_mounts"],
+          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
         });
         onSuccess();
         handleClose();
@@ -421,7 +420,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
           toast.success(`NFS mount options updated`);
         }
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_nfs_mounts"],
+          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
         });
         onSuccess();
         handleClose();

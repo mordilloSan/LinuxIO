@@ -10,7 +10,7 @@ import {
 } from "@mui/material";
 import React from "react";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -25,7 +25,7 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 
 const UpdateHistory: React.FC = () => {
-  const { data: rows = [] } = linuxio.dbus.GetUpdateHistory.useQuery();
+  const { data: rows = [] } = linuxio.dbus.get_update_history.useQuery();
 
   const columns: UnifiedTableColumn[] = [
     { field: "date", headerName: "Date", align: "left" },

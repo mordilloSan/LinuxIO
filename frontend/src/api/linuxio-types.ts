@@ -591,46 +591,46 @@ export interface LinuxIOSchema {
   };
 
   dbus: {
-    Reboot: { args: []; result: void };
-    PowerOff: { args: []; result: void };
-    GetUpdates: { args: []; result: Update[] };
-    GetUpdatesBasic: { args: []; result: Update[] };
-    GetUpdateDetail: { args: [packageId: string]; result: Update };
-    InstallPackage: { args: [packageId: string]; result: void };
-    GetAutoUpdates: { args: []; result: AutoUpdateState };
-    SetAutoUpdates: {
+    reboot: { args: []; result: void };
+    power_off: { args: []; result: void };
+    get_updates: { args: []; result: Update[] };
+    get_updates_basic: { args: []; result: Update[] };
+    get_update_detail: { args: [packageId: string]; result: Update };
+    install_package: { args: [packageId: string]; result: void };
+    get_auto_updates: { args: []; result: AutoUpdateState };
+    set_auto_updates: {
       args: [options: AutoUpdateOptions];
       result: AutoUpdateState;
     };
-    ApplyOfflineUpdates: {
+    apply_offline_updates: {
       args: [];
       result: { status?: string; error?: string };
     };
-    GetUpdateHistory: { args: []; result: UpdateHistoryRow[] };
-    ListServices: { args: []; result: Service[] };
-    GetServiceInfo: { args: [serviceName: string]; result: Service };
-    GetServiceLogs: {
+    get_update_history: { args: []; result: UpdateHistoryRow[] };
+    list_services: { args: []; result: Service[] };
+    get_service_info: { args: [serviceName: string]; result: Service };
+    get_service_logs: {
       args: [serviceName: string, lines: string];
       result: string[];
     };
-    StartService: { args: [serviceName: string]; result: void };
-    StopService: { args: [serviceName: string]; result: void };
-    RestartService: { args: [serviceName: string]; result: void };
-    ReloadService: { args: [serviceName: string]; result: void };
-    EnableService: { args: [serviceName: string]; result: void };
-    DisableService: { args: [serviceName: string]; result: void };
-    MaskService: { args: [serviceName: string]; result: void };
-    UnmaskService: { args: [serviceName: string]; result: void };
-    GetNetworkInfo: { args: []; result: NetworkInterface[] };
-    SetIPv4Manual: {
+    start_service: { args: [serviceName: string]; result: void };
+    stop_service: { args: [serviceName: string]; result: void };
+    restart_service: { args: [serviceName: string]; result: void };
+    reload_service: { args: [serviceName: string]; result: void };
+    enable_service: { args: [serviceName: string]; result: void };
+    disable_service: { args: [serviceName: string]; result: void };
+    mask_service: { args: [serviceName: string]; result: void };
+    unmask_service: { args: [serviceName: string]; result: void };
+    get_network_info: { args: []; result: NetworkInterface[] };
+    set_ipv4_manual: {
       args: [iface: string, address: string, gateway: string, dns: string];
       result: void;
     };
-    SetIPv4: { args: [iface: string, method: string]; result: void };
-    SetIPv6: { args: [iface: string, method: string]; result: void };
-    SetMTU: { args: [iface: string, mtu: string]; result: void };
-    EnableConnection: { args: [iface: string]; result: void };
-    DisableConnection: { args: [iface: string]; result: void };
+    set_ipv4: { args: [iface: string, method: string]; result: void };
+    set_ipv6: { args: [iface: string, method: string]; result: void };
+    set_mtu: { args: [iface: string, mtu: string]; result: void };
+    enable_connection: { args: [iface: string]; result: void };
+    disable_connection: { args: [iface: string]; result: void };
   };
 
   filebrowser: {
@@ -692,17 +692,17 @@ export interface LinuxIOSchema {
   };
 
   modules: {
-    GetModules: { args: []; result: ModuleInfo[] };
-    GetModuleDetails: {
+    get_modules: { args: []; result: ModuleInfo[] };
+    get_module_details: {
       args: [moduleName: string];
       result: ModuleDetailsInfo;
     };
-    ValidateModule: { args: [path: string]; result: ValidationResult };
-    InstallModule: {
+    validate_module: { args: [path: string]; result: ValidationResult };
+    install_module: {
       args: [sourcePath: string, targetName?: string, createSymlink?: string];
       result: InstallResult;
     };
-    UninstallModule: { args: [moduleName: string]; result: UninstallResult };
+    uninstall_module: { args: [moduleName: string]; result: UninstallResult };
   };
 
   wireguard: {

@@ -2,15 +2,15 @@ import React, { createContext, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
 import {
+  linuxio,
   getStreamMux,
-  Stream,
-  ProgressFrame,
-  ResultFrame,
   encodeString,
   STREAM_CHUNK_SIZE,
   UPLOAD_WINDOW_SIZE,
-} from "@/api/linuxio";
-import linuxio from "@/api/react-query";
+  type Stream,
+  type ProgressFrame,
+  type ResultFrame,
+} from "@/api";
 
 // Stream types matching backend constants
 const STREAM_TYPE_FB_DOWNLOAD = "fb-download";

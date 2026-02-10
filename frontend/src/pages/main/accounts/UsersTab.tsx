@@ -23,8 +23,7 @@ import CreateUserDialog from "./components/CreateUserDialog";
 import DeleteUserDialog from "./components/DeleteUserDialog";
 import EditUserDialog from "./components/EditUserDialog";
 
-import type { AccountUser } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, type AccountUser } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -130,7 +129,7 @@ const UsersTab: React.FC<UsersTabProps> = ({ onMountCreateHandler }) => {
       onSuccess: () => {
         toast.success("User locked successfully");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "accounts", "list_users"],
+          queryKey: linuxio.accounts.list_users.queryKey(),
         });
       },
       onError: (error: Error) => {
@@ -143,7 +142,7 @@ const UsersTab: React.FC<UsersTabProps> = ({ onMountCreateHandler }) => {
       onSuccess: () => {
         toast.success("User unlocked successfully");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "accounts", "list_users"],
+          queryKey: linuxio.accounts.list_users.queryKey(),
         });
       },
       onError: (error: Error) => {

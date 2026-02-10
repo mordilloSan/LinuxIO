@@ -11,8 +11,12 @@ import {
 } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-import { useStreamMux, serviceLogsPayload, decodeString } from "@/api/linuxio";
-import type { Stream } from "@/api/linuxio";
+import {
+  useStreamMux,
+  serviceLogsPayload,
+  decodeString,
+  type Stream,
+} from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface ServiceLogsDrawerProps {

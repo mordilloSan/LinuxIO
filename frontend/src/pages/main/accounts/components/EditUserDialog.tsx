@@ -13,8 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
 
-import type { AccountUser, ModifyUserRequest } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, type AccountUser, type ModifyUserRequest } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditUserDialogProps {
@@ -58,7 +57,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
       onSuccess: () => {
         toast.success(`User "${user.username}" updated successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "accounts", "list_users"],
+          queryKey: linuxio.accounts.list_users.queryKey(),
         });
         onClose();
       },

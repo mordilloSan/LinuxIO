@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import ServiceLogsDrawer from "./ServiceLogsDrawer";
 import ServiceTable, { Service } from "./ServiceTable";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -20,13 +20,13 @@ const ServicesList: React.FC = () => {
     isPending: isLoading,
     isError,
     error,
-  } = linuxio.dbus.ListServices.useQuery({
+  } = linuxio.dbus.list_services.useQuery({
     refetchInterval: 2000,
   });
 
   const invalidateServices = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ["linuxio", "dbus", "ListServices"],
+      queryKey: linuxio.dbus.list_services.queryKey(),
     });
   }, [queryClient]);
 
@@ -44,7 +44,7 @@ const ServicesList: React.FC = () => {
     return map[action] ?? `${action}ed`;
   };
 
-  const startMutation = linuxio.dbus.StartService.useMutation({
+  const startMutation = linuxio.dbus.start_service.useMutation({
     onSuccess: (_, args) => {
       const serviceName = String(args?.[0] ?? "");
       toast.success(
@@ -63,7 +63,7 @@ const ServicesList: React.FC = () => {
     },
   });
 
-  const stopMutation = linuxio.dbus.StopService.useMutation({
+  const stopMutation = linuxio.dbus.stop_service.useMutation({
     onSuccess: (_, args) => {
       const serviceName = String(args?.[0] ?? "");
       toast.success(`Service ${serviceName} ${pastTense("stop")} successfully`);
@@ -77,7 +77,7 @@ const ServicesList: React.FC = () => {
     },
   });
 
-  const restartMutation = linuxio.dbus.RestartService.useMutation({
+  const restartMutation = linuxio.dbus.restart_service.useMutation({
     onSuccess: (_, args) => {
       const serviceName = String(args?.[0] ?? "");
       toast.success(
@@ -96,7 +96,7 @@ const ServicesList: React.FC = () => {
     },
   });
 
-  const reloadMutation = linuxio.dbus.ReloadService.useMutation({
+  const reloadMutation = linuxio.dbus.reload_service.useMutation({
     onSuccess: (_, args) => {
       const serviceName = String(args?.[0] ?? "");
       toast.success(
@@ -115,7 +115,7 @@ const ServicesList: React.FC = () => {
     },
   });
 
-  const enableMutation = linuxio.dbus.EnableService.useMutation({
+  const enableMutation = linuxio.dbus.enable_service.useMutation({
     onSuccess: (_, args) => {
       const serviceName = String(args?.[0] ?? "");
       toast.success(
@@ -134,7 +134,7 @@ const ServicesList: React.FC = () => {
     },
   });
 
-  const disableMutation = linuxio.dbus.DisableService.useMutation({
+  const disableMutation = linuxio.dbus.disable_service.useMutation({
     onSuccess: (_, args) => {
       const serviceName = String(args?.[0] ?? "");
       toast.success(
@@ -153,7 +153,7 @@ const ServicesList: React.FC = () => {
     },
   });
 
-  const maskMutation = linuxio.dbus.MaskService.useMutation({
+  const maskMutation = linuxio.dbus.mask_service.useMutation({
     onSuccess: (_, args) => {
       const serviceName = String(args?.[0] ?? "");
       toast.success(`Service ${serviceName} ${pastTense("mask")} successfully`);
@@ -167,7 +167,7 @@ const ServicesList: React.FC = () => {
     },
   });
 
-  const unmaskMutation = linuxio.dbus.UnmaskService.useMutation({
+  const unmaskMutation = linuxio.dbus.unmask_service.useMutation({
     onSuccess: (_, args) => {
       const serviceName = String(args?.[0] ?? "");
       toast.success(

@@ -1,4 +1,4 @@
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import useAuth from "@/hooks/useAuth";
 
 export interface SearchResult {

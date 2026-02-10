@@ -16,8 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 
-import type { Peer } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, type Peer } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -104,7 +103,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
   const { mutate: deletePeer } = linuxio.wireguard.remove_peer.useMutation({
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["linuxio", "wireguard", "list_peers"],
+        queryKey: linuxio.wireguard.list_peers.queryKey(),
       });
     },
     onError: (error: Error) => {

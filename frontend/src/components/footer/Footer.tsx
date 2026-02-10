@@ -1,6 +1,6 @@
 import { Box, useTheme, Typography } from "@mui/material";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import FileNotifications from "@/components/filebrowser/FileNotifications";
 import DevToolsButton from "@/components/footer/DevToolsButton";

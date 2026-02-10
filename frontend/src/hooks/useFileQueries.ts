@@ -4,8 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
 import { FileResource } from "@/types/filebrowser";
-import { useIsUpdating, useStreamMux } from "@/api/linuxio";
-import linuxio, { LinuxIOError } from "@/api/react-query";
+import { linuxio, LinuxIOError, useIsUpdating, useStreamMux } from "@/api";
 
 interface useFileQueriesParams {
   normalizedPath: string;

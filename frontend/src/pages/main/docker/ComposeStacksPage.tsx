@@ -13,12 +13,12 @@ import { toast } from "sonner";
 import ComposeList, { type ComposeProject } from "./ComposeList";
 
 import {
+  linuxio,
   encodeString,
   getStreamMux,
   STREAM_CHUNK_SIZE,
   type ResultFrame,
-} from "@/api/linuxio";
-import linuxio from "@/api/react-query";
+} from "@/api";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
 import ComposeOperationDialog from "@/components/docker/ComposeOperationDialog";
 import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";

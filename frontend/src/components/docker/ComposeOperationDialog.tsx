@@ -14,8 +14,7 @@ import {
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
-import { useStreamMux, decodeString, encodeString } from "@/api/linuxio";
-import type { Stream } from "@/api/linuxio";
+import { useStreamMux, decodeString, encodeString, type Stream } from "@/api";
 
 interface ComposeOperationDialogProps {
   open: boolean;

@@ -32,8 +32,12 @@ import React, {
   useState,
 } from "react";
 
-import { useStreamMux, generalLogsPayload, decodeString } from "@/api/linuxio";
-import type { Stream } from "@/api/linuxio";
+import {
+  useStreamMux,
+  generalLogsPayload,
+  decodeString,
+  type Stream,
+} from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";

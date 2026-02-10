@@ -10,7 +10,7 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
@@ -39,25 +39,27 @@ const UpdateList: React.FC<Props> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Mutation for fetching changelog details
-  const { mutate: fetchChangelog } = linuxio.dbus.GetUpdateDetail.useMutation({
-    onSuccess: (detail, variables) => {
-      const packageId = variables[0] as string;
-      setChangelogs((prev) => ({
-        ...prev,
-        [packageId]: detail.changelog || "No changelog available",
-      }));
-      setLoadingChangelog(null);
+  const { mutate: fetchChangelog } = linuxio.dbus.get_update_detail.useMutation(
+    {
+      onSuccess: (detail, variables) => {
+        const packageId = variables[0] as string;
+        setChangelogs((prev) => ({
+          ...prev,
+          [packageId]: detail.changelog || "No changelog available",
+        }));
+        setLoadingChangelog(null);
+      },
+      onError: (error: Error, variables) => {
+        const packageId = variables[0] as string;
+        setChangelogs((prev) => ({
+          ...prev,
+          [packageId]: "Failed to load changelog",
+        }));
+        setLoadingChangelog(null);
+        toast.error(getMutationErrorMessage(error, "Failed to load changelog"));
+      },
     },
-    onError: (error: Error, variables) => {
-      const packageId = variables[0] as string;
-      setChangelogs((prev) => ({
-        ...prev,
-        [packageId]: "Failed to load changelog",
-      }));
-      setLoadingChangelog(null);
-      toast.error(getMutationErrorMessage(error, "Failed to load changelog"));
-    },
-  });
+  );
 
   const handleFetchChangelog = useCallback(
     (packageId: string) => {

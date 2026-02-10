@@ -1,4 +1,4 @@
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 
 /**
  * Hook to fetch and cache a Docker icon by identifier

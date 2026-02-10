@@ -3,7 +3,7 @@ import React, { Suspense } from "react";
 
 import ContainerCard from "../../../components/cards/ContainerCard";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 
 const ContainerList: React.FC = () => {
   const { data: containers = [] } = linuxio.docker.list_containers.useQuery({

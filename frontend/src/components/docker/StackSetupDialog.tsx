@@ -13,7 +13,7 @@ import {
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 
 interface StackSetupDialogProps {
   open: boolean;

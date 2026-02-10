@@ -8,9 +8,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { initStreamMux, closeStreamMux, MuxStatus } from "@/api/linuxio";
-import type { CapabilitiesResponse } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import {
+  linuxio,
+  initStreamMux,
+  closeStreamMux,
+  type MuxStatus,
+  type CapabilitiesResponse,
+} from "@/api";
 import {
   AuthContextType,
   AuthState,

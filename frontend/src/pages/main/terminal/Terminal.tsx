@@ -8,8 +8,7 @@ import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
-import { useStreamMux, encodeString, decodeString } from "@/api/linuxio";
-import type { Stream } from "@/api/linuxio";
+import { useStreamMux, encodeString, decodeString, type Stream } from "@/api";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;

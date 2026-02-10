@@ -1,9 +1,12 @@
 import { useQueries } from "@tanstack/react-query";
 
 import { MultiStatsItem } from "@/types/filebrowser";
-import { useIsUpdating, useStreamMux } from "@/api/linuxio";
-import linuxio from "@/api/react-query";
-import type { DirectorySizeData } from "@/api/linuxio-types";
+import {
+  linuxio,
+  useIsUpdating,
+  useStreamMux,
+  type DirectorySizeData,
+} from "@/api";
 import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,

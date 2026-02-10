@@ -13,9 +13,7 @@ import {
 } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-import { useStreamMux, encodeString } from "@/api/linuxio";
-import type { Stream } from "@/api/linuxio";
-import linuxio from "@/api/react-query";
+import { linuxio, useStreamMux, encodeString, type Stream } from "@/api";
 
 interface ReindexDialogProps {
   open: boolean;

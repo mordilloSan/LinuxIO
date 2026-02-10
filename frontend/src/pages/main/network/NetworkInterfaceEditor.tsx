@@ -16,7 +16,7 @@ import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 /* ================= helpers ================= */
@@ -109,11 +109,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   // Mutations
   const { mutate: setIPv4, isPending: isSettingIPv4 } =
-    linuxio.dbus.SetIPv4.useMutation({
+    linuxio.dbus.set_ipv4.useMutation({
       onSuccess: () => {
         toast.success("Switched to DHCP mode");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+          queryKey: linuxio.dbus.get_network_info.queryKey(),
         });
         onSave(iface);
         onClose();
@@ -126,11 +126,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     });
 
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
-    linuxio.dbus.SetIPv4Manual.useMutation({
+    linuxio.dbus.set_ipv4_manual.useMutation({
       onSuccess: () => {
         toast.success("Manual configuration saved");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+          queryKey: linuxio.dbus.get_network_info.queryKey(),
         });
         onSave(iface);
         onClose();
@@ -146,11 +146,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     });
 
   const { mutate: enableConnection, isPending: isEnabling } =
-    linuxio.dbus.EnableConnection.useMutation({
+    linuxio.dbus.enable_connection.useMutation({
       onSuccess: () => {
         toast.success("Connection enabled");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+          queryKey: linuxio.dbus.get_network_info.queryKey(),
         });
       },
       onError: (error: Error) => {
@@ -161,11 +161,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     });
 
   const { mutate: disableConnection, isPending: isDisabling } =
-    linuxio.dbus.DisableConnection.useMutation({
+    linuxio.dbus.disable_connection.useMutation({
       onSuccess: () => {
         toast.success("Connection disabled");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+          queryKey: linuxio.dbus.get_network_info.queryKey(),
         });
       },
       onError: (error: Error) => {

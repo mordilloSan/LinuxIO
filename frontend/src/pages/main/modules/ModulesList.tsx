@@ -17,7 +17,7 @@ const ModulesList: React.FC = () => {
     isError,
     error,
     refetch,
-  } = linuxio.modules.GetModules.useQuery({
+  } = linuxio.modules.get_modules.useQuery({
     refetchInterval: 5000,
   });
 

@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 
 import NetworkGraph from "./NetworkGraph";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 

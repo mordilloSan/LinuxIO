@@ -22,8 +22,12 @@ import React, {
   useCallback,
 } from "react";
 
-import { useStreamMux, dockerLogsPayload, decodeString } from "@/api/linuxio";
-import type { Stream } from "@/api/linuxio";
+import {
+  useStreamMux,
+  dockerLogsPayload,
+  decodeString,
+  type Stream,
+} from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface LogsDialogProps {

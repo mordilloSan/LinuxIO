@@ -38,13 +38,13 @@ import {
 } from "./utils";
 
 import {
+  linuxio,
   encodeString,
   getStreamMux,
   type ResultFrame,
   type Stream,
-} from "@/api/linuxio";
-import type { ApiDisk } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+  type ApiDisk,
+} from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";

@@ -2,7 +2,7 @@ import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Box, Typography } from "@mui/material";
 import React from "react";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";

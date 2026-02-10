@@ -30,12 +30,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import {
+  linuxio,
   getStreamMux,
   encodeString,
   STREAM_CHUNK_SIZE,
   type ResultFrame,
-} from "@/api/linuxio";
-import linuxio from "@/api/react-query";
+} from "@/api";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
@@ -975,7 +975,7 @@ const FileBrowser: React.FC = () => {
 
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ["linuxio", "filebrowser", "resource_get", normalizedPath],
+      queryKey: linuxio.filebrowser.resource_get.queryKey(normalizedPath),
     });
     clearFileSubfoldersCache(queryClient);
   }, [normalizedPath, queryClient]);

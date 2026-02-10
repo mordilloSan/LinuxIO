@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import InterfaceDetails from "./InterfaceClients";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { WireGuardInterface } from "@/types/wireguard";

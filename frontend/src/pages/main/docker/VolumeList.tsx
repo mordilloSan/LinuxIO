@@ -17,7 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -67,7 +67,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
         : `${volumeNames.length} volumes deleted successfully`;
     toast.success(successMessage);
     queryClient.invalidateQueries({
-      queryKey: ["linuxio", "docker", "list_volumes"],
+      queryKey: linuxio.docker.list_volumes.queryKey(),
     });
     onSuccess();
     handleClose();

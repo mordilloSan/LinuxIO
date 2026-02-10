@@ -11,8 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
-import type { CreateGroupRequest } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, type CreateGroupRequest } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateGroupDialogProps {
@@ -33,7 +32,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
       onSuccess: () => {
         toast.success(`Group "${name}" created successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "accounts", "list_groups"],
+          queryKey: linuxio.accounts.list_groups.queryKey(),
         });
         handleClose();
       },

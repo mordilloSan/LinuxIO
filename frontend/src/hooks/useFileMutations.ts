@@ -7,7 +7,7 @@ import { useCallback } from "react";
 import { toast } from "sonner";
 
 import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import { useFileTransfers } from "./useFileTransfers";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -57,7 +57,7 @@ export const useFileMutations = ({
 
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ["linuxio", "filebrowser", "resource_get", normalizedPath],
+      queryKey: linuxio.filebrowser.resource_get.queryKey(normalizedPath),
     });
     clearFileSubfoldersCache(queryClient);
   }, [normalizedPath, queryClient]);

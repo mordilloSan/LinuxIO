@@ -19,7 +19,7 @@ import {
 } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 
 interface PermissionsDialogProps {
   open: boolean;

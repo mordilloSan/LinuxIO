@@ -14,7 +14,7 @@ import {
   getStreamMux,
   type ResultFrame,
   type Stream,
-} from "@/api/linuxio";
+} from "@/api";
 
 // Stream type for command execution (must match backend generic.StreamTypeExec)
 const STREAM_TYPE_EXEC = "exec";

@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import linuxio from "@/api/react-query";
-import type { SubfolderData } from "@/api/linuxio-types";
+import { linuxio, type SubfolderData } from "@/api";
 import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,
@@ -96,7 +95,7 @@ export const clearFileSubfoldersCache = (
 ) => {
   if (queryClient) {
     queryClient.removeQueries({
-      queryKey: ["linuxio", "filebrowser", "subfolders"],
+      queryKey: linuxio.filebrowser.subfolders.queryKey(),
     });
   }
 };
@@ -108,7 +107,7 @@ export const clearFileSubfoldersCacheForPath = (
 ) => {
   if (queryClient) {
     queryClient.removeQueries({
-      queryKey: ["linuxio", "filebrowser", "subfolders", path],
+      queryKey: linuxio.filebrowser.subfolders.queryKey(path),
     });
   }
 };
