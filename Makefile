@@ -24,6 +24,7 @@ endif
 
 # Toolchain versions (sourced from repo files)
 GO_VERSION ?= $(shell awk '/^go / {print $$2; exit}' "$(BACKEND_DIR)/go.mod")
+GO_MAJOR_MINOR := $(shell echo "$(GO_VERSION)" | cut -d. -f1,2)
 NODE_VERSION ?= $(shell python3 -c "import json, pathlib; data=json.loads(pathlib.Path('frontend/package.json').read_text()); print((data.get('engines') or {}).get('node',''))" 2>/dev/null)
 CC ?= cc
 
@@ -217,7 +218,7 @@ ensure-golint: ensure-go
 	     out="$$( "$$bin" version 2>/dev/null || true)"; \
 	     ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
 	     ver_no_v="$${ver#v}"; major="$${ver_no_v%%.*}"; \
-	     built_ok="$$( printf '%s' "$$out" | grep -Eq 'built with go1\.25(\.|$$)' && echo yes || echo no )"; \
+	     built_ok="$$( printf '%s' "$$out" | grep -Eq 'built with go$(subst .,\.,$(GO_MAJOR_MINOR))(\.|$$)' && echo yes || echo no )"; \
 	     if [ "$$major" = "2" ] && [ "$$built_ok" = "yes" ]; then need=0; fi; \
 	   fi; \
 	   if [ $$need -eq 1 ]; then \
@@ -231,7 +232,7 @@ ensure-golint: ensure-go
 	   ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
 	   ver_no_v="$${ver#v}"; major="$${ver_no_v%%.*}"; \
 	   [ "$$major" = "2" ] || { echo "❌ not a v2 golangci-lint"; exit 1; }; \
-	   echo "$$out" | grep -Eq 'built with go1\.25(\.|$$)' || { echo "❌ golangci-lint not built with Go 1.25"; exit 1; }; \
+	   echo "$$out" | grep -Eq 'built with go$(subst .,\.,$(GO_MAJOR_MINOR))(\.|$$)' || { echo "❌ golangci-lint not built with Go $(GO_MAJOR_MINOR)"; exit 1; }; \
 	   echo "✔ golangci-lint v2 ready."; \
 	}
 
