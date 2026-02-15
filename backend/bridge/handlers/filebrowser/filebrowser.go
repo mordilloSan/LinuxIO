@@ -588,20 +588,16 @@ func CheckIndexerAvailability() (bool, error) {
 	}
 
 	subState, _ := info["SubState"].(string)
-	if activeState != "active" {
+	if activeState != "active" || subState != "running" {
 		setIndexerAvailability(false)
 		if subState != "" {
-			return false, fmt.Errorf("indexer service inactive: %s (%s)", activeState, subState)
+			return false, fmt.Errorf("indexer service not running: %s (%s)", activeState, subState)
 		}
-		return false, fmt.Errorf("indexer service inactive: %s", activeState)
+		return false, fmt.Errorf("indexer service not running: %s", activeState)
 	}
 
 	setIndexerAvailability(true)
-	if subState != "" {
-		logger.InfoKV("indexer service active", "active_state", activeState, "sub_state", subState)
-	} else {
-		logger.InfoKV("indexer service active", "active_state", activeState)
-	}
+	logger.Infof("indexer service available")
 
 	return true, nil
 }

@@ -201,7 +201,7 @@ func handleDownload(stream net.Conn, args []string) error {
 	// Close stream
 	_ = ipc.WriteStreamClose(stream, 0)
 
-	logger.Infof("[FBStream] Download complete: path=%s size=%d", path, totalSize)
+	logger.Infof(" Download complete: path=%s size=%d", path, totalSize)
 	return nil
 }
 
@@ -329,7 +329,7 @@ readLoop:
 			break readLoop
 
 		default:
-			logger.Debugf("[FBStream] Ignoring opcode: 0x%02x", frame.Opcode)
+			logger.Debugf(" Ignoring opcode: 0x%02x", frame.Opcode)
 		}
 	}
 
@@ -347,14 +347,14 @@ readLoop:
 	// Set permissions: restore existing or use default
 	if hasExistingAttrs {
 		if err := os.Chmod(realPath, preserveMode); err != nil {
-			logger.Debugf("[FBStream] Failed to restore permissions: %v", err)
+			logger.Debugf(" Failed to restore permissions: %v", err)
 		}
 		if err := os.Chown(realPath, preserveUID, preserveGID); err != nil {
-			logger.Debugf("[FBStream] Failed to restore ownership: %v", err)
+			logger.Debugf(" Failed to restore ownership: %v", err)
 		}
 	} else {
 		if err := os.Chmod(realPath, services.PermFile); err != nil {
-			logger.Debugf("[FBStream] Failed to set permissions: %v", err)
+			logger.Debugf(" Failed to set permissions: %v", err)
 		}
 	}
 
@@ -362,7 +362,7 @@ readLoop:
 	go func() {
 		if finalInfo, err := os.Stat(realPath); err == nil {
 			if err := addToIndexer(path, finalInfo); err != nil {
-				logger.Debugf("[FBStream] Failed to update indexer: %v", err)
+				logger.Debugf(" Failed to update indexer: %v", err)
 			}
 		}
 	}()
@@ -376,7 +376,7 @@ readLoop:
 	// Close stream
 	_ = ipc.WriteStreamClose(stream, 0)
 
-	logger.Infof("[FBStream] Upload complete: path=%s size=%d", path, bytesWritten)
+	logger.Infof(" Upload complete: path=%s size=%d", path, bytesWritten)
 	return nil
 }
 
@@ -412,7 +412,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	// Compute total size for progress
 	totalSize, err := services.ComputeArchiveSize(paths)
 	if err != nil {
-		logger.Debugf("[FBStream] Failed to compute archive size: %v", err)
+		logger.Debugf(" Failed to compute archive size: %v", err)
 		totalSize = 0
 	}
 
@@ -464,10 +464,10 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 		err = services.CreateTarGz(tempPath, opts, tempPath, paths...)
 	}
 	if err == ipc.ErrAborted {
-		logger.Infof("[FBStream] Archive download aborted")
+		logger.Infof(" Archive download aborted")
 		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("archive download aborted")
+		return ipc.ErrAborted
 	}
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("archive creation failed: %v", err), 500)
@@ -555,7 +555,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	// Close stream
 	_ = ipc.WriteStreamClose(stream, 0)
 
-	logger.Infof("[FBStream] Archive download complete: files=%d size=%d", len(paths), archiveSize)
+	logger.Infof(" Archive download complete: files=%d size=%d", len(paths), archiveSize)
 	return nil
 }
 
@@ -628,7 +628,7 @@ func handleCompress(stream net.Conn, args []string) error {
 	// Compute total size for progress
 	totalSize, err := services.ComputeArchiveSize(paths)
 	if err != nil {
-		logger.Debugf("[FBStream] Failed to compute archive size: %v", err)
+		logger.Debugf(" Failed to compute archive size: %v", err)
 		totalSize = 0
 	}
 
@@ -669,11 +669,11 @@ func handleCompress(stream net.Conn, args []string) error {
 		err = services.CreateTarGz(targetPath, opts, targetPath, paths...)
 	}
 	if err == ipc.ErrAborted {
-		logger.Infof("[FBStream] Compress aborted, cleaning up: %s", targetPath)
+		logger.Infof(" Compress aborted, cleaning up: %s", targetPath)
 		os.Remove(targetPath)
 		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("compression aborted")
+		return ipc.ErrAborted
 	}
 	if err != nil {
 		os.Remove(targetPath) // Clean up partial file on error
@@ -689,7 +689,7 @@ func handleCompress(stream net.Conn, args []string) error {
 		// Notify indexer
 		go func() {
 			if err := addToIndexer(targetPath, info); err != nil {
-				logger.Debugf("[FBStream] Failed to update indexer: %v", err)
+				logger.Debugf(" Failed to update indexer: %v", err)
 			}
 		}()
 	}
@@ -704,7 +704,7 @@ func handleCompress(stream net.Conn, args []string) error {
 	// Close stream
 	_ = ipc.WriteStreamClose(stream, 0)
 
-	logger.Infof("[FBStream] Compress complete: path=%s files=%d size=%d", targetPath, len(paths), archiveSize)
+	logger.Infof(" Compress complete: path=%s files=%d size=%d", targetPath, len(paths), archiveSize)
 	return nil
 }
 
@@ -751,7 +751,7 @@ func handleExtract(stream net.Conn, args []string) error {
 	// Compute total size for progress (uncompressed size)
 	totalSize, err := services.ComputeExtractSize(archivePath)
 	if err != nil {
-		logger.Debugf("[FBStream] Failed to compute extract size: %v", err)
+		logger.Debugf(" Failed to compute extract size: %v", err)
 		totalSize = 0
 	}
 
@@ -787,17 +787,17 @@ func handleExtract(stream net.Conn, args []string) error {
 	// Extract archive
 	err = services.ExtractArchive(archivePath, destination, opts)
 	if err == ipc.ErrAborted {
-		logger.Infof("[FBStream] Extract aborted, cleaning up: %s", destination)
+		logger.Infof(" Extract aborted, cleaning up: %s", destination)
 		// Clean up extracted files on abort
 		// Only remove the destination if we created it (didn't exist before)
 		if !destExistedBefore {
 			if removeErr := os.RemoveAll(destination); removeErr != nil {
-				logger.Debugf("[FBStream] Failed to clean up extraction directory: %v", removeErr)
+				logger.Debugf(" Failed to clean up extraction directory: %v", removeErr)
 			}
 		}
 		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("extraction aborted")
+		return ipc.ErrAborted
 	}
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("extraction failed: %v", err), 500)
@@ -812,7 +812,7 @@ func handleExtract(stream net.Conn, args []string) error {
 				return nil
 			}
 			if err := addToIndexer(path, info); err != nil {
-				logger.Debugf("[FBStream] Failed to update indexer for %s: %v", path, err)
+				logger.Debugf(" Failed to update indexer for %s: %v", path, err)
 			}
 			return nil
 		})
@@ -826,7 +826,7 @@ func handleExtract(stream net.Conn, args []string) error {
 	// Close stream
 	_ = ipc.WriteStreamClose(stream, 0)
 
-	logger.Infof("[FBStream] Extract complete: archive=%s destination=%s", archivePath, destination)
+	logger.Infof(" Extract complete: archive=%s destination=%s", archivePath, destination)
 	return nil
 }
 
@@ -908,10 +908,10 @@ func handleReindex(stream net.Conn, args []string) error {
 	resp, err := indexerStreamClient.Do(req)
 	if err != nil {
 		if ctx.Err() == context.Canceled {
-			logger.Infof("[FBStream] Reindex aborted: %s", path)
+			logger.Infof(" Reindex aborted: %s", path)
 			_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 			_ = ipc.WriteStreamClose(stream, 0)
-			return fmt.Errorf("reindex aborted")
+			return ipc.ErrAborted
 		}
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("indexer connection failed: %v", err), 503)
 		_ = ipc.WriteStreamClose(stream, 0)
@@ -946,10 +946,10 @@ func handleReindex(stream net.Conn, args []string) error {
 	for {
 		// Check for cancellation
 		if cancelFn() {
-			logger.Infof("[FBStream] Reindex aborted: %s", path)
+			logger.Infof(" Reindex aborted: %s", path)
 			_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 			_ = ipc.WriteStreamClose(stream, 0)
-			return fmt.Errorf("reindex aborted")
+			return ipc.ErrAborted
 		}
 
 		line, err := reader.ReadString('\n')
@@ -958,10 +958,10 @@ func handleReindex(stream net.Conn, args []string) error {
 				break
 			}
 			if ctx.Err() == context.Canceled {
-				logger.Infof("[FBStream] Reindex aborted: %s", path)
+				logger.Infof(" Reindex aborted: %s", path)
 				_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 				_ = ipc.WriteStreamClose(stream, 0)
-				return fmt.Errorf("reindex aborted")
+				return ipc.ErrAborted
 			}
 			_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("read error: %v", err), 500)
 			_ = ipc.WriteStreamClose(stream, 0)
@@ -1000,7 +1000,7 @@ func handleReindex(stream net.Conn, args []string) error {
 				if err := json.Unmarshal([]byte(data), &result); err == nil {
 					_ = ipc.WriteResultOK(stream, 0, result)
 					_ = ipc.WriteStreamClose(stream, 0)
-					logger.Infof("[FBStream] Reindex complete: path=%s files=%d dirs=%d duration=%dms",
+					logger.Infof(" Reindex complete: path=%s files=%d dirs=%d duration=%dms",
 						result.Path, result.FilesIndexed, result.DirsIndexed, result.DurationMs)
 					return nil
 				}
@@ -1077,7 +1077,7 @@ func handleCopy(stream net.Conn, args []string) error {
 	// Compute total size for progress
 	totalSize, err := services.ComputeCopySize(source)
 	if err != nil {
-		logger.Debugf("[FBStream] Failed to compute copy size: %v", err)
+		logger.Debugf(" Failed to compute copy size: %v", err)
 		totalSize = 0
 	}
 
@@ -1113,10 +1113,10 @@ func handleCopy(stream net.Conn, args []string) error {
 	// Perform the copy operation
 	err = services.CopyFileWithCallbacks(source, destination, overwrite, opts)
 	if err == ipc.ErrAborted {
-		logger.Infof("[FBStream] Copy aborted: %s -> %s", source, destination)
+		logger.Infof(" Copy aborted: %s -> %s", source, destination)
 		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("copy aborted")
+		return ipc.ErrAborted
 	}
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("copy failed: %v", err), 500)
@@ -1128,7 +1128,7 @@ func handleCopy(stream net.Conn, args []string) error {
 	go func() {
 		if info, err := os.Stat(destination); err == nil {
 			if err := addToIndexer(destination, info); err != nil {
-				logger.Debugf("[FBStream] Failed to update indexer: %v", err)
+				logger.Debugf(" Failed to update indexer: %v", err)
 			}
 		}
 	}()
@@ -1143,7 +1143,7 @@ func handleCopy(stream net.Conn, args []string) error {
 	// Close stream
 	_ = ipc.WriteStreamClose(stream, 0)
 
-	logger.Infof("[FBStream] Copy complete: %s -> %s size=%d", source, destination, totalSize)
+	logger.Infof(" Copy complete: %s -> %s size=%d", source, destination, totalSize)
 	return nil
 }
 
@@ -1200,7 +1200,7 @@ func handleMove(stream net.Conn, args []string) error {
 	// Compute total size for progress (in case we need to copy)
 	totalSize, err := services.ComputeCopySize(source)
 	if err != nil {
-		logger.Debugf("[FBStream] Failed to compute move size: %v", err)
+		logger.Debugf(" Failed to compute move size: %v", err)
 		totalSize = 0
 	}
 
@@ -1236,10 +1236,10 @@ func handleMove(stream net.Conn, args []string) error {
 	// Perform the move operation
 	err = services.MoveFileWithCallbacks(source, destination, overwrite, opts)
 	if err == ipc.ErrAborted {
-		logger.Infof("[FBStream] Move aborted: %s -> %s", source, destination)
+		logger.Infof(" Move aborted: %s -> %s", source, destination)
 		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("move aborted")
+		return ipc.ErrAborted
 	}
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("move failed: %v", err), 500)
@@ -1251,12 +1251,12 @@ func handleMove(stream net.Conn, args []string) error {
 	go func() {
 		// Delete source from indexer
 		if err := deleteFromIndexer(source); err != nil {
-			logger.Debugf("[FBStream] Failed to delete from indexer: %v", err)
+			logger.Debugf(" Failed to delete from indexer: %v", err)
 		}
 		// Add destination to indexer
 		if info, err := os.Stat(destination); err == nil {
 			if err := addToIndexer(destination, info); err != nil {
-				logger.Debugf("[FBStream] Failed to update indexer: %v", err)
+				logger.Debugf(" Failed to update indexer: %v", err)
 			}
 		}
 	}()
@@ -1271,6 +1271,6 @@ func handleMove(stream net.Conn, args []string) error {
 	// Close stream
 	_ = ipc.WriteStreamClose(stream, 0)
 
-	logger.Infof("[FBStream] Move complete: %s -> %s size=%d", source, destination, totalSize)
+	logger.Infof(" Move complete: %s -> %s size=%d", source, destination, totalSize)
 	return nil
 }

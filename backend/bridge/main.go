@@ -314,6 +314,8 @@ func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) 
 
 	// Execute stream handler
 	if err := handler(sess, stream, args); err != nil {
-		logger.WarnKV("stream handler error", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
+		if err != ipc.ErrAborted {
+			logger.WarnKV("stream handler error", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
+		}
 	}
 }

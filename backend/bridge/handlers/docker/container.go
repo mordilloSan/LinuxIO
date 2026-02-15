@@ -37,10 +37,11 @@ func getClient() (*client.Client, error) {
 }
 
 // CheckDockerAvailability verifies that Docker is installed and accessible
-func CheckDockerAvailability() (any, error) {
+func CheckDockerAvailability() (bool, error) {
 	cli, err := getClient()
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+		logger.Warnf("docker client error: %v", err)
+		return false, fmt.Errorf("docker client error: %w", err)
 	}
 	defer func() {
 		if cerr := cli.Close(); cerr != nil {
@@ -48,16 +49,14 @@ func CheckDockerAvailability() (any, error) {
 		}
 	}()
 
-	// Try to ping Docker daemon to verify it's accessible
 	_, err = cli.Ping(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("docker daemon not accessible: %w", err)
+		logger.Warnf("docker daemon not accessible: %v", err)
+		return false, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
 
-	return map[string]interface{}{
-		"available": true,
-		"message":   "Docker is available and accessible",
-	}, nil
+	logger.Infof("docker service available")
+	return true, nil
 }
 
 // Helper to get full system mm

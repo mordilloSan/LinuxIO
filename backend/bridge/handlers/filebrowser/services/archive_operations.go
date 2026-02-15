@@ -138,12 +138,13 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 			return ipc.ErrAborted
 		}
 		if addErr := addFile(fname, nil, zipWriter, false, opts, skipPath); addErr != nil {
-			logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
 			zipWriter.Close()
 			file.Close()
 			fileOpen = false
 			if addErr == ipc.ErrAborted {
 				os.Remove(tmpDirPath) // Clean up on abort
+			} else {
+				logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
 			}
 			return addErr
 		}
@@ -197,13 +198,14 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 			return ipc.ErrAborted
 		}
 		if addErr := addFile(fname, tarWriter, nil, false, opts, skipPath); addErr != nil {
-			logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
 			tarWriter.Close()
 			gzWriter.Close()
 			file.Close()
 			fileOpen = false
 			if addErr == ipc.ErrAborted {
 				os.Remove(tmpDirPath) // Clean up on abort
+			} else {
+				logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
 			}
 			return addErr
 		}

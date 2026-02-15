@@ -130,8 +130,11 @@ func (h *Handlers) createUserSession(req LoginRequest) (*session.Session, error)
 
 // CheckDockerAvailability checks if Docker is installed and accessible
 func CheckDockerAvailability() bool {
-	_, err := docker.CheckDockerAvailability()
-	return err == nil
+	available, err := docker.CheckDockerAvailability()
+	if err != nil {
+		return false
+	}
+	return available
 }
 
 // CheckIndexerAvailability checks if the indexer service is running
