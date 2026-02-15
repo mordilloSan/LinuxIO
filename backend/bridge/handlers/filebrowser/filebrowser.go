@@ -941,14 +941,8 @@ func resourceChmod(args []string) (any, error) {
 		recursive = args[4] == "true"
 	}
 
-	// Parse the mode string (e.g., "0755", "755")
-	var mode int64
-	var err error
-	if strings.HasPrefix(modeStr, "0") {
-		mode, err = strconv.ParseInt(modeStr, 8, 32)
-	} else {
-		mode, err = strconv.ParseInt(modeStr, 8, 32)
-	}
+	// Parse the mode string as octal (e.g., "0755", "755")
+	mode, err := strconv.ParseInt(modeStr, 8, 32)
 	if err != nil {
 		return nil, fmt.Errorf("bad_request:invalid mode: %v", err)
 	}
