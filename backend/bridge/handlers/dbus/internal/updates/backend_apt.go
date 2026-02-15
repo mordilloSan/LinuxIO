@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
@@ -174,12 +175,7 @@ func timerEnabled(name string) bool {
 		"/etc/systemd/system/timers.target.wants/" + name,
 		"/lib/systemd/system/timers.target.wants/" + name,
 	}
-	for _, p := range wants {
-		if fileExists(p) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(wants, fileExists)
 }
 
 func writeTimerDropIn(timer, oncal string) error {
@@ -204,11 +200,11 @@ func readTimerFrequency(timer string) string {
 		return "daily" // default fallback
 	}
 
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(data), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "OnCalendar=") {
-			value := strings.TrimPrefix(line, "OnCalendar=")
+		if after, ok := strings.CutPrefix(line, "OnCalendar="); ok {
+			value := after
 			return strings.TrimSpace(value)
 		}
 	}

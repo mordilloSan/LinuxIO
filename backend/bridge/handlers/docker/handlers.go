@@ -317,7 +317,7 @@ func RegisterHandlers(sess *session.Session) {
 		if err != nil {
 			return err
 		}
-		return emit.Result(map[string]interface{}{
+		return emit.Result(map[string]any{
 			"success": true,
 			"message": "Compose stack deleted successfully",
 		})

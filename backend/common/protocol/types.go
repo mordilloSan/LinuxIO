@@ -117,10 +117,7 @@ func ReadAuthResponse(r io.Reader) (*AuthResponse, error) {
 
 // writeLenStr writes a length-prefixed string (2-byte length + data).
 func writeLenStr(w io.Writer, s string) error {
-	length := len(s)
-	if length > 0xFFFF {
-		length = 0xFFFF
-	}
+	length := min(len(s), 0xFFFF)
 	var lenBuf [2]byte
 	binary.BigEndian.PutUint16(lenBuf[:], uint16(length))
 	if _, err := w.Write(lenBuf[:]); err != nil {

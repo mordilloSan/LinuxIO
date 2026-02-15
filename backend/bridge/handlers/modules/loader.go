@@ -3,6 +3,7 @@ package modules
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -52,12 +53,9 @@ func LoadModules(
 
 	// Merge modules (user overrides system)
 	allModules := make(map[string]*ModuleInfo)
-	for name, mod := range systemModules {
-		allModules[name] = mod
-	}
-	for name, mod := range userModules {
-		allModules[name] = mod // User modules override system modules
-	}
+	maps.Copy(allModules, systemModules)
+	// User modules override system modules
+	maps.Copy(allModules, userModules)
 
 	// Register each module's handlers
 	for name, module := range allModules {

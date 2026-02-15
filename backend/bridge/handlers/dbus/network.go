@@ -305,13 +305,13 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 				ip6Obj := conn.Object("org.freedesktop.NetworkManager", ip6Path)
 				var ip6Props map[string]godbus.Variant
 				if err := ip6Obj.Call("org.freedesktop.DBus.Properties.GetAll", 0, "org.freedesktop.NetworkManager.IP6Config").Store(&ip6Props); err == nil {
-					if addresses, ok := ip6Props["Addresses"].Value().([][]interface{}); ok {
+					if addresses, ok := ip6Props["Addresses"].Value().([][]any); ok {
 						for _, tuple := range addresses {
 							addrBytes, _ := tuple[0].([]byte)
 							prefix, _ := tuple[1].(uint32)
 							if len(addrBytes) == 16 {
 								parts := make([]string, 8)
-								for i := 0; i < 8; i++ {
+								for i := range 8 {
 									parts[i] = fmt.Sprintf("%02x%02x", addrBytes[2*i], addrBytes[2*i+1])
 								}
 								ip6s = append(ip6s, fmt.Sprintf("%s/%d", strings.Join(parts, ":"), prefix))
@@ -322,7 +322,7 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 						for _, addr := range dns6 {
 							if len(addr) == 16 {
 								parts := make([]string, 8)
-								for i := 0; i < 8; i++ {
+								for i := range 8 {
 									parts[i] = fmt.Sprintf("%02x%02x", addr[2*i], addr[2*i+1])
 								}
 								dns = append(dns, strings.Join(parts, ":"))

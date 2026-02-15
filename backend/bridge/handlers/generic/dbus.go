@@ -67,7 +67,7 @@ func CallDbusMethodDirect(args []string) (any, error) {
 	obj := conn.Object(destination, godbus.ObjectPath(path))
 
 	// Convert string args to interface{} for DBus
-	dbusArgs := make([]interface{}, len(methodArgs))
+	dbusArgs := make([]any, len(methodArgs))
 	for i, arg := range methodArgs {
 		dbusArgs[i] = arg
 	}
@@ -88,8 +88,8 @@ func CallDbusMethodDirect(args []string) (any, error) {
 
 // DbusSignalData represents a D-Bus signal forwarded to the client
 type DbusSignalData struct {
-	SignalName string        `json:"signal_name"`
-	Body       []interface{} `json:"body"`
+	SignalName string `json:"signal_name"`
+	Body       []any  `json:"body"`
 }
 
 // HandleDbusStream handles D-Bus operations with signal streaming.
@@ -175,7 +175,7 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 	}
 
 	// Convert method args to interface{}
-	dbusArgs := make([]interface{}, len(methodArgs))
+	dbusArgs := make([]any, len(methodArgs))
 	for i, arg := range methodArgs {
 		dbusArgs[i] = arg
 	}
@@ -243,7 +243,7 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 			// If this is a "Finished" signal, we're done
 			if hasFinishedSignal && (sig.Name == iface+".Finished" || sig.Name == iface+".Done" || sig.Name == iface+".Complete") {
 				logger.Infof("[DbusStream] Received Finished signal, operation complete")
-				_ = ipc.WriteResultOK(stream, 0, map[string]interface{}{"completed": true})
+				_ = ipc.WriteResultOK(stream, 0, map[string]any{"completed": true})
 				_ = ipc.WriteStreamClose(stream, 0)
 				return nil
 			}
@@ -252,7 +252,7 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 			// Timeout - but this might be OK if there's no explicit Finished signal
 			if !hasFinishedSignal {
 				logger.Infof("[DbusStream] Context timeout, operation assumed complete")
-				_ = ipc.WriteResultOK(stream, 0, map[string]interface{}{"completed": true})
+				_ = ipc.WriteResultOK(stream, 0, map[string]any{"completed": true})
 			} else {
 				logger.Warnf("[DbusStream] Timeout waiting for signals")
 				_ = ipc.WriteResultError(stream, 0, "timeout waiting for D-Bus signals", 500)

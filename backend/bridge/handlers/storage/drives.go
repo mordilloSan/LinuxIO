@@ -161,7 +161,7 @@ func GetNVMePowerState(device string) (*InferredPowerData, error) {
 	}
 
 	var states []PowerStateInfo
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		match := nvmePsRe.FindStringSubmatch(line)
 		if len(match) != 3 {
 			continue

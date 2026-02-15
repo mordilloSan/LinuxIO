@@ -157,7 +157,7 @@ func extractNameVersion(packageID string) (name, version string) {
 }
 
 func toStringSlice(iface any) []string {
-	arr, ok := iface.([]interface{})
+	arr, ok := iface.([]any)
 	if !ok {
 		return []string{}
 	}

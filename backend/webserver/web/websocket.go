@@ -89,7 +89,7 @@ func removeWebSocketForSession(sessionID string, conn *websocket.Conn) {
 
 		// Clean up empty session entries
 		isEmpty := true
-		connsMap.Range(func(key, value interface{}) bool {
+		connsMap.Range(func(key, value any) bool {
 			isEmpty = false
 			return false // Stop iteration after first element
 		})
@@ -110,7 +110,7 @@ func CloseWebSocketForSession(sessionID string) {
 		}
 		count := 0
 
-		connsMap.Range(func(key, value interface{}) bool {
+		connsMap.Range(func(key, value any) bool {
 			conn, ok := key.(*websocket.Conn)
 			if !ok {
 				logger.Errorf("Invalid WebSocket type in connection map for session: %s", sessionID)

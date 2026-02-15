@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -431,13 +432,10 @@ func RemovePeerByName(args []string) (any, error) {
 	for _, p := range cfg.Peers {
 		// Check if this peer matches the AllowedIP
 		match := false
-		for _, ip := range p.AllowedIPs {
-			if ip == allowedIP {
-				match = true
-				found = true
-				removedPeerPubKey = p.PublicKey
-				break
-			}
+		if slices.Contains(p.AllowedIPs, allowedIP) {
+			match = true
+			found = true
+			removedPeerPubKey = p.PublicKey
 		}
 		if !match {
 			newPeers = append(newPeers, p)

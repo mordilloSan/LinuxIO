@@ -178,8 +178,8 @@ func parsePacmanSup(out string) []UpdateItem {
 		base := filepath.Base(line)
 		base = strings.TrimSuffix(base, ".sig")
 		for _, suf := range []string{".pkg.tar.zst", ".pkg.tar.xz", ".pkg.tar.gz", ".pkg.tar"} {
-			if strings.HasSuffix(base, suf) {
-				base = strings.TrimSuffix(base, suf)
+			if before, ok := strings.CutSuffix(base, suf); ok {
+				base = before
 				break
 			}
 		}

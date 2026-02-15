@@ -346,7 +346,7 @@ func TestGetContent(t *testing.T) {
 
 	t.Run("get_large_file_content", func(t *testing.T) {
 		largeContent := "x"
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			largeContent += "1234567890"
 		}
 		filePath := createTestFile(t, tmpDir, "large.txt", []byte(largeContent))

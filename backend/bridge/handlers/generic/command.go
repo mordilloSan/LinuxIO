@@ -70,7 +70,7 @@ func ExecCommandDirect(command, timeoutStr string) (any, error) {
 		if cmd.ProcessState != nil {
 			exitCode = cmd.ProcessState.ExitCode()
 		}
-		return map[string]interface{}{
+		return map[string]any{
 			"exitCode": exitCode,
 			"stdout":   string(output),
 			"error":    err.Error(),
@@ -80,13 +80,13 @@ func ExecCommandDirect(command, timeoutStr string) (any, error) {
 	result := string(output)
 
 	// Try to parse as JSON if it looks like JSON
-	var jsonResult interface{}
+	var jsonResult any
 	if err := json.Unmarshal([]byte(result), &jsonResult); err == nil {
 		return jsonResult, nil
 	}
 
 	// Return as plain string
-	return map[string]interface{}{
+	return map[string]any{
 		"exitCode": 0,
 		"stdout":   result,
 	}, nil
@@ -193,7 +193,7 @@ func HandleExecStream(sess *session.Session, stream net.Conn, args []string) err
 
 	// Send result with exit code
 	if exitCode == 0 {
-		_ = ipc.WriteResultOK(stream, 0, map[string]interface{}{
+		_ = ipc.WriteResultOK(stream, 0, map[string]any{
 			"exit_code": exitCode,
 		})
 	} else {

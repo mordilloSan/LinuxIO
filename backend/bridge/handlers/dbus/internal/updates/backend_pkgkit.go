@@ -3,6 +3,7 @@ package updates
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
@@ -22,12 +23,7 @@ func (*pkgkitBackend) Detect() bool {
 	if err := conn.BusObject().Call("org.freedesktop.DBus.ListNames", 0).Store(&names); err != nil {
 		return false
 	}
-	for _, name := range names {
-		if name == "org.freedesktop.PackageKit" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(names, "org.freedesktop.PackageKit")
 }
 
 // Read returns a minimal state since PackageKit doesn't manage auto-update configuration
@@ -105,7 +101,7 @@ func (*pkgkitBackend) ApplyOfflineNow() error {
 }
 
 // pkTransactionCall creates a transaction and calls a method, waiting for completion
-func pkTransactionCall(conn *godbus.Conn, busName, objPath, transIfc, method string, args ...interface{}) error {
+func pkTransactionCall(conn *godbus.Conn, busName, objPath, transIfc, method string, args ...any) error {
 	obj := conn.Object(busName, godbus.ObjectPath(objPath))
 
 	var transPath godbus.ObjectPath

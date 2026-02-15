@@ -318,10 +318,7 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 		Progress: func(n int64) {
 			bytesProcessed += n
 			if totalSize > 0 && (bytesProcessed-lastProgress >= progressInterval || bytesProcessed >= totalSize) {
-				pct := int(bytesProcessed * 100 / totalSize)
-				if pct > 100 {
-					pct = 100
-				}
+				pct := min(int(bytesProcessed*100/totalSize), 100)
 				phase := "copying"
 				if action == "move" || action == "rename" {
 					phase = "moving"
@@ -1062,8 +1059,8 @@ func getAllUsers() ([]string, error) {
 	}
 
 	users := []string{}
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(content), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -1088,8 +1085,8 @@ func getAllGroups() ([]string, error) {
 	}
 
 	groups := []string{}
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(content), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

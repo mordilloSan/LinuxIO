@@ -182,8 +182,8 @@ func (m *ipManager) makeIP(hostOffset int) string {
 // For subnet 10.0.0.16/28 and IP 10.0.0.18: returns 2
 func (m *ipManager) extractHostOffset(ipCIDR string) int {
 	ipStr := ipCIDR
-	if idx := strings.Index(ipCIDR, "/"); idx != -1 {
-		ipStr = ipCIDR[:idx]
+	if before, _, ok := strings.Cut(ipCIDR, "/"); ok {
+		ipStr = before
 	}
 
 	ip := net.ParseIP(ipStr)
@@ -334,7 +334,7 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 	peers := make([]PeerConfig, 0, count)
 	used := ipMgr.buildUsedIPMap(nil)
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		// Find next available IP using ipManager's computed maxHost
 		var peerIP string
 		var hostOffset int

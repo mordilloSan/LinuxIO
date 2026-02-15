@@ -25,7 +25,7 @@ func (c *Client) Close() { _ = c.conn.Close() }
 
 func (c *Client) Enable(ctx context.Context, names ...string) error {
 	var carries_install_info bool
-	var changes [][]interface{} // Fixed: was [][]string
+	var changes [][]any // Fixed: was [][]string
 	return c.obj.CallWithContext(ctx,
 		"org.freedesktop.systemd1.Manager.EnableUnitFiles", 0,
 		names, false, true,
@@ -33,7 +33,7 @@ func (c *Client) Enable(ctx context.Context, names ...string) error {
 }
 
 func (c *Client) Disable(ctx context.Context, names ...string) error {
-	var changes [][]interface{} // Fixed: was [][]string
+	var changes [][]any // Fixed: was [][]string
 	return c.obj.CallWithContext(ctx,
 		"org.freedesktop.systemd1.Manager.DisableUnitFiles", 0,
 		names, false,

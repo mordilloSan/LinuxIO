@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -105,12 +106,7 @@ func isNonLoginShell(shell string) bool {
 		"/bin/false",
 		"/usr/bin/false",
 	}
-	for _, s := range nonLoginShells {
-		if shell == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(nonLoginShells, shell)
 }
 
 // GetUser returns a single user by username
@@ -408,7 +404,7 @@ func getUserGroups() map[string][]string {
 			continue
 		}
 
-		for _, member := range strings.Split(members, ",") {
+		for member := range strings.SplitSeq(members, ",") {
 			member = strings.TrimSpace(member)
 			if member != "" {
 				userGroups[member] = append(userGroups[member], groupName)
@@ -487,10 +483,7 @@ func getLastLogins() map[string]string {
 			// Find where the date starts (after "From" field or directly after port)
 			dateStart := 3
 			if len(fields) > 4 {
-				dateStart = len(fields) - 5
-				if dateStart < 3 {
-					dateStart = 3
-				}
+				dateStart = max(len(fields)-5, 3)
 			}
 			dateStr := strings.Join(fields[dateStart:], " ")
 			lastLogins[username] = dateStr

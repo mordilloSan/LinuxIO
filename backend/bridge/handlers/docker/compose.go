@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -750,7 +751,7 @@ type ComposeFilePathInfo struct {
 // NormalizeComposeFile automatically adds container_name to services that don't have it
 // This prevents Docker from using auto-generated names like "project-service-1"
 func NormalizeComposeFile(content string) (string, error) {
-	var composeData map[string]interface{}
+	var composeData map[string]any
 	if err := yaml.Unmarshal([]byte(content), &composeData); err != nil {
 		// Return original content if we can't parse it (validation will catch this later)
 		return content, nil
@@ -762,7 +763,7 @@ func NormalizeComposeFile(content string) (string, error) {
 		return content, nil
 	}
 
-	servicesMap, ok := services.(map[string]interface{})
+	servicesMap, ok := services.(map[string]any)
 	if !ok {
 		return content, nil
 	}
@@ -770,7 +771,7 @@ func NormalizeComposeFile(content string) (string, error) {
 	// Add container_name to each service that doesn't have it
 	modified := false
 	for serviceName, serviceData := range servicesMap {
-		serviceMap, ok := serviceData.(map[string]interface{})
+		serviceMap, ok := serviceData.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -804,7 +805,7 @@ func ValidateComposeFile(content string) (any, error) {
 	}
 
 	// Parse YAML to verify syntax
-	var composeData map[string]interface{}
+	var composeData map[string]any
 	if err := yaml.Unmarshal([]byte(content), &composeData); err != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
@@ -825,7 +826,7 @@ func ValidateComposeFile(content string) (any, error) {
 		})
 	} else {
 		// Validate services is a map
-		servicesMap, ok := services.(map[string]interface{})
+		servicesMap, ok := services.(map[string]any)
 		if !ok {
 			result.Valid = false
 			result.Errors = append(result.Errors, ValidationError{
@@ -843,7 +844,7 @@ func ValidateComposeFile(content string) (any, error) {
 		} else {
 			// Validate each service
 			for serviceName, serviceData := range servicesMap {
-				serviceMap, ok := serviceData.(map[string]interface{})
+				serviceMap, ok := serviceData.(map[string]any)
 				if !ok {
 					result.Valid = false
 					result.Errors = append(result.Errors, ValidationError{
@@ -1171,7 +1172,7 @@ func isValidComposeFile(filePath string) bool {
 	}
 
 	// Try to parse as YAML
-	var content map[string]interface{}
+	var content map[string]any
 	if err := yaml.Unmarshal(data, &content); err != nil {
 		return false
 	}
@@ -1319,11 +1320,8 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 		var existingProject *ComposeProject
 		for _, project := range projects {
 			// Check if config file already listed
-			for _, cf := range project.ConfigFiles {
-				if cf == yamlFile.Path {
-					existingProject = project
-					break
-				}
+			if slices.Contains(project.ConfigFiles, yamlFile.Path) {
+				existingProject = project
 			}
 			if existingProject != nil {
 				break
@@ -1338,13 +1336,7 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 
 		if existingProject != nil {
 			// Project exists with containers, just ensure config file is listed
-			configFileExists := false
-			for _, cf := range existingProject.ConfigFiles {
-				if cf == yamlFile.Path {
-					configFileExists = true
-					break
-				}
-			}
+			configFileExists := slices.Contains(existingProject.ConfigFiles, yamlFile.Path)
 			if !configFileExists {
 				existingProject.ConfigFiles = append(existingProject.ConfigFiles, yamlFile.Path)
 			}

@@ -131,7 +131,7 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 		return err
 	}
 
-	_ = ipc.WriteResultOK(stream, 0, map[string]interface{}{
+	_ = ipc.WriteResultOK(stream, 0, map[string]any{
 		"updated": len(args),
 	})
 	_ = ipc.WriteStreamClose(stream, 0)

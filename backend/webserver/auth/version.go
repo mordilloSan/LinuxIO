@@ -170,9 +170,9 @@ func getComponentVersions() map[string]string {
 	}
 
 	components := make(map[string]string)
-	lines := strings.Split(string(output), "\n")
+	lines := strings.SplitSeq(string(output), "\n")
 
-	for _, line := range lines {
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		// Look for lines like: "  LinuxIO Web Server dev-v0.6.9"
 		if strings.HasPrefix(line, "LinuxIO ") {

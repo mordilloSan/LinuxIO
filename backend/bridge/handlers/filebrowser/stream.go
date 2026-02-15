@@ -440,10 +440,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 		Progress: func(n int64) {
 			bytesProcessed += n
 			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := int(bytesProcessed * 100 / totalSize)
-				if pct > 100 {
-					pct = 100
-				}
+				pct := min(int(bytesProcessed*100/totalSize), 100)
 				_ = ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesProcessed,
 					Total: totalSize,
@@ -645,10 +642,7 @@ func handleCompress(stream net.Conn, args []string) error {
 		Progress: func(n int64) {
 			bytesProcessed += n
 			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := int(bytesProcessed * 100 / totalSize)
-				if pct > 100 {
-					pct = 100
-				}
+				pct := min(int(bytesProcessed*100/totalSize), 100)
 				_ = ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesProcessed,
 					Total: totalSize,
@@ -768,10 +762,7 @@ func handleExtract(stream net.Conn, args []string) error {
 		Progress: func(n int64) {
 			bytesProcessed += n
 			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := int(bytesProcessed * 100 / totalSize)
-				if pct > 100 {
-					pct = 100
-				}
+				pct := min(int(bytesProcessed*100/totalSize), 100)
 				_ = ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesProcessed,
 					Total: totalSize,
@@ -881,12 +872,18 @@ func handleReindex(stream net.Conn, args []string) error {
 
 	// Monitor for abort in background
 	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
 		for {
-			if cancelFn() {
-				cancel()
+			select {
+			case <-ctx.Done():
 				return
+			case <-ticker.C:
+				if cancelFn() {
+					cancel()
+					return
+				}
 			}
-			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 
@@ -974,13 +971,13 @@ func handleReindex(stream net.Conn, args []string) error {
 		}
 
 		// Parse SSE format
-		if strings.HasPrefix(line, "event:") {
-			currentEvent = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+		if after, ok := strings.CutPrefix(line, "event:"); ok {
+			currentEvent = strings.TrimSpace(after)
 			continue
 		}
 
-		if strings.HasPrefix(line, "data:") {
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if after, ok := strings.CutPrefix(line, "data:"); ok {
+			data := strings.TrimSpace(after)
 
 			switch currentEvent {
 			case "started":
@@ -1094,10 +1091,7 @@ func handleCopy(stream net.Conn, args []string) error {
 		Progress: func(n int64) {
 			bytesProcessed += n
 			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := int(bytesProcessed * 100 / totalSize)
-				if pct > 100 {
-					pct = 100
-				}
+				pct := min(int(bytesProcessed*100/totalSize), 100)
 				_ = ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesProcessed,
 					Total: totalSize,
@@ -1217,10 +1211,7 @@ func handleMove(stream net.Conn, args []string) error {
 		Progress: func(n int64) {
 			bytesProcessed += n
 			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := int(bytesProcessed * 100 / totalSize)
-				if pct > 100 {
-					pct = 100
-				}
+				pct := min(int(bytesProcessed*100/totalSize), 100)
 				_ = ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesProcessed,
 					Total: totalSize,
