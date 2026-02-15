@@ -1,0 +1,811 @@
+# LinuxIO Frontend API Usage Report
+
+**Branch:** `dev/v0.8.0`
+**Date:** 2025-02-15
+
+---
+
+## Table of Contents
+
+1. [Architecture Overview](#1-architecture-overview)
+2. [JSON API (Promise-based, Request/Response)](#2-json-api-promise-based-requestresponse)
+   - 2.1 [useQuery — React Query Data Fetching](#21-usequery--react-query-data-fetching)
+   - 2.2 [useMutation — React Query Mutations](#22-usemutation--react-query-mutations)
+   - 2.3 [.call() — Imperative Promise-based Calls](#23-call--imperative-promise-based-calls)
+   - 2.4 [.queryOptions() — QueryClient Integration](#24-queryoptions--queryclient-integration)
+   - 2.5 [.queryKey() — Cache Key Management](#25-querykey--cache-key-management)
+   - 2.6 [queryClient.fetchQuery() — Imperative Fetching](#26-queryclientfetchquery--imperative-fetching)
+   - 2.7 [queryClient.invalidateQueries() — Cache Invalidation](#27-queryclientinvalidatequeries--cache-invalidation)
+   - 2.8 [queryClient.removeQueries() — Cache Removal](#28-queryclientremovequeries--cache-removal)
+   - 2.9 [useQueries() — Parallel Queries](#29-usequeries--parallel-queries)
+   - 2.10 [core.call() — Internal Transport Layer](#210-corecall--internal-transport-layer)
+3. [Streaming API (WebSocket, Bidirectional)](#3-streaming-api-websocket-bidirectional)
+   - 3.1 [Connection Lifecycle](#31-connection-lifecycle)
+   - 3.2 [Connection Status Hooks](#32-connection-status-hooks)
+   - 3.3 [Terminal Streams (Bidirectional, Persistent)](#33-terminal-streams-bidirectional-persistent)
+   - 3.4 [Log Streams (Read-only, Live)](#34-log-streams-read-only-live)
+   - 3.5 [Docker Operation Streams](#35-docker-operation-streams)
+   - 3.6 [File Transfer Streams](#36-file-transfer-streams)
+   - 3.7 [System Update Streams](#37-system-update-streams)
+   - 3.8 [Package Update Streams](#38-package-update-streams)
+   - 3.9 [Storage Streams (SMART Tests)](#39-storage-streams-smart-tests)
+   - 3.10 [Stream Event Handlers Reference](#310-stream-event-handlers-reference)
+   - 3.11 [String Encoding/Decoding](#311-string-encodingdecoding)
+   - 3.12 [Flow Control Constants](#312-flow-control-constants)
+4. [Summary Statistics](#4-summary-statistics)
+5. [Complete API Command Inventory](#5-complete-api-command-inventory)
+
+---
+
+## 1. Architecture Overview
+
+The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamMultiplexer`) that provides all communication with the backend over a single WebSocket connection. On top of this, two distinct API paradigms are exposed:
+
+```
+                        ┌──────────────────────────────┐
+                        │      @/api (index.ts)        │  ← Barrel module
+                        └──────────────────────────────┘
+                           │                        │
+              ┌────────────┘                        └────────────┐
+              ▼                                                  ▼
+   ┌─────────────────────┐                          ┌─────────────────────┐
+   │  JSON API            │                          │  Streaming API       │
+   │  (react-query.ts)    │                          │  (linuxio.ts)        │
+   │                      │                          │                      │
+   │  linuxio.h.c.useQuery│                          │  openTerminalStream  │
+   │  linuxio.h.c.useMut. │                          │  openDockerLogsStream│
+   │  linuxio.h.c.call()  │                          │  openFileUploadStream│
+   │  linuxio.h.c.qOpts() │                          │  ... 16 stream types │
+   └──────────┬───────────┘                          └──────────┬──────────┘
+              │                                                  │
+              ▼                                                  ▼
+   ┌─────────────────────┐                          ┌─────────────────────┐
+   │  linuxio-core.ts     │                          │  Payload builders    │
+   │  call() / spawn()    │                          │  (linuxio.ts)        │
+   │  openStream()        │                          │  terminalPayload()   │
+   └──────────┬───────────┘                          │  uploadPayload()     │
+              │                                      │  ...                 │
+              ▼                                      └──────────┬──────────┘
+   ┌──────────────────────────────────────────────────────────────┐
+   │               StreamMultiplexer.ts                           │
+   │          Binary WebSocket with multiplexed streams           │
+   │          (bridge, terminal, exec, logs, filetransfer)        │
+   └──────────────────────────────────────────────────────────────┘
+```
+
+**JSON API** uses `"bridge"` stream type internally — opens a short-lived stream, sends the command, waits for `onResult`, resolves the promise.
+
+**Streaming API** uses specialized stream types (`"terminal"`, `"logs"`, `"exec"`, `"filetransfer"`) — opens long-lived streams with `onData`, `onProgress`, `onResult` callbacks.
+
+---
+
+## 2. JSON API (Promise-based, Request/Response)
+
+### 2.1 useQuery — React Query Data Fetching
+
+52 total `useQuery` hooks across the codebase.
+
+#### System Handler (10 queries)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 1 | `pages/main/dashboard/Processor.tsx` | 16 | `linuxio.system.get_cpu_info.useQuery(...)` | CPU info with polling |
+| 2 | `pages/main/dashboard/Memory.tsx` | 20 | `linuxio.system.get_memory_info.useQuery(...)` | Memory info with polling |
+| 3 | `pages/main/dashboard/Gpu.tsx` | 13 | `linuxio.system.get_gpu_info.useQuery(...)` | GPU info with polling |
+| 4 | `pages/main/dashboard/Network.tsx` | 12 | `linuxio.system.get_network_info.useQuery(...)` | Network stats with polling |
+| 5 | `pages/main/dashboard/System.tsx` | 52 | `linuxio.system.get_host_info.useQuery(...)` | Host info |
+| 6 | `pages/main/dashboard/System.tsx` | 37 | `linuxio.system.get_updates_fast.useQuery({refetchInterval: 50000})` | Quick update count |
+| 7 | `pages/main/dashboard/System.tsx` | 47 | `linuxio.system.get_processes.useQuery(...)` | Process list |
+| 8 | `pages/main/dashboard/MotherBoard.tsx` | 10 | `linuxio.system.get_motherboard_info.useQuery(...)` | Motherboard info |
+| 9 | `pages/main/dashboard/Drive.tsx` | 56 | `linuxio.system.get_cpu_info.useQuery(...)` | CPU sensor temp for drives |
+| 10 | `pages/main/dashboard/FileSystem.tsx` | 13 | `linuxio.system.get_fs_info.useQuery(...)` | Filesystem info |
+| 10b | `pages/main/storage/DiskOverview/index.tsx` | 317 | `linuxio.system.get_fs_info.useQuery({refetchInterval: 10000})` | Filesystem info for disk overview |
+
+#### Storage Handler (7 queries)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 11 | `pages/main/dashboard/Drive.tsx` | 56 | `linuxio.storage.get_drive_info.useQuery()` | Drive info for dashboard |
+| 11b | `pages/main/storage/DiskOverview/index.tsx` | 314 | `linuxio.storage.get_drive_info.useQuery({refetchInterval: 30000})` | Drive info for disk overview |
+| 12 | `pages/main/storage/NFSMounts.tsx` | 562 | `linuxio.storage.list_nfs_mounts.useQuery({refetchInterval: 10000})` | List NFS mounts with polling |
+| 13 | `pages/main/storage/LVMManagement.tsx` | 553 | `linuxio.storage.list_pvs.useQuery({refetchInterval: 10000})` | List physical volumes with polling |
+| 14 | `pages/main/storage/LVMManagement.tsx` | 559 | `linuxio.storage.list_vgs.useQuery({refetchInterval: 10000})` | List volume groups with polling |
+| 15 | `pages/main/storage/LVMManagement.tsx` | 565 | `linuxio.storage.list_lvs.useQuery({refetchInterval: 10000})` | List logical volumes with polling |
+
+#### Docker Handler (7 queries)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 16 | `pages/main/docker/ContainerList.tsx` | 9 | `linuxio.docker.list_containers.useQuery(...)` | Docker containers |
+| 17 | `pages/main/docker/NetworkList.tsx` | 242 | `linuxio.docker.list_networks.useQuery(...)` | Docker networks |
+| 18 | `pages/main/docker/VolumeList.tsx` | 118 | `linuxio.docker.list_volumes.useQuery(...)` | Docker volumes |
+| 19 | `pages/main/docker/ImageList.tsx` | 142 | `linuxio.docker.list_images.useQuery(...)` | Docker images |
+| 20 | `pages/main/docker/ComposeStacksPage.tsx` | 97 | `linuxio.docker.list_compose_projects.useQuery({refetchInterval: 5000})` | Compose stacks with polling |
+| 21 | `hooks/useDockerIcon.ts` | 10 | `linuxio.docker.get_icon_uri.useQuery({args: [identifier], staleTime: ONE_DAY})` | Docker container icon URI |
+| 22 | `components/docker/ReindexDialog.tsx` | 64 | `linuxio.docker.list_compose_projects.useQuery({enabled: open && success})` | Stacks summary after reindex |
+
+#### DBus Handler (7 queries)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 23 | `pages/main/services/ServicesPage.tsx` | 23 | `linuxio.dbus.list_services.useQuery({refetchInterval: 2000})` | List systemd services with polling |
+| 24 | `pages/main/network/NetworkInterfaceList.tsx` | 52 | `linuxio.dbus.get_network_info.useQuery(...)` | Network interfaces |
+| 25 | `pages/main/updates/index.tsx` | 20 | `linuxio.dbus.get_updates_basic.useQuery(...)` | Updates page top-level |
+| 25b | `pages/main/updates/UpdateList.tsx` | 29 | `linuxio.dbus.get_updates_basic.useQuery()` | List available updates |
+| 26 | `pages/main/updates/UpdateHistory.tsx` | 28 | `linuxio.dbus.get_update_history.useQuery()` | Update history |
+| 27 | `pages/main/updates/UpdateSettings.tsx` | 46 | `linuxio.dbus.get_auto_updates.useQuery()` | Auto-update settings |
+| 28 | `hooks/usePackageUpdater.ts` | 39 | `linuxio.dbus.get_updates_basic.useQuery({enabled: false})` | Manual refetch for post-update |
+| 28b | `pages/main/wireguard/CreateInterfaceButton.tsx` | 35 | `linuxio.dbus.get_network_info.useQuery()` | Network info for WG interface creation |
+
+#### Filebrowser Handler (10 queries)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 29 | `hooks/useFileQueries.ts` | 38 | `linuxio.filebrowser.resource_get.useQuery(normalizedPath, {...})` | Directory listing |
+| 29b | `hooks/useFileQueries.ts` | 71 | `linuxio.filebrowser.resource_get.useQuery(detailTarget, "", "true", {...})` | Single file detail with content |
+| 29c | `hooks/useFileQueries.ts` | 153 | `linuxio.filebrowser.resource_get.useQuery(editingPath, "", "true", {...})` | File content for editor |
+| 30 | `hooks/useFileSearch.ts` | 45 | `linuxio.filebrowser.search.useQuery(query, limit, basePath, {...})` | File search |
+| 31 | `hooks/useFileSubfolders.ts` | 47 | `linuxio.filebrowser.subfolders.useQuery(path, {...})` | Subfolder sizes |
+| 32 | `hooks/useFileDirectorySize.ts` | 41 | `linuxio.filebrowser.dir_size.useQuery(path, {...})` | Single dir size |
+| 32b | `hooks/useFileDirectorySizeBase.ts` | 16 | `linuxio.filebrowser.dir_size.useQuery(dirPath, {...})` | Dir size (base hook) |
+| 33 | `hooks/useFileQueries.ts` | 84 | `linuxio.filebrowser.resource_stat.useQuery(detailTarget, {...})` | File stat (permissions, owner) |
+| 34 | `components/filebrowser/PermissionsDialog.tsx` | 134 | `linuxio.filebrowser.users_groups.useQuery({enabled: open})` | Users/groups for permissions |
+
+#### Accounts Handler (6 queries)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 35 | `pages/main/accounts/UsersTab.tsx` | 41 | `linuxio.accounts.list_users.useQuery(...)` | List system users |
+| 36 | `pages/main/accounts/GroupsTab.tsx` | 31 | `linuxio.accounts.list_groups.useQuery(...)` | List system groups |
+| 37 | `pages/main/accounts/components/CreateUserDialog.tsx` | 40 | `linuxio.accounts.list_shells.useQuery()` | Available shells |
+| 37b | `pages/main/accounts/components/CreateUserDialog.tsx` | 41 | `linuxio.accounts.list_groups.useQuery()` | Groups for user creation |
+| 38 | `pages/main/accounts/components/EditUserDialog.tsx` | 38 | `linuxio.accounts.list_shells.useQuery()` | Shells for user editing |
+| 38b | `pages/main/accounts/components/EditUserDialog.tsx` | 39 | `linuxio.accounts.list_groups.useQuery()` | Groups for user editing |
+| 39 | `pages/main/accounts/components/EditGroupMembersDialog.tsx` | 39 | `linuxio.accounts.list_users.useQuery()` | Users for group member editing |
+
+#### Wireguard Handler (3 queries)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 40 | `pages/main/wireguard/WireguardDashboard.tsx` | 31 | `linuxio.wireguard.list_interfaces.useQuery({refetchInterval: 10000})` | WireGuard interfaces with polling |
+| 40b | `pages/main/wireguard/CreateInterfaceButton.tsx` | 38 | `linuxio.wireguard.list_interfaces.useQuery()` | WG interfaces for creation form |
+| 41 | `pages/main/wireguard/InterfaceClients.tsx` | 96 | `linuxio.wireguard.list_peers.useQuery(interfaceName, {refetchInterval: 3000})` | WireGuard peers with polling |
+
+#### Terminal Handler (2 queries)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 42 | `pages/main/terminal/Terminal.tsx` | 26 | `linuxio.terminal.list_shells.useQuery({staleTime: 60000})` | Available shells |
+| 43 | `pages/main/docker/TerminalDialog.tsx` | 65 | `linuxio.terminal.list_shells.useQuery(containerId, {enabled})` | Shells for container terminal |
+
+#### Modules Handler (3 queries)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 44 | `pages/main/modules/ModulesList.tsx` | 23 | `linuxio.modules.get_modules.useQuery()` | Installed modules |
+| 44b | `routes.tsx` | 241 | `linuxio.modules.get_modules.useQuery({staleTime, refetchOnMount: false})` | Modules for route building |
+| 44c | `routes.tsx` | 293 | `linuxio.modules.get_modules.useQuery({staleTime, refetchOnMount: false})` | Modules for sidebar items |
+
+#### Config Handler (1 query)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 45 | `pages/main/docker/ComposeStacksPage.tsx` | 97 | `linuxio.config.get.useQuery({staleTime: ...})` | Docker folder config |
+
+#### Control Handler (1 query)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 46 | `components/footer/Footer.tsx` | 11 | `linuxio.control.version.useQuery({staleTime: FIVE_MINUTES})` | App version |
+
+#### Dynamic String-Based (Module SDK)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| — | `api/react-query.ts` | 78 | `useCall(handler, command, args, options)` | Generic typed query hook used by modules |
+
+---
+
+### 2.2 useMutation — React Query Mutations
+
+58 total `useMutation` hooks.
+
+#### Docker Handler (14 mutations)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 1 | `components/cards/ContainerCard.tsx` | 60 | `linuxio.docker.start_container.useMutation()` | Start container |
+| 2 | `components/cards/ContainerCard.tsx` | 75 | `linuxio.docker.stop_container.useMutation()` | Stop container |
+| 3 | `components/cards/ContainerCard.tsx` | 90 | `linuxio.docker.restart_container.useMutation()` | Restart container |
+| 4 | `components/cards/ContainerCard.tsx` | 105 | `linuxio.docker.remove_container.useMutation()` | Remove container |
+| 5 | `pages/main/docker/NetworkList.tsx` | 62 | `linuxio.docker.create_network.useMutation()` | Create network |
+| 6 | `pages/main/docker/NetworkList.tsx` | 175 | `linuxio.docker.delete_network.useMutation()` | Delete network |
+| 7 | `pages/main/docker/VolumeList.tsx` | 51 | `linuxio.docker.delete_volume.useMutation()` | Delete volume |
+| 8 | `pages/main/docker/ImageList.tsx` | 52 | `linuxio.docker.delete_image.useMutation()` | Delete image |
+| 9 | `pages/main/docker/ComposeStacksPage.tsx` | 102 | `linuxio.docker.delete_stack.useMutation()` | Delete compose stack |
+
+#### DBus Handler (13 mutations)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 10 | `pages/main/services/ServicesPage.tsx` | 47 | `linuxio.dbus.start_service.useMutation()` | Start service |
+| 11 | `pages/main/services/ServicesPage.tsx` | 66 | `linuxio.dbus.stop_service.useMutation()` | Stop service |
+| 12 | `pages/main/services/ServicesPage.tsx` | 80 | `linuxio.dbus.restart_service.useMutation()` | Restart service |
+| 13 | `pages/main/services/ServicesPage.tsx` | 99 | `linuxio.dbus.reload_service.useMutation()` | Reload service |
+| 14 | `pages/main/services/ServicesPage.tsx` | 118 | `linuxio.dbus.enable_service.useMutation()` | Enable service |
+| 15 | `pages/main/services/ServicesPage.tsx` | 137 | `linuxio.dbus.disable_service.useMutation()` | Disable service |
+| 16 | `pages/main/services/ServicesPage.tsx` | 156 | `linuxio.dbus.mask_service.useMutation()` | Mask service |
+| 17 | `pages/main/services/ServicesPage.tsx` | 170 | `linuxio.dbus.unmask_service.useMutation()` | Unmask service |
+| 18 | `components/navbar/NavbarUserDropdown.tsx` | 32 | `linuxio.dbus.reboot.useMutation()` | Reboot system |
+| 19 | `components/navbar/NavbarUserDropdown.tsx` | 42 | `linuxio.dbus.power_off.useMutation()` | Power off system |
+| 20 | `pages/main/updates/UpdateSettings.tsx` | 76 | `linuxio.dbus.set_auto_updates.useMutation()` | Save auto-update settings |
+| 21 | `pages/main/updates/UpdateSettings.tsx` | 93 | `linuxio.dbus.apply_offline_updates.useMutation()` | Apply offline updates |
+| 22 | `hooks/usePackageUpdater.ts` | 36 | `linuxio.dbus.install_package.useMutation()` | Install single package |
+
+#### Filebrowser Handler (5 mutations)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 23 | `hooks/useFileMutations.ts` | 65 | `linuxio.filebrowser.resource_post.useMutation()` | Create file |
+| 24 | `hooks/useFileMutations.ts` | 84 | `linuxio.filebrowser.resource_post.useMutation()` | Create folder |
+| 25 | `hooks/useFileMutations.ts` | 103 | `linuxio.filebrowser.resource_delete.useMutation()` | Delete file/folder |
+| 26 | `hooks/useFileMutations.ts` | 158 | `linuxio.filebrowser.chmod.useMutation()` | Change permissions |
+| 27 | `hooks/useFileMutations.ts` | 188 | `linuxio.filebrowser.resource_patch.useMutation()` | Rename file/folder |
+
+#### Accounts Handler (8 mutations)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 28 | `pages/main/accounts/components/CreateUserDialog.tsx` | 43 | `linuxio.accounts.create_user.useMutation()` | Create user |
+| 29 | `pages/main/accounts/components/EditUserDialog.tsx` | 49 | `linuxio.accounts.modify_user.useMutation()` | Modify user |
+| 30 | `pages/main/accounts/components/DeleteUserDialog.tsx` | 40 | `linuxio.accounts.delete_user.useMutation()` | Delete user |
+| 31 | `pages/main/accounts/components/ChangePasswordDialog.tsx` | 27 | `linuxio.accounts.change_password.useMutation()` | Change password |
+| 32 | `pages/main/accounts/UsersTab.tsx` | 114 | `linuxio.accounts.lock_user.useMutation()` | Lock user |
+| 33 | `pages/main/accounts/UsersTab.tsx` | 124 | `linuxio.accounts.unlock_user.useMutation()` | Unlock user |
+| 34 | `pages/main/accounts/components/CreateGroupDialog.tsx` | 24 | `linuxio.accounts.create_group.useMutation()` | Create group |
+| 35 | `pages/main/accounts/components/EditGroupMembersDialog.tsx` | 44 | `linuxio.accounts.modify_group_members.useMutation()` | Edit group members |
+
+#### Storage Handler (5 mutations)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 36 | `pages/main/storage/NFSMounts.tsx` | 80 | `linuxio.storage.mount_nfs.useMutation()` | Mount NFS |
+| 37 | `pages/main/storage/NFSMounts.tsx` | 285 | `linuxio.storage.unmount_nfs.useMutation()` | Unmount NFS |
+| 38 | `pages/main/storage/NFSMounts.tsx` | 416 | `linuxio.storage.remount_nfs.useMutation()` | Remount NFS |
+| 39 | `pages/main/storage/LVMManagement.tsx` | 85 | `linuxio.storage.create_lv.useMutation()` | Create logical volume |
+| 40 | `pages/main/storage/LVMManagement.tsx` | 200 | `linuxio.storage.resize_lv.useMutation()` | Resize logical volume |
+| 41 | `pages/main/storage/LVMManagement.tsx` | 292 | `linuxio.storage.delete_lv.useMutation()` | Delete logical volume |
+| 42 | `pages/main/storage/DiskOverview/index.tsx` | 73 | `linuxio.storage.run_smart_test.useMutation()` | Run SMART test |
+
+#### Wireguard Handler (8 mutations)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 43 | `pages/main/wireguard/CreateInterfaceButton.tsx` | 42 | `linuxio.wireguard.add_interface.useMutation()` | Add interface |
+| 44 | `pages/main/wireguard/WireguardDashboard.tsx` | 37 | `linuxio.wireguard.remove_interface.useMutation()` | Remove interface |
+| 45 | `pages/main/wireguard/WireguardDashboard.tsx` | 58 | `linuxio.wireguard.add_peer.useMutation()` | Add peer |
+| 46 | `pages/main/wireguard/WireguardDashboard.tsx` | 72 | `linuxio.wireguard.up_interface.useMutation()` | Bring interface up |
+| 47 | `pages/main/wireguard/WireguardDashboard.tsx` | 90 | `linuxio.wireguard.down_interface.useMutation()` | Bring interface down |
+| 48 | `pages/main/wireguard/WireguardDashboard.tsx` | 108 | `linuxio.wireguard.enable_interface.useMutation()` | Enable at boot |
+| 49 | `pages/main/wireguard/WireguardDashboard.tsx` | 126 | `linuxio.wireguard.disable_interface.useMutation()` | Disable at boot |
+| 50 | `pages/main/wireguard/InterfaceClients.tsx` | 103 | `linuxio.wireguard.remove_peer.useMutation()` | Remove peer |
+| 51 | `pages/main/wireguard/InterfaceClients.tsx` | 118 | `linuxio.wireguard.peer_config_download.useMutation()` | Download peer config |
+| 52 | `pages/main/wireguard/InterfaceClients.tsx` | 128 | `linuxio.wireguard.peer_qrcode.useMutation()` | Generate peer QR |
+
+#### Network Handler (4 mutations)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 53 | `pages/main/network/NetworkInterfaceEditor.tsx` | 105 | `linuxio.dbus.set_ipv4.useMutation()` | Set DHCP |
+| 54 | `pages/main/network/NetworkInterfaceEditor.tsx` | 120 | `linuxio.dbus.set_ipv4_manual.useMutation()` | Set manual IPv4 |
+| 55 | `pages/main/network/NetworkInterfaceEditor.tsx` | 140 | `linuxio.dbus.enable_connection.useMutation()` | Enable connection |
+| 56 | `pages/main/network/NetworkInterfaceEditor.tsx` | 155 | `linuxio.dbus.disable_connection.useMutation()` | Disable connection |
+
+#### Config Handler (1 mutation)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 57 | `contexts/ConfigContext.tsx` | 87 | `linuxio.config.set.useMutation()` | Save configuration |
+
+#### Modules Handler (via string-based API)
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 58 | `api/react-query.ts` | 110 | `useMutate(handler, command, options)` | Generic mutation hook for modules |
+
+---
+
+### 2.3 .call() — Imperative Promise-based Calls
+
+4 total imperative calls in consumer code (outside API layer).
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 1 | `contexts/AuthContext.tsx` | 166 | `linuxio.system.get_capabilities.call()` | Fetch docker/indexer capabilities on auth + reconnect |
+| 2 | `contexts/FileTransferContext.tsx` | 1264 | `linuxio.filebrowser.resource_post.call(dirPath, override)` | Create folders during bulk upload |
+| 3 | `components/docker/StackSetupDialog.tsx` | 111 | `linuxio.docker.validate_stack_directory.call(workingDir)` | Validate stack directory path |
+| 4 | `pages/main/docker/ComposeStacksPage.tsx` | 279 | `linuxio.docker.validate_compose.call(content)` | Validate compose YAML content |
+
+---
+
+### 2.4 .queryOptions() — QueryClient Integration
+
+8 total `queryOptions()` usages.
+
+| # | File | Line | Call | Description |
+|---|------|------|------|-------------|
+| 1 | `contexts/ConfigContext.tsx` | 115 | `linuxio.config.get.queryOptions({staleTime: NONE})` | Fetch backend settings at startup |
+| 2 | `hooks/useFileQueries.ts` | 114 | `linuxio.filebrowser.resource_get.queryOptions(path, {staleTime: NONE})` | Multi-select file detail fetch |
+| 3 | `hooks/useFileMultipleDirectoryDetails.ts` | 48 | `linuxio.filebrowser.dir_size.queryOptions(path, ...)` | Directory sizes via useQueries |
+| 4 | `pages/main/filebrowser/index.tsx` | 545 | `linuxio.filebrowser.resource_stat.queryOptions(selectedPath, {staleTime: 5000})` | File stat for permissions dialog |
+| 5 | `pages/main/docker/ComposeStacksPage.tsx` | 247 | `linuxio.filebrowser.resource_get.queryOptions(configPath, "", "true", {staleTime: NONE})` | Fetch compose file content |
+| 6 | `pages/main/docker/ComposeStacksPage.tsx` | 396 | `linuxio.docker.get_compose_file_path.queryOptions(stackName, {staleTime: NONE})` | Get compose file path |
+| 7 | `pages/main/storage/NFSMounts.tsx` | 104 | `linuxio.storage.list_nfs_exports.queryOptions(serverAddress, {staleTime: 30000})` | Fetch NFS exports |
+| 8 | `pages/main/updates/UpdateList.tsx` | 50 | `linuxio.dbus.get_update_detail.queryOptions(packageId, {staleTime: 300000})` | Fetch update changelog (5min cache) |
+
+---
+
+### 2.5 .queryKey() — Cache Key Management
+
+41 total `queryKey()` usages for cache invalidation, removal, and key building.
+
+#### Docker Domain (9 keys)
+
+| # | File | Line | Key | Context |
+|---|------|------|-----|---------|
+| 1-4 | `components/cards/ContainerCard.tsx` | 64,79,94,109 | `linuxio.docker.list_containers.queryKey()` | After start/stop/restart/remove |
+| 5-6 | `pages/main/docker/NetworkList.tsx` | 66,194 | `linuxio.docker.list_networks.queryKey()` | After create/delete network |
+| 7 | `pages/main/docker/VolumeList.tsx` | 70 | `linuxio.docker.list_volumes.queryKey()` | After delete volume |
+| 8 | `pages/main/docker/ImageList.tsx` | 91 | `linuxio.docker.list_images.queryKey()` | After delete image |
+
+#### Accounts Domain (8 keys)
+
+| # | File | Line | Key | Context |
+|---|------|------|-----|---------|
+| 9-14 | `pages/main/accounts/...` | various | `linuxio.accounts.list_users.queryKey()` | After create/delete/modify/lock/unlock/password change |
+| 15-17 | `pages/main/accounts/...` | various | `linuxio.accounts.list_groups.queryKey()` | After create/delete/member edit |
+
+#### Storage Domain (8 keys)
+
+| # | File | Line | Key | Context |
+|---|------|------|-----|---------|
+| 18-20 | `pages/main/storage/NFSMounts.tsx` | 88,293,424 | `linuxio.storage.list_nfs_mounts.queryKey()` | After mount/unmount/remount |
+| 21-26 | `pages/main/storage/LVMManagement.tsx` | various | `linuxio.storage.list_lvs/list_vgs.queryKey()` | After create/resize/delete LV |
+
+#### Services/Network Domain (5 keys)
+
+| # | File | Line | Key | Context |
+|---|------|------|-----|---------|
+| 27 | `pages/main/services/ServicesPage.tsx` | 29 | `linuxio.dbus.list_services.queryKey()` | Shared invalidation for all 8 service mutations |
+| 28-31 | `pages/main/network/NetworkInterfaceEditor.tsx` | 116,133,153,168 | `linuxio.dbus.get_network_info.queryKey()` | After DHCP/manual/enable/disable |
+
+#### Filebrowser Domain (7 keys)
+
+| # | File | Line | Key | Context |
+|---|------|------|-----|---------|
+| 32 | `hooks/useFileMutations.ts` | 60 | `linuxio.filebrowser.resource_get.queryKey(normalizedPath)` | After any file mutation |
+| 33-34 | `hooks/useFileSubfolders.ts` | 98,110 | `linuxio.filebrowser.subfolders.queryKey()` | Clear subfolder caches |
+| 35 | `hooks/useFileQueries.ts` | 96 | `linuxio.filebrowser.resource_get.queryKey("multi")` | Composite key for multi-detail |
+| 36-38 | `pages/main/filebrowser/index.tsx` | 847,945,968 | `linuxio.filebrowser.resource_get.queryKey(...)` | After file save / listing refresh |
+
+#### Wireguard Domain (2 keys)
+
+| # | File | Line | Key | Context |
+|---|------|------|-----|---------|
+| 39 | `pages/main/wireguard/CreateInterfaceButton.tsx` | 45 | `linuxio.wireguard.list_interfaces.queryKey()` | After add interface |
+| 40 | `pages/main/wireguard/InterfaceClients.tsx` | 106 | `linuxio.wireguard.list_peers.queryKey()` | After remove peer |
+
+---
+
+### 2.6 queryClient.fetchQuery() — Imperative Fetching
+
+7 total usages.
+
+| # | File | Line | Description |
+|---|------|------|-------------|
+| 1 | `contexts/ConfigContext.tsx` | 114 | Fetch backend settings on initial load |
+| 2 | `hooks/useFileQueries.ts` | 113 | Fetch multiple file resources in parallel for multi-select |
+| 3 | `pages/main/filebrowser/index.tsx` | 544 | Fetch file stat before opening permissions dialog |
+| 4 | `pages/main/docker/ComposeStacksPage.tsx` | 246 | Fetch compose file content for editing |
+| 5 | `pages/main/docker/ComposeStacksPage.tsx` | 395 | Get compose file path for stack creation |
+| 6 | `pages/main/storage/NFSMounts.tsx` | 103 | Fetch NFS exports for server address |
+| 7 | `pages/main/updates/UpdateList.tsx` | 49 | Fetch update changelog for a package |
+
+---
+
+### 2.7 queryClient.invalidateQueries() — Cache Invalidation
+
+38 total invalidation calls. See section 2.5 for the complete mapping (every `queryKey()` usage corresponds to an `invalidateQueries` call).
+
+---
+
+### 2.8 queryClient.removeQueries() — Cache Removal
+
+| # | File | Line | Key | Description |
+|---|------|------|-----|-------------|
+| 1 | `hooks/useFileSubfolders.ts` | 97 | `linuxio.filebrowser.subfolders.queryKey()` | Clear ALL subfolder caches |
+| 2 | `hooks/useFileSubfolders.ts` | 109 | `linuxio.filebrowser.subfolders.queryKey(path)` | Clear specific path cache |
+
+---
+
+### 2.9 useQueries() — Parallel Queries
+
+| # | File | Line | Description |
+|---|------|------|-------------|
+| 1 | `hooks/useFileMultipleDirectoryDetails.ts` | 46 | Fetch multiple directory sizes in parallel via `linuxio.filebrowser.dir_size.queryOptions()` |
+
+---
+
+### 2.10 core.call() — Internal Transport Layer
+
+5 usages, **all internal to `api/react-query.ts`**. These are the underlying transport that powers every typed endpoint. No consumer code uses `core.call()` directly.
+
+| # | Line | Context |
+|---|------|---------|
+| 1 | 86 | `queryFn` for `useCall()` |
+| 2 | 117 | `mutationFn` for `useMutate()` |
+| 3 | 279 | `.call()` implementation |
+| 4 | 290 | `.queryOptions()` queryFn |
+| 5 | 317 | `.useMutation()` mutationFn |
+
+**Old-style untyped `linuxio.call()` in consumer code: 0 remaining.**
+
+---
+
+## 3. Streaming API (WebSocket, Bidirectional)
+
+### 3.1 Connection Lifecycle
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `contexts/AuthContext.tsx` | 162 | `initStreamMux()` | Initialize WebSocket mux on successful authentication |
+| `contexts/AuthContext.tsx` | 183 | `mux.addStatusListener()` | Listen for `"error"` (session expired), `"open"` (refresh capabilities), `"closed"` (network issue) |
+| `contexts/AuthContext.tsx` | 203 | `closeStreamMux()` | Close WebSocket mux on logout / unauthenticated |
+| `contexts/ConfigContext.tsx` | 98 | `waitForStreamMux(250)` | Wait for mux ready before fetching config at startup |
+
+---
+
+### 3.2 Connection Status Hooks
+
+#### useStreamMux() — 11 consumers
+
+| # | File | Line | Fields Used | Purpose |
+|---|------|------|-------------|---------|
+| 1 | `api/react-query.ts` | 81 | `isOpen` | Gate `useCall()` queries |
+| 2 | `api/react-query.ts` | 302 | `isOpen` | Gate typed `.useQuery()` |
+| 3 | `hooks/useFileQueries.ts` | 31 | `isOpen` | Gate file browser queries |
+| 4 | `hooks/useFileMultipleDirectoryDetails.ts` | 31 | `isOpen` | Gate multi-dir size queries |
+| 5 | `pages/main/terminal/Terminal.tsx` | 30 | `isOpen, getStream` | Terminal stream connection logic |
+| 6 | `pages/main/docker/TerminalDialog.tsx` | 57 | `isOpen` | Container terminal lifecycle |
+| 7 | `pages/main/docker/LogsDialog.tsx` | 56 | `isOpen` | Docker log stream lifecycle |
+| 8 | `pages/main/services/ServiceLogsDrawer.tsx` | 41 | `isOpen` | Service log stream lifecycle |
+| 9 | `pages/main/logs/GeneralLogsPage.tsx` | 144 | `isOpen` | General log stream lifecycle |
+| 10 | `components/docker/ComposeOperationDialog.tsx` | 52 | `isOpen` | Compose operation lifecycle |
+| 11 | `components/docker/ReindexDialog.tsx` | 61 | `isOpen` | Reindex stream lifecycle |
+
+#### useIsUpdating() — 3 consumers
+
+| # | File | Line | Purpose |
+|---|------|------|---------|
+| 1 | `api/react-query.ts` | 82 | Disable all React Query fetching during system update |
+| 2 | `api/react-query.ts` | 303 | Disable typed `.useQuery()` during update |
+| 3 | `hooks/useFileQueries.ts` | 32 | Pause file browser queries during update |
+
+#### isConnected() — 11 guard calls
+
+| # | File | Line | Purpose |
+|---|------|------|---------|
+| 1-8 | `contexts/FileTransferContext.tsx` | 502,631,776,916,1033,1336,1491,1628 | Guard every file transfer operation |
+| 9-10 | `pages/main/filebrowser/index.tsx` | 785,883 | Guard file editor save operations |
+| 11 | `pages/main/docker/ComposeStacksPage.tsx` | 305 | Guard compose file save |
+
+#### getStreamMux() — Direct access
+
+| # | File | Line | Purpose |
+|---|------|------|---------|
+| 1 | `contexts/UpdateContext.tsx` | 139,151,298,389 | `setUpdating(false)` — manage pause/resume of API during updates |
+
+---
+
+### 3.3 Terminal Streams (Bidirectional, Persistent)
+
+#### Host Terminal
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `pages/main/terminal/Terminal.tsx` | 136 | `openTerminalStream(cols, rows)` | Open new host terminal PTY |
+| `pages/main/terminal/Terminal.tsx` | 238 | `openTerminalStream(cols, rows)` | Open fresh terminal on reset |
+| `pages/main/terminal/Terminal.tsx` | 145,243 | `stream.onData = (data) => term.write(decodeString(data))` | Render terminal output |
+| `pages/main/terminal/Terminal.tsx` | 98,168 | `stream.write(encodeString(text))` | Send keyboard input |
+| `pages/main/terminal/Terminal.tsx` | 303 | `stream.write(encodeString(text))` | Send pasted text |
+| `pages/main/terminal/Terminal.tsx` | 280 | `stream.resize(cols, rows)` | Handle terminal resize |
+
+#### Container Terminal
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `pages/main/docker/TerminalDialog.tsx` | 181 | `openContainerStream(containerId, shell, cols, rows)` | Open container shell |
+| `pages/main/docker/TerminalDialog.tsx` | 189 | `stream.onData = (data) => term.write(decodeString(data))` | Render container output |
+| `pages/main/docker/TerminalDialog.tsx` | 159,206 | `stream.write(encodeString(text))` | Send keyboard input |
+| `pages/main/docker/TerminalDialog.tsx` | 298 | `stream.write(encodeString(text))` | Send pasted text |
+
+---
+
+### 3.4 Log Streams (Read-only, Live)
+
+#### Docker Container Logs
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `pages/main/docker/LogsDialog.tsx` | 99 | `openDockerLogsStream(containerId, "100")` | Initial stream (tail 100 lines) |
+| `pages/main/docker/LogsDialog.tsx` | 142 | `openDockerLogsStream(containerId, "0")` | Re-enable live mode (new lines only) |
+| `pages/main/docker/LogsDialog.tsx` | 113,147 | `stream.onData = (data) => decodeString(data)` | Parse log lines |
+
+#### Systemd Service Logs
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `pages/main/services/ServiceLogsDrawer.tsx` | 82 | `openServiceLogsStream(serviceName, "200")` | Initial stream (tail 200 lines) |
+| `pages/main/services/ServiceLogsDrawer.tsx` | 125 | `openServiceLogsStream(serviceName, "0")` | Re-enable live mode |
+| `pages/main/services/ServiceLogsDrawer.tsx` | 96,130 | `stream.onData = (data) => decodeString(data)` | Parse log lines |
+
+#### General System Logs (journalctl)
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `pages/main/logs/GeneralLogsPage.tsx` | 265 | `openGeneralLogsStream(lines, timePeriod, priority, identifier)` | Filtered log stream |
+| `pages/main/logs/GeneralLogsPage.tsx` | 283 | `stream.onData = (data) => JSON.parse(decodeString(data))` | Parse JSON log entries |
+
+---
+
+### 3.5 Docker Operation Streams
+
+#### Compose Operations (up/down/stop/restart)
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `components/docker/ComposeOperationDialog.tsx` | 96 | `openDockerComposeStream(action, projectName, composePath)` | Run compose operation |
+| `components/docker/ComposeOperationDialog.tsx` | 111 | `stream.onData = (data) => JSON.parse(decodeString(data))` | Parse stdout/stderr/complete/error messages |
+
+#### Docker Reindex
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `components/docker/ReindexDialog.tsx` | 113 | `openDockerReindexStream()` | Reindex compose projects |
+| `components/docker/ReindexDialog.tsx` | 126 | `stream.onProgress` | Track files_indexed, dirs_indexed, current_path |
+| `components/docker/ReindexDialog.tsx` | 133 | `stream.onResult` | Completion/error status |
+
+---
+
+### 3.6 File Transfer Streams
+
+All file transfer streams are managed by `contexts/FileTransferContext.tsx`.
+
+#### Upload
+
+| Line | Function | Description |
+|------|----------|-------------|
+| 1037 | `openFileUploadStream(targetPath, file.size)` | Upload file with chunked streaming |
+| 1054 | `stream.onProgress` | Track bytes/total/pct |
+| 1058 | `stream.onResult` | Handle completion |
+| 1107-1136 | `stream.write()` with `STREAM_CHUNK_SIZE` + `UPLOAD_WINDOW_SIZE` | Flow-controlled chunking |
+
+Also used for file saves:
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `pages/main/filebrowser/index.tsx` | 797 | `openFileUploadStream(editingPath, contentSize)` | Save file editor content |
+| `pages/main/filebrowser/index.tsx` | 895 | `openFileUploadStream(editingPath, contentSize)` | Save-and-close file |
+| `pages/main/docker/ComposeStacksPage.tsx` | 314 | `openFileUploadStream(filePath, contentSize, override)` | Save compose file |
+
+#### Download
+
+| Line | Function | Description |
+|------|----------|-------------|
+| 339 | `openFileDownloadStream(paths)` | Download single file or multi-file zip |
+| 384 | `stream.onProgress` | Track bytes/total/pct |
+| 422 | `stream.onResult` | Handle completion, trigger browser download |
+
+#### Compress
+
+| Line | Function | Description |
+|------|----------|-------------|
+| 643 | `openFileCompressStream(paths, fullDestination, format)` | Create archive |
+| 653 | `stream.onProgress` | Track progress |
+| 669 | `stream.onResult` | Handle completion |
+
+#### Extract
+
+| Line | Function | Description |
+|------|----------|-------------|
+| 782 | `openFileExtractStream(archivePath, destination)` | Extract archive |
+| 792 | `stream.onProgress` | Track progress |
+| 808 | `stream.onResult` | Handle completion |
+
+#### Reindex
+
+| Line | Function | Description |
+|------|----------|-------------|
+| 922 | `openFileReindexStream(path)` | Reindex directory |
+| 932 | `stream.onProgress` | Track progress |
+| 962 | `stream.onResult` | Handle completion |
+
+#### Copy
+
+| Line | Function | Description |
+|------|----------|-------------|
+| 1497 | `openFileCopyStream(source, destination)` | Copy files/directories |
+| 1509 | `stream.onProgress` | Track progress |
+| 1541 | `stream.onResult` | Handle completion |
+
+#### Move
+
+| Line | Function | Description |
+|------|----------|-------------|
+| 1634 | `openFileMoveStream(source, destination)` | Move files/directories |
+| 1646 | `stream.onProgress` | Track progress |
+| 1678 | `stream.onResult` | Handle completion |
+
+---
+
+### 3.7 System Update Streams
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `contexts/UpdateContext.tsx` | 399 | `openExecStream("bash", ["-c", cmd])` | Run system update script |
+| `contexts/UpdateContext.tsx` | 452 | `stream.onData = (data) => decodeString(data)` | Parse update output lines |
+| `contexts/UpdateContext.tsx` | 506 | `stream.onResult` | Trigger `handleStreamFinished()` for update verification |
+| `contexts/UpdateContext.tsx` | 139,151,298,389 | `getStreamMux()?.setUpdating(true/false)` | Pause/resume all API requests during update |
+
+---
+
+### 3.8 Package Update Streams
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `hooks/usePackageUpdater.ts` | 72 | `openPackageUpdateStream(packages)` | Stream bulk package update |
+| `hooks/usePackageUpdater.ts` | 100 | `stream.onProgress` | Track per-package and overall progress |
+| `hooks/usePackageUpdater.ts` | 143 | `stream.onResult` | Resolve promise, call onComplete |
+| `hooks/usePackageUpdater.ts` | 165 | `stream.abort()` | Cancel in-progress package update |
+
+---
+
+### 3.9 Storage Streams (SMART Tests)
+
+| File | Line | Function | Description |
+|------|------|----------|-------------|
+| `pages/main/storage/DiskOverview/index.tsx` | 107 | `openSmartTestStream(rawDrive.name, testType)` | Start SMART self-test |
+| `pages/main/storage/DiskOverview/index.tsx` | 130 | `stream.onProgress` | Track test status and progress % |
+| `pages/main/storage/DiskOverview/index.tsx` | 143 | `stream.onResult` | Final test status (completed/error) |
+
+---
+
+### 3.10 Stream Event Handlers Reference
+
+| Handler | Purpose | Used In |
+|---------|---------|---------|
+| `onData` | Raw binary data chunks | Terminal, container terminal, all log streams, compose operations, system update, file download |
+| `onProgress` | Structured progress frames (`{bytes, total, pct, ...}`) | File transfers (all 7 types), package updates, SMART tests, Docker reindex |
+| `onResult` | Final result frame (`{status: "ok"/"error", data}`) | All stream types on completion — resolves/rejects promises |
+| `onClose` | Stream closed (cleanup) | All stream consumers — sets streamRef to null, handles disconnection |
+
+---
+
+### 3.11 String Encoding/Decoding
+
+`encodeString(text)` — converts string to `Uint8Array` for stream writing.
+`decodeString(data)` — converts `Uint8Array` to string for display.
+
+| Consumer | encode | decode | Purpose |
+|----------|--------|--------|---------|
+| `Terminal.tsx` | keyboard input, paste | terminal output | Host terminal I/O |
+| `TerminalDialog.tsx` | keyboard input, paste | container output | Container terminal I/O |
+| `LogsDialog.tsx` | — | log data | Docker logs rendering |
+| `ServiceLogsDrawer.tsx` | — | log data | Service logs rendering |
+| `GeneralLogsPage.tsx` | — | JSON entries | System logs parsing |
+| `ComposeOperationDialog.tsx` | — | output data | Compose operation output |
+| `UpdateContext.tsx` | — | update output | System update script output |
+| `linuxio.ts` (internal) | all payloads | — | Payload builder encoding |
+| `linuxio-core.ts` (internal) | bridge payloads | — | Bridge command encoding |
+
+---
+
+### 3.12 Flow Control Constants
+
+| Constant | Value | Used In | Purpose |
+|----------|-------|---------|---------|
+| `STREAM_CHUNK_SIZE` | 32KB | FileTransferContext, filebrowser/index, ComposeStacksPage | Maximum bytes per write call |
+| `UPLOAD_WINDOW_SIZE` | 4 | FileTransferContext | Max outstanding chunks before backpressure |
+
+---
+
+## 4. Summary Statistics
+
+### JSON API
+
+| Category | Count |
+|----------|-------|
+| `.useQuery()` hooks | 52 |
+| `.useMutation()` hooks | 58 |
+| `.call()` imperative | 4 |
+| `.queryOptions()` | 8 |
+| `.queryKey()` | 41 |
+| `queryClient.fetchQuery()` | 7 |
+| `queryClient.invalidateQueries()` | 38 |
+| `queryClient.removeQueries()` | 2 |
+| `useQueries()` | 1 |
+| `core.call()` (internal only) | 5 |
+| Old-style untyped `linuxio.call()` | **0** |
+| **Total JSON API touchpoints** | **216** |
+
+### Streaming API
+
+| Category | Count |
+|----------|-------|
+| Stream open functions (16 types) | 22 invocations |
+| `useStreamMux()` consumers | 11 |
+| `useIsUpdating()` consumers | 3 |
+| `isConnected()` guards | 11 |
+| `onData` handlers | 11 |
+| `onProgress` handlers | 12 |
+| `onResult` handlers | 13 |
+| `encodeString()` calls (consumer) | 8 |
+| `decodeString()` calls (consumer) | 11 |
+| **Total streaming touchpoints** | **~102** |
+
+### By Domain
+
+| Handler | Queries | Mutations | Streams | Total |
+|---------|---------|-----------|---------|-------|
+| system | 10 | 0 | 0 | 10 |
+| storage | 5 | 7 | 1 (SMART) | 13 |
+| docker | 7 | 9 | 3 (compose, reindex, logs) | 19 |
+| dbus | 6 | 13 | 0 | 19 |
+| filebrowser | 7 | 5 | 7 (upload, download, compress, extract, reindex, copy, move) | 19 |
+| accounts | 4 | 8 | 0 | 12 |
+| wireguard | 2 | 8 | 0 | 10 |
+| terminal | 2 | 0 | 2 (host, container) | 4 |
+| modules | 1 | 0 | 0 | 1 |
+| config | 1 | 1 | 0 | 2 |
+| control | 1 | 0 | 0 | 1 |
+| exec | 0 | 0 | 2 (update, package) | 2 |
+
+---
+
+## 5. Complete API Command Inventory
+
+### system (10 commands used)
+`get_capabilities`, `get_cpu_info`, `get_sensor_info`, `get_motherboard_info`, `get_memory_info`, `get_gpu_info`, `get_fs_info`, `get_network_info`, `get_processes`, `get_host_info`, `get_updates_fast`
+
+### storage (13 commands used)
+`get_drive_info`, `list_nfs_mounts`, `list_nfs_exports`, `mount_nfs`, `unmount_nfs`, `remount_nfs`, `list_pvs`, `list_vgs`, `list_lvs`, `create_lv`, `resize_lv`, `delete_lv`, `run_smart_test`
+
+### docker (18 commands used)
+`list_containers`, `list_networks`, `list_volumes`, `list_images`, `list_compose_projects`, `get_icon_uri`, `start_container`, `stop_container`, `restart_container`, `remove_container`, `create_network`, `delete_network`, `delete_volume`, `delete_image`, `delete_stack`, `validate_stack_directory`, `validate_compose`, `get_compose_file_path`
+
+### dbus (23 commands used)
+`reboot`, `power_off`, `get_updates`, `get_updates_basic`, `get_update_detail`, `install_package`, `get_auto_updates`, `set_auto_updates`, `apply_offline_updates`, `get_update_history`, `list_services`, `get_service_info`, `get_service_logs`, `start_service`, `stop_service`, `restart_service`, `reload_service`, `enable_service`, `disable_service`, `mask_service`, `unmask_service`, `get_network_info`, `set_ipv4_manual`, `set_ipv4`, `set_ipv6`, `set_mtu`, `enable_connection`, `disable_connection`
+
+### filebrowser (10 commands used)
+`resource_get`, `resource_stat`, `resource_post`, `resource_delete`, `resource_patch`, `chmod`, `search`, `subfolders`, `dir_size`, `users_groups`
+
+### accounts (12 commands used)
+`list_users`, `list_groups`, `list_shells`, `create_user`, `create_group`, `delete_user`, `delete_group`, `modify_user`, `modify_group_members`, `change_password`, `lock_user`, `unlock_user`
+
+### wireguard (12 commands used)
+`list_interfaces`, `list_peers`, `add_interface`, `remove_interface`, `add_peer`, `remove_peer`, `up_interface`, `down_interface`, `enable_interface`, `disable_interface`, `peer_config_download`, `peer_qrcode`
+
+### terminal (1 command used)
+`list_shells`
+
+### modules (1 command used)
+`get_modules`
+
+### config (2 commands used)
+`get`, `set`
+
+### control (1 command used)
+`version`
+
+---
+
+*Report generated from branch `dev/v0.8.0` — 97 files changed, +1,228/-845 lines vs v0.7.4*

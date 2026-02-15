@@ -1,5 +1,4 @@
 import {
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -7,6 +6,8 @@ import {
   Button,
 } from "@mui/material";
 import React, { useState, useCallback } from "react";
+
+import FileBrowserDialog from "./FileBrowserDialog";
 
 interface InputDialogProps {
   open: boolean;
@@ -68,7 +69,7 @@ const InputDialog: React.FC<InputDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <FileBrowserDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
         <TextField
@@ -93,7 +94,7 @@ const InputDialog: React.FC<InputDialogProps> = ({
           {confirmText}
         </Button>
       </DialogActions>
-    </Dialog>
+    </FileBrowserDialog>
   );
 };
 

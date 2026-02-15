@@ -24,6 +24,7 @@ import {
   useStreamMux,
   encodeString,
   decodeString,
+  openContainerStream,
   type Stream,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -33,16 +34,6 @@ interface Props {
   onClose: () => void;
   containerId: string;
   containerName?: string;
-}
-
-// Build container terminal payload: "container\0containerID\0shell\0cols\0rows"
-function buildContainerPayload(
-  containerId: string,
-  shell: string,
-  cols: number,
-  rows: number,
-): Uint8Array {
-  return encodeString(`container\0${containerId}\0${shell}\0${cols}\0${rows}`);
 }
 
 const TerminalDialog: React.FC<Props> = ({
@@ -63,7 +54,7 @@ const TerminalDialog: React.FC<Props> = ({
     mouseY: number;
   } | null>(null);
 
-  const { isOpen, openStream } = useStreamMux();
+  const { isOpen } = useStreamMux();
   const theme = useTheme();
 
   // Fetch available shells when dialog opens
@@ -187,8 +178,7 @@ const TerminalDialog: React.FC<Props> = ({
     // Open container terminal stream
     const cols = xterm.current.cols;
     const rows = xterm.current.rows;
-    const payload = buildContainerPayload(containerId, activeShell, cols, rows);
-    const stream = openStream("container", payload);
+    const stream = openContainerStream(containerId, activeShell, cols, rows);
 
     if (stream) {
       streamRef.current = stream;
@@ -246,7 +236,6 @@ const TerminalDialog: React.FC<Props> = ({
     activeShell,
     containerId,
     isOpen,
-    openStream,
     availableShells.length,
     theme.palette.background.default,
     theme.palette.text.primary,

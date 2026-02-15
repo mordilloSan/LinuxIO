@@ -10,14 +10,11 @@ import { useBeforeUnload, useLocation, useNavigate } from "react-router-dom";
 
 import {
   decodeString,
-  encodeString,
   getStreamMux,
+  openExecStream,
   type ResultFrame,
   type Stream,
 } from "@/api";
-
-// Stream type for command execution (must match backend generic.StreamTypeExec)
-const STREAM_TYPE_EXEC = "exec";
 
 // In dev mode, use local test script; in production, use GitHub hosted script
 const INSTALL_SCRIPT_URL = import.meta.env.DEV
@@ -399,11 +396,7 @@ const useUpdateController = (): UpdateContextValue => {
       mux.setUpdating(true);
 
       const cmd = buildUpdateCommand(runId, target);
-      const payload = encodeString(
-        [STREAM_TYPE_EXEC, "bash", "-c", cmd].join("\0"),
-      );
-
-      const stream = mux.openStream(STREAM_TYPE_EXEC, payload);
+      const stream = openExecStream("bash", ["-c", cmd]);
       if (!stream) {
         failUpdate("Failed to open update stream");
         return;

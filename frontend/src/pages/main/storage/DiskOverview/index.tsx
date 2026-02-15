@@ -39,8 +39,7 @@ import {
 
 import {
   linuxio,
-  encodeString,
-  getStreamMux,
+  openSmartTestStream,
   type ResultFrame,
   type Stream,
   type ApiDisk,
@@ -56,8 +55,6 @@ interface DriveDetailsProps {
   rawDrive: ApiDisk | null;
   refetchDrives: () => void;
 }
-
-const STREAM_TYPE_SMART_TEST = "smart-test";
 
 const DriveDetails: React.FC<DriveDetailsProps> = ({
   drive,
@@ -103,8 +100,12 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
       message: `Starting SMART ${testType} self-test`,
     });
 
-    const mux = getStreamMux();
-    if (!mux || mux.status !== "open") {
+    if (streamRef.current) {
+      streamRef.current.close();
+    }
+
+    const stream = openSmartTestStream(rawDrive.name, testType);
+    if (!stream) {
       runSmartTest([rawDrive.name, testType], {
         onSuccess: () => {
           toast.success(
@@ -124,14 +125,6 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
       return;
     }
 
-    if (streamRef.current) {
-      streamRef.current.close();
-    }
-
-    const payload = encodeString(
-      `${STREAM_TYPE_SMART_TEST}\0${rawDrive.name}\0${testType}`,
-    );
-    const stream = mux.openStream(STREAM_TYPE_SMART_TEST, payload);
     streamRef.current = stream;
 
     stream.onProgress = (progressData: unknown) => {

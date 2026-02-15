@@ -13,7 +13,12 @@ import {
 } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-import { linuxio, useStreamMux, encodeString, type Stream } from "@/api";
+import {
+  linuxio,
+  useStreamMux,
+  openDockerReindexStream,
+  type Stream,
+} from "@/api";
 
 interface ReindexDialogProps {
   open: boolean;
@@ -53,7 +58,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   const streamRef = useRef<Stream | null>(null);
   const hasCompletedRef = useRef(false);
 
-  const { isOpen: muxIsOpen, openStream } = useStreamMux();
+  const { isOpen: muxIsOpen } = useStreamMux();
 
   const { data: composeProjects = [] } =
     linuxio.docker.list_compose_projects.useQuery({
@@ -105,9 +110,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
       return;
     }
 
-    // Build payload: docker-reindex (no args needed)
-    const payload = encodeString("docker-reindex");
-    const stream = openStream("docker-reindex", payload);
+    const stream = openDockerReindexStream();
 
     if (!stream) {
       queueMicrotask(() => {
@@ -150,7 +153,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
         setIsRunning(false);
       }
     };
-  }, [open, muxIsOpen, openStream, onComplete, success, error]);
+  }, [open, muxIsOpen, onComplete, success, error]);
 
   const handleClose = () => {
     if (isRunning) {

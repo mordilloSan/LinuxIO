@@ -3,23 +3,20 @@ import { toast } from "sonner";
 
 import {
   linuxio,
-  getStreamMux,
-  encodeString,
+  isConnected,
+  openFileUploadStream,
+  openFileDownloadStream,
+  openFileCompressStream,
+  openFileExtractStream,
+  openFileReindexStream,
+  openFileCopyStream,
+  openFileMoveStream,
   STREAM_CHUNK_SIZE,
   UPLOAD_WINDOW_SIZE,
   type Stream,
   type ProgressFrame,
   type ResultFrame,
 } from "@/api";
-
-// Stream types matching backend constants
-const STREAM_TYPE_FB_DOWNLOAD = "fb-download";
-const STREAM_TYPE_FB_UPLOAD = "fb-upload";
-const STREAM_TYPE_FB_COMPRESS = "fb-compress";
-const STREAM_TYPE_FB_EXTRACT = "fb-extract";
-const STREAM_TYPE_FB_REINDEX = "fb-reindex";
-const STREAM_TYPE_FB_COPY = "fb-copy";
-const STREAM_TYPE_FB_MOVE = "fb-move";
 
 interface Download {
   id: string;
@@ -332,28 +329,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       paths: string[],
       reqId: string,
       _downloadLabelBase: string,
+      abortSignal: AbortSignal,
       formatDownloadLabel: (
         stage: string,
         options?: { percent?: number; name?: string },
       ) => string,
     ) => {
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
-        throw new Error("Stream connection not ready");
-      }
-
-      // Determine stream type: use fb-download only for single files (not directories)
-      // Directories end with '/' and need fb-archive to create a zip
       const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
-      const streamType = isSingleFile ? STREAM_TYPE_FB_DOWNLOAD : "fb-archive";
-
-      // Build payload
-      const payloadParts = isSingleFile
-        ? [STREAM_TYPE_FB_DOWNLOAD, paths[0]]
-        : ["fb-archive", "zip", ...paths];
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(streamType, payload);
+      const stream = openFileDownloadStream(paths);
       if (!stream) {
         throw new Error("Failed to open download stream");
       }
@@ -366,6 +349,38 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       let lastTime = Date.now();
 
       return new Promise<Blob>((resolve, reject) => {
+        let settled = false;
+        let hasResult = false;
+        const makeAbortError = () => {
+          const error = new Error("Download cancelled");
+          error.name = "AbortError";
+          return error;
+        };
+        const resolveSafe = (blob: Blob) => {
+          if (settled) return;
+          settled = true;
+          abortSignal.removeEventListener("abort", onAbort);
+          resolve(blob);
+        };
+        const rejectSafe = (error: Error) => {
+          if (settled) return;
+          settled = true;
+          abortSignal.removeEventListener("abort", onAbort);
+          reject(error);
+        };
+        const rejectAbort = () => {
+          rejectSafe(makeAbortError());
+        };
+        const onAbort = () => {
+          rejectAbort();
+        };
+
+        if (abortSignal.aborted) {
+          rejectAbort();
+          return;
+        }
+        abortSignal.addEventListener("abort", onAbort, { once: true });
+
         stream.onProgress = (progress: ProgressFrame) => {
           const now = Date.now();
           const deltaBytes = progress.bytes - lastBytes;
@@ -405,22 +420,33 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         };
 
         stream.onResult = (result: ResultFrame) => {
+          hasResult = true;
+          abortSignal.removeEventListener("abort", onAbort);
+          if (abortSignal.aborted) {
+            rejectAbort();
+            return;
+          }
           if (result.status === "ok") {
             const mimeType = isSingleFile
               ? "application/octet-stream"
               : "application/zip";
             const blob = new Blob(chunks as BlobPart[], { type: mimeType });
-            resolve(blob);
+            resolveSafe(blob);
           } else {
-            reject(new Error(result.error || "Download failed"));
+            rejectSafe(new Error(result.error || "Download failed"));
           }
         };
 
         stream.onClose = () => {
-          // If no result was received, treat as error
-          if (chunks.length === 0) {
-            reject(new Error("Stream closed before transfer completed"));
+          abortSignal.removeEventListener("abort", onAbort);
+          if (settled || hasResult) {
+            return;
           }
+          if (abortSignal.aborted) {
+            rejectAbort();
+            return;
+          }
+          rejectSafe(new Error("Stream closed before transfer completed"));
         };
       });
     },
@@ -473,8 +499,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       setDownloads((prev) => [...prev, download]);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeDownload(reqId);
         return;
@@ -486,6 +511,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           paths,
           reqId,
           downloadLabelBase,
+          abortController.signal,
           formatDownloadLabel,
         );
 
@@ -540,6 +566,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     (id: string) => {
       const download = downloads.find((d) => d.id === id);
       if (download) {
+        download.abortController.abort();
         // Abort stream if using stream-based download (RST for immediate cancel)
         // Use ref first (synchronous) then fallback to state
         const stream = streamRefsRef.current.get(id) || download.stream;
@@ -547,7 +574,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           stream.abort(); // Use abort() instead of close() for immediate cancellation
           streamRefsRef.current.delete(id);
         }
-        download.abortController.abort();
         toast.info("Download cancelled");
         removeDownload(id);
       }
@@ -602,29 +628,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setCompressions((prev) => [...prev, compression]);
       activeCompressionIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeCompression(id);
         return;
       }
 
-      // Build payload: "fb-compress\0format\0destination\0path1\0path2\0..."
       const format = archiveName.toLowerCase().endsWith(".tar.gz")
         ? "tar.gz"
         : "zip";
       const fullDestination = destination.endsWith("/")
         ? `${destination}${archiveName}`
         : `${destination}/${archiveName}`;
-      const payloadParts = [
-        STREAM_TYPE_FB_COMPRESS,
-        format,
-        fullDestination,
-        ...paths,
-      ];
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(STREAM_TYPE_FB_COMPRESS, payload);
+      const stream = openFileCompressStream(paths, fullDestination, format);
       if (!stream) {
         toast.error("Failed to open compression stream");
         removeCompression(id);
@@ -757,20 +773,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setExtractions((prev) => [...prev, extraction]);
       activeExtractionIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeExtraction(id);
         return;
       }
 
-      // Build payload: "fb-extract\0archivePath\0destination"
-      const payloadParts = destination
-        ? [STREAM_TYPE_FB_EXTRACT, archivePath, destination]
-        : [STREAM_TYPE_FB_EXTRACT, archivePath];
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(STREAM_TYPE_FB_EXTRACT, payload);
+      const stream = openFileExtractStream(archivePath, destination);
       if (!stream) {
         toast.error("Failed to open extraction stream");
         removeExtraction(id);
@@ -904,21 +913,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setReindexes((prev) => [...prev, reindex]);
       activeReindexIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeReindex(id);
         return;
       }
 
-      // Build payload: "fb-reindex\0path" (path is optional, defaults to "/" on backend)
-      const payloadParts = [STREAM_TYPE_FB_REINDEX];
-      if (path && path !== "/") {
-        payloadParts.push(path);
-      }
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(STREAM_TYPE_FB_REINDEX, payload);
+      const stream = openFileReindexStream(path);
       if (!stream) {
         toast.error("Failed to open reindex stream");
         removeReindex(id);
@@ -1029,16 +1030,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       onProgress: (loaded: number, total: number) => void,
       abortSignal: AbortSignal,
     ): Promise<{ success: boolean; error?: string; cancelled?: boolean }> => {
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         return { success: false, error: "Stream connection not ready" };
       }
 
-      // Build payload: "fb-upload\0/path/to/file\0size"
-      const payload = encodeString(
-        `${STREAM_TYPE_FB_UPLOAD}\0${targetPath}\0${file.size}`,
-      );
-      const stream = mux.openStream(STREAM_TYPE_FB_UPLOAD, payload);
+      const stream = openFileUploadStream(targetPath, file.size);
 
       if (!stream) {
         return { success: false, error: "Failed to open upload stream" };
@@ -1337,8 +1333,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           fileBytes.set(idx, 0);
           updateOverallProgress(0, idx);
 
-          const mux = getStreamMux();
-          if (!mux || mux.status !== "open") {
+          if (!isConnected()) {
             failures.push({
               path: relativePath,
               message: "Stream connection not ready",
@@ -1493,19 +1488,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setCopies((prev) => [...prev, copy]);
       activeCopyIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeCopy(id);
         return;
       }
 
-      // Use direct stream handler for proper abort support
-      // Args: [source, destination]
-      const payloadParts = [STREAM_TYPE_FB_COPY, source, destination];
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(STREAM_TYPE_FB_COPY, payload);
+      const stream = openFileCopyStream(source, destination);
       if (!stream) {
         toast.error("Failed to open copy stream");
         removeCopy(id);
@@ -1636,19 +1625,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setMoves((prev) => [...prev, move]);
       activeMoveIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeMove(id);
         return;
       }
 
-      // Use direct stream handler for proper abort support
-      // Args: [source, destination]
-      const payloadParts = [STREAM_TYPE_FB_MOVE, source, destination];
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(STREAM_TYPE_FB_MOVE, payload);
+      const stream = openFileMoveStream(source, destination);
       if (!stream) {
         toast.error("Failed to open move stream");
         removeMove(id);

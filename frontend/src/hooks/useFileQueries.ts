@@ -4,7 +4,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
 import { FileResource } from "@/types/filebrowser";
-import { linuxio, LinuxIOError, useIsUpdating, useStreamMux } from "@/api";
+import {
+  linuxio,
+  CACHE_TTL_MS,
+  LinuxIOError,
+  useIsUpdating,
+  useStreamMux,
+} from "@/api";
 
 interface useFileQueriesParams {
   normalizedPath: string;
@@ -30,7 +36,7 @@ export const useFileQueries = ({
     isError,
     error,
   } = linuxio.filebrowser.resource_get.useQuery(normalizedPath, {
-    staleTime: 0,
+    staleTime: CACHE_TTL_MS.NONE,
   });
 
   const resource = useMemo(
@@ -85,9 +91,17 @@ export const useFileQueries = ({
       },
     );
 
+  const multipleResourceQueryKey = useMemo(
+    () => [
+      ...linuxio.filebrowser.resource_get.queryKey("multi"),
+      ...(detailTarget ?? []),
+    ],
+    [detailTarget],
+  );
+
   const { data: multipleFileResources, isPending: isMultipleFilesPending } =
     useQuery<Record<string, FileResource>>({
-      queryKey: ["linuxio", "filebrowser", "resource_get_multi", detailTarget],
+      queryKey: multipleResourceQueryKey,
       queryFn: async () => {
         const currentDetailTarget = detailTarget;
         if (!currentDetailTarget || currentDetailTarget.length <= 1) {
@@ -98,7 +112,7 @@ export const useFileQueries = ({
           currentDetailTarget.map(async (path) => {
             const data = await queryClient.fetchQuery(
               linuxio.filebrowser.resource_get.queryOptions(path, {
-                staleTime: 0,
+                staleTime: CACHE_TTL_MS.NONE,
               }),
             );
             results[path] = normalizeResource(data);

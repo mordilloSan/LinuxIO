@@ -197,7 +197,7 @@ export class SpawnedProcess implements Promise<any> {
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
-        this._stream.close();
+        this._stream.abort();
         this.rejectPromise(new LinuxIOError("Operation timeout", "timeout"));
       }
     }, timeoutMs);
@@ -272,7 +272,14 @@ export class SpawnedProcess implements Promise<any> {
    * Close/abort the process early
    */
   close(): void {
-    this._stream.close();
+    this._stream.abort();
+  }
+
+  /**
+   * Abort the process immediately.
+   */
+  abort(): void {
+    this._stream.abort();
   }
 
   // Promise implementation

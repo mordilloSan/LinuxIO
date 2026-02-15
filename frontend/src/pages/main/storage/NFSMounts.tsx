@@ -27,7 +27,7 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-import { linuxio, type NFSMount } from "@/api";
+import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -102,7 +102,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     try {
       const result = await queryClient.fetchQuery(
         linuxio.storage.list_nfs_exports.queryOptions(serverAddress, {
-          staleTime: 30_000,
+          staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
         }),
       );
       setExports(result || []);

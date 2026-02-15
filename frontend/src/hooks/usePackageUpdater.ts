@@ -3,14 +3,10 @@ import { useState, useCallback, useRef } from "react";
 
 import {
   linuxio,
-  getStreamMux,
-  encodeString,
+  openPackageUpdateStream,
   type Stream,
   type ResultFrame,
 } from "@/api";
-
-// Stream type for package updates (must match backend ipc.StreamTypePkgUpdate)
-const STREAM_TYPE_PKG_UPDATE = "pkg-update";
 
 // Progress event types from backend
 interface PkgUpdateProgress {
@@ -34,6 +30,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const streamRef = useRef<Stream | null>(null);
+  const cancelledRef = useRef(false);
 
   const { mutateAsync: installPackage } =
     linuxio.dbus.install_package.useMutation();
@@ -72,8 +69,8 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
         return;
       }
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      const stream = openPackageUpdateStream(packages);
+      if (!stream) {
         // Fallback to sequential updates if stream not available
         console.warn("Stream connection not ready, using fallback");
         return updateAllFallback(packages);
@@ -83,20 +80,23 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
       setError(null);
       setStatus("Initializing");
       setUpdatingPackage("Preparing updates...");
-
-      // Build payload: stream type followed by package IDs (null-separated)
-      const payloadParts = [STREAM_TYPE_PKG_UPDATE, ...packages];
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(STREAM_TYPE_PKG_UPDATE, payload);
-      if (!stream) {
-        setError("Failed to open update stream");
-        return;
-      }
+      cancelledRef.current = false;
 
       streamRef.current = stream;
 
       return new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const resolveSafe = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        const rejectSafe = (err: Error) => {
+          if (settled) return;
+          settled = true;
+          reject(err);
+        };
+
         stream.onProgress = (progressData: unknown) => {
           const data = progressData as PkgUpdateProgress;
 
@@ -142,6 +142,7 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
 
         stream.onResult = (result: ResultFrame) => {
           streamRef.current = null;
+          cancelledRef.current = false;
 
           if (result.status === "ok") {
             setProgress(100);
@@ -149,26 +150,33 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
             setStatus(null);
             // Handle both sync and async onComplete
             Promise.resolve(onComplete())
-              .then(() => resolve())
-              .catch(() => resolve());
+              .then(() => resolveSafe())
+              .catch(() => resolveSafe());
           } else {
             const errorMsg = result.error || "Update failed";
             setError(errorMsg);
             setUpdatingPackage(null);
             setStatus(null);
-            reject(new Error(errorMsg));
+            rejectSafe(new Error(errorMsg));
           }
         };
 
         stream.onClose = () => {
           streamRef.current = null;
-          // If closed without result, treat as error
-          if (status !== null) {
-            setError("Update stream closed unexpectedly");
-            setUpdatingPackage(null);
-            setStatus(null);
-            reject(new Error("Stream closed unexpectedly"));
+          if (settled) {
+            return;
           }
+
+          if (cancelledRef.current) {
+            cancelledRef.current = false;
+            rejectSafe(new Error("Update cancelled"));
+            return;
+          }
+
+          setError("Update stream closed unexpectedly");
+          setUpdatingPackage(null);
+          setStatus(null);
+          rejectSafe(new Error("Stream closed unexpectedly"));
         };
       });
 
@@ -221,11 +229,12 @@ export const usePackageUpdater = (onComplete: () => unknown) => {
         await onComplete();
       }
     },
-    [installPackage, onComplete, refetchUpdatesBasic, status],
+    [installPackage, onComplete, refetchUpdatesBasic],
   );
 
   const cancelUpdate = useCallback(() => {
     if (streamRef.current) {
+      cancelledRef.current = true;
       streamRef.current.abort();
       streamRef.current = null;
       setUpdatingPackage(null);

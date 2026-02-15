@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Checkbox,
-  Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
@@ -20,6 +19,7 @@ import {
 import React, { useState, useCallback } from "react";
 
 import { linuxio } from "@/api";
+import FileBrowserDialog from "@/components/filebrowser/FileBrowserDialog";
 
 interface PermissionsDialogProps {
   open: boolean;
@@ -163,29 +163,12 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   const theme = useTheme();
 
   return (
-    <Dialog
+    <FileBrowserDialog
       open={open}
       onClose={onClose}
       maxWidth="sm"
       fullWidth
       key={open ? `${currentMode}-${owner}-${group}` : "closed"}
-      slotProps={{
-        paper: {
-          sx: {
-            backgroundColor: theme.header.background,
-            borderRadius: 4,
-            border: `1px solid rgba(255, 255, 255, 0.2)`,
-            boxShadow: `0 0 10px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 255, 255, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.1)`,
-            backdropFilter: "blur(10px)",
-          },
-        },
-        backdrop: {
-          sx: {
-            backdropFilter: "blur(4px)",
-            backgroundColor: "rgba(0, 0, 0, 0.7)",
-          },
-        },
-      }}
     >
       <DialogTitle
         sx={{
@@ -373,7 +356,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
           Apply
         </Button>
       </DialogActions>
-    </Dialog>
+    </FileBrowserDialog>
   );
 };
 

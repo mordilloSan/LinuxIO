@@ -13,7 +13,7 @@ import TerminalIcon from "lucide-react/dist/esm/icons/terminal";
 import Users from "lucide-react/dist/esm/icons/users";
 import React, { lazy, useMemo } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, CACHE_TTL_MS } from "@/api";
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
 import { PrivilegedGuard } from "@/components/guards/PrivilegedGuard";
@@ -239,7 +239,7 @@ function createModuleRoute(module: ModuleInfo): RouteWithSidebar {
 
 export function useAppRoutes() {
   const { data: modules } = linuxio.modules.get_modules.useQuery({
-    staleTime: 60000,
+    staleTime: CACHE_TTL_MS.ONE_MINUTE,
     refetchOnMount: false,
   });
 
@@ -291,7 +291,7 @@ export function useAppRoutes() {
 
 export function useSidebarItems() {
   const { data: modules } = linuxio.modules.get_modules.useQuery({
-    staleTime: 60000,
+    staleTime: CACHE_TTL_MS.ONE_MINUTE,
     refetchOnMount: false,
   });
 

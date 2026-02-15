@@ -39,6 +39,31 @@ export {
   downloadPayload,
   compressPayload,
   extractPayload,
+  packageUpdatePayload,
+  execPayload,
+  smartTestPayload,
+  dockerComposePayload,
+  dockerReindexPayload,
+  fileReindexPayload,
+  fileCopyPayload,
+  fileMovePayload,
+  openTerminalStream,
+  openContainerStream,
+  openDockerLogsStream,
+  openServiceLogsStream,
+  openGeneralLogsStream,
+  openDockerComposeStream,
+  openDockerReindexStream,
+  openExecStream,
+  openPackageUpdateStream,
+  openSmartTestStream,
+  openFileUploadStream,
+  openFileDownloadStream,
+  openFileCompressStream,
+  openFileExtractStream,
+  openFileReindexStream,
+  openFileCopyStream,
+  openFileMoveStream,
   isConnected,
   getStatus,
 } from "./linuxio";
@@ -58,6 +83,9 @@ export {
   STREAM_CHUNK_SIZE,
   UPLOAD_WINDOW_SIZE,
 } from "./StreamMultiplexer";
+
+// === Cache Policy ===
+export { CACHE_TTL_MS } from "./cache-policy";
 
 // === Stream Types ===
 export type {
@@ -107,6 +135,10 @@ export type {
   SubfoldersResponse,
   SearchResponse,
   UsersGroupsResponse,
+  FileDownloadResult,
+  ArchiveDownloadResult,
+  CompressResult,
+  ExtractResult,
   AccountUser,
   AccountGroup,
   CreateUserRequest,

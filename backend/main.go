@@ -102,7 +102,7 @@ func showVersion() {
 			fmt.Printf("  %s\n", lines[0])
 		}
 	} else {
-		fmt.Println("  linuxio-auth: not found or error")
+		fmt.Println("linuxio-auth: not found or error")
 	}
 }
 

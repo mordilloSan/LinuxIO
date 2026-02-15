@@ -13,7 +13,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 
 import {
   useStreamMux,
-  serviceLogsPayload,
+  openServiceLogsStream,
   decodeString,
   type Stream,
 } from "@/api";
@@ -38,7 +38,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
   const streamRef = useRef<Stream | null>(null);
   const hasReceivedData = useRef(false);
 
-  const { isOpen: muxIsOpen, openStream } = useStreamMux();
+  const { isOpen: muxIsOpen } = useStreamMux();
 
   // Scroll to bottom when logs change
   useEffect(() => {
@@ -79,9 +79,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
     // Track state
     hasReceivedData.current = false;
 
-    // Open the service-logs stream
-    const payload = serviceLogsPayload(serviceName, "200");
-    const stream = openStream("service-logs", payload);
+    const stream = openServiceLogsStream(serviceName, "200");
 
     if (!stream) {
       queueMicrotask(() => {
@@ -110,7 +108,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
         setIsLoading(false);
       }
     };
-  }, [open, serviceName, muxIsOpen, openStream]);
+  }, [open, serviceName, muxIsOpen]);
 
   // Handle liveMode toggle
   useEffect(() => {
@@ -124,8 +122,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
       muxIsOpen
     ) {
       // Re-open stream when live mode is re-enabled
-      const payload = serviceLogsPayload(serviceName, "0");
-      const stream = openStream("service-logs", payload);
+      const stream = openServiceLogsStream(serviceName, "0");
 
       if (stream) {
         streamRef.current = stream;
@@ -138,7 +135,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
         };
       }
     }
-  }, [liveMode, open, serviceName, muxIsOpen, openStream, closeStream]);
+  }, [liveMode, open, serviceName, muxIsOpen, closeStream]);
 
   // Cleanup stream when drawer closes (only close stream, not state)
   useEffect(() => {

@@ -1192,7 +1192,7 @@ static int handle_client(int input_fd, int output_fd)
   // Handle password expiration
   if (rc == PAM_NEW_AUTHTOK_REQD)
   {
-    journal_infof("auth: password expired for user '%s'", user);
+    journal_infof("password expired for user '%s'", user);
     send_response(output_fd, PROTO_STATUS_ERROR, 0,
                   "Password has expired. Please change it via SSH or console.");
     pam_end(pamh, rc);
@@ -1223,7 +1223,7 @@ static int handle_client(int input_fd, int output_fd)
     return 1;
   }
 
-  journal_infof("auth: PAM auth success for user '%s' (uid=%u)", user, (unsigned)pw->pw_uid);
+  journal_infof("PAM auth success for user '%s' (uid=%u)", user, (unsigned)pw->pw_uid);
 
   // Check sudo capability
   int nopasswd = 0;
@@ -1439,7 +1439,7 @@ static int handle_client(int input_fd, int output_fd)
   // Don't close input_fd/output_fd - the bridge (child) has the connection via FD 3
   // The parent's copy will be closed when we exit, which is fine
 
-  journal_infof("auth: bridge spawned for user '%s' mode=%s", user,
+  journal_infof("bridge spawned for user '%s' mode=%s", user,
                 mode == PROTO_MODE_PRIVILEGED ? "privileged" : "unprivileged");
 
   int status = 0;

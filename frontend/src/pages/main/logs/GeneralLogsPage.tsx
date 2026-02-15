@@ -34,7 +34,7 @@ import React, {
 
 import {
   useStreamMux,
-  generalLogsPayload,
+  openGeneralLogsStream,
   decodeString,
   type Stream,
 } from "@/api";
@@ -141,7 +141,7 @@ const GeneralLogsPage: React.FC = () => {
   const hasReceivedData = useRef(false);
   const hasOpenedOnce = useRef(false);
 
-  const { isOpen: muxIsOpen, openStream } = useStreamMux();
+  const { isOpen: muxIsOpen } = useStreamMux();
 
   // Table columns configuration - icon goes in the first empty cell, not in columns array
   const columns: UnifiedTableColumn[] = [
@@ -262,13 +262,12 @@ const GeneralLogsPage: React.FC = () => {
 
       hasReceivedData.current = false;
 
-      const payload = generalLogsPayload(
+      const stream = openGeneralLogsStream(
         lines,
         timePeriod,
         priority,
         identifier,
       );
-      const stream = openStream("general-logs", payload);
 
       if (!stream) {
         queueMicrotask(() => {
@@ -301,7 +300,7 @@ const GeneralLogsPage: React.FC = () => {
       };
       return true;
     },
-    [muxIsOpen, openStream, parseLogEntry],
+    [muxIsOpen, parseLogEntry],
   );
 
   const isExactIdentifier = useMemo(() => {

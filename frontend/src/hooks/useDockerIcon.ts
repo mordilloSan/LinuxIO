@@ -1,4 +1,4 @@
-import { linuxio } from "@/api";
+import { linuxio, CACHE_TTL_MS } from "@/api";
 
 /**
  * Hook to fetch and cache a Docker icon by identifier
@@ -10,8 +10,8 @@ export function useDockerIcon(identifier: string | undefined, enabled = true) {
   const query = linuxio.docker.get_icon_uri.useQuery({
     args: identifier ? [identifier] : [],
     enabled: enabled && !!identifier,
-    staleTime: 24 * 60 * 60 * 1000, // 24 hours - icons rarely change
-    gcTime: 24 * 60 * 60 * 1000, // Keep in cache for 24 hours
+    staleTime: CACHE_TTL_MS.ONE_DAY, // Icons rarely change
+    gcTime: CACHE_TTL_MS.ONE_DAY, // Keep in cache for 24 hours
     retry: 1, // Only retry once for icons
   });
 

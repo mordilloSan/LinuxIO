@@ -1,6 +1,6 @@
 import { Box, useTheme, Typography } from "@mui/material";
 
-import { linuxio } from "@/api";
+import { linuxio, CACHE_TTL_MS } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import FileNotifications from "@/components/filebrowser/FileNotifications";
 import DevToolsButton from "@/components/footer/DevToolsButton";
@@ -9,7 +9,7 @@ function Footer() {
   const theme = useTheme();
 
   const { data } = linuxio.control.version.useQuery({
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: CACHE_TTL_MS.FIVE_MINUTES,
     retry: false, // Don't retry on failure for footer
   });
 

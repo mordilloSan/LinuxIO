@@ -321,6 +321,28 @@ export interface UsersGroupsResponse {
   groups: string[];
 }
 
+export interface FileDownloadResult {
+  path: string;
+  size: number;
+  fileName: string;
+}
+
+export interface ArchiveDownloadResult {
+  archiveName: string;
+  size: number;
+  format: string;
+}
+
+export interface CompressResult {
+  path: string;
+  size: number;
+  format: string;
+}
+
+export interface ExtractResult {
+  destination: string;
+}
+
 // ============================================================================
 // Accounts Types
 // ============================================================================
@@ -666,13 +688,19 @@ export interface LinuxIOSchema {
       args: [tempPath: string, targetPath: string];
       result: void;
     };
-    download: { args: [path: string]; result: Uint8Array };
-    archive: { args: [path: string]; result: void };
-    compress: {
-      args: [outputPath: string, format: string, ...files: string[]];
-      result: void;
+    download: { args: [path: string]; result: FileDownloadResult };
+    archive: {
+      args: [format: string, ...paths: string[]];
+      result: ArchiveDownloadResult;
     };
-    extract: { args: [archivePath: string, destPath: string]; result: void };
+    compress: {
+      args: [format: string, destination: string, ...paths: string[]];
+      result: CompressResult;
+    };
+    extract: {
+      args: [archivePath: string, destination?: string];
+      result: ExtractResult;
+    };
   };
 
   config: {

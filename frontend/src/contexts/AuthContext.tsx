@@ -8,12 +8,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import {
-  linuxio,
-  initStreamMux,
-  closeStreamMux,
-  type MuxStatus,
-} from "@/api";
+import { linuxio, initStreamMux, closeStreamMux, type MuxStatus } from "@/api";
 import {
   AuthContextType,
   AuthState,
@@ -214,6 +209,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       credentials: "include",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
@@ -255,7 +251,11 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   const signOut = useCallback(async () => {
     try {
-      await fetch(`${API_BASE}/auth/logout`, { credentials: "include" });
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
     } catch {
       // ignore; we still want to clear locally
     }

@@ -8,16 +8,17 @@ import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
-import { useStreamMux, encodeString, decodeString, type Stream } from "@/api";
+import {
+  useStreamMux,
+  encodeString,
+  decodeString,
+  openTerminalStream,
+  type Stream,
+} from "@/api";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
 const DEFAULT_FONT = 16;
-
-// Build terminal open payload: "terminal\0cols\0rows"
-function buildTerminalPayload(cols: number, rows: number): Uint8Array {
-  return encodeString(`terminal\0${cols}\0${rows}`);
-}
 
 const TerminalXTerm: React.FC = () => {
   const termRef = useRef<HTMLDivElement>(null);
@@ -26,7 +27,7 @@ const TerminalXTerm: React.FC = () => {
   const streamRef = useRef<Stream | null>(null);
   const theme = useTheme();
 
-  const { isOpen, openStream, getStream } = useStreamMux();
+  const { isOpen, getStream } = useStreamMux();
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
@@ -132,8 +133,7 @@ const TerminalXTerm: React.FC = () => {
         // Create new stream
         const cols = xterm.current.cols;
         const rows = xterm.current.rows;
-        const payload = buildTerminalPayload(cols, rows);
-        stream = openStream("terminal", payload);
+        stream = openTerminalStream(cols, rows);
 
         if (stream) {
           streamRef.current = stream;
@@ -196,7 +196,6 @@ const TerminalXTerm: React.FC = () => {
     };
   }, [
     isOpen,
-    openStream,
     getStream,
     theme.palette.background.default,
     theme.palette.text.primary,
@@ -236,8 +235,7 @@ const TerminalXTerm: React.FC = () => {
     // Open fresh stream (creates new PTY)
     const cols = xterm.current.cols;
     const rows = xterm.current.rows;
-    const payload = buildTerminalPayload(cols, rows);
-    const stream = openStream("terminal", payload);
+    const stream = openTerminalStream(cols, rows);
 
     if (stream) {
       streamRef.current = stream;

@@ -6,7 +6,6 @@ import {
   AlertTitle,
   Box,
   Button,
-  Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
@@ -31,8 +30,9 @@ import { toast } from "sonner";
 
 import {
   linuxio,
-  getStreamMux,
-  encodeString,
+  CACHE_TTL_MS,
+  isConnected,
+  openFileUploadStream,
   STREAM_CHUNK_SIZE,
   type ResultFrame,
 } from "@/api";
@@ -41,6 +41,7 @@ import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
 import ErrorState from "@/components/filebrowser/ErrorState";
+import FileBrowserDialog from "@/components/filebrowser/FileBrowserDialog";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import FileEditor from "@/components/filebrowser/FileEditor";
@@ -542,7 +543,7 @@ const FileBrowser: React.FC = () => {
       // Args: [path]
       const stat = await queryClient.fetchQuery(
         linuxio.filebrowser.resource_stat.queryOptions(selectedPath, {
-          staleTime: 5_000,
+          staleTime: CACHE_TTL_MS.FIVE_SECONDS,
         }),
       );
       const mode = stat.mode || "0644"; // Default if not available
@@ -566,6 +567,7 @@ const FileBrowser: React.FC = () => {
     }
   }, [
     handleCloseContextMenu,
+    queryClient,
     selectedPaths,
     selectedItems,
     setPermissionsDialog,
@@ -780,8 +782,7 @@ const FileBrowser: React.FC = () => {
   const handleSaveFile = useCallback(async () => {
     if (!editorRef.current || !editingPath) return;
 
-    const mux = getStreamMux();
-    if (!mux || mux.status !== "open") {
+    if (!isConnected()) {
       toast.error("Stream connection not ready");
       return;
     }
@@ -793,9 +794,7 @@ const FileBrowser: React.FC = () => {
       const contentBytes = encoder.encode(content);
       const contentSize = contentBytes.length;
 
-      // Open stream with fb-upload type: "fb-upload\0path\0size"
-      const payload = encodeString(`fb-upload\0${editingPath}\0${contentSize}`);
-      const stream = mux.openStream("fb-upload", payload);
+      const stream = openFileUploadStream(editingPath, contentSize);
 
       if (!stream) {
         toast.error("Failed to open save stream");
@@ -881,8 +880,7 @@ const FileBrowser: React.FC = () => {
   const handleSaveAndExit = useCallback(async () => {
     if (!editorRef.current || !editingPath) return;
 
-    const mux = getStreamMux();
-    if (!mux || mux.status !== "open") {
+    if (!isConnected()) {
       toast.error("Stream connection not ready");
       return;
     }
@@ -894,9 +892,7 @@ const FileBrowser: React.FC = () => {
       const contentBytes = encoder.encode(content);
       const contentSize = contentBytes.length;
 
-      // Open stream with fb-upload type
-      const payload = encodeString(`fb-upload\0${editingPath}\0${contentSize}`);
-      const stream = mux.openStream("fb-upload", payload);
+      const stream = openFileUploadStream(editingPath, contentSize);
 
       if (!stream) {
         toast.error("Failed to open save stream");
@@ -1270,7 +1266,7 @@ const FileBrowser: React.FC = () => {
         canRename={selectedPaths.size === 1}
       />
 
-      <Dialog
+      <FileBrowserDialog
         open={Boolean(detailTarget)}
         onClose={handleCloseDetailDialog}
         maxWidth="md"
@@ -1318,7 +1314,7 @@ const FileBrowser: React.FC = () => {
             />
           )}
         </DialogContent>
-      </Dialog>
+      </FileBrowserDialog>
 
       <InputDialog
         open={createFileDialog}
@@ -1359,7 +1355,7 @@ const FileBrowser: React.FC = () => {
         />
       )}
 
-      <Dialog
+      <FileBrowserDialog
         open={uploadDialogOpen}
         onClose={handleCloseUploadDialog}
         maxWidth="sm"
@@ -1435,9 +1431,9 @@ const FileBrowser: React.FC = () => {
             {isUploadProcessing ? "Uploading..." : "Upload"}
           </Button>
         </DialogActions>
-      </Dialog>
+      </FileBrowserDialog>
 
-      <Dialog
+      <FileBrowserDialog
         open={Boolean(overwriteTargets?.length)}
         onClose={handleCancelOverwrite}
         maxWidth="sm"
@@ -1467,7 +1463,7 @@ const FileBrowser: React.FC = () => {
             Overwrite
           </Button>
         </DialogActions>
-      </Dialog>
+      </FileBrowserDialog>
 
       <UnsavedChangesDialog
         open={closeEditorDialog}

@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { linuxio } from "@/api";
+import { linuxio, CACHE_TTL_MS } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
@@ -48,7 +48,7 @@ const UpdateList: React.FC<Props> = ({
       try {
         const detail = await queryClient.fetchQuery(
           linuxio.dbus.get_update_detail.queryOptions(packageId, {
-            staleTime: 5 * 60 * 1000,
+            staleTime: CACHE_TTL_MS.FIVE_MINUTES,
           }),
         );
         setChangelogs((prev) => ({

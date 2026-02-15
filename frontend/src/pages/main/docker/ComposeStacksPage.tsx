@@ -15,8 +15,9 @@ import ComposeList, { type ComposeProject } from "./ComposeList";
 
 import {
   linuxio,
-  encodeString,
-  getStreamMux,
+  CACHE_TTL_MS,
+  isConnected,
+  openFileUploadStream,
   STREAM_CHUNK_SIZE,
   type ResultFrame,
 } from "@/api";
@@ -248,7 +249,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             "",
             "true",
             {
-              staleTime: 0,
+              staleTime: CACHE_TTL_MS.NONE,
             },
           ),
         );
@@ -301,8 +302,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       filePath: string,
       override: boolean = false,
     ) => {
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         throw new Error("Stream connection not ready");
       }
@@ -311,13 +311,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       const contentBytes = encoder.encode(content);
       const contentSize = contentBytes.length;
 
-      // Build payload with optional override flag
-      const args = [filePath, contentSize.toString()];
-      if (override) {
-        args.push("true");
-      }
-      const payload = encodeString(`fb-upload\0${args.join("\0")}`);
-      const stream = mux.openStream("fb-upload", payload);
+      const stream = openFileUploadStream(filePath, contentSize, override);
 
       if (!stream) {
         toast.error("Failed to open save stream");
@@ -400,7 +394,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         if (editorMode === "create") {
           const pathInfo = await queryClient.fetchQuery(
             linuxio.docker.get_compose_file_path.queryOptions(stackName, {
-              staleTime: 0,
+              staleTime: CACHE_TTL_MS.NONE,
             }),
           );
           filePath = pathInfo.path;

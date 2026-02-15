@@ -24,7 +24,7 @@ import React, {
 
 import {
   useStreamMux,
-  dockerLogsPayload,
+  openDockerLogsStream,
   decodeString,
   type Stream,
 } from "@/api";
@@ -53,7 +53,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
   const hasReceivedData = useRef(false);
   const lastContainerId = useRef<string | null>(null);
 
-  const { isOpen: muxIsOpen, openStream } = useStreamMux();
+  const { isOpen: muxIsOpen } = useStreamMux();
 
   // Scroll to bottom when logs change
   useEffect(() => {
@@ -96,9 +96,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     lastContainerId.current = containerId;
     hasReceivedData.current = false;
 
-    // Open the docker-logs stream
-    const payload = dockerLogsPayload(containerId, "100");
-    const stream = openStream("docker-logs", payload);
+    const stream = openDockerLogsStream(containerId, "100");
 
     if (!stream) {
       queueMicrotask(() => {
@@ -127,7 +125,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
         setIsLoading(false);
       }
     };
-  }, [open, containerId, muxIsOpen, openStream]);
+  }, [open, containerId, muxIsOpen]);
 
   // Handle liveMode toggle - close stream when disabled
   useEffect(() => {
@@ -141,8 +139,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       muxIsOpen
     ) {
       // Re-open stream when live mode is re-enabled
-      const payload = dockerLogsPayload(containerId, "0"); // Don't re-fetch old logs
-      const stream = openStream("docker-logs", payload);
+      const stream = openDockerLogsStream(containerId, "0"); // Don't re-fetch old logs
 
       if (stream) {
         streamRef.current = stream;
@@ -155,7 +152,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
         };
       }
     }
-  }, [liveMode, open, containerId, muxIsOpen, openStream, closeStream]);
+  }, [liveMode, open, containerId, muxIsOpen, closeStream]);
 
   // Cleanup stream when dialog closes (only close stream, not state)
   useEffect(() => {

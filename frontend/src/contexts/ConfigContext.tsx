@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-import { linuxio, LinuxIOError, waitForStreamMux } from "@/api";
+import { linuxio, CACHE_TTL_MS, LinuxIOError, waitForStreamMux } from "@/api";
 import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
@@ -112,7 +112,7 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
         }
 
         const settings = await queryClient.fetchQuery<BackendSettings>(
-          linuxio.config.get.queryOptions({ staleTime: 0 }),
+          linuxio.config.get.queryOptions({ staleTime: CACHE_TTL_MS.NONE }),
         );
 
         if (!cancelled) {

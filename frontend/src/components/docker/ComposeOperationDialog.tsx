@@ -14,7 +14,12 @@ import {
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
-import { useStreamMux, decodeString, encodeString, type Stream } from "@/api";
+import {
+  useStreamMux,
+  decodeString,
+  openDockerComposeStream,
+  type Stream,
+} from "@/api";
 
 interface ComposeOperationDialogProps {
   open: boolean;
@@ -44,7 +49,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const outputBoxRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<Stream | null>(null);
 
-  const { isOpen: muxIsOpen, openStream } = useStreamMux();
+  const { isOpen: muxIsOpen } = useStreamMux();
 
   // Scroll to bottom when output changes
   useEffect(() => {
@@ -88,14 +93,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       return;
     }
 
-    // Build payload: docker-compose\0action\0projectName\0composePath
-    let payloadStr = `docker-compose\0${action}\0${projectName}`;
-    if (composePath) {
-      payloadStr += `\0${composePath}`;
-    }
-
-    const payload = encodeString(payloadStr);
-    const stream = openStream("docker-compose", payload);
+    const stream = openDockerComposeStream(action, projectName, composePath);
 
     if (!stream) {
       queueMicrotask(() => {
@@ -140,7 +138,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       streamRef.current = null;
       setIsRunning(false);
     };
-  }, [open, action, projectName, composePath, muxIsOpen, openStream]);
+  }, [open, action, projectName, composePath, muxIsOpen]);
 
   const getActionLabel = () => {
     switch (action) {
