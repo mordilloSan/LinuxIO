@@ -63,15 +63,12 @@ func CheckForUpdate() *UpdateInfo {
 // A release version (v1.2.3) is considered newer than a dev version (dev-v1.2.3) of the same number.
 func isNewerVersion(latest, current string) bool {
 	// Strip leading 'dev-' prefix for comparison (but remember if current was dev)
-	currentIsDev := strings.HasPrefix(current, "dev-")
-	latestIsDev := strings.HasPrefix(latest, "dev-")
-
-	latest = strings.TrimPrefix(latest, "dev-")
-	current = strings.TrimPrefix(current, "dev-")
+	current, currentIsDev := strings.CutPrefix(current, "dev-")
+	latest, latestIsDev := strings.CutPrefix(latest, "dev-")
 
 	// Normalize versions (remove 'v' prefix if present)
-	latest = strings.TrimPrefix(latest, "v")
-	current = strings.TrimPrefix(current, "v")
+	latest, _ = strings.CutPrefix(latest, "v")
+	current, _ = strings.CutPrefix(current, "v")
 
 	latestParts := strings.Split(latest, ".")
 	currentParts := strings.Split(current, ".")

@@ -27,6 +27,7 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 
 	// Apply middleware chain
 	var handler http.Handler = mux
+	handler = http.NewCrossOriginProtection().Handler(handler)
 	handler = LoggerMiddleware(handler)
 	handler = RecoveryMiddleware(handler)
 
