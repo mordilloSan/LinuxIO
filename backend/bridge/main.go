@@ -263,16 +263,15 @@ func handleYamuxSession(conn net.Conn) {
 			continue
 		}
 		streamID := hex.EncodeToString(idBytes[:])
-		streamWg.Add(1)
+		s := stream
+		sid := streamID
 		wg.Add(1)
-
-		go func(s net.Conn, streamID string) {
-			defer streamWg.Done()
+		streamWg.Go(func() {
 			defer wg.Done()
 			defer s.Close()
 
-			handleYamuxStream(Sess, s, streamID)
-		}(stream, streamID)
+			handleYamuxStream(Sess, s, sid)
+		})
 	}
 
 waitForStreams:

@@ -113,11 +113,9 @@ func getDockerMemoryUsage() (uint64, error) {
 	)
 
 	for _, ctr := range containers {
-		wg.Add(1)
 		id := ctr.ID
 
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -147,7 +145,7 @@ func getDockerMemoryUsage() (uint64, error) {
 			}
 
 			ch <- agg{n: usage}
-		}()
+		})
 	}
 
 	wg.Wait()

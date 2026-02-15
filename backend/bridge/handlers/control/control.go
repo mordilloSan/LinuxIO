@@ -220,15 +220,12 @@ func runInstallScript(version string) error {
 
 	// Stream logs in real-time with WaitGroup to ensure completion
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		logStream(stdout, "", true)
-	}()
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		logStream(stderr, "", false)
-	}()
+	})
 
 	// Wait for command to complete
 	err = cmd.Wait()

@@ -116,19 +116,16 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 
 	// Start bidirectional relay
 	var wg sync.WaitGroup
-	wg.Add(2)
 
 	// PTY → Stream (output)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sts.relayPTYToStream()
-	}()
+	})
 
 	// Stream → PTY (input)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sts.relayStreamToPTY()
-	}()
+	})
 
 	wg.Wait()
 	sts.cleanup()
@@ -287,17 +284,14 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(2)
 
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sts.relayPTYToStream()
-	}()
+	})
 
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sts.relayStreamToPTY()
-	}()
+	})
 
 	wg.Wait()
 	sts.cleanup()

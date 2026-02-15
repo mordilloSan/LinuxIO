@@ -154,10 +154,25 @@ func resourcePost(args []string) (any, error) {
 	override := len(args) > 1 && args[1] == "true"
 
 	isDir := strings.HasSuffix(path, "/")
-	realPath := filepath.Join(path)
+	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	if cleanPath == "/" {
+		return nil, fmt.Errorf("bad_request:cannot create root")
+	}
+	relPath := strings.TrimPrefix(cleanPath, "/")
+
+	root, err := os.OpenRoot("/")
+	if err != nil {
+		logger.Debugf("error opening filesystem root: %v", err)
+		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+	}
+	defer func() {
+		if cerr := root.Close(); cerr != nil {
+			logger.Warnf("failed to close filesystem root: %v", cerr)
+		}
+	}()
 
 	// Check for file/folder conflicts before creation
-	if stat, statErr := os.Stat(realPath); statErr == nil {
+	if stat, statErr := root.Stat(relPath); statErr == nil {
 		existingIsDir := stat.IsDir()
 		requestingDir := isDir
 
@@ -168,18 +183,25 @@ func resourcePost(args []string) (any, error) {
 
 	// Handle directory creation
 	if isDir {
-		err = services.CreateDirectory(iteminfo.FileOptions{
-			Path:   path,
-			Expand: false,
-		})
-		if err != nil {
+		if stat, statErr := root.Stat(relPath); statErr == nil && !stat.IsDir() && override {
+			if removeErr := root.Remove(relPath); removeErr != nil {
+				logger.Debugf("error removing existing file for directory create: %v", removeErr)
+				return nil, fmt.Errorf("bad_request:%v", removeErr)
+			}
+		}
+
+		if err := root.MkdirAll(relPath, services.PermDir); err != nil {
 			logger.Debugf("error writing directory: %v", err)
+			return nil, fmt.Errorf("bad_request:%v", err)
+		}
+		if err := root.Chmod(relPath, services.PermDir); err != nil {
+			logger.Debugf("error setting directory permissions: %v", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
 
 		// Notify indexer about the new directory
-		if info, statErr := os.Stat(realPath); statErr == nil {
-			if indexErr := addToIndexer(path, info); indexErr != nil {
+		if info, statErr := root.Stat(relPath); statErr == nil {
+			if indexErr := addToIndexer(cleanPath, info); indexErr != nil {
 				logger.Debugf("failed to update indexer after directory create: %v", indexErr)
 			}
 		}
@@ -189,30 +211,34 @@ func resourcePost(args []string) (any, error) {
 
 	// Handle empty file creation
 	// File uploads with content use yamux streams (fb-upload), not this handler
-	parentDir := filepath.Dir(realPath)
-	if mkdirErr := os.MkdirAll(parentDir, services.PermDir); mkdirErr != nil {
-		logger.Debugf("error creating parent directory: %v", mkdirErr)
-		return nil, fmt.Errorf("bad_request:failed to create parent directory: %v", mkdirErr)
+	parentRel := filepath.Dir(relPath)
+	if parentRel != "." {
+		if mkdirErr := root.MkdirAll(parentRel, services.PermDir); mkdirErr != nil {
+			logger.Debugf("error creating parent directory: %v", mkdirErr)
+			return nil, fmt.Errorf("bad_request:failed to create parent directory: %v", mkdirErr)
+		}
 	}
 
 	// Check if file exists
-	if _, statErr := os.Stat(realPath); statErr == nil {
+	if _, statErr := root.Stat(relPath); statErr == nil {
 		if !override {
 			return nil, fmt.Errorf("bad_request:file already exists")
 		}
 	}
 
 	// Create empty file
-	f, err := os.Create(realPath)
+	f, err := root.OpenFile(relPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, services.PermFile)
 	if err != nil {
 		logger.Debugf("error creating file: %v", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
 	}
-	f.Close()
+	if cerr := f.Close(); cerr != nil {
+		logger.Warnf("failed to close created file: %v", cerr)
+	}
 
 	// Notify indexer about the new file
-	if info, err := os.Stat(realPath); err == nil {
-		if err := addToIndexer(path, info); err != nil {
+	if info, err := root.Stat(relPath); err == nil {
+		if err := addToIndexer(cleanPath, info); err != nil {
 			logger.Debugf("failed to update indexer after file create: %v", err)
 		}
 	}
@@ -645,6 +671,20 @@ func fetchDirSizeFromIndexer(path string) (int64, error) {
 	return payload.Bytes, nil
 }
 
+func statWithFSRoot(path string) (os.FileInfo, error) {
+	root, err := os.OpenRoot("/")
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	if cleanPath == "/" {
+		return root.Stat(".")
+	}
+	return root.Stat(strings.TrimPrefix(cleanPath, "/"))
+}
+
 // dirSize calculates the total size of a directory recursively
 // Args: [path]
 func dirSize(args []string) (any, error) {
@@ -653,10 +693,9 @@ func dirSize(args []string) (any, error) {
 	}
 
 	path := args[0]
-	realPath := filepath.Join(path)
 
 	// Check if path exists and is a directory
-	stat, err := os.Stat(realPath)
+	stat, err := statWithFSRoot(path)
 	if err != nil {
 		logger.Debugf("error stating directory: %v", err)
 		return nil, fmt.Errorf("bad_request:directory not found")
@@ -701,8 +740,7 @@ func subfolders(args []string) (any, error) {
 
 	// Validate path exists and is a directory if not root.
 	if path != "/" {
-		realPath := filepath.Join(path)
-		stat, err := os.Stat(realPath)
+		stat, err := statWithFSRoot(path)
 		if err != nil {
 			logger.Debugf("error stating directory: %v", err)
 			return nil, fmt.Errorf("bad_request:directory not found")
