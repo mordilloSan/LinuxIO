@@ -190,13 +190,13 @@ func resourcePost(args []string) (any, error) {
 			}
 		}
 
-		if err := root.MkdirAll(relPath, services.PermDir); err != nil {
-			logger.Debugf("error writing directory: %v", err)
-			return nil, fmt.Errorf("bad_request:%v", err)
+		if mkdirErr := root.MkdirAll(relPath, services.PermDir); mkdirErr != nil {
+			logger.Debugf("error writing directory: %v", mkdirErr)
+			return nil, fmt.Errorf("bad_request:%v", mkdirErr)
 		}
-		if err := root.Chmod(relPath, services.PermDir); err != nil {
-			logger.Debugf("error setting directory permissions: %v", err)
-			return nil, fmt.Errorf("bad_request:%v", err)
+		if chmodErr := root.Chmod(relPath, services.PermDir); chmodErr != nil {
+			logger.Debugf("error setting directory permissions: %v", chmodErr)
+			return nil, fmt.Errorf("bad_request:%v", chmodErr)
 		}
 
 		// Notify indexer about the new directory
