@@ -73,6 +73,11 @@ GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(s
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
+SKIP_ENSURE_GO ?= 0
+GO_BUILD_PREREQ := ensure-go
+ifeq ($(SKIP_ENSURE_GO),1)
+GO_BUILD_PREREQ :=
+endif
 
 # ---- toolchain --------------------------------------------------------------
 CC       ?= gcc
@@ -346,7 +351,7 @@ build-vite:
 	@echo "🏗️  Building frontend..."
 	@bash -c 'cd frontend && npx vite build && echo "✅ Frontend built successfully!"'
 
-build-backend: ensure-go
+build-backend: $(GO_BUILD_PREREQ)
 	@echo ""
 	@echo "🏗️  Building backend..."
 	@echo "📦 Module: $(MODULE_PATH)"
@@ -372,7 +377,7 @@ build-backend: ensure-go
 	echo "📊 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
 
-build-bridge: ensure-go
+build-bridge: $(GO_BUILD_PREREQ)
 	@echo ""
 	@echo "🌉 Building bridge..."
 	@echo "📦 Module: $(MODULE_PATH)"
@@ -417,7 +422,7 @@ build-auth:
 	  echo "🔎 checksec:"; checksec --file=linuxio-auth || true; \
 	fi
 
-build-cli: ensure-go
+build-cli: $(GO_BUILD_PREREQ)
 	@echo ""
 	@echo "🖥️  Building CLI..."
 	@cd "$(BACKEND_DIR)" && \
@@ -502,14 +507,14 @@ dev: setup dev-prep
 	@linuxio logs $(DEV_LOG_LINES)
 
 # Internal target: build backend + auth + cli (requires bridge already built)
-_build-binaries:
+_build-binaries: ensure-go
 	@echo ""
 	@echo "🔐 Capturing bridge hash for backend build..."
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Hash: $$BRIDGE_HASH"; \
-	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
+	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-auth
-	@$(MAKE) --no-print-directory build-cli
+	@$(MAKE) --no-print-directory build-cli SKIP_ENSURE_GO=1
 
 build: generate test build-vite build-bridge _build-binaries
 
