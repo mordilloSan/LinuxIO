@@ -14,11 +14,7 @@ import {
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
-import {
-  useStreamMux,
-  decodeString,
-  openDockerComposeStream,
-} from "@/api";
+import { useStreamMux, decodeString, openDockerComposeStream } from "@/api";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
 interface ComposeOperationDialogProps {
@@ -124,7 +120,15 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
         setIsRunning(false);
       },
     });
-  }, [open, action, projectName, composePath, muxIsOpen, openStream, streamRef]);
+  }, [
+    open,
+    action,
+    projectName,
+    composePath,
+    muxIsOpen,
+    openStream,
+    streamRef,
+  ]);
 
   const getActionLabel = () => {
     switch (action) {
