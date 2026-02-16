@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -115,9 +117,17 @@ func handleDownload(stream net.Conn, args []string) error {
 
 	path := args[0]
 	realPath := filepath.Clean(path)
+	root, err := fsroot.Open()
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, "failed to access filesystem", 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("failed to access filesystem: %w", err)
+	}
+	defer root.Close()
+	realRel := fsroot.ToRel(realPath)
 
 	// Stat the file
-	stat, err := os.Stat(realPath)
+	stat, err := root.Root.Stat(realRel)
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("file not found: %v", err), 404)
 		_ = ipc.WriteStreamClose(stream, 0)
@@ -139,7 +149,7 @@ func handleDownload(stream net.Conn, args []string) error {
 	})
 
 	// Open the file
-	file, err := os.Open(realPath)
+	file, err := root.Root.Open(realRel)
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("cannot open file: %v", err), 500)
 		_ = ipc.WriteStreamClose(stream, 0)
@@ -225,13 +235,21 @@ func handleUpload(stream net.Conn, args []string) error {
 	}
 
 	realPath := filepath.Clean(path)
+	root, err := fsroot.Open()
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, "failed to access filesystem", 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("failed to access filesystem: %w", err)
+	}
+	defer root.Close()
+	realRel := fsroot.ToRel(realPath)
 
 	// Check if file exists and save its attributes for later restoration
 	var preserveMode os.FileMode
 	var preserveUID, preserveGID int
 	var hasExistingAttrs bool
 
-	if existingStat, statErr := os.Stat(realPath); statErr == nil {
+	if existingStat, statErr := root.Root.Stat(realRel); statErr == nil {
 		if existingStat.IsDir() {
 			_ = ipc.WriteResultError(stream, 0, "destination is a directory", 400)
 			_ = ipc.WriteStreamClose(stream, 0)
@@ -246,14 +264,14 @@ func handleUpload(stream net.Conn, args []string) error {
 	}
 
 	// Ensure parent directory exists
-	if mkdirErr := os.MkdirAll(filepath.Dir(realPath), services.PermDir); mkdirErr != nil {
+	if mkdirErr := root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(realPath)), services.PermDir); mkdirErr != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("cannot create parent directory: %v", mkdirErr), 500)
 		_ = ipc.WriteStreamClose(stream, 0)
 		return fmt.Errorf("create parent dir: %w", mkdirErr)
 	}
 
 	// Create target file directly (delete partial on failure)
-	file, err := os.Create(realPath)
+	file, err := root.Root.OpenFile(realRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, services.PermFile)
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("cannot create file: %v", err), 500)
 		_ = ipc.WriteStreamClose(stream, 0)
@@ -265,7 +283,7 @@ func handleUpload(stream net.Conn, args []string) error {
 	defer func() {
 		file.Close()
 		if !uploadSuccess {
-			os.Remove(realPath) // Clean up partial file on failure
+			_ = root.Root.Remove(realRel) // Clean up partial file on failure
 		}
 	}()
 
@@ -346,26 +364,26 @@ readLoop:
 
 	// Set permissions: restore existing or use default
 	if hasExistingAttrs {
-		if err := os.Chmod(realPath, preserveMode); err != nil {
+		if err := root.Root.Chmod(realRel, preserveMode); err != nil {
 			logger.Debugf(" Failed to restore permissions: %v", err)
 		}
-		if err := os.Chown(realPath, preserveUID, preserveGID); err != nil {
+		if err := root.Root.Chown(realRel, preserveUID, preserveGID); err != nil {
 			logger.Debugf(" Failed to restore ownership: %v", err)
 		}
 	} else {
-		if err := os.Chmod(realPath, services.PermFile); err != nil {
+		if err := root.Root.Chmod(realRel, services.PermFile); err != nil {
 			logger.Debugf(" Failed to set permissions: %v", err)
 		}
 	}
 
 	// Notify indexer about the new file (non-blocking)
-	go func() {
-		if finalInfo, err := os.Stat(realPath); err == nil {
-			if err := addToIndexer(path, finalInfo); err != nil {
+	if finalInfo, err := root.Root.Stat(realRel); err == nil {
+		go func(info os.FileInfo) {
+			if err := addToIndexer(path, info); err != nil {
 				logger.Debugf(" Failed to update indexer: %v", err)
 			}
-		}
-	}()
+		}(finalInfo)
+	}
 
 	// Send success result
 	_ = ipc.WriteResultOK(stream, 0, map[string]any{
@@ -584,6 +602,13 @@ func handleCompress(stream net.Conn, args []string) error {
 
 	// Ensure destination has correct extension
 	targetPath := filepath.Clean(destination)
+	root, err := fsroot.Open()
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, "failed to access filesystem", 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("failed to access filesystem: %w", err)
+	}
+	defer root.Close()
 	lowerTarget := strings.ToLower(targetPath)
 	switch extension {
 	case ".zip":
@@ -595,16 +620,17 @@ func handleCompress(stream net.Conn, args []string) error {
 			targetPath = targetPath + ".tar.gz"
 		}
 	}
+	targetRel := fsroot.ToRel(targetPath)
 
 	// Check if destination exists
-	if info, statErr := os.Stat(targetPath); statErr == nil {
+	if info, statErr := root.Root.Stat(targetRel); statErr == nil {
 		if info.IsDir() {
 			_ = ipc.WriteResultError(stream, 0, "destination is a directory", 400)
 			_ = ipc.WriteStreamClose(stream, 0)
 			return fmt.Errorf("destination is a directory")
 		}
 		// Remove existing file (overwrite)
-		if rmErr := os.Remove(targetPath); rmErr != nil {
+		if rmErr := root.Root.Remove(targetRel); rmErr != nil {
 			_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("cannot remove existing file: %v", rmErr), 500)
 			_ = ipc.WriteStreamClose(stream, 0)
 			return fmt.Errorf("remove existing file: %w", rmErr)
@@ -612,10 +638,10 @@ func handleCompress(stream net.Conn, args []string) error {
 	}
 
 	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(targetPath), services.PermDir); err != nil {
-		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("cannot create parent directory: %v", err), 500)
+	if mkdirErr := root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(targetPath)), services.PermDir); mkdirErr != nil {
+		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("cannot create parent directory: %v", mkdirErr), 500)
 		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("create parent dir: %w", err)
+		return fmt.Errorf("create parent dir: %w", mkdirErr)
 	}
 
 	// Set up abort monitoring
@@ -664,13 +690,13 @@ func handleCompress(stream net.Conn, args []string) error {
 	}
 	if err == ipc.ErrAborted {
 		logger.Infof(" Compress aborted, cleaning up: %s", targetPath)
-		os.Remove(targetPath)
+		_ = root.Root.Remove(targetRel)
 		_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
 		_ = ipc.WriteStreamClose(stream, 0)
 		return ipc.ErrAborted
 	}
 	if err != nil {
-		os.Remove(targetPath) // Clean up partial file on error
+		_ = root.Root.Remove(targetRel) // Clean up partial file on error
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("compression failed: %v", err), 500)
 		_ = ipc.WriteStreamClose(stream, 0)
 		return fmt.Errorf("create archive: %w", err)
@@ -678,14 +704,14 @@ func handleCompress(stream net.Conn, args []string) error {
 
 	// Get final archive size
 	var archiveSize int64
-	if info, err := os.Stat(targetPath); err == nil {
+	if info, err := root.Root.Stat(targetRel); err == nil {
 		archiveSize = info.Size()
 		// Notify indexer
-		go func() {
-			if err := addToIndexer(targetPath, info); err != nil {
+		go func(stat os.FileInfo) {
+			if err := addToIndexer(targetPath, stat); err != nil {
 				logger.Debugf(" Failed to update indexer: %v", err)
 			}
-		}()
+		}(info)
 	}
 
 	// Send success result
@@ -712,6 +738,13 @@ func handleExtract(stream net.Conn, args []string) error {
 	}
 
 	archivePath := filepath.Clean(args[0])
+	root, err := fsroot.Open()
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, "failed to access filesystem", 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("failed to access filesystem: %w", err)
+	}
+	defer root.Close()
 
 	// Determine destination
 	var destination string
@@ -722,11 +755,11 @@ func handleExtract(stream net.Conn, args []string) error {
 	}
 
 	// Check if destination already exists (for cleanup decision on abort)
-	_, statErr := os.Stat(destination)
+	_, statErr := root.Root.Stat(fsroot.ToRel(destination))
 	destExistedBefore := statErr == nil
 
 	// Check archive exists
-	archiveStat, err := os.Stat(archivePath)
+	archiveStat, err := root.Root.Stat(fsroot.ToRel(archivePath))
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("archive not found: %v", err), 404)
 		_ = ipc.WriteStreamClose(stream, 0)
@@ -782,7 +815,7 @@ func handleExtract(stream net.Conn, args []string) error {
 		// Clean up extracted files on abort
 		// Only remove the destination if we created it (didn't exist before)
 		if !destExistedBefore {
-			if removeErr := os.RemoveAll(destination); removeErr != nil {
+			if removeErr := root.Root.RemoveAll(fsroot.ToRel(destination)); removeErr != nil {
 				logger.Debugf(" Failed to clean up extraction directory: %v", removeErr)
 			}
 		}
@@ -797,17 +830,30 @@ func handleExtract(stream net.Conn, args []string) error {
 	}
 
 	// Notify indexer about extracted files (non-blocking)
-	go func() {
-		_ = filepath.Walk(destination, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
+	go func(destPath string) {
+		walkRoot, openErr := fsroot.Open()
+		if openErr != nil {
+			logger.Debugf(" Failed to open root for indexer walk: %v", openErr)
+			return
+		}
+		defer walkRoot.Close()
+
+		_ = walkRoot.WalkDir(destPath, func(rel string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
 				return nil
 			}
-			if err := addToIndexer(path, info); err != nil {
-				logger.Debugf(" Failed to update indexer for %s: %v", path, err)
+			info, infoErr := entry.Info()
+			if infoErr != nil {
+				return nil
+			}
+
+			absPath := filepath.Clean("/" + strings.TrimPrefix(rel, "/"))
+			if err := addToIndexer(absPath, info); err != nil {
+				logger.Debugf(" Failed to update indexer for %s: %v", absPath, err)
 			}
 			return nil
 		})
-	}()
+	}(destination)
 
 	// Send success result
 	_ = ipc.WriteResultOK(stream, 0, map[string]any{
@@ -1032,13 +1078,20 @@ func handleCopy(stream net.Conn, args []string) error {
 
 	source := filepath.Clean(args[0])
 	destination := filepath.Clean(args[1])
+	root, err := fsroot.Open()
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, "failed to access filesystem", 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("failed to access filesystem: %w", err)
+	}
+	defer root.Close()
 	overwrite := false
 	if len(args) > 2 {
 		overwrite = args[2] == "true"
 	}
 
 	// Validate source exists
-	sourceInfo, err := os.Stat(source)
+	sourceInfo, err := root.Root.Stat(fsroot.ToRel(source))
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("source not found: %v", err), 404)
 		_ = ipc.WriteStreamClose(stream, 0)
@@ -1046,11 +1099,11 @@ func handleCopy(stream net.Conn, args []string) error {
 	}
 
 	// Check if destination is a directory - if so, append source filename
-	destInfo, destErr := os.Stat(destination)
+	destInfo, destErr := root.Root.Stat(fsroot.ToRel(destination))
 	if destErr == nil && destInfo.IsDir() {
 		destination = filepath.Join(destination, filepath.Base(source))
 		// Re-check the new destination path
-		destInfo, destErr = os.Stat(destination)
+		destInfo, destErr = root.Root.Stat(fsroot.ToRel(destination))
 	}
 
 	// Check destination conflicts
@@ -1119,13 +1172,13 @@ func handleCopy(stream net.Conn, args []string) error {
 	}
 
 	// Notify indexer about the copied file/directory (non-blocking)
-	go func() {
-		if info, err := os.Stat(destination); err == nil {
-			if err := addToIndexer(destination, info); err != nil {
+	if info, err := root.Root.Stat(fsroot.ToRel(destination)); err == nil {
+		go func(stat os.FileInfo) {
+			if err := addToIndexer(destination, stat); err != nil {
 				logger.Debugf(" Failed to update indexer: %v", err)
 			}
-		}
-	}()
+		}(info)
+	}
 
 	// Send success result
 	_ = ipc.WriteResultOK(stream, 0, map[string]any{
@@ -1152,13 +1205,20 @@ func handleMove(stream net.Conn, args []string) error {
 
 	source := filepath.Clean(args[0])
 	destination := filepath.Clean(args[1])
+	root, err := fsroot.Open()
+	if err != nil {
+		_ = ipc.WriteResultError(stream, 0, "failed to access filesystem", 500)
+		_ = ipc.WriteStreamClose(stream, 0)
+		return fmt.Errorf("failed to access filesystem: %w", err)
+	}
+	defer root.Close()
 	overwrite := false
 	if len(args) > 2 {
 		overwrite = args[2] == "true"
 	}
 
 	// Validate source exists
-	sourceInfo, err := os.Stat(source)
+	sourceInfo, err := root.Root.Stat(fsroot.ToRel(source))
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("source not found: %v", err), 404)
 		_ = ipc.WriteStreamClose(stream, 0)
@@ -1166,11 +1226,11 @@ func handleMove(stream net.Conn, args []string) error {
 	}
 
 	// Check if destination is a directory - if so, append source filename
-	destInfo, destErr := os.Stat(destination)
+	destInfo, destErr := root.Root.Stat(fsroot.ToRel(destination))
 	if destErr == nil && destInfo.IsDir() {
 		destination = filepath.Join(destination, filepath.Base(source))
 		// Re-check the new destination path
-		destInfo, destErr = os.Stat(destination)
+		destInfo, destErr = root.Root.Stat(fsroot.ToRel(destination))
 	}
 
 	// Check destination conflicts
@@ -1238,19 +1298,20 @@ func handleMove(stream net.Conn, args []string) error {
 		return fmt.Errorf("move failed: %w", err)
 	}
 
+	destInfoAfterMove, _ := root.Root.Stat(fsroot.ToRel(destination))
 	// Notify indexer about the move (non-blocking)
-	go func() {
+	go func(info os.FileInfo) {
 		// Delete source from indexer
 		if err := deleteFromIndexer(source); err != nil {
 			logger.Debugf(" Failed to delete from indexer: %v", err)
 		}
 		// Add destination to indexer
-		if info, err := os.Stat(destination); err == nil {
+		if info != nil {
 			if err := addToIndexer(destination, info); err != nil {
 				logger.Debugf(" Failed to update indexer: %v", err)
 			}
 		}
-	}()
+	}(destInfoAfterMove)
 
 	// Send success result
 	_ = ipc.WriteResultOK(stream, 0, map[string]any{

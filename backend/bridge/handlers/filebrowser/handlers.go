@@ -11,6 +11,8 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -115,9 +117,14 @@ func RegisterHandlers() {
 
 		path := args[0]
 		realPath := filepath.Clean(path)
+		root, err := fsroot.Open()
+		if err != nil {
+			return fmt.Errorf("failed to access filesystem: %w", err)
+		}
+		defer root.Close()
 
 		// Stat the file
-		stat, err := os.Stat(realPath)
+		stat, err := root.Root.Stat(fsroot.ToRel(realPath))
 		if err != nil {
 			return fmt.Errorf("file not found: %w", err)
 		}
@@ -135,7 +142,7 @@ func RegisterHandlers() {
 		})
 
 		// Open file
-		file, err := os.Open(realPath)
+		file, err := root.Root.Open(fsroot.ToRel(realPath))
 		if err != nil {
 			return fmt.Errorf("cannot open file: %w", err)
 		}
@@ -243,9 +250,15 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 	}
 
 	realPath := filepath.Clean(path)
+	root, err := fsroot.Open()
+	if err != nil {
+		return fmt.Errorf("failed to access filesystem: %w", err)
+	}
+	defer root.Close()
+	realRel := fsroot.ToRel(realPath)
 
 	// Check if file exists
-	existingStat, existsErr := os.Stat(realPath)
+	existingStat, existsErr := root.Root.Stat(realRel)
 	var preserveMode os.FileMode
 	var preserveUID, preserveGID int
 	if existsErr == nil {
@@ -263,13 +276,14 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 
 	// Create temp file
 	tempPath := realPath + ".upload.tmp"
-	file, err := os.Create(tempPath)
+	tempRel := fsroot.ToRel(tempPath)
+	file, err := root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, services.PermFile)
 	if err != nil {
 		return fmt.Errorf("cannot create temp file: %w", err)
 	}
 	defer func() {
 		file.Close()
-		os.Remove(tempPath)
+		_ = root.Root.Remove(tempRel)
 	}()
 
 	// Send initial progress
@@ -321,14 +335,14 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 	}
 
 	// Rename temp to final
-	if err := os.Rename(tempPath, realPath); err != nil {
+	if err := root.Root.Rename(tempRel, realRel); err != nil {
 		return fmt.Errorf("rename failed: %w", err)
 	}
 
 	// Restore permissions if file existed
 	if existsErr == nil {
-		_ = os.Chmod(realPath, preserveMode)
-		_ = os.Chown(realPath, preserveUID, preserveGID)
+		_ = root.Root.Chmod(realRel, preserveMode)
+		_ = root.Root.Chown(realRel, preserveUID, preserveGID)
 	}
 
 	logger.Infof("[FBHandler] Upload complete: path=%s size=%d", path, bytesWritten)

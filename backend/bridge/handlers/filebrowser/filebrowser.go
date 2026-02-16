@@ -21,6 +21,7 @@ import (
 	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -160,7 +161,7 @@ func resourcePost(args []string) (any, error) {
 	}
 	relPath := strings.TrimPrefix(cleanPath, "/")
 
-	root, err := os.OpenRoot("/")
+	root, err := fsroot.Open()
 	if err != nil {
 		logger.Debugf("error opening filesystem root: %v", err)
 		return nil, fmt.Errorf("bad_request:failed to access filesystem")
@@ -172,7 +173,7 @@ func resourcePost(args []string) (any, error) {
 	}()
 
 	// Check for file/folder conflicts before creation
-	if stat, statErr := root.Stat(relPath); statErr == nil {
+	if stat, statErr := root.Root.Stat(relPath); statErr == nil {
 		existingIsDir := stat.IsDir()
 		requestingDir := isDir
 
@@ -183,24 +184,24 @@ func resourcePost(args []string) (any, error) {
 
 	// Handle directory creation
 	if isDir {
-		if stat, statErr := root.Stat(relPath); statErr == nil && !stat.IsDir() && override {
-			if removeErr := root.Remove(relPath); removeErr != nil {
+		if stat, statErr := root.Root.Stat(relPath); statErr == nil && !stat.IsDir() && override {
+			if removeErr := root.Root.Remove(relPath); removeErr != nil {
 				logger.Debugf("error removing existing file for directory create: %v", removeErr)
 				return nil, fmt.Errorf("bad_request:%v", removeErr)
 			}
 		}
 
-		if mkdirErr := root.MkdirAll(relPath, services.PermDir); mkdirErr != nil {
+		if mkdirErr := root.Root.MkdirAll(relPath, services.PermDir); mkdirErr != nil {
 			logger.Debugf("error writing directory: %v", mkdirErr)
 			return nil, fmt.Errorf("bad_request:%v", mkdirErr)
 		}
-		if chmodErr := root.Chmod(relPath, services.PermDir); chmodErr != nil {
+		if chmodErr := root.Root.Chmod(relPath, services.PermDir); chmodErr != nil {
 			logger.Debugf("error setting directory permissions: %v", chmodErr)
 			return nil, fmt.Errorf("bad_request:%v", chmodErr)
 		}
 
 		// Notify indexer about the new directory
-		if info, statErr := root.Stat(relPath); statErr == nil {
+		if info, statErr := root.Root.Stat(relPath); statErr == nil {
 			if indexErr := addToIndexer(cleanPath, info); indexErr != nil {
 				logger.Debugf("failed to update indexer after directory create: %v", indexErr)
 			}
@@ -213,21 +214,21 @@ func resourcePost(args []string) (any, error) {
 	// File uploads with content use yamux streams (fb-upload), not this handler
 	parentRel := filepath.Dir(relPath)
 	if parentRel != "." {
-		if mkdirErr := root.MkdirAll(parentRel, services.PermDir); mkdirErr != nil {
+		if mkdirErr := root.Root.MkdirAll(parentRel, services.PermDir); mkdirErr != nil {
 			logger.Debugf("error creating parent directory: %v", mkdirErr)
 			return nil, fmt.Errorf("bad_request:failed to create parent directory: %v", mkdirErr)
 		}
 	}
 
 	// Check if file exists
-	if _, statErr := root.Stat(relPath); statErr == nil {
+	if _, statErr := root.Root.Stat(relPath); statErr == nil {
 		if !override {
 			return nil, fmt.Errorf("bad_request:file already exists")
 		}
 	}
 
 	// Create empty file
-	f, err := root.OpenFile(relPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, services.PermFile)
+	f, err := root.Root.OpenFile(relPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, services.PermFile)
 	if err != nil {
 		logger.Debugf("error creating file: %v", err)
 		return nil, fmt.Errorf("bad_request:%v", err)
@@ -237,7 +238,7 @@ func resourcePost(args []string) (any, error) {
 	}
 
 	// Notify indexer about the new file
-	if info, err := root.Stat(relPath); err == nil {
+	if info, err := root.Root.Stat(relPath); err == nil {
 		if err := addToIndexer(cleanPath, info); err != nil {
 			logger.Debugf("failed to update indexer after file create: %v", err)
 		}
@@ -268,13 +269,19 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 		return nil, fmt.Errorf("bad_request:cannot modify root directory")
 	}
 
+	root, err := fsroot.Open()
+	if err != nil {
+		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+	}
+	defer root.Close()
+
 	// Strip trailing slashes from dst for proper parent directory calculation
 	// filepath.Dir("/a/b/c/") incorrectly returns "/a/b/c" instead of "/a/b"
 	dstClean := strings.TrimRight(dst, "/")
 
 	// Check parent dir exists
 	parentDir := filepath.Dir(dstClean)
-	_, statErr := os.Stat(parentDir)
+	_, statErr := root.Root.Stat(fsroot.ToRel(parentDir))
 	if statErr != nil {
 		logger.Debugf("parent directory not found: %s (error: %v)", parentDir, statErr)
 		return nil, fmt.Errorf("bad_request:parent directory not found")
@@ -289,9 +296,9 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 	if strings.HasSuffix(dst, "/") && !strings.HasSuffix(realDest, "/") {
 		realDest += "/"
 	}
-	realSrc := filepath.Join(src)
+	realSrc := filepath.Clean("/" + strings.TrimPrefix(src, "/"))
 
-	srcInfo, err := os.Stat(realSrc)
+	srcInfo, err := root.Root.Stat(fsroot.ToRel(realSrc))
 	if err != nil {
 		logger.Debugf("error getting source info: %v", err)
 		return nil, fmt.Errorf("bad_request:source not found")
@@ -299,10 +306,10 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 
 	// If copying to the same location, generate a unique name
 	if realSrc == realDest && action == "copy" {
-		realDest = generateUniquePath(realDest, srcInfo.IsDir())
+		realDest = generateUniquePath(realDest, srcInfo.IsDir(), root)
 	}
 
-	destInfo, destErr := os.Stat(realDest)
+	destInfo, destErr := root.Root.Stat(fsroot.ToRel(realDest))
 	destExists := destErr == nil
 	if destErr != nil && !os.IsNotExist(destErr) {
 		logger.Debugf("error stating destination: %v", destErr)
@@ -379,7 +386,7 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 		}
 		logger.Infof("[FBHandler] Copy complete: %s -> %s (bytes=%d)", realSrc, realDest, bytesProcessed)
 		// Notify indexer about the copied file/directory
-		if info, err := os.Stat(realDest); err == nil {
+		if info, err := root.Root.Stat(fsroot.ToRel(realDest)); err == nil {
 			if err := addToIndexer(dst, info); err != nil {
 				logger.Debugf("failed to update indexer after copy: %v", err)
 			}
@@ -395,7 +402,7 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 		if err := deleteFromIndexer(src); err != nil {
 			logger.Debugf("failed to update indexer after move (delete source): %v", err)
 		}
-		if info, err := os.Stat(realDest); err == nil {
+		if info, err := root.Root.Stat(fsroot.ToRel(realDest)); err == nil {
 			if err := addToIndexer(dst, info); err != nil {
 				logger.Debugf("failed to update indexer after move (add destination): %v", err)
 			}
@@ -408,7 +415,7 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 }
 
 // generateUniquePath generates a unique path by appending a suffix like " (copy)" or " (copy 2)"
-func generateUniquePath(path string, isDir bool) string {
+func generateUniquePath(path string, isDir bool, root *fsroot.FSRoot) string {
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
 
@@ -423,14 +430,14 @@ func generateUniquePath(path string, isDir bool) string {
 
 	// Try "name (copy).ext" first
 	newPath := filepath.Join(dir, name+" (copy)"+ext)
-	if _, err := os.Stat(newPath); os.IsNotExist(err) {
+	if _, err := root.Root.Stat(fsroot.ToRel(newPath)); os.IsNotExist(err) {
 		return newPath
 	}
 
 	// Try "name (copy 2).ext", "name (copy 3).ext", etc.
 	for i := 2; i < 1000; i++ {
 		newPath = filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, i, ext))
-		if _, err := os.Stat(newPath); os.IsNotExist(err) {
+		if _, err := root.Root.Stat(fsroot.ToRel(newPath)); os.IsNotExist(err) {
 			return newPath
 		}
 	}
@@ -671,20 +678,6 @@ func fetchDirSizeFromIndexer(path string) (int64, error) {
 	return payload.Bytes, nil
 }
 
-func statWithFSRoot(path string) (os.FileInfo, error) {
-	root, err := os.OpenRoot("/")
-	if err != nil {
-		return nil, err
-	}
-	defer root.Close()
-
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
-	if cleanPath == "/" {
-		return root.Stat(".")
-	}
-	return root.Stat(strings.TrimPrefix(cleanPath, "/"))
-}
-
 // dirSize calculates the total size of a directory recursively
 // Args: [path]
 func dirSize(args []string) (any, error) {
@@ -694,8 +687,14 @@ func dirSize(args []string) (any, error) {
 
 	path := args[0]
 
+	root, err := fsroot.Open()
+	if err != nil {
+		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+	}
+	defer root.Close()
+
 	// Check if path exists and is a directory
-	stat, err := statWithFSRoot(path)
+	stat, err := root.Root.Stat(fsroot.ToRel(path))
 	if err != nil {
 		logger.Debugf("error stating directory: %v", err)
 		return nil, fmt.Errorf("bad_request:directory not found")
@@ -738,11 +737,17 @@ func subfolders(args []string) (any, error) {
 		path = args[0]
 	}
 
+	root, err := fsroot.Open()
+	if err != nil {
+		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+	}
+	defer root.Close()
+
 	// Validate path exists and is a directory if not root.
 	if path != "/" {
-		stat, err := statWithFSRoot(path)
-		if err != nil {
-			logger.Debugf("error stating directory: %v", err)
+		stat, statErr := root.Root.Stat(fsroot.ToRel(path))
+		if statErr != nil {
+			logger.Debugf("error stating directory: %v", statErr)
 			return nil, fmt.Errorf("bad_request:directory not found")
 		}
 		if !stat.IsDir() {
@@ -1148,7 +1153,13 @@ func fileUpdateFromTemp(args []string) (any, error) {
 	tempFilePath := args[0]
 	destPath := args[1]
 
-	tempStat, err := os.Stat(tempFilePath)
+	root, err := fsroot.Open()
+	if err != nil {
+		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+	}
+	defer root.Close()
+
+	tempStat, err := root.Root.Stat(fsroot.ToRel(tempFilePath))
 	if err != nil {
 		return nil, fmt.Errorf("bad_request:temp file not found: %v", err)
 	}
@@ -1158,7 +1169,7 @@ func fileUpdateFromTemp(args []string) (any, error) {
 
 	realDest := filepath.Join(destPath)
 
-	destStat, err := os.Stat(realDest)
+	destStat, err := root.Root.Stat(fsroot.ToRel(realDest))
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to stat destination: %v", err)
 	}
@@ -1166,7 +1177,7 @@ func fileUpdateFromTemp(args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:destination is a directory")
 	}
 
-	if err := os.MkdirAll(filepath.Dir(realDest), services.PermDir); err != nil {
+	if err := root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(realDest)), services.PermDir); err != nil {
 		return nil, fmt.Errorf("failed to create parent directory: %v", err)
 	}
 
@@ -1182,12 +1193,12 @@ func fileUpdateFromTemp(args []string) (any, error) {
 		}
 	}
 
-	if err := replaceFileFromTemp(tempFilePath, realDest, desiredMode, hasOwner, uid, gid); err != nil {
+	if err := replaceFileFromTemp(root, tempFilePath, realDest, desiredMode, hasOwner, uid, gid); err != nil {
 		return nil, err
 	}
 
 	// Notify indexer about the updated file
-	if finalInfo, err := os.Stat(realDest); err == nil {
+	if finalInfo, err := root.Root.Stat(fsroot.ToRel(realDest)); err == nil {
 		if err := addToIndexer(destPath, finalInfo); err != nil {
 			logger.Debugf("failed to update indexer after file update: %v", err)
 			// Don't fail the operation if indexer update fails
@@ -1197,14 +1208,17 @@ func fileUpdateFromTemp(args []string) (any, error) {
 	return map[string]any{"message": "file updated", "path": destPath}, nil
 }
 
-func replaceFileFromTemp(tempPath, destPath string, mode os.FileMode, restoreOwner bool, uid, gid int) error {
+func replaceFileFromTemp(root *fsroot.FSRoot, tempPath, destPath string, mode os.FileMode, restoreOwner bool, uid, gid int) error {
+	tempRel := fsroot.ToRel(tempPath)
+	destRel := fsroot.ToRel(destPath)
+
 	// Attempt an atomic replace first.
-	if err := os.Rename(tempPath, destPath); err == nil {
-		if err := os.Chmod(destPath, mode); err != nil {
+	if err := root.Root.Rename(tempRel, destRel); err == nil {
+		if err := root.Root.Chmod(destRel, mode); err != nil {
 			return fmt.Errorf("failed to set permissions: %v", err)
 		}
 		if restoreOwner {
-			if err := os.Chown(destPath, uid, gid); err != nil {
+			if err := root.Root.Chown(destRel, uid, gid); err != nil {
 				logger.Debugf("failed to restore ownership for %s: %v", destPath, err)
 			}
 		}
@@ -1212,20 +1226,19 @@ func replaceFileFromTemp(tempPath, destPath string, mode os.FileMode, restoreOwn
 	}
 
 	// Cross-device fallback: copy into a temp file in the destination directory, then rename.
-	tmpFile, err := os.CreateTemp(filepath.Dir(destPath), "linuxio-update-*.tmp")
+	tmpFile, tmpRel, err := root.CreateTemp(filepath.Dir(destPath), "linuxio-update-*.tmp")
 	if err != nil {
 		return fmt.Errorf("failed to prepare temporary file: %v", err)
 	}
-	tmpPath := tmpFile.Name()
 	cleanup := true
 	defer func() {
 		_ = tmpFile.Close()
 		if cleanup {
-			_ = os.Remove(tmpPath)
+			_ = root.Root.Remove(tmpRel)
 		}
 	}()
 
-	if err := copyIntoFile(tempPath, tmpFile); err != nil {
+	if err := copyIntoFile(root, tempPath, tmpFile); err != nil {
 		return err
 	}
 	if err := tmpFile.Sync(); err != nil {
@@ -1235,8 +1248,8 @@ func replaceFileFromTemp(tempPath, destPath string, mode os.FileMode, restoreOwn
 		return fmt.Errorf("failed to set permissions on temporary file: %v", err)
 	}
 	if restoreOwner {
-		if err := os.Chown(tmpPath, uid, gid); err != nil {
-			logger.Debugf("failed to set ownership on temporary file %s: %v", tmpPath, err)
+		if err := root.Root.Chown(tmpRel, uid, gid); err != nil {
+			logger.Debugf("failed to set ownership on temporary file %s: %v", tmpRel, err)
 		}
 	}
 
@@ -1244,7 +1257,7 @@ func replaceFileFromTemp(tempPath, destPath string, mode os.FileMode, restoreOwn
 		return fmt.Errorf("failed to close temporary file: %v", err)
 	}
 
-	if err := os.Rename(tmpPath, destPath); err != nil {
+	if err := root.Root.Rename(tmpRel, destRel); err != nil {
 		return fmt.Errorf("failed to replace destination: %v", err)
 	}
 	cleanup = false
@@ -1252,8 +1265,8 @@ func replaceFileFromTemp(tempPath, destPath string, mode os.FileMode, restoreOwn
 	return nil
 }
 
-func copyIntoFile(srcPath string, dst *os.File) error {
-	src, err := os.Open(srcPath)
+func copyIntoFile(root *fsroot.FSRoot, srcPath string, dst *os.File) error {
+	src, err := root.Root.Open(fsroot.ToRel(srcPath))
 	if err != nil {
 		return fmt.Errorf("failed to open temp file: %v", err)
 	}

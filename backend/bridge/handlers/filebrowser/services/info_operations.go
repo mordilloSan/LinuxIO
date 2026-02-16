@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 )
 
@@ -77,7 +78,14 @@ func FileInfoFaster(opts iteminfo.FileOptions) (*iteminfo.ExtendedFileInfo, erro
 // GetDirInfo retrieves information about a directory and its contents
 // It lists files and folders but does NOT calculate recursive directory sizes
 func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
-	dir, err := os.Open(realPath)
+	root, err := fsroot.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	cleanRealPath := filepath.Clean("/" + strings.TrimPrefix(realPath, "/"))
+	dir, err := root.Root.Open(fsroot.ToRel(cleanRealPath))
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +101,7 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 		fileInfo := &iteminfo.FileInfo{
 			Path: adjustedPath,
 			ItemInfo: iteminfo.ItemInfo{
-				Name:    filepath.Base(realPath),
+				Name:    filepath.Base(cleanRealPath),
 				Size:    dirStat.Size(),
 				ModTime: dirStat.ModTime(),
 				Type:    "file",
@@ -115,7 +123,7 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 		entryName := entry.Name()
 		hidden := entryName[0] == '.'
 		isDir := entry.IsDir()
-		fileRealPath := filepath.Join(realPath, entryName)
+		fileRealPath := filepath.Join(cleanRealPath, entryName)
 		isSymlink := entry.Mode()&os.ModeSymlink != 0
 
 		// Handle symlinks
@@ -148,7 +156,7 @@ func GetDirInfo(adjustedPath, realPath string) (*iteminfo.FileInfo, error) {
 		Folders: dirInfos,
 	}
 	dirFileInfo.ItemInfo = iteminfo.ItemInfo{
-		Name:       filepath.Base(realPath),
+		Name:       filepath.Base(cleanRealPath),
 		Type:       "directory",
 		Size:       0, // Directory sizes are provided by the indexer via dir-size endpoint
 		ModTime:    dirStat.ModTime(),
