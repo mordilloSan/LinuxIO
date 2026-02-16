@@ -367,8 +367,6 @@ build-backend: ensure-go
 		-X '$(MODULE_PATH)/common/config.BridgeSHA256=$(BRIDGE_SHA256)'" \
 	-o ../linuxio-webserver ./webserver/ && \
 	echo "✅ Backend built successfully!" && \
-	echo "" && \
-	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-webserver" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
 	echo "📊 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
@@ -389,8 +387,6 @@ build-bridge: ensure-go
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
-	echo "" && \
-	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-bridge" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
 	echo "📊 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
