@@ -70,7 +70,7 @@ const NetworkInterfacesCard: React.FC = () => {
     isLoading ? (
       <ComponentLoader />
     ) : (
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1, alignSelf: "flex-start", mt: 4 }}>
         <Typography variant="body2">
           <strong>IPv4:</strong>{" "}
           {selectedInterface.ipv4 && selectedInterface.ipv4.length > 0
@@ -93,7 +93,7 @@ const NetworkInterfacesCard: React.FC = () => {
     isLoading ? (
       <ComponentLoader />
     ) : (
-      <Box sx={{ height: "80px", width: "100%", minWidth: 0 }}>
+      <Box sx={{ height: "90px", width: "100%", minWidth: 0 }}>
         <NetworkGraph key={effectiveSelected} rx={selectedInterface.rx_speed} tx={selectedInterface.tx_speed} />
       </Box>
     )
