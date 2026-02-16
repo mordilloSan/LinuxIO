@@ -29,6 +29,7 @@ const Updates: React.FC = () => {
     updatingPackage,
     progress,
     status,
+    eventLog,
     error,
     clearError,
   } = usePackageUpdater(refetch);
@@ -47,10 +48,10 @@ const Updates: React.FC = () => {
               updatingPackage={updatingPackage}
               progress={progress}
               status={status}
+              eventLog={eventLog}
               error={error}
               onClearError={clearError}
               onCancel={cancelUpdate}
-              onComplete={refetch}
             />
           ),
           rightContent:

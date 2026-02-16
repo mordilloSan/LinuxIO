@@ -22,13 +22,12 @@ import "@xterm/xterm/css/xterm.css";
 import {
   linuxio,
   useStreamMux,
-  bindStreamHandlers,
   encodeString,
   decodeString,
   openContainerStream,
-  type Stream,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useLiveStream } from "@/hooks/useLiveStream";
 
 interface Props {
   open: boolean;
@@ -46,8 +45,7 @@ const TerminalDialog: React.FC<Props> = ({
   const termRef = useRef<HTMLDivElement>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
-  const streamRef = useRef<Stream | null>(null);
-  const unbindRef = useRef<(() => void) | null>(null);
+  const { streamRef, openStream, closeStream } = useLiveStream();
 
   const [terminalKey, setTerminalKey] = useState(0);
   const [selectedShell, setSelectedShell] = useState<string | null>(null);
@@ -82,17 +80,6 @@ const TerminalDialog: React.FC<Props> = ({
 
   const handleDialogEntered = useCallback(() => {
     setSelectedShell(null);
-  }, []);
-
-  const closeStream = useCallback(() => {
-    if (unbindRef.current) {
-      unbindRef.current();
-      unbindRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
   }, []);
 
   const handleDialogExited = useCallback(() => {
@@ -185,27 +172,20 @@ const TerminalDialog: React.FC<Props> = ({
     // Open container terminal stream
     const cols = xterm.current.cols;
     const rows = xterm.current.rows;
-    const stream = openContainerStream(containerId, activeShell, cols, rows);
+    const opened = openStream({
+      open: () => openContainerStream(containerId, activeShell, cols, rows),
+      onData: (data: Uint8Array) => {
+        if (xterm.current) {
+          const text = decodeString(data);
+          xterm.current.write(text, () => {
+            xterm.current?.scrollToBottom();
+          });
+        }
+      },
+    });
 
-    if (stream) {
-      streamRef.current = stream;
-
-      unbindRef.current = bindStreamHandlers(stream, {
-        onData: (data: Uint8Array) => {
-          if (xterm.current) {
-            const text = decodeString(data);
-            xterm.current.write(text, () => {
-              xterm.current?.scrollToBottom();
-            });
-          }
-        },
-        onClose: () => {
-          unbindRef.current = null;
-          streamRef.current = null;
-        },
-      });
-
-      stream.resize(xterm.current.cols, xterm.current.rows);
+    if (opened && streamRef.current) {
+      streamRef.current.resize(xterm.current.cols, xterm.current.rows);
     }
 
     // Terminal input -> send to stream
@@ -246,6 +226,8 @@ const TerminalDialog: React.FC<Props> = ({
     theme.palette.text.primary,
     terminalKey,
     closeStream,
+    openStream,
+    streamRef,
   ]);
 
   // Shell picker handler

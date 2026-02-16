@@ -22,7 +22,6 @@ interface Props {
   onUpdateClick: (pkg: string) => Promise<void>;
   isUpdating?: boolean;
   currentPackage?: string | null;
-  onComplete: () => void | Promise<any>;
   isLoading?: boolean;
 }
 
@@ -31,7 +30,6 @@ const UpdateList: React.FC<Props> = ({
   onUpdateClick,
   isUpdating,
   currentPackage,
-  onComplete,
   isLoading,
 }) => {
   const queryClient = useQueryClient();
@@ -198,7 +196,6 @@ const UpdateList: React.FC<Props> = ({
                   disabled={!!isUpdating}
                   onClick={async () => {
                     await onUpdateClick(update.package_id);
-                    await onComplete();
                   }}
                   sx={{ cursor: "pointer" }}
                 />

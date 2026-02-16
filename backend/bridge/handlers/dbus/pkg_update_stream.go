@@ -25,12 +25,15 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 
 // PkgUpdateProgress represents progress for package update operations.
 type PkgUpdateProgress struct {
-	Type       string `json:"type"`                  // "item_progress", "package", "status", "percentage"
-	PackageID  string `json:"package_id,omitempty"`  // Current package being processed
-	Status     string `json:"status,omitempty"`      // Status description (e.g., "Downloading", "Installing")
-	StatusCode uint32 `json:"status_code,omitempty"` // PackageKit status enum
-	Percentage uint32 `json:"percentage"`            // Overall or item percentage (0-100, 101=unknown)
-	ItemPct    uint32 `json:"item_pct,omitempty"`    // Per-item percentage for ItemProgress
+	Type           string  `json:"type"`                      // "item_progress", "package", "status", "percentage", "message"
+	PackageID      string  `json:"package_id,omitempty"`      // Current package being processed
+	PackageSummary string  `json:"package_summary,omitempty"` // Package summary from Package(...) signal
+	Status         string  `json:"status,omitempty"`          // Status description (e.g., "Downloading", "Installing")
+	Message        string  `json:"message,omitempty"`         // Rich backend message text when available
+	StatusCode     *uint32 `json:"status_code,omitempty"`     // PackageKit status enum
+	InfoCode       *uint32 `json:"info_code,omitempty"`       // PackageKit info enum (Package signal)
+	Percentage     *uint32 `json:"percentage,omitempty"`      // Overall percentage (0-100, 101=unknown)
+	ItemPct        *uint32 `json:"item_pct,omitempty"`        // Per-item percentage for ItemProgress
 }
 
 // writePkgUpdateProgress writes a package update progress frame to the stream.
@@ -87,6 +90,31 @@ var pkStatusNames = map[uint32]string{
 	36: "Run hook",
 }
 
+// PackageKit package info enum values for Package(...) signal.
+// We only map update-relevant phases and fall back to "Package event <code>".
+var pkInfoNames = map[uint32]string{
+	10: "Downloading",
+	11: "Updating",
+	12: "Installing",
+	13: "Removing",
+	14: "Cleanup",
+	15: "Obsoleting",
+	19: "Reinstalling",
+	20: "Downgrading",
+	21: "Preparing",
+}
+
+func toUint32Ptr(v uint32) *uint32 {
+	return &v
+}
+
+func packageInfoName(info uint32) string {
+	if n, ok := pkInfoNames[info]; ok {
+		return n
+	}
+	return fmt.Sprintf("Package event %d", info)
+}
+
 // Status codes that represent actual package work (should update progress bar)
 var realWorkStatuses = map[uint32]bool{
 	8:  true, // Download (actual package download)
@@ -121,7 +149,7 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Initializing",
-		Percentage: 0,
+		Percentage: toUint32Ptr(0),
 	}); err != nil {
 		logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 	}
@@ -191,6 +219,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 	// Process signals until Finished or error
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute) // Long timeout for large updates
 	defer cancel()
+	var lastWorkStatus uint32
 
 	for {
 		select {
@@ -211,6 +240,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 					if !isRealWorkStatus(status) {
 						continue
 					}
+					lastWorkStatus = status
 
 					statusName := pkStatusNames[status]
 					if statusName == "" {
@@ -221,8 +251,8 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 						Type:       "item_progress",
 						PackageID:  pkgID,
 						Status:     statusName,
-						StatusCode: status,
-						ItemPct:    pct,
+						StatusCode: toUint32Ptr(status),
+						ItemPct:    toUint32Ptr(pct),
 					}); err != nil {
 						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 					}
@@ -230,11 +260,32 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 
 			case transactionIfc + ".Package":
 				// Package(u info, s package_id, s summary)
-				if len(sig.Body) >= 2 {
+				if len(sig.Body) >= 3 {
+					info, _ := sig.Body[0].(uint32)
 					pkgID, _ := sig.Body[1].(string)
+					summary, _ := sig.Body[2].(string)
+
 					if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
-						Type:      "package",
-						PackageID: pkgID,
+						Type:           "package",
+						PackageID:      pkgID,
+						PackageSummary: summary,
+						Status:         packageInfoName(info),
+						InfoCode:       toUint32Ptr(info),
+					}); err != nil {
+						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+					}
+				}
+
+			case transactionIfc + ".Message":
+				// Message(u type, s details)
+				if len(sig.Body) >= 2 {
+					msgType, _ := sig.Body[0].(uint32)
+					details, _ := sig.Body[1].(string)
+
+					if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+						Type:    "message",
+						Status:  fmt.Sprintf("Message %d", msgType),
+						Message: details,
 					}); err != nil {
 						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 					}
@@ -260,7 +311,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 				if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 					Type:       "status",
 					Status:     "Finished",
-					Percentage: 100,
+					Percentage: toUint32Ptr(100),
 				}); err != nil {
 					logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 				}
@@ -273,20 +324,30 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 					if iface == transactionIfc {
 						props, ok := sig.Body[1].(map[string]godbus.Variant)
 						if ok {
-							// Get status first to check if we should skip
 							var currentStatus uint32
+							hasStatus := false
 							if statusVar, exists := props["Status"]; exists {
 								if s, ok := statusVar.Value().(uint32); ok {
 									currentStatus = s
+									hasStatus = true
 								}
 							}
+							if hasStatus && isRealWorkStatus(currentStatus) {
+								lastWorkStatus = currentStatus
+							}
 
-							// Only send percentage updates for real work statuses
+							statusForPercentage := currentStatus
+							if statusForPercentage == 0 {
+								statusForPercentage = lastWorkStatus
+							}
+
+							// Percentage often arrives without a Status field in the same signal.
+							// Reuse the last known work status so intermediate progress is not dropped.
 							if pctVar, exists := props["Percentage"]; exists {
-								if pct, ok := pctVar.Value().(uint32); ok && isRealWorkStatus(currentStatus) {
+								if pct, ok := pctVar.Value().(uint32); ok && isRealWorkStatus(statusForPercentage) {
 									if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 										Type:       "percentage",
-										Percentage: pct,
+										Percentage: toUint32Ptr(pct),
 									}); err != nil {
 										logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 									}
@@ -294,7 +355,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 							}
 
 							// Only send status updates for real work statuses
-							if currentStatus > 0 && isRealWorkStatus(currentStatus) {
+							if hasStatus && currentStatus > 0 && isRealWorkStatus(currentStatus) {
 								statusName := pkStatusNames[currentStatus]
 								if statusName == "" {
 									statusName = fmt.Sprintf("Status %d", currentStatus)
@@ -302,7 +363,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 								if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 									Type:       "status",
 									Status:     statusName,
-									StatusCode: currentStatus,
+									StatusCode: toUint32Ptr(currentStatus),
 								}); err != nil {
 									logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 								}

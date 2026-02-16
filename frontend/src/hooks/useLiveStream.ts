@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 
-import { bindStreamHandlers, type StreamEventHandlers, type Stream } from "@/api";
+import {
+  bindStreamHandlers,
+  type StreamEventHandlers,
+  type Stream,
+} from "@/api";
 
-export interface OpenLiveStreamOptions<TProgress = unknown>
-  extends StreamEventHandlers<TProgress> {
+export interface OpenLiveStreamOptions<
+  TProgress = unknown,
+> extends StreamEventHandlers<TProgress> {
   open: () => Stream | null;
   onOpen?: (stream: Stream) => void;
   onOpenError?: () => void;

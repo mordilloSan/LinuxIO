@@ -87,12 +87,12 @@ export {
 // === Streaming Helpers ===
 export {
   bindStreamHandlers,
-  awaitStreamResult,
-  writeStreamChunks,
+  waitForStreamResult,
+  streamWriteChunks,
 } from "./stream-helpers";
 export type {
   StreamEventHandlers,
-  AwaitStreamResultOptions,
+  WaitForStreamResultOptions,
   WriteStreamChunksOptions,
 } from "./stream-helpers";
 

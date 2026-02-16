@@ -372,11 +372,13 @@ function createHandlerNamespace<H extends HandlerName>(
 // Export
 // ============================================================================
 
+const { call: _legacyLinuxioCall, ...coreWithoutCall } = core;
+
 // Static methods that exist on linuxio directly
 const staticMethods = {
   useCall,
   useMutate,
-  ...core,
+  ...coreWithoutCall,
 };
 
 // Handler namespace cache
@@ -395,7 +397,7 @@ const handlerCache = new Map<string, HandlerEndpoints<HandlerName>>();
  * const { mutate } = linuxio.useMutate("module.lights", "toggle");
  *
  * // CORE API (non-React, Promise-based)
- * const drives = await linuxio.call("storage", "get_drive_info");
+ * const drives = await linuxio.system.get_drive_info.call();
  * const result = await linuxio.spawn("filebrowser", "compress", [...])
  *   .progress(p => setProgress(p.pct));
  */
@@ -404,6 +406,10 @@ const linuxio = new Proxy(staticMethods as typeof staticMethods & TypedAPI, {
     // First check static methods
     if (prop in target) {
       return (target as Record<string, unknown>)[prop];
+    }
+    // `linuxio.call()` alias is intentionally removed.
+    if (prop === "call") {
+      return undefined;
     }
     // Then return handler namespace (lazily created)
     if (!handlerCache.has(prop)) {

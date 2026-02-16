@@ -1,17 +1,17 @@
 import { useCallback } from "react";
 
 import {
-  awaitStreamResult,
   LinuxIOError,
-  type AwaitStreamResultOptions,
+  type WaitForStreamResultOptions,
   type ProgressFrame,
   type Stream,
 } from "@/api";
+import { streamWriteChunks, waitForStreamResult } from "@/api/stream-helpers";
 
 export interface RunStreamResultOptions<
   TResult = unknown,
   TProgress = ProgressFrame,
-> extends Omit<AwaitStreamResultOptions<TResult, TProgress>, "signal"> {
+> extends Omit<WaitForStreamResultOptions<TResult, TProgress>, "signal"> {
   open: () => Stream | null;
   signal?: AbortSignal;
   onOpen?: (stream: Stream) => void;
@@ -34,8 +34,30 @@ type RunStreamResultFn = {
   ): Promise<TResult>;
 };
 
+export interface RunChunkedStreamResultOptions<
+  TResult = unknown,
+  TProgress = ProgressFrame,
+> extends RunStreamResultOptions<TResult, TProgress> {
+  data: Uint8Array;
+  chunkSize?: number;
+  yieldMs?: number;
+  closeAtEnd?: boolean;
+}
+
+type RunChunkedStreamResultFn = {
+  <TResult = unknown, TProgress = ProgressFrame>(
+    options: RunChunkedStreamResultOptions<TResult, TProgress> & {
+      throwOnError: false;
+    },
+  ): Promise<TResult | undefined>;
+  <TResult = unknown, TProgress = ProgressFrame>(
+    options: RunChunkedStreamResultOptions<TResult, TProgress>,
+  ): Promise<TResult>;
+};
+
 export interface UseStreamResultReturn {
   run: RunStreamResultFn;
+  runChunked: RunChunkedStreamResultFn;
 }
 
 /**
@@ -75,7 +97,7 @@ export function useStreamResult(): UseStreamResultReturn {
       onOpen?.(stream);
 
       try {
-        const result = await awaitStreamResult<TResult, TProgress>(stream, {
+        const result = await waitForStreamResult<TResult, TProgress>(stream, {
           ...awaitOptions,
           signal,
         });
@@ -94,5 +116,77 @@ export function useStreamResult(): UseStreamResultReturn {
     [],
   ) as RunStreamResultFn;
 
-  return { run };
+  const runChunked = useCallback(
+    async <TResult = unknown, TProgress = ProgressFrame>(
+      options: RunChunkedStreamResultOptions<TResult, TProgress>,
+    ): Promise<TResult | undefined> => {
+      const {
+        data,
+        chunkSize,
+        yieldMs,
+        closeAtEnd,
+        open,
+        signal,
+        onOpen,
+        onSuccess,
+        onError,
+        onFinally,
+        throwOnError,
+        openErrorMessage = "Failed to open stream",
+        openErrorCode = "stream_unavailable",
+        ...awaitOptions
+      } = options;
+      const shouldThrow = throwOnError ?? !onError;
+
+      const stream = open();
+      if (!stream) {
+        const error = new LinuxIOError(openErrorMessage, openErrorCode);
+        onError?.(error);
+        onFinally?.();
+        if (shouldThrow) {
+          throw error;
+        }
+        return undefined;
+      }
+
+      onOpen?.(stream);
+
+      try {
+        const completion = waitForStreamResult<TResult, TProgress>(stream, {
+          ...awaitOptions,
+          signal,
+        });
+
+        try {
+          await streamWriteChunks(stream, data, {
+            chunkSize,
+            yieldMs,
+            closeAtEnd,
+            signal,
+          });
+        } catch (writeError) {
+          if (stream.status === "open" || stream.status === "opening") {
+            stream.abort();
+          }
+          await completion.catch(() => undefined);
+          throw writeError;
+        }
+
+        const result = await completion;
+        onSuccess?.(result);
+        return result;
+      } catch (error) {
+        onError?.(error);
+        if (shouldThrow) {
+          throw error;
+        }
+        return undefined;
+      } finally {
+        onFinally?.();
+      }
+    },
+    [],
+  ) as RunChunkedStreamResultFn;
+
+  return { run, runChunked };
 }

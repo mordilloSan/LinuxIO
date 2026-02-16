@@ -12,7 +12,6 @@ import {
   openFileReindexStream,
   openFileCopyStream,
   openFileMoveStream,
-  awaitStreamResult,
   STREAM_CHUNK_SIZE,
   UPLOAD_WINDOW_SIZE,
   type Stream,
@@ -358,67 +357,64 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       ) => string,
     ) => {
       const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
-      const stream = openFileDownloadStream(paths);
-      if (!stream) {
-        throw new Error("Failed to open download stream");
-      }
-
-      // Store stream reference for cancellation (sync ref for immediate access)
-      streamRefsRef.current.set(reqId, stream);
-
       const chunks: Uint8Array[] = [];
       let lastBytes = 0;
       let lastTime = Date.now();
-      try {
-        await awaitStreamResult(stream, {
-          signal: abortSignal,
-          onData: (data) => {
-            chunks.push(data);
-          },
-          onProgress: (progress) => {
-            const now = Date.now();
-            const deltaBytes = progress.bytes - lastBytes;
-            const deltaMs = now - lastTime;
+      await runStreamResult({
+        open: () => openFileDownloadStream(paths),
+        openErrorMessage: "Failed to open download stream",
+        signal: abortSignal,
+        onOpen: (stream) => {
+          // Store stream reference for cancellation (sync ref for immediate access)
+          streamRefsRef.current.set(reqId, stream);
+        },
+        onData: (data) => {
+          chunks.push(data);
+        },
+        onProgress: (progress) => {
+          const now = Date.now();
+          const deltaBytes = progress.bytes - lastBytes;
+          const deltaMs = now - lastTime;
 
-            let speed: number | undefined;
-            if (deltaMs > 500 && deltaBytes > 0) {
-              speed = deltaBytes / (deltaMs / 1000);
-              lastBytes = progress.bytes;
-              lastTime = now;
-            }
+          let speed: number | undefined;
+          if (deltaMs > 500 && deltaBytes > 0) {
+            speed = deltaBytes / (deltaMs / 1000);
+            lastBytes = progress.bytes;
+            lastTime = now;
+          }
 
-            let phaseLabel: string;
-            switch (progress.phase) {
-              case "preparing":
-                phaseLabel = "Preparing";
-                break;
-              case "compressing":
-                phaseLabel = "Compressing";
-                break;
-              case "streaming":
-              default:
-                phaseLabel = "Downloading";
-                break;
-            }
+          let phaseLabel: string;
+          switch (progress.phase) {
+            case "preparing":
+              phaseLabel = "Preparing";
+              break;
+            case "compressing":
+              phaseLabel = "Compressing";
+              break;
+            case "streaming":
+            default:
+              phaseLabel = "Downloading";
+              break;
+          }
 
-            updateDownload(reqId, {
-              progress: progress.pct,
-              label: formatDownloadLabel(phaseLabel, { percent: progress.pct }),
-              ...(speed !== undefined && { speed }),
-            });
-          },
-          closeMessage: "Stream closed before transfer completed",
-        });
-      } finally {
-        streamRefsRef.current.delete(reqId);
-      }
+          updateDownload(reqId, {
+            progress: progress.pct,
+            label: formatDownloadLabel(phaseLabel, { percent: progress.pct }),
+            ...(speed !== undefined && { speed }),
+          });
+        },
+        closeMessage: "Stream closed before transfer completed",
+        onFinally: () => {
+          streamRefsRef.current.delete(reqId);
+        },
+      });
 
       const mimeType = isSingleFile
         ? "application/octet-stream"
         : "application/zip";
       return new Blob(chunks as BlobPart[], { type: mimeType });
     },
-    [updateDownload],
+    [runStreamResult, updateDownload],
   );
 
   const startDownload = useCallback(
@@ -782,7 +778,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           if (abortController.signal.aborted) {
             return;
           }
-          const message = error instanceof Error ? error.message : "Extraction failed";
+          const message =
+            error instanceof Error ? error.message : "Extraction failed";
           toast.error(message);
         },
         onFinally: () => {
@@ -950,7 +947,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           if (abortController.signal.aborted) {
             return;
           }
-          const message = error instanceof Error ? error.message : "Reindex failed";
+          const message =
+            error instanceof Error ? error.message : "Reindex failed";
           toast.error(message);
         },
         onFinally: () => {
@@ -1500,7 +1498,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           if (abortController.signal.aborted) {
             return;
           }
-          const message = error instanceof Error ? error.message : "Copy failed";
+          const message =
+            error instanceof Error ? error.message : "Copy failed";
           toast.error(message);
         },
         onFinally: () => {
@@ -1586,7 +1585,9 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         closeMessage: "Move stream closed unexpectedly",
         onOpen: (stream) => {
           streamRefsRef.current.set(id, stream);
-          setMoves((prev) => prev.map((m) => (m.id === id ? { ...m, stream } : m)));
+          setMoves((prev) =>
+            prev.map((m) => (m.id === id ? { ...m, stream } : m)),
+          );
         },
         onProgress: (progress) => {
           const percent = Math.min(99, progress.pct);
@@ -1616,7 +1617,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           if (abortController.signal.aborted) {
             return;
           }
-          const message = error instanceof Error ? error.message : "Move failed";
+          const message =
+            error instanceof Error ? error.message : "Move failed";
           toast.error(message);
         },
         onFinally: () => {

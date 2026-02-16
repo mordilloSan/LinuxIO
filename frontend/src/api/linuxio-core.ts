@@ -9,7 +9,7 @@
 
 import type { Stream, ProgressFrame, ResultFrame } from "./StreamMultiplexer";
 import { getStreamMux, encodeString, decodeString } from "./StreamMultiplexer";
-import { awaitStreamResult, bindStreamHandlers } from "./stream-helpers";
+import { waitForStreamResult, bindStreamHandlers } from "./stream-helpers";
 
 /**
  * LinuxIOError - structured error with code
@@ -65,7 +65,7 @@ export async function call<T = unknown>(
   const payload = encodeString(parts.join("\0"));
 
   const stream = mux.openStream("bridge", payload);
-  const operation = awaitStreamResult<T>(stream, {
+  const operation = waitForStreamResult<T>(stream, {
     closeMessage: "Connection closed before receiving result",
   });
 

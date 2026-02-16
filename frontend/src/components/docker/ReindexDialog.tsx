@@ -17,9 +17,9 @@ import {
   linuxio,
   useStreamMux,
   openDockerReindexStream,
-  awaitStreamResult,
   type Stream,
 } from "@/api";
+import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface ReindexDialogProps {
   open: boolean;
@@ -59,6 +59,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   const streamRef = useRef<Stream | null>(null);
   const hasCompletedRef = useRef(false);
   const closedByUserRef = useRef(false);
+  const { run: runStreamResult } = useStreamResult();
 
   const { isOpen: muxIsOpen } = useStreamMux();
 
@@ -127,7 +128,8 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     streamRef.current = stream;
     closedByUserRef.current = false;
 
-    void awaitStreamResult<ReindexResult, ReindexProgress>(stream, {
+    void runStreamResult<ReindexResult, ReindexProgress>({
+      open: () => stream,
       onProgress: (progressData) => {
         setProgress(progressData);
       },
@@ -153,7 +155,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
         streamRef.current = null;
         setIsRunning(false);
       });
-  }, [open, muxIsOpen, onComplete]);
+  }, [muxIsOpen, onComplete, open, runStreamResult]);
 
   const handleClose = () => {
     if (isRunning) {

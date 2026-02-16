@@ -32,7 +32,7 @@ export function bindStreamHandlers<TProgress = ProgressFrame>(
   };
 }
 
-export interface AwaitStreamResultOptions<
+export interface WaitForStreamResultOptions<
   TResult = unknown,
   TProgress = ProgressFrame,
 > extends Omit<StreamEventHandlers<TProgress>, "onResult"> {
@@ -60,9 +60,12 @@ export interface AwaitStreamResultOptions<
 /**
  * Await a stream operation that must complete with an onResult frame.
  */
-export function awaitStreamResult<TResult = unknown, TProgress = ProgressFrame>(
+export function waitForStreamResult<
+  TResult = unknown,
+  TProgress = ProgressFrame,
+>(
   stream: Stream | null,
-  options: AwaitStreamResultOptions<TResult, TProgress> = {},
+  options: WaitForStreamResultOptions<TResult, TProgress> = {},
 ): Promise<TResult> {
   if (!stream) {
     return Promise.reject(
@@ -158,7 +161,7 @@ export interface WriteStreamChunksOptions {
 /**
  * Write bytes to a stream in chunks, optionally yielding between writes.
  */
-export async function writeStreamChunks(
+export async function streamWriteChunks(
   stream: Stream,
   data: Uint8Array,
   options: WriteStreamChunksOptions = {},

@@ -31,10 +31,8 @@ import { toast } from "sonner";
 import {
   linuxio,
   CACHE_TTL_MS,
-  awaitStreamResult,
   isConnected,
   openFileUploadStream,
-  writeStreamChunks,
   STREAM_CHUNK_SIZE,
 } from "@/api";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
@@ -71,6 +69,7 @@ import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useFileViewState } from "@/hooks/useFileViewState";
+import { useStreamResult } from "@/hooks/useStreamResult";
 import { ViewMode, FileItem } from "@/types/filebrowser";
 import {
   buildEntriesFromFileList,
@@ -153,6 +152,7 @@ const FileBrowser: React.FC = () => {
   const queryClient = useQueryClient();
   const { startDownload, startUpload } = useFileTransfers();
   const { indexerAvailable } = useAuth();
+  const { runChunked: runChunkedStreamResult } = useStreamResult();
 
   // Extract path from URL: /filebrowser/path/to/dir -> /path/to/dir
   // Decode each segment to handle URL-encoded characters (spaces, parentheses, etc.)
@@ -782,29 +782,16 @@ const FileBrowser: React.FC = () => {
 
   const saveContentViaStream = useCallback(
     async (path: string, contentBytes: Uint8Array) => {
-      const stream = openFileUploadStream(path, contentBytes.length);
-      if (!stream) {
-        throw new Error("Failed to open save stream");
-      }
-
-      const completion = awaitStreamResult<void>(stream, {
+      await runChunkedStreamResult<void>({
+        open: () => openFileUploadStream(path, contentBytes.length),
+        openErrorMessage: "Failed to open save stream",
+        data: contentBytes,
+        chunkSize: STREAM_CHUNK_SIZE,
+        yieldMs: 0,
         closeMessage: "Stream closed unexpectedly",
       });
-
-      try {
-        await writeStreamChunks(stream, contentBytes, {
-          chunkSize: STREAM_CHUNK_SIZE,
-          yieldMs: 0,
-        });
-        await completion;
-      } catch (error) {
-        if (stream.status === "open" || stream.status === "opening") {
-          stream.abort();
-        }
-        throw error;
-      }
     },
-    [],
+    [runChunkedStreamResult],
   );
 
   const handleSaveFile = useCallback(async () => {

@@ -37,15 +37,10 @@ import {
   parseSizeToBytes,
 } from "./utils";
 
-import {
-  linuxio,
-  openSmartTestStream,
-  awaitStreamResult,
-  type Stream,
-  type ApiDisk,
-} from "@/api";
+import { linuxio, openSmartTestStream, type Stream, type ApiDisk } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useStreamResult } from "@/hooks/useStreamResult";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -66,9 +61,9 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
     null,
   );
-  const [testProgress, setTestProgress] =
-    useState<SmartTestProgressEvent | null>(null);
+  const [, setTestProgress] = useState<SmartTestProgressEvent | null>(null);
   const streamRef = useRef<Stream | null>(null);
+  const { run: runStreamResult } = useStreamResult();
 
   const { mutate: runSmartTest } = linuxio.storage.run_smart_test.useMutation({
     onSuccess: () => {
@@ -127,7 +122,8 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
 
     streamRef.current = stream;
 
-    void awaitStreamResult<SmartTestResult, SmartTestProgressEvent>(stream, {
+    void runStreamResult<SmartTestResult, SmartTestProgressEvent>({
+      open: () => stream,
       onProgress: (data) => {
         setTestProgress((prev) => ({
           ...(prev || {}),
