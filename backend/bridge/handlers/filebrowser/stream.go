@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -301,14 +302,12 @@ readLoop:
 	for {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				// Client closed connection - check if we got all data
 				if bytesWritten >= expectedSize {
 					break readLoop
 				}
-				_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("connection closed early: got %d of %d bytes", bytesWritten, expectedSize), 500)
-				_ = ipc.WriteStreamClose(stream, 0)
-				return fmt.Errorf("connection closed early: got %d of %d bytes", bytesWritten, expectedSize)
+				return ipc.ErrAborted
 			}
 			_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("read error: %v", err), 500)
 			_ = ipc.WriteStreamClose(stream, 0)
@@ -345,6 +344,9 @@ readLoop:
 		case ipc.OpStreamClose:
 			// Client signaled done - break out of loop
 			break readLoop
+		case ipc.OpStreamAbort:
+			// Client explicitly canceled upload.
+			return ipc.ErrAborted
 
 		default:
 			logger.Debugf(" Ignoring opcode: 0x%02x", frame.Opcode)
