@@ -8,18 +8,15 @@ import (
 	"errors"
 	"io"
 	"net"
-	"net/http"
-	"net/url"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strings"
-	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -29,21 +26,6 @@ const (
 	StreamTypeDockerCompose = "docker-compose"
 	StreamTypeDockerReindex = "docker-reindex"
 )
-
-// indexerStreamClient is an HTTP client for SSE connections to the indexer.
-// It has no timeout since SSE streams can run for a long time.
-var indexerStreamClient = &http.Client{
-	Transport: &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			dialer := &net.Dialer{
-				Timeout:   5 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}
-			return dialer.DialContext(ctx, "unix", "/var/run/indexer.sock")
-		},
-	},
-	// No timeout for SSE streams
-}
 
 // RegisterStreamHandlers registers all docker stream handlers.
 func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
@@ -334,28 +316,11 @@ func sendComposeError(stream net.Conn, message string) {
 	_ = ipc.WriteStreamClose(stream, 1)
 }
 
-// ReindexProgress represents progress for docker folder reindex operations
-type ReindexProgress struct {
-	FilesIndexed int64  `json:"files_indexed"`
-	DirsIndexed  int64  `json:"dirs_indexed"`
-	CurrentPath  string `json:"current_path,omitempty"`
-	Phase        string `json:"phase,omitempty"`
-}
-
-// ReindexResult represents the final result of a reindex operation
-type ReindexResult struct {
-	Path         string `json:"path"`
-	FilesIndexed int64  `json:"files_indexed"`
-	DirsIndexed  int64  `json:"dirs_indexed"`
-	DurationMs   int64  `json:"duration_ms"`
-}
-
 // HandleDockerReindexStream triggers a reindex of the user's docker folder and streams progress.
 // Args: none - uses the docker folder from user config
 func HandleDockerReindexStream(sess *session.Session, stream net.Conn, args []string) error {
 	username := sess.User.Username
 
-	// Get the user's docker folder from config
 	cfg, _, err := config.Load(username)
 	if err != nil {
 		_ = ipc.WriteResultError(stream, 0, "failed to load user config", 500)
@@ -371,162 +336,26 @@ func HandleDockerReindexStream(sess *session.Session, stream net.Conn, args []st
 
 	dockerFolder := string(cfg.Docker.Folder)
 
-	// Set up abort monitoring
-	cancelFn, cleanup := ipc.AbortMonitor(stream)
+	ctx, _, cleanup := ipc.AbortContext(context.Background(), stream)
 	defer cleanup()
 
-	// Create a cancellable context
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Monitor for abort in background
-	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if cancelFn() {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
-
-	// Build request to indexer's SSE endpoint
-	reindexURL := "http://unix/reindex/stream?path=" + url.QueryEscape(dockerFolder)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reindexURL, nil)
-	if err != nil {
-		_ = ipc.WriteResultError(stream, 0, "failed to create request", 500)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return err
-	}
-	req.Header.Set("Accept", "text/event-stream")
-
-	// Send initial progress
-	_ = ipc.WriteProgress(stream, 0, ReindexProgress{
-		Phase: "connecting",
-	})
-
-	// Make request to indexer
-	resp, err := indexerStreamClient.Do(req)
-	if err != nil {
-		if ctx.Err() == context.Canceled {
-			logger.Infof("[DockerReindex] Reindex aborted: %s", dockerFolder)
-			_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+	cb := indexer.ReindexCallbacks{
+		OnProgress: func(p indexer.ReindexProgress) error {
+			return ipc.WriteProgress(stream, 0, p)
+		},
+		OnResult: func(r indexer.ReindexResult) error {
+			_ = ipc.WriteResultOK(stream, 0, r)
 			_ = ipc.WriteStreamClose(stream, 0)
-			return errors.New("reindex aborted")
-		}
-		_ = ipc.WriteResultError(stream, 0, "indexer connection failed", 503)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Check for conflict (another operation running)
-	if resp.StatusCode == http.StatusConflict {
-		_ = ipc.WriteResultError(stream, 0, "another index operation is already running", 409)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return errors.New("indexer conflict")
-	}
-
-	// Check for bad request
-	if resp.StatusCode == http.StatusBadRequest {
-		_ = ipc.WriteResultError(stream, 0, "invalid path", 400)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return errors.New("invalid path")
-	}
-
-	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		_ = ipc.WriteResultError(stream, 0, "indexer error: "+resp.Status, resp.StatusCode)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return errors.New("indexer error")
-	}
-
-	// Read SSE events
-	reader := bufio.NewReader(resp.Body)
-	var currentEvent string
-
-	for {
-		// Check for cancellation
-		if cancelFn() {
-			logger.Infof("[DockerReindex] Reindex aborted: %s", dockerFolder)
-			_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+			logger.Infof("[DockerReindex] Reindex complete: path=%s files=%d dirs=%d duration=%dms",
+				r.Path, r.FilesIndexed, r.DirsIndexed, r.DurationMs)
+			return nil
+		},
+		OnError: func(msg string, code int) error {
+			_ = ipc.WriteResultError(stream, 0, msg, code)
 			_ = ipc.WriteStreamClose(stream, 0)
-			return errors.New("reindex aborted")
-		}
-
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if ctx.Err() == context.Canceled {
-				logger.Infof("[DockerReindex] Reindex aborted: %s", dockerFolder)
-				_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
-				_ = ipc.WriteStreamClose(stream, 0)
-				return errors.New("reindex aborted")
-			}
-			_ = ipc.WriteResultError(stream, 0, "read error", 500)
-			_ = ipc.WriteStreamClose(stream, 0)
-			return err
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// Parse SSE format
-		if after, ok := strings.CutPrefix(line, "event:"); ok {
-			currentEvent = strings.TrimSpace(after)
-			continue
-		}
-
-		if after, ok := strings.CutPrefix(line, "data:"); ok {
-			data := strings.TrimSpace(after)
-
-			switch currentEvent {
-			case "started":
-				_ = ipc.WriteProgress(stream, 0, ReindexProgress{
-					Phase: "indexing",
-				})
-
-			case "progress":
-				var progress ReindexProgress
-				if err := json.Unmarshal([]byte(data), &progress); err == nil {
-					progress.Phase = "indexing"
-					_ = ipc.WriteProgress(stream, 0, progress)
-				}
-
-			case "complete":
-				var result ReindexResult
-				if err := json.Unmarshal([]byte(data), &result); err == nil {
-					_ = ipc.WriteResultOK(stream, 0, result)
-					_ = ipc.WriteStreamClose(stream, 0)
-					logger.Infof("[DockerReindex] Reindex complete: path=%s files=%d dirs=%d duration=%dms",
-						result.Path, result.FilesIndexed, result.DirsIndexed, result.DurationMs)
-					return nil
-				}
-
-			case "error":
-				var errData struct {
-					Message string `json:"message"`
-				}
-				if err := json.Unmarshal([]byte(data), &errData); err == nil {
-					_ = ipc.WriteResultError(stream, 0, errData.Message, 500)
-					_ = ipc.WriteStreamClose(stream, 0)
-					return errors.New("indexer error: " + errData.Message)
-				}
-			}
-		}
+			return nil
+		},
 	}
 
-	// If we got here without a complete event, something went wrong
-	_ = ipc.WriteResultError(stream, 0, "indexer stream ended unexpectedly", 500)
-	_ = ipc.WriteStreamClose(stream, 0)
-	return errors.New("indexer stream ended unexpectedly")
+	return indexer.StreamReindex(ctx, dockerFolder, cb)
 }

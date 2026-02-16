@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -264,4 +265,55 @@ func AbortMonitor(r io.Reader) (cancelFn CancelFunc, cleanup func()) {
 	}
 
 	return cancelFn, cleanup
+}
+
+// AbortContext creates a context derived from parent that is cancelled when an
+// abort signal (OpStreamAbort) is received on the stream. Uses channel-based
+// notification — no polling.
+//
+// Returns:
+//   - ctx: a context that is cancelled on abort or when parent is done.
+//   - cancelFn: a CancelFunc that returns true once abort has been received.
+//     Can be passed to OperationCallbacks.Cancel for synchronous checks.
+//   - cleanup: blocks until the monitor goroutine exits (with a short timeout).
+//     Callers must always defer cleanup().
+func AbortContext(parent context.Context, stream io.Reader) (ctx context.Context, cancelFn CancelFunc, cleanup func()) {
+	ctx, cancel := context.WithCancel(parent)
+
+	aborted := make(chan struct{})
+	done := make(chan struct{})
+
+	// Monitor goroutine: reads frames until abort or stream error.
+	go func() {
+		defer close(done)
+		for {
+			frame, err := ReadRelayFrame(stream)
+			if err != nil {
+				return
+			}
+			if frame.Opcode == OpStreamAbort {
+				close(aborted)
+				cancel()
+				return
+			}
+		}
+	}()
+
+	cancelFn = func() bool {
+		select {
+		case <-aborted:
+			return true
+		default:
+			return false
+		}
+	}
+
+	cleanup = func() {
+		select {
+		case <-done:
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	return ctx, cancelFn, cleanup
 }

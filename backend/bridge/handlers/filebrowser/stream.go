@@ -1,26 +1,23 @@
 package filebrowser
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -454,24 +451,15 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	defer os.Remove(tempPath)
 
 	// Create archive with callbacks
-	var bytesProcessed int64
-	var lastProgress int64
-	opts := &ipc.OperationCallbacks{
-		Progress: func(n int64) {
-			bytesProcessed += n
-			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := min(int(bytesProcessed*100/totalSize), 100)
-				_ = ipc.WriteProgress(stream, 0, FileProgress{
-					Bytes: bytesProcessed,
-					Total: totalSize,
-					Pct:   pct,
-					Phase: "compressing",
-				})
-				lastProgress = bytesProcessed
-			}
-		},
-		Cancel: cancelFn,
-	}
+	pt := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
+	opts := pt.AsCallback(cancelFn, func(processed, total int64) any {
+		return FileProgress{
+			Bytes: processed,
+			Total: total,
+			Pct:   min(int(processed*100/total), 100),
+			Phase: "compressing",
+		}
+	}, totalSize)
 
 	// Create archive
 	switch format {
@@ -512,8 +500,8 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 
 	// Stream archive chunks
 	buf := make([]byte, chunkSize)
+	streamPT := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
 	var bytesSent int64
-	lastProgress = 0
 
 	for {
 		n, readErr := archiveFile.Read(buf)
@@ -527,20 +515,16 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 			}
 
 			bytesSent += int64(n)
-
-			if bytesSent-lastProgress >= progressIntervalDownload || bytesSent == archiveSize {
-				pct := 0
-				if archiveSize > 0 {
-					pct = int(bytesSent * 100 / archiveSize)
-				}
-				_ = ipc.WriteProgress(stream, 0, FileProgress{
-					Bytes: bytesSent,
-					Total: archiveSize,
-					Pct:   pct,
-					Phase: "streaming",
-				})
-				lastProgress = bytesSent
+			pct := 0
+			if archiveSize > 0 {
+				pct = int(bytesSent * 100 / archiveSize)
 			}
+			_ = streamPT.Report(bytesSent, archiveSize, FileProgress{
+				Bytes: bytesSent,
+				Total: archiveSize,
+				Pct:   pct,
+				Phase: "streaming",
+			})
 		}
 
 		if readErr == io.EOF {
@@ -664,24 +648,15 @@ func handleCompress(stream net.Conn, args []string) error {
 	})
 
 	// Create callbacks
-	var bytesProcessed int64
-	var lastProgress int64
-	opts := &ipc.OperationCallbacks{
-		Progress: func(n int64) {
-			bytesProcessed += n
-			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := min(int(bytesProcessed*100/totalSize), 100)
-				_ = ipc.WriteProgress(stream, 0, FileProgress{
-					Bytes: bytesProcessed,
-					Total: totalSize,
-					Pct:   pct,
-					Phase: "compressing",
-				})
-				lastProgress = bytesProcessed
-			}
-		},
-		Cancel: cancelFn,
-	}
+	pt := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
+	opts := pt.AsCallback(cancelFn, func(processed, total int64) any {
+		return FileProgress{
+			Bytes: processed,
+			Total: total,
+			Pct:   min(int(processed*100/total), 100),
+			Phase: "compressing",
+		}
+	}, totalSize)
 
 	// Create archive
 	switch format {
@@ -791,24 +766,15 @@ func handleExtract(stream net.Conn, args []string) error {
 	})
 
 	// Create callbacks
-	var bytesProcessed int64
-	var lastProgress int64
-	opts := &ipc.OperationCallbacks{
-		Progress: func(n int64) {
-			bytesProcessed += n
-			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := min(int(bytesProcessed*100/totalSize), 100)
-				_ = ipc.WriteProgress(stream, 0, FileProgress{
-					Bytes: bytesProcessed,
-					Total: totalSize,
-					Pct:   pct,
-					Phase: "extracting",
-				})
-				lastProgress = bytesProcessed
-			}
-		},
-		Cancel: cancelFn,
-	}
+	pt := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
+	opts := pt.AsCallback(cancelFn, func(processed, total int64) any {
+		return FileProgress{
+			Bytes: processed,
+			Total: total,
+			Pct:   min(int(processed*100/total), 100),
+			Phase: "extracting",
+		}
+	}, totalSize)
 
 	// Extract archive
 	err = services.ExtractArchive(archivePath, destination, opts)
@@ -869,204 +835,36 @@ func handleExtract(stream net.Conn, args []string) error {
 	return nil
 }
 
-// ReindexProgress represents progress for reindex operations.
-type ReindexProgress struct {
-	FilesIndexed int64  `json:"files_indexed"`
-	DirsIndexed  int64  `json:"dirs_indexed"`
-	CurrentPath  string `json:"current_path,omitempty"`
-	Phase        string `json:"phase,omitempty"`
-}
-
-// ReindexResult represents the final result of a reindex operation.
-type ReindexResult struct {
-	Path         string `json:"path"`
-	FilesIndexed int64  `json:"files_indexed"`
-	DirsIndexed  int64  `json:"dirs_indexed"`
-	TotalSize    int64  `json:"total_size"`
-	DurationMs   int64  `json:"duration_ms"`
-}
-
-// indexerStreamClient is an HTTP client for SSE connections to the indexer.
-// It has no timeout since SSE streams can run for a long time.
-var indexerStreamClient = &http.Client{
-	Transport: &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			dialer := &net.Dialer{
-				Timeout:   5 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}
-			return dialer.DialContext(ctx, "unix", "/var/run/indexer.sock")
-		},
-	},
-	// No timeout for SSE streams
-}
-
 // handleReindex triggers a reindex operation and streams progress to the client.
 // args: [path?] - optional path, defaults to "/" for full filesystem reindex
 func handleReindex(stream net.Conn, args []string) error {
-	// Default to root path for full filesystem reindex
 	path := "/"
 	if len(args) > 0 && args[0] != "" {
 		path = filepath.Clean(args[0])
 	}
 
-	// Set up abort monitoring
-	cancelFn, cleanup := ipc.AbortMonitor(stream)
+	ctx, _, cleanup := ipc.AbortContext(context.Background(), stream)
 	defer cleanup()
 
-	// Create a cancellable context
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Monitor for abort in background
-	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if cancelFn() {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
-
-	// Build request to indexer's SSE endpoint
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex/stream?path="+path, nil)
-	if err != nil {
-		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("failed to create request: %v", err), 500)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Accept", "text/event-stream")
-
-	// Send initial progress
-	_ = ipc.WriteProgress(stream, 0, ReindexProgress{
-		Phase: "connecting",
-	})
-
-	// Make request to indexer
-	resp, err := indexerStreamClient.Do(req)
-	if err != nil {
-		if ctx.Err() == context.Canceled {
-			logger.Infof(" Reindex aborted: %s", path)
-			_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+	cb := indexer.ReindexCallbacks{
+		OnProgress: func(p indexer.ReindexProgress) error {
+			return ipc.WriteProgress(stream, 0, p)
+		},
+		OnResult: func(r indexer.ReindexResult) error {
+			_ = ipc.WriteResultOK(stream, 0, r)
 			_ = ipc.WriteStreamClose(stream, 0)
-			return ipc.ErrAborted
-		}
-		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("indexer connection failed: %v", err), 503)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("indexer request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check for conflict (another operation running)
-	if resp.StatusCode == http.StatusConflict {
-		_ = ipc.WriteResultError(stream, 0, "another index operation is already running", 409)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("indexer conflict")
-	}
-
-	// Check for bad request
-	if resp.StatusCode == http.StatusBadRequest {
-		_ = ipc.WriteResultError(stream, 0, "invalid path", 400)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("invalid path")
-	}
-
-	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("indexer error: %s", resp.Status), resp.StatusCode)
-		_ = ipc.WriteStreamClose(stream, 0)
-		return fmt.Errorf("indexer error: %s", resp.Status)
-	}
-
-	// Read SSE events
-	reader := bufio.NewReader(resp.Body)
-	var currentEvent string
-
-	for {
-		// Check for cancellation
-		if cancelFn() {
-			logger.Infof(" Reindex aborted: %s", path)
-			_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
+			logger.Infof(" Reindex complete: path=%s files=%d dirs=%d duration=%dms",
+				r.Path, r.FilesIndexed, r.DirsIndexed, r.DurationMs)
+			return nil
+		},
+		OnError: func(msg string, code int) error {
+			_ = ipc.WriteResultError(stream, 0, msg, code)
 			_ = ipc.WriteStreamClose(stream, 0)
-			return ipc.ErrAborted
-		}
-
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if ctx.Err() == context.Canceled {
-				logger.Infof(" Reindex aborted: %s", path)
-				_ = ipc.WriteResultError(stream, 0, "operation aborted", 499)
-				_ = ipc.WriteStreamClose(stream, 0)
-				return ipc.ErrAborted
-			}
-			_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("read error: %v", err), 500)
-			_ = ipc.WriteStreamClose(stream, 0)
-			return fmt.Errorf("read SSE: %w", err)
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// Parse SSE format
-		if after, ok := strings.CutPrefix(line, "event:"); ok {
-			currentEvent = strings.TrimSpace(after)
-			continue
-		}
-
-		if after, ok := strings.CutPrefix(line, "data:"); ok {
-			data := strings.TrimSpace(after)
-
-			switch currentEvent {
-			case "started":
-				_ = ipc.WriteProgress(stream, 0, ReindexProgress{
-					Phase: "indexing",
-				})
-
-			case "progress":
-				var progress ReindexProgress
-				if err := json.Unmarshal([]byte(data), &progress); err == nil {
-					progress.Phase = "indexing"
-					_ = ipc.WriteProgress(stream, 0, progress)
-				}
-
-			case "complete":
-				var result ReindexResult
-				if err := json.Unmarshal([]byte(data), &result); err == nil {
-					_ = ipc.WriteResultOK(stream, 0, result)
-					_ = ipc.WriteStreamClose(stream, 0)
-					logger.Infof(" Reindex complete: path=%s files=%d dirs=%d duration=%dms",
-						result.Path, result.FilesIndexed, result.DirsIndexed, result.DurationMs)
-					return nil
-				}
-
-			case "error":
-				var errData struct {
-					Message string `json:"message"`
-				}
-				if err := json.Unmarshal([]byte(data), &errData); err == nil {
-					_ = ipc.WriteResultError(stream, 0, errData.Message, 500)
-					_ = ipc.WriteStreamClose(stream, 0)
-					return fmt.Errorf("indexer error: %s", errData.Message)
-				}
-			}
-		}
+			return nil
+		},
 	}
 
-	// If we got here without a complete event, something went wrong
-	_ = ipc.WriteResultError(stream, 0, "indexer stream ended unexpectedly", 500)
-	_ = ipc.WriteStreamClose(stream, 0)
-	return fmt.Errorf("indexer stream ended unexpectedly")
+	return indexer.StreamReindex(ctx, path, cb)
 }
 
 // handleCopy copies a file or directory with progress feedback.
@@ -1140,24 +938,15 @@ func handleCopy(stream net.Conn, args []string) error {
 	})
 
 	// Create callbacks for progress tracking
-	var bytesProcessed int64
-	var lastProgress int64
-	opts := &ipc.OperationCallbacks{
-		Progress: func(n int64) {
-			bytesProcessed += n
-			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := min(int(bytesProcessed*100/totalSize), 100)
-				_ = ipc.WriteProgress(stream, 0, FileProgress{
-					Bytes: bytesProcessed,
-					Total: totalSize,
-					Pct:   pct,
-					Phase: "copying",
-				})
-				lastProgress = bytesProcessed
-			}
-		},
-		Cancel: cancelFn,
-	}
+	pt := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
+	opts := pt.AsCallback(cancelFn, func(processed, total int64) any {
+		return FileProgress{
+			Bytes: processed,
+			Total: total,
+			Pct:   min(int(processed*100/total), 100),
+			Phase: "copying",
+		}
+	}, totalSize)
 
 	// Perform the copy operation
 	err = services.CopyFileWithCallbacks(source, destination, overwrite, opts)
@@ -1267,24 +1056,15 @@ func handleMove(stream net.Conn, args []string) error {
 	})
 
 	// Create callbacks for progress tracking
-	var bytesProcessed int64
-	var lastProgress int64
-	opts := &ipc.OperationCallbacks{
-		Progress: func(n int64) {
-			bytesProcessed += n
-			if totalSize > 0 && (bytesProcessed-lastProgress >= progressIntervalDownload || bytesProcessed >= totalSize) {
-				pct := min(int(bytesProcessed*100/totalSize), 100)
-				_ = ipc.WriteProgress(stream, 0, FileProgress{
-					Bytes: bytesProcessed,
-					Total: totalSize,
-					Pct:   pct,
-					Phase: "moving",
-				})
-				lastProgress = bytesProcessed
-			}
-		},
-		Cancel: cancelFn,
-	}
+	pt := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
+	opts := pt.AsCallback(cancelFn, func(processed, total int64) any {
+		return FileProgress{
+			Bytes: processed,
+			Total: total,
+			Pct:   min(int(processed*100/total), 100),
+			Phase: "moving",
+		}
+	}, totalSize)
 
 	// Perform the move operation
 	err = services.MoveFileWithCallbacks(source, destination, overwrite, opts)

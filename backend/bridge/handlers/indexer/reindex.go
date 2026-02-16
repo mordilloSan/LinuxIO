@@ -1,0 +1,139 @@
+package indexer
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+)
+
+// indexerClient is the HTTP client for SSE connections to the indexer service.
+// Unexported — only used by StreamReindex.
+var indexerClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			dialer := &net.Dialer{
+				Timeout:   5 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}
+			return dialer.DialContext(ctx, "unix", "/var/run/indexer.sock")
+		},
+	},
+}
+
+// ReindexCallbacks defines how reindex events are delivered to the caller.
+// Nil callbacks are safely skipped (no-op).
+type ReindexCallbacks struct {
+	OnProgress func(ReindexProgress) error
+	OnResult   func(ReindexResult) error
+	OnError    func(msg string, code int) error
+}
+
+// StreamReindex connects to the indexer SSE endpoint for the given path and
+// relays events via callbacks. The caller controls cancellation through ctx
+// (e.g. via ipc.AbortContext).
+//
+// HTTP status-to-error mapping is centralized here so handler wrappers stay thin.
+func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error {
+	query := url.Values{}
+	query.Set("path", path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex/stream?"+query.Encode(), nil)
+	if err != nil {
+		callOnError(cb, fmt.Sprintf("failed to create request: %v", err), 500)
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+
+	// Send initial "connecting" progress
+	callOnProgress(cb, ReindexProgress{Phase: "connecting"})
+
+	resp, err := indexerClient.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			callOnError(cb, "operation aborted", 499)
+			return ipc.ErrAborted
+		}
+		callOnError(cb, fmt.Sprintf("indexer connection failed: %v", err), 503)
+		return fmt.Errorf("indexer request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Centralized HTTP status mapping
+	switch {
+	case resp.StatusCode == http.StatusConflict:
+		callOnError(cb, "another index operation is already running", 409)
+		return fmt.Errorf("indexer conflict")
+	case resp.StatusCode == http.StatusBadRequest:
+		callOnError(cb, "invalid path", 400)
+		return fmt.Errorf("invalid path")
+	case resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK:
+		callOnError(cb, fmt.Sprintf("indexer error: %s", resp.Status), resp.StatusCode)
+		return fmt.Errorf("indexer error: %s", resp.Status)
+	}
+
+	// Parse SSE events
+	events, errCh := ReadSSE(ctx, resp.Body)
+
+	for evt := range events {
+		switch evt.Type {
+		case "started":
+			callOnProgress(cb, ReindexProgress{Phase: "indexing"})
+
+		case "progress":
+			var progress ReindexProgress
+			if err := json.Unmarshal([]byte(evt.Data), &progress); err == nil {
+				progress.Phase = "indexing"
+				callOnProgress(cb, progress)
+			}
+
+		case "complete":
+			var result ReindexResult
+			if err := json.Unmarshal([]byte(evt.Data), &result); err == nil {
+				if cb.OnResult != nil {
+					_ = cb.OnResult(result)
+				}
+				return nil
+			}
+
+		case "error":
+			var errData struct {
+				Message string `json:"message"`
+			}
+			if err := json.Unmarshal([]byte(evt.Data), &errData); err == nil {
+				callOnError(cb, errData.Message, 500)
+				return fmt.Errorf("indexer error: %s", errData.Message)
+			}
+		}
+	}
+
+	// Check for SSE read error
+	if err := <-errCh; err != nil {
+		if ctx.Err() != nil {
+			callOnError(cb, "operation aborted", 499)
+			return ipc.ErrAborted
+		}
+		callOnError(cb, fmt.Sprintf("read error: %v", err), 500)
+		return fmt.Errorf("read SSE: %w", err)
+	}
+
+	// Stream ended without a "complete" event
+	callOnError(cb, "indexer stream ended unexpectedly", 500)
+	return fmt.Errorf("indexer stream ended unexpectedly")
+}
+
+func callOnProgress(cb ReindexCallbacks, p ReindexProgress) {
+	if cb.OnProgress != nil {
+		_ = cb.OnProgress(p)
+	}
+}
+
+func callOnError(cb ReindexCallbacks, msg string, code int) {
+	if cb.OnError != nil {
+		_ = cb.OnError(msg, code)
+	}
+}
