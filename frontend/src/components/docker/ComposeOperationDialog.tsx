@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import {
   useStreamMux,
   decodeString,
+  bindStreamHandlers,
   openDockerComposeStream,
   type Stream,
 } from "@/api";
@@ -48,6 +49,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const [success, setSuccess] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<Stream | null>(null);
+  const unbindRef = useRef<(() => void) | null>(null);
 
   const { isOpen: muxIsOpen } = useStreamMux();
 
@@ -60,6 +62,10 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
 
   // Close stream helper
   const closeStream = useCallback(() => {
+    if (unbindRef.current) {
+      unbindRef.current();
+      unbindRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.close();
       streamRef.current = null;
@@ -105,39 +111,38 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
     }
 
     streamRef.current = stream;
+    unbindRef.current = bindStreamHandlers(stream, {
+      onData: (data: Uint8Array) => {
+        const text = decodeString(data);
+        try {
+          const msg: ComposeMessage = JSON.parse(text);
 
-    // Handle incoming data
-    stream.onData = (data: Uint8Array) => {
-      const text = decodeString(data);
-      try {
-        const msg: ComposeMessage = JSON.parse(text);
-
-        switch (msg.type) {
-          case "stdout":
-          case "stderr":
-            setOutput((prev) => [...prev, msg.message]);
-            break;
-          case "error":
-            setError(msg.message);
-            setIsRunning(false);
-            toast.error(`Failed to ${action} stack: ${msg.message}`);
-            break;
-          case "complete":
-            setSuccess(true);
-            setIsRunning(false);
-            setOutput((prev) => [...prev, "✓ " + msg.message]);
-            break;
+          switch (msg.type) {
+            case "stdout":
+            case "stderr":
+              setOutput((prev) => [...prev, msg.message]);
+              break;
+            case "error":
+              setError(msg.message);
+              setIsRunning(false);
+              toast.error(`Failed to ${action} stack: ${msg.message}`);
+              break;
+            case "complete":
+              setSuccess(true);
+              setIsRunning(false);
+              setOutput((prev) => [...prev, "✓ " + msg.message]);
+              break;
+          }
+        } catch {
+          // If not JSON, just append as-is
+          setOutput((prev) => [...prev, text]);
         }
-      } catch {
-        // If not JSON, just append as-is
-        setOutput((prev) => [...prev, text]);
-      }
-    };
-
-    stream.onClose = () => {
-      streamRef.current = null;
-      setIsRunning(false);
-    };
+      },
+      onClose: () => {
+        streamRef.current = null;
+        setIsRunning(false);
+      },
+    });
   }, [open, action, projectName, composePath, muxIsOpen]);
 
   const getActionLabel = () => {

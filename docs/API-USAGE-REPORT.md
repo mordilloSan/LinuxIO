@@ -1,7 +1,7 @@
 # LinuxIO Frontend API Usage Report
 
 **Branch:** `dev/v0.8.0`
-**Date:** 2025-02-15
+**Date:** 2026-02-16
 
 ---
 
@@ -29,11 +29,12 @@
    - 3.7 [System Update Streams](#37-system-update-streams)
    - 3.8 [Package Update Streams](#38-package-update-streams)
    - 3.9 [Storage Streams (SMART Tests)](#39-storage-streams-smart-tests)
-   - 3.10 [Stream Event Handlers Reference](#310-stream-event-handlers-reference)
+   - 3.10 [Stream Lifecycle Primitives](#310-stream-lifecycle-primitives)
    - 3.11 [String Encoding/Decoding](#311-string-encodingdecoding)
    - 3.12 [Flow Control Constants](#312-flow-control-constants)
 4. [Summary Statistics](#4-summary-statistics)
 5. [Complete API Command Inventory](#5-complete-api-command-inventory)
+6. [Coherence & Patterns Analysis](#6-coherence--patterns-analysis)
 
 ---
 
@@ -83,9 +84,9 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 
 ### 2.1 useQuery — React Query Data Fetching
 
-52 total `useQuery` hooks across the codebase.
+Snapshot of `useQuery` hook usage across the codebase.
 
-#### System Handler (10 queries)
+#### System Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -97,11 +98,10 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 6 | `pages/main/dashboard/System.tsx` | 37 | `linuxio.system.get_updates_fast.useQuery({refetchInterval: 50000})` | Quick update count |
 | 7 | `pages/main/dashboard/System.tsx` | 47 | `linuxio.system.get_processes.useQuery(...)` | Process list |
 | 8 | `pages/main/dashboard/MotherBoard.tsx` | 10 | `linuxio.system.get_motherboard_info.useQuery(...)` | Motherboard info |
-| 9 | `pages/main/dashboard/Drive.tsx` | 56 | `linuxio.system.get_cpu_info.useQuery(...)` | CPU sensor temp for drives |
-| 10 | `pages/main/dashboard/FileSystem.tsx` | 13 | `linuxio.system.get_fs_info.useQuery(...)` | Filesystem info |
-| 10b | `pages/main/storage/DiskOverview/index.tsx` | 317 | `linuxio.system.get_fs_info.useQuery({refetchInterval: 10000})` | Filesystem info for disk overview |
+| 9 | `pages/main/dashboard/FileSystem.tsx` | 13 | `linuxio.system.get_fs_info.useQuery(...)` | Filesystem info |
+| 10 | `pages/main/storage/DiskOverview/index.tsx` | 317 | `linuxio.system.get_fs_info.useQuery({refetchInterval: 10000})` | Filesystem info for disk overview |
 
-#### Storage Handler (7 queries)
+#### Storage Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -112,7 +112,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 14 | `pages/main/storage/LVMManagement.tsx` | 559 | `linuxio.storage.list_vgs.useQuery({refetchInterval: 10000})` | List volume groups with polling |
 | 15 | `pages/main/storage/LVMManagement.tsx` | 565 | `linuxio.storage.list_lvs.useQuery({refetchInterval: 10000})` | List logical volumes with polling |
 
-#### Docker Handler (7 queries)
+#### Docker Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -124,7 +124,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 21 | `hooks/useDockerIcon.ts` | 10 | `linuxio.docker.get_icon_uri.useQuery({args: [identifier], staleTime: ONE_DAY})` | Docker container icon URI |
 | 22 | `components/docker/ReindexDialog.tsx` | 64 | `linuxio.docker.list_compose_projects.useQuery({enabled: open && success})` | Stacks summary after reindex |
 
-#### DBus Handler (7 queries)
+#### DBus Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -137,7 +137,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 28 | `hooks/usePackageUpdater.ts` | 39 | `linuxio.dbus.get_updates_basic.useQuery({enabled: false})` | Manual refetch for post-update |
 | 28b | `pages/main/wireguard/CreateInterfaceButton.tsx` | 35 | `linuxio.dbus.get_network_info.useQuery()` | Network info for WG interface creation |
 
-#### Filebrowser Handler (10 queries)
+#### Filebrowser Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -151,7 +151,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 33 | `hooks/useFileQueries.ts` | 84 | `linuxio.filebrowser.resource_stat.useQuery(detailTarget, {...})` | File stat (permissions, owner) |
 | 34 | `components/filebrowser/PermissionsDialog.tsx` | 134 | `linuxio.filebrowser.users_groups.useQuery({enabled: open})` | Users/groups for permissions |
 
-#### Accounts Handler (6 queries)
+#### Accounts Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -163,7 +163,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 38b | `pages/main/accounts/components/EditUserDialog.tsx` | 39 | `linuxio.accounts.list_groups.useQuery()` | Groups for user editing |
 | 39 | `pages/main/accounts/components/EditGroupMembersDialog.tsx` | 39 | `linuxio.accounts.list_users.useQuery()` | Users for group member editing |
 
-#### Wireguard Handler (3 queries)
+#### Wireguard Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -171,14 +171,14 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 40b | `pages/main/wireguard/CreateInterfaceButton.tsx` | 38 | `linuxio.wireguard.list_interfaces.useQuery()` | WG interfaces for creation form |
 | 41 | `pages/main/wireguard/InterfaceClients.tsx` | 96 | `linuxio.wireguard.list_peers.useQuery(interfaceName, {refetchInterval: 3000})` | WireGuard peers with polling |
 
-#### Terminal Handler (2 queries)
+#### Terminal Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
 | 42 | `pages/main/terminal/Terminal.tsx` | 26 | `linuxio.terminal.list_shells.useQuery({staleTime: 60000})` | Available shells |
 | 43 | `pages/main/docker/TerminalDialog.tsx` | 65 | `linuxio.terminal.list_shells.useQuery(containerId, {enabled})` | Shells for container terminal |
 
-#### Modules Handler (3 queries)
+#### Modules Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -186,13 +186,13 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 44b | `routes.tsx` | 241 | `linuxio.modules.get_modules.useQuery({staleTime, refetchOnMount: false})` | Modules for route building |
 | 44c | `routes.tsx` | 293 | `linuxio.modules.get_modules.useQuery({staleTime, refetchOnMount: false})` | Modules for sidebar items |
 
-#### Config Handler (1 query)
+#### Config Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
 | 45 | `pages/main/docker/ComposeStacksPage.tsx` | 97 | `linuxio.config.get.useQuery({staleTime: ...})` | Docker folder config |
 
-#### Control Handler (1 query)
+#### Control Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -208,9 +208,9 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 
 ### 2.2 useMutation — React Query Mutations
 
-58 total `useMutation` hooks.
+Snapshot of `useMutation` hook usage across the codebase.
 
-#### Docker Handler (14 mutations)
+#### Docker Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -224,7 +224,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 8 | `pages/main/docker/ImageList.tsx` | 52 | `linuxio.docker.delete_image.useMutation()` | Delete image |
 | 9 | `pages/main/docker/ComposeStacksPage.tsx` | 102 | `linuxio.docker.delete_stack.useMutation()` | Delete compose stack |
 
-#### DBus Handler (13 mutations)
+#### DBus Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -242,7 +242,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 21 | `pages/main/updates/UpdateSettings.tsx` | 93 | `linuxio.dbus.apply_offline_updates.useMutation()` | Apply offline updates |
 | 22 | `hooks/usePackageUpdater.ts` | 36 | `linuxio.dbus.install_package.useMutation()` | Install single package |
 
-#### Filebrowser Handler (5 mutations)
+#### Filebrowser Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -252,7 +252,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 26 | `hooks/useFileMutations.ts` | 158 | `linuxio.filebrowser.chmod.useMutation()` | Change permissions |
 | 27 | `hooks/useFileMutations.ts` | 188 | `linuxio.filebrowser.resource_patch.useMutation()` | Rename file/folder |
 
-#### Accounts Handler (8 mutations)
+#### Accounts Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -265,7 +265,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 34 | `pages/main/accounts/components/CreateGroupDialog.tsx` | 24 | `linuxio.accounts.create_group.useMutation()` | Create group |
 | 35 | `pages/main/accounts/components/EditGroupMembersDialog.tsx` | 44 | `linuxio.accounts.modify_group_members.useMutation()` | Edit group members |
 
-#### Storage Handler (5 mutations)
+#### Storage Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -277,7 +277,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 41 | `pages/main/storage/LVMManagement.tsx` | 292 | `linuxio.storage.delete_lv.useMutation()` | Delete logical volume |
 | 42 | `pages/main/storage/DiskOverview/index.tsx` | 73 | `linuxio.storage.run_smart_test.useMutation()` | Run SMART test |
 
-#### Wireguard Handler (8 mutations)
+#### Wireguard Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -292,7 +292,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 51 | `pages/main/wireguard/InterfaceClients.tsx` | 118 | `linuxio.wireguard.peer_config_download.useMutation()` | Download peer config |
 | 52 | `pages/main/wireguard/InterfaceClients.tsx` | 128 | `linuxio.wireguard.peer_qrcode.useMutation()` | Generate peer QR |
 
-#### Network Handler (4 mutations)
+#### Network Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -301,7 +301,7 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 55 | `pages/main/network/NetworkInterfaceEditor.tsx` | 140 | `linuxio.dbus.enable_connection.useMutation()` | Enable connection |
 | 56 | `pages/main/network/NetworkInterfaceEditor.tsx` | 155 | `linuxio.dbus.disable_connection.useMutation()` | Disable connection |
 
-#### Config Handler (1 mutation)
+#### Config Handler
 
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
@@ -440,6 +440,8 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 
 5 usages, **all internal to `api/react-query.ts`**. These are the underlying transport that powers every typed endpoint. No consumer code uses `core.call()` directly.
 
+`api/linuxio-core.ts` now standardizes stream completion/handler wiring through `awaitStreamResult()` and `bindStreamHandlers()` from `api/stream-helpers.ts`.
+
 | # | Line | Context |
 |---|------|---------|
 | 1 | 86 | `queryFn` for `useCall()` |
@@ -453,6 +455,20 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 ---
 
 ## 3. Streaming API (WebSocket, Bidirectional)
+
+### Streaming Consistency Layer
+
+To reduce duplicated `onData/onProgress/onResult/onClose` wiring, frontend stream consumers now use shared helpers from `api/stream-helpers.ts`:
+
+- `awaitStreamResult(stream, options)` — for request-like streams that must end with a result frame.
+- `bindStreamHandlers(stream, handlers)` — for long-lived streams (logs/terminal-like) that primarily consume data and close events.
+- `writeStreamChunks(stream, data, options)` — for chunked write operations (editor save, compose save, uploads).
+
+This gives one coherent lifecycle contract for:
+
+- handler attachment and cleanup,
+- abort/cancel handling,
+- close-before-result error behavior for result-based streams.
 
 ### 3.1 Connection Lifecycle
 
@@ -483,13 +499,14 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 | 10 | `components/docker/ComposeOperationDialog.tsx` | 52 | `isOpen` | Compose operation lifecycle |
 | 11 | `components/docker/ReindexDialog.tsx` | 61 | `isOpen` | Reindex stream lifecycle |
 
-#### useIsUpdating() — 3 consumers
+#### useIsUpdating() — 4 consumers
 
 | # | File | Line | Purpose |
 |---|------|------|---------|
 | 1 | `api/react-query.ts` | 82 | Disable all React Query fetching during system update |
 | 2 | `api/react-query.ts` | 303 | Disable typed `.useQuery()` during update |
 | 3 | `hooks/useFileQueries.ts` | 32 | Pause file browser queries during update |
+| 4 | `hooks/useFileMultipleDirectoryDetails.ts` | 32 | Pause multi-directory detail queries during update |
 
 #### isConnected() — 11 guard calls
 
@@ -513,21 +530,20 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `pages/main/terminal/Terminal.tsx` | 136 | `openTerminalStream(cols, rows)` | Open new host terminal PTY |
-| `pages/main/terminal/Terminal.tsx` | 238 | `openTerminalStream(cols, rows)` | Open fresh terminal on reset |
-| `pages/main/terminal/Terminal.tsx` | 145,243 | `stream.onData = (data) => term.write(decodeString(data))` | Render terminal output |
-| `pages/main/terminal/Terminal.tsx` | 98,168 | `stream.write(encodeString(text))` | Send keyboard input |
-| `pages/main/terminal/Terminal.tsx` | 303 | `stream.write(encodeString(text))` | Send pasted text |
-| `pages/main/terminal/Terminal.tsx` | 280 | `stream.resize(cols, rows)` | Handle terminal resize |
+| `pages/main/terminal/Terminal.tsx` | 138 | `openTerminalStream(cols, rows)` | Open new host terminal PTY |
+| `pages/main/terminal/Terminal.tsx` | 244 | `openTerminalStream(cols, rows)` | Open fresh terminal on reset |
+| `pages/main/terminal/Terminal.tsx` | 147,249 | `bindStreamHandlers(stream, { onData, onClose })` | Attach/detach terminal output handlers coherently |
+| `pages/main/terminal/Terminal.tsx` | 100,172,311 | `stream.write(encodeString(text))` | Send keyboard input and pasted text |
+| `pages/main/terminal/Terminal.tsx` | 162,180 | `stream.resize(cols, rows)` | Handle terminal resize |
 
 #### Container Terminal
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `pages/main/docker/TerminalDialog.tsx` | 181 | `openContainerStream(containerId, shell, cols, rows)` | Open container shell |
-| `pages/main/docker/TerminalDialog.tsx` | 189 | `stream.onData = (data) => term.write(decodeString(data))` | Render container output |
-| `pages/main/docker/TerminalDialog.tsx` | 159,206 | `stream.write(encodeString(text))` | Send keyboard input |
-| `pages/main/docker/TerminalDialog.tsx` | 298 | `stream.write(encodeString(text))` | Send pasted text |
+| `pages/main/docker/TerminalDialog.tsx` | 188 | `openContainerStream(containerId, shell, cols, rows)` | Open container shell |
+| `pages/main/docker/TerminalDialog.tsx` | 193 | `bindStreamHandlers(stream, { onData, onClose })` | Attach/detach container terminal handlers coherently |
+| `pages/main/docker/TerminalDialog.tsx` | 166,214,298 | `stream.write(encodeString(text))` | Send keyboard input and pasted text |
+| `pages/main/docker/TerminalDialog.tsx` | 208,222 | `stream.resize(cols, rows)` | Handle terminal resize |
 
 ---
 
@@ -537,24 +553,24 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `pages/main/docker/LogsDialog.tsx` | 99 | `openDockerLogsStream(containerId, "100")` | Initial stream (tail 100 lines) |
-| `pages/main/docker/LogsDialog.tsx` | 142 | `openDockerLogsStream(containerId, "0")` | Re-enable live mode (new lines only) |
-| `pages/main/docker/LogsDialog.tsx` | 113,147 | `stream.onData = (data) => decodeString(data)` | Parse log lines |
+| `pages/main/docker/LogsDialog.tsx` | 101 | `openDockerLogsStream(containerId, "100")` | Initial stream (tail 100 lines) |
+| `pages/main/docker/LogsDialog.tsx` | 143 | `openDockerLogsStream(containerId, "0")` | Re-enable live mode (new lines only) |
+| `pages/main/docker/LogsDialog.tsx` | 112,147 | `bindStreamHandlers(stream, { onData, onClose })` | Parse log lines with standardized lifecycle |
 
 #### Systemd Service Logs
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `pages/main/services/ServiceLogsDrawer.tsx` | 82 | `openServiceLogsStream(serviceName, "200")` | Initial stream (tail 200 lines) |
-| `pages/main/services/ServiceLogsDrawer.tsx` | 125 | `openServiceLogsStream(serviceName, "0")` | Re-enable live mode |
-| `pages/main/services/ServiceLogsDrawer.tsx` | 96,130 | `stream.onData = (data) => decodeString(data)` | Parse log lines |
+| `pages/main/services/ServiceLogsDrawer.tsx` | 84 | `openServiceLogsStream(serviceName, "200")` | Initial stream (tail 200 lines) |
+| `pages/main/services/ServiceLogsDrawer.tsx` | 126 | `openServiceLogsStream(serviceName, "0")` | Re-enable live mode |
+| `pages/main/services/ServiceLogsDrawer.tsx` | 95,130 | `bindStreamHandlers(stream, { onData, onClose })` | Parse log lines with standardized lifecycle |
 
 #### General System Logs (journalctl)
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
 | `pages/main/logs/GeneralLogsPage.tsx` | 265 | `openGeneralLogsStream(lines, timePeriod, priority, identifier)` | Filtered log stream |
-| `pages/main/logs/GeneralLogsPage.tsx` | 283 | `stream.onData = (data) => JSON.parse(decodeString(data))` | Parse JSON log entries |
+| `pages/main/logs/GeneralLogsPage.tsx` | 283 | `bindStreamHandlers(stream, { onData, onClose })` | Parse JSON log entries with standardized lifecycle |
 
 ---
 
@@ -564,16 +580,15 @@ The frontend API is built on a **binary WebSocket stream multiplexer** (`StreamM
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `components/docker/ComposeOperationDialog.tsx` | 96 | `openDockerComposeStream(action, projectName, composePath)` | Run compose operation |
-| `components/docker/ComposeOperationDialog.tsx` | 111 | `stream.onData = (data) => JSON.parse(decodeString(data))` | Parse stdout/stderr/complete/error messages |
+| `components/docker/ComposeOperationDialog.tsx` | 102 | `openDockerComposeStream(action, projectName, composePath)` | Run compose operation |
+| `components/docker/ComposeOperationDialog.tsx` | 114 | `bindStreamHandlers(stream, { onData, onClose })` | Parse stdout/stderr/complete/error messages |
 
 #### Docker Reindex
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `components/docker/ReindexDialog.tsx` | 113 | `openDockerReindexStream()` | Reindex compose projects |
-| `components/docker/ReindexDialog.tsx` | 126 | `stream.onProgress` | Track files_indexed, dirs_indexed, current_path |
-| `components/docker/ReindexDialog.tsx` | 133 | `stream.onResult` | Completion/error status |
+| `components/docker/ReindexDialog.tsx` | 117 | `openDockerReindexStream()` | Reindex compose projects |
+| `components/docker/ReindexDialog.tsx` | 130 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion/error in one lifecycle wrapper |
 
 ---
 
@@ -585,65 +600,59 @@ All file transfer streams are managed by `contexts/FileTransferContext.tsx`.
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 1037 | `openFileUploadStream(targetPath, file.size)` | Upload file with chunked streaming |
-| 1054 | `stream.onProgress` | Track bytes/total/pct |
-| 1058 | `stream.onResult` | Handle completion |
-| 1107-1136 | `stream.write()` with `STREAM_CHUNK_SIZE` + `UPLOAD_WINDOW_SIZE` | Flow-controlled chunking |
+| 982 | `openFileUploadStream(targetPath, file.size)` | Upload file with chunked streaming |
+| 1042 | `bindStreamHandlers(stream, { onProgress, onResult, onClose })` | Unified progress/result/close handling |
+| 1033-1048 | `STREAM_CHUNK_SIZE` + `UPLOAD_WINDOW_SIZE` | Flow-controlled chunking and backpressure |
 
 Also used for file saves:
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `pages/main/filebrowser/index.tsx` | 797 | `openFileUploadStream(editingPath, contentSize)` | Save file editor content |
-| `pages/main/filebrowser/index.tsx` | 895 | `openFileUploadStream(editingPath, contentSize)` | Save-and-close file |
-| `pages/main/docker/ComposeStacksPage.tsx` | 314 | `openFileUploadStream(filePath, contentSize, override)` | Save compose file |
+| `pages/main/filebrowser/index.tsx` | 785 | `openFileUploadStream(path, contentBytes.length)` | Save file editor content |
+| `pages/main/filebrowser/index.tsx` | 790,795 | `awaitStreamResult` + `writeStreamChunks` | Coherent save completion + chunk writes |
+| `pages/main/docker/ComposeStacksPage.tsx` | 315 | `openFileUploadStream(filePath, contentSize, override)` | Save compose file |
+| `pages/main/docker/ComposeStacksPage.tsx` | 322,327 | `awaitStreamResult` + `writeStreamChunks` | Coherent save completion + chunk writes |
 
 #### Download
 
 | Line | Function | Description |
 |------|----------|-------------|
 | 339 | `openFileDownloadStream(paths)` | Download single file or multi-file zip |
-| 384 | `stream.onProgress` | Track bytes/total/pct |
-| 422 | `stream.onResult` | Handle completion, trigger browser download |
+| 352 | `awaitStreamResult(stream, { onData, onProgress })` | Track bytes/total/pct + completion in one lifecycle wrapper |
 
 #### Compress
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 643 | `openFileCompressStream(paths, fullDestination, format)` | Create archive |
-| 653 | `stream.onProgress` | Track progress |
-| 669 | `stream.onResult` | Handle completion |
+| 590 | `openFileCompressStream(paths, fullDestination, format)` | Create archive |
+| 600 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
 
 #### Extract
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 782 | `openFileExtractStream(archivePath, destination)` | Extract archive |
-| 792 | `stream.onProgress` | Track progress |
-| 808 | `stream.onResult` | Handle completion |
+| 728 | `openFileExtractStream(archivePath, destination)` | Extract archive |
+| 738 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
 
 #### Reindex
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 922 | `openFileReindexStream(path)` | Reindex directory |
-| 932 | `stream.onProgress` | Track progress |
-| 962 | `stream.onResult` | Handle completion |
+| 867 | `openFileReindexStream(path)` | Reindex directory |
+| 877 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
 
 #### Copy
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 1497 | `openFileCopyStream(source, destination)` | Copy files/directories |
-| 1509 | `stream.onProgress` | Track progress |
-| 1541 | `stream.onResult` | Handle completion |
+| 1441 | `openFileCopyStream(source, destination)` | Copy files/directories |
+| 1453 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
 
 #### Move
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 1634 | `openFileMoveStream(source, destination)` | Move files/directories |
-| 1646 | `stream.onProgress` | Track progress |
-| 1678 | `stream.onResult` | Handle completion |
+| 1576 | `openFileMoveStream(source, destination)` | Move files/directories |
+| 1588 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
 
 ---
 
@@ -651,9 +660,8 @@ Also used for file saves:
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `contexts/UpdateContext.tsx` | 399 | `openExecStream("bash", ["-c", cmd])` | Run system update script |
-| `contexts/UpdateContext.tsx` | 452 | `stream.onData = (data) => decodeString(data)` | Parse update output lines |
-| `contexts/UpdateContext.tsx` | 506 | `stream.onResult` | Trigger `handleStreamFinished()` for update verification |
+| `contexts/UpdateContext.tsx` | 416 | `openExecStream("bash", ["-c", cmd])` | Run system update script |
+| `contexts/UpdateContext.tsx` | 467 | `bindStreamHandlers(stream, { onData, onResult, onClose })` | Parse update output and finalize stream coherently |
 | `contexts/UpdateContext.tsx` | 139,151,298,389 | `getStreamMux()?.setUpdating(true/false)` | Pause/resume all API requests during update |
 
 ---
@@ -662,10 +670,9 @@ Also used for file saves:
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `hooks/usePackageUpdater.ts` | 72 | `openPackageUpdateStream(packages)` | Stream bulk package update |
-| `hooks/usePackageUpdater.ts` | 100 | `stream.onProgress` | Track per-package and overall progress |
-| `hooks/usePackageUpdater.ts` | 143 | `stream.onResult` | Resolve promise, call onComplete |
-| `hooks/usePackageUpdater.ts` | 165 | `stream.abort()` | Cancel in-progress package update |
+| `hooks/usePackageUpdater.ts` | 122 | `openPackageUpdateStream(packages)` | Stream bulk package update |
+| `hooks/usePackageUpdater.ts` | 138 | `awaitStreamResult(stream, { onProgress })` | Track per-package and overall progress with coherent completion |
+| `hooks/usePackageUpdater.ts` | 205 | `stream.abort()` | Cancel in-progress package update |
 
 ---
 
@@ -674,19 +681,19 @@ Also used for file saves:
 | File | Line | Function | Description |
 |------|------|----------|-------------|
 | `pages/main/storage/DiskOverview/index.tsx` | 107 | `openSmartTestStream(rawDrive.name, testType)` | Start SMART self-test |
-| `pages/main/storage/DiskOverview/index.tsx` | 130 | `stream.onProgress` | Track test status and progress % |
-| `pages/main/storage/DiskOverview/index.tsx` | 143 | `stream.onResult` | Final test status (completed/error) |
+| `pages/main/storage/DiskOverview/index.tsx` | 130 | `awaitStreamResult(stream, { onProgress })` | Track test status, progress, and final status in one lifecycle wrapper |
 
 ---
 
-### 3.10 Stream Event Handlers Reference
+### 3.10 Stream Lifecycle Primitives
 
-| Handler | Purpose | Used In |
-|---------|---------|---------|
-| `onData` | Raw binary data chunks | Terminal, container terminal, all log streams, compose operations, system update, file download |
-| `onProgress` | Structured progress frames (`{bytes, total, pct, ...}`) | File transfers (all 7 types), package updates, SMART tests, Docker reindex |
-| `onResult` | Final result frame (`{status: "ok"/"error", data}`) | All stream types on completion — resolves/rejects promises |
-| `onClose` | Stream closed (cleanup) | All stream consumers — sets streamRef to null, handles disconnection |
+| Primitive | Purpose | Current Usage Pattern |
+|-----------|---------|-----------------------|
+| `bindStreamHandlers(stream, handlers)` | Attach coherent `onData/onProgress/onResult/onClose` callbacks with one cleanup function | Long-lived/interactive streams (terminal, logs, compose output, update stream, upload flow-control path) |
+| `awaitStreamResult(stream, options)` | Result-oriented stream completion with normalized close/abort/error behavior | Task streams (download, compress/extract/reindex/copy/move, package update, SMART test, docker reindex, core `call`) |
+| `writeStreamChunks(stream, data, options)` | Standardized chunked writes with optional yielding and close-on-end | Editor save (`filebrowser/index.tsx`) and compose save (`ComposeStacksPage.tsx`) |
+
+**Current coherence status:** direct `stream.onData/onProgress/onResult/onClose` assignments in app consumer code: **0** (kept only inside API internals and helper implementation).
 
 ---
 
@@ -713,14 +720,16 @@ Also used for file saves:
 
 | Constant | Value | Used In | Purpose |
 |----------|-------|---------|---------|
-| `STREAM_CHUNK_SIZE` | 32KB | FileTransferContext, filebrowser/index, ComposeStacksPage | Maximum bytes per write call |
-| `UPLOAD_WINDOW_SIZE` | 4 | FileTransferContext | Max outstanding chunks before backpressure |
+| `STREAM_CHUNK_SIZE` | 1MB (`1 * 1024 * 1024`) | FileTransferContext, filebrowser/index, ComposeStacksPage | Maximum bytes per write call |
+| `UPLOAD_WINDOW_SIZE` | 4MB (`4 * 1024 * 1024`) | FileTransferContext | Max bytes in-flight before backpressure |
 
 ---
 
 ## 4. Summary Statistics
 
 ### JSON API
+
+Counts below are concrete code call sites (API doc-comment examples excluded).
 
 | Category | Count |
 |----------|-------|
@@ -743,69 +752,104 @@ Also used for file saves:
 |----------|-------|
 | Stream open functions (16 types) | 22 invocations |
 | `useStreamMux()` consumers | 11 |
-| `useIsUpdating()` consumers | 3 |
+| `useIsUpdating()` consumers | 4 |
 | `isConnected()` guards | 11 |
-| `onData` handlers | 11 |
-| `onProgress` handlers | 12 |
-| `onResult` handlers | 13 |
-| `encodeString()` calls (consumer) | 8 |
-| `decodeString()` calls (consumer) | 11 |
-| **Total streaming touchpoints** | **~102** |
+| `awaitStreamResult()` call sites | 12 |
+| `bindStreamHandlers()` call sites | 12 |
+| `writeStreamChunks()` call sites | 2 |
+| Direct stream handler assignment in consumers | 0 |
+| `encodeString()` calls (consumer) | 6 |
+| `decodeString()` calls (consumer) | 10 |
+| **Total streaming touchpoints** | **90** |
 
-### By Domain
+### By Domain (Pattern View)
 
-| Handler | Queries | Mutations | Streams | Total |
-|---------|---------|-----------|---------|-------|
-| system | 10 | 0 | 0 | 10 |
-| storage | 5 | 7 | 1 (SMART) | 13 |
-| docker | 7 | 9 | 3 (compose, reindex, logs) | 19 |
-| dbus | 6 | 13 | 0 | 19 |
-| filebrowser | 7 | 5 | 7 (upload, download, compress, extract, reindex, copy, move) | 19 |
-| accounts | 4 | 8 | 0 | 12 |
-| wireguard | 2 | 8 | 0 | 10 |
-| terminal | 2 | 0 | 2 (host, container) | 4 |
-| modules | 1 | 0 | 0 | 1 |
-| config | 1 | 1 | 0 | 2 |
-| control | 1 | 0 | 0 | 1 |
-| exec | 0 | 0 | 2 (update, package) | 2 |
+| Domain | Dominant JSON Pattern | Dominant Streaming Pattern |
+|--------|------------------------|----------------------------|
+| `system` | Read-heavy `useQuery` polling | None |
+| `storage` | Balanced queries + mutators | SMART test task stream |
+| `docker` | Mixed query/mutation control plane | logs, compose/reindex task streams |
+| `dbus` | Mutation-heavy service/network control | None |
+| `filebrowser` | Query + mutation + imperative validation calls | highest stream diversity (upload/download/archive/copy/move/reindex) |
+| `accounts` | Query + mutation forms | None |
+| `wireguard` | Query + mutation control plane | None |
+| `terminal` | Shell discovery query | interactive bidirectional terminal streams |
+| `modules` | query-only route/sidebar hydration | None |
+| `config` | one query + one mutation | None |
+| `control` | single version query | None |
+| `exec` | None | package/system update execution streams |
 
 ---
 
 ## 5. Complete API Command Inventory
 
-### system (10 commands used)
+### system
 `get_capabilities`, `get_cpu_info`, `get_sensor_info`, `get_motherboard_info`, `get_memory_info`, `get_gpu_info`, `get_fs_info`, `get_network_info`, `get_processes`, `get_host_info`, `get_updates_fast`
 
-### storage (13 commands used)
+### storage
 `get_drive_info`, `list_nfs_mounts`, `list_nfs_exports`, `mount_nfs`, `unmount_nfs`, `remount_nfs`, `list_pvs`, `list_vgs`, `list_lvs`, `create_lv`, `resize_lv`, `delete_lv`, `run_smart_test`
 
-### docker (18 commands used)
+### docker
 `list_containers`, `list_networks`, `list_volumes`, `list_images`, `list_compose_projects`, `get_icon_uri`, `start_container`, `stop_container`, `restart_container`, `remove_container`, `create_network`, `delete_network`, `delete_volume`, `delete_image`, `delete_stack`, `validate_stack_directory`, `validate_compose`, `get_compose_file_path`
 
-### dbus (23 commands used)
+### dbus
 `reboot`, `power_off`, `get_updates`, `get_updates_basic`, `get_update_detail`, `install_package`, `get_auto_updates`, `set_auto_updates`, `apply_offline_updates`, `get_update_history`, `list_services`, `get_service_info`, `get_service_logs`, `start_service`, `stop_service`, `restart_service`, `reload_service`, `enable_service`, `disable_service`, `mask_service`, `unmask_service`, `get_network_info`, `set_ipv4_manual`, `set_ipv4`, `set_ipv6`, `set_mtu`, `enable_connection`, `disable_connection`
 
-### filebrowser (10 commands used)
+### filebrowser
 `resource_get`, `resource_stat`, `resource_post`, `resource_delete`, `resource_patch`, `chmod`, `search`, `subfolders`, `dir_size`, `users_groups`
 
-### accounts (12 commands used)
+### accounts
 `list_users`, `list_groups`, `list_shells`, `create_user`, `create_group`, `delete_user`, `delete_group`, `modify_user`, `modify_group_members`, `change_password`, `lock_user`, `unlock_user`
 
-### wireguard (12 commands used)
+### wireguard
 `list_interfaces`, `list_peers`, `add_interface`, `remove_interface`, `add_peer`, `remove_peer`, `up_interface`, `down_interface`, `enable_interface`, `disable_interface`, `peer_config_download`, `peer_qrcode`
 
-### terminal (1 command used)
+### terminal
 `list_shells`
 
-### modules (1 command used)
+### modules
 `get_modules`
 
-### config (2 commands used)
+### config
 `get`, `set`
 
-### control (1 command used)
+### control
 `version`
 
 ---
 
-*Report generated from branch `dev/v0.8.0` — 97 files changed, +1,228/-845 lines vs v0.7.4*
+## 6. Coherence & Patterns Analysis
+
+### 6.1 Current Coherence Status (2026-02-16)
+
+- Streaming helper primitives are now the default path:
+  - `awaitStreamResult(...)` for result-oriented operations.
+  - `bindStreamHandlers(...)` for long-lived interactive/log streams.
+  - `writeStreamChunks(...)` for chunked writes.
+- Direct `stream.onData/onProgress/onResult/onClose` assignment in app consumer code: **0**.
+- Core transport (`api/linuxio-core.ts`) also follows helper primitives for `call()` and spawn lifecycle binding.
+
+### 6.2 Usage Patterns
+
+| Pattern | Primary Primitive | Typical Domains |
+|---------|-------------------|-----------------|
+| Result-oriented task stream | `awaitStreamResult` | file transfer ops, package updates, SMART tests, docker reindex, core bridge calls |
+| Long-lived interactive stream | `bindStreamHandlers` | host/container terminals, logs, compose output, update streaming |
+| Chunked writer | `writeStreamChunks` + `awaitStreamResult` | file editor save, compose file save |
+| Flow-controlled upload | `bindStreamHandlers` + `STREAM_CHUNK_SIZE`/`UPLOAD_WINDOW_SIZE` | `FileTransferContext` upload path |
+
+### 6.3 Residual Divergences (Intentional)
+
+- `SpawnedProcess.onStream()` / `.progress()` in `api/linuxio-core.ts` still mutate handler fields directly. This is kept for fluent API compatibility.
+- Upload flow-control uses a custom send-window loop (`UPLOAD_WINDOW_SIZE`) and therefore uses `bindStreamHandlers` instead of plain `awaitStreamResult`.
+
+### 6.4 Recommended Guardrails
+
+1. For any new result-based stream operation, use `awaitStreamResult` first and only add custom handlers through its options.
+2. For any new live/interactive stream, bind callbacks via `bindStreamHandlers` and always store/clear the unbind function on cleanup.
+3. For new chunked save/upload paths, use `writeStreamChunks` unless explicit backpressure logic is required.
+4. Keep string codec boundaries explicit: `encodeString` on input writes, `decodeString` on render/parsing boundaries.
+
+---
+
+*Report updated on 2026-02-16 from branch `dev/v0.8.0` using current `frontend/src` static usage scan.*

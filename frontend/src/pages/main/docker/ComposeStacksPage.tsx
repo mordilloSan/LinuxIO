@@ -16,10 +16,11 @@ import ComposeList, { type ComposeProject } from "./ComposeList";
 import {
   linuxio,
   CACHE_TTL_MS,
+  awaitStreamResult,
   isConnected,
   openFileUploadStream,
+  writeStreamChunks,
   STREAM_CHUNK_SIZE,
-  type ResultFrame,
 } from "@/api";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
 import ComposeOperationDialog from "@/components/docker/ComposeOperationDialog";
@@ -318,43 +319,22 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         throw new Error("Failed to open save stream");
       }
 
-      await new Promise<void>((resolve, reject) => {
-        stream.onResult = (result: ResultFrame) => {
-          if (result.status === "ok") {
-            resolve();
-          } else {
-            reject(new Error(result.error || "Save failed"));
-          }
-        };
-
-        stream.onClose = () => {
-          reject(new Error("Stream closed unexpectedly"));
-        };
-
-        // Send content in chunks
-        let offset = 0;
-        const sendNextChunk = () => {
-          if (stream.status !== "open") return;
-
-          if (offset >= contentSize) {
-            stream.close();
-            return;
-          }
-
-          const chunk = contentBytes.slice(offset, offset + STREAM_CHUNK_SIZE);
-          stream.write(chunk);
-          offset += chunk.length;
-
-          // Continue sending
-          if (offset < contentSize) {
-            setTimeout(sendNextChunk, 0);
-          } else {
-            stream.close();
-          }
-        };
-
-        sendNextChunk();
+      const completion = awaitStreamResult<void>(stream, {
+        closeMessage: "Stream closed unexpectedly",
       });
+
+      try {
+        await writeStreamChunks(stream, contentBytes, {
+          chunkSize: STREAM_CHUNK_SIZE,
+          yieldMs: 0,
+        });
+        await completion;
+      } catch (error) {
+        if (stream.status === "open" || stream.status === "opening") {
+          stream.abort();
+        }
+        throw error;
+      }
 
       toast.success("Compose file saved successfully");
 
@@ -381,7 +361,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       setPostSaveStackState(state);
       setPostSaveDialogOpen(true);
     },
-    [projects, refetch],
+    [awaitStreamResult, projects, refetch, writeStreamChunks],
   );
 
   // Save compose file with overwrite protection

@@ -31,10 +31,11 @@ import { toast } from "sonner";
 import {
   linuxio,
   CACHE_TTL_MS,
+  awaitStreamResult,
   isConnected,
   openFileUploadStream,
+  writeStreamChunks,
   STREAM_CHUNK_SIZE,
-  type ResultFrame,
 } from "@/api";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
@@ -779,6 +780,33 @@ const FileBrowser: React.FC = () => {
     [setDetailTarget, setEditingPath],
   );
 
+  const saveContentViaStream = useCallback(
+    async (path: string, contentBytes: Uint8Array) => {
+      const stream = openFileUploadStream(path, contentBytes.length);
+      if (!stream) {
+        throw new Error("Failed to open save stream");
+      }
+
+      const completion = awaitStreamResult<void>(stream, {
+        closeMessage: "Stream closed unexpectedly",
+      });
+
+      try {
+        await writeStreamChunks(stream, contentBytes, {
+          chunkSize: STREAM_CHUNK_SIZE,
+          yieldMs: 0,
+        });
+        await completion;
+      } catch (error) {
+        if (stream.status === "open" || stream.status === "opening") {
+          stream.abort();
+        }
+        throw error;
+      }
+    },
+    [],
+  );
+
   const handleSaveFile = useCallback(async () => {
     if (!editorRef.current || !editingPath) return;
 
@@ -792,52 +820,8 @@ const FileBrowser: React.FC = () => {
       const content = editorRef.current.getContent();
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
-      const contentSize = contentBytes.length;
 
-      const stream = openFileUploadStream(editingPath, contentSize);
-
-      if (!stream) {
-        toast.error("Failed to open save stream");
-        return;
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        stream.onResult = (result: ResultFrame) => {
-          if (result.status === "ok") {
-            resolve();
-          } else {
-            reject(new Error(result.error || "Save failed"));
-          }
-        };
-
-        stream.onClose = () => {
-          reject(new Error("Stream closed unexpectedly"));
-        };
-
-        // Send content in chunks
-        let offset = 0;
-        const sendNextChunk = () => {
-          if (stream.status !== "open") return;
-
-          if (offset >= contentSize) {
-            stream.close();
-            return;
-          }
-
-          const chunk = contentBytes.slice(offset, offset + STREAM_CHUNK_SIZE);
-          stream.write(chunk);
-          offset += chunk.length;
-
-          // Continue sending
-          if (offset < contentSize) {
-            setTimeout(sendNextChunk, 0);
-          } else {
-            stream.close();
-          }
-        };
-
-        sendNextChunk();
-      });
+      await saveContentViaStream(editingPath, contentBytes);
 
       toast.success("File saved successfully!");
       setIsEditorDirty(false);
@@ -856,7 +840,14 @@ const FileBrowser: React.FC = () => {
     } finally {
       setIsSavingFile(false);
     }
-  }, [editingPath, queryClient, editorRef, setIsEditorDirty, setIsSavingFile]);
+  }, [
+    editingPath,
+    editorRef,
+    queryClient,
+    saveContentViaStream,
+    setIsEditorDirty,
+    setIsSavingFile,
+  ]);
 
   const handleCloseEditor = useCallback(() => {
     if (isEditorDirty) {
@@ -890,51 +881,7 @@ const FileBrowser: React.FC = () => {
       const content = editorRef.current.getContent();
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
-      const contentSize = contentBytes.length;
-
-      const stream = openFileUploadStream(editingPath, contentSize);
-
-      if (!stream) {
-        toast.error("Failed to open save stream");
-        return;
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        stream.onResult = (result: ResultFrame) => {
-          if (result.status === "ok") {
-            resolve();
-          } else {
-            reject(new Error(result.error || "Save failed"));
-          }
-        };
-
-        stream.onClose = () => {
-          reject(new Error("Stream closed unexpectedly"));
-        };
-
-        // Send content in chunks
-        let offset = 0;
-        const sendNextChunk = () => {
-          if (stream.status !== "open") return;
-
-          if (offset >= contentSize) {
-            stream.close();
-            return;
-          }
-
-          const chunk = contentBytes.slice(offset, offset + STREAM_CHUNK_SIZE);
-          stream.write(chunk);
-          offset += chunk.length;
-
-          if (offset < contentSize) {
-            setTimeout(sendNextChunk, 0);
-          } else {
-            stream.close();
-          }
-        };
-
-        sendNextChunk();
-      });
+      await saveContentViaStream(editingPath, contentBytes);
 
       toast.success("File saved successfully!");
       setIsEditorDirty(false);
@@ -961,6 +908,7 @@ const FileBrowser: React.FC = () => {
     setEditingPath,
     setIsEditorDirty,
     setIsSavingFile,
+    saveContentViaStream,
   ]);
 
   const invalidateListing = useCallback(() => {

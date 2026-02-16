@@ -17,6 +17,7 @@ import {
   linuxio,
   useStreamMux,
   openDockerReindexStream,
+  awaitStreamResult,
   type Stream,
 } from "@/api";
 
@@ -57,6 +58,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   const [result, setResult] = useState<ReindexResult | null>(null);
   const streamRef = useRef<Stream | null>(null);
   const hasCompletedRef = useRef(false);
+  const closedByUserRef = useRef(false);
 
   const { isOpen: muxIsOpen } = useStreamMux();
 
@@ -76,6 +78,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   // Close stream helper
   const closeStream = useCallback(() => {
     if (streamRef.current) {
+      closedByUserRef.current = true;
       streamRef.current.close();
       streamRef.current = null;
     }
@@ -90,6 +93,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     setSuccess(false);
     setResult(null);
     hasCompletedRef.current = false;
+    closedByUserRef.current = false;
   }, [closeStream]);
 
   // Cleanup stream when dialog closes
@@ -121,39 +125,35 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     }
 
     streamRef.current = stream;
+    closedByUserRef.current = false;
 
-    // Handle progress updates
-    stream.onProgress = (progress) => {
-      // Cast to ReindexProgress since docker-reindex uses custom progress format
-      const progressData = progress as unknown as ReindexProgress;
-      setProgress(progressData);
-    };
-
-    // Handle result
-    stream.onResult = (resultFrame) => {
-      if (resultFrame.status === "ok" && resultFrame.data) {
+    void awaitStreamResult<ReindexResult, ReindexProgress>(stream, {
+      onProgress: (progressData) => {
+        setProgress(progressData);
+      },
+      closeMessage: "Reindex stream closed unexpectedly",
+    })
+      .then((reindexResult) => {
         hasCompletedRef.current = true;
-        const reindexResult = resultFrame.data as ReindexResult;
         setResult(reindexResult);
         setSuccess(true);
-        setIsRunning(false);
-        if (onComplete) {
-          onComplete();
+        onComplete?.();
+      })
+      .catch((err: unknown) => {
+        if (closedByUserRef.current) {
+          return;
         }
-      } else {
-        hasCompletedRef.current = true;
-        setError(resultFrame.error || "Reindex failed");
-        setIsRunning(false);
-      }
-    };
 
-    stream.onClose = () => {
-      streamRef.current = null;
-      if (!success && !error) {
+        hasCompletedRef.current = true;
+        const errorMessage =
+          err instanceof Error ? err.message : "Reindex failed";
+        setError(errorMessage);
+      })
+      .finally(() => {
+        streamRef.current = null;
         setIsRunning(false);
-      }
-    };
-  }, [open, muxIsOpen, onComplete, success, error]);
+      });
+  }, [open, muxIsOpen, onComplete]);
 
   const handleClose = () => {
     if (isRunning) {

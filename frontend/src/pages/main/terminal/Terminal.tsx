@@ -10,6 +10,7 @@ import React, { useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import {
   useStreamMux,
+  bindStreamHandlers,
   encodeString,
   decodeString,
   openTerminalStream,
@@ -25,6 +26,7 @@ const TerminalXTerm: React.FC = () => {
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const streamRef = useRef<Stream | null>(null);
+  const unbindRef = useRef<(() => void) | null>(null);
   const theme = useTheme();
 
   const { isOpen, getStream } = useStreamMux();
@@ -142,18 +144,20 @@ const TerminalXTerm: React.FC = () => {
 
       if (stream) {
         // Wire up data handler (reattach on each mount)
-        stream.onData = (data: Uint8Array) => {
-          if (xterm.current) {
-            const text = decodeString(data);
-            xterm.current.write(text, () => {
-              xterm.current?.scrollToBottom();
-            });
-          }
-        };
-
-        stream.onClose = () => {
-          streamRef.current = null;
-        };
+        unbindRef.current = bindStreamHandlers(stream, {
+          onData: (data: Uint8Array) => {
+            if (xterm.current) {
+              const text = decodeString(data);
+              xterm.current.write(text, () => {
+                xterm.current?.scrollToBottom();
+              });
+            }
+          },
+          onClose: () => {
+            unbindRef.current = null;
+            streamRef.current = null;
+          },
+        });
 
         stream.resize(xterm.current.cols, xterm.current.rows);
       }
@@ -185,12 +189,12 @@ const TerminalXTerm: React.FC = () => {
       window.removeEventListener("resize", doFit);
       // Don't close stream - it persists for reconnection
       // Detach handler so data gets buffered while unmounted
-      if (streamRef.current) {
+      if (unbindRef.current && streamRef.current) {
         console.log(
-          `[Terminal] Setting onData=null for stream ${streamRef.current.id}`,
+          `[Terminal] Detaching handlers for stream ${streamRef.current.id}`,
         );
-        streamRef.current.onData = null;
-        streamRef.current.onClose = null;
+        unbindRef.current();
+        unbindRef.current = null;
       }
       streamRef.current = null;
     };
@@ -222,8 +226,10 @@ const TerminalXTerm: React.FC = () => {
 
     // Close existing stream (terminates PTY on bridge)
     if (streamRef.current) {
-      streamRef.current.onData = null;
-      streamRef.current.onClose = null;
+      if (unbindRef.current) {
+        unbindRef.current();
+        unbindRef.current = null;
+      }
       streamRef.current.close();
       streamRef.current = null;
     }
@@ -240,18 +246,20 @@ const TerminalXTerm: React.FC = () => {
     if (stream) {
       streamRef.current = stream;
 
-      stream.onData = (data: Uint8Array) => {
-        if (xterm.current) {
-          const text = decodeString(data);
-          xterm.current.write(text, () => {
-            xterm.current?.scrollToBottom();
-          });
-        }
-      };
-
-      stream.onClose = () => {
-        streamRef.current = null;
-      };
+      unbindRef.current = bindStreamHandlers(stream, {
+        onData: (data: Uint8Array) => {
+          if (xterm.current) {
+            const text = decodeString(data);
+            xterm.current.write(text, () => {
+              xterm.current?.scrollToBottom();
+            });
+          }
+        },
+        onClose: () => {
+          unbindRef.current = null;
+          streamRef.current = null;
+        },
+      });
     }
 
     xterm.current.focus();

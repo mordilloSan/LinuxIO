@@ -22,6 +22,7 @@ import "@xterm/xterm/css/xterm.css";
 import {
   linuxio,
   useStreamMux,
+  bindStreamHandlers,
   encodeString,
   decodeString,
   openContainerStream,
@@ -46,6 +47,7 @@ const TerminalDialog: React.FC<Props> = ({
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const streamRef = useRef<Stream | null>(null);
+  const unbindRef = useRef<(() => void) | null>(null);
 
   const [terminalKey, setTerminalKey] = useState(0);
   const [selectedShell, setSelectedShell] = useState<string | null>(null);
@@ -82,17 +84,25 @@ const TerminalDialog: React.FC<Props> = ({
     setSelectedShell(null);
   }, []);
 
-  const handleDialogExited = useCallback(() => {
-    // Close stream on dialog exit
+  const closeStream = useCallback(() => {
+    if (unbindRef.current) {
+      unbindRef.current();
+      unbindRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.close();
       streamRef.current = null;
     }
+  }, []);
+
+  const handleDialogExited = useCallback(() => {
+    // Close stream on dialog exit
+    closeStream();
     setSelectedShell(null);
     xterm.current?.dispose();
     xterm.current = null;
     fitAddon.current = null;
-  }, []);
+  }, [closeStream]);
 
   // Setup xterm and stream when shell is selected
   useEffect(() => {
@@ -107,10 +117,7 @@ const TerminalDialog: React.FC<Props> = ({
 
     // Dispose previous instance
     xterm.current?.dispose();
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
+    closeStream();
 
     xterm.current = new Terminal({
       fontFamily: "monospace",
@@ -183,19 +190,20 @@ const TerminalDialog: React.FC<Props> = ({
     if (stream) {
       streamRef.current = stream;
 
-      // Wire up data handler
-      stream.onData = (data: Uint8Array) => {
-        if (xterm.current) {
-          const text = decodeString(data);
-          xterm.current.write(text, () => {
-            xterm.current?.scrollToBottom();
-          });
-        }
-      };
-
-      stream.onClose = () => {
-        streamRef.current = null;
-      };
+      unbindRef.current = bindStreamHandlers(stream, {
+        onData: (data: Uint8Array) => {
+          if (xterm.current) {
+            const text = decodeString(data);
+            xterm.current.write(text, () => {
+              xterm.current?.scrollToBottom();
+            });
+          }
+        },
+        onClose: () => {
+          unbindRef.current = null;
+          streamRef.current = null;
+        },
+      });
 
       stream.resize(xterm.current.cols, xterm.current.rows);
     }
@@ -226,10 +234,7 @@ const TerminalDialog: React.FC<Props> = ({
       xterm.current?.dispose();
       window.removeEventListener("resize", handleResize);
       // Close stream when effect cleans up
-      if (streamRef.current) {
-        streamRef.current.close();
-        streamRef.current = null;
-      }
+      closeStream();
     };
   }, [
     open,
@@ -240,26 +245,21 @@ const TerminalDialog: React.FC<Props> = ({
     theme.palette.background.default,
     theme.palette.text.primary,
     terminalKey,
+    closeStream,
   ]);
 
   // Shell picker handler
   const handleShellChange = (e: SelectChangeEvent) => {
     const newShell = e.target.value;
     // Close existing stream
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
+    closeStream();
     setSelectedShell(newShell);
     setTerminalKey((k) => k + 1); // Force remount of xterm
   };
 
   // Dialog close handler
   const handleDialogClose = () => {
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
+    closeStream();
     onClose();
   };
 

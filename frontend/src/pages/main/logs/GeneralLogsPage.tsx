@@ -35,6 +35,7 @@ import React, {
 import {
   useStreamMux,
   openGeneralLogsStream,
+  bindStreamHandlers,
   decodeString,
   type Stream,
 } from "@/api";
@@ -138,6 +139,7 @@ const GeneralLogsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<Stream | null>(null);
+  const unbindRef = useRef<(() => void) | null>(null);
   const hasReceivedData = useRef(false);
   const hasOpenedOnce = useRef(false);
 
@@ -278,26 +280,27 @@ const GeneralLogsPage: React.FC = () => {
       }
 
       streamRef.current = stream;
-
-      stream.onData = (data: Uint8Array) => {
-        const text = decodeString(data);
-        if (!hasReceivedData.current) {
-          hasReceivedData.current = true;
-          setIsLoading(false);
-          setError(null);
-        }
-        const logEntry = parseLogEntry(text.trimEnd());
-        if (logEntry) {
-          setLogs((prev) => [logEntry, ...prev]);
-        }
-      };
-
-      stream.onClose = () => {
-        streamRef.current = null;
-        if (!hasReceivedData.current) {
-          setIsLoading(false);
-        }
-      };
+      unbindRef.current = bindStreamHandlers(stream, {
+        onData: (data: Uint8Array) => {
+          const text = decodeString(data);
+          if (!hasReceivedData.current) {
+            hasReceivedData.current = true;
+            setIsLoading(false);
+            setError(null);
+          }
+          const logEntry = parseLogEntry(text.trimEnd());
+          if (logEntry) {
+            setLogs((prev) => [logEntry, ...prev]);
+          }
+        },
+        onClose: () => {
+          unbindRef.current = null;
+          streamRef.current = null;
+          if (!hasReceivedData.current) {
+            setIsLoading(false);
+          }
+        },
+      });
       return true;
     },
     [muxIsOpen, parseLogEntry],

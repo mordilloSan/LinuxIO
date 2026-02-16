@@ -84,6 +84,18 @@ export {
   UPLOAD_WINDOW_SIZE,
 } from "./StreamMultiplexer";
 
+// === Streaming Helpers ===
+export {
+  bindStreamHandlers,
+  awaitStreamResult,
+  writeStreamChunks,
+} from "./stream-helpers";
+export type {
+  StreamEventHandlers,
+  AwaitStreamResultOptions,
+  WriteStreamChunksOptions,
+} from "./stream-helpers";
+
 // === Cache Policy ===
 export { CACHE_TTL_MS } from "./cache-policy";
 

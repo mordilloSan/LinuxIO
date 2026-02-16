@@ -25,6 +25,7 @@ import React, {
 import {
   useStreamMux,
   openDockerLogsStream,
+  bindStreamHandlers,
   decodeString,
   type Stream,
 } from "@/api";
@@ -50,6 +51,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<Stream | null>(null);
+  const unbindRef = useRef<(() => void) | null>(null);
   const hasReceivedData = useRef(false);
   const lastContainerId = useRef<string | null>(null);
 
@@ -107,24 +109,23 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     }
 
     streamRef.current = stream;
-
-    // Handle incoming log data
-    stream.onData = (data: Uint8Array) => {
-      const text = decodeString(data);
-      if (!hasReceivedData.current) {
-        hasReceivedData.current = true;
-        setIsLoading(false);
-      }
-      setLogs((prev) => prev + text);
-    };
-
-    stream.onClose = () => {
-      streamRef.current = null;
-      // If we never received data, show a message
-      if (!hasReceivedData.current) {
-        setIsLoading(false);
-      }
-    };
+    unbindRef.current = bindStreamHandlers(stream, {
+      onData: (data: Uint8Array) => {
+        const text = decodeString(data);
+        if (!hasReceivedData.current) {
+          hasReceivedData.current = true;
+          setIsLoading(false);
+        }
+        setLogs((prev) => prev + text);
+      },
+      onClose: () => {
+        unbindRef.current = null;
+        streamRef.current = null;
+        if (!hasReceivedData.current) {
+          setIsLoading(false);
+        }
+      },
+    });
   }, [open, containerId, muxIsOpen]);
 
   // Handle liveMode toggle - close stream when disabled
@@ -143,13 +144,16 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
 
       if (stream) {
         streamRef.current = stream;
-        stream.onData = (data: Uint8Array) => {
-          const text = decodeString(data);
-          setLogs((prev) => prev + text);
-        };
-        stream.onClose = () => {
-          streamRef.current = null;
-        };
+        unbindRef.current = bindStreamHandlers(stream, {
+          onData: (data: Uint8Array) => {
+            const text = decodeString(data);
+            setLogs((prev) => prev + text);
+          },
+          onClose: () => {
+            unbindRef.current = null;
+            streamRef.current = null;
+          },
+        });
       }
     }
   }, [liveMode, open, containerId, muxIsOpen, closeStream]);

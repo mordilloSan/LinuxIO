@@ -9,6 +9,7 @@
 
 import type { Stream, ProgressFrame, ResultFrame } from "./StreamMultiplexer";
 import { getStreamMux, encodeString, decodeString } from "./StreamMultiplexer";
+import { awaitStreamResult, bindStreamHandlers } from "./stream-helpers";
 
 /**
  * LinuxIOError - structured error with code
@@ -64,44 +65,25 @@ export async function call<T = unknown>(
   const payload = encodeString(parts.join("\0"));
 
   const stream = mux.openStream("bridge", payload);
+  const operation = awaitStreamResult<T>(stream, {
+    closeMessage: "Connection closed before receiving result",
+  });
 
   return new Promise<T>((resolve, reject) => {
-    let settled = false;
     const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        stream.close();
-        reject(new LinuxIOError("Request timeout", "timeout"));
-      }
+      stream.close();
+      reject(new LinuxIOError("Request timeout", "timeout"));
     }, timeoutMs);
 
-    stream.onResult = (result: ResultFrame) => {
-      if (!settled) {
-        settled = true;
+    operation
+      .then((result) => {
         clearTimeout(timer);
-        if (result.status === "ok") {
-          resolve(result.data as T);
-        } else {
-          reject(
-            new LinuxIOError(result.error || "Unknown error", result.code),
-          );
-        }
-      }
-    };
-
-    // If stream closes without a result, reject the promise
-    stream.onClose = () => {
-      if (!settled) {
-        settled = true;
+        resolve(result);
+      })
+      .catch((error) => {
         clearTimeout(timer);
-        reject(
-          new LinuxIOError(
-            "Connection closed before receiving result",
-            "connection_closed",
-          ),
-        );
-      }
-    };
+        reject(error);
+      });
   });
 }
 
@@ -177,6 +159,7 @@ export class SpawnedProcess implements Promise<any> {
   private resolvePromise!: (value: any) => void;
   private rejectPromise!: (error: any) => void;
   private _stream: Stream;
+  private unbindHandlers: (() => void) | null = null;
 
   // For Promise implementation
   readonly [Symbol.toStringTag] = "SpawnedProcess";
@@ -193,20 +176,29 @@ export class SpawnedProcess implements Promise<any> {
     let settled = false;
     const timeoutMs = options?.timeout ?? 300000; // Default 5 minutes for long operations
 
-    // Apply timeout if specified
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        this._stream.abort();
-        this.rejectPromise(new LinuxIOError("Operation timeout", "timeout"));
+    const timeoutTimer = setTimeout(() => {
+      if (settled) {
+        return;
       }
+      settled = true;
+      this.unbindHandlers?.();
+      this.unbindHandlers = null;
+      this._stream.abort();
+      this.rejectPromise(new LinuxIOError("Operation timeout", "timeout"));
     }, timeoutMs);
 
-    // Wire up stream events
-    this._stream.onResult = (result: ResultFrame) => {
-      if (!settled) {
+    this.unbindHandlers = bindStreamHandlers(this._stream, {
+      onData: options?.onData,
+      onProgress: options?.onProgress,
+      onResult: (result) => {
+        if (settled) {
+          return;
+        }
         settled = true;
-        clearTimeout(timer);
+        clearTimeout(timeoutTimer);
+        this.unbindHandlers?.();
+        this.unbindHandlers = null;
+
         if (result.status === "ok") {
           this.resolvePromise(result.data);
         } else {
@@ -214,30 +206,23 @@ export class SpawnedProcess implements Promise<any> {
             new LinuxIOError(result.error || "Unknown error", result.code),
           );
         }
-      }
-    };
-
-    // If stream closes without a result, reject the promise
-    this._stream.onClose = () => {
-      if (!settled) {
+      },
+      onClose: () => {
+        if (settled) {
+          return;
+        }
         settled = true;
-        clearTimeout(timer);
+        clearTimeout(timeoutTimer);
+        this.unbindHandlers?.();
+        this.unbindHandlers = null;
         this.rejectPromise(
           new LinuxIOError(
             "Connection closed before operation completed",
             "connection_closed",
           ),
         );
-      }
-    };
-
-    // Apply initial options
-    if (options?.onData) {
-      this._stream.onData = options.onData;
-    }
-    if (options?.onProgress) {
-      this._stream.onProgress = options.onProgress;
-    }
+      },
+    });
   }
 
   /**

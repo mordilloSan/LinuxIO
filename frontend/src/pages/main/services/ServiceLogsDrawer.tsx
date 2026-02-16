@@ -14,6 +14,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   useStreamMux,
   openServiceLogsStream,
+  bindStreamHandlers,
   decodeString,
   type Stream,
 } from "@/api";
@@ -36,6 +37,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<Stream | null>(null);
+  const unbindRef = useRef<(() => void) | null>(null);
   const hasReceivedData = useRef(false);
 
   const { isOpen: muxIsOpen } = useStreamMux();
@@ -90,24 +92,23 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
     }
 
     streamRef.current = stream;
-
-    // Handle incoming log data
-    stream.onData = (data: Uint8Array) => {
-      const text = decodeString(data);
-      if (!hasReceivedData.current) {
-        hasReceivedData.current = true;
-        setIsLoading(false);
-      }
-      // Each data chunk is a line from journalctl
-      setLogs((prev) => [...prev, text.trimEnd()]);
-    };
-
-    stream.onClose = () => {
-      streamRef.current = null;
-      if (!hasReceivedData.current) {
-        setIsLoading(false);
-      }
-    };
+    unbindRef.current = bindStreamHandlers(stream, {
+      onData: (data: Uint8Array) => {
+        const text = decodeString(data);
+        if (!hasReceivedData.current) {
+          hasReceivedData.current = true;
+          setIsLoading(false);
+        }
+        setLogs((prev) => [...prev, text.trimEnd()]);
+      },
+      onClose: () => {
+        unbindRef.current = null;
+        streamRef.current = null;
+        if (!hasReceivedData.current) {
+          setIsLoading(false);
+        }
+      },
+    });
   }, [open, serviceName, muxIsOpen]);
 
   // Handle liveMode toggle
@@ -126,13 +127,16 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
 
       if (stream) {
         streamRef.current = stream;
-        stream.onData = (data: Uint8Array) => {
-          const text = decodeString(data);
-          setLogs((prev) => [...prev, text.trimEnd()]);
-        };
-        stream.onClose = () => {
-          streamRef.current = null;
-        };
+        unbindRef.current = bindStreamHandlers(stream, {
+          onData: (data: Uint8Array) => {
+            const text = decodeString(data);
+            setLogs((prev) => [...prev, text.trimEnd()]);
+          },
+          onClose: () => {
+            unbindRef.current = null;
+            streamRef.current = null;
+          },
+        });
       }
     }
   }, [liveMode, open, serviceName, muxIsOpen, closeStream]);

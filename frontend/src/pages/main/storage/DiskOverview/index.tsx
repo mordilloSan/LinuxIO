@@ -40,7 +40,7 @@ import {
 import {
   linuxio,
   openSmartTestStream,
-  type ResultFrame,
+  awaitStreamResult,
   type Stream,
   type ApiDisk,
 } from "@/api";
@@ -127,25 +127,21 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
 
     streamRef.current = stream;
 
-    stream.onProgress = (progressData: unknown) => {
-      const data = progressData as SmartTestProgressEvent;
-      setTestProgress((prev) => ({
-        ...(prev || {}),
-        ...data,
-        test_type: data.test_type ?? prev?.test_type ?? testType,
-        device: data.device ?? prev?.device ?? rawDrive.name,
-      }));
-      if (data.status && data.status !== "starting") {
-        setStartPending(null);
-      }
-    };
-
-    stream.onResult = (result: ResultFrame) => {
-      streamRef.current = null;
-      setStartPending(null);
-
-      if (result.status === "ok") {
-        const data = result.data as SmartTestResult;
+    void awaitStreamResult<SmartTestResult, SmartTestProgressEvent>(stream, {
+      onProgress: (data) => {
+        setTestProgress((prev) => ({
+          ...(prev || {}),
+          ...data,
+          test_type: data.test_type ?? prev?.test_type ?? testType,
+          device: data.device ?? prev?.device ?? rawDrive.name,
+        }));
+        if (data.status && data.status !== "starting") {
+          setStartPending(null);
+        }
+      },
+      closeMessage: "SMART self-test stream closed unexpectedly",
+    })
+      .then((data) => {
         const finalStatus = data?.status ?? "completed";
         setTestProgress((prev) => ({
           ...(prev || {}),
@@ -165,35 +161,28 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             `${testType === "short" ? "Short" : "Extended"} self-test ${finalStatus}`,
           );
         }
-      } else {
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+
+        const errorMessage =
+          error instanceof Error ? error.message : "SMART self-test failed";
         setTestProgress((prev) => ({
           ...(prev || {}),
           type: "status",
           status: "error",
-          message: result.error || "SMART self-test failed",
+          message: errorMessage,
           test_type: prev?.test_type ?? testType,
           device: prev?.device ?? rawDrive.name,
         }));
-        toast.error(result.error || "SMART self-test failed");
-      }
-    };
-
-    stream.onClose = () => {
-      streamRef.current = null;
-      setStartPending(null);
-      if (
-        testProgress?.status === "running" ||
-        testProgress?.status === "starting"
-      ) {
-        setTestProgress((prev) => ({
-          ...(prev || {}),
-          type: "status",
-          status: "error",
-          message: "SMART self-test stream closed unexpectedly",
-        }));
-        toast.error("SMART self-test stream closed unexpectedly");
-      }
-    };
+        toast.error(errorMessage);
+      })
+      .finally(() => {
+        streamRef.current = null;
+        setStartPending(null);
+      });
   };
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
