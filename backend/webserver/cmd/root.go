@@ -217,8 +217,6 @@ func RunServer(cfg ServerConfig) {
 
 	// Close sessions
 	sm.Close()
-
-	fmt.Println("Server stopped.")
 	logger.Infof("Server stopped.")
 }
 

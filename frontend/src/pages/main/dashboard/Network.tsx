@@ -1,5 +1,5 @@
 import { Box, Typography } from "@mui/material";
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState } from "react";
 
 import NetworkGraph from "./NetworkGraph";
 
@@ -57,41 +57,6 @@ const NetworkInterfacesCard: React.FC = () => {
     [filteredInterfaces, effectiveSelected],
   );
 
-  const [history, setHistory] = useState<
-    { time: number; rx: number; tx: number }[]
-  >([]);
-  const lastSampleRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (!selectedInterface) return;
-    const now = Date.now();
-
-    setHistory((prev) => {
-      const last = prev[prev.length - 1];
-      const shouldAppend =
-        now - lastSampleRef.current > 250 ||
-        prev.length === 0 ||
-        last?.rx !== selectedInterface.rx_speed ||
-        last?.tx !== selectedInterface.tx_speed;
-
-      if (!shouldAppend) return prev;
-
-      lastSampleRef.current = now;
-      return [
-        ...prev.slice(-29),
-        {
-          time: now,
-          rx: selectedInterface.rx_speed,
-          tx: selectedInterface.tx_speed,
-        },
-      ];
-    });
-  }, [
-    selectedInterface?.rx_speed,
-    selectedInterface?.tx_speed,
-    selectedInterface,
-  ]);
-
   const options = useMemo(
     () =>
       filteredInterfaces.map((iface) => ({
@@ -128,8 +93,8 @@ const NetworkInterfacesCard: React.FC = () => {
     isLoading ? (
       <ComponentLoader />
     ) : (
-      <Box sx={{ height: "120px", width: "100%" }}>
-        <NetworkGraph data={history} />
+      <Box sx={{ height: "80px", width: "100%" }}>
+        <NetworkGraph key={effectiveSelected} rx={selectedInterface.rx_speed} tx={selectedInterface.tx_speed} />
       </Box>
     )
   ) : (
@@ -147,7 +112,6 @@ const NetworkInterfacesCard: React.FC = () => {
       selectedOptionLabel={effectiveSelected}
       onSelect={(val: string) => {
         setSelected(val);
-        setHistory([]); // reset graph when switching interfaces
       }}
       connectionStatus={
         selectedInterface?.ipv4 && selectedInterface.ipv4.length > 0
