@@ -93,7 +93,7 @@ const NetworkInterfacesCard: React.FC = () => {
     isLoading ? (
       <ComponentLoader />
     ) : (
-      <Box sx={{ height: "80px", width: "100%" }}>
+      <Box sx={{ height: "80px", width: "100%", minWidth: 0 }}>
         <NetworkGraph key={effectiveSelected} rx={selectedInterface.rx_speed} tx={selectedInterface.tx_speed} />
       </Box>
     )

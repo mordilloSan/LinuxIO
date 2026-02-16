@@ -83,7 +83,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
   }, [rx, tx]);
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+    <div style={{ width: "100%", height: "100%", position: "relative", minWidth: 0 }}>
       <canvas
         ref={canvasRef}
         style={{ width: "100%", height: "100%" }}

@@ -236,6 +236,7 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
             <Box
               sx={{
                 flex: 1,
+                minWidth: 0,
                 display: "flex",
                 height: 120,
                 alignItems: "center",
