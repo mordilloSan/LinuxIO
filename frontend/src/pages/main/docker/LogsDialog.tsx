@@ -25,11 +25,10 @@ import React, {
 import {
   useStreamMux,
   openDockerLogsStream,
-  bindStreamHandlers,
   decodeString,
-  type Stream,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useLiveStream } from "@/hooks/useLiveStream";
 
 interface LogsDialogProps {
   open: boolean;
@@ -50,10 +49,9 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<Stream | null>(null);
-  const unbindRef = useRef<(() => void) | null>(null);
   const hasReceivedData = useRef(false);
   const lastContainerId = useRef<string | null>(null);
+  const { streamRef, openStream, closeStream } = useLiveStream();
 
   const { isOpen: muxIsOpen } = useStreamMux();
 
@@ -63,14 +61,6 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
     }
   }, [logs, open]);
-
-  // Close stream helper
-  const closeStream = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
-  }, []);
 
   // Reset state helper - called from transition callbacks, not effects
   const resetState = useCallback(() => {
@@ -98,18 +88,14 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     lastContainerId.current = containerId;
     hasReceivedData.current = false;
 
-    const stream = openDockerLogsStream(containerId, "100");
-
-    if (!stream) {
-      queueMicrotask(() => {
-        setError("Failed to connect to log stream");
-        setIsLoading(false);
-      });
-      return;
-    }
-
-    streamRef.current = stream;
-    unbindRef.current = bindStreamHandlers(stream, {
+    openStream({
+      open: () => openDockerLogsStream(containerId, "100"),
+      onOpenError: () => {
+        queueMicrotask(() => {
+          setError("Failed to connect to log stream");
+          setIsLoading(false);
+        });
+      },
       onData: (data: Uint8Array) => {
         const text = decodeString(data);
         if (!hasReceivedData.current) {
@@ -119,19 +105,20 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
         setLogs((prev) => prev + text);
       },
       onClose: () => {
-        unbindRef.current = null;
-        streamRef.current = null;
         if (!hasReceivedData.current) {
           setIsLoading(false);
         }
       },
     });
-  }, [open, containerId, muxIsOpen]);
+  }, [open, containerId, muxIsOpen, openStream, streamRef]);
 
   // Handle liveMode toggle - close stream when disabled
   useEffect(() => {
     if (!liveMode && streamRef.current) {
       closeStream();
+      if (!hasReceivedData.current) {
+        setIsLoading(false);
+      }
     } else if (
       liveMode &&
       !streamRef.current &&
@@ -140,23 +127,15 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       muxIsOpen
     ) {
       // Re-open stream when live mode is re-enabled
-      const stream = openDockerLogsStream(containerId, "0"); // Don't re-fetch old logs
-
-      if (stream) {
-        streamRef.current = stream;
-        unbindRef.current = bindStreamHandlers(stream, {
-          onData: (data: Uint8Array) => {
-            const text = decodeString(data);
-            setLogs((prev) => prev + text);
-          },
-          onClose: () => {
-            unbindRef.current = null;
-            streamRef.current = null;
-          },
-        });
-      }
+      openStream({
+        open: () => openDockerLogsStream(containerId, "0"), // Don't re-fetch old logs
+        onData: (data: Uint8Array) => {
+          const text = decodeString(data);
+          setLogs((prev) => prev + text);
+        },
+      });
     }
-  }, [liveMode, open, containerId, muxIsOpen, closeStream]);
+  }, [liveMode, open, containerId, muxIsOpen, closeStream, openStream, streamRef]);
 
   // Cleanup stream when dialog closes (only close stream, not state)
   useEffect(() => {

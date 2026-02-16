@@ -424,7 +424,6 @@ Snapshot of `useMutation` hook usage across the codebase.
 | # | File | Line | Key | Description |
 |---|------|------|-----|-------------|
 | 1 | `hooks/useFileSubfolders.ts` | 97 | `linuxio.filebrowser.subfolders.queryKey()` | Clear ALL subfolder caches |
-| 2 | `hooks/useFileSubfolders.ts` | 109 | `linuxio.filebrowser.subfolders.queryKey(path)` | Clear specific path cache |
 
 ---
 
@@ -450,7 +449,8 @@ Snapshot of `useMutation` hook usage across the codebase.
 | 4 | 290 | `.queryOptions()` queryFn |
 | 5 | 317 | `.useMutation()` mutationFn |
 
-**Old-style untyped `linuxio.call()` in consumer code: 0 remaining.**
+**Deprecated compatibility `linuxio.call()` usage in app consumer code: 0.**
+Modules use the string-based hooks (`linuxio.useCall`, `linuxio.useMutate`) rather than `linuxio.call()`.
 
 ---
 
@@ -458,17 +458,19 @@ Snapshot of `useMutation` hook usage across the codebase.
 
 ### Streaming Consistency Layer
 
-To reduce duplicated `onData/onProgress/onResult/onClose` wiring, frontend stream consumers now use shared helpers from `api/stream-helpers.ts`:
+Streaming lifecycle is now structured in two layers:
 
-- `awaitStreamResult(stream, options)` — for request-like streams that must end with a result frame.
-- `bindStreamHandlers(stream, handlers)` — for long-lived streams (logs/terminal-like) that primarily consume data and close events.
-- `writeStreamChunks(stream, data, options)` — for chunked write operations (editor save, compose save, uploads).
+- Consumer-layer hooks:
+  - `useStreamResult()` (`hooks/useStreamResult.ts`) — wraps `open -> await -> success/error -> finally` for result-style streams.
+  - `useLiveStream()` (`hooks/useLiveStream.ts`) — wraps `openStream/closeStream` lifecycle for long-lived streams.
+- Low-level primitives (`api/stream-helpers.ts`):
+  - `awaitStreamResult(stream, options)`
+  - `bindStreamHandlers(stream, handlers)`
+  - `writeStreamChunks(stream, data, options)`
 
-This gives one coherent lifecycle contract for:
+This keeps stream behavior coherent while allowing specialized paths (terminal lifecycle, upload backpressure) to stay explicit.
 
-- handler attachment and cleanup,
-- abort/cancel handling,
-- close-before-result error behavior for result-based streams.
+`useStreamResult()` error propagation is now explicit: by default it does not rethrow when `onError` is provided (`throwOnError` remains available when rejection propagation is required).
 
 ### 3.1 Connection Lifecycle
 
@@ -491,13 +493,13 @@ This gives one coherent lifecycle contract for:
 | 2 | `api/react-query.ts` | 302 | `isOpen` | Gate typed `.useQuery()` |
 | 3 | `hooks/useFileQueries.ts` | 31 | `isOpen` | Gate file browser queries |
 | 4 | `hooks/useFileMultipleDirectoryDetails.ts` | 31 | `isOpen` | Gate multi-dir size queries |
-| 5 | `pages/main/terminal/Terminal.tsx` | 30 | `isOpen, getStream` | Terminal stream connection logic |
-| 6 | `pages/main/docker/TerminalDialog.tsx` | 57 | `isOpen` | Container terminal lifecycle |
+| 5 | `pages/main/terminal/Terminal.tsx` | 32 | `isOpen, getStream` | Terminal stream connection logic |
+| 6 | `pages/main/docker/TerminalDialog.tsx` | 59 | `isOpen` | Container terminal lifecycle |
 | 7 | `pages/main/docker/LogsDialog.tsx` | 56 | `isOpen` | Docker log stream lifecycle |
 | 8 | `pages/main/services/ServiceLogsDrawer.tsx` | 41 | `isOpen` | Service log stream lifecycle |
 | 9 | `pages/main/logs/GeneralLogsPage.tsx` | 144 | `isOpen` | General log stream lifecycle |
 | 10 | `components/docker/ComposeOperationDialog.tsx` | 52 | `isOpen` | Compose operation lifecycle |
-| 11 | `components/docker/ReindexDialog.tsx` | 61 | `isOpen` | Reindex stream lifecycle |
+| 11 | `components/docker/ReindexDialog.tsx` | 63 | `isOpen` | Reindex stream lifecycle |
 
 #### useIsUpdating() — 4 consumers
 
@@ -508,13 +510,24 @@ This gives one coherent lifecycle contract for:
 | 3 | `hooks/useFileQueries.ts` | 32 | Pause file browser queries during update |
 | 4 | `hooks/useFileMultipleDirectoryDetails.ts` | 32 | Pause multi-directory detail queries during update |
 
+#### Stream Lifecycle Hooks
+
+| Hook/Call | File | Line | Purpose |
+|---|---|---|---|
+| `useStreamResult()` | `contexts/FileTransferContext.tsx` | 225 | Standardize result-stream lifecycle for transfer task operations |
+| `runStreamResult(...)` | `contexts/FileTransferContext.tsx` | 612,750,888,1463,1581 | Compression, extraction, reindex, copy, move |
+| `useLiveStream()` | `pages/main/services/ServiceLogsDrawer.tsx` | 39 | Service logs live stream lifecycle |
+| `useLiveStream()` | `pages/main/docker/LogsDialog.tsx` | 54 | Container logs live stream lifecycle |
+| `useLiveStream()` | `pages/main/logs/GeneralLogsPage.tsx` | 142 | General logs live stream lifecycle |
+| `useLiveStream()` | `components/docker/ComposeOperationDialog.tsx` | 50 | Compose operation output stream lifecycle |
+
 #### isConnected() — 11 guard calls
 
 | # | File | Line | Purpose |
 |---|------|------|---------|
-| 1-8 | `contexts/FileTransferContext.tsx` | 502,631,776,916,1033,1336,1491,1628 | Guard every file transfer operation |
-| 9-10 | `pages/main/filebrowser/index.tsx` | 785,883 | Guard file editor save operations |
-| 11 | `pages/main/docker/ComposeStacksPage.tsx` | 305 | Guard compose file save |
+| 1-8 | `contexts/FileTransferContext.tsx` | 470,599,744,882,998,1300,1455,1573 | Guard every file transfer operation |
+| 9-10 | `pages/main/filebrowser/index.tsx` | 813,874 | Guard file editor save operations |
+| 11 | `pages/main/docker/ComposeStacksPage.tsx` | 306 | Guard compose file save |
 
 #### getStreamMux() — Direct access
 
@@ -534,7 +547,7 @@ This gives one coherent lifecycle contract for:
 | `pages/main/terminal/Terminal.tsx` | 244 | `openTerminalStream(cols, rows)` | Open fresh terminal on reset |
 | `pages/main/terminal/Terminal.tsx` | 147,249 | `bindStreamHandlers(stream, { onData, onClose })` | Attach/detach terminal output handlers coherently |
 | `pages/main/terminal/Terminal.tsx` | 100,172,311 | `stream.write(encodeString(text))` | Send keyboard input and pasted text |
-| `pages/main/terminal/Terminal.tsx` | 162,180 | `stream.resize(cols, rows)` | Handle terminal resize |
+| `pages/main/terminal/Terminal.tsx` | 162 | `stream.resize(cols, rows)` | Handle terminal resize |
 
 #### Container Terminal
 
@@ -543,7 +556,7 @@ This gives one coherent lifecycle contract for:
 | `pages/main/docker/TerminalDialog.tsx` | 188 | `openContainerStream(containerId, shell, cols, rows)` | Open container shell |
 | `pages/main/docker/TerminalDialog.tsx` | 193 | `bindStreamHandlers(stream, { onData, onClose })` | Attach/detach container terminal handlers coherently |
 | `pages/main/docker/TerminalDialog.tsx` | 166,214,298 | `stream.write(encodeString(text))` | Send keyboard input and pasted text |
-| `pages/main/docker/TerminalDialog.tsx` | 208,222 | `stream.resize(cols, rows)` | Handle terminal resize |
+| `pages/main/docker/TerminalDialog.tsx` | 208 | `stream.resize(cols, rows)` | Handle terminal resize |
 
 ---
 
@@ -553,24 +566,25 @@ This gives one coherent lifecycle contract for:
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `pages/main/docker/LogsDialog.tsx` | 101 | `openDockerLogsStream(containerId, "100")` | Initial stream (tail 100 lines) |
-| `pages/main/docker/LogsDialog.tsx` | 143 | `openDockerLogsStream(containerId, "0")` | Re-enable live mode (new lines only) |
-| `pages/main/docker/LogsDialog.tsx` | 112,147 | `bindStreamHandlers(stream, { onData, onClose })` | Parse log lines with standardized lifecycle |
+| `pages/main/docker/LogsDialog.tsx` | 54 | `useLiveStream()` | Manage stream open/close and handler cleanup |
+| `pages/main/docker/LogsDialog.tsx` | 92,131 | `openStream({ open: () => openDockerLogsStream(...) })` | Initial tail load and live-mode reattach |
+| `pages/main/docker/LogsDialog.tsx` | 100,133 | `decodeString(data)` | Parse log lines |
 
 #### Systemd Service Logs
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `pages/main/services/ServiceLogsDrawer.tsx` | 84 | `openServiceLogsStream(serviceName, "200")` | Initial stream (tail 200 lines) |
-| `pages/main/services/ServiceLogsDrawer.tsx` | 126 | `openServiceLogsStream(serviceName, "0")` | Re-enable live mode |
-| `pages/main/services/ServiceLogsDrawer.tsx` | 95,130 | `bindStreamHandlers(stream, { onData, onClose })` | Parse log lines with standardized lifecycle |
+| `pages/main/services/ServiceLogsDrawer.tsx` | 39 | `useLiveStream()` | Manage stream open/close and handler cleanup |
+| `pages/main/services/ServiceLogsDrawer.tsx` | 75,114 | `openStream({ open: () => openServiceLogsStream(...) })` | Initial tail load and live-mode reattach |
+| `pages/main/services/ServiceLogsDrawer.tsx` | 83,116 | `decodeString(data)` | Parse log lines |
 
 #### General System Logs (journalctl)
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `pages/main/logs/GeneralLogsPage.tsx` | 265 | `openGeneralLogsStream(lines, timePeriod, priority, identifier)` | Filtered log stream |
-| `pages/main/logs/GeneralLogsPage.tsx` | 283 | `bindStreamHandlers(stream, { onData, onClose })` | Parse JSON log entries with standardized lifecycle |
+| `pages/main/logs/GeneralLogsPage.tsx` | 142 | `useLiveStream()` | Manage stream open/close and handler cleanup |
+| `pages/main/logs/GeneralLogsPage.tsx` | 259 | `openStream({ open: () => openGeneralLogsStream(...) })` | Open filtered journal stream |
+| `pages/main/logs/GeneralLogsPage.tsx` | 267,273 | `decodeString(data)` + `parseLogEntry(text.trimEnd())` | Parse JSON log entries |
 
 ---
 
@@ -580,8 +594,9 @@ This gives one coherent lifecycle contract for:
 
 | File | Line | Function | Description |
 |------|------|----------|-------------|
-| `components/docker/ComposeOperationDialog.tsx` | 102 | `openDockerComposeStream(action, projectName, composePath)` | Run compose operation |
-| `components/docker/ComposeOperationDialog.tsx` | 114 | `bindStreamHandlers(stream, { onData, onClose })` | Parse stdout/stderr/complete/error messages |
+| `components/docker/ComposeOperationDialog.tsx` | 50 | `useLiveStream()` | Manage compose stream lifecycle |
+| `components/docker/ComposeOperationDialog.tsx` | 89 | `openStream({ open: () => openDockerComposeStream(...) })` | Run compose operation |
+| `components/docker/ComposeOperationDialog.tsx` | 98 | `decodeString(data)` + JSON parse | Parse stdout/stderr/complete/error messages |
 
 #### Docker Reindex
 
@@ -600,9 +615,9 @@ All file transfer streams are managed by `contexts/FileTransferContext.tsx`.
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 982 | `openFileUploadStream(targetPath, file.size)` | Upload file with chunked streaming |
+| 1002 | `openFileUploadStream(targetPath, file.size)` | Upload file with chunked streaming |
 | 1042 | `bindStreamHandlers(stream, { onProgress, onResult, onClose })` | Unified progress/result/close handling |
-| 1033-1048 | `STREAM_CHUNK_SIZE` + `UPLOAD_WINDOW_SIZE` | Flow-controlled chunking and backpressure |
+| 1053-1059 | `STREAM_CHUNK_SIZE` + `UPLOAD_WINDOW_SIZE` | Flow-controlled chunking and backpressure |
 
 Also used for file saves:
 | File | Line | Function | Description |
@@ -616,43 +631,43 @@ Also used for file saves:
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 339 | `openFileDownloadStream(paths)` | Download single file or multi-file zip |
-| 352 | `awaitStreamResult(stream, { onData, onProgress })` | Track bytes/total/pct + completion in one lifecycle wrapper |
+| 361 | `openFileDownloadStream(paths)` | Download single file or multi-file zip |
+| 373 | `awaitStreamResult(stream, { onData, onProgress })` | Track bytes/total/pct + completion in one lifecycle wrapper |
 
 #### Compress
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 590 | `openFileCompressStream(paths, fullDestination, format)` | Create archive |
-| 600 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
+| 613 | `open: () => openFileCompressStream(paths, fullDestination, format)` | Create archive stream inside wrapper |
+| 612 | `runStreamResult({ onProgress, onSuccess, onError, onFinally })` | Track progress + completion via `useStreamResult` |
 
 #### Extract
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 728 | `openFileExtractStream(archivePath, destination)` | Extract archive |
-| 738 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
+| 751 | `open: () => openFileExtractStream(archivePath, destination)` | Extract archive stream inside wrapper |
+| 750 | `runStreamResult({ onProgress, onSuccess, onError, onFinally })` | Track progress + completion via `useStreamResult` |
 
 #### Reindex
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 867 | `openFileReindexStream(path)` | Reindex directory |
-| 877 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
+| 898 | `open: () => openFileReindexStream(path)` | Reindex stream inside wrapper |
+| 888 | `runStreamResult({ onProgress, onSuccess, onError, onFinally })` | Track progress + completion via `useStreamResult` |
 
 #### Copy
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 1441 | `openFileCopyStream(source, destination)` | Copy files/directories |
-| 1453 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
+| 1464 | `open: () => openFileCopyStream(source, destination)` | Copy stream inside wrapper |
+| 1463 | `runStreamResult({ onProgress, onSuccess, onError, onFinally })` | Track progress + completion via `useStreamResult` |
 
 #### Move
 
 | Line | Function | Description |
 |------|----------|-------------|
-| 1576 | `openFileMoveStream(source, destination)` | Move files/directories |
-| 1588 | `awaitStreamResult(stream, { onProgress })` | Track progress + completion in one lifecycle wrapper |
+| 1582 | `open: () => openFileMoveStream(source, destination)` | Move stream inside wrapper |
+| 1581 | `runStreamResult({ onProgress, onSuccess, onError, onFinally })` | Track progress + completion via `useStreamResult` |
 
 ---
 
@@ -689,11 +704,13 @@ Also used for file saves:
 
 | Primitive | Purpose | Current Usage Pattern |
 |-----------|---------|-----------------------|
-| `bindStreamHandlers(stream, handlers)` | Attach coherent `onData/onProgress/onResult/onClose` callbacks with one cleanup function | Long-lived/interactive streams (terminal, logs, compose output, update stream, upload flow-control path) |
-| `awaitStreamResult(stream, options)` | Result-oriented stream completion with normalized close/abort/error behavior | Task streams (download, compress/extract/reindex/copy/move, package update, SMART test, docker reindex, core `call`) |
+| `useStreamResult()` | Consumer-level result-stream lifecycle wrapper (`open`, progress/result callbacks, finally cleanup, optional `throwOnError`) | File transfer task operations (compress/extract/reindex/copy/move) |
+| `useLiveStream()` | Consumer-level live-stream lifecycle wrapper (`openStream`, `closeStream`) | Logs dialogs/pages and compose operation output |
+| `awaitStreamResult(stream, options)` | Low-level result primitive (used directly when wrapper abstraction is not ideal) | Core bridge call, download path, package update, SMART test, docker reindex, editor/compose save completion |
+| `bindStreamHandlers(stream, handlers)` | Low-level handler binder (used directly for specialized live flows) | Terminal streams, update stream, upload flow-control path, plus `useLiveStream` internals |
 | `writeStreamChunks(stream, data, options)` | Standardized chunked writes with optional yielding and close-on-end | Editor save (`filebrowser/index.tsx`) and compose save (`ComposeStacksPage.tsx`) |
 
-**Current coherence status:** direct `stream.onData/onProgress/onResult/onClose` assignments in app consumer code: **0** (kept only inside API internals and helper implementation).
+**Current coherence status:** direct `stream.onData/onProgress/onResult/onClose` assignments in app consumer code: **0** (confined to API internals, wrappers, and explicit specialized flows).
 
 ---
 
@@ -740,11 +757,11 @@ Counts below are concrete code call sites (API doc-comment examples excluded).
 | `.queryKey()` | 41 |
 | `queryClient.fetchQuery()` | 7 |
 | `queryClient.invalidateQueries()` | 38 |
-| `queryClient.removeQueries()` | 2 |
+| `queryClient.removeQueries()` | 1 |
 | `useQueries()` | 1 |
 | `core.call()` (internal only) | 5 |
-| Old-style untyped `linuxio.call()` | **0** |
-| **Total JSON API touchpoints** | **216** |
+| Deprecated `linuxio.call()` usage in app consumers | **0** |
+| **Total JSON API touchpoints** | **215** |
 
 ### Streaming API
 
@@ -754,13 +771,16 @@ Counts below are concrete code call sites (API doc-comment examples excluded).
 | `useStreamMux()` consumers | 11 |
 | `useIsUpdating()` consumers | 4 |
 | `isConnected()` guards | 11 |
-| `awaitStreamResult()` call sites | 12 |
-| `bindStreamHandlers()` call sites | 12 |
+| `useLiveStream()` consumers | 4 |
+| `useStreamResult()` consumers | 1 |
+| `runStreamResult()` operation sites | 5 |
+| `awaitStreamResult()` call sites | 8 |
+| `bindStreamHandlers()` call sites | 8 |
 | `writeStreamChunks()` call sites | 2 |
 | Direct stream handler assignment in consumers | 0 |
 | `encodeString()` calls (consumer) | 6 |
 | `decodeString()` calls (consumer) | 10 |
-| **Total streaming touchpoints** | **90** |
+| **Total streaming touchpoints** | **92** |
 
 ### By Domain (Pattern View)
 
@@ -822,10 +842,11 @@ Counts below are concrete code call sites (API doc-comment examples excluded).
 
 ### 6.1 Current Coherence Status (2026-02-16)
 
-- Streaming helper primitives are now the default path:
-  - `awaitStreamResult(...)` for result-oriented operations.
-  - `bindStreamHandlers(...)` for long-lived interactive/log streams.
-  - `writeStreamChunks(...)` for chunked writes.
+- Consumer wrappers are now the default for most stream UI code:
+  - `useStreamResult(...)` for result-oriented operations.
+  - `useLiveStream(...)` for long-lived interactive/log-style operations.
+- Low-level primitives remain the foundation:
+  - `awaitStreamResult(...)`, `bindStreamHandlers(...)`, `writeStreamChunks(...)`.
 - Direct `stream.onData/onProgress/onResult/onClose` assignment in app consumer code: **0**.
 - Core transport (`api/linuxio-core.ts`) also follows helper primitives for `call()` and spawn lifecycle binding.
 
@@ -833,23 +854,38 @@ Counts below are concrete code call sites (API doc-comment examples excluded).
 
 | Pattern | Primary Primitive | Typical Domains |
 |---------|-------------------|-----------------|
-| Result-oriented task stream | `awaitStreamResult` | file transfer ops, package updates, SMART tests, docker reindex, core bridge calls |
-| Long-lived interactive stream | `bindStreamHandlers` | host/container terminals, logs, compose output, update streaming |
+| Result-oriented task stream | `useStreamResult` (built on `awaitStreamResult`) | file transfer task ops (compress/extract/reindex/copy/move) |
+| Long-lived live stream | `useLiveStream` (built on `bindStreamHandlers`) | service/docker/general logs, compose operation output |
+| Low-level interactive stream | `bindStreamHandlers` | host/container terminal, update stream, upload flow-control path |
 | Chunked writer | `writeStreamChunks` + `awaitStreamResult` | file editor save, compose file save |
 | Flow-controlled upload | `bindStreamHandlers` + `STREAM_CHUNK_SIZE`/`UPLOAD_WINDOW_SIZE` | `FileTransferContext` upload path |
 
 ### 6.3 Residual Divergences (Intentional)
 
 - `SpawnedProcess.onStream()` / `.progress()` in `api/linuxio-core.ts` still mutate handler fields directly. This is kept for fluent API compatibility.
+- `Terminal.tsx`, `TerminalDialog.tsx`, and `UpdateContext.tsx` still use direct `bindStreamHandlers` for fine-grained lifecycle control.
 - Upload flow-control uses a custom send-window loop (`UPLOAD_WINDOW_SIZE`) and therefore uses `bindStreamHandlers` instead of plain `awaitStreamResult`.
 
 ### 6.4 Recommended Guardrails
 
-1. For any new result-based stream operation, use `awaitStreamResult` first and only add custom handlers through its options.
-2. For any new live/interactive stream, bind callbacks via `bindStreamHandlers` and always store/clear the unbind function on cleanup.
+1. For any new result-based stream operation in UI code, use `useStreamResult` first; use raw `awaitStreamResult` only for low-level or specialized paths.
+2. For any new live/log-style stream operation, use `useLiveStream` first; use raw `bindStreamHandlers` only when wrapper semantics are insufficient.
 3. For new chunked save/upload paths, use `writeStreamChunks` unless explicit backpressure logic is required.
 4. Keep string codec boundaries explicit: `encodeString` on input writes, `decodeString` on render/parsing boundaries.
+5. Use `useStreamResult` default non-throw semantics when `onError` handles UI errors; set `throwOnError: true` only when caller-level rejection handling is required.
+
+### 6.5 Remaining Adoption Candidates (Optional)
+
+| Component | Current Primitive | Candidate Wrapper | Priority | Notes |
+|-----------|-------------------|-------------------|----------|-------|
+| `hooks/usePackageUpdater.ts:138` | `awaitStreamResult` | `useStreamResult` | Medium | Straightforward result-stream migration |
+| `components/docker/ReindexDialog.tsx:130` | `awaitStreamResult` | `useStreamResult` | Medium | Standalone dialog still uses low-level primitive |
+| `pages/main/storage/DiskOverview/index.tsx:130` | `awaitStreamResult` | `useStreamResult` | Medium | SMART test stream can adopt wrapper if desired |
+| `pages/main/docker/TerminalDialog.tsx:193` | `bindStreamHandlers` | `useLiveStream` | Low | Reasonable to keep direct due xterm coupling |
+| `pages/main/terminal/Terminal.tsx:147` | `bindStreamHandlers` | `useLiveStream({ closeOnUnmount: false })` | Low | Persistent detach/reattach lifecycle is specialized |
+| `contexts/UpdateContext.tsx:467` | `bindStreamHandlers` | None (keep specialized) | Low | Multi-phase update orchestration is intentionally custom |
+| `contexts/FileTransferContext.tsx:367` | Inline speed math | `createProgressSpeedCalculator` | Low | Optional cleanup for download path consistency |
 
 ---
 
-*Report updated on 2026-02-16 from branch `dev/v0.8.0` using current `frontend/src` static usage scan.*
+*Report updated on 2026-02-16 from branch `dev/v0.8.0` using current `frontend/src` static usage scan (including `useLiveStream`/`useStreamResult` adoption and `throwOnError` semantics).*

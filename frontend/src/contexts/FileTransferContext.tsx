@@ -18,6 +18,7 @@ import {
   type Stream,
   type ProgressFrame,
 } from "@/api";
+import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface Download {
   id: string;
@@ -117,6 +118,25 @@ type Transfer =
   | Copy
   | Move;
 
+function createProgressSpeedCalculator(minWindowMs = 500) {
+  let lastBytes = 0;
+  let lastTime = Date.now();
+
+  return (bytes: number): number | undefined => {
+    const now = Date.now();
+    const deltaBytes = bytes - lastBytes;
+    const deltaMs = now - lastTime;
+
+    if (deltaMs > minWindowMs && deltaBytes > 0) {
+      lastBytes = bytes;
+      lastTime = now;
+      return deltaBytes / (deltaMs / 1000);
+    }
+
+    return undefined;
+  };
+}
+
 export interface FileTransferContextValue {
   downloads: Download[];
   uploads: Upload[];
@@ -202,6 +222,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const transferRatesRef = useRef<
     Map<string, { bytes: number; timestamp: number; emitted: boolean }>
   >(new Map());
+  const { run: runStreamResult } = useStreamResult();
   // Store stream references synchronously for immediate cancellation access
   const streamRefsRef = useRef<Map<string, Stream>>(new Map());
   const TRANSFER_RATE_SAMPLE_MS = 1000;
@@ -587,18 +608,20 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const fullDestination = destination.endsWith("/")
         ? `${destination}${archiveName}`
         : `${destination}/${archiveName}`;
-      const stream = openFileCompressStream(paths, fullDestination, format);
-      if (!stream) {
-        toast.error("Failed to open compression stream");
-        removeCompression(id);
-        return;
-      }
 
-      // Store stream reference for cancellation
-      streamRefsRef.current.set(id, stream);
-
-      void awaitStreamResult(stream, {
-        onProgress: (progress: ProgressFrame) => {
+      void runStreamResult<void, ProgressFrame>({
+        open: () => openFileCompressStream(paths, fullDestination, format),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open compression stream",
+        closeMessage: "Compression stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setCompressions((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, stream } : c)),
+          );
+        },
+        onProgress: (progress) => {
           const percent = Math.min(99, progress.pct);
           setCompressions((prev) =>
             prev.map((c) => {
@@ -613,29 +636,28 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             }),
           );
         },
-        closeMessage: "Compression stream closed unexpectedly",
-      })
-        .then(() => {
+        onSuccess: () => {
           toast.success(`Created ${labelBase}`);
           onComplete?.();
-        })
-        .catch((error: unknown) => {
+        },
+        onError: (error: unknown) => {
           if (abortController.signal.aborted) {
             return;
           }
           const message =
             error instanceof Error ? error.message : "Compression failed";
           toast.error(message);
-        })
-        .finally(() => {
+        },
+        onFinally: () => {
           streamRefsRef.current.delete(id);
           setCompressions((prev) =>
             prev.map((c) => (c.id === id ? { ...c, stream: null } : c)),
           );
           removeCompression(id);
-        });
+        },
+      });
     },
-    [allocateDownloadLabelBase, awaitStreamResult, removeCompression],
+    [allocateDownloadLabelBase, removeCompression, runStreamResult],
   );
 
   const cancelCompression = useCallback(
@@ -725,18 +747,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      const stream = openFileExtractStream(archivePath, destination);
-      if (!stream) {
-        toast.error("Failed to open extraction stream");
-        removeExtraction(id);
-        return;
-      }
-
-      // Store stream reference for cancellation
-      streamRefsRef.current.set(id, stream);
-
-      void awaitStreamResult(stream, {
-        onProgress: (progress: ProgressFrame) => {
+      void runStreamResult<void, ProgressFrame>({
+        open: () => openFileExtractStream(archivePath, destination),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open extraction stream",
+        closeMessage: "Extraction stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setExtractions((prev) =>
+            prev.map((e) => (e.id === id ? { ...e, stream } : e)),
+          );
+        },
+        onProgress: (progress) => {
           const percent = Math.min(99, progress.pct);
           setExtractions((prev) =>
             prev.map((item) => {
@@ -751,29 +774,27 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             }),
           );
         },
-        closeMessage: "Extraction stream closed unexpectedly",
-      })
-        .then(() => {
+        onSuccess: () => {
           toast.success(`Extracted ${labelBase}`);
           onComplete?.();
-        })
-        .catch((error: unknown) => {
+        },
+        onError: (error: unknown) => {
           if (abortController.signal.aborted) {
             return;
           }
-          const message =
-            error instanceof Error ? error.message : "Extraction failed";
+          const message = error instanceof Error ? error.message : "Extraction failed";
           toast.error(message);
-        })
-        .finally(() => {
+        },
+        onFinally: () => {
           streamRefsRef.current.delete(id);
           setExtractions((prev) =>
             prev.map((e) => (e.id === id ? { ...e, stream: null } : e)),
           );
           removeExtraction(id);
-        });
+        },
+      });
     },
-    [allocateDownloadLabelBase, awaitStreamResult, removeExtraction],
+    [allocateDownloadLabelBase, removeExtraction, runStreamResult],
   );
 
   const cancelExtraction = useCallback(
@@ -864,18 +885,28 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      const stream = openFileReindexStream(path);
-      if (!stream) {
-        toast.error("Failed to open reindex stream");
-        removeReindex(id);
-        return;
-      }
-
-      // Store stream reference for cancellation
-      streamRefsRef.current.set(id, stream);
-
-      void awaitStreamResult(stream, {
-        onProgress: (progress: ProgressFrame) => {
+      void runStreamResult<
+        | {
+            files_indexed?: number;
+            dirs_indexed?: number;
+            total_size?: number;
+            duration_ms?: number;
+          }
+        | undefined,
+        ProgressFrame
+      >({
+        open: () => openFileReindexStream(path),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open reindex stream",
+        closeMessage: "Reindex stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setReindexes((prev) =>
+            prev.map((r) => (r.id === id ? { ...r, stream } : r)),
+          );
+        },
+        onProgress: (progress) => {
           const progressData = progress as ProgressFrame & {
             files_indexed?: number;
             dirs_indexed?: number;
@@ -904,18 +935,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             }),
           );
         },
-        closeMessage: "Reindex stream closed unexpectedly",
-      })
-        .then((data) => {
-          const result = data as
-            | {
-                files_indexed?: number;
-                dirs_indexed?: number;
-                total_size?: number;
-                duration_ms?: number;
-              }
-            | undefined;
-
+        onSuccess: (result) => {
           toast.success(
             `Reindex complete: ${result?.files_indexed ?? 0} files, ${result?.dirs_indexed ?? 0} dirs`,
           );
@@ -925,24 +945,24 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             totalSize: result?.total_size ?? 0,
             durationMs: result?.duration_ms ?? 0,
           });
-        })
-        .catch((error: unknown) => {
+        },
+        onError: (error: unknown) => {
           if (abortController.signal.aborted) {
             return;
           }
-          const message =
-            error instanceof Error ? error.message : "Reindex failed";
+          const message = error instanceof Error ? error.message : "Reindex failed";
           toast.error(message);
-        })
-        .finally(() => {
+        },
+        onFinally: () => {
           streamRefsRef.current.delete(id);
           setReindexes((prev) =>
             prev.map((r) => (r.id === id ? { ...r, stream: null } : r)),
           );
           removeReindex(id);
-        });
+        },
+      });
     },
-    [awaitStreamResult, removeReindex],
+    [removeReindex, runStreamResult],
   );
 
   const updateUpload = useCallback(
@@ -1438,32 +1458,23 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      const stream = openFileCopyStream(source, destination);
-      if (!stream) {
-        toast.error("Failed to open copy stream");
-        removeCopy(id);
-        return;
-      }
+      const getSpeed = createProgressSpeedCalculator();
 
-      // Track speed calculation
-      let lastBytes = 0;
-      let lastTime = Date.now();
-
-      // Set up event handlers BEFORE storing stream in state
-      void awaitStreamResult(stream, {
-        onProgress: (progress: ProgressFrame) => {
+      void runStreamResult<void, ProgressFrame>({
+        open: () => openFileCopyStream(source, destination),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open copy stream",
+        closeMessage: "Copy stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setCopies((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, stream } : c)),
+          );
+        },
+        onProgress: (progress) => {
           const percent = Math.min(99, progress.pct);
-
-          const now = Date.now();
-          const deltaBytes = progress.bytes - lastBytes;
-          const deltaMs = now - lastTime;
-
-          let speed: number | undefined;
-          if (deltaMs > 500 && deltaBytes > 0) {
-            speed = deltaBytes / (deltaMs / 1000);
-            lastBytes = progress.bytes;
-            lastTime = now;
-          }
+          const speed = getSpeed(progress.bytes);
 
           setCopies((prev) =>
             prev.map((c) => {
@@ -1481,35 +1492,27 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             }),
           );
         },
-        closeMessage: "Copy stream closed unexpectedly",
-      })
-        .then(() => {
+        onSuccess: () => {
           toast.success(`Copied ${labelBase}`);
           onComplete?.();
-        })
-        .catch((error: unknown) => {
+        },
+        onError: (error: unknown) => {
           if (abortController.signal.aborted) {
             return;
           }
-          const message =
-            error instanceof Error ? error.message : "Copy failed";
+          const message = error instanceof Error ? error.message : "Copy failed";
           toast.error(message);
-        })
-        .finally(() => {
+        },
+        onFinally: () => {
           streamRefsRef.current.delete(id);
           setCopies((prev) =>
             prev.map((c) => (c.id === id ? { ...c, stream: null } : c)),
           );
           removeCopy(id);
-        });
-
-      // Store stream reference for cancellation AFTER setting up handlers
-      streamRefsRef.current.set(id, stream);
-      setCopies((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, stream } : c)),
-      );
+        },
+      });
     },
-    [awaitStreamResult, removeCopy],
+    [removeCopy, runStreamResult],
   );
 
   const cancelCopy = useCallback(
@@ -1573,32 +1576,21 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      const stream = openFileMoveStream(source, destination);
-      if (!stream) {
-        toast.error("Failed to open move stream");
-        removeMove(id);
-        return;
-      }
+      const getSpeed = createProgressSpeedCalculator();
 
-      // Track speed calculation
-      let lastBytes = 0;
-      let lastTime = Date.now();
-
-      // Set up event handlers BEFORE storing stream in state
-      void awaitStreamResult(stream, {
-        onProgress: (progress: ProgressFrame) => {
+      void runStreamResult<void, ProgressFrame>({
+        open: () => openFileMoveStream(source, destination),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open move stream",
+        closeMessage: "Move stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setMoves((prev) => prev.map((m) => (m.id === id ? { ...m, stream } : m)));
+        },
+        onProgress: (progress) => {
           const percent = Math.min(99, progress.pct);
-
-          const now = Date.now();
-          const deltaBytes = progress.bytes - lastBytes;
-          const deltaMs = now - lastTime;
-
-          let speed: number | undefined;
-          if (deltaMs > 500 && deltaBytes > 0) {
-            speed = deltaBytes / (deltaMs / 1000);
-            lastBytes = progress.bytes;
-            lastTime = now;
-          }
+          const speed = getSpeed(progress.bytes);
 
           setMoves((prev) =>
             prev.map((m) => {
@@ -1616,33 +1608,27 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             }),
           );
         },
-        closeMessage: "Move stream closed unexpectedly",
-      })
-        .then(() => {
+        onSuccess: () => {
           toast.success(`Moved ${labelBase}`);
           onComplete?.();
-        })
-        .catch((error: unknown) => {
+        },
+        onError: (error: unknown) => {
           if (abortController.signal.aborted) {
             return;
           }
-          const message =
-            error instanceof Error ? error.message : "Move failed";
+          const message = error instanceof Error ? error.message : "Move failed";
           toast.error(message);
-        })
-        .finally(() => {
+        },
+        onFinally: () => {
           streamRefsRef.current.delete(id);
           setMoves((prev) =>
             prev.map((m) => (m.id === id ? { ...m, stream: null } : m)),
           );
           removeMove(id);
-        });
-
-      // Store stream reference for cancellation AFTER setting up handlers
-      streamRefsRef.current.set(id, stream);
-      setMoves((prev) => prev.map((m) => (m.id === id ? { ...m, stream } : m)));
+        },
+      });
     },
-    [awaitStreamResult, removeMove],
+    [removeMove, runStreamResult],
   );
 
   const cancelMove = useCallback(

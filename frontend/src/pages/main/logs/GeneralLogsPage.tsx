@@ -35,13 +35,12 @@ import React, {
 import {
   useStreamMux,
   openGeneralLogsStream,
-  bindStreamHandlers,
   decodeString,
-  type Stream,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
+import { useLiveStream } from "@/hooks/useLiveStream";
 
 const DEFAULT_TAIL = "200";
 
@@ -138,10 +137,9 @@ const GeneralLogsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<Stream | null>(null);
-  const unbindRef = useRef<(() => void) | null>(null);
   const hasReceivedData = useRef(false);
   const hasOpenedOnce = useRef(false);
+  const { streamRef, openStream, closeStream } = useLiveStream();
 
   const { isOpen: muxIsOpen } = useStreamMux();
 
@@ -245,14 +243,6 @@ const GeneralLogsPage: React.FC = () => {
     }
   }, [logs, liveMode]);
 
-  // Close stream helper
-  const closeStream = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
-  }, []);
-
   const openLogsStream = useCallback(
     (
       lines: string,
@@ -264,23 +254,15 @@ const GeneralLogsPage: React.FC = () => {
 
       hasReceivedData.current = false;
 
-      const stream = openGeneralLogsStream(
-        lines,
-        timePeriod,
-        priority,
-        identifier,
-      );
-
-      if (!stream) {
-        queueMicrotask(() => {
-          setError("Failed to connect to log stream");
-          setIsLoading(false);
-        });
-        return false;
-      }
-
-      streamRef.current = stream;
-      unbindRef.current = bindStreamHandlers(stream, {
+      return openStream({
+        open: () =>
+          openGeneralLogsStream(lines, timePeriod, priority, identifier),
+        onOpenError: () => {
+          queueMicrotask(() => {
+            setError("Failed to connect to log stream");
+            setIsLoading(false);
+          });
+        },
         onData: (data: Uint8Array) => {
           const text = decodeString(data);
           if (!hasReceivedData.current) {
@@ -294,16 +276,13 @@ const GeneralLogsPage: React.FC = () => {
           }
         },
         onClose: () => {
-          unbindRef.current = null;
-          streamRef.current = null;
           if (!hasReceivedData.current) {
             setIsLoading(false);
           }
         },
       });
-      return true;
     },
-    [muxIsOpen, parseLogEntry],
+    [muxIsOpen, parseLogEntry, openStream],
   );
 
   const isExactIdentifier = useMemo(() => {
@@ -352,6 +331,9 @@ const GeneralLogsPage: React.FC = () => {
     setLiveMode(checked);
     if (!checked) {
       closeStream();
+      if (!hasReceivedData.current) {
+        setIsLoading(false);
+      }
       return;
     }
     setError(null);

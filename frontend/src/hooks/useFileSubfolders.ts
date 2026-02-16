@@ -100,18 +100,6 @@ export const clearFileSubfoldersCache = (
   }
 };
 
-// Function to clear a specific path from cache
-export const clearFileSubfoldersCacheForPath = (
-  path: string,
-  queryClient?: ReturnType<typeof useQueryClient>,
-) => {
-  if (queryClient) {
-    queryClient.removeQueries({
-      queryKey: linuxio.filebrowser.subfolders.queryKey(path),
-    });
-  }
-};
-
 // Helper function to get subfolder size from the map
 export const getSubfolderSize = (
   subfoldersMap: Map<string, SubfolderData>,

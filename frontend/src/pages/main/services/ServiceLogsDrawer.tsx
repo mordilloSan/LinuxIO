@@ -14,11 +14,10 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   useStreamMux,
   openServiceLogsStream,
-  bindStreamHandlers,
   decodeString,
-  type Stream,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useLiveStream } from "@/hooks/useLiveStream";
 
 interface ServiceLogsDrawerProps {
   open: boolean;
@@ -36,9 +35,8 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<Stream | null>(null);
-  const unbindRef = useRef<(() => void) | null>(null);
   const hasReceivedData = useRef(false);
+  const { streamRef, openStream, closeStream } = useLiveStream();
 
   const { isOpen: muxIsOpen } = useStreamMux();
 
@@ -48,14 +46,6 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
       logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
     }
   }, [logs, open]);
-
-  // Close stream helper
-  const closeStream = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
-  }, []);
 
   // Reset state helper - called from transition callbacks, not effects
   const resetState = useCallback(() => {
@@ -81,18 +71,14 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
     // Track state
     hasReceivedData.current = false;
 
-    const stream = openServiceLogsStream(serviceName, "200");
-
-    if (!stream) {
-      queueMicrotask(() => {
-        setError("Failed to connect to log stream");
-        setIsLoading(false);
-      });
-      return;
-    }
-
-    streamRef.current = stream;
-    unbindRef.current = bindStreamHandlers(stream, {
+    openStream({
+      open: () => openServiceLogsStream(serviceName, "200"),
+      onOpenError: () => {
+        queueMicrotask(() => {
+          setError("Failed to connect to log stream");
+          setIsLoading(false);
+        });
+      },
       onData: (data: Uint8Array) => {
         const text = decodeString(data);
         if (!hasReceivedData.current) {
@@ -102,19 +88,20 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
         setLogs((prev) => [...prev, text.trimEnd()]);
       },
       onClose: () => {
-        unbindRef.current = null;
-        streamRef.current = null;
         if (!hasReceivedData.current) {
           setIsLoading(false);
         }
       },
     });
-  }, [open, serviceName, muxIsOpen]);
+  }, [open, serviceName, muxIsOpen, openStream, streamRef]);
 
   // Handle liveMode toggle
   useEffect(() => {
     if (!liveMode && streamRef.current) {
       closeStream();
+      if (!hasReceivedData.current) {
+        setIsLoading(false);
+      }
     } else if (
       liveMode &&
       !streamRef.current &&
@@ -123,23 +110,15 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
       muxIsOpen
     ) {
       // Re-open stream when live mode is re-enabled
-      const stream = openServiceLogsStream(serviceName, "0");
-
-      if (stream) {
-        streamRef.current = stream;
-        unbindRef.current = bindStreamHandlers(stream, {
-          onData: (data: Uint8Array) => {
-            const text = decodeString(data);
-            setLogs((prev) => [...prev, text.trimEnd()]);
-          },
-          onClose: () => {
-            unbindRef.current = null;
-            streamRef.current = null;
-          },
-        });
-      }
+      openStream({
+        open: () => openServiceLogsStream(serviceName, "0"),
+        onData: (data: Uint8Array) => {
+          const text = decodeString(data);
+          setLogs((prev) => [...prev, text.trimEnd()]);
+        },
+      });
     }
-  }, [liveMode, open, serviceName, muxIsOpen, closeStream]);
+  }, [liveMode, open, serviceName, muxIsOpen, closeStream, openStream, streamRef]);
 
   // Cleanup stream when drawer closes (only close stream, not state)
   useEffect(() => {

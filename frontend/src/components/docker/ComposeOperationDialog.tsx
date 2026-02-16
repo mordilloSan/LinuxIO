@@ -17,10 +17,9 @@ import { toast } from "sonner";
 import {
   useStreamMux,
   decodeString,
-  bindStreamHandlers,
   openDockerComposeStream,
-  type Stream,
 } from "@/api";
+import { useLiveStream } from "@/hooks/useLiveStream";
 
 interface ComposeOperationDialogProps {
   open: boolean;
@@ -48,8 +47,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<Stream | null>(null);
-  const unbindRef = useRef<(() => void) | null>(null);
+  const { streamRef, openStream, closeStream } = useLiveStream();
 
   const { isOpen: muxIsOpen } = useStreamMux();
 
@@ -59,18 +57,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       outputBoxRef.current.scrollTop = outputBoxRef.current.scrollHeight;
     }
   }, [output, open]);
-
-  // Close stream helper
-  const closeStream = useCallback(() => {
-    if (unbindRef.current) {
-      unbindRef.current();
-      unbindRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
-  }, []);
 
   // Reset state helper - called from transition callbacks, not effects
   const resetState = useCallback(() => {
@@ -99,19 +85,15 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       return;
     }
 
-    const stream = openDockerComposeStream(action, projectName, composePath);
-
-    if (!stream) {
-      queueMicrotask(() => {
-        setError("Failed to start compose operation");
-        setIsRunning(false);
-        toast.error("Failed to start compose operation");
-      });
-      return;
-    }
-
-    streamRef.current = stream;
-    unbindRef.current = bindStreamHandlers(stream, {
+    openStream({
+      open: () => openDockerComposeStream(action, projectName, composePath),
+      onOpenError: () => {
+        queueMicrotask(() => {
+          setError("Failed to start compose operation");
+          setIsRunning(false);
+          toast.error("Failed to start compose operation");
+        });
+      },
       onData: (data: Uint8Array) => {
         const text = decodeString(data);
         try {
@@ -139,11 +121,10 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
         }
       },
       onClose: () => {
-        streamRef.current = null;
         setIsRunning(false);
       },
     });
-  }, [open, action, projectName, composePath, muxIsOpen]);
+  }, [open, action, projectName, composePath, muxIsOpen, openStream, streamRef]);
 
   const getActionLabel = () => {
     switch (action) {
