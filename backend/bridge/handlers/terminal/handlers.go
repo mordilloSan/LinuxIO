@@ -109,10 +109,12 @@ func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, e
 	defer ptmx.Close()
 
 	// Set initial size
-	_ = pty.Setsize(ptmx, &pty.Winsize{
+	if err := pty.Setsize(ptmx, &pty.Winsize{
 		Cols: safeUint16(cols),
 		Rows: safeUint16(rows),
-	})
+	}); err != nil {
+		logger.Debugf("[Terminal] failed to set initial PTY size: %v", err)
+	}
 
 	logger.Infof("[Terminal] Started for user=%s pid=%d", h.sess.User.Username, cmd.Process.Pid)
 
@@ -148,7 +150,9 @@ func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, e
 			if !ok {
 				// Client closed connection
 				logger.Debugf("[Terminal] Client closed connection")
-				_ = cmd.Process.Kill()
+				if err := cmd.Process.Kill(); err != nil {
+					logger.Debugf("[Terminal] failed to kill process after client close: %v", err)
+				}
 				goto cleanup
 			}
 
@@ -163,15 +167,19 @@ func (h *terminalHandler) ExecuteWithInput(ctx context.Context, args []string, e
 				continue
 			}
 			logger.Debugf("[Terminal] Resize %dx%d for user=%s", ev.Cols, ev.Rows, h.sess.User.Username)
-			_ = pty.Setsize(ptmx, &pty.Winsize{
+			if err := pty.Setsize(ptmx, &pty.Winsize{
 				Cols: ev.Cols,
 				Rows: ev.Rows,
-			})
+			}); err != nil {
+				logger.Debugf("[Terminal] failed to resize PTY: %v", err)
+			}
 
 		case <-ctx.Done():
 			// Context cancelled
 			logger.Debugf("[Terminal] Context cancelled")
-			_ = cmd.Process.Kill()
+			if err := cmd.Process.Kill(); err != nil {
+				logger.Debugf("[Terminal] failed to kill process on context cancel: %v", err)
+			}
 			goto cleanup
 
 		case <-done:

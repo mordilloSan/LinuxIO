@@ -176,6 +176,30 @@ func WriteResultError(w io.Writer, streamID uint32, errMsg string, code int) err
 	})
 }
 
+// WriteResultOKAndClose writes a successful result and then closes the stream.
+func WriteResultOKAndClose(w io.Writer, streamID uint32, data any) error {
+	if err := WriteResultOK(w, streamID, data); err != nil {
+		return err
+	}
+	return WriteStreamClose(w, streamID)
+}
+
+// WriteResultErrorAndClose writes an error result and then closes the stream.
+func WriteResultErrorAndClose(w io.Writer, streamID uint32, errMsg string, code int) error {
+	if err := WriteResultError(w, streamID, errMsg, code); err != nil {
+		return err
+	}
+	return WriteStreamClose(w, streamID)
+}
+
+// WriteResultFrameAndClose writes a raw result frame and then closes the stream.
+func WriteResultFrameAndClose(w io.Writer, streamID uint32, r *ResultFrame) error {
+	if err := WriteResultFrame(w, streamID, r); err != nil {
+		return err
+	}
+	return WriteStreamClose(w, streamID)
+}
+
 // WriteStreamClose sends a close frame for the stream.
 func WriteStreamClose(w io.Writer, streamID uint32) error {
 	return WriteRelayFrame(w, &StreamFrame{

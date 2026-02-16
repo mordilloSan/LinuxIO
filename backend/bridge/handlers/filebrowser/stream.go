@@ -104,27 +104,9 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 	handlers[StreamTypeFBMove] = HandleMoveStream
 }
 
-func safeWriteResultError(stream net.Conn, streamID uint32, message string, code int) {
-	if err := ipc.WriteResultError(stream, streamID, message, code); err != nil {
-		logger.Debugf(" failed to write result error frame: %v", err)
-	}
-}
-
-func safeWriteResultOK(stream net.Conn, streamID uint32, payload any) {
-	if err := ipc.WriteResultOK(stream, streamID, payload); err != nil {
-		logger.Debugf(" failed to write result ok frame: %v", err)
-	}
-}
-
-func safeWriteProgress(stream net.Conn, streamID uint32, payload any) {
-	if err := ipc.WriteProgress(stream, streamID, payload); err != nil {
-		logger.Debugf(" failed to write progress frame: %v", err)
-	}
-}
-
-func safeWriteStreamClose(stream net.Conn, streamID uint32) {
-	if err := ipc.WriteStreamClose(stream, streamID); err != nil {
-		logger.Debugf(" failed to write stream close frame: %v", err)
+func logWriteErr(action string, err error) {
+	if err != nil {
+		logger.Debugf("[FBStream] failed to write %s frame: %v", action, err)
 	}
 }
 
@@ -132,8 +114,7 @@ func safeWriteStreamClose(stream net.Conn, streamID uint32) {
 // args: [path]
 func handleDownload(stream net.Conn, args []string) error {
 	if len(args) < 1 {
-		safeWriteResultError(stream, 0, "missing file path", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "missing file path", 400))
 		return fmt.Errorf("missing file path")
 	}
 
@@ -141,8 +122,7 @@ func handleDownload(stream net.Conn, args []string) error {
 	realPath := filepath.Clean(path)
 	root, err := fsroot.Open()
 	if err != nil {
-		safeWriteResultError(stream, 0, "failed to access filesystem", 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "failed to access filesystem", 500))
 		return fmt.Errorf("failed to access filesystem: %w", err)
 	}
 	defer root.Close()
@@ -151,30 +131,27 @@ func handleDownload(stream net.Conn, args []string) error {
 	// Stat the file
 	stat, err := root.Root.Stat(realRel)
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("file not found: %v", err), 404)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("file not found: %v", err), 404))
 		return fmt.Errorf("file not found: %w", err)
 	}
 
 	if stat.IsDir() {
-		safeWriteResultError(stream, 0, "path is a directory, use fb-archive instead", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "path is a directory, use fb-archive instead", 400))
 		return ipc.ErrIsDirectory
 	}
 
 	totalSize := stat.Size()
 
 	// Send initial progress with total size
-	safeWriteProgress(stream, 0, FileProgress{
+	logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "starting",
-	})
+	}))
 
 	// Open the file
 	file, err := root.Root.Open(realRel)
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("cannot open file: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("cannot open file: %v", err), 500))
 		return fmt.Errorf("cannot open file: %w", err)
 	}
 	defer file.Close()
@@ -204,11 +181,11 @@ func handleDownload(stream net.Conn, args []string) error {
 				if totalSize > 0 {
 					pct = int(bytesRead * 100 / totalSize)
 				}
-				safeWriteProgress(stream, 0, FileProgress{
+				logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 					Bytes: bytesRead,
 					Total: totalSize,
 					Pct:   pct,
-				})
+				}))
 				lastProgress = bytesRead
 			}
 		}
@@ -217,21 +194,17 @@ func handleDownload(stream net.Conn, args []string) error {
 			break
 		}
 		if readErr != nil {
-			safeWriteResultError(stream, 0, fmt.Sprintf("read error: %v", readErr), 500)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("read error: %v", readErr), 500))
 			return fmt.Errorf("read file: %w", readErr)
 		}
 	}
 
-	// Send success result
-	safeWriteResultOK(stream, 0, map[string]any{
+	// Send success result and close stream.
+	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"path":     path,
 		"size":     totalSize,
 		"fileName": filepath.Base(realPath),
-	})
-
-	// Close stream
-	safeWriteStreamClose(stream, 0)
+	}))
 
 	logger.Infof(" Download complete: path=%s size=%d", path, totalSize)
 	return nil
@@ -242,8 +215,7 @@ func handleDownload(stream net.Conn, args []string) error {
 // If the file already exists, preserves its permissions and ownership.
 func handleUpload(stream net.Conn, args []string) error {
 	if len(args) < 2 {
-		safeWriteResultError(stream, 0, "missing path or size", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "missing path or size", 400))
 		return fmt.Errorf("missing path or size")
 	}
 
@@ -251,16 +223,14 @@ func handleUpload(stream net.Conn, args []string) error {
 	sizeStr := args[1]
 	expectedSize, err := strconv.ParseInt(sizeStr, 10, 64)
 	if err != nil {
-		safeWriteResultError(stream, 0, "invalid size", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "invalid size", 400))
 		return fmt.Errorf("invalid size: %w", err)
 	}
 
 	realPath := filepath.Clean(path)
 	root, err := fsroot.Open()
 	if err != nil {
-		safeWriteResultError(stream, 0, "failed to access filesystem", 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "failed to access filesystem", 500))
 		return fmt.Errorf("failed to access filesystem: %w", err)
 	}
 	defer root.Close()
@@ -273,8 +243,7 @@ func handleUpload(stream net.Conn, args []string) error {
 
 	if existingStat, statErr := root.Root.Stat(realRel); statErr == nil {
 		if existingStat.IsDir() {
-			safeWriteResultError(stream, 0, "destination is a directory", 400)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "destination is a directory", 400))
 			return fmt.Errorf("destination is a directory")
 		}
 		preserveMode = existingStat.Mode()
@@ -287,16 +256,14 @@ func handleUpload(stream net.Conn, args []string) error {
 
 	// Ensure parent directory exists
 	if mkdirErr := root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(realPath)), services.PermDir); mkdirErr != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("cannot create parent directory: %v", mkdirErr), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("cannot create parent directory: %v", mkdirErr), 500))
 		return fmt.Errorf("create parent dir: %w", mkdirErr)
 	}
 
 	// Create target file directly (delete partial on failure)
 	file, err := root.Root.OpenFile(realRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, services.PermFile)
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("cannot create file: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("cannot create file: %v", err), 500))
 		return fmt.Errorf("create file: %w", err)
 	}
 
@@ -312,10 +279,10 @@ func handleUpload(stream net.Conn, args []string) error {
 	}()
 
 	// Send initial progress with total size
-	safeWriteProgress(stream, 0, FileProgress{
+	logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 		Total: expectedSize,
 		Phase: "starting",
-	})
+	}))
 
 	// Read frames and write directly to file
 	var bytesWritten int64
@@ -332,8 +299,7 @@ readLoop:
 				}
 				return ipc.ErrAborted
 			}
-			safeWriteResultError(stream, 0, fmt.Sprintf("read error: %v", err), 500)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("read error: %v", err), 500))
 			return fmt.Errorf("read frame: %w", err)
 		}
 
@@ -342,8 +308,7 @@ readLoop:
 			if len(frame.Payload) > 0 {
 				n, werr := file.Write(frame.Payload)
 				if werr != nil {
-					safeWriteResultError(stream, 0, fmt.Sprintf("write error: %v", werr), 500)
-					safeWriteStreamClose(stream, 0)
+					logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("write error: %v", werr), 500))
 					return fmt.Errorf("write data: %w", werr)
 				}
 				bytesWritten += int64(n)
@@ -354,12 +319,12 @@ readLoop:
 					if expectedSize > 0 {
 						pct = int(bytesWritten * 100 / expectedSize)
 					}
-					safeWriteProgress(stream, 0, FileProgress{
+					logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 						Bytes: bytesWritten,
 						Total: expectedSize,
 						Pct:   pct,
 						Phase: "uploading",
-					})
+					}))
 					lastProgress = bytesWritten
 				}
 			}
@@ -378,8 +343,7 @@ readLoop:
 
 	// Verify size
 	if expectedSize > 0 && bytesWritten != expectedSize {
-		safeWriteResultError(stream, 0, fmt.Sprintf("size mismatch: expected %d, got %d", expectedSize, bytesWritten), 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("size mismatch: expected %d, got %d", expectedSize, bytesWritten), 400))
 		return fmt.Errorf("size mismatch")
 	}
 
@@ -410,14 +374,11 @@ readLoop:
 		}(finalInfo)
 	}
 
-	// Send success result
-	safeWriteResultOK(stream, 0, map[string]any{
+	// Send success result and close stream.
+	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"path": path,
 		"size": bytesWritten,
-	})
-
-	// Close stream
-	safeWriteStreamClose(stream, 0)
+	}))
 
 	logger.Infof(" Upload complete: path=%s size=%d", path, bytesWritten)
 	return nil
@@ -427,8 +388,7 @@ readLoop:
 // args: [format, path1, path2, ...]
 func handleArchiveDownload(stream net.Conn, args []string) error {
 	if len(args) < 2 {
-		safeWriteResultError(stream, 0, "missing format or paths", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "missing format or paths", 400))
 		return fmt.Errorf("missing format or paths")
 	}
 
@@ -443,8 +403,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	case "tar.gz":
 		extension = ".tar.gz"
 	default:
-		safeWriteResultError(stream, 0, fmt.Sprintf("unsupported format: %s", format), 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("unsupported format: %s", format), 400))
 		return ipc.ErrUnsupportedFormat
 	}
 
@@ -460,16 +419,15 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	safeWriteProgress(stream, 0, FileProgress{
+	logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
-	})
+	}))
 
 	// Create temp file for archive
 	tempFile, err := os.CreateTemp("", "linuxio-stream-archive-*"+extension)
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("cannot create temp file: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("cannot create temp file: %v", err), 500))
 		return fmt.Errorf("create temp file: %w", err)
 	}
 	tempPath := tempFile.Name()
@@ -496,38 +454,34 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 	}
 	if err == ipc.ErrAborted {
 		logger.Infof(" Archive download aborted")
-		safeWriteResultError(stream, 0, "operation aborted", 499)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
 		return ipc.ErrAborted
 	}
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("archive creation failed: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("archive creation failed: %v", err), 500))
 		return fmt.Errorf("create archive: %w", err)
 	}
 
 	// Open archive for streaming
 	archiveFile, err := os.Open(tempPath)
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("cannot open archive: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("cannot open archive: %v", err), 500))
 		return fmt.Errorf("open archive: %w", err)
 	}
 	defer archiveFile.Close()
 
 	archiveStat, err := archiveFile.Stat()
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("cannot stat archive: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("cannot stat archive: %v", err), 500))
 		return fmt.Errorf("stat archive: %w", err)
 	}
 	archiveSize := archiveStat.Size()
 
 	// Update progress for streaming phase
-	safeWriteProgress(stream, 0, FileProgress{
+	logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 		Total: archiveSize,
 		Phase: "streaming",
-	})
+	}))
 
 	// Stream archive chunks
 	buf := make([]byte, chunkSize)
@@ -564,8 +518,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 			break
 		}
 		if readErr != nil {
-			safeWriteResultError(stream, 0, fmt.Sprintf("read error: %v", readErr), 500)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("read error: %v", readErr), 500))
 			return fmt.Errorf("read archive: %w", readErr)
 		}
 	}
@@ -579,15 +532,12 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 		}
 	}
 
-	// Send success result
-	safeWriteResultOK(stream, 0, map[string]any{
+	// Send success result and close stream.
+	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"archiveName": archiveName,
 		"size":        archiveSize,
 		"format":      format,
-	})
-
-	// Close stream
-	safeWriteStreamClose(stream, 0)
+	}))
 
 	logger.Infof(" Archive download complete: files=%d size=%d", len(paths), archiveSize)
 	return nil
@@ -597,8 +547,7 @@ func handleArchiveDownload(stream net.Conn, args []string) error {
 // args: [format, destination, path1, path2, ...]
 func handleCompress(stream net.Conn, args []string) error {
 	if len(args) < 3 {
-		safeWriteResultError(stream, 0, "missing format, destination, or paths", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "missing format, destination, or paths", 400))
 		return fmt.Errorf("missing format, destination, or paths")
 	}
 
@@ -614,8 +563,7 @@ func handleCompress(stream net.Conn, args []string) error {
 	case "tar.gz":
 		extension = ".tar.gz"
 	default:
-		safeWriteResultError(stream, 0, fmt.Sprintf("unsupported format: %s", format), 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("unsupported format: %s", format), 400))
 		return ipc.ErrUnsupportedFormat
 	}
 
@@ -623,8 +571,7 @@ func handleCompress(stream net.Conn, args []string) error {
 	targetPath := filepath.Clean(destination)
 	root, err := fsroot.Open()
 	if err != nil {
-		safeWriteResultError(stream, 0, "failed to access filesystem", 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "failed to access filesystem", 500))
 		return fmt.Errorf("failed to access filesystem: %w", err)
 	}
 	defer root.Close()
@@ -644,22 +591,19 @@ func handleCompress(stream net.Conn, args []string) error {
 	// Check if destination exists
 	if info, statErr := root.Root.Stat(targetRel); statErr == nil {
 		if info.IsDir() {
-			safeWriteResultError(stream, 0, "destination is a directory", 400)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "destination is a directory", 400))
 			return fmt.Errorf("destination is a directory")
 		}
 		// Remove existing file (overwrite)
 		if rmErr := root.Root.Remove(targetRel); rmErr != nil {
-			safeWriteResultError(stream, 0, fmt.Sprintf("cannot remove existing file: %v", rmErr), 500)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("cannot remove existing file: %v", rmErr), 500))
 			return fmt.Errorf("remove existing file: %w", rmErr)
 		}
 	}
 
 	// Ensure parent directory exists
 	if mkdirErr := root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(targetPath)), services.PermDir); mkdirErr != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("cannot create parent directory: %v", mkdirErr), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("cannot create parent directory: %v", mkdirErr), 500))
 		return fmt.Errorf("create parent dir: %w", mkdirErr)
 	}
 
@@ -675,10 +619,10 @@ func handleCompress(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	safeWriteProgress(stream, 0, FileProgress{
+	logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
-	})
+	}))
 
 	// Create callbacks
 	pt := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
@@ -703,16 +647,14 @@ func handleCompress(stream net.Conn, args []string) error {
 		if removeErr := root.Root.Remove(targetRel); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 			logger.Debugf(" failed to remove partial archive %s: %v", targetPath, removeErr)
 		}
-		safeWriteResultError(stream, 0, "operation aborted", 499)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
 		return ipc.ErrAborted
 	}
 	if err != nil {
 		if removeErr := root.Root.Remove(targetRel); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 			logger.Debugf(" failed to remove failed archive %s: %v", targetPath, removeErr)
 		}
-		safeWriteResultError(stream, 0, fmt.Sprintf("compression failed: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("compression failed: %v", err), 500))
 		return fmt.Errorf("create archive: %w", err)
 	}
 
@@ -728,15 +670,12 @@ func handleCompress(stream net.Conn, args []string) error {
 		}(info)
 	}
 
-	// Send success result
-	safeWriteResultOK(stream, 0, map[string]any{
+	// Send success result and close stream.
+	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"path":   targetPath,
 		"size":   archiveSize,
 		"format": format,
-	})
-
-	// Close stream
-	safeWriteStreamClose(stream, 0)
+	}))
 
 	logger.Infof(" Compress complete: path=%s files=%d size=%d", targetPath, len(paths), archiveSize)
 	return nil
@@ -746,16 +685,14 @@ func handleCompress(stream net.Conn, args []string) error {
 // args: [archivePath, destination?]
 func handleExtract(stream net.Conn, args []string) error {
 	if len(args) < 1 {
-		safeWriteResultError(stream, 0, "missing archive path", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "missing archive path", 400))
 		return fmt.Errorf("missing archive path")
 	}
 
 	archivePath := filepath.Clean(args[0])
 	root, err := fsroot.Open()
 	if err != nil {
-		safeWriteResultError(stream, 0, "failed to access filesystem", 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "failed to access filesystem", 500))
 		return fmt.Errorf("failed to access filesystem: %w", err)
 	}
 	defer root.Close()
@@ -775,13 +712,11 @@ func handleExtract(stream net.Conn, args []string) error {
 	// Check archive exists
 	archiveStat, err := root.Root.Stat(fsroot.ToRel(archivePath))
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("archive not found: %v", err), 404)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("archive not found: %v", err), 404))
 		return fmt.Errorf("archive not found: %w", err)
 	}
 	if archiveStat.IsDir() {
-		safeWriteResultError(stream, 0, "path is a directory, not an archive", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "path is a directory, not an archive", 400))
 		return ipc.ErrIsDirectory
 	}
 
@@ -797,10 +732,10 @@ func handleExtract(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	safeWriteProgress(stream, 0, FileProgress{
+	logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
-	})
+	}))
 
 	// Create callbacks
 	pt := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
@@ -824,13 +759,11 @@ func handleExtract(stream net.Conn, args []string) error {
 				logger.Debugf(" Failed to clean up extraction directory: %v", removeErr)
 			}
 		}
-		safeWriteResultError(stream, 0, "operation aborted", 499)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
 		return ipc.ErrAborted
 	}
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("extraction failed: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("extraction failed: %v", err), 500))
 		return fmt.Errorf("extract archive: %w", err)
 	}
 
@@ -862,13 +795,10 @@ func handleExtract(stream net.Conn, args []string) error {
 		}
 	}(destination)
 
-	// Send success result
-	safeWriteResultOK(stream, 0, map[string]any{
+	// Send success result and close stream.
+	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"destination": destination,
-	})
-
-	// Close stream
-	safeWriteStreamClose(stream, 0)
+	}))
 
 	logger.Infof(" Extract complete: archive=%s destination=%s", archivePath, destination)
 	return nil
@@ -890,15 +820,13 @@ func handleReindex(stream net.Conn, args []string) error {
 			return ipc.WriteProgress(stream, 0, p)
 		},
 		OnResult: func(r indexer.ReindexResult) error {
-			safeWriteResultOK(stream, 0, r)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, r))
 			logger.Infof(" Reindex complete: path=%s files=%d dirs=%d duration=%dms",
 				r.Path, r.FilesIndexed, r.DirsIndexed, r.DurationMs)
 			return nil
 		},
 		OnError: func(msg string, code int) error {
-			safeWriteResultError(stream, 0, msg, code)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, msg, code))
 			return nil
 		},
 	}
@@ -910,8 +838,7 @@ func handleReindex(stream net.Conn, args []string) error {
 // args: [source, destination, overwrite?]
 func handleCopy(stream net.Conn, args []string) error {
 	if len(args) < 2 {
-		safeWriteResultError(stream, 0, "missing source or destination", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "missing source or destination", 400))
 		return fmt.Errorf("missing source or destination")
 	}
 
@@ -919,8 +846,7 @@ func handleCopy(stream net.Conn, args []string) error {
 	destination := filepath.Clean(args[1])
 	root, err := fsroot.Open()
 	if err != nil {
-		safeWriteResultError(stream, 0, "failed to access filesystem", 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "failed to access filesystem", 500))
 		return fmt.Errorf("failed to access filesystem: %w", err)
 	}
 	defer root.Close()
@@ -932,8 +858,7 @@ func handleCopy(stream net.Conn, args []string) error {
 	// Validate source exists
 	sourceInfo, err := root.Root.Stat(fsroot.ToRel(source))
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("source not found: %v", err), 404)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("source not found: %v", err), 404))
 		return fmt.Errorf("source not found: %w", err)
 	}
 
@@ -948,13 +873,11 @@ func handleCopy(stream net.Conn, args []string) error {
 	// Check destination conflicts
 	if destErr == nil {
 		if !overwrite {
-			safeWriteResultError(stream, 0, "destination already exists", 409)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "destination already exists", 409))
 			return fmt.Errorf("destination exists")
 		}
 		if sourceInfo.IsDir() != destInfo.IsDir() {
-			safeWriteResultError(stream, 0, "source and destination types don't match", 400)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "source and destination types don't match", 400))
 			return fmt.Errorf("type mismatch")
 		}
 	}
@@ -971,10 +894,10 @@ func handleCopy(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	safeWriteProgress(stream, 0, FileProgress{
+	logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
-	})
+	}))
 
 	// Create callbacks for progress tracking
 	pt := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
@@ -991,13 +914,11 @@ func handleCopy(stream net.Conn, args []string) error {
 	err = services.CopyFileWithCallbacks(source, destination, overwrite, opts)
 	if err == ipc.ErrAborted {
 		logger.Infof(" Copy aborted: %s -> %s", source, destination)
-		safeWriteResultError(stream, 0, "operation aborted", 499)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
 		return ipc.ErrAborted
 	}
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("copy failed: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("copy failed: %v", err), 500))
 		return fmt.Errorf("copy failed: %w", err)
 	}
 
@@ -1010,15 +931,12 @@ func handleCopy(stream net.Conn, args []string) error {
 		}(info)
 	}
 
-	// Send success result
-	safeWriteResultOK(stream, 0, map[string]any{
+	// Send success result and close stream.
+	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"source":      source,
 		"destination": destination,
 		"size":        totalSize,
-	})
-
-	// Close stream
-	safeWriteStreamClose(stream, 0)
+	}))
 
 	logger.Infof(" Copy complete: %s -> %s size=%d", source, destination, totalSize)
 	return nil
@@ -1028,8 +946,7 @@ func handleCopy(stream net.Conn, args []string) error {
 // args: [source, destination, overwrite?]
 func handleMove(stream net.Conn, args []string) error {
 	if len(args) < 2 {
-		safeWriteResultError(stream, 0, "missing source or destination", 400)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "missing source or destination", 400))
 		return fmt.Errorf("missing source or destination")
 	}
 
@@ -1037,8 +954,7 @@ func handleMove(stream net.Conn, args []string) error {
 	destination := filepath.Clean(args[1])
 	root, err := fsroot.Open()
 	if err != nil {
-		safeWriteResultError(stream, 0, "failed to access filesystem", 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "failed to access filesystem", 500))
 		return fmt.Errorf("failed to access filesystem: %w", err)
 	}
 	defer root.Close()
@@ -1050,8 +966,7 @@ func handleMove(stream net.Conn, args []string) error {
 	// Validate source exists
 	sourceInfo, err := root.Root.Stat(fsroot.ToRel(source))
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("source not found: %v", err), 404)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("source not found: %v", err), 404))
 		return fmt.Errorf("source not found: %w", err)
 	}
 
@@ -1066,13 +981,11 @@ func handleMove(stream net.Conn, args []string) error {
 	// Check destination conflicts
 	if destErr == nil {
 		if !overwrite {
-			safeWriteResultError(stream, 0, "destination already exists", 409)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "destination already exists", 409))
 			return fmt.Errorf("destination exists")
 		}
 		if sourceInfo.IsDir() != destInfo.IsDir() {
-			safeWriteResultError(stream, 0, "source and destination types don't match", 400)
-			safeWriteStreamClose(stream, 0)
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "source and destination types don't match", 400))
 			return fmt.Errorf("type mismatch")
 		}
 	}
@@ -1089,10 +1002,10 @@ func handleMove(stream net.Conn, args []string) error {
 	}
 
 	// Send initial progress
-	safeWriteProgress(stream, 0, FileProgress{
+	logWriteErr("progress", ipc.WriteProgress(stream, 0, FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
-	})
+	}))
 
 	// Create callbacks for progress tracking
 	pt := ipc.NewProgressTracker(stream, 0, progressIntervalDownload)
@@ -1109,13 +1022,11 @@ func handleMove(stream net.Conn, args []string) error {
 	err = services.MoveFileWithCallbacks(source, destination, overwrite, opts)
 	if err == ipc.ErrAborted {
 		logger.Infof(" Move aborted: %s -> %s", source, destination)
-		safeWriteResultError(stream, 0, "operation aborted", 499)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "operation aborted", 499))
 		return ipc.ErrAborted
 	}
 	if err != nil {
-		safeWriteResultError(stream, 0, fmt.Sprintf("move failed: %v", err), 500)
-		safeWriteStreamClose(stream, 0)
+		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("move failed: %v", err), 500))
 		return fmt.Errorf("move failed: %w", err)
 	}
 
@@ -1137,15 +1048,12 @@ func handleMove(stream net.Conn, args []string) error {
 		}
 	}(destInfoAfterMove)
 
-	// Send success result
-	safeWriteResultOK(stream, 0, map[string]any{
+	// Send success result and close stream.
+	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"source":      source,
 		"destination": destination,
 		"size":        totalSize,
-	})
-
-	// Close stream
-	safeWriteStreamClose(stream, 0)
+	}))
 
 	logger.Infof(" Move complete: %s -> %s size=%d", source, destination, totalSize)
 	return nil

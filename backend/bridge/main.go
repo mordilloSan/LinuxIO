@@ -105,7 +105,7 @@ func main() {
 	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID)
 
-	_ = syscall.Umask(0o077)
+	syscall.Umask(0o077)
 	logger.Infof("[bridge] starting (uid=%d)", os.Geteuid())
 
 	// Get the client connection from FD 3 (inherited from auth daemon)
@@ -303,10 +303,12 @@ func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) 
 	if !found {
 		logger.WarnKV("unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType)
 		// Send close frame
-		_ = ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
+		if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
 			Opcode:   ipc.OpStreamClose,
 			StreamID: frame.StreamID,
-		})
+		}); err != nil {
+			logger.DebugKV("failed to write close frame for unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
+		}
 		return
 	}
 

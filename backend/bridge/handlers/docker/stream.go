@@ -34,24 +34,14 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 	handlers[StreamTypeDockerReindex] = HandleDockerReindexStream
 }
 
-func safeWriteDockerStreamClose(stream net.Conn, streamID uint32) {
-	if err := ipc.WriteStreamClose(stream, streamID); err != nil {
-		logger.Debugf("[Docker] failed to write stream close frame: %v", err)
-	}
-}
-
-func safeWriteDockerResultError(stream net.Conn, streamID uint32, msg string, code int) {
-	if err := ipc.WriteResultError(stream, streamID, msg, code); err != nil {
-		logger.Debugf("[Docker] failed to write result error frame: %v", err)
-	}
-}
-
 // HandleDockerLogsStream streams container logs in real-time.
 // Args: [containerID, tail] where tail is the number of lines to start with (default "100")
 func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		logger.Errorf("[DockerLogs] missing containerID")
-		safeWriteDockerStreamClose(stream, 1)
+		if err := ipc.WriteStreamClose(stream, 1); err != nil {
+			logger.Debugf("[DockerLogs] failed to write stream close frame: %v", err)
+		}
 		return errors.New("missing containerID")
 	}
 
@@ -66,7 +56,9 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 	cli, err := getClient()
 	if err != nil {
 		logger.Errorf("[DockerLogs] docker client error: %v", err)
-		safeWriteDockerStreamClose(stream, 1)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[DockerLogs] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 	defer func() {
@@ -90,7 +82,9 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 	reader, err := cli.ContainerLogs(ctx, containerID, options)
 	if err != nil {
 		logger.Errorf("[DockerLogs] failed to get logs: %v", err)
-		safeWriteDockerStreamClose(stream, 1)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[DockerLogs] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 	defer reader.Close()
@@ -112,7 +106,9 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		// Check if context was cancelled
 		select {
 		case <-ctx.Done():
-			safeWriteDockerStreamClose(stream, 1)
+			if err := ipc.WriteStreamClose(stream, 1); err != nil {
+				logger.Debugf("[DockerLogs] failed to write stream close frame: %v", err)
+			}
 			return nil
 		default:
 		}
@@ -157,7 +153,9 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		}
 	}
 
-	safeWriteDockerStreamClose(stream, 1)
+	if err := ipc.WriteStreamClose(stream, 1); err != nil {
+		logger.Debugf("[DockerLogs] failed to write stream close frame: %v", err)
+	}
 	return nil
 }
 
@@ -296,7 +294,9 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 
 	// Send completion message
 	sendComposeMessage(stream, "complete", "operation completed successfully")
-	safeWriteDockerStreamClose(stream, 1)
+	if err := ipc.WriteStreamClose(stream, 1); err != nil {
+		logger.Debugf("[DockerCompose] failed to write stream close frame: %v", err)
+	}
 	return nil
 }
 
@@ -325,7 +325,9 @@ func sendComposeMessage(stream net.Conn, msgType, message string) {
 
 func sendComposeError(stream net.Conn, message string) {
 	sendComposeMessage(stream, "error", message)
-	safeWriteDockerStreamClose(stream, 1)
+	if err := ipc.WriteStreamClose(stream, 1); err != nil {
+		logger.Debugf("[DockerCompose] failed to write stream close frame: %v", err)
+	}
 }
 
 // HandleDockerReindexStream triggers a reindex of the user's docker folder and streams progress.
@@ -335,14 +337,16 @@ func HandleDockerReindexStream(sess *session.Session, stream net.Conn, args []st
 
 	cfg, _, err := config.Load(username)
 	if err != nil {
-		safeWriteDockerResultError(stream, 0, "failed to load user config", 500)
-		safeWriteDockerStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, "failed to load user config", 500); writeErr != nil {
+			logger.Debugf("[DockerReindex] failed to write error+close frame: %v", writeErr)
+		}
 		return err
 	}
 
 	if cfg.Docker.Folder == "" {
-		safeWriteDockerResultError(stream, 0, "docker folder not configured", 400)
-		safeWriteDockerStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, "docker folder not configured", 400); writeErr != nil {
+			logger.Debugf("[DockerReindex] failed to write error+close frame: %v", writeErr)
+		}
 		return errors.New("docker folder not configured")
 	}
 

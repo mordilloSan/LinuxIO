@@ -76,13 +76,17 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		logger.Errorf("[GeneralLogs] failed to create stdout pipe: %v", err)
-		_ = ipc.WriteStreamClose(stream, 1)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[GeneralLogs] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 
 	if err := cmd.Start(); err != nil {
 		logger.Errorf("[GeneralLogs] failed to start journalctl: %v", err)
-		_ = ipc.WriteStreamClose(stream, 1)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[GeneralLogs] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 
@@ -100,8 +104,12 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 		// Check if context was cancelled
 		select {
 		case <-ctx.Done():
-			_ = cmd.Process.Kill()
-			_ = ipc.WriteStreamClose(stream, 1)
+			if killErr := cmd.Process.Kill(); killErr != nil {
+				logger.Debugf("[GeneralLogs] failed to kill journalctl process: %v", killErr)
+			}
+			if err := ipc.WriteStreamClose(stream, 1); err != nil {
+				logger.Debugf("[GeneralLogs] failed to write stream close frame: %v", err)
+			}
 			return nil
 		default:
 		}
@@ -128,8 +136,12 @@ func HandleGeneralLogsStream(sess *session.Session, stream net.Conn, args []stri
 	}
 
 	// Wait for command to finish
-	_ = cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		logger.Debugf("[GeneralLogs] journalctl exited with error: %v", err)
+	}
 
-	_ = ipc.WriteStreamClose(stream, 1)
+	if err := ipc.WriteStreamClose(stream, 1); err != nil {
+		logger.Debugf("[GeneralLogs] failed to write stream close frame: %v", err)
+	}
 	return nil
 }

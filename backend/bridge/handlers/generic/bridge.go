@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/mordilloSan/go-logger/logger"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -24,8 +26,9 @@ const sessionContextKey contextKey = "session"
 func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 2 {
 		err := fmt.Errorf("invalid bridge args: expected [type, command, ...args], got %v", args)
-		_ = ipc.WriteResultError(stream, 0, err.Error(), 400)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400); writeErr != nil {
+			logger.Debugf("[BridgeStream] failed to write error+close frame: %v", writeErr)
+		}
 		return err
 	}
 
@@ -37,8 +40,9 @@ func HandleBridgeStream(sess *session.Session, stream net.Conn, args []string) e
 	h, ok := ipc.Get(handlerType, command)
 	if !ok {
 		err := fmt.Errorf("handler not found: %s.%s", handlerType, command)
-		_ = ipc.WriteResultError(stream, 0, err.Error(), 404)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 404); writeErr != nil {
+			logger.Debugf("[BridgeStream] failed to write error+close frame: %v", writeErr)
+		}
 		return err
 	}
 
@@ -60,13 +64,19 @@ func handleUnidirectional(ctx context.Context, stream net.Conn, h ipc.Handler, a
 	// Execute handler
 	if err := h.Execute(ctx, args, emit); err != nil {
 		// Handler returned error - send error result
-		_ = emit.Error(err, 500)
-		_ = emit.Close("handler error")
+		if emitErr := emit.Error(err, 500); emitErr != nil {
+			logger.Debugf("[BridgeStream] failed to write handler error frame: %v", emitErr)
+		}
+		if closeErr := emit.Close("handler error"); closeErr != nil {
+			logger.Debugf("[BridgeStream] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 
 	// Success - close stream
-	_ = emit.Close("")
+	if err := emit.Close(""); err != nil {
+		logger.Debugf("[BridgeStream] failed to write stream close frame: %v", err)
+	}
 	return nil
 }
 
@@ -119,12 +129,18 @@ func handleBidirectional(ctx context.Context, stream net.Conn, h ipc.Bidirection
 
 	// Execute handler with input channel
 	if err := h.ExecuteWithInput(ctx, args, emit, inputChan); err != nil {
-		_ = emit.Error(err, 500)
-		_ = emit.Close("handler error")
+		if emitErr := emit.Error(err, 500); emitErr != nil {
+			logger.Debugf("[BridgeStream] failed to write handler error frame: %v", emitErr)
+		}
+		if closeErr := emit.Close("handler error"); closeErr != nil {
+			logger.Debugf("[BridgeStream] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 
-	_ = emit.Close("")
+	if err := emit.Close(""); err != nil {
+		logger.Debugf("[BridgeStream] failed to write stream close frame: %v", err)
+	}
 	return nil
 }
 

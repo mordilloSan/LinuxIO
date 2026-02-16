@@ -22,14 +22,18 @@ const StreamTypeServiceLogs = "service-logs"
 func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		logger.Errorf("[ServiceLogs] missing service name")
-		_ = ipc.WriteStreamClose(stream, 1)
+		if err := ipc.WriteStreamClose(stream, 1); err != nil {
+			logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", err)
+		}
 		return errors.New("missing service name")
 	}
 
 	serviceName := strings.TrimSpace(args[0])
 	if serviceName == "" {
 		logger.Errorf("[ServiceLogs] empty service name")
-		_ = ipc.WriteStreamClose(stream, 1)
+		if err := ipc.WriteStreamClose(stream, 1); err != nil {
+			logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", err)
+		}
 		return errors.New("empty service name")
 	}
 
@@ -55,13 +59,17 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		logger.Errorf("[ServiceLogs] failed to create stdout pipe: %v", err)
-		_ = ipc.WriteStreamClose(stream, 1)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 
 	if err := cmd.Start(); err != nil {
 		logger.Errorf("[ServiceLogs] failed to start journalctl: %v", err)
-		_ = ipc.WriteStreamClose(stream, 1)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 
@@ -79,8 +87,12 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 		// Check if context was cancelled
 		select {
 		case <-ctx.Done():
-			_ = cmd.Process.Kill()
-			_ = ipc.WriteStreamClose(stream, 1)
+			if killErr := cmd.Process.Kill(); killErr != nil {
+				logger.Debugf("[ServiceLogs] failed to kill journalctl process: %v", killErr)
+			}
+			if err := ipc.WriteStreamClose(stream, 1); err != nil {
+				logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", err)
+			}
 			return nil
 		default:
 		}
@@ -107,8 +119,12 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	}
 
 	// Wait for command to finish
-	_ = cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		logger.Debugf("[ServiceLogs] journalctl exited with error: %v", err)
+	}
 
-	_ = ipc.WriteStreamClose(stream, 1)
+	if err := ipc.WriteStreamClose(stream, 1); err != nil {
+		logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", err)
+	}
 	return nil
 }

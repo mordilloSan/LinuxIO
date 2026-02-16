@@ -111,30 +111,35 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 	logger.Debugf("[PkgUpdate] Starting with %d packages", len(args))
 
 	if len(args) == 0 {
-		_ = ipc.WriteResultError(stream, 0, "no packages specified", 400)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if err := ipc.WriteResultErrorAndClose(stream, 0, "no packages specified", 400); err != nil {
+			logger.Debugf("[PkgUpdate] failed to write error+close frame: %v", err)
+		}
 		return fmt.Errorf("no packages specified")
 	}
 
 	// Send initial progress
-	_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Initializing",
 		Percentage: 0,
-	})
+	}); err != nil {
+		logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+	}
 
 	err := updatePackagesWithProgress(stream, args)
 	if err != nil {
 		logger.Errorf("[PkgUpdate] Error: %v", err)
-		_ = ipc.WriteResultError(stream, 0, err.Error(), 500)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 500); writeErr != nil {
+			logger.Debugf("[PkgUpdate] failed to write error+close frame: %v", writeErr)
+		}
 		return err
 	}
 
-	_ = ipc.WriteResultOK(stream, 0, map[string]any{
+	if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"updated": len(args),
-	})
-	_ = ipc.WriteStreamClose(stream, 0)
+	}); err != nil {
+		logger.Debugf("[PkgUpdate] failed to write ok+close frame: %v", err)
+	}
 	return nil
 }
 
@@ -212,23 +217,27 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 						statusName = fmt.Sprintf("Status %d", status)
 					}
 
-					_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+					if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 						Type:       "item_progress",
 						PackageID:  pkgID,
 						Status:     statusName,
 						StatusCode: status,
 						ItemPct:    pct,
-					})
+					}); err != nil {
+						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+					}
 				}
 
 			case transactionIfc + ".Package":
 				// Package(u info, s package_id, s summary)
 				if len(sig.Body) >= 2 {
 					pkgID, _ := sig.Body[1].(string)
-					_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+					if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 						Type:      "package",
 						PackageID: pkgID,
-					})
+					}); err != nil {
+						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+					}
 				}
 
 			case transactionIfc + ".Percentage":
@@ -248,11 +257,13 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 			case transactionIfc + ".Finished":
 				// Finished(u exit, u runtime)
 				logger.Debugf("[PkgUpdate] Finished signal received")
-				_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+				if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 					Type:       "status",
 					Status:     "Finished",
 					Percentage: 100,
-				})
+				}); err != nil {
+					logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+				}
 				return nil
 
 			case "org.freedesktop.DBus.Properties.PropertiesChanged":
@@ -273,10 +284,12 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 							// Only send percentage updates for real work statuses
 							if pctVar, exists := props["Percentage"]; exists {
 								if pct, ok := pctVar.Value().(uint32); ok && isRealWorkStatus(currentStatus) {
-									_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+									if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 										Type:       "percentage",
 										Percentage: pct,
-									})
+									}); err != nil {
+										logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+									}
 								}
 							}
 
@@ -286,11 +299,13 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 								if statusName == "" {
 									statusName = fmt.Sprintf("Status %d", currentStatus)
 								}
-								_ = writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+								if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 									Type:       "status",
 									Status:     statusName,
 									StatusCode: currentStatus,
-								})
+								}); err != nil {
+									logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+								}
 							}
 						}
 					}
