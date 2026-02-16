@@ -337,10 +337,12 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 
 	// Send initial progress
 	logger.Infof("[FBHandler] Starting %s operation: %s -> %s (size=%d)", action, realSrc, realDest, totalSize)
-	_ = emit.Progress(FileProgress{
+	if err := emit.Progress(FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("write progress: %w", err)
+	}
 
 	// Create progress callbacks
 	var bytesProcessed int64
@@ -357,12 +359,15 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 					phase = "moving"
 				}
 				logger.Debugf("[FBHandler] Progress: %d/%d bytes (%d%%) - %s", bytesProcessed, totalSize, pct, phase)
-				_ = emit.Progress(FileProgress{
+				if err := emit.Progress(FileProgress{
 					Bytes: bytesProcessed,
 					Total: totalSize,
 					Pct:   pct,
 					Phase: phase,
-				})
+				}); err != nil {
+					logger.Debugf("[FBHandler] failed to write progress update: %v", err)
+					return
+				}
 				lastProgress = bytesProcessed
 			}
 		},
@@ -617,7 +622,10 @@ func CheckIndexerAvailability() (bool, error) {
 		return false, fmt.Errorf("indexer service state unavailable")
 	}
 
-	subState, _ := info["SubState"].(string)
+	subState, subStateOK := info["SubState"].(string)
+	if !subStateOK {
+		subState = ""
+	}
 	if activeState != "active" || subState != "running" {
 		setIndexerAvailability(false)
 		if subState != "" {
@@ -858,7 +866,10 @@ func searchFiles(args []string) (any, error) {
 
 func normalizeIndexerSearchResults(results []map[string]any) {
 	for _, result := range results {
-		path, _ := result["path"].(string)
+		path, pathOK := result["path"].(string)
+		if !pathOK {
+			path = ""
+		}
 		typeRaw, typeOk := result["type"].(string)
 		normalizedType := strings.ToLower(typeRaw)
 
@@ -1232,9 +1243,13 @@ func replaceFileFromTemp(root *fsroot.FSRoot, tempPath, destPath string, mode os
 	}
 	cleanup := true
 	defer func() {
-		_ = tmpFile.Close()
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			logger.Debugf("failed to close temporary file %s: %v", tmpRel, closeErr)
+		}
 		if cleanup {
-			_ = root.Root.Remove(tmpRel)
+			if removeErr := root.Root.Remove(tmpRel); removeErr != nil && !os.IsNotExist(removeErr) {
+				logger.Debugf("failed to remove temporary file %s: %v", tmpRel, removeErr)
+			}
 		}
 	}()
 

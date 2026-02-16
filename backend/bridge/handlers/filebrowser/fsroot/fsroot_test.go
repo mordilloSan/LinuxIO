@@ -66,7 +66,9 @@ func TestWalkDirAndCreateTemp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp: %v", err)
 	}
-	_ = f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatalf("CreateTemp close: %v", err)
+	}
 
 	if filepath.Dir(filepath.ToSlash(relPath)) != "a" {
 		t.Fatalf("CreateTemp dir = %q, want %q", filepath.Dir(filepath.ToSlash(relPath)), "a")

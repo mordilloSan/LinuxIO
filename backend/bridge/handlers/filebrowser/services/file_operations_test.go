@@ -318,7 +318,9 @@ func TestWriteContentInFile(t *testing.T) {
 		}
 
 		// WriteContentInFile may error or may create a file, just verify it handles the case
-		_ = WriteContentInFile(opts, reader)
+		if err := WriteContentInFile(opts, reader); err != nil {
+			t.Logf("WriteContentInFile on directory returned error (acceptable for this case): %v", err)
+		}
 	})
 }
 

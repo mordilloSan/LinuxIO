@@ -136,10 +136,12 @@ func RegisterHandlers() {
 		totalSize := stat.Size()
 
 		// Send initial progress
-		_ = emit.Progress(FileProgress{
+		if err := emit.Progress(FileProgress{
 			Total: totalSize,
 			Phase: "starting",
-		})
+		}); err != nil {
+			return fmt.Errorf("write progress: %w", err)
+		}
 
 		// Open file
 		file, err := root.Root.Open(fsroot.ToRel(realPath))
@@ -169,11 +171,13 @@ func RegisterHandlers() {
 					if totalSize > 0 {
 						pct = int(bytesRead * 100 / totalSize)
 					}
-					_ = emit.Progress(FileProgress{
+					if err := emit.Progress(FileProgress{
 						Bytes: bytesRead,
 						Total: totalSize,
 						Pct:   pct,
-					})
+					}); err != nil {
+						return fmt.Errorf("write progress: %w", err)
+					}
 					lastProgress = bytesRead
 				}
 			}
@@ -282,15 +286,21 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 		return fmt.Errorf("cannot create temp file: %w", err)
 	}
 	defer func() {
-		file.Close()
-		_ = root.Root.Remove(tempRel)
+		if closeErr := file.Close(); closeErr != nil {
+			logger.Debugf("[FBHandler] failed to close temp upload file: %v", closeErr)
+		}
+		if removeErr := root.Root.Remove(tempRel); removeErr != nil && !os.IsNotExist(removeErr) {
+			logger.Debugf("[FBHandler] failed to remove temp upload file %s: %v", tempPath, removeErr)
+		}
 	}()
 
 	// Send initial progress
-	_ = emit.Progress(FileProgress{
+	if err := emit.Progress(FileProgress{
 		Total: expectedSize,
 		Phase: "receiving",
-	})
+	}); err != nil {
+		return fmt.Errorf("write progress: %w", err)
+	}
 
 	// Receive data chunks
 	var bytesWritten int64
@@ -310,11 +320,13 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 			if expectedSize > 0 {
 				pct = int(bytesWritten * 100 / expectedSize)
 			}
-			_ = emit.Progress(FileProgress{
+			if err := emit.Progress(FileProgress{
 				Bytes: bytesWritten,
 				Total: expectedSize,
 				Pct:   pct,
-			})
+			}); err != nil {
+				return fmt.Errorf("write progress: %w", err)
+			}
 			lastProgress = bytesWritten
 		}
 
@@ -327,7 +339,9 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 	}
 
 	// Close temp file before rename
-	file.Close()
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
 
 	// Verify size
 	if bytesWritten != expectedSize {
@@ -341,8 +355,12 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 
 	// Restore permissions if file existed
 	if existsErr == nil {
-		_ = root.Root.Chmod(realRel, preserveMode)
-		_ = root.Root.Chown(realRel, preserveUID, preserveGID)
+		if err := root.Root.Chmod(realRel, preserveMode); err != nil {
+			logger.Debugf("[FBHandler] failed to restore mode on %s: %v", realPath, err)
+		}
+		if err := root.Root.Chown(realRel, preserveUID, preserveGID); err != nil {
+			logger.Debugf("[FBHandler] failed to restore ownership on %s: %v", realPath, err)
+		}
 	}
 
 	logger.Infof("[FBHandler] Upload complete: path=%s size=%d", path, bytesWritten)

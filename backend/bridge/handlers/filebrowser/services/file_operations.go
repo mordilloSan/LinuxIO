@@ -440,8 +440,12 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	if err == nil {
 		// Rename succeeded - update progress to 100%
 		if opts != nil && opts.Progress != nil {
-			totalSize, _ := ComputeCopySize(dst)
-			opts.Progress(totalSize)
+			totalSize, sizeErr := ComputeCopySize(dst)
+			if sizeErr != nil {
+				logger.Debugf("failed to compute move size after rename for %s: %v", dst, sizeErr)
+			} else {
+				opts.Progress(totalSize)
+			}
 		}
 		return nil
 	}

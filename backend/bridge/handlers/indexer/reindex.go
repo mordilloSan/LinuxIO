@@ -44,21 +44,29 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 	query.Set("path", path)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex/stream?"+query.Encode(), nil)
 	if err != nil {
-		callOnError(cb, fmt.Sprintf("failed to create request: %v", err), 500)
+		if callbackErr := callOnError(cb, fmt.Sprintf("failed to create request: %v", err), 500); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Accept", "text/event-stream")
 
 	// Send initial "connecting" progress
-	callOnProgress(cb, ReindexProgress{Phase: "connecting"})
+	if err := callOnProgress(cb, ReindexProgress{Phase: "connecting"}); err != nil {
+		return fmt.Errorf("on progress callback: %w", err)
+	}
 
 	resp, err := indexerClient.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			callOnError(cb, "operation aborted", 499)
+			if callbackErr := callOnError(cb, "operation aborted", 499); callbackErr != nil {
+				return fmt.Errorf("on error callback: %w", callbackErr)
+			}
 			return ipc.ErrAborted
 		}
-		callOnError(cb, fmt.Sprintf("indexer connection failed: %v", err), 503)
+		if callbackErr := callOnError(cb, fmt.Sprintf("indexer connection failed: %v", err), 503); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
 		return fmt.Errorf("indexer request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -66,13 +74,19 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 	// Centralized HTTP status mapping
 	switch {
 	case resp.StatusCode == http.StatusConflict:
-		callOnError(cb, "another index operation is already running", 409)
+		if callbackErr := callOnError(cb, "another index operation is already running", 409); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
 		return fmt.Errorf("indexer conflict")
 	case resp.StatusCode == http.StatusBadRequest:
-		callOnError(cb, "invalid path", 400)
+		if callbackErr := callOnError(cb, "invalid path", 400); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
 		return fmt.Errorf("invalid path")
 	case resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK:
-		callOnError(cb, fmt.Sprintf("indexer error: %s", resp.Status), resp.StatusCode)
+		if callbackErr := callOnError(cb, fmt.Sprintf("indexer error: %s", resp.Status), resp.StatusCode); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
 		return fmt.Errorf("indexer error: %s", resp.Status)
 	}
 
@@ -82,20 +96,26 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 	for evt := range events {
 		switch evt.Type {
 		case "started":
-			callOnProgress(cb, ReindexProgress{Phase: "indexing"})
+			if err := callOnProgress(cb, ReindexProgress{Phase: "indexing"}); err != nil {
+				return fmt.Errorf("on progress callback: %w", err)
+			}
 
 		case "progress":
 			var progress ReindexProgress
 			if err := json.Unmarshal([]byte(evt.Data), &progress); err == nil {
 				progress.Phase = "indexing"
-				callOnProgress(cb, progress)
+				if callbackErr := callOnProgress(cb, progress); callbackErr != nil {
+					return fmt.Errorf("on progress callback: %w", callbackErr)
+				}
 			}
 
 		case "complete":
 			var result ReindexResult
 			if err := json.Unmarshal([]byte(evt.Data), &result); err == nil {
 				if cb.OnResult != nil {
-					_ = cb.OnResult(result)
+					if callbackErr := cb.OnResult(result); callbackErr != nil {
+						return fmt.Errorf("on result callback: %w", callbackErr)
+					}
 				}
 				return nil
 			}
@@ -105,7 +125,9 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 				Message string `json:"message"`
 			}
 			if err := json.Unmarshal([]byte(evt.Data), &errData); err == nil {
-				callOnError(cb, errData.Message, 500)
+				if callbackErr := callOnError(cb, errData.Message, 500); callbackErr != nil {
+					return fmt.Errorf("on error callback: %w", callbackErr)
+				}
 				return fmt.Errorf("indexer error: %s", errData.Message)
 			}
 		}
@@ -114,26 +136,34 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 	// Check for SSE read error
 	if err := <-errCh; err != nil {
 		if ctx.Err() != nil {
-			callOnError(cb, "operation aborted", 499)
+			if callbackErr := callOnError(cb, "operation aborted", 499); callbackErr != nil {
+				return fmt.Errorf("on error callback: %w", callbackErr)
+			}
 			return ipc.ErrAborted
 		}
-		callOnError(cb, fmt.Sprintf("read error: %v", err), 500)
+		if callbackErr := callOnError(cb, fmt.Sprintf("read error: %v", err), 500); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
 		return fmt.Errorf("read SSE: %w", err)
 	}
 
 	// Stream ended without a "complete" event
-	callOnError(cb, "indexer stream ended unexpectedly", 500)
+	if err := callOnError(cb, "indexer stream ended unexpectedly", 500); err != nil {
+		return fmt.Errorf("on error callback: %w", err)
+	}
 	return fmt.Errorf("indexer stream ended unexpectedly")
 }
 
-func callOnProgress(cb ReindexCallbacks, p ReindexProgress) {
+func callOnProgress(cb ReindexCallbacks, p ReindexProgress) error {
 	if cb.OnProgress != nil {
-		_ = cb.OnProgress(p)
+		return cb.OnProgress(p)
 	}
+	return nil
 }
 
-func callOnError(cb ReindexCallbacks, msg string, code int) {
+func callOnError(cb ReindexCallbacks, msg string, code int) error {
 	if cb.OnError != nil {
-		_ = cb.OnError(msg, code)
+		return cb.OnError(msg, code)
 	}
+	return nil
 }

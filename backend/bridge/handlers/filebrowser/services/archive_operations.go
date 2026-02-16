@@ -17,6 +17,18 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
+func closeWithLog(name string, closer io.Closer) {
+	if err := closer.Close(); err != nil {
+		logger.Debugf("failed to close %s: %v", name, err)
+	}
+}
+
+func removeWithLog(root *fsroot.FSRoot, path string) {
+	if err := root.Root.Remove(path); err != nil && !os.IsNotExist(err) {
+		logger.Debugf("failed to remove %s: %v", path, err)
+	}
+}
+
 // ComputeArchiveSize calculates the estimated size of files/directories for archiving
 func ComputeArchiveSize(fileList []string) (int64, error) {
 	root, err := fsroot.Open()
@@ -193,7 +205,7 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 	fileOpen := true
 	defer func() {
 		if fileOpen {
-			_ = file.Close()
+			closeWithLog("zip output file", file)
 		}
 	}()
 
@@ -201,18 +213,18 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 
 	for _, fname := range filenames {
 		if opts.IsCancelled() {
-			_ = zipWriter.Close()
-			_ = file.Close()
+			closeWithLog("zip writer", zipWriter)
+			closeWithLog("zip output file", file)
 			fileOpen = false
-			_ = root.Root.Remove(relPath(tmpDirPath))
+			removeWithLog(root, relPath(tmpDirPath))
 			return ipc.ErrAborted
 		}
 		if addErr := addFile(root, fname, nil, zipWriter, false, opts, skipPath); addErr != nil {
-			_ = zipWriter.Close()
-			_ = file.Close()
+			closeWithLog("zip writer", zipWriter)
+			closeWithLog("zip output file", file)
 			fileOpen = false
 			if addErr == ipc.ErrAborted {
-				_ = root.Root.Remove(relPath(tmpDirPath))
+				removeWithLog(root, relPath(tmpDirPath))
 			} else {
 				logger.Errorf("Failed to add %s to ZIP: %v", fname, addErr)
 			}
@@ -260,7 +272,7 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 	fileOpen := true
 	defer func() {
 		if fileOpen {
-			_ = file.Close()
+			closeWithLog("tar.gz output file", file)
 		}
 	}()
 
@@ -269,20 +281,20 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 
 	for _, fname := range filenames {
 		if opts.IsCancelled() {
-			_ = tarWriter.Close()
-			_ = gzWriter.Close()
-			_ = file.Close()
+			closeWithLog("tar writer", tarWriter)
+			closeWithLog("gzip writer", gzWriter)
+			closeWithLog("tar.gz output file", file)
 			fileOpen = false
-			_ = root.Root.Remove(relPath(tmpDirPath))
+			removeWithLog(root, relPath(tmpDirPath))
 			return ipc.ErrAborted
 		}
 		if addErr := addFile(root, fname, tarWriter, nil, false, opts, skipPath); addErr != nil {
-			_ = tarWriter.Close()
-			_ = gzWriter.Close()
-			_ = file.Close()
+			closeWithLog("tar writer", tarWriter)
+			closeWithLog("gzip writer", gzWriter)
+			closeWithLog("tar.gz output file", file)
 			fileOpen = false
 			if addErr == ipc.ErrAborted {
-				_ = root.Root.Remove(relPath(tmpDirPath))
+				removeWithLog(root, relPath(tmpDirPath))
 			} else {
 				logger.Errorf("Failed to add %s to TAR.GZ: %v", fname, addErr)
 			}
@@ -292,7 +304,7 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 
 	// Close writers in order: tar -> gzip -> file
 	if err := tarWriter.Close(); err != nil {
-		_ = gzWriter.Close()
+		closeWithLog("gzip writer", gzWriter)
 		return err
 	}
 	if err := gzWriter.Close(); err != nil {
@@ -471,7 +483,7 @@ func extractTarEntry(root *fsroot.FSRoot, header *tar.Header, tarReader *tar.Rea
 			return err
 		}
 		if err := copyWithCallbacks(outFile, tarReader, opts); err != nil {
-			_ = outFile.Close()
+			closeWithLog("extracted output file", outFile)
 			return err
 		}
 		if err := outFile.Close(); err != nil {

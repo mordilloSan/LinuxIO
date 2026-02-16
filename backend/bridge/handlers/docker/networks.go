@@ -60,8 +60,14 @@ func ListDockerNetworks() (any, error) {
 
 	// Sort networks by Name alphabetically
 	sort.Slice(results, func(i, j int) bool {
-		nameI, _ := results[i]["Name"].(string)
-		nameJ, _ := results[j]["Name"].(string)
+		nameI, okI := results[i]["Name"].(string)
+		if !okI {
+			nameI = ""
+		}
+		nameJ, okJ := results[j]["Name"].(string)
+		if !okJ {
+			nameJ = ""
+		}
 		return nameI < nameJ
 	})
 

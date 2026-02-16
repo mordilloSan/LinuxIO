@@ -174,8 +174,8 @@ func TestCreateZip(t *testing.T) {
 		// Create first zip
 		err := CreateZip(zipPath, nil, zipPath, srcFile)
 		assert.NoError(t, err)
-		firstStat, _ := os.Stat(zipPath)
-		firstSize := firstStat.Size()
+		firstStat, err := os.Stat(zipPath)
+		assert.NoError(t, err)
 
 		// Small delay to ensure file times differ
 		time.Sleep(10 * time.Millisecond)
@@ -184,13 +184,14 @@ func TestCreateZip(t *testing.T) {
 		modifiedFile := createTestFile(t, tmpDir, "modified.txt", []byte("much longer content here"))
 		err = CreateZip(zipPath, nil, zipPath, modifiedFile)
 		assert.NoError(t, err)
-		secondStat, _ := os.Stat(zipPath)
+		secondStat, err := os.Stat(zipPath)
+		assert.NoError(t, err)
 
 		// File should have been overwritten - size should likely be different
 		// (though size comparison isn't guaranteed, just check file exists and is valid)
 		assert.NoError(t, err, "should successfully overwrite zip file")
 		assert.Greater(t, secondStat.Size(), int64(0), "recreated zip should have content")
-		_ = firstSize // firstSize kept for reference but size may vary based on compression
+		assert.Greater(t, firstStat.Size(), int64(0), "original zip should have content")
 	})
 }
 

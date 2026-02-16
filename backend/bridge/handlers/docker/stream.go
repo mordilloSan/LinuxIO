@@ -34,12 +34,24 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 	handlers[StreamTypeDockerReindex] = HandleDockerReindexStream
 }
 
+func safeWriteDockerStreamClose(stream net.Conn, streamID uint32) {
+	if err := ipc.WriteStreamClose(stream, streamID); err != nil {
+		logger.Debugf("[Docker] failed to write stream close frame: %v", err)
+	}
+}
+
+func safeWriteDockerResultError(stream net.Conn, streamID uint32, msg string, code int) {
+	if err := ipc.WriteResultError(stream, streamID, msg, code); err != nil {
+		logger.Debugf("[Docker] failed to write result error frame: %v", err)
+	}
+}
+
 // HandleDockerLogsStream streams container logs in real-time.
 // Args: [containerID, tail] where tail is the number of lines to start with (default "100")
 func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		logger.Errorf("[DockerLogs] missing containerID")
-		_ = ipc.WriteStreamClose(stream, 1)
+		safeWriteDockerStreamClose(stream, 1)
 		return errors.New("missing containerID")
 	}
 
@@ -54,7 +66,7 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 	cli, err := getClient()
 	if err != nil {
 		logger.Errorf("[DockerLogs] docker client error: %v", err)
-		_ = ipc.WriteStreamClose(stream, 1)
+		safeWriteDockerStreamClose(stream, 1)
 		return err
 	}
 	defer func() {
@@ -78,7 +90,7 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 	reader, err := cli.ContainerLogs(ctx, containerID, options)
 	if err != nil {
 		logger.Errorf("[DockerLogs] failed to get logs: %v", err)
-		_ = ipc.WriteStreamClose(stream, 1)
+		safeWriteDockerStreamClose(stream, 1)
 		return err
 	}
 	defer reader.Close()
@@ -100,7 +112,7 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		// Check if context was cancelled
 		select {
 		case <-ctx.Done():
-			_ = ipc.WriteStreamClose(stream, 1)
+			safeWriteDockerStreamClose(stream, 1)
 			return nil
 		default:
 		}
@@ -145,7 +157,7 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 		}
 	}
 
-	_ = ipc.WriteStreamClose(stream, 1)
+	safeWriteDockerStreamClose(stream, 1)
 	return nil
 }
 
@@ -284,7 +296,7 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 
 	// Send completion message
 	sendComposeMessage(stream, "complete", "operation completed successfully")
-	_ = ipc.WriteStreamClose(stream, 1)
+	safeWriteDockerStreamClose(stream, 1)
 	return nil
 }
 
@@ -313,7 +325,7 @@ func sendComposeMessage(stream net.Conn, msgType, message string) {
 
 func sendComposeError(stream net.Conn, message string) {
 	sendComposeMessage(stream, "error", message)
-	_ = ipc.WriteStreamClose(stream, 1)
+	safeWriteDockerStreamClose(stream, 1)
 }
 
 // HandleDockerReindexStream triggers a reindex of the user's docker folder and streams progress.
@@ -323,14 +335,14 @@ func HandleDockerReindexStream(sess *session.Session, stream net.Conn, args []st
 
 	cfg, _, err := config.Load(username)
 	if err != nil {
-		_ = ipc.WriteResultError(stream, 0, "failed to load user config", 500)
-		_ = ipc.WriteStreamClose(stream, 0)
+		safeWriteDockerResultError(stream, 0, "failed to load user config", 500)
+		safeWriteDockerStreamClose(stream, 0)
 		return err
 	}
 
 	if cfg.Docker.Folder == "" {
-		_ = ipc.WriteResultError(stream, 0, "docker folder not configured", 400)
-		_ = ipc.WriteStreamClose(stream, 0)
+		safeWriteDockerResultError(stream, 0, "docker folder not configured", 400)
+		safeWriteDockerStreamClose(stream, 0)
 		return errors.New("docker folder not configured")
 	}
 
@@ -344,16 +356,21 @@ func HandleDockerReindexStream(sess *session.Session, stream net.Conn, args []st
 			return ipc.WriteProgress(stream, 0, p)
 		},
 		OnResult: func(r indexer.ReindexResult) error {
-			_ = ipc.WriteResultOK(stream, 0, r)
-			_ = ipc.WriteStreamClose(stream, 0)
+			if err := ipc.WriteResultOK(stream, 0, r); err != nil {
+				return err
+			}
+			if err := ipc.WriteStreamClose(stream, 0); err != nil {
+				return err
+			}
 			logger.Infof("[DockerReindex] Reindex complete: path=%s files=%d dirs=%d duration=%dms",
 				r.Path, r.FilesIndexed, r.DirsIndexed, r.DurationMs)
 			return nil
 		},
 		OnError: func(msg string, code int) error {
-			_ = ipc.WriteResultError(stream, 0, msg, code)
-			_ = ipc.WriteStreamClose(stream, 0)
-			return nil
+			if err := ipc.WriteResultError(stream, 0, msg, code); err != nil {
+				return err
+			}
+			return ipc.WriteStreamClose(stream, 0)
 		},
 	}
 

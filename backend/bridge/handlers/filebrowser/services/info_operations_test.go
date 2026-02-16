@@ -114,9 +114,10 @@ func TestGetDirInfo(t *testing.T) {
 	t.Run("get_directory_with_subdirectories", func(t *testing.T) {
 		dirPath := createTestDir(t, tmpDir, "parent")
 		subDir1 := createTestDir(t, dirPath, "sub1")
-		_ = createTestDir(t, dirPath, "sub2") // Create but don't use subDir2
+		subDir2 := createTestDir(t, dirPath, "sub2")
 		createTestFile(t, dirPath, "file.txt", []byte("root"))
 		createTestFile(t, subDir1, "nested.txt", []byte("nested"))
+		assert.NotEmpty(t, subDir2)
 
 		info, err := GetDirInfo(dirPath, dirPath)
 		assert.NoError(t, err)
