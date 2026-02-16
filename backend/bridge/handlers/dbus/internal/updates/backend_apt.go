@@ -11,6 +11,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/systemd"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 type aptBackend struct{}
@@ -132,26 +133,38 @@ Unattended-Upgrade::Automatic-Reboot-Time "03:30";
 			}
 		} else {
 			// Download-only mode: stop and disable upgrade timer
-			_ = sd.Stop(ctx, "apt-daily-upgrade.timer")
-			_ = sd.Disable(ctx, "apt-daily-upgrade.timer")
+			if err := sd.Stop(ctx, "apt-daily-upgrade.timer"); err != nil {
+				logger.Debugf("failed to stop apt-daily-upgrade.timer in download-only mode: %v", err)
+			}
+			if err := sd.Disable(ctx, "apt-daily-upgrade.timer"); err != nil {
+				logger.Debugf("failed to disable apt-daily-upgrade.timer in download-only mode: %v", err)
+			}
 		}
 	} else {
 		// Auto-updates disabled: stop and disable both timers
-		_ = sd.Stop(ctx, "apt-daily.timer")
-		_ = sd.Stop(ctx, "apt-daily-upgrade.timer")
-		_ = sd.Disable(ctx, "apt-daily.timer")
-		_ = sd.Disable(ctx, "apt-daily-upgrade.timer")
+		if err := sd.Stop(ctx, "apt-daily.timer"); err != nil {
+			logger.Debugf("failed to stop apt-daily.timer while disabling auto-updates: %v", err)
+		}
+		if err := sd.Stop(ctx, "apt-daily-upgrade.timer"); err != nil {
+			logger.Debugf("failed to stop apt-daily-upgrade.timer while disabling auto-updates: %v", err)
+		}
+		if err := sd.Disable(ctx, "apt-daily.timer"); err != nil {
+			logger.Debugf("failed to disable apt-daily.timer while disabling auto-updates: %v", err)
+		}
+		if err := sd.Disable(ctx, "apt-daily-upgrade.timer"); err != nil {
+			logger.Debugf("failed to disable apt-daily-upgrade.timer while disabling auto-updates: %v", err)
+		}
 	}
 
 	/* 6) Restart timers to apply new schedules immediately */
 	if o.Enabled {
 		if err := sd.Restart(ctx, "apt-daily.timer"); err != nil {
-			// Log but don't fail - timer will restart on next boot
-			_ = err
+			// Log but don't fail - timer will restart on next boot.
+			logger.Debugf("failed to restart apt-daily.timer: %v", err)
 		}
 		if !o.DownloadOnly {
 			if err := sd.Restart(ctx, "apt-daily-upgrade.timer"); err != nil {
-				_ = err
+				logger.Debugf("failed to restart apt-daily-upgrade.timer: %v", err)
 			}
 		}
 	}

@@ -14,6 +14,10 @@ func TestHTTPErrorLogAdapter_Write_DoesNotError(t *testing.T) {
 	}
 
 	// A couple of "suppressed" TLS lines
-	_, _ = adapter.Write([]byte("http: TLS handshake error from 127.0.0.1: EOF"))
-	_, _ = adapter.Write([]byte("http: TLS handshake error from 127.0.0.1: remote error: tls: unknown certificate"))
+	if _, err := adapter.Write([]byte("http: TLS handshake error from 127.0.0.1: EOF")); err != nil {
+		t.Fatalf("unexpected error on suppressed tls line: %v", err)
+	}
+	if _, err := adapter.Write([]byte("http: TLS handshake error from 127.0.0.1: remote error: tls: unknown certificate")); err != nil {
+		t.Fatalf("unexpected error on suppressed tls line: %v", err)
+	}
 }

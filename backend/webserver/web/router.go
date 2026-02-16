@@ -126,7 +126,9 @@ func serveFileFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string
 	}
 
 	// Fallback: just copy the content
-	_, _ = io.Copy(w, f)
+	if _, err := io.Copy(w, f); err != nil {
+		logger.Warnf("Failed to copy %q to response: %v", name, err)
+	}
 }
 
 // ServeModuleFiles serves static files for modules from their directories

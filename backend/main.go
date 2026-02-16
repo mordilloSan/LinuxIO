@@ -274,7 +274,9 @@ func formatJournalEntry(jsonLine string) string {
 	}
 
 	// Clean unit name (remove @.* suffix, .service, .socket)
-	unit, _, _ = strings.Cut(unit, "@")
+	if at := strings.Index(unit, "@"); at >= 0 {
+		unit = unit[:at]
+	}
 	unit = strings.TrimSuffix(unit, ".service")
 	unit = strings.TrimSuffix(unit, ".socket")
 

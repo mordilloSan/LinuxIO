@@ -330,8 +330,8 @@ func isNewerVersion(latest, current string) bool {
 	}
 
 	// Strip leading 'v' if present
-	latest, _ = strings.CutPrefix(latest, "v")
-	current, _ = strings.CutPrefix(current, "v")
+	latest = strings.TrimPrefix(latest, "v")
+	current = strings.TrimPrefix(current, "v")
 
 	latestParts := strings.Split(latest, ".")
 	currentParts := strings.Split(current, ".")

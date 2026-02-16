@@ -7,6 +7,7 @@ import (
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 type pkgkitBackend struct{}
@@ -44,9 +45,7 @@ func (*pkgkitBackend) Read() (AutoUpdateState, error) {
 
 // Apply does nothing - PackageKit doesn't configure automatic updates
 // Use apt-unattended or dnf-automatic backends for auto-update configuration
-func (*pkgkitBackend) Apply(ctx context.Context, opt AutoUpdateOptions) error {
-	_ = ctx
-	_ = opt
+func (*pkgkitBackend) Apply(_ context.Context, _ AutoUpdateOptions) error {
 	return fmt.Errorf("packagekit backend does not support auto-update configuration; use apt-unattended or dnf-automatic")
 }
 
@@ -89,7 +88,7 @@ func (*pkgkitBackend) ApplyOfflineNow() error {
 	// Step 3: Download updates (UpdatePackages with ONLY_DOWNLOAD flag = 2)
 	if err := pkTransactionCallWithUpdates(conn, pkBusName, pkObjPath, transactionIfc); err != nil {
 		// Non-fatal - updates may already be downloaded or none available
-		_ = err
+		logger.Debugf("PackageKit download step returned non-fatal error: %v", err)
 	}
 
 	// Step 4: Trigger offline update
@@ -114,7 +113,9 @@ func pkTransactionCall(conn *godbus.Conn, busName, objPath, transIfc, method str
 	conn.Signal(sigCh)
 	defer conn.RemoveSignal(sigCh)
 
-	_ = conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath))
+	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Debugf("failed to add PackageKit signal match: %v", err)
+	}
 
 	if err := trans.Call(transIfc+"."+method, 0, args...).Err; err != nil {
 		return err
@@ -157,7 +158,9 @@ func pkTransactionCallWithUpdates(conn *godbus.Conn, busName, objPath, transIfc 
 	conn.Signal(sigCh)
 	defer conn.RemoveSignal(sigCh)
 
-	_ = conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath))
+	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Debugf("failed to add PackageKit signal match: %v", err)
+	}
 
 	// GetUpdates with filter 0 (none)
 	if err := trans.Call(transIfc+".GetUpdates", 0, uint64(0)).Err; err != nil {
@@ -208,7 +211,9 @@ collectLoop:
 	conn.Signal(sigCh2)
 	defer conn.RemoveSignal(sigCh2)
 
-	_ = conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath))
+	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Debugf("failed to add PackageKit signal match: %v", err)
+	}
 
 	// UpdatePackages with ONLY_DOWNLOAD flag (2)
 	if err := trans.Call(transIfc+".UpdatePackages", 0, uint64(2), packageIDs).Err; err != nil {

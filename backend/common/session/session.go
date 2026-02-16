@@ -232,7 +232,7 @@ func (m *Manager) broadcastOnDelete(s *Session, r DeleteReason) {
 	m.onDeleteMu.RUnlock()
 	for _, f := range subs {
 		go func(ff func(*Session, DeleteReason)) {
-			defer func() { _ = recover() }()
+			defer func() { recover() }()
 			ff(s, r)
 		}(f)
 	}
@@ -303,7 +303,10 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 					continue
 				}
 				if os.User.Username == user.Username {
-					_ = m.st.Delete(tok)
+					if err := m.st.Delete(tok); err != nil {
+						logger.Warnf("failed deleting existing session for user '%s': %v", user.Username, err)
+						continue
+					}
 					m.broadcastOnDelete(os, ReasonManual)
 				}
 			}
@@ -354,7 +357,9 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 	if !ok {
 		return nil
 	}
-	_ = m.st.Delete(id)
+	if err := m.st.Delete(id); err != nil {
+		return err
+	}
 	if s, err := m.decode(b); err == nil {
 		logger.Infof("Deleted session for user '%s' (reason=%s)", s.User.Username, r)
 		// Close persistent bridge connection
@@ -448,16 +453,22 @@ func (m *Manager) ValidateFromRequest(r *http.Request) (*Session, error) {
 	}
 	now := time.Now()
 	if expiredAbsolute(s, now) {
-		_ = m.DeleteSession(s.SessionID, ReasonGCAbsolute)
+		if delErr := m.DeleteSession(s.SessionID, ReasonGCAbsolute); delErr != nil {
+			logger.Warnf("failed to delete absolute-expired session '%s': %v", s.SessionID, delErr)
+		}
 		logger.Warnf("Expired session (absolute) by '%s'", s.User.Username)
 		return nil, fmt.Errorf("session expired")
 	}
 	if expiredIdle(s, now) {
-		_ = m.DeleteSession(s.SessionID, ReasonGCIdle)
+		if delErr := m.DeleteSession(s.SessionID, ReasonGCIdle); delErr != nil {
+			logger.Warnf("failed to delete idle-expired session '%s': %v", s.SessionID, delErr)
+		}
 		logger.Warnf("Expired session (idle) by '%s'", s.User.Username)
 		return nil, fmt.Errorf("session expired")
 	}
-	_ = m.Refresh(s.SessionID)
+	if refreshErr := m.Refresh(s.SessionID); refreshErr != nil {
+		logger.Warnf("failed to refresh session '%s': %v", s.SessionID, refreshErr)
+	}
 	return s, nil
 }
 
@@ -477,7 +488,9 @@ func (m *Manager) RequireSession(next http.Handler) http.Handler {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+			if _, writeErr := w.Write([]byte(`{"error":"unauthorized"}`)); writeErr != nil {
+				logger.Debugf("failed to write unauthorized response: %v", writeErr)
+			}
 			return
 		}
 		ctx := context.WithValue(r.Context(), ctxKey, s)
@@ -517,7 +530,10 @@ func (m *Manager) gcLoop() {
 				// absolute expiry likely already gone due to Commit(expiry),
 				// here we enforce idle expiry.
 				if expiredIdle(s, now) {
-					_ = m.st.Delete(tok)
+					if err := m.st.Delete(tok); err != nil {
+						logger.Warnf("failed to delete idle-expired session '%s': %v", tok, err)
+						continue
+					}
 					m.broadcastOnDelete(s, ReasonGCIdle)
 					collected++
 				}

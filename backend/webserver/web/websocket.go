@@ -120,10 +120,14 @@ func CloseWebSocketForSession(sessionID string) {
 			// Send close frame with code 1008 (Policy Violation) to indicate session expired
 			// This allows the frontend to distinguish session expiry from network errors
 			closeMsg := websocket.FormatCloseMessage(1008, "Session expired")
-			_ = conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(writeWait))
+			if err := conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(writeWait)); err != nil {
+				logger.Debugf("failed to write close control frame for session %s: %v", sessionID, err)
+			}
 
 			// Close the underlying connection
-			_ = conn.Close()
+			if err := conn.Close(); err != nil {
+				logger.Debugf("failed to close websocket for session %s: %v", sessionID, err)
+			}
 			count++
 			return true // Continue iteration
 		})

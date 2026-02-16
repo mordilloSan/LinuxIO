@@ -167,7 +167,9 @@ func CreateUser(req CreateUserRequest) error {
 	// Set the password
 	if err := setPassword(req.Username, req.Password); err != nil {
 		// Try to clean up the user if password setting fails
-		_ = DeleteUser(req.Username)
+		if cleanupErr := DeleteUser(req.Username); cleanupErr != nil {
+			logger.Warnf("failed to clean up user %s after password setup failure: %v", req.Username, cleanupErr)
+		}
 		return fmt.Errorf("failed to set password: %w", err)
 	}
 

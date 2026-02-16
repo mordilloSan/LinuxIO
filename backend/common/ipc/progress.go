@@ -49,7 +49,9 @@ func (pt *ProgressTracker) AsCallback(cancelFn CancelFunc, makeProgress func(pro
 			if total <= 0 || makeProgress == nil {
 				return
 			}
-			_ = pt.Report(pt.processed, total, makeProgress(pt.processed, total))
+			if err := pt.Report(pt.processed, total, makeProgress(pt.processed, total)); err != nil {
+				return
+			}
 		},
 		Cancel: cancelFn,
 	}

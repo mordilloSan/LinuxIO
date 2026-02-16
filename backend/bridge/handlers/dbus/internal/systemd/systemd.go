@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/godbus/dbus/v5"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 type Client struct {
@@ -21,7 +22,14 @@ func New() (*Client, error) {
 	return &Client{conn: c, obj: obj}, nil
 }
 
-func (c *Client) Close() { _ = c.conn.Close() }
+func (c *Client) Close() {
+	if c.conn == nil {
+		return
+	}
+	if err := c.conn.Close(); err != nil {
+		logger.Debugf("failed to close systemd D-Bus connection: %v", err)
+	}
+}
 
 func (c *Client) Enable(ctx context.Context, names ...string) error {
 	var carries_install_info bool

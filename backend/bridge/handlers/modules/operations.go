@@ -161,7 +161,9 @@ func InstallModuleOperation(
 	// Register module handlers
 	if err := registerModule(module, streamHandlers); err != nil {
 		// Cleanup on failure
-		_ = os.RemoveAll(targetDir)
+		if removeErr := os.RemoveAll(targetDir); removeErr != nil {
+			logger.Warnf("failed to cleanup module directory after register error (%s): %v", targetDir, removeErr)
+		}
 		return nil, fmt.Errorf("failed to register module: %w", err)
 	}
 

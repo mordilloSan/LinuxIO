@@ -257,7 +257,9 @@ func startSocketIdleExitWatcher(
 
 			logf("Idle for %v and no active sessions — exiting (socket will keep the port open)", idleGrace)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_ = srv.Shutdown(ctx)
+			if err := srv.Shutdown(ctx); err != nil {
+				logf("Idle shutdown failed: %v", err)
+			}
 			cancel()
 			return
 		}

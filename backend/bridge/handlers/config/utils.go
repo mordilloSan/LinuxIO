@@ -141,15 +141,21 @@ func writeYAMLAtomic(path string, data []byte, perm os.FileMode) error {
 	_, werr := f.Write(data)
 	cerr := f.Close()
 	if werr != nil {
-		_ = os.Remove(tmp)
+		if rmErr := os.Remove(tmp); rmErr != nil && !os.IsNotExist(rmErr) {
+			return errors.Join(werr, fmt.Errorf("remove temp file %s: %w", tmp, rmErr))
+		}
 		return werr
 	}
 	if cerr != nil {
-		_ = os.Remove(tmp)
+		if rmErr := os.Remove(tmp); rmErr != nil && !os.IsNotExist(rmErr) {
+			return errors.Join(cerr, fmt.Errorf("remove temp file %s: %w", tmp, rmErr))
+		}
 		return cerr
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+		if rmErr := os.Remove(tmp); rmErr != nil && !os.IsNotExist(rmErr) {
+			return errors.Join(err, fmt.Errorf("remove temp file %s: %w", tmp, rmErr))
+		}
 		return err
 	}
 	return os.Chmod(path, perm)

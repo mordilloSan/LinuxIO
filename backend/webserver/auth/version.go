@@ -67,8 +67,8 @@ func isNewerVersion(latest, current string) bool {
 	latest, latestIsDev := strings.CutPrefix(latest, "dev-")
 
 	// Normalize versions (remove 'v' prefix if present)
-	latest, _ = strings.CutPrefix(latest, "v")
-	current, _ = strings.CutPrefix(current, "v")
+	latest = strings.TrimPrefix(latest, "v")
+	current = strings.TrimPrefix(current, "v")
 
 	latestParts := strings.Split(latest, ".")
 	currentParts := strings.Split(current, ".")
