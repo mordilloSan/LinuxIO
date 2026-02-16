@@ -22,11 +22,7 @@ import React, {
   useCallback,
 } from "react";
 
-import {
-  useStreamMux,
-  openDockerLogsStream,
-  decodeString,
-} from "@/api";
+import { useStreamMux, openDockerLogsStream, decodeString } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
@@ -117,7 +113,9 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
     if (!liveMode && streamRef.current) {
       closeStream();
       if (!hasReceivedData.current) {
-        setIsLoading(false);
+        queueMicrotask(() => {
+          setIsLoading(false);
+        });
       }
     } else if (
       liveMode &&
@@ -135,7 +133,15 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
         },
       });
     }
-  }, [liveMode, open, containerId, muxIsOpen, closeStream, openStream, streamRef]);
+  }, [
+    liveMode,
+    open,
+    containerId,
+    muxIsOpen,
+    closeStream,
+    openStream,
+    streamRef,
+  ]);
 
   // Cleanup stream when dialog closes (only close stream, not state)
   useEffect(() => {

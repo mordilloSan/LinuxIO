@@ -32,11 +32,7 @@ import React, {
   useState,
 } from "react";
 
-import {
-  useStreamMux,
-  openGeneralLogsStream,
-  decodeString,
-} from "@/api";
+import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
@@ -317,6 +313,7 @@ const GeneralLogsPage: React.FC = () => {
   }, [
     muxIsOpen,
     liveMode,
+    streamRef,
     timePeriod,
     priorityFilter,
     identifierFilter,

@@ -372,13 +372,14 @@ function createHandlerNamespace<H extends HandlerName>(
 // Export
 // ============================================================================
 
-const { call: _legacyLinuxioCall, ...coreWithoutCall } = core;
-
 // Static methods that exist on linuxio directly
 const staticMethods = {
   useCall,
   useMutate,
-  ...coreWithoutCall,
+  spawn: core.spawn,
+  openStream: core.openStream,
+  LinuxIOError: core.LinuxIOError,
+  SpawnedProcess: core.SpawnedProcess,
 };
 
 // Handler namespace cache

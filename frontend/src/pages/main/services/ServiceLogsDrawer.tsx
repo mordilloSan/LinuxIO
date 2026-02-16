@@ -11,11 +11,7 @@ import {
 } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-import {
-  useStreamMux,
-  openServiceLogsStream,
-  decodeString,
-} from "@/api";
+import { useStreamMux, openServiceLogsStream, decodeString } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
@@ -100,7 +96,9 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
     if (!liveMode && streamRef.current) {
       closeStream();
       if (!hasReceivedData.current) {
-        setIsLoading(false);
+        queueMicrotask(() => {
+          setIsLoading(false);
+        });
       }
     } else if (
       liveMode &&
@@ -118,7 +116,15 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
         },
       });
     }
-  }, [liveMode, open, serviceName, muxIsOpen, closeStream, openStream, streamRef]);
+  }, [
+    liveMode,
+    open,
+    serviceName,
+    muxIsOpen,
+    closeStream,
+    openStream,
+    streamRef,
+  ]);
 
   // Cleanup stream when drawer closes (only close stream, not state)
   useEffect(() => {

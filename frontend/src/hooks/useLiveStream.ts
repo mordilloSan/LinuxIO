@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 
 import {
   bindStreamHandlers,
@@ -19,7 +19,7 @@ export interface UseLiveStreamOptions {
 }
 
 export interface UseLiveStreamReturn {
-  streamRef: MutableRefObject<Stream | null>;
+  streamRef: RefObject<Stream | null>;
   // Returns true when a stream is active (existing or newly opened), false when opening failed.
   openStream: <TProgress = unknown>(
     options: OpenLiveStreamOptions<TProgress>,
