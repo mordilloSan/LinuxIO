@@ -52,8 +52,8 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 	req.Header.Set("Accept", "text/event-stream")
 
 	// Send initial "connecting" progress
-	if err := callOnProgress(cb, ReindexProgress{Phase: "connecting"}); err != nil {
-		return fmt.Errorf("on progress callback: %w", err)
+	if progressErr := callOnProgress(cb, ReindexProgress{Phase: "connecting"}); progressErr != nil {
+		return fmt.Errorf("on progress callback: %w", progressErr)
 	}
 
 	resp, err := indexerClient.Do(req)
@@ -96,13 +96,13 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 	for evt := range events {
 		switch evt.Type {
 		case "started":
-			if err := callOnProgress(cb, ReindexProgress{Phase: "indexing"}); err != nil {
-				return fmt.Errorf("on progress callback: %w", err)
+			if progressErr := callOnProgress(cb, ReindexProgress{Phase: "indexing"}); progressErr != nil {
+				return fmt.Errorf("on progress callback: %w", progressErr)
 			}
 
 		case "progress":
 			var progress ReindexProgress
-			if err := json.Unmarshal([]byte(evt.Data), &progress); err == nil {
+			if unmarshalErr := json.Unmarshal([]byte(evt.Data), &progress); unmarshalErr == nil {
 				progress.Phase = "indexing"
 				if callbackErr := callOnProgress(cb, progress); callbackErr != nil {
 					return fmt.Errorf("on progress callback: %w", callbackErr)
@@ -111,7 +111,7 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 
 		case "complete":
 			var result ReindexResult
-			if err := json.Unmarshal([]byte(evt.Data), &result); err == nil {
+			if unmarshalErr := json.Unmarshal([]byte(evt.Data), &result); unmarshalErr == nil {
 				if cb.OnResult != nil {
 					if callbackErr := cb.OnResult(result); callbackErr != nil {
 						return fmt.Errorf("on result callback: %w", callbackErr)
@@ -124,7 +124,7 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 			var errData struct {
 				Message string `json:"message"`
 			}
-			if err := json.Unmarshal([]byte(evt.Data), &errData); err == nil {
+			if unmarshalErr := json.Unmarshal([]byte(evt.Data), &errData); unmarshalErr == nil {
 				if callbackErr := callOnError(cb, errData.Message, 500); callbackErr != nil {
 					return fmt.Errorf("on error callback: %w", callbackErr)
 				}

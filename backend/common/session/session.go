@@ -232,7 +232,11 @@ func (m *Manager) broadcastOnDelete(s *Session, r DeleteReason) {
 	m.onDeleteMu.RUnlock()
 	for _, f := range subs {
 		go func(ff func(*Session, DeleteReason)) {
-			defer func() { recover() }()
+			defer func() {
+				if panicVal := recover(); panicVal != nil {
+					logger.Warnf("panic in session onDelete callback: %v", panicVal)
+				}
+			}()
 			ff(s, r)
 		}(f)
 	}
@@ -303,8 +307,8 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 					continue
 				}
 				if os.User.Username == user.Username {
-					if err := m.st.Delete(tok); err != nil {
-						logger.Warnf("failed deleting existing session for user '%s': %v", user.Username, err)
+					if deleteErr := m.st.Delete(tok); deleteErr != nil {
+						logger.Warnf("failed deleting existing session for user '%s': %v", user.Username, deleteErr)
 						continue
 					}
 					m.broadcastOnDelete(os, ReasonManual)

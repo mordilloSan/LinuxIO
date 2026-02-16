@@ -163,12 +163,12 @@ func HandleExecStream(sess *session.Session, stream net.Conn, args []string) err
 
 			// Send to client as raw data (with newline)
 			payload := []byte(cleanLine + "\n")
-			if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
+			if frameErr := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
 				Opcode:   ipc.OpStreamData,
 				StreamID: 0,
 				Payload:  payload,
-			}); err != nil {
-				logger.Debugf("[ExecStream] failed to write data frame: %v", err)
+			}); frameErr != nil {
+				logger.Debugf("[ExecStream] failed to write data frame: %v", frameErr)
 				return
 			}
 		}
@@ -200,14 +200,14 @@ func HandleExecStream(sess *session.Session, stream net.Conn, args []string) err
 
 	// Send result with exit code
 	if exitCode == 0 {
-		if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
+		if resultErr := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 			"exit_code": exitCode,
-		}); err != nil {
-			logger.Debugf("[ExecStream] failed to write ok+close frame: %v", err)
+		}); resultErr != nil {
+			logger.Debugf("[ExecStream] failed to write ok+close frame: %v", resultErr)
 		}
 	} else {
-		if err := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("command exited with code %d", exitCode), exitCode); err != nil {
-			logger.Debugf("[ExecStream] failed to write error+close frame: %v", err)
+		if resultErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("command exited with code %d", exitCode), exitCode); resultErr != nil {
+			logger.Debugf("[ExecStream] failed to write error+close frame: %v", resultErr)
 		}
 	}
 	return nil

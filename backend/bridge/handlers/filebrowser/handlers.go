@@ -136,11 +136,11 @@ func RegisterHandlers() {
 		totalSize := stat.Size()
 
 		// Send initial progress
-		if err := emit.Progress(FileProgress{
+		if progressErr := emit.Progress(FileProgress{
 			Total: totalSize,
 			Phase: "starting",
-		}); err != nil {
-			return fmt.Errorf("write progress: %w", err)
+		}); progressErr != nil {
+			return fmt.Errorf("write progress: %w", progressErr)
 		}
 
 		// Open file
@@ -159,8 +159,8 @@ func RegisterHandlers() {
 			n, readErr := file.Read(buf)
 			if n > 0 {
 				// Send data chunk
-				if err := emit.Data(buf[:n]); err != nil {
-					return fmt.Errorf("write data chunk: %w", err)
+				if dataErr := emit.Data(buf[:n]); dataErr != nil {
+					return fmt.Errorf("write data chunk: %w", dataErr)
 				}
 
 				bytesRead += int64(n)
@@ -171,12 +171,12 @@ func RegisterHandlers() {
 					if totalSize > 0 {
 						pct = int(bytesRead * 100 / totalSize)
 					}
-					if err := emit.Progress(FileProgress{
+					if progressErr := emit.Progress(FileProgress{
 						Bytes: bytesRead,
 						Total: totalSize,
 						Pct:   pct,
-					}); err != nil {
-						return fmt.Errorf("write progress: %w", err)
+					}); progressErr != nil {
+						return fmt.Errorf("write progress: %w", progressErr)
 					}
 					lastProgress = bytesRead
 				}
