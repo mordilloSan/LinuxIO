@@ -26,7 +26,7 @@ const getSlotSx = (slot: unknown): SxProps<Theme> | undefined => {
   return undefined;
 };
 
-const FileBrowserDialog: React.FC<DialogProps> = ({
+const GeneralDialog: React.FC<DialogProps> = ({
   slotProps,
   children,
   ...dialogProps
@@ -71,4 +71,4 @@ const FileBrowserDialog: React.FC<DialogProps> = ({
   );
 };
 
-export default FileBrowserDialog;
+export default GeneralDialog;

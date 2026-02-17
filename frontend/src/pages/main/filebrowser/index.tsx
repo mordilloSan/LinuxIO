@@ -40,7 +40,7 @@ import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
 import ErrorState from "@/components/filebrowser/ErrorState";
-import FileBrowserDialog from "@/components/filebrowser/FileBrowserDialog";
+import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import FileEditor from "@/components/filebrowser/FileEditor";

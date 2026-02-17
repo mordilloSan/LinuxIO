@@ -7,7 +7,7 @@ import {
 } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
-import FileBrowserDialog from "./FileBrowserDialog";
+import FileBrowserDialog from "../dialog/GeneralDialog";
 
 interface InputDialogProps {
   open: boolean;

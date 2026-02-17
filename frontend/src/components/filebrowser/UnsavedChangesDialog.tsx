@@ -1,7 +1,7 @@
 import { Box, Button, Typography, useTheme } from "@mui/material";
 import React from "react";
 
-import FileBrowserDialog from "./FileBrowserDialog";
+import FileBrowserDialog from "../dialog/GeneralDialog";
 
 interface UnsavedChangesDialogProps {
   open: boolean;

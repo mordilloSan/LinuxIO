@@ -1,7 +1,7 @@
 import { Box, Button, Typography } from "@mui/material";
 import React from "react";
 
-import FileBrowserDialog from "./FileBrowserDialog";
+import GeneralDialog from "../dialog/GeneralDialog";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -31,7 +31,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   };
 
   return (
-    <FileBrowserDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <GeneralDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <Box
         component="form"
         onSubmit={handleConfirm}
@@ -105,7 +105,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </Button>
         </Box>
       </Box>
-    </FileBrowserDialog>
+    </GeneralDialog>
   );
 };
 

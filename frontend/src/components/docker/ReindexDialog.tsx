@@ -2,7 +2,6 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloseIcon from "@mui/icons-material/Close";
 import ErrorIcon from "@mui/icons-material/Error";
 import {
-  Dialog,
   DialogTitle,
   DialogContent,
   IconButton,
@@ -19,6 +18,7 @@ import {
   openDockerReindexStream,
   type Stream,
 } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface ReindexDialogProps {
@@ -176,17 +176,12 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   };
 
   return (
-    <Dialog
+    <GeneralDialog
       open={open}
       onClose={handleClose}
       maxWidth="sm"
       fullWidth
       slotProps={{
-        paper: {
-          sx: {
-            backgroundColor: theme.palette.background.default,
-          },
-        },
         transition: {
           onExited: resetState,
         },
@@ -323,7 +318,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
           )}
         </Box>
       </DialogContent>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

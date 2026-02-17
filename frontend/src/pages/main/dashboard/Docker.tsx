@@ -1,11 +1,15 @@
-import { Box, Tooltip, Typography } from "@mui/material";
-import React, { useMemo } from "react";
+import { Icon } from "@iconify/react";
+import { Box, ListItemIcon, Menu, MenuItem, Tooltip, Typography } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
+import React, { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 const stateColor: Record<string, string> = {
   running: "success.main",
@@ -25,6 +29,50 @@ const getStatusLabel = (status: string, state: string): string => {
 };
 
 const DockerInfo: React.FC = () => {
+  const queryClient = useQueryClient();
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const [menuContainer, setMenuContainer] = useState<{ id: string; name: string; state: string } | null>(null);
+
+  const invalidateContainers = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: linuxio.docker.list_containers.queryKey() }),
+    [queryClient],
+  );
+
+  const { mutate: startContainer } = linuxio.docker.start_container.useMutation({
+    onSuccess: () => { toast.success(`Container ${menuContainer?.name} started`); invalidateContainers(); },
+    onError: (e: Error) => { toast.error(getMutationErrorMessage(e, "Failed to start container")); },
+  });
+
+  const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation({
+    onSuccess: () => { toast.success(`Container ${menuContainer?.name} stopped`); invalidateContainers(); },
+    onError: (e: Error) => { toast.error(getMutationErrorMessage(e, "Failed to stop container")); },
+  });
+
+  const { mutate: restartContainer } = linuxio.docker.restart_container.useMutation({
+    onSuccess: () => { toast.success(`Container ${menuContainer?.name} restarted`); invalidateContainers(); },
+    onError: (e: Error) => { toast.error(getMutationErrorMessage(e, "Failed to restart container")); },
+  });
+
+  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLElement>, id: string, name: string, state: string) => {
+    e.preventDefault();
+    setMenuAnchor(e.currentTarget);
+    setMenuContainer({ id, name, state });
+  }, []);
+
+  const handleMenuClose = useCallback(() => {
+    setMenuAnchor(null);
+    setMenuContainer(null);
+  }, []);
+
+  const handleAction = useCallback((action: "start" | "stop" | "restart") => {
+    if (!menuContainer) return;
+    const args = [menuContainer.id];
+    if (action === "start") startContainer(args);
+    else if (action === "stop") stopContainer(args);
+    else restartContainer(args);
+    handleMenuClose();
+  }, [menuContainer, startContainer, stopContainer, restartContainer, handleMenuClose]);
+
   const {
     data: containers = [],
     isPending: isContainersLoading,
@@ -134,10 +182,12 @@ const DockerInfo: React.FC = () => {
             placement="top"
           >
             <Box
+              onContextMenu={(e) => handleContextMenu(e, c.Id, name, c.State)}
               sx={{
                 position: "relative",
                 width: 36,
                 height: 36,
+                cursor: "context-menu",
               }}
             >
               <DockerIcon identifier={c.icon} size={36} alt={name} />
@@ -158,6 +208,35 @@ const DockerInfo: React.FC = () => {
           </Tooltip>
         );
       })}
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={handleMenuClose}
+        slotProps={{ paper: { sx: { minWidth: 140 } } }}
+      >
+        {menuContainer?.state !== "running" && (
+          <MenuItem onClick={() => handleAction("start")}>
+            <ListItemIcon>
+              <Icon icon="mdi:play" width={18} />
+            </ListItemIcon>
+            Start
+          </MenuItem>
+        )}
+        {menuContainer?.state === "running" && (
+          <MenuItem onClick={() => handleAction("stop")}>
+            <ListItemIcon>
+              <Icon icon="mdi:stop" width={18} />
+            </ListItemIcon>
+            Stop
+          </MenuItem>
+        )}
+        <MenuItem onClick={() => handleAction("restart")}>
+          <ListItemIcon>
+            <Icon icon="mdi:restart" width={18} />
+          </ListItemIcon>
+          Restart
+        </MenuItem>
+      </Menu>
     </Box>
   );
 

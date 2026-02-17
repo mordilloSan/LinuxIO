@@ -19,7 +19,7 @@ import {
 import React, { useState, useCallback } from "react";
 
 import { linuxio } from "@/api";
-import FileBrowserDialog from "@/components/filebrowser/FileBrowserDialog";
+import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 
 interface PermissionsDialogProps {
   open: boolean;
