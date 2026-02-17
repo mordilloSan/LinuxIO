@@ -3,7 +3,6 @@ import DownloadIcon from "@mui/icons-material/Download";
 import FileCopyIcon from "@mui/icons-material/FileCopy";
 import SearchIcon from "@mui/icons-material/Search";
 import {
-  Dialog,
   DialogTitle,
   DialogContent,
   IconButton,
@@ -23,6 +22,7 @@ import React, {
 } from "react";
 
 import { useStreamMux, openDockerLogsStream, decodeString } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
@@ -177,7 +177,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
   };
 
   return (
-    <Dialog
+    <GeneralDialog
       open={open}
       onClose={onClose}
       maxWidth="md"
@@ -282,7 +282,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
           )}
         </Box>
       </DialogContent>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

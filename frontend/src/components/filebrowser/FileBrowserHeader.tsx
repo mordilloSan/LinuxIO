@@ -5,7 +5,6 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   Box,
-  CircularProgress,
   IconButton,
   Stack,
   Typography,
@@ -13,13 +12,13 @@ import {
   useTheme,
   Tooltip,
 } from "@mui/material";
-import React, { ReactNode } from "react";
+import React, { ReactNode, useCallback, useState } from "react";
 
+import ReindexDialog from "./ReindexDialog";
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
 
 import useAuth from "@/hooks/useAuth";
-import { useFileTransfers } from "@/hooks/useFileTransfers";
 
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
@@ -55,157 +54,175 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const { startReindex, isReindexing } = useFileTransfers();
   const { indexerAvailable } = useAuth();
+  const [reindexDialogOpen, setReindexDialogOpen] = useState(false);
+  const [isReindexing, setIsReindexing] = useState(false);
 
-  const handleReindex = () => {
-    startReindex({});
-  };
+  const handleReindex = useCallback(() => {
+    setReindexDialogOpen(true);
+  }, []);
+
+  const handleCloseReindexDialog = useCallback(() => {
+    setReindexDialogOpen(false);
+  }, []);
 
   return (
-    <Box
-      sx={(theme) => ({
-        display: "flex",
-        alignItems: "center",
-        px: 3,
-        minHeight: 64,
-        backgroundColor:
-          theme.palette.mode === "light"
-            ? theme.darken(theme.sidebar.background, 0.13)
-            : theme.lighten(theme.sidebar.background, 0.06),
-        boxShadow: theme.shadows[2],
-      })}
-    >
-      {/* Left section - Status indicator when editing */}
-      {showQuickSave && (
-        <Box
-          sx={{ minWidth: 150, display: "flex", alignItems: "center", gap: 1 }}
-        >
-          {isDirty && (
-            <Typography
-              variant="caption"
-              sx={{
-                color: theme.palette.primary.main,
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: 0.5,
-              }}
-            >
-              • Unsaved changes
-            </Typography>
-          )}
-        </Box>
-      )}
-      {/* Center section - File info when editing OR search bar when browsing */}
-      {showQuickSave && editingFileName ? (
-        <Box sx={{ flex: 1, textAlign: "center", mx: 2 }}>
-          <Typography variant="h6" fontWeight={600}>
-            {editingFileName}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {editingFilePath}
-          </Typography>
-        </Box>
-      ) : (
-        <Box
-          sx={{
-            flex: 1,
-            display: "flex",
-            justifyContent: "center",
-            mx: 2,
-          }}
-        >
-          <SearchBar
-            value={searchQuery}
-            onChange={onSearchChange}
-            placeholder="Search files and folders..."
-          />
-        </Box>
-      )}
-      {/* Right section - Action buttons */}
+    <>
       <Box
-        className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}
-        sx={{
+        sx={(theme) => ({
           display: "flex",
-          ml: "auto",
-        }}
+          alignItems: "center",
+          px: 3,
+          minHeight: 64,
+          backgroundColor:
+            theme.palette.mode === "light"
+              ? theme.darken(theme.sidebar.background, 0.13)
+              : theme.lighten(theme.sidebar.background, 0.06),
+          boxShadow: theme.shadows[2],
+        })}
       >
-        <Stack
-          direction={"row"}
-          spacing={0.4}
-          className="quick-actions-group"
+        {/* Left section - Status indicator when editing */}
+        {showQuickSave && (
+          <Box
+            sx={{
+              minWidth: 150,
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+            }}
+          >
+            {isDirty && (
+              <Typography
+                variant="caption"
+                sx={{
+                  color: theme.palette.primary.main,
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.5,
+                }}
+              >
+                • Unsaved changes
+              </Typography>
+            )}
+          </Box>
+        )}
+        {/* Center section - File info when editing OR search bar when browsing */}
+        {showQuickSave && editingFileName ? (
+          <Box sx={{ flex: 1, textAlign: "center", mx: 2 }}>
+            <Typography variant="h6" fontWeight={600}>
+              {editingFileName}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {editingFilePath}
+            </Typography>
+          </Box>
+        ) : (
+          <Box
+            sx={{
+              flex: 1,
+              display: "flex",
+              justifyContent: "center",
+              mx: 2,
+            }}
+          >
+            <SearchBar
+              value={searchQuery}
+              onChange={onSearchChange}
+              placeholder="Search files and folders..."
+            />
+          </Box>
+        )}
+        {/* Right section - Action buttons */}
+        <Box
+          className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}
           sx={{
-            alignItems: "center",
-            gap: "0.4em",
+            display: "flex",
+            ml: "auto",
           }}
         >
-          {showQuickSave && (
-            <>
-              <Tooltip title="Close editor">
-                <IconButton
-                  onClick={onCloseEditor || (() => {})}
-                  disabled={isSaving}
-                >
-                  <CloseIcon fontSize="medium" />
-                </IconButton>
-              </Tooltip>
+          <Stack
+            direction={"row"}
+            spacing={0.4}
+            className="quick-actions-group"
+            sx={{
+              alignItems: "center",
+              gap: "0.4em",
+            }}
+          >
+            {showQuickSave && (
+              <>
+                <Tooltip title="Close editor">
+                  <IconButton
+                    onClick={onCloseEditor || (() => {})}
+                    disabled={isSaving}
+                  >
+                    <CloseIcon fontSize="medium" />
+                  </IconButton>
+                </Tooltip>
 
-              <Tooltip title="Save changes">
-                <IconButton
-                  onClick={onSaveFile || (() => {})}
-                  disabled={isSaving}
-                >
-                  <SaveIcon fontSize="medium" />
-                </IconButton>
-              </Tooltip>
-            </>
-          )}
+                <Tooltip title="Save changes">
+                  <IconButton
+                    onClick={onSaveFile || (() => {})}
+                    disabled={isSaving}
+                  >
+                    <SaveIcon fontSize="medium" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
 
-          {!showQuickSave && (
-            <>
-              <Tooltip title="Switch view">
-                <IconButton onClick={onSwitchView} aria-label="Switch view">
-                  {viewIcon}
-                </IconButton>
-              </Tooltip>
+            {!showQuickSave && (
+              <>
+                <Tooltip title="Switch view">
+                  <IconButton onClick={onSwitchView} aria-label="Switch view">
+                    {viewIcon}
+                  </IconButton>
+                </Tooltip>
 
-              <Tooltip
-                title={
-                  showHiddenFiles ? "Hide hidden files" : "Show hidden files"
-                }
-              >
-                <IconButton
-                  onClick={onToggleHiddenFiles}
-                  aria-label={
+                <Tooltip
+                  title={
                     showHiddenFiles ? "Hide hidden files" : "Show hidden files"
                   }
                 >
-                  {showHiddenFiles ? <VisibilityIcon /> : <VisibilityOffIcon />}
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip
-                title={
-                  isReindexing
-                    ? "Reindexing..."
-                    : indexerAvailable === false
-                      ? "Indexer unavailable"
-                      : "Reindex filesystem"
-                }
-              >
-                <span>
                   <IconButton
-                    onClick={handleReindex}
-                    disabled={isReindexing || indexerAvailable === false}
-                    aria-label="Reindex filesystem"
-                    sx={{
-                      position: "relative",
-                    }}
+                    onClick={onToggleHiddenFiles}
+                    aria-label={
+                      showHiddenFiles
+                        ? "Hide hidden files"
+                        : "Show hidden files"
+                    }
                   >
-                    {isReindexing ? (
-                      <CircularProgress size={24} />
+                    {showHiddenFiles ? (
+                      <VisibilityIcon />
                     ) : (
+                      <VisibilityOffIcon />
+                    )}
+                  </IconButton>
+                </Tooltip>
+
+                <Tooltip
+                  title={
+                    isReindexing
+                      ? "Reindexing..."
+                      : indexerAvailable === false
+                        ? "Indexer unavailable"
+                        : "Reindex filesystem"
+                  }
+                >
+                  <span>
+                    <IconButton
+                      onClick={handleReindex}
+                      disabled={
+                        isReindexing ||
+                        reindexDialogOpen ||
+                        indexerAvailable === false
+                      }
+                      aria-label="Reindex filesystem"
+                      sx={{
+                        position: "relative",
+                      }}
+                    >
                       <SyncIcon
                         sx={{
                           color:
@@ -214,15 +231,20 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                               : "inherit",
                         }}
                       />
-                    )}
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </>
-          )}
-        </Stack>
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </>
+            )}
+          </Stack>
+        </Box>
       </Box>
-    </Box>
+      <ReindexDialog
+        open={reindexDialogOpen}
+        onClose={handleCloseReindexDialog}
+        onRunningChange={setIsReindexing}
+      />
+    </>
   );
 };
 

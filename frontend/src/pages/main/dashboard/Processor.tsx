@@ -48,7 +48,15 @@ const Processor: React.FC = () => {
       </Box>
     ),
     stats: (
-      <Box sx={{ display: "flex", gap: 1, flexDirection: "column", alignSelf: "flex-start", mt: 4 }}>
+      <Box
+        sx={{
+          display: "flex",
+          gap: 1,
+          flexDirection: "column",
+          alignSelf: "flex-start",
+          mt: 4,
+        }}
+      >
         <Typography variant="body1">
           <strong>CPU:</strong> {CPUInfo?.modelName}
         </Typography>

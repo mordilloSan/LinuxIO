@@ -1,11 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  linuxio,
-  useStreamMux,
-  openDockerReindexStream,
-  type Stream,
-} from "@/api";
+import { openFileReindexStream, type Stream, useStreamMux } from "@/api";
 import ReindexStatusDialog, {
   type ReindexStat,
 } from "@/components/dialog/ReindexStatusDialog";
@@ -14,7 +9,9 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 interface ReindexDialogProps {
   open: boolean;
   onClose: () => void;
+  path?: string;
   onComplete?: () => void;
+  onRunningChange?: (isRunning: boolean) => void;
 }
 
 interface ReindexProgress {
@@ -28,13 +25,16 @@ interface ReindexResult {
   path: string;
   files_indexed: number;
   dirs_indexed: number;
+  total_size?: number;
   duration_ms: number;
 }
 
 const ReindexDialog: React.FC<ReindexDialogProps> = ({
   open,
   onClose,
+  path = "/",
   onComplete,
+  onRunningChange,
 }) => {
   const [progress, setProgress] = useState<ReindexProgress>({
     files_indexed: 0,
@@ -48,24 +48,9 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   const streamRef = useRef<Stream | null>(null);
   const hasCompletedRef = useRef(false);
   const closedByUserRef = useRef(false);
+  const { isOpen: muxIsOpen } = useStreamMux();
   const { run: runStreamResult } = useStreamResult();
 
-  const { isOpen: muxIsOpen } = useStreamMux();
-
-  const { data: composeProjects = [] } =
-    linuxio.docker.list_compose_projects.useQuery({
-      enabled: open && success,
-    });
-
-  const stacksSummary = success
-    ? {
-        total: composeProjects.length,
-        running: composeProjects.filter((p) => p.status === "running").length,
-        stopped: composeProjects.filter((p) => p.status === "stopped").length,
-      }
-    : null;
-
-  // Close stream helper
   const closeStream = useCallback(() => {
     if (streamRef.current) {
       closedByUserRef.current = true;
@@ -74,7 +59,6 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     }
   }, []);
 
-  // Reset state helper
   const resetState = useCallback(() => {
     closeStream();
     setProgress({ files_indexed: 0, dirs_indexed: 0, phase: "connecting" });
@@ -86,26 +70,22 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     closedByUserRef.current = false;
   }, [closeStream]);
 
-  // Cleanup stream when dialog closes
   useEffect(() => {
     if (!open) {
       closeStream();
     }
   }, [open, closeStream]);
 
-  // Open stream when dialog opens
   useEffect(() => {
     if (!open || !muxIsOpen) {
       return;
     }
 
-    // Don't create duplicate streams or recreate after completion
     if (streamRef.current || hasCompletedRef.current) {
       return;
     }
 
-    const stream = openDockerReindexStream();
-
+    const stream = openFileReindexStream(path);
     if (!stream) {
       queueMicrotask(() => {
         setError("Failed to start reindex operation");
@@ -134,7 +114,6 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
         if (closedByUserRef.current) {
           return;
         }
-
         hasCompletedRef.current = true;
         const errorMessage =
           err instanceof Error ? err.message : "Reindex failed";
@@ -144,7 +123,11 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
         streamRef.current = null;
         setIsRunning(false);
       });
-  }, [muxIsOpen, onComplete, open, runStreamResult]);
+  }, [muxIsOpen, onComplete, open, path, runStreamResult]);
+
+  useEffect(() => {
+    onRunningChange?.(open && isRunning);
+  }, [isRunning, onRunningChange, open]);
 
   const handleClose = () => {
     if (isRunning) {
@@ -158,7 +141,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
       case "connecting":
         return "Connecting to indexer...";
       case "indexing":
-        return "Indexing Docker folder...";
+        return "Indexing filesystem...";
       default:
         return "Processing...";
     }
@@ -179,29 +162,6 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     },
   ];
 
-  const summaryStats: ReindexStat[] = stacksSummary
-    ? [
-        {
-          value: stacksSummary.total,
-          label: "Total stacks",
-          valueColor: "primary.main",
-          valueVariant: "h5",
-        },
-        {
-          value: stacksSummary.running,
-          label: "Running",
-          valueColor: "success.main",
-          valueVariant: "h5",
-        },
-        {
-          value: stacksSummary.stopped,
-          label: "Stopped",
-          valueColor: "text.secondary",
-          valueVariant: "h5",
-        },
-      ]
-    : [];
-
   const successDescription = result
     ? `Indexed ${result.files_indexed.toLocaleString()} files and ${result.dirs_indexed.toLocaleString()} directories in ${(result.duration_ms / 1000).toFixed(2)}s`
     : undefined;
@@ -211,7 +171,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
       open={open}
       onClose={handleClose}
       onExited={resetState}
-      title="Reindexing Docker Folder"
+      title="Reindexing Filesystem"
       isRunning={isRunning}
       success={success}
       error={error}
@@ -219,8 +179,6 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
       progressStats={progressStats}
       showProgressStats={progress.phase === "indexing"}
       successDescription={successDescription}
-      summaryTitle={stacksSummary ? "Docker Compose Stacks Found:" : undefined}
-      summaryStats={summaryStats}
     />
   );
 };

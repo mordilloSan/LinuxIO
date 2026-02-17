@@ -1,5 +1,12 @@
 import { Icon } from "@iconify/react";
-import { Box, ListItemIcon, Menu, MenuItem, Tooltip, Typography } from "@mui/material";
+import {
+  Box,
+  ListItemIcon,
+  Menu,
+  MenuItem,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -31,47 +38,89 @@ const getStatusLabel = (status: string, state: string): string => {
 const DockerInfo: React.FC = () => {
   const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
-  const [menuContainer, setMenuContainer] = useState<{ id: string; name: string; state: string } | null>(null);
+  const [menuContainer, setMenuContainer] = useState<{
+    id: string;
+    name: string;
+    state: string;
+  } | null>(null);
 
   const invalidateContainers = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: linuxio.docker.list_containers.queryKey() }),
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: linuxio.docker.list_containers.queryKey(),
+      }),
     [queryClient],
   );
 
-  const { mutate: startContainer } = linuxio.docker.start_container.useMutation({
-    onSuccess: () => { toast.success(`Container ${menuContainer?.name} started`); invalidateContainers(); },
-    onError: (e: Error) => { toast.error(getMutationErrorMessage(e, "Failed to start container")); },
-  });
+  const { mutate: startContainer } = linuxio.docker.start_container.useMutation(
+    {
+      onSuccess: () => {
+        toast.success(`Container ${menuContainer?.name} started`);
+        invalidateContainers();
+      },
+      onError: (e: Error) => {
+        toast.error(getMutationErrorMessage(e, "Failed to start container"));
+      },
+    },
+  );
 
   const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation({
-    onSuccess: () => { toast.success(`Container ${menuContainer?.name} stopped`); invalidateContainers(); },
-    onError: (e: Error) => { toast.error(getMutationErrorMessage(e, "Failed to stop container")); },
+    onSuccess: () => {
+      toast.success(`Container ${menuContainer?.name} stopped`);
+      invalidateContainers();
+    },
+    onError: (e: Error) => {
+      toast.error(getMutationErrorMessage(e, "Failed to stop container"));
+    },
   });
 
-  const { mutate: restartContainer } = linuxio.docker.restart_container.useMutation({
-    onSuccess: () => { toast.success(`Container ${menuContainer?.name} restarted`); invalidateContainers(); },
-    onError: (e: Error) => { toast.error(getMutationErrorMessage(e, "Failed to restart container")); },
-  });
+  const { mutate: restartContainer } =
+    linuxio.docker.restart_container.useMutation({
+      onSuccess: () => {
+        toast.success(`Container ${menuContainer?.name} restarted`);
+        invalidateContainers();
+      },
+      onError: (e: Error) => {
+        toast.error(getMutationErrorMessage(e, "Failed to restart container"));
+      },
+    });
 
-  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLElement>, id: string, name: string, state: string) => {
-    e.preventDefault();
-    setMenuAnchor(e.currentTarget);
-    setMenuContainer({ id, name, state });
-  }, []);
+  const handleContextMenu = useCallback(
+    (
+      e: React.MouseEvent<HTMLElement>,
+      id: string,
+      name: string,
+      state: string,
+    ) => {
+      e.preventDefault();
+      setMenuAnchor(e.currentTarget);
+      setMenuContainer({ id, name, state });
+    },
+    [],
+  );
 
   const handleMenuClose = useCallback(() => {
     setMenuAnchor(null);
     setMenuContainer(null);
   }, []);
 
-  const handleAction = useCallback((action: "start" | "stop" | "restart") => {
-    if (!menuContainer) return;
-    const args = [menuContainer.id];
-    if (action === "start") startContainer(args);
-    else if (action === "stop") stopContainer(args);
-    else restartContainer(args);
-    handleMenuClose();
-  }, [menuContainer, startContainer, stopContainer, restartContainer, handleMenuClose]);
+  const handleAction = useCallback(
+    (action: "start" | "stop" | "restart") => {
+      if (!menuContainer) return;
+      const args = [menuContainer.id];
+      if (action === "start") startContainer(args);
+      else if (action === "stop") stopContainer(args);
+      else restartContainer(args);
+      handleMenuClose();
+    },
+    [
+      menuContainer,
+      startContainer,
+      stopContainer,
+      restartContainer,
+      handleMenuClose,
+    ],
+  );
 
   const {
     data: containers = [],
@@ -172,7 +221,11 @@ const DockerInfo: React.FC = () => {
                 <br />
                 <Box
                   component="span"
-                  sx={{ color: stateColor[getStatusLabel(c.Status, c.State)] ?? "grey.500" }}
+                  sx={{
+                    color:
+                      stateColor[getStatusLabel(c.Status, c.State)] ??
+                      "grey.500",
+                  }}
                 >
                   {getStatusLabel(c.Status, c.State)}
                 </Box>

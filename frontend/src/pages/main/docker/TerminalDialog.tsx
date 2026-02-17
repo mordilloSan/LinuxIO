@@ -1,5 +1,4 @@
 import {
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -26,6 +25,7 @@ import {
   decodeString,
   openContainerStream,
 } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
@@ -295,7 +295,7 @@ const TerminalDialog: React.FC<Props> = ({
   }, []);
 
   return (
-    <Dialog
+    <GeneralDialog
       open={open}
       onClose={handleDialogClose}
       maxWidth="md"
@@ -428,7 +428,7 @@ const TerminalDialog: React.FC<Props> = ({
       <DialogActions>
         <Button onClick={handleDialogClose}>Close</Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

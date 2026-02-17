@@ -31,9 +31,15 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       labels: { disabled: true },
       tooltip: true,
       tooltipLine: { strokeStyle: "rgba(128, 128, 128, 0.4)", lineWidth: 1 },
-      tooltipFormatter: (_timestamp: number, data: { series: TimeSeries; index: number; value: number }[]) => {
+      tooltipFormatter: (
+        _timestamp: number,
+        data: { series: TimeSeries; index: number; value: number }[],
+      ) => {
         return data
-          .map((d) => `<span style="color:${color}">CPU: ${d.value.toFixed(1)}%</span>`)
+          .map(
+            (d) =>
+              `<span style="color:${color}">CPU: ${d.value.toFixed(1)}%</span>`,
+          )
           .join("");
       },
       responsive: true,
@@ -74,7 +80,9 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   }, [usage]);
 
   return (
-    <div style={{ width: "100%", height: "100%", display: "flex", minWidth: 0 }}>
+    <div
+      style={{ width: "100%", height: "100%", display: "flex", minWidth: 0 }}
+    >
       <canvas
         ref={canvasRef}
         style={{ flex: 1, minWidth: 0, height: "100%" }}

@@ -33,11 +33,17 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
       labels: { disabled: true },
       tooltip: true,
       tooltipLine: { strokeStyle: "rgba(128, 128, 128, 0.4)", lineWidth: 1 },
-      tooltipFormatter: (_timestamp: number, data: { series: TimeSeries; index: number; value: number }[]) => {
+      tooltipFormatter: (
+        _timestamp: number,
+        data: { series: TimeSeries; index: number; value: number }[],
+      ) => {
         const labels = ["Rx", "Tx"];
         const colors = [RX_COLOR, TX_COLOR];
         return data
-          .map((d, i) => `<span style="color:${colors[i]}">${labels[i]}: ${d.value.toFixed(2)} kB/s</span>`)
+          .map(
+            (d, i) =>
+              `<span style="color:${colors[i]}">${labels[i]}: ${d.value.toFixed(2)} kB/s</span>`,
+          )
           .join("<br/>");
       },
       responsive: true,
@@ -83,11 +89,15 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
   }, [rx, tx]);
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative", minWidth: 0 }}>
-      <canvas
-        ref={canvasRef}
-        style={{ width: "100%", height: "100%" }}
-      />
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        position: "relative",
+        minWidth: 0,
+      }}
+    >
+      <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
       <div
         style={{
           display: "flex",
