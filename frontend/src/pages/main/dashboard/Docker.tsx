@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import {
   Box,
+  Divider,
   ListItemIcon,
   Menu,
   MenuItem,
@@ -16,6 +17,8 @@ import GeneralCard from "@/components/cards/GeneralCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import LogsDialog from "@/pages/main/docker/LogsDialog";
+import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const stateColor: Record<string, string> = {
@@ -43,6 +46,9 @@ const DockerInfo: React.FC = () => {
     name: string;
     state: string;
   } | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [dialogContainer, setDialogContainer] = useState<{ id: string; name: string } | null>(null);
 
   const invalidateContainers = useCallback(
     () =>
@@ -289,18 +295,65 @@ const DockerInfo: React.FC = () => {
           </ListItemIcon>
           Restart
         </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            if (menuContainer) {
+              setDialogContainer({ id: menuContainer.id, name: menuContainer.name });
+              setLogsOpen(true);
+            }
+            handleMenuClose();
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:text-box-outline" width={18} />
+          </ListItemIcon>
+          Logs
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (menuContainer) {
+              setDialogContainer({ id: menuContainer.id, name: menuContainer.name });
+              setTerminalOpen(true);
+            }
+            handleMenuClose();
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:console" width={18} />
+          </ListItemIcon>
+          Terminal
+        </MenuItem>
       </Menu>
     </Box>
   );
 
   return (
-    <GeneralCard
-      title="Docker"
-      avatarIcon="mdi:docker"
-      stats={stats}
-      stats2={stats2}
-      connectionStatus={isContainersError ? "offline" : "online"}
-    />
+    <>
+      <GeneralCard
+        title="Docker"
+        avatarIcon="mdi:docker"
+        stats={stats}
+        stats2={stats2}
+        connectionStatus={isContainersError ? "offline" : "online"}
+      />
+      {dialogContainer && (
+        <>
+          <LogsDialog
+            open={logsOpen}
+            onClose={() => setLogsOpen(false)}
+            containerId={dialogContainer.id}
+            containerName={dialogContainer.name}
+          />
+          <TerminalDialog
+            open={terminalOpen}
+            onClose={() => setTerminalOpen(false)}
+            containerId={dialogContainer.id}
+            containerName={dialogContainer.name}
+          />
+        </>
+      )}
+    </>
   );
 };
 

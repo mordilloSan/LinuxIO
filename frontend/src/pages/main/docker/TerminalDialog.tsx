@@ -123,8 +123,14 @@ const TerminalDialog: React.FC<Props> = ({
     xterm.current.open(termRef.current);
     fitAddon.current.fit();
 
-    // Handle copy/paste with Shift+C/V
+    // Handle special keys
     xterm.current.attachCustomKeyEventHandler((event) => {
+      // Escape - close dialog
+      if (event.key === "Escape" && event.type === "keydown") {
+        onClose();
+        return false;
+      }
+
       // Shift+C - Copy
       if (
         event.shiftKey &&
@@ -228,6 +234,7 @@ const TerminalDialog: React.FC<Props> = ({
     closeStream,
     openStream,
     streamRef,
+    onClose,
   ]);
 
   // Shell picker handler
