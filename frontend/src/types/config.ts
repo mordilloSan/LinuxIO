@@ -5,6 +5,7 @@ export interface BackendSettings {
     primaryColor: string;
     sidebarCollapsed: boolean;
     showHiddenFiles: boolean;
+    dashboardOrder?: string[];
   };
   docker: {
     folder: string;
@@ -18,6 +19,7 @@ export interface AppConfig {
   sidebarCollapsed: boolean;
   showHiddenFiles: boolean;
   dockerFolder?: string;
+  dashboardOrder?: string[];
 }
 
 export interface ConfigContextType {

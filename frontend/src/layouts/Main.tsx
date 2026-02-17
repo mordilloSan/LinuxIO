@@ -63,9 +63,11 @@ const Dashboard: React.FC = () => {
               flex: 1,
               overflow: "auto",
               background: theme.palette.background.default,
-              p: location.pathname.includes("/filebrowser")
-                ? 0
-                : { xs: 5, lg: 7 },
+              ...(location.pathname === "/"
+                ? { px: { xs: 5, lg: 7 }, py: 0 }
+                : location.pathname.includes("/filebrowser")
+                  ? { p: 0 }
+                  : { p: { xs: 5, lg: 7 } }),
               position: "relative",
             }}
           >

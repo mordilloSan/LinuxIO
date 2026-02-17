@@ -20,6 +20,7 @@ type AppSettings struct {
 	PrimaryColor     CSSColor `json:"primaryColor" yaml:"primaryColor"`
 	SidebarCollapsed bool     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
 	ShowHiddenFiles  bool     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
+	DashboardOrder   []string `json:"dashboardOrder,omitempty" yaml:"dashboardOrder,omitempty"`
 }
 
 // Docker holds Docker-related settings

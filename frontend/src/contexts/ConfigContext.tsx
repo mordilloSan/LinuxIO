@@ -24,6 +24,7 @@ const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   primaryColor: settings.appSettings.primaryColor,
   sidebarCollapsed: settings.appSettings.sidebarCollapsed,
   showHiddenFiles: settings.appSettings.showHiddenFiles,
+  dashboardOrder: settings.appSettings.dashboardOrder,
   dockerFolder: settings.docker.folder,
 });
 
@@ -36,7 +37,8 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     config.theme !== undefined ||
     config.primaryColor !== undefined ||
     config.sidebarCollapsed !== undefined ||
-    config.showHiddenFiles !== undefined
+    config.showHiddenFiles !== undefined ||
+    config.dashboardOrder !== undefined
   ) {
     payload.appSettings = {};
     if (config.theme !== undefined) payload.appSettings.theme = config.theme;
@@ -46,6 +48,8 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
       payload.appSettings.sidebarCollapsed = config.sidebarCollapsed;
     if (config.showHiddenFiles !== undefined)
       payload.appSettings.showHiddenFiles = config.showHiddenFiles;
+    if (config.dashboardOrder !== undefined)
+      payload.appSettings.dashboardOrder = config.dashboardOrder;
   }
 
   if (config.dockerFolder !== undefined) {
@@ -61,6 +65,7 @@ const defaultConfig: AppConfig = {
   sidebarCollapsed: false,
   showHiddenFiles: false,
   dockerFolder: undefined,
+  dashboardOrder: undefined,
 };
 
 const applyDefaults = (
@@ -70,6 +75,7 @@ const applyDefaults = (
   primaryColor: cfg?.primaryColor ?? defaultConfig.primaryColor,
   sidebarCollapsed: cfg?.sidebarCollapsed ?? defaultConfig.sidebarCollapsed,
   showHiddenFiles: cfg?.showHiddenFiles ?? defaultConfig.showHiddenFiles,
+  dashboardOrder: cfg?.dashboardOrder ?? defaultConfig.dashboardOrder,
   dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,
 });
 
