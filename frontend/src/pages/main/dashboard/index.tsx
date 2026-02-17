@@ -1,12 +1,13 @@
 import { Grid } from "@mui/material";
 import React from "react";
 
+import DockerInfo from "./Docker";
 import DriveInfo from "./Drive";
 import FileSystem from "./FileSystem";
 import GpuInfo from "./Gpu";
 import Memory from "./Memory";
 import MotherBoardInfo from "./MotherBoard";
-import NetworkInterfacesCard from "./Network";
+import Network from "./Network";
 import Processor from "./Processor";
 import SystemHealth from "./System";
 
@@ -16,16 +17,18 @@ const MemoSystemHealth = React.memo(SystemHealth);
 const MemoProcessor = React.memo(Processor);
 const MemoMemory = React.memo(Memory);
 const MemoFileSystem = React.memo(FileSystem);
-const MemoNetworkInterfacesCard = React.memo(NetworkInterfacesCard);
+const MemoNetwork = React.memo(Network);
 const MemoMotherBoardInfo = React.memo(MotherBoardInfo);
 const MemoGpuInfo = React.memo(GpuInfo);
 const MemoDriveInfo = React.memo(DriveInfo);
+const MemoDockerInfo = React.memo(DockerInfo);
 
 const cards = [
   { id: "system", component: MemoSystemHealth },
   { id: "cpu", component: MemoProcessor },
   { id: "memory", component: MemoMemory },
-  { id: "nic", component: MemoNetworkInterfacesCard },
+  { id: "docker", component: MemoDockerInfo },
+  { id: "nic", component: MemoNetwork },
   { id: "fs", component: MemoFileSystem },
   { id: "mb", component: MemoMotherBoardInfo },
   { id: "gpu", component: MemoGpuInfo },

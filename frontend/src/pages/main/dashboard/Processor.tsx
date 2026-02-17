@@ -2,7 +2,7 @@ import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Box, Typography } from "@mui/material";
 import React from "react";
 
-import CpuGraph from "./CpuGraph";
+import ProcessorGraph from "./ProcessorGraph";
 
 import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
@@ -44,7 +44,7 @@ const Processor: React.FC = () => {
       <ComponentLoader />
     ) : (
       <Box sx={{ height: "90px", width: "100%", minWidth: 0 }}>
-        <CpuGraph usage={averageCpuUsage} />
+        <ProcessorGraph usage={averageCpuUsage} />
       </Box>
     ),
     stats: (

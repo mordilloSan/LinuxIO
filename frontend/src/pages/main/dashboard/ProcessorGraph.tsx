@@ -26,7 +26,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
         strokeStyle: "rgba(128, 128, 128, 0.15)",
         verticalSections: 4,
         millisPerLine: 0,
-        borderVisible: true,
+        borderVisible: false,
       },
       labels: { disabled: true },
       tooltip: true,
