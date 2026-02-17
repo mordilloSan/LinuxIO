@@ -343,9 +343,9 @@ export function dockerReindexPayload(): Uint8Array {
 }
 
 /**
- * Build payload for file reindex stream
+ * Build payload for file indexer stream
  */
-export function fileReindexPayload(path?: string): Uint8Array {
+export function fileIndexerPayload(path?: string): Uint8Array {
   const parts = [STREAM_TYPE_FB_REINDEX];
   if (path && path !== "/") {
     parts.push(path);
@@ -520,8 +520,8 @@ export function openFileExtractStream(
   );
 }
 
-export function openFileReindexStream(path?: string): Stream | null {
-  return openMuxStream(STREAM_TYPE_FB_REINDEX, fileReindexPayload(path));
+export function openFileIndexerStream(path?: string): Stream | null {
+  return openMuxStream(STREAM_TYPE_FB_REINDEX, fileIndexerPayload(path));
 }
 
 export function openFileCopyStream(

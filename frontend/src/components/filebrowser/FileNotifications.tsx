@@ -19,7 +19,7 @@ interface CompletedTransfer {
     | "upload"
     | "compression"
     | "extraction"
-    | "reindex"
+    | "indexer"
     | "copy"
     | "move";
   label?: string;
@@ -35,7 +35,7 @@ const FileNotifications: React.FC = () => {
     cancelExtraction,
     cancelCopy,
     cancelMove,
-    openReindexDialog,
+    openIndexerDialog,
   } = useFileTransfers();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [completedTransfers, setCompletedTransfers] = React.useState<
@@ -142,8 +142,8 @@ const FileNotifications: React.FC = () => {
         return "Compression Progress";
       case "extraction":
         return "Extraction Progress";
-      case "reindex":
-        return "Reindex Progress";
+      case "indexer":
+        return "Indexer Progress";
       case "copy":
         return "Copy Progress";
       case "move":
@@ -154,8 +154,8 @@ const FileNotifications: React.FC = () => {
   };
 
   const handleCancel = (transfer: (typeof transfers)[number]) => {
-    // Reindex cannot be cancelled - it must complete
-    if (transfer.type === "reindex") {
+    // Indexer sync cannot be cancelled - it must complete
+    if (transfer.type === "indexer") {
       return;
     }
     if (transfer.type === "download") {
@@ -186,10 +186,10 @@ const FileNotifications: React.FC = () => {
     }
   };
 
-  const handleReindexRowKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+  const handleIndexerRowKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      openReindexDialog();
+      openIndexerDialog();
     }
   };
 
@@ -237,7 +237,7 @@ const FileNotifications: React.FC = () => {
             bottom: "calc(100% + 12px)",
             right: 0,
             zIndex: 1400,
-            minWidth: 220,
+            minWidth: 250,
             maxWidth: 380,
             boxShadow: 6,
             borderRadius: 2,
@@ -282,18 +282,18 @@ const FileNotifications: React.FC = () => {
           >
             {hasTransfers &&
               transfers.map((transfer) => {
-                const isReindexTransfer = transfer.type === "reindex";
+                const isIndexerTransfer = transfer.type === "indexer";
 
                 return (
                   <Box
                     key={transfer.id}
-                    role={isReindexTransfer ? "button" : undefined}
-                    tabIndex={isReindexTransfer ? 0 : undefined}
-                    onClick={isReindexTransfer ? openReindexDialog : undefined}
+                    role={isIndexerTransfer ? "button" : undefined}
+                    tabIndex={isIndexerTransfer ? 0 : undefined}
+                    onClick={isIndexerTransfer ? openIndexerDialog : undefined}
                     onKeyDown={
-                      isReindexTransfer ? handleReindexRowKeyDown : undefined
+                      isIndexerTransfer ? handleIndexerRowKeyDown : undefined
                     }
-                    sx={isReindexTransfer ? { cursor: "pointer" } : undefined}
+                    sx={isIndexerTransfer ? { cursor: "pointer" } : undefined}
                   >
                     <Box
                       sx={{
@@ -317,15 +317,15 @@ const FileNotifications: React.FC = () => {
                               ? "Preparing upload..."
                               : transfer.type === "compression"
                                 ? "Compressing selection..."
-                                : transfer.type === "reindex"
-                                  ? "Reindexing filesystem..."
+                                : transfer.type === "indexer"
+                                  ? "Indexing filesystem..."
                                   : transfer.type === "copy"
                                     ? "Copying..."
                                     : transfer.type === "move"
                                       ? "Moving..."
                                       : "Extracting archive..."}
                       </Typography>
-                      {transfer.type !== "reindex" && (
+                      {transfer.type !== "indexer" && (
                         <IconButton
                           size="small"
                           onClick={() => handleCancel(transfer)}
@@ -398,18 +398,18 @@ const FileNotifications: React.FC = () => {
 
             {hasCompletedTransfers &&
               completedTransfers.map((transfer) => {
-                const isReindexTransfer = transfer.type === "reindex";
+                const isIndexerTransfer = transfer.type === "indexer";
 
                 return (
                   <Box
                     key={transfer.id}
-                    role={isReindexTransfer ? "button" : undefined}
-                    tabIndex={isReindexTransfer ? 0 : undefined}
-                    onClick={isReindexTransfer ? openReindexDialog : undefined}
+                    role={isIndexerTransfer ? "button" : undefined}
+                    tabIndex={isIndexerTransfer ? 0 : undefined}
+                    onClick={isIndexerTransfer ? openIndexerDialog : undefined}
                     onKeyDown={
-                      isReindexTransfer ? handleReindexRowKeyDown : undefined
+                      isIndexerTransfer ? handleIndexerRowKeyDown : undefined
                     }
-                    sx={isReindexTransfer ? { cursor: "pointer" } : undefined}
+                    sx={isIndexerTransfer ? { cursor: "pointer" } : undefined}
                   >
                     <Box
                       sx={{
@@ -432,11 +432,13 @@ const FileNotifications: React.FC = () => {
                                 ? "Compression complete"
                                 : transfer.type === "extraction"
                                   ? "Extraction complete"
-                                  : transfer.type === "copy"
-                                    ? "Copy complete"
-                                    : transfer.type === "move"
-                                      ? "Move complete"
-                                      : "Operation complete")}
+                                  : transfer.type === "indexer"
+                                    ? "Indexer complete"
+                                    : transfer.type === "copy"
+                                      ? "Copy complete"
+                                      : transfer.type === "move"
+                                        ? "Move complete"
+                                        : "Operation complete")}
                       </Typography>
                       <Typography
                         variant="caption"

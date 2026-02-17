@@ -67,6 +67,14 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
+	ipc.RegisterFunc("filebrowser", "indexer_status", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := indexerStatus(args)
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
 	ipc.RegisterFunc("filebrowser", "subfolders", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := subfolders(args)
 		if err != nil {

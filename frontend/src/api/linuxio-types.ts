@@ -321,6 +321,16 @@ export interface UsersGroupsResponse {
   groups: string[];
 }
 
+export interface IndexerStatusResponse {
+  running: boolean;
+  status: string;
+  files_indexed: number;
+  dirs_indexed: number;
+  total_size: number;
+  last_indexed?: string;
+  warning?: string;
+}
+
 export interface FileDownloadResult {
   path: string;
   size: number;
@@ -667,6 +677,7 @@ export interface LinuxIOSchema {
       args: [action: string, src: string, dst: string];
       result: void;
     };
+    indexer_status: { args: []; result: IndexerStatusResponse };
     dir_size: { args: [path: string]; result: DirectorySizeData };
     subfolders: { args: [path: string]; result: SubfoldersResponse };
     search: {

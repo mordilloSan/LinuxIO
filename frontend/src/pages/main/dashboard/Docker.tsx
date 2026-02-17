@@ -48,7 +48,10 @@ const DockerInfo: React.FC = () => {
   } | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
-  const [dialogContainer, setDialogContainer] = useState<{ id: string; name: string } | null>(null);
+  const [dialogContainer, setDialogContainer] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const invalidateContainers = useCallback(
     () =>
@@ -323,7 +326,10 @@ const DockerInfo: React.FC = () => {
         <MenuItem
           onClick={() => {
             if (menuContainer) {
-              setDialogContainer({ id: menuContainer.id, name: menuContainer.name });
+              setDialogContainer({
+                id: menuContainer.id,
+                name: menuContainer.name,
+              });
               setLogsOpen(true);
             }
             handleMenuClose();
@@ -337,7 +343,10 @@ const DockerInfo: React.FC = () => {
         <MenuItem
           onClick={() => {
             if (menuContainer) {
-              setDialogContainer({ id: menuContainer.id, name: menuContainer.name });
+              setDialogContainer({
+                id: menuContainer.id,
+                name: menuContainer.name,
+              });
               setTerminalOpen(true);
             }
             handleMenuClose();

@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import React, { ReactNode, useCallback } from "react";
 
-import ReindexDialog from "./ReindexDialog";
+import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
 
@@ -57,12 +57,12 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { indexerAvailable } = useAuth();
-  const { startReindex, isReindexing, openReindexDialog } = useFileTransfers();
+  const { startIndexer, isIndexing, openIndexerDialog } = useFileTransfers();
 
-  const handleReindex = useCallback(() => {
-    openReindexDialog();
-    void startReindex({});
-  }, [openReindexDialog, startReindex]);
+  const handleIndexer = useCallback(() => {
+    openIndexerDialog();
+    void startIndexer({});
+  }, [openIndexerDialog, startIndexer]);
 
   return (
     <>
@@ -201,23 +201,23 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
 
                 <Tooltip
                   title={
-                    isReindexing
-                      ? "Reindexing..."
+                    isIndexing
+                      ? "Indexing..."
                       : indexerAvailable === false
                         ? "Indexer unavailable"
-                        : "Reindex filesystem"
+                        : "Index filesystem"
                   }
                 >
                   <span>
                     <IconButton
-                      onClick={handleReindex}
-                      disabled={isReindexing || indexerAvailable === false}
-                      aria-label="Reindex filesystem"
+                      onClick={handleIndexer}
+                      disabled={isIndexing || indexerAvailable === false}
+                      aria-label="Index filesystem"
                       sx={{
                         position: "relative",
                       }}
                     >
-                      {isReindexing ? (
+                      {isIndexing ? (
                         <CircularProgress size={24} />
                       ) : (
                         <SyncIcon
@@ -237,7 +237,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
           </Stack>
         </Box>
       </Box>
-      <ReindexDialog />
+      <IndexerDialog />
     </>
   );
 };

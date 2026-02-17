@@ -646,6 +646,16 @@ type indexerDirSizeResponse struct {
 	Bytes int64  `json:"bytes"`
 }
 
+type indexerStatusResponse struct {
+	Running      bool   `json:"running"`
+	Status       string `json:"status"`
+	FilesIndexed int64  `json:"files_indexed"`
+	DirsIndexed  int64  `json:"dirs_indexed"`
+	TotalSize    int64  `json:"total_size"`
+	LastIndexed  string `json:"last_indexed,omitempty"`
+	Warning      string `json:"warning,omitempty"`
+}
+
 // fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
 func fetchDirSizeFromIndexer(path string) (int64, error) {
 	normPath := normalizeIndexerPath(path)
@@ -684,6 +694,76 @@ func fetchDirSizeFromIndexer(path string) (int64, error) {
 		return payload.Size, nil
 	}
 	return payload.Bytes, nil
+}
+
+func fetchIndexerStatusFromIndexer() (indexerStatusResponse, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/status", nil)
+	if err != nil {
+		return indexerStatusResponse{}, fmt.Errorf("failed to build indexer status request: %w", err)
+	}
+
+	resp, err := indexerHTTPClient.Do(req)
+	if err != nil {
+		setIndexerAvailability(false)
+		return indexerStatusResponse{}, fmt.Errorf("%w: indexer status request failed: %v", errIndexerUnavailable, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode >= http.StatusInternalServerError {
+			setIndexerAvailability(false)
+			return indexerStatusResponse{}, fmt.Errorf("%w: indexer status returned status %s", errIndexerUnavailable, resp.Status)
+		}
+		return indexerStatusResponse{}, fmt.Errorf("indexer status returned status %s", resp.Status)
+	}
+
+	var raw struct {
+		Status      string `json:"status"`
+		NumDirs     int64  `json:"num_dirs"`
+		NumFiles    int64  `json:"num_files"`
+		TotalSize   int64  `json:"total_size"`
+		LastIndexed string `json:"last_indexed"`
+		Warning     string `json:"warning,omitempty"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return indexerStatusResponse{}, fmt.Errorf("decode indexer status response: %w", err)
+	}
+
+	setIndexerAvailability(true)
+
+	status := strings.ToLower(strings.TrimSpace(raw.Status))
+	if status == "" {
+		status = "unknown"
+	}
+
+	return indexerStatusResponse{
+		Running:      status == "running",
+		Status:       status,
+		FilesIndexed: raw.NumFiles,
+		DirsIndexed:  raw.NumDirs,
+		TotalSize:    raw.TotalSize,
+		LastIndexed:  raw.LastIndexed,
+		Warning:      raw.Warning,
+	}, nil
+}
+
+// indexerStatus returns current indexer status for refresh recovery.
+// Args: []
+func indexerStatus(args []string) (any, error) {
+	if len(args) > 0 {
+		return nil, fmt.Errorf("bad_request:unexpected arguments")
+	}
+
+	status, err := fetchIndexerStatusFromIndexer()
+	if err != nil {
+		if errors.Is(err, errIndexerUnavailable) {
+			return nil, fmt.Errorf("bad_request:indexer unavailable")
+		}
+		logger.Debugf("error fetching indexer status: %v", err)
+		return nil, fmt.Errorf("error fetching indexer status: %w", err)
+	}
+
+	return status, nil
 }
 
 // dirSize calculates the total size of a directory recursively
