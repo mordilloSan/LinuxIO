@@ -9,7 +9,7 @@
  *   const stream = openStream("terminal", "bash", ["120", "32"], "terminal");
  *
  * Module SDK:
- *   linuxio.useCall(), linuxio.useMutate()
+ *   await core.call("handler", "command", [args])
  */
 
 // === JSON API (React Query type-safe proxy) ===

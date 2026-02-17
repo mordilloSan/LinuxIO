@@ -198,14 +198,6 @@ Snapshot of `useQuery` hook usage across the codebase.
 |---|------|------|------|-------------|
 | 46 | `components/footer/Footer.tsx` | 11 | `linuxio.control.version.useQuery({staleTime: FIVE_MINUTES})` | App version |
 
-#### Dynamic String-Based (Module SDK)
-
-| # | File | Line | Call | Description |
-|---|------|------|------|-------------|
-| — | `api/react-query.ts` | 78 | `useCall(handler, command, args, options)` | Generic typed query hook used by modules |
-
----
-
 ### 2.2 useMutation — React Query Mutations
 
 Snapshot of `useMutation` hook usage across the codebase.
@@ -306,12 +298,6 @@ Snapshot of `useMutation` hook usage across the codebase.
 | # | File | Line | Call | Description |
 |---|------|------|------|-------------|
 | 57 | `contexts/ConfigContext.tsx` | 87 | `linuxio.config.set.useMutation()` | Save configuration |
-
-#### Modules Handler (via string-based API)
-
-| # | File | Line | Call | Description |
-|---|------|------|------|-------------|
-| 58 | `api/react-query.ts` | 110 | `useMutate(handler, command, options)` | Generic mutation hook for modules |
 
 ---
 
@@ -443,8 +429,6 @@ Snapshot of `useMutation` hook usage across the codebase.
 
 | # | Line | Context |
 |---|------|---------|
-| 1 | 86 | `queryFn` for `useCall()` |
-| 2 | 117 | `mutationFn` for `useMutate()` |
 | 3 | 279 | `.call()` implementation |
 | 4 | 290 | `.queryOptions()` queryFn |
 | 5 | 317 | `.useMutation()` mutationFn |
@@ -490,7 +474,7 @@ This keeps stream behavior coherent while allowing specialized paths (terminal l
 
 | # | File | Line | Fields Used | Purpose |
 |---|------|------|-------------|---------|
-| 1 | `api/react-query.ts` | 81 | `isOpen` | Gate `useCall()` queries |
+| 1 | `api/react-query.ts` | 81 | `isOpen` | Gate typed `.useQuery()` queries |
 | 2 | `api/react-query.ts` | 302 | `isOpen` | Gate typed `.useQuery()` |
 | 3 | `hooks/useFileQueries.ts` | 31 | `isOpen` | Gate file browser queries |
 | 4 | `hooks/useFileMultipleDirectoryDetails.ts` | 31 | `isOpen` | Gate multi-dir size queries |

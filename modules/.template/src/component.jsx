@@ -3,18 +3,18 @@ import { Box, Typography, Button, useTheme } from '@mui/material';
 import RootCard from '@/components/cards/RootCard';
 import MetricBar from '@/components/gauge/MetricBar';
 import { formatFileSize } from '@/utils/formaters';
-import linuxio from '@/api/linuxio';
+import linuxio from '@/api/react-query';
+import { openExecStream, bindStreamHandlers, decodeString } from '@/api';
 
 function ExampleModule() {
   const [message, setMessage] = useState('');
   const [dirListing, setDirListing] = useState('');
   const theme = useTheme();
 
-  // Example 1: Use linuxio.useCall for existing handlers (JSON RPC)
   const {
     data: cpuInfo,
     refetch: refetchCpuInfo
-  } = linuxio.useCall("system", "get_cpu_info", [], { enabled: false });
+  } = linuxio.system.get_cpu_info.useQuery({ enabled: false });
 
   const handleClick = () => {
     setMessage('Hello from Example Module! 👋');
@@ -30,17 +30,22 @@ function ExampleModule() {
     }
   };
 
-  // Example 2: Use linuxio.useStream for command execution (streaming stdout)
+  // Example 2: Use openExecStream for command execution (streaming stdout)
   const listDirectory = () => {
     setMessage('Loading directory listing...');
     setDirListing('');
 
     let output = '';
 
-    // Open exec stream - unified signature matching useCall
-    linuxio.useStream('exec', 'ls', ['-lh', '/home'], {
+    const stream = openExecStream('ls', ['-lh', '/home']);
+    if (!stream) {
+      setMessage('Failed to open stream');
+      return;
+    }
+
+    bindStreamHandlers(stream, {
       onData: (data) => {
-        const text = linuxio.decodeString(data);
+        const text = decodeString(data);
         output += text;
         setDirListing(output);
       },
@@ -55,22 +60,27 @@ function ExampleModule() {
     });
   };
 
-  // Example 2: Use linuxio.useStream for command execution (streaming stdout)
+  // Example 3: Another exec stream example
   const listDirectory2 = () => {
-    setMessage('Loading directory listing...');
+    setMessage('Loading user info...');
     setDirListing('');
 
     let output = '';
 
-    // Open exec stream - unified signature matching useCall
-    linuxio.useStream('exec', 'whoami', [], {
+    const stream = openExecStream('whoami', []);
+    if (!stream) {
+      setMessage('Failed to open stream');
+      return;
+    }
+
+    bindStreamHandlers(stream, {
       onData: (data) => {
-        const text = linuxio.decodeString(data);
+        const text = decodeString(data);
         output += text;
         setDirListing(output);
       },
       onResult: (result) => {
-        setMessage(`Directory listing loaded! Exit code: ${result.data?.exitCode || 0}`);
+        setMessage(`Done! Exit code: ${result.data?.exitCode || 0}`);
       },
       onClose: () => {
         if (!output) {
@@ -149,7 +159,7 @@ function ExampleModule() {
               List /home (exec stream)
             </Button>
 
-                        <Button
+            <Button
               variant="outlined"
               onClick={listDirectory2}
               sx={{ mt: 1 }}

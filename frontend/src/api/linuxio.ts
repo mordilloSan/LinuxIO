@@ -3,7 +3,7 @@
  *
  * Shared utilities for stream multiplexer access.
  * For API calls, use:
- * - @/api/react-query for React Query hooks (useCall, useMutate)
+ * - @/api/react-query for React Query hooks (type-safe API)
  * - @/api/linuxio-core for direct calls (call, spawn, openStream)
  */
 

@@ -15,7 +15,5 @@ ui:
     position: 115                  # Sidebar position (lower = higher in list)
 
 # This is a UI-only module that uses:
-# 1. Existing LinuxIO handlers: linuxio.useCall("system", "get_cpu_info")
-# 2. Exec streams: linuxio.useStream('exec', payload)
-#
-# No backend handlers needed - handlers section can be omitted for UI-only modules
+# 1. Existing LinuxIO handlers
+# 2. Exec streams

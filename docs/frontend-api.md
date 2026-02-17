@@ -169,29 +169,6 @@ const version = await linuxio.control.version.call();
 
 ---
 
-## String-Based API (for modules)
-
-For dynamic handlers (modules) or when handler/command names are not in the schema:
-
-```typescript
-// Query
-const { data } = linuxio.useCall<WeatherData>(
-  "module.weather",
-  "getForecast",
-  ["London"],
-  { staleTime: 60000 }
-);
-
-// Mutation
-const { mutate } = linuxio.useMutate<void, string[]>(
-  "module.lights",
-  "toggle"
-);
-mutate(["living-room"]);
-```
-
----
-
 ## Core API (`@/api/linuxio-core`)
 
 For non-React code or when you need direct control.
@@ -508,12 +485,11 @@ Complex types (objects, arrays) are JSON-serialized automatically when using the
 ## Best Practices
 
 1. **Use type-safe API** (`linuxio.handler.command.useQuery()`) for built-in handlers
-2. **Use string-based API** (`linuxio.useCall()`) for dynamic/module handlers
-3. **Use explicit args** when passing objects: `useQuery({ args: ["str", obj] })`
-4. **Handle errors** with try/catch or React Query's error states
-5. **Set appropriate timeouts** for long-running operations
-6. **Use `spawn` with progress** for file transfers and package operations
-7. **Invalidate queries** after mutations to refresh cached data
+2. **Use explicit args** when passing objects: `useQuery({ args: ["str", obj] })`
+3. **Handle errors** with try/catch or React Query's error states
+4. **Set appropriate timeouts** for long-running operations
+5. **Use `spawn` with progress** for file transfers and package operations
+6. **Invalidate queries** after mutations to refresh cached data
 
 ```typescript
 // Good: Type-safe with proper invalidation
@@ -525,29 +501,3 @@ const { mutate } = linuxio.docker.remove_container.useMutation({
 mutate([containerId]);
 ```
 
----
-
-## Migration from Old API
-
-If you're migrating from the old string-based API:
-
-```typescript
-// Old (still works, but deprecated for built-in handlers)
-const { data } = useCall("storage", "get_drive_info");
-
-// New (recommended)
-const { data } = linuxio.storage.get_drive_info.useQuery();
-
-// Old mutation
-const { mutate } = useMutate("docker", "start_container");
-mutate(containerId);  // Single string
-
-// New mutation
-const { mutate } = linuxio.docker.start_container.useMutation();
-mutate([containerId]);  // Array of args
-```
-
-Key differences:
-- Mutations now expect arrays: `mutate([arg1, arg2])` instead of `mutate(arg1)`
-- Complex objects need explicit args in queries: `useQuery({ args: [...] })`
-- Full TypeScript autocomplete and type checking
