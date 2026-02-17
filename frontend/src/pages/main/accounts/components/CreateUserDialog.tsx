@@ -15,8 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 
-import type { CreateUserRequest } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, type CreateUserRequest } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateUserDialogProps {
@@ -49,7 +48,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
       onSuccess: () => {
         toast.success(`User "${username}" created successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "accounts", "list_users"],
+          queryKey: linuxio.accounts.list_users.queryKey(),
         });
         handleClose();
       },

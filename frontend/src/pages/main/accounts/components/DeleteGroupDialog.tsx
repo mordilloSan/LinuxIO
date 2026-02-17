@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DeleteGroupDialogProps {
@@ -49,7 +49,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
         : `${groupNames.length} groups deleted successfully`;
     toast.success(successMessage);
     queryClient.invalidateQueries({
-      queryKey: ["linuxio", "accounts", "list_groups"],
+      queryKey: linuxio.accounts.list_groups.queryKey(),
     });
     onSuccess();
     onClose();

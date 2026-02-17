@@ -35,7 +35,7 @@ func ListServices() ([]ServiceStatus, error) {
 		}()
 
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		var units [][]interface{}
+		var units [][]any
 		if err := systemd.Call("org.freedesktop.systemd1.Manager.ListUnits", 0).Store(&units); err != nil {
 			return err
 		}
@@ -84,7 +84,7 @@ func ListServices() ([]ServiceStatus, error) {
 }
 
 // --- Get detailed info about a single service (robust) ---
-func GetServiceInfo(serviceName string) (map[string]interface{}, error) {
+func GetServiceInfo(serviceName string) (map[string]any, error) {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
 	serviceName = strings.TrimSpace(serviceName)
@@ -94,7 +94,7 @@ func GetServiceInfo(serviceName string) (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	var info map[string]interface{}
+	var info map[string]any
 	err := RetryOnceIfClosed(nil, func() error {
 		conn, err := godbus.SystemBus()
 		if err != nil {
@@ -117,7 +117,7 @@ func GetServiceInfo(serviceName string) (map[string]interface{}, error) {
 			"Id", "Description", "LoadState", "ActiveState", "SubState",
 			"UnitFileState", "FragmentPath", "ActiveEnterTimestamp", "InactiveEnterTimestamp",
 		}
-		info = make(map[string]interface{})
+		info = make(map[string]any)
 		for _, prop := range props {
 			val, err := unit.GetProperty("org.freedesktop.systemd1.Unit." + prop)
 			if err == nil {

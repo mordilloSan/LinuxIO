@@ -7,10 +7,11 @@ import {
   Collapse,
   CircularProgress,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio, CACHE_TTL_MS } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
@@ -21,7 +22,6 @@ interface Props {
   onUpdateClick: (pkg: string) => Promise<void>;
   isUpdating?: boolean;
   currentPackage?: string | null;
-  onComplete: () => void | Promise<any>;
   isLoading?: boolean;
 }
 
@@ -30,43 +30,40 @@ const UpdateList: React.FC<Props> = ({
   onUpdateClick,
   isUpdating,
   currentPackage,
-  onComplete,
   isLoading,
 }) => {
+  const queryClient = useQueryClient();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [changelogs, setChangelogs] = useState<Record<string, string>>({});
   const [loadingChangelog, setLoadingChangelog] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Mutation for fetching changelog details
-  const { mutate: fetchChangelog } = linuxio.dbus.GetUpdateDetail.useMutation({
-    onSuccess: (detail, variables) => {
-      const packageId = variables[0] as string;
-      setChangelogs((prev) => ({
-        ...prev,
-        [packageId]: detail.changelog || "No changelog available",
-      }));
-      setLoadingChangelog(null);
-    },
-    onError: (error: Error, variables) => {
-      const packageId = variables[0] as string;
-      setChangelogs((prev) => ({
-        ...prev,
-        [packageId]: "Failed to load changelog",
-      }));
-      setLoadingChangelog(null);
-      toast.error(getMutationErrorMessage(error, "Failed to load changelog"));
-    },
-  });
-
   const handleFetchChangelog = useCallback(
-    (packageId: string) => {
+    async (packageId: string) => {
       if (changelogs[packageId]) return; // Already loaded
 
       setLoadingChangelog(packageId);
-      fetchChangelog([packageId]);
+      try {
+        const detail = await queryClient.fetchQuery(
+          linuxio.dbus.get_update_detail.queryOptions(packageId, {
+            staleTime: CACHE_TTL_MS.FIVE_MINUTES,
+          }),
+        );
+        setChangelogs((prev) => ({
+          ...prev,
+          [packageId]: detail.changelog || "No changelog available",
+        }));
+      } catch (error) {
+        setChangelogs((prev) => ({
+          ...prev,
+          [packageId]: "Failed to load changelog",
+        }));
+        toast.error(getMutationErrorMessage(error, "Failed to load changelog"));
+      } finally {
+        setLoadingChangelog(null);
+      }
     },
-    [changelogs, fetchChangelog],
+    [changelogs, queryClient],
   );
 
   const toggleExpanded = (index: number, packageId: string) => {
@@ -199,7 +196,6 @@ const UpdateList: React.FC<Props> = ({
                   disabled={!!isUpdating}
                   onClick={async () => {
                     await onUpdateClick(update.package_id);
-                    await onComplete();
                   }}
                   sx={{ cursor: "pointer" }}
                 />

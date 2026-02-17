@@ -13,11 +13,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
 
-import type {
-  AccountGroup,
-  ModifyGroupMembersRequest,
-} from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import {
+  linuxio,
+  type AccountGroup,
+  type ModifyGroupMembersRequest,
+} from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
@@ -53,10 +53,10 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
       onSuccess: () => {
         toast.success(`Group "${group.name}" members updated`);
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "accounts", "list_groups"],
+          queryKey: linuxio.accounts.list_groups.queryKey(),
         });
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "accounts", "list_users"],
+          queryKey: linuxio.accounts.list_users.queryKey(),
         });
         onClose();
       },

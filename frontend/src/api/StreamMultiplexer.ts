@@ -53,6 +53,8 @@ export type MuxStatus = "connecting" | "open" | "closed" | "error";
 
 // Max scrollback to retain (64KB should cover a full screen + some history)
 const MAX_SCROLLBACK = 64 * 1024;
+// Max buffered bytes while no handler is attached (prevents unbounded memory growth)
+const MAX_DETACHED_BUFFER = 4 * 1024 * 1024;
 
 /**
  * Efficient circular buffer - pre-allocated, no reallocations on write.
@@ -127,6 +129,7 @@ class StreamImpl implements Stream {
   public onResult: ((result: ResultFrame) => void) | null = null;
   private _status: StreamStatus = "opening";
   private buffer: Uint8Array[] = []; // Buffer for when handler is detached
+  private bufferedBytes = 0;
   private recvBuffer: Uint8Array = new Uint8Array(0); // Buffer for partial StreamFrames
   private scrollback = new CircularBuffer(MAX_SCROLLBACK); // Efficient circular buffer
 
@@ -147,17 +150,23 @@ class StreamImpl implements Stream {
   /** Set data handler - replays scrollback and flushes buffer when attaching */
   set onData(handler: ((data: Uint8Array) => void) | null) {
     console.log(
-      `[Stream ${this.id}] onData set to ${handler ? "handler" : "null"}, scrollback: ${this.scrollback.length}, buffer: ${this.buffer.length}`,
+      `[Stream ${this.id}] onData set to ${handler ? "handler" : "null"}, scrollback: ${this.scrollback.length}, buffer items: ${this.buffer.length}, buffer bytes: ${this.bufferedBytes}`,
     );
     this._onData = handler;
 
     if (handler) {
-      // Replay scrollback history first (shows previous output)
+      // Replay scrollback, excluding tail bytes that will be delivered from buffer.
+      // This avoids duplicate output after detach/reattach.
       if (this.scrollback.length > 0) {
+        const scrollback = this.scrollback.read();
+        const overlapBytes = Math.min(this.bufferedBytes, scrollback.length);
+        const replayLength = scrollback.length - overlapBytes;
         console.log(
-          `[Stream ${this.id}] Replaying ${this.scrollback.length} bytes of scrollback`,
+          `[Stream ${this.id}] Replaying ${replayLength} bytes of scrollback`,
         );
-        handler(this.scrollback.read());
+        if (replayLength > 0) {
+          handler(scrollback.slice(0, replayLength));
+        }
       }
 
       // Then flush any buffered data that arrived while detached
@@ -169,6 +178,7 @@ class StreamImpl implements Stream {
           handler(data);
         }
         this.buffer = [];
+        this.bufferedBytes = 0;
       }
     }
   }
@@ -268,6 +278,16 @@ class StreamImpl implements Stream {
         `[Stream ${this.id}] Buffering ${data.length} bytes (no handler)`,
       );
       this.buffer.push(data);
+      this.bufferedBytes += data.length;
+
+      while (
+        this.bufferedBytes > MAX_DETACHED_BUFFER &&
+        this.buffer.length > 0
+      ) {
+        const dropped = this.buffer.shift();
+        if (!dropped) break;
+        this.bufferedBytes -= dropped.length;
+      }
     }
   }
 
@@ -361,14 +381,14 @@ class StreamImpl implements Stream {
 
 export class StreamMultiplexer {
   private ws: WebSocket | null = null;
-  private streams: Map<number, StreamImpl> = new Map();
-  private streamsByType: Map<StreamType, StreamImpl> = new Map();
+  private streams = new Map<number, StreamImpl>();
+  private streamsByType = new Map<StreamType, StreamImpl>();
   private nextStreamID = 1; // Client uses odd numbers
   private _status: MuxStatus = "connecting";
   private _isUpdating = false; // Flag to pause all API requests during system update
   private url: string;
-  private statusListeners: Set<(status: MuxStatus) => void> = new Set();
-  private updatingListeners: Set<(isUpdating: boolean) => void> = new Set();
+  private statusListeners = new Set<(status: MuxStatus) => void>();
+  private updatingListeners = new Set<(isUpdating: boolean) => void>();
 
   constructor(url: string) {
     this.url = url;
@@ -473,17 +493,14 @@ export class StreamMultiplexer {
   }
 
   // Stream types that should be cached and reused (persistent streams)
-  private static readonly PERSISTENT_STREAM_TYPES = new Set([
-    "terminal",
-    "container",
-  ]);
+  private static readonly PERSISTENT_STREAM_TYPES = new Set(["terminal"]);
 
   /**
    * Open a new stream and send initial payload.
    * The payload is wrapped in a StreamFrame for the bridge.
    */
   openStream(type: StreamType, initialPayload?: Uint8Array): Stream {
-    // Only reuse persistent streams (terminal, container) - not request/response streams
+    // Only reuse persistent streams (terminal) - not request/response streams
     const isPersistent = StreamMultiplexer.PERSISTENT_STREAM_TYPES.has(type);
     if (isPersistent) {
       const existing = this.streamsByType.get(type);
@@ -514,7 +531,19 @@ export class StreamMultiplexer {
     bridgeFrame.set(payload, 9);
 
     // Send SYN with the StreamFrame as payload
-    this.sendFrame(id, Flags.SYN, bridgeFrame);
+    const sent = this.sendFrame(id, Flags.SYN, bridgeFrame);
+    if (!sent) {
+      // Fail fast: keep API behavior deterministic when transport is not available.
+      this.streams.delete(id);
+      if (isPersistent && this.streamsByType.get(type) === stream) {
+        this.streamsByType.delete(type);
+      }
+      stream.setStatus("closed");
+      queueMicrotask(() => {
+        stream.handleClose();
+      });
+      return stream;
+    }
 
     // Mark as open immediately (server-side stream is created on SYN)
     stream.setStatus("open");
@@ -525,10 +554,10 @@ export class StreamMultiplexer {
   /**
    * Send a frame to the WebSocket
    */
-  sendFrame(streamID: number, flags: number, payload: Uint8Array): void {
+  sendFrame(streamID: number, flags: number, payload: Uint8Array): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn("[StreamMux] Cannot send - WebSocket not open");
-      return;
+      return false;
     }
 
     const frame = new Uint8Array(5 + payload.length);
@@ -538,6 +567,7 @@ export class StreamMultiplexer {
     frame.set(payload, 5);
 
     this.ws.send(frame);
+    return true;
   }
 
   /**
@@ -570,7 +600,9 @@ export class StreamMultiplexer {
       if (stream) {
         stream.handleClose();
         this.streams.delete(streamID);
-        this.streamsByType.delete(stream.type);
+        if (this.streamsByType.get(stream.type) === stream) {
+          this.streamsByType.delete(stream.type);
+        }
       }
     }
 
@@ -578,14 +610,16 @@ export class StreamMultiplexer {
       if (stream) {
         stream.handleClose();
         this.streams.delete(streamID);
-        this.streamsByType.delete(stream.type);
+        if (this.streamsByType.get(stream.type) === stream) {
+          this.streamsByType.delete(stream.type);
+        }
       }
     }
   }
 
   removeStream(id: number): void {
     const stream = this.streams.get(id);
-    if (stream) {
+    if (stream && this.streamsByType.get(stream.type) === stream) {
       this.streamsByType.delete(stream.type);
     }
     this.streams.delete(id);

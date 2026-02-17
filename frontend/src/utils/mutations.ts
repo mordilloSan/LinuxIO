@@ -1,4 +1,4 @@
-import { LinuxIOError } from "@/api/react-query";
+import { LinuxIOError } from "@/api";
 
 /**
  * Centralized error message extraction for mutations

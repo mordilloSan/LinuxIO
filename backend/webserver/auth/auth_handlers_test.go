@@ -28,7 +28,9 @@ func newRouterForTests(h *Handlers) *http.ServeMux {
 func doJSON(r http.Handler, method, path string, body any, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	var buf bytes.Buffer
 	if body != nil {
-		_ = json.NewEncoder(&buf).Encode(body)
+		if err := json.NewEncoder(&buf).Encode(body); err != nil {
+			panic(fmt.Sprintf("encode test request body: %v", err))
+		}
 	}
 	req := httptest.NewRequest(method, path, &buf)
 	req.Header.Set("Content-Type", "application/json")
@@ -63,10 +65,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password string, verbose bool) (bool, error) {
-		_ = sess
-		_ = password
-		_ = verbose
+	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
 		return true, nil // privileged
 	}
 	// Manager + handlers
@@ -88,7 +87,9 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}
 	// Body JSON
 	var resp map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal login response: %v", err)
+	}
 	if resp["success"] != true {
 		t.Fatalf("expected success=true, got %v", resp)
 	}
@@ -113,10 +114,7 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password string, verbose bool) (bool, error) {
-		_ = sess
-		_ = password
-		_ = verbose
+	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
 		return false, fmt.Errorf("authentication failed: bad credentials")
 	}
 	sm := session.NewManager(session.New(), session.SessionConfig{})
@@ -150,10 +148,7 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	lookupUser = func(username string) (session.User, error) {
 		return session.User{Username: username, UID: 1000, GID: 1000}, nil
 	}
-	startBridge = func(sess *session.Session, password string, verbose bool) (bool, error) {
-		_ = sess
-		_ = password
-		_ = verbose
+	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
 		return false, nil
 	}
 	// Login to get cookie

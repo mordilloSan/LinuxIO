@@ -7,15 +7,15 @@ import { FileResource } from "@/types/filebrowser";
 
 import { DroppedEntry, useFileDroppedEntries } from "./useFileDroppedEntries";
 
-type UseDragAndDropUploadParams = {
+interface UseDragAndDropUploadParams {
   normalizedPath: string;
   resource?: FileResource | null;
   editingPath?: string | null;
   startUpload: FileTransferContextValue["startUpload"];
   onUploadComplete: () => void;
-};
+}
 
-type UseDragAndDropUploadResult = {
+interface UseDragAndDropUploadResult {
   isDragOver: boolean;
   overwriteTargets: DroppedEntry[] | null;
   handleDragEnter: (event: React.DragEvent) => void;
@@ -25,7 +25,7 @@ type UseDragAndDropUploadResult = {
   handleConfirmOverwrite: () => Promise<void>;
   handleCancelOverwrite: () => void;
   setOverwriteTargets: (targets: DroppedEntry[] | null) => void;
-};
+}
 
 export const useFileDragAndDrop = ({
   normalizedPath,

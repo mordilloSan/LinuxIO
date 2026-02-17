@@ -27,8 +27,7 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-import type { NFSMount } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -77,9 +76,6 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const [loadingExports, setLoadingExports] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep exportsMutation as-is since it's used for background fetching
-  const exportsMutation = linuxio.storage.list_nfs_exports.useMutation();
-
   const { mutate: mountNFS, isPending: isMounting } =
     linuxio.storage.mount_nfs.useMutation({
       onSuccess: (result) => {
@@ -89,7 +85,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
           toast.success(`NFS share mounted at ${mountpoint}`);
         }
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_nfs_mounts"],
+          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
         });
         onSuccess();
         handleClose();
@@ -104,7 +100,11 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
   const fetchExports = useEffectEvent(async (serverAddress: string) => {
     setLoadingExports(true);
     try {
-      const result = await exportsMutation.mutateAsync([serverAddress]);
+      const result = await queryClient.fetchQuery(
+        linuxio.storage.list_nfs_exports.queryOptions(serverAddress, {
+          staleTime: CACHE_TTL_MS.THIRTY_SECONDS,
+        }),
+      );
       setExports(result || []);
     } catch {
       setExports([]);
@@ -290,7 +290,7 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
           toast.success(`Unmounted ${mount?.mountpoint}`);
         }
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_nfs_mounts"],
+          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
         });
         onSuccess();
         handleClose();
@@ -421,7 +421,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
           toast.success(`NFS mount options updated`);
         }
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_nfs_mounts"],
+          queryKey: linuxio.storage.list_nfs_mounts.queryKey(),
         });
         onSuccess();
         handleClose();

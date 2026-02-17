@@ -15,7 +15,7 @@ func RegisterHandlers(
 	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) {
 	// GetModules - public handler (no privilege required)
-	ipc.RegisterFunc("modules", "GetModules", func(ctx context.Context, args []string, emit ipc.Events) error {
+	ipc.RegisterFunc("modules", "get_modules", func(ctx context.Context, args []string, emit ipc.Events) error {
 		modules, err := GetLoadedModulesForFrontend()
 		if err != nil {
 			return err
@@ -24,7 +24,7 @@ func RegisterHandlers(
 	})
 
 	// GetModuleDetails - privileged handler
-	ipc.RegisterFunc("modules", "GetModuleDetails", func(ctx context.Context, args []string, emit ipc.Events) error {
+	ipc.RegisterFunc("modules", "get_module_details", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if !sess.Privileged {
 			return fmt.Errorf("privilege required")
 		}
@@ -39,7 +39,7 @@ func RegisterHandlers(
 	})
 
 	// ValidateModule - privileged handler
-	ipc.RegisterFunc("modules", "ValidateModule", func(ctx context.Context, args []string, emit ipc.Events) error {
+	ipc.RegisterFunc("modules", "validate_module", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if !sess.Privileged {
 			return fmt.Errorf("privilege required")
 		}
@@ -54,7 +54,7 @@ func RegisterHandlers(
 	})
 
 	// InstallModule - privileged handler
-	ipc.RegisterFunc("modules", "InstallModule", func(ctx context.Context, args []string, emit ipc.Events) error {
+	ipc.RegisterFunc("modules", "install_module", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if !sess.Privileged {
 			return fmt.Errorf("privilege required")
 		}
@@ -74,7 +74,7 @@ func RegisterHandlers(
 	})
 
 	// UninstallModule - privileged handler
-	ipc.RegisterFunc("modules", "UninstallModule", func(ctx context.Context, args []string, emit ipc.Events) error {
+	ipc.RegisterFunc("modules", "uninstall_module", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if !sess.Privileged {
 			return fmt.Errorf("privilege required")
 		}

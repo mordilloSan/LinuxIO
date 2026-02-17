@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -104,7 +105,7 @@ func main() {
 	logger.Infof("[bridge] boot: euid=%d uid=%d gid=%d (environment cleared for security)",
 		os.Geteuid(), Sess.User.UID, Sess.User.GID)
 
-	_ = syscall.Umask(0o077)
+	syscall.Umask(0o077)
 	logger.Infof("[bridge] starting (uid=%d)", os.Geteuid())
 
 	// Get the client connection from FD 3 (inherited from auth daemon)
@@ -263,16 +264,13 @@ func handleYamuxSession(conn net.Conn) {
 			continue
 		}
 		streamID := hex.EncodeToString(idBytes[:])
-		streamWg.Add(1)
-		wg.Add(1)
-
-		go func(s net.Conn, streamID string) {
-			defer streamWg.Done()
-			defer wg.Done()
+		s := stream
+		sid := streamID
+		streamWg.Go(func() {
 			defer s.Close()
 
-			handleYamuxStream(Sess, s, streamID)
-		}(stream, streamID)
+			handleYamuxStream(Sess, s, sid)
+		})
 	}
 
 waitForStreams:
@@ -305,15 +303,19 @@ func handleYamuxStream(sess *session.Session, stream net.Conn, streamID string) 
 	if !found {
 		logger.WarnKV("unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType)
 		// Send close frame
-		_ = ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
+		if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
 			Opcode:   ipc.OpStreamClose,
 			StreamID: frame.StreamID,
-		})
+		}); err != nil {
+			logger.DebugKV("failed to write close frame for unknown stream type", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
+		}
 		return
 	}
 
 	// Execute stream handler
 	if err := handler(sess, stream, args); err != nil {
-		logger.WarnKV("stream handler error", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
+		if !errors.Is(err, ipc.ErrAborted) {
+			logger.WarnKV("stream handler error", "session_id", sess.SessionID, "stream_id", streamID, "type", streamType, "error", err)
+		}
 	}
 }

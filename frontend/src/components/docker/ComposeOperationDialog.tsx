@@ -14,8 +14,8 @@ import {
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
-import { useStreamMux, decodeString, encodeString } from "@/api/linuxio";
-import type { Stream } from "@/api/linuxio";
+import { useStreamMux, decodeString, openDockerComposeStream } from "@/api";
+import { useLiveStream } from "@/hooks/useLiveStream";
 
 interface ComposeOperationDialogProps {
   open: boolean;
@@ -43,9 +43,9 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<Stream | null>(null);
+  const { streamRef, openStream, closeStream } = useLiveStream();
 
-  const { isOpen: muxIsOpen, openStream } = useStreamMux();
+  const { isOpen: muxIsOpen } = useStreamMux();
 
   // Scroll to bottom when output changes
   useEffect(() => {
@@ -53,14 +53,6 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       outputBoxRef.current.scrollTop = outputBoxRef.current.scrollHeight;
     }
   }, [output, open]);
-
-  // Close stream helper
-  const closeStream = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
-  }, []);
 
   // Reset state helper - called from transition callbacks, not effects
   const resetState = useCallback(() => {
@@ -89,59 +81,54 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
       return;
     }
 
-    // Build payload: docker-compose\0action\0projectName\0composePath
-    let payloadStr = `docker-compose\0${action}\0${projectName}`;
-    if (composePath) {
-      payloadStr += `\0${composePath}`;
-    }
+    openStream({
+      open: () => openDockerComposeStream(action, projectName, composePath),
+      onOpenError: () => {
+        queueMicrotask(() => {
+          setError("Failed to start compose operation");
+          setIsRunning(false);
+          toast.error("Failed to start compose operation");
+        });
+      },
+      onData: (data: Uint8Array) => {
+        const text = decodeString(data);
+        try {
+          const msg: ComposeMessage = JSON.parse(text);
 
-    const payload = encodeString(payloadStr);
-    const stream = openStream("docker-compose", payload);
-
-    if (!stream) {
-      queueMicrotask(() => {
-        setError("Failed to start compose operation");
-        setIsRunning(false);
-        toast.error("Failed to start compose operation");
-      });
-      return;
-    }
-
-    streamRef.current = stream;
-
-    // Handle incoming data
-    stream.onData = (data: Uint8Array) => {
-      const text = decodeString(data);
-      try {
-        const msg: ComposeMessage = JSON.parse(text);
-
-        switch (msg.type) {
-          case "stdout":
-          case "stderr":
-            setOutput((prev) => [...prev, msg.message]);
-            break;
-          case "error":
-            setError(msg.message);
-            setIsRunning(false);
-            toast.error(`Failed to ${action} stack: ${msg.message}`);
-            break;
-          case "complete":
-            setSuccess(true);
-            setIsRunning(false);
-            setOutput((prev) => [...prev, "✓ " + msg.message]);
-            break;
+          switch (msg.type) {
+            case "stdout":
+            case "stderr":
+              setOutput((prev) => [...prev, msg.message]);
+              break;
+            case "error":
+              setError(msg.message);
+              setIsRunning(false);
+              toast.error(`Failed to ${action} stack: ${msg.message}`);
+              break;
+            case "complete":
+              setSuccess(true);
+              setIsRunning(false);
+              setOutput((prev) => [...prev, "✓ " + msg.message]);
+              break;
+          }
+        } catch {
+          // If not JSON, just append as-is
+          setOutput((prev) => [...prev, text]);
         }
-      } catch {
-        // If not JSON, just append as-is
-        setOutput((prev) => [...prev, text]);
-      }
-    };
-
-    stream.onClose = () => {
-      streamRef.current = null;
-      setIsRunning(false);
-    };
-  }, [open, action, projectName, composePath, muxIsOpen, openStream]);
+      },
+      onClose: () => {
+        setIsRunning(false);
+      },
+    });
+  }, [
+    open,
+    action,
+    projectName,
+    composePath,
+    muxIsOpen,
+    openStream,
+    streamRef,
+  ]);
 
   const getActionLabel = () => {
     switch (action) {

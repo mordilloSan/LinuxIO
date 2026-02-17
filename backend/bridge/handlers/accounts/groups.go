@@ -45,7 +45,7 @@ func ListGroups() ([]Group, error) {
 
 		members := []string{}
 		if parts[3] != "" {
-			for _, member := range strings.Split(parts[3], ",") {
+			for member := range strings.SplitSeq(parts[3], ",") {
 				member = strings.TrimSpace(member)
 				if member != "" {
 					members = append(members, member)

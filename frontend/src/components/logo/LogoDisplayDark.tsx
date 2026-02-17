@@ -7,9 +7,9 @@ const PALETTE = {
   text: "rgba(255,255,255,0.87)",
 };
 
-type LogoDisplayDarkProps = {
+interface LogoDisplayDarkProps {
   showText?: boolean;
-};
+}
 
 const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
   showText = false,

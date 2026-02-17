@@ -59,7 +59,9 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 	u, err := user.LookupId(strconv.FormatUint(uint64(sess.User.UID), 10))
 	if err != nil {
 		logger.Errorf("[StreamTerminal] lookup user %s failed: %v", sess.User.Username, err)
-		_ = ipc.WriteStreamClose(stream, 1) // streamID 1 for terminal
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil { // streamID 1 for terminal
+			logger.Debugf("[StreamTerminal] failed to write stream close frame: %v", closeErr)
+		}
 		return fmt.Errorf("lookup user: %w", err)
 	}
 
@@ -97,15 +99,19 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		logger.Errorf("[StreamTerminal] pty start failed: %v", err)
-		_ = ipc.WriteStreamClose(stream, 1)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[StreamTerminal] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 
 	// Set initial size
-	_ = pty.Setsize(ptmx, &pty.Winsize{
+	if err := pty.Setsize(ptmx, &pty.Winsize{
 		Cols: safeUint16(cols),
 		Rows: safeUint16(rows),
-	})
+	}); err != nil {
+		logger.Debugf("[StreamTerminal] failed to set initial PTY size: %v", err)
+	}
 
 	sts := &StreamTerminalSession{
 		PTY:      ptmx,
@@ -116,19 +122,16 @@ func HandleTerminalStream(sess *session.Session, stream net.Conn, args []string)
 
 	// Start bidirectional relay
 	var wg sync.WaitGroup
-	wg.Add(2)
 
 	// PTY → Stream (output)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sts.relayPTYToStream()
-	}()
+	})
 
 	// Stream → PTY (input)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sts.relayStreamToPTY()
-	}()
+	})
 
 	wg.Wait()
 	sts.cleanup()
@@ -152,7 +155,9 @@ func (sts *StreamTerminalSession) relayPTYToStream() {
 		}
 		if err != nil {
 			// Send close frame
-			_ = ipc.WriteStreamClose(sts.Stream, 1)
+			if closeErr := ipc.WriteStreamClose(sts.Stream, 1); closeErr != nil {
+				logger.Debugf("[StreamTerminal] failed to write stream close frame: %v", closeErr)
+			}
 			return
 		}
 	}
@@ -183,7 +188,9 @@ func (sts *StreamTerminalSession) relayStreamToPTY() {
 			if len(frame.Payload) >= 4 {
 				cols := binary.BigEndian.Uint16(frame.Payload[0:2])
 				rows := binary.BigEndian.Uint16(frame.Payload[2:4])
-				_ = pty.Setsize(sts.PTY, &pty.Winsize{Cols: cols, Rows: rows})
+				if err := pty.Setsize(sts.PTY, &pty.Winsize{Cols: cols, Rows: rows}); err != nil {
+					logger.Debugf("[StreamTerminal] failed to resize PTY: %v", err)
+				}
 			}
 
 		default:
@@ -203,22 +210,30 @@ func (sts *StreamTerminalSession) cleanup() {
 
 	// Signal PTY process to terminate
 	if sts.Cmd != nil && sts.Cmd.Process != nil {
-		_ = syscall.Kill(-sts.Cmd.Process.Pid, syscall.SIGHUP)
+		if err := syscall.Kill(-sts.Cmd.Process.Pid, syscall.SIGHUP); err != nil {
+			logger.Debugf("[StreamTerminal] failed to send SIGHUP to process group: %v", err)
+		}
 	}
 
 	// Close PTY
 	if sts.PTY != nil {
-		_ = sts.PTY.Close()
+		if err := sts.PTY.Close(); err != nil {
+			logger.Debugf("[StreamTerminal] failed to close PTY: %v", err)
+		}
 	}
 
 	// Close stream
 	if sts.Stream != nil {
-		_ = sts.Stream.Close()
+		if err := sts.Stream.Close(); err != nil {
+			logger.Debugf("[StreamTerminal] failed to close stream: %v", err)
+		}
 	}
 
 	// Wait for process
 	if sts.Cmd != nil {
-		_ = sts.Cmd.Wait()
+		if err := sts.Cmd.Wait(); err != nil {
+			logger.Debugf("[StreamTerminal] process exited with error: %v", err)
+		}
 	}
 }
 
@@ -237,7 +252,9 @@ func safeUint16(val int) uint16 {
 func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 2 {
 		logger.Errorf("[ContainerTerminal] missing containerID or shell")
-		_ = ipc.WriteStreamClose(stream, 1)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
+		}
 		return fmt.Errorf("missing containerID or shell")
 	}
 
@@ -270,14 +287,18 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		logger.Errorf("[ContainerTerminal] pty start failed: %v", err)
-		_ = ipc.WriteStreamClose(stream, 1)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
+		}
 		return err
 	}
 
-	_ = pty.Setsize(ptmx, &pty.Winsize{
+	if err := pty.Setsize(ptmx, &pty.Winsize{
 		Cols: safeUint16(cols),
 		Rows: safeUint16(rows),
-	})
+	}); err != nil {
+		logger.Debugf("[ContainerTerminal] failed to set initial PTY size: %v", err)
+	}
 
 	sts := &StreamTerminalSession{
 		PTY:      ptmx,
@@ -287,17 +308,14 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(2)
 
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sts.relayPTYToStream()
-	}()
+	})
 
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sts.relayStreamToPTY()
-	}()
+	})
 
 	wg.Wait()
 	sts.cleanup()

@@ -5,8 +5,7 @@ import { toast } from "sonner";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 
-import type { NetworkInterface } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, type NetworkInterface } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const wireguardToastMeta = {
@@ -33,7 +32,7 @@ const CreateInterfaceButton = () => {
     data: networkData,
     isPending: networkLoading,
     error: networkError,
-  } = linuxio.dbus.GetNetworkInfo.useQuery();
+  } = linuxio.dbus.get_network_info.useQuery();
 
   // Fetch existing WireGuard interfaces via stream API
   const { data: wgInterfaces } = linuxio.wireguard.list_interfaces.useQuery();
@@ -43,7 +42,7 @@ const CreateInterfaceButton = () => {
     linuxio.wireguard.add_interface.useMutation({
       onSuccess: () => {
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "wireguard", "list_interfaces"],
+          queryKey: linuxio.wireguard.list_interfaces.queryKey(),
         });
       },
       onError: (error: Error) => {

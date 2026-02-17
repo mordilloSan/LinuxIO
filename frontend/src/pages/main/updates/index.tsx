@@ -6,7 +6,7 @@ import UpdateHistory from "./UpdateHistory";
 import UpdateSettings from "./UpdateSettings";
 import UpdateStatus from "./UpdateStatus";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import { TabContainer } from "@/components/tabbar";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 
@@ -17,7 +17,7 @@ const Updates: React.FC = () => {
     data: rawUpdates,
     isPending: isLoading,
     refetch,
-  } = linuxio.dbus.GetUpdatesBasic.useQuery({
+  } = linuxio.dbus.get_updates_basic.useQuery({
     refetchInterval: 50000,
   });
 
@@ -29,6 +29,7 @@ const Updates: React.FC = () => {
     updatingPackage,
     progress,
     status,
+    eventLog,
     error,
     clearError,
   } = usePackageUpdater(refetch);
@@ -47,10 +48,10 @@ const Updates: React.FC = () => {
               updatingPackage={updatingPackage}
               progress={progress}
               status={status}
+              eventLog={eventLog}
               error={error}
               onClearError={clearError}
               onCancel={cancelUpdate}
-              onComplete={refetch}
             />
           ),
           rightContent:

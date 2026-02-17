@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import linuxio from "@/api/react-query";
-import type { SubfolderData } from "@/api/linuxio-types";
+import { linuxio, type SubfolderData } from "@/api";
 import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,
@@ -96,19 +95,7 @@ export const clearFileSubfoldersCache = (
 ) => {
   if (queryClient) {
     queryClient.removeQueries({
-      queryKey: ["linuxio", "filebrowser", "subfolders"],
-    });
-  }
-};
-
-// Function to clear a specific path from cache
-export const clearFileSubfoldersCacheForPath = (
-  path: string,
-  queryClient?: ReturnType<typeof useQueryClient>,
-) => {
-  if (queryClient) {
-    queryClient.removeQueries({
-      queryKey: ["linuxio", "filebrowser", "subfolders", path],
+      queryKey: linuxio.filebrowser.subfolders.queryKey(),
     });
   }
 };

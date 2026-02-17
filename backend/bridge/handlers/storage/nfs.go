@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/mordilloSan/go-logger/logger"
@@ -341,8 +342,8 @@ func parseOptionsString(s string) []string {
 	}
 
 	// Try JSON array first
-	if strings.HasPrefix(s, "[") {
-		s = strings.TrimPrefix(s, "[")
+	if after, ok := strings.CutPrefix(s, "["); ok {
+		s = after
 		s = strings.TrimSuffix(s, "]")
 		s = strings.ReplaceAll(s, "\"", "")
 	}
@@ -366,12 +367,7 @@ func isSystemPath(path string) bool {
 		"/proc", "/root", "/run", "/sbin", "/sys", "/tmp", "/usr", "/var",
 	}
 	path = strings.TrimSuffix(path, "/")
-	for _, sp := range systemPaths {
-		if path == sp {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(systemPaths, path)
 }
 
 // addToFstab adds an entry to /etc/fstab
@@ -385,8 +381,8 @@ func addToFstab(source, mountpoint, fstype string, options []string) error {
 	}
 
 	// Check if mountpoint already in fstab
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(content), "\n")
+	for line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) >= 2 && fields[1] == mountpoint {
 			// Entry already exists

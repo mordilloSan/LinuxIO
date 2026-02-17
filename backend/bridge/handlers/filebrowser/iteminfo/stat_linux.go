@@ -10,27 +10,36 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 )
 
 // CollectStatInfo gathers extended Linux-specific file metadata including owner, group, and permissions.
 // This function collects detailed stat information for a file or directory.
 func CollectStatInfo(realPath string) (*ResourceStatData, error) {
-	info, err := os.Lstat(realPath)
+	root, err := fsroot.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	cleanPath := filepath.Clean("/" + strings.TrimPrefix(realPath, "/"))
+	info, err := root.Root.Lstat(fsroot.ToRel(cleanPath))
 	if err != nil {
 		return nil, err
 	}
 
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || stat == nil {
-		return nil, fmt.Errorf("unsupported stat type for path: %s", realPath)
+		return nil, fmt.Errorf("unsupported stat type for path: %s", cleanPath)
 	}
 
 	data := &ResourceStatData{
 		Mode:     info.Mode().String(),
 		Size:     info.Size(),
 		Modified: info.ModTime().Format(time.RFC3339),
-		RealPath: realPath,
-		Name:     filepath.Base(realPath),
+		RealPath: cleanPath,
+		Name:     filepath.Base(cleanPath),
 	}
 
 	uid := strconv.FormatUint(uint64(stat.Uid), 10)
@@ -48,7 +57,7 @@ func CollectStatInfo(realPath string) (*ResourceStatData, error) {
 	}
 
 	data.Permissions = formatPermissionHuman(info.Mode())
-	data.Raw = formatStatLine(data.Mode, data.Owner, data.Group, data.Size, info.ModTime(), realPath)
+	data.Raw = formatStatLine(data.Mode, data.Owner, data.Group, data.Size, info.ModTime(), cleanPath)
 
 	return data, nil
 }

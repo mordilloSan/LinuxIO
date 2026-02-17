@@ -1,5 +1,4 @@
 import {
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -19,27 +18,22 @@ import { Terminal } from "@xterm/xterm";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 
 import "@xterm/xterm/css/xterm.css";
-import { useStreamMux } from "@/api/linuxio";
-import linuxio from "@/api/react-query";
-import { encodeString, decodeString } from "@/api/StreamMultiplexer";
-import type { Stream } from "@/api/StreamMultiplexer";
+import {
+  linuxio,
+  useStreamMux,
+  encodeString,
+  decodeString,
+  openContainerStream,
+} from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useLiveStream } from "@/hooks/useLiveStream";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   containerId: string;
   containerName?: string;
-}
-
-// Build container terminal payload: "container\0containerID\0shell\0cols\0rows"
-function buildContainerPayload(
-  containerId: string,
-  shell: string,
-  cols: number,
-  rows: number,
-): Uint8Array {
-  return encodeString(`container\0${containerId}\0${shell}\0${cols}\0${rows}`);
 }
 
 const TerminalDialog: React.FC<Props> = ({
@@ -51,7 +45,7 @@ const TerminalDialog: React.FC<Props> = ({
   const termRef = useRef<HTMLDivElement>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
-  const streamRef = useRef<Stream | null>(null);
+  const { streamRef, openStream, closeStream } = useLiveStream();
 
   const [terminalKey, setTerminalKey] = useState(0);
   const [selectedShell, setSelectedShell] = useState<string | null>(null);
@@ -60,7 +54,7 @@ const TerminalDialog: React.FC<Props> = ({
     mouseY: number;
   } | null>(null);
 
-  const { isOpen, openStream } = useStreamMux();
+  const { isOpen } = useStreamMux();
   const theme = useTheme();
 
   // Fetch available shells when dialog opens
@@ -90,15 +84,12 @@ const TerminalDialog: React.FC<Props> = ({
 
   const handleDialogExited = useCallback(() => {
     // Close stream on dialog exit
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
+    closeStream();
     setSelectedShell(null);
     xterm.current?.dispose();
     xterm.current = null;
     fitAddon.current = null;
-  }, []);
+  }, [closeStream]);
 
   // Setup xterm and stream when shell is selected
   useEffect(() => {
@@ -113,10 +104,7 @@ const TerminalDialog: React.FC<Props> = ({
 
     // Dispose previous instance
     xterm.current?.dispose();
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
+    closeStream();
 
     xterm.current = new Terminal({
       fontFamily: "monospace",
@@ -135,8 +123,14 @@ const TerminalDialog: React.FC<Props> = ({
     xterm.current.open(termRef.current);
     fitAddon.current.fit();
 
-    // Handle copy/paste with Shift+C/V
+    // Handle special keys
     xterm.current.attachCustomKeyEventHandler((event) => {
+      // Escape - close dialog
+      if (event.key === "Escape" && event.type === "keydown") {
+        onClose();
+        return false;
+      }
+
       // Shift+C - Copy
       if (
         event.shiftKey &&
@@ -184,27 +178,20 @@ const TerminalDialog: React.FC<Props> = ({
     // Open container terminal stream
     const cols = xterm.current.cols;
     const rows = xterm.current.rows;
-    const payload = buildContainerPayload(containerId, activeShell, cols, rows);
-    const stream = openStream("container", payload);
-
-    if (stream) {
-      streamRef.current = stream;
-
-      // Wire up data handler
-      stream.onData = (data: Uint8Array) => {
+    const opened = openStream({
+      open: () => openContainerStream(containerId, activeShell, cols, rows),
+      onData: (data: Uint8Array) => {
         if (xterm.current) {
           const text = decodeString(data);
           xterm.current.write(text, () => {
             xterm.current?.scrollToBottom();
           });
         }
-      };
+      },
+    });
 
-      stream.onClose = () => {
-        streamRef.current = null;
-      };
-
-      stream.resize(xterm.current.cols, xterm.current.rows);
+    if (opened && streamRef.current) {
+      streamRef.current.resize(xterm.current.cols, xterm.current.rows);
     }
 
     // Terminal input -> send to stream
@@ -233,41 +220,35 @@ const TerminalDialog: React.FC<Props> = ({
       xterm.current?.dispose();
       window.removeEventListener("resize", handleResize);
       // Close stream when effect cleans up
-      if (streamRef.current) {
-        streamRef.current.close();
-        streamRef.current = null;
-      }
+      closeStream();
     };
   }, [
     open,
     activeShell,
     containerId,
     isOpen,
-    openStream,
     availableShells.length,
     theme.palette.background.default,
     theme.palette.text.primary,
     terminalKey,
+    closeStream,
+    openStream,
+    streamRef,
+    onClose,
   ]);
 
   // Shell picker handler
-  const handleShellChange = (e: SelectChangeEvent<string>) => {
-    const newShell = e.target.value as string;
+  const handleShellChange = (e: SelectChangeEvent) => {
+    const newShell = e.target.value;
     // Close existing stream
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
+    closeStream();
     setSelectedShell(newShell);
     setTerminalKey((k) => k + 1); // Force remount of xterm
   };
 
   // Dialog close handler
   const handleDialogClose = () => {
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
+    closeStream();
     onClose();
   };
 
@@ -321,7 +302,7 @@ const TerminalDialog: React.FC<Props> = ({
   }, []);
 
   return (
-    <Dialog
+    <GeneralDialog
       open={open}
       onClose={handleDialogClose}
       maxWidth="md"
@@ -454,7 +435,7 @@ const TerminalDialog: React.FC<Props> = ({
       <DialogActions>
         <Button onClick={handleDialogClose}>Close</Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

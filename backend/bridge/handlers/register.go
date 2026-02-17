@@ -3,6 +3,8 @@ package handlers
 import (
 	"net"
 
+	"github.com/mordilloSan/go-logger/logger"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
@@ -56,5 +58,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	logs.RegisterStreamHandlers(StreamHandlers)
 
 	// Load modules from YAML files - log errors but don't fail
-	_ = modules.LoadModules(StreamHandlers)
+	if err := modules.LoadModules(StreamHandlers); err != nil {
+		logger.Warnf("failed to load modules: %v", err)
+	}
 }

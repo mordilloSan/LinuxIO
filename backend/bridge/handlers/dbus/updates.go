@@ -157,7 +157,7 @@ func extractNameVersion(packageID string) (name, version string) {
 }
 
 func toStringSlice(iface any) []string {
-	arr, ok := iface.([]interface{})
+	arr, ok := iface.([]any)
 	if !ok {
 		return []string{}
 	}
@@ -286,8 +286,7 @@ collectPackages:
 					infoEnum, _ := sig.Body[0].(uint32)
 					pkgID, _ := sig.Body[1].(string)
 					summary, _ := sig.Body[2].(string)
-					name, version := extractNameVersion(pkgID)
-					_ = name // unused, but extractNameVersion returns both
+					_, version := extractNameVersion(pkgID)
 
 					// Sanitize invalid InfoEnum values (e.g., Docker repos have 327685 instead of valid 0-30 range)
 					// PackageKit's valid severity range is 0-30. Values outside this are repository metadata bugs.

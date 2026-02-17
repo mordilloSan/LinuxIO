@@ -24,6 +24,7 @@ endif
 
 # Toolchain versions (sourced from repo files)
 GO_VERSION ?= $(shell awk '/^go / {print $$2; exit}' "$(BACKEND_DIR)/go.mod")
+GO_MAJOR_MINOR := $(shell echo "$(GO_VERSION)" | cut -d. -f1,2)
 NODE_VERSION ?= $(shell python3 -c "import json, pathlib; data=json.loads(pathlib.Path('frontend/package.json').read_text()); print((data.get('engines') or {}).get('node',''))" 2>/dev/null)
 CC ?= cc
 
@@ -72,6 +73,11 @@ GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(s
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
+SKIP_ENSURE_GO ?= 0
+GO_BUILD_PREREQ := ensure-go
+ifeq ($(SKIP_ENSURE_GO),1)
+GO_BUILD_PREREQ :=
+endif
 
 # ---- toolchain --------------------------------------------------------------
 CC       ?= gcc
@@ -217,7 +223,7 @@ ensure-golint: ensure-go
 	     out="$$( "$$bin" version 2>/dev/null || true)"; \
 	     ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
 	     ver_no_v="$${ver#v}"; major="$${ver_no_v%%.*}"; \
-	     built_ok="$$( printf '%s' "$$out" | grep -Eq 'built with go1\.25(\.|$$)' && echo yes || echo no )"; \
+	     built_ok="$$( printf '%s' "$$out" | grep -Eq 'built with go$(subst .,\.,$(GO_MAJOR_MINOR))(\.|$$)' && echo yes || echo no )"; \
 	     if [ "$$major" = "2" ] && [ "$$built_ok" = "yes" ]; then need=0; fi; \
 	   fi; \
 	   if [ $$need -eq 1 ]; then \
@@ -231,7 +237,7 @@ ensure-golint: ensure-go
 	   ver="$$( printf '%s' "$$out" | sed -n 's/^golangci-lint has version[[:space:]]\([v0-9.]\+\).*/\1/p' )"; \
 	   ver_no_v="$${ver#v}"; major="$${ver_no_v%%.*}"; \
 	   [ "$$major" = "2" ] || { echo "❌ not a v2 golangci-lint"; exit 1; }; \
-	   echo "$$out" | grep -Eq 'built with go1\.25(\.|$$)' || { echo "❌ golangci-lint not built with Go 1.25"; exit 1; }; \
+	   echo "$$out" | grep -Eq 'built with go$(subst .,\.,$(GO_MAJOR_MINOR))(\.|$$)' || { echo "❌ golangci-lint not built with Go $(GO_MAJOR_MINOR)"; exit 1; }; \
 	   echo "✔ golangci-lint v2 ready."; \
 	}
 
@@ -345,7 +351,7 @@ build-vite:
 	@echo "🏗️  Building frontend..."
 	@bash -c 'cd frontend && npx vite build && echo "✅ Frontend built successfully!"'
 
-build-backend: ensure-go
+build-backend: $(GO_BUILD_PREREQ)
 	@echo ""
 	@echo "🏗️  Building backend..."
 	@echo "📦 Module: $(MODULE_PATH)"
@@ -366,14 +372,12 @@ build-backend: ensure-go
 		-X '$(MODULE_PATH)/common/config.BridgeSHA256=$(BRIDGE_SHA256)'" \
 	-o ../linuxio-webserver ./webserver/ && \
 	echo "✅ Backend built successfully!" && \
-	echo "" && \
-	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-webserver" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
 	echo "📊 Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
 	echo "🔐 SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
 
-build-bridge: ensure-go
+build-bridge: $(GO_BUILD_PREREQ)
 	@echo ""
 	@echo "🌉 Building bridge..."
 	@echo "📦 Module: $(MODULE_PATH)"
@@ -388,8 +392,6 @@ build-bridge: ensure-go
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio-bridge ./bridge && \
 	echo "✅ Bridge built successfully!" && \
-	echo "" && \
-	echo "Summary:" && \
 	echo "📄 Path: $(PWD)/linuxio-bridge" && \
 	echo "🔖 Version: $(GIT_VERSION)" && \
 	echo "📊 Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
@@ -420,7 +422,7 @@ build-auth:
 	  echo "🔎 checksec:"; checksec --file=linuxio-auth || true; \
 	fi
 
-build-cli: ensure-go
+build-cli: $(GO_BUILD_PREREQ)
 	@echo ""
 	@echo "🖥️  Building CLI..."
 	@cd "$(BACKEND_DIR)" && \
@@ -505,14 +507,14 @@ dev: setup dev-prep
 	@linuxio logs $(DEV_LOG_LINES)
 
 # Internal target: build backend + auth + cli (requires bridge already built)
-_build-binaries:
+_build-binaries: ensure-go
 	@echo ""
 	@echo "🔐 Capturing bridge hash for backend build..."
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Hash: $$BRIDGE_HASH"; \
-	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH
+	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-auth
-	@$(MAKE) --no-print-directory build-cli
+	@$(MAKE) --no-print-directory build-cli SKIP_ENSURE_GO=1
 
 build: generate test build-vite build-bridge _build-binaries
 

@@ -8,7 +8,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { initStreamMux, closeStreamMux, MuxStatus } from "@/api/linuxio";
+import { linuxio, initStreamMux, closeStreamMux, type MuxStatus } from "@/api";
 import {
   AuthContextType,
   AuthState,
@@ -26,6 +26,7 @@ const initialState: AuthState = {
   isInitialized: false,
   user: null,
   privileged: false,
+  dockerAvailable: null,
   indexerAvailable: null,
 };
 
@@ -40,6 +41,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: true,
         user: action.payload.user,
         privileged: action.payload.privileged,
+        dockerAvailable: action.payload.dockerAvailable ?? null,
         indexerAvailable: action.payload.indexerAvailable ?? null,
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
@@ -49,6 +51,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: false,
         user: null,
         privileged: false,
+        dockerAvailable: null,
         indexerAvailable: null,
       };
     case AUTH_ACTIONS.SIGN_IN:
@@ -57,6 +60,7 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: true,
         user: action.payload.user,
         privileged: action.payload.privileged,
+        dockerAvailable: action.payload.dockerAvailable ?? null,
         indexerAvailable: action.payload.indexerAvailable ?? null,
       };
     case AUTH_ACTIONS.SIGN_OUT:
@@ -65,7 +69,14 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: false,
         user: null,
         privileged: false,
+        dockerAvailable: null,
         indexerAvailable: null,
+      };
+    case AUTH_ACTIONS.UPDATE_CAPABILITIES:
+      return {
+        ...state,
+        dockerAvailable: action.payload.dockerAvailable,
+        indexerAvailable: action.payload.indexerAvailable,
       };
     default: {
       const exhaustiveCheck: never = action;
@@ -149,6 +160,25 @@ function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     if (state.isAuthenticated) {
       const mux = initStreamMux();
+
+      const refreshCapabilities = async () => {
+        try {
+          const caps = await linuxio.system.get_capabilities.call();
+          dispatch({
+            type: AUTH_ACTIONS.UPDATE_CAPABILITIES,
+            payload: {
+              dockerAvailable: caps.docker_available,
+              indexerAvailable: caps.indexer_available,
+            },
+          });
+        } catch (err) {
+          console.warn("[AuthContext] Failed to refresh capabilities:", err);
+        }
+      };
+
+      if (mux.status === "open") {
+        void refreshCapabilities();
+      }
       // Listen for WebSocket status changes
       const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
         if (status === "error") {
@@ -157,6 +187,8 @@ function AuthProvider({ children }: AuthProviderProps) {
           console.log("[AuthContext] Session invalid or expired");
           toast.error("Session expired. Please sign in again.");
           doLocalSignOut(false);
+        } else if (status === "open") {
+          void refreshCapabilities();
         } else if (status === "closed") {
           // Network issue or tab closed - don't logout
           // Session cookie might still be valid
@@ -177,6 +209,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       credentials: "include",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
@@ -209,7 +242,6 @@ function AuthProvider({ children }: AuthProviderProps) {
       payload: {
         user,
         privileged: data.privileged,
-        indexerAvailable: data.indexer_available ?? null,
       },
     });
 
@@ -219,7 +251,11 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   const signOut = useCallback(async () => {
     try {
-      await fetch(`${API_BASE}/auth/logout`, { credentials: "include" });
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
     } catch {
       // ignore; we still want to clear locally
     }

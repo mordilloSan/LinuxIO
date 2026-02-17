@@ -1,4 +1,4 @@
-export type Update = {
+export interface Update {
   package_id: string;
   summary: string;
   version: string;
@@ -7,4 +7,4 @@ export type Update = {
   cve: string[];
   restart: number;
   state: number;
-};
+}

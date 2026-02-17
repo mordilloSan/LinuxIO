@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/godbus/dbus/v5"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 type Client struct {
@@ -21,11 +22,18 @@ func New() (*Client, error) {
 	return &Client{conn: c, obj: obj}, nil
 }
 
-func (c *Client) Close() { _ = c.conn.Close() }
+func (c *Client) Close() {
+	if c.conn == nil {
+		return
+	}
+	if err := c.conn.Close(); err != nil {
+		logger.Debugf("failed to close systemd D-Bus connection: %v", err)
+	}
+}
 
 func (c *Client) Enable(ctx context.Context, names ...string) error {
 	var carries_install_info bool
-	var changes [][]interface{} // Fixed: was [][]string
+	var changes [][]any // Fixed: was [][]string
 	return c.obj.CallWithContext(ctx,
 		"org.freedesktop.systemd1.Manager.EnableUnitFiles", 0,
 		names, false, true,
@@ -33,7 +41,7 @@ func (c *Client) Enable(ctx context.Context, names ...string) error {
 }
 
 func (c *Client) Disable(ctx context.Context, names ...string) error {
-	var changes [][]interface{} // Fixed: was [][]string
+	var changes [][]any // Fixed: was [][]string
 	return c.obj.CallWithContext(ctx,
 		"org.freedesktop.systemd1.Manager.DisableUnitFiles", 0,
 		names, false,

@@ -17,8 +17,7 @@ import CreateGroupDialog from "./components/CreateGroupDialog";
 import DeleteGroupDialog from "./components/DeleteGroupDialog";
 import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
-import type { AccountGroup } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, type AccountGroup } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";

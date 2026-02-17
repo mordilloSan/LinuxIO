@@ -78,16 +78,18 @@ func parseIconIdentifier(identifier string) (IconType, string) {
 	}
 
 	// Check for simple-icon prefix (si:nginx)
-	if strings.HasPrefix(identifier, "si:") || strings.HasPrefix(identifier, "simple-icon:") {
-		name := strings.TrimPrefix(identifier, "si:")
-		name = strings.TrimPrefix(name, "simple-icon:")
+	if name, ok := strings.CutPrefix(identifier, "si:"); ok {
+		return IconTypeSimpleIcon, name
+	}
+	if name, ok := strings.CutPrefix(identifier, "simple-icon:"); ok {
 		return IconTypeSimpleIcon, name
 	}
 
 	// Check for dashboard-icon prefix (di:nginx)
-	if strings.HasPrefix(identifier, "di:") || strings.HasPrefix(identifier, "dashboard-icon:") {
-		name := strings.TrimPrefix(identifier, "di:")
-		name = strings.TrimPrefix(name, "dashboard-icon:")
+	if name, ok := strings.CutPrefix(identifier, "di:"); ok {
+		return IconTypeDashboardIcon, name
+	}
+	if name, ok := strings.CutPrefix(identifier, "dashboard-icon:"); ok {
 		return IconTypeDashboardIcon, name
 	}
 

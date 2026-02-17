@@ -32,7 +32,7 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
     data: module,
     isPending,
     isError,
-  } = linuxio.modules.GetModuleDetails.useQuery(moduleName ?? "", {
+  } = linuxio.modules.get_module_details.useQuery(moduleName ?? "", {
     enabled: open && !!moduleName,
   });
 

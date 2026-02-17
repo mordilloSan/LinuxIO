@@ -1,5 +1,5 @@
 // Backend Settings structure
-export type BackendSettings = {
+export interface BackendSettings {
   appSettings: {
     theme: string;
     primaryColor: string;
@@ -9,18 +9,18 @@ export type BackendSettings = {
   docker: {
     folder: string;
   };
-};
+}
 
 // Flattened config for frontend use
-export type AppConfig = {
+export interface AppConfig {
   theme: string;
   primaryColor: string;
   sidebarCollapsed: boolean;
   showHiddenFiles: boolean;
   dockerFolder?: string;
-};
+}
 
-export type ConfigContextType = {
+export interface ConfigContextType {
   config: AppConfig;
   updateConfig: (
     patch: Partial<AppConfig> | ((prev: AppConfig) => Partial<AppConfig>),
@@ -30,8 +30,8 @@ export type ConfigContextType = {
     value: AppConfig[K] | ((prev: AppConfig[K]) => AppConfig[K]),
   ) => void;
   isLoaded: boolean;
-};
+}
 
-export type ConfigProviderProps = {
+export interface ConfigProviderProps {
   children: React.ReactNode;
-};
+}

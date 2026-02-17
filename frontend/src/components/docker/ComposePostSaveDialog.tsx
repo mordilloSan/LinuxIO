@@ -31,9 +31,9 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
 
   const getActionMessage = () => {
     if (stackState === "running") {
-      return `The compose file for "${stackName}" has been saved. Would you like to restart the stack to apply the changes?`;
+      return `The compose file for "${stackName}" has been saved.\nWould you like to restart the stack to apply the changes?`;
     }
-    return `The compose file for "${stackName}" has been saved successfully. Would you like to start the stack now?`;
+    return `The compose file for "${stackName}" has been saved successfully.\nWould you like to start the stack now?`;
   };
 
   const handleAction = () => {
@@ -48,7 +48,7 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
     <Dialog
       open={open}
       onClose={onDoNothing}
-      maxWidth="sm"
+      maxWidth="xs"
       fullWidth
       slotProps={{
         paper: {
@@ -95,6 +95,7 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
           sx={{
             mt: 2,
             color: theme.palette.text.secondary,
+            whiteSpace: "pre-line",
           }}
         >
           {getActionMessage()}

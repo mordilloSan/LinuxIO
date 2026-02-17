@@ -53,7 +53,7 @@ func readZFSArc() uint64 {
 	if err != nil {
 		return 0
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		// format line looks like: "size    4    1234567890"
 		if !strings.HasPrefix(line, "size") {
 			continue
@@ -113,11 +113,9 @@ func getDockerMemoryUsage() (uint64, error) {
 	)
 
 	for _, ctr := range containers {
-		wg.Add(1)
 		id := ctr.ID
 
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -147,7 +145,7 @@ func getDockerMemoryUsage() (uint64, error) {
 			}
 
 			ch <- agg{n: usage}
-		}()
+		})
 	}
 
 	wg.Wait()

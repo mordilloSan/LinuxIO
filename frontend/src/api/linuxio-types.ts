@@ -36,7 +36,7 @@ export interface CPUInfoResponse {
     load15: number;
   };
   perCoreUsage: number[];
-  temperature: { [core: string]: number };
+  temperature: Record<string, number>;
 }
 
 export interface MemoryInfoResponse {
@@ -45,6 +45,12 @@ export interface MemoryInfoResponse {
     active: number;
     swapTotal: number;
     swapFree: number;
+  };
+  docker: {
+    used: number;
+  };
+  zfs: {
+    arc: number;
   };
 }
 
@@ -93,6 +99,13 @@ export interface HostInfo {
   platformVersion: string;
   kernelVersion: string;
   kernelArch: string;
+}
+
+export interface CapabilitiesResponse {
+  docker_available: boolean;
+  indexer_available: boolean;
+  docker_error?: string;
+  indexer_error?: string;
 }
 
 export interface DistroInfo {
@@ -158,10 +171,10 @@ export interface DockerNetwork {
   EnableIPv4?: boolean;
   EnableIPv6?: boolean;
   IPAM?: {
-    Config?: Array<{
+    Config?: {
       Subnet: string;
       Gateway: string;
-    }>;
+    }[];
   };
   Options?: Record<string, string>;
   Labels?: Record<string, string>;
@@ -293,19 +306,51 @@ export interface SubfoldersResponse {
 
 export interface SearchResponse {
   query: string;
-  results: Array<{
+  results: {
     path: string;
     name: string;
     isDir: boolean;
     size: number;
     modified: string;
-  }>;
+  }[];
   count: number;
 }
 
 export interface UsersGroupsResponse {
   users: string[];
   groups: string[];
+}
+
+export interface IndexerStatusResponse {
+  running: boolean;
+  status: string;
+  files_indexed: number;
+  dirs_indexed: number;
+  total_size: number;
+  last_indexed?: string;
+  warning?: string;
+}
+
+export interface FileDownloadResult {
+  path: string;
+  size: number;
+  fileName: string;
+}
+
+export interface ArchiveDownloadResult {
+  archiveName: string;
+  size: number;
+  format: string;
+}
+
+export interface CompressResult {
+  path: string;
+  size: number;
+  format: string;
+}
+
+export interface ExtractResult {
+  destination: string;
 }
 
 // ============================================================================
@@ -448,6 +493,46 @@ export interface QRCodeResponse {
   qrcode: string;
 }
 
+export interface DeleteStackResult {
+  message: string;
+  project: string;
+  files_deleted: boolean;
+  dir_deleted: boolean;
+  deleted_path: string;
+}
+
+export interface ConfigSettings {
+  appSettings: {
+    theme: string;
+    primaryColor: string;
+    sidebarCollapsed: boolean;
+    showHiddenFiles: boolean;
+  };
+  docker: {
+    folder: string;
+  };
+}
+
+export interface ConfigSetResult {
+  message: string;
+  path: string;
+}
+
+export interface DockerConfigSetResult {
+  message: string;
+  path: string;
+  appliedFolder: string;
+}
+
+export interface DirectoryValidationResult {
+  valid: boolean;
+  exists: boolean;
+  canCreate: boolean;
+  canWrite: boolean;
+  error?: string;
+  isDirectory: boolean;
+}
+
 // ============================================================================
 // API Schema Definition
 // ============================================================================
@@ -458,6 +543,7 @@ export interface QRCodeResponse {
  */
 export interface LinuxIOSchema {
   system: {
+    get_capabilities: { args: []; result: CapabilitiesResponse };
     get_cpu_info: { args: []; result: CPUInfoResponse };
     get_sensor_info: { args: []; result: unknown };
     get_motherboard_info: { args: []; result: MotherboardInfo };
@@ -495,67 +581,88 @@ export interface LinuxIOSchema {
     compose_down: { args: [projectName: string]; result: any };
     compose_stop: { args: [projectName: string]; result: any };
     compose_restart: { args: [projectName: string]; result: any };
+    delete_stack: {
+      args: [projectName: string, deleteFile: string, deleteDirectory: string];
+      result: DeleteStackResult;
+    };
     get_docker_folder: { args: []; result: { folder: string } };
     validate_compose: {
       args: [content: string];
       result: {
         valid: boolean;
-        errors: Array<{
+        errors: {
           line?: number;
           column?: number;
           field?: string;
           message: string;
           type: "error" | "warning";
-        }>;
+        }[];
       };
     };
     get_compose_file_path: {
       args: [stackName: string];
       result: { path: string; exists: boolean; directory: string };
     };
+    validate_stack_directory: {
+      args: [dirPath: string];
+      result: DirectoryValidationResult;
+    };
+    get_icon_uri: {
+      args: [identifier: string];
+      result: { uri: string };
+    };
+    get_icon: {
+      args: [identifier: string];
+      result: { data: string };
+    };
+    get_icon_info: {
+      args: [identifier: string];
+      result: { type: string; identifier: string; cached: boolean };
+    };
+    clear_icon_cache: { args: []; result: { message: string } };
   };
 
   dbus: {
-    Reboot: { args: []; result: void };
-    PowerOff: { args: []; result: void };
-    GetUpdates: { args: []; result: Update[] };
-    GetUpdatesBasic: { args: []; result: Update[] };
-    GetUpdateDetail: { args: [packageId: string]; result: Update };
-    InstallPackage: { args: [packageId: string]; result: void };
-    GetAutoUpdates: { args: []; result: AutoUpdateState };
-    SetAutoUpdates: {
+    reboot: { args: []; result: void };
+    power_off: { args: []; result: void };
+    get_updates: { args: []; result: Update[] };
+    get_updates_basic: { args: []; result: Update[] };
+    get_update_detail: { args: [packageId: string]; result: Update };
+    install_package: { args: [packageId: string]; result: void };
+    get_auto_updates: { args: []; result: AutoUpdateState };
+    set_auto_updates: {
       args: [options: AutoUpdateOptions];
       result: AutoUpdateState;
     };
-    ApplyOfflineUpdates: {
+    apply_offline_updates: {
       args: [];
       result: { status?: string; error?: string };
     };
-    GetUpdateHistory: { args: []; result: UpdateHistoryRow[] };
-    ListServices: { args: []; result: Service[] };
-    GetServiceInfo: { args: [serviceName: string]; result: Service };
-    GetServiceLogs: {
+    get_update_history: { args: []; result: UpdateHistoryRow[] };
+    list_services: { args: []; result: Service[] };
+    get_service_info: { args: [serviceName: string]; result: Service };
+    get_service_logs: {
       args: [serviceName: string, lines: string];
       result: string[];
     };
-    StartService: { args: [serviceName: string]; result: void };
-    StopService: { args: [serviceName: string]; result: void };
-    RestartService: { args: [serviceName: string]; result: void };
-    ReloadService: { args: [serviceName: string]; result: void };
-    EnableService: { args: [serviceName: string]; result: void };
-    DisableService: { args: [serviceName: string]; result: void };
-    MaskService: { args: [serviceName: string]; result: void };
-    UnmaskService: { args: [serviceName: string]; result: void };
-    GetNetworkInfo: { args: []; result: NetworkInterface[] };
-    SetIPv4Manual: {
+    start_service: { args: [serviceName: string]; result: void };
+    stop_service: { args: [serviceName: string]; result: void };
+    restart_service: { args: [serviceName: string]; result: void };
+    reload_service: { args: [serviceName: string]; result: void };
+    enable_service: { args: [serviceName: string]; result: void };
+    disable_service: { args: [serviceName: string]; result: void };
+    mask_service: { args: [serviceName: string]; result: void };
+    unmask_service: { args: [serviceName: string]; result: void };
+    get_network_info: { args: []; result: NetworkInterface[] };
+    set_ipv4_manual: {
       args: [iface: string, address: string, gateway: string, dns: string];
       result: void;
     };
-    SetIPv4: { args: [iface: string, method: string]; result: void };
-    SetIPv6: { args: [iface: string, method: string]; result: void };
-    SetMTU: { args: [iface: string, mtu: string]; result: void };
-    EnableConnection: { args: [iface: string]; result: void };
-    DisableConnection: { args: [iface: string]; result: void };
+    set_ipv4: { args: [iface: string, method: string]; result: void };
+    set_ipv6: { args: [iface: string, method: string]; result: void };
+    set_mtu: { args: [iface: string, mtu: string]; result: void };
+    enable_connection: { args: [iface: string]; result: void };
+    disable_connection: { args: [iface: string]; result: void };
   };
 
   filebrowser: {
@@ -570,15 +677,12 @@ export interface LinuxIOSchema {
       args: [action: string, src: string, dst: string];
       result: void;
     };
+    indexer_status: { args: []; result: IndexerStatusResponse };
     dir_size: { args: [path: string]; result: DirectorySizeData };
     subfolders: { args: [path: string]; result: SubfoldersResponse };
     search: {
       args: [query: string, limit?: string, basePath?: string];
       result: SearchResponse;
-    };
-    indexer_status: {
-      args: [];
-      result: { running: boolean; progress: number };
     };
     chmod: {
       args: [
@@ -595,18 +699,29 @@ export interface LinuxIOSchema {
       args: [tempPath: string, targetPath: string];
       result: void;
     };
-    download: { args: [path: string]; result: Uint8Array };
-    archive: { args: [path: string]; result: void };
-    compress: {
-      args: [outputPath: string, format: string, ...files: string[]];
-      result: void;
+    download: { args: [path: string]; result: FileDownloadResult };
+    archive: {
+      args: [format: string, ...paths: string[]];
+      result: ArchiveDownloadResult;
     };
-    extract: { args: [archivePath: string, destPath: string]; result: void };
+    compress: {
+      args: [format: string, destination: string, ...paths: string[]];
+      result: CompressResult;
+    };
+    extract: {
+      args: [archivePath: string, destination?: string];
+      result: ExtractResult;
+    };
   };
 
   config: {
-    theme_get: { args: []; result: string };
-    theme_set: { args: [theme: string]; result: void };
+    get: { args: []; result: ConfigSettings };
+    set: { args: [payload: string]; result: ConfigSetResult };
+    docker_config_get: { args: []; result: { folder: string } };
+    docker_config_set: {
+      args: [payload: string];
+      result: DockerConfigSetResult;
+    };
   };
 
   control: {
@@ -616,17 +731,17 @@ export interface LinuxIOSchema {
   };
 
   modules: {
-    GetModules: { args: []; result: ModuleInfo[] };
-    GetModuleDetails: {
+    get_modules: { args: []; result: ModuleInfo[] };
+    get_module_details: {
       args: [moduleName: string];
       result: ModuleDetailsInfo;
     };
-    ValidateModule: { args: [path: string]; result: ValidationResult };
-    InstallModule: {
+    validate_module: { args: [path: string]; result: ValidationResult };
+    install_module: {
       args: [sourcePath: string, targetName?: string, createSymlink?: string];
       result: InstallResult;
     };
-    UninstallModule: { args: [moduleName: string]; result: UninstallResult };
+    uninstall_module: { args: [moduleName: string]; result: UninstallResult };
   };
 
   wireguard: {
@@ -752,7 +867,11 @@ export type CommandName<H extends HandlerName> = keyof LinuxIOSchema[H];
 export type CommandArgs<
   H extends HandlerName,
   C extends CommandName<H>,
-> = LinuxIOSchema[H][C] extends { args: infer A } ? A : never;
+> = LinuxIOSchema[H][C] extends { args: infer A }
+  ? A extends unknown[]
+    ? A
+    : never
+  : never;
 
 /** Extract result type for a handler/command pair */
 export type CommandResult<

@@ -65,8 +65,7 @@ func repairConfig(cfgPath, base string) error {
 // logYAMLError extracts and logs detailed error information from goccy/go-yaml
 func logYAMLError(err error, path string) {
 	// Try to extract syntax error with position info
-	var syntaxErr *yaml.SyntaxError
-	if errors.As(err, &syntaxErr) {
+	if syntaxErr, ok := errors.AsType[*yaml.SyntaxError](err); ok {
 		if tok := syntaxErr.GetToken(); tok != nil {
 			logger.Errorf("config error in %s at line %d, column %d: %s",
 				path,

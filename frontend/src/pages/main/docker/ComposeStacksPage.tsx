@@ -7,18 +7,19 @@ import {
   DialogContentText,
   DialogTitle,
 } from "@mui/material";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import ComposeList, { type ComposeProject } from "./ComposeList";
 
 import {
-  encodeString,
-  getStreamMux,
+  linuxio,
+  CACHE_TTL_MS,
+  isConnected,
+  openFileUploadStream,
   STREAM_CHUNK_SIZE,
-  type ResultFrame,
-} from "@/api/linuxio";
-import linuxio from "@/api/react-query";
+} from "@/api";
 import ComposeEditorDialog from "@/components/docker/ComposeEditorDialog";
 import ComposeOperationDialog from "@/components/docker/ComposeOperationDialog";
 import ComposePostSaveDialog from "@/components/docker/ComposePostSaveDialog";
@@ -26,21 +27,24 @@ import { ValidationResult } from "@/components/docker/ComposeValidationFeedback"
 import DeleteStackDialog, {
   type DeleteOption,
 } from "@/components/docker/DeleteStackDialog";
-import ReindexDialog from "@/components/docker/ReindexDialog";
+import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import StackSetupDialog from "@/components/docker/StackSetupDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useConfig } from "@/hooks/useConfig";
+import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
-  onMountReindexHandler?: (handler: () => void) => void;
+  onMountIndexerHandler?: (handler: () => void) => void;
 }
 
 const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   onMountCreateHandler,
-  onMountReindexHandler,
+  onMountIndexerHandler,
 }) => {
+  const queryClient = useQueryClient();
   const { config } = useConfig();
+  const { runChunked: runChunkedStreamResult } = useStreamResult();
 
   // Setup dialog state
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
@@ -78,8 +82,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     string | undefined
   >(undefined);
 
-  // Reindex dialog state
-  const [reindexDialogOpen, setReindexDialogOpen] = useState(false);
+  // Indexer dialog state
+  const [indexerDialogOpen, setIndexerDialogOpen] = useState(false);
 
   // Delete stack dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -94,6 +98,9 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   } = linuxio.docker.list_compose_projects.useQuery({
     refetchInterval: 5000,
   });
+
+  const { mutateAsync: deleteStack } =
+    linuxio.docker.delete_stack.useMutation();
 
   // Handle operation dialog close
   const handleOperationDialogClose = useCallback(() => {
@@ -155,7 +162,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           const deleteFile = option === "file" || option === "directory";
           const deleteDirectory = option === "directory";
 
-          await linuxio.call("docker", "delete_stack", [
+          await deleteStack([
             projectName,
             deleteFile ? "true" : "false",
             deleteDirectory ? "true" : "false",
@@ -180,7 +187,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         setDeleteLoading(false);
       }
     },
-    [deleteDialogProject, refetch],
+    [deleteDialogProject, deleteStack, refetch],
   );
 
   const handleDeleteDialogClose = useCallback(() => {
@@ -190,16 +197,16 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     }
   }, [deleteLoading]);
 
-  const handleReindex = useCallback(() => {
-    setReindexDialogOpen(true);
+  const handleIndexer = useCallback(() => {
+    setIndexerDialogOpen(true);
   }, []);
 
-  const handleReindexComplete = useCallback(() => {
+  const handleIndexerComplete = useCallback(() => {
     refetch();
-    toast.success("Docker folder reindexed successfully");
+    toast.success("Docker folder indexed successfully");
   }, [refetch]);
 
-  const isLoading = operationDialogOpen || reindexDialogOpen;
+  const isLoading = operationDialogOpen || indexerDialogOpen;
 
   // Create stack handler - open setup dialog first
   const handleCreateStack = useCallback(() => {
@@ -227,20 +234,25 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   }, [onMountCreateHandler, handleCreateStack]);
 
   useEffect(() => {
-    if (onMountReindexHandler) {
-      onMountReindexHandler(handleReindex);
+    if (onMountIndexerHandler) {
+      onMountIndexerHandler(handleIndexer);
     }
-  }, [onMountReindexHandler, handleReindex]);
+  }, [onMountIndexerHandler, handleIndexer]);
 
   // Edit stack handler
   const handleEditStack = useCallback(
     async (projectName: string, configPath: string) => {
       try {
         // Fetch file content
-        const result = await linuxio.call<{ content?: string }>(
-          "filebrowser",
-          "resource_get",
-          [configPath, "", "true"],
+        const result = await queryClient.fetchQuery(
+          linuxio.filebrowser.resource_get.queryOptions(
+            configPath,
+            "",
+            "true",
+            {
+              staleTime: CACHE_TTL_MS.NONE,
+            },
+          ),
         );
 
         if (result && result.content) {
@@ -258,18 +270,14 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         );
       }
     },
-    [],
+    [queryClient],
   );
 
   // Validate compose file
   const handleValidate = useCallback(
     async (content: string): Promise<ValidationResult> => {
       try {
-        const result = await linuxio.call<ValidationResult>(
-          "docker",
-          "validate_compose",
-          [content],
-        );
+        const result = await linuxio.docker.validate_compose.call(content);
         return result;
       } catch (error) {
         return {
@@ -295,8 +303,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       filePath: string,
       override: boolean = false,
     ) => {
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         throw new Error("Stream connection not ready");
       }
@@ -305,55 +312,13 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       const contentBytes = encoder.encode(content);
       const contentSize = contentBytes.length;
 
-      // Build payload with optional override flag
-      const args = [filePath, contentSize.toString()];
-      if (override) {
-        args.push("true");
-      }
-      const payload = encodeString(`fb-upload\0${args.join("\0")}`);
-      const stream = mux.openStream("fb-upload", payload);
-
-      if (!stream) {
-        toast.error("Failed to open save stream");
-        throw new Error("Failed to open save stream");
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        stream.onResult = (result: ResultFrame) => {
-          if (result.status === "ok") {
-            resolve();
-          } else {
-            reject(new Error(result.error || "Save failed"));
-          }
-        };
-
-        stream.onClose = () => {
-          reject(new Error("Stream closed unexpectedly"));
-        };
-
-        // Send content in chunks
-        let offset = 0;
-        const sendNextChunk = () => {
-          if (stream.status !== "open") return;
-
-          if (offset >= contentSize) {
-            stream.close();
-            return;
-          }
-
-          const chunk = contentBytes.slice(offset, offset + STREAM_CHUNK_SIZE);
-          stream.write(chunk);
-          offset += chunk.length;
-
-          // Continue sending
-          if (offset < contentSize) {
-            setTimeout(sendNextChunk, 0);
-          } else {
-            stream.close();
-          }
-        };
-
-        sendNextChunk();
+      await runChunkedStreamResult<void>({
+        open: () => openFileUploadStream(filePath, contentSize, override),
+        openErrorMessage: "Failed to open save stream",
+        data: contentBytes,
+        chunkSize: STREAM_CHUNK_SIZE,
+        yieldMs: 0,
+        closeMessage: "Stream closed unexpectedly",
       });
 
       toast.success("Compose file saved successfully");
@@ -381,22 +346,22 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       setPostSaveStackState(state);
       setPostSaveDialogOpen(true);
     },
-    [projects, refetch],
+    [projects, refetch, runChunkedStreamResult],
   );
 
   // Save compose file with overwrite protection
   const handleSave = useCallback(
     async (content: string, stackName: string, existingFilePath: string) => {
+      let filePath = existingFilePath;
+
       try {
         // Get the file path (either from existing file or build new one)
-        let filePath = existingFilePath;
-
         if (editorMode === "create") {
-          const pathInfo = await linuxio.call<{
-            path: string;
-            exists: boolean;
-            directory: string;
-          }>("docker", "get_compose_file_path", [stackName]);
+          const pathInfo = await queryClient.fetchQuery(
+            linuxio.docker.get_compose_file_path.queryOptions(stackName, {
+              staleTime: CACHE_TTL_MS.NONE,
+            }),
+          );
           filePath = pathInfo.path;
         }
 
@@ -408,17 +373,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           error instanceof Error &&
           error.message.includes("file already exists")
         ) {
-          // Get file path for confirmation dialog
-          let filePath = existingFilePath;
-          if (editorMode === "create") {
-            const pathInfo = await linuxio.call<{
-              path: string;
-              exists: boolean;
-              directory: string;
-            }>("docker", "get_compose_file_path", [stackName]);
-            filePath = pathInfo.path;
-          }
-
           // Store pending save data and show confirmation dialog
           setPendingSaveData({ content, stackName, filePath });
           setOverwriteDialogOpen(true);
@@ -431,7 +385,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         }
       }
     },
-    [editorMode, performSave],
+    [editorMode, performSave, queryClient],
   );
 
   // Handle overwrite confirmation
@@ -530,10 +484,10 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           composePath={operationComposePath}
         />
 
-        <ReindexDialog
-          open={reindexDialogOpen}
-          onClose={() => setReindexDialogOpen(false)}
-          onComplete={handleReindexComplete}
+        <DockerIndexerDialog
+          open={indexerDialogOpen}
+          onClose={() => setIndexerDialogOpen(false)}
+          onComplete={handleIndexerComplete}
         />
 
         <DeleteStackDialog

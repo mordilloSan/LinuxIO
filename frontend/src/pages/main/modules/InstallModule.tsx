@@ -28,10 +28,10 @@ const InstallModule: React.FC<InstallModuleProps> = ({ onInstalled }) => {
 
   // Mutations
   const { mutate: validateMutation, isPending: validatePending } =
-    linuxio.modules.ValidateModule.useMutation();
+    linuxio.modules.validate_module.useMutation();
 
   const { mutate: installMutation, isPending: installPending } =
-    linuxio.modules.InstallModule.useMutation();
+    linuxio.modules.install_module.useMutation();
 
   const handleValidate = () => {
     if (!path) {

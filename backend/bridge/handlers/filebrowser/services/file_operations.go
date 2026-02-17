@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
@@ -21,41 +23,82 @@ var (
 	PermDir  os.FileMode = 0o775 // rwxrwxr-x (owner read+write+execute, group read+write+execute, rest read+execute)
 )
 
+func cleanAbsPath(p string) string {
+	if p == "" {
+		return "/"
+	}
+	return filepath.Clean("/" + strings.TrimPrefix(p, "/"))
+}
+
+func relPath(p string) string {
+	return fsroot.ToRel(cleanAbsPath(p))
+}
+
+func readDir(root *fsroot.FSRoot, dirPath string) ([]os.DirEntry, error) {
+	dir, err := root.Root.Open(relPath(dirPath))
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
 // MoveFile moves a file from src to dst.
 // By default, the rename system call is used. If src and dst point to different volumes,
 // the file copy is used as a fallback.
 func MoveFile(src, dst string, overwrite bool) error {
-	// Validate the move operation before executing
-	if err := validateMoveDestination(src, dst); err != nil {
+	src = cleanAbsPath(src)
+	dst = cleanAbsPath(dst)
+
+	root, err := fsroot.Open()
+	if err != nil {
 		return err
 	}
+	defer root.Close()
 
-	srcInfo, err := os.Stat(src)
+	// Validate the move operation before executing
+	if validateErr := validateMoveDestination(root, src, dst); validateErr != nil {
+		return validateErr
+	}
+
+	srcInfo, err := root.Root.Stat(relPath(src))
 	if err != nil {
 		return err
 	}
 
-	if destErr := prepareDestination(srcInfo.IsDir(), dst, overwrite); destErr != nil {
+	if destErr := prepareDestination(root, srcInfo.IsDir(), dst, overwrite); destErr != nil {
 		return destErr
 	}
 
-	err = os.Rename(src, dst)
+	err = root.Root.Rename(relPath(src), relPath(dst))
 	if err == nil {
 		return nil
 	}
 
 	// fallback
-	err = CopyFile(src, dst, overwrite)
+	err = copyWithRoot(root, src, dst, overwrite)
 	if err != nil {
 		logger.Errorf("CopyFile failed %v %v %v ", src, dst, err)
 		return err
 	}
 
-	go func() {
-		if removeErr := os.RemoveAll(src); removeErr != nil {
-			logger.Errorf("os.Remove failed %v %v ", src, removeErr)
+	go func(removePath string) {
+		asyncRoot, openErr := fsroot.Open()
+		if openErr != nil {
+			logger.Errorf("open root failed during async remove %v", openErr)
+			return
 		}
-	}()
+		defer asyncRoot.Close()
+
+		if removeErr := asyncRoot.Root.RemoveAll(relPath(removePath)); removeErr != nil {
+			logger.Errorf("Root.RemoveAll failed %v %v ", removePath, removeErr)
+		}
+	}(src)
 
 	return nil
 }
@@ -63,47 +106,60 @@ func MoveFile(src, dst string, overwrite bool) error {
 // CopyFile copies a file or directory from source to dest and returns an error if any.
 // It handles both files and directories, copying recursively as needed.
 func CopyFile(source, dest string, overwrite bool) error {
+	source = cleanAbsPath(source)
+	dest = cleanAbsPath(dest)
+
+	root, err := fsroot.Open()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	return copyWithRoot(root, source, dest, overwrite)
+}
+
+func copyWithRoot(root *fsroot.FSRoot, source, dest string, overwrite bool) error {
 	// Validate the copy operation before executing
-	if err := validateMoveDestination(source, dest); err != nil {
+	if err := validateMoveDestination(root, source, dest); err != nil {
 		return err
 	}
 
 	// Check if the source exists and whether it's a file or directory.
-	info, err := os.Stat(source)
+	info, err := root.Root.Stat(relPath(source))
 	if err != nil {
 		return err
 	}
 
-	if err := prepareDestination(info.IsDir(), dest, overwrite); err != nil {
+	if err := prepareDestination(root, info.IsDir(), dest, overwrite); err != nil {
 		return err
 	}
 
 	if info.IsDir() {
 		// If the source is a directory, copy it recursively.
-		return copyDirectory(source, dest)
+		return copyDirectory(root, source, dest)
 	}
 
 	// If the source is a file, copy the file.
-	return copySingleFile(source, dest)
+	return copySingleFile(root, source, dest)
 }
 
 // copySingleFile handles copying a single file.
-func copySingleFile(source, dest string) error {
+func copySingleFile(root *fsroot.FSRoot, source, dest string) error {
 	// Open the source file.
-	src, err := os.Open(source)
+	src, err := root.Root.Open(relPath(source))
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 
 	// Create the destination directory if needed.
-	err = os.MkdirAll(filepath.Dir(dest), PermDir)
+	err = root.Root.MkdirAll(relPath(filepath.Dir(dest)), PermDir)
 	if err != nil {
 		return err
 	}
 
 	// Create the destination file.
-	dst, err := os.OpenFile(dest, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
+	dst, err := root.Root.OpenFile(relPath(dest), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
 	}
@@ -116,7 +172,7 @@ func copySingleFile(source, dest string) error {
 	}
 
 	// Set the configured file permissions instead of copying from source
-	err = os.Chmod(dest, PermFile)
+	err = root.Root.Chmod(relPath(dest), PermFile)
 	if err != nil {
 		return err
 	}
@@ -125,15 +181,15 @@ func copySingleFile(source, dest string) error {
 }
 
 // copyDirectory handles copying directories recursively.
-func copyDirectory(source, dest string) error {
+func copyDirectory(root *fsroot.FSRoot, source, dest string) error {
 	// Create the destination directory.
-	err := os.MkdirAll(dest, PermDir)
+	err := root.Root.MkdirAll(relPath(dest), PermDir)
 	if err != nil {
 		return err
 	}
 
 	// Read the contents of the source directory.
-	entries, err := os.ReadDir(source)
+	entries, err := readDir(root, source)
 	if err != nil {
 		return err
 	}
@@ -145,13 +201,13 @@ func copyDirectory(source, dest string) error {
 
 		if entry.IsDir() {
 			// Recursively copy subdirectories.
-			err = copyDirectory(srcPath, destPath)
+			err = copyDirectory(root, srcPath, destPath)
 			if err != nil {
 				return err
 			}
 		} else {
 			// Copy files.
-			err = copySingleFile(srcPath, destPath)
+			err = copySingleFile(root, srcPath, destPath)
 			if err != nil {
 				return err
 			}
@@ -164,52 +220,65 @@ func copyDirectory(source, dest string) error {
 // CopyFileWithCallbacks copies a file or directory with progress callbacks.
 // It handles both files and directories, copying recursively as needed.
 func CopyFileWithCallbacks(source, dest string, overwrite bool, opts *ipc.OperationCallbacks) error {
+	source = cleanAbsPath(source)
+	dest = cleanAbsPath(dest)
+
+	root, err := fsroot.Open()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	return copyWithCallbacksAndRoot(root, source, dest, overwrite, opts)
+}
+
+func copyWithCallbacksAndRoot(root *fsroot.FSRoot, source, dest string, overwrite bool, opts *ipc.OperationCallbacks) error {
 	// Validate the copy operation before executing
-	if err := validateMoveDestination(source, dest); err != nil {
+	if err := validateMoveDestination(root, source, dest); err != nil {
 		return err
 	}
 
 	// Check if the source exists and whether it's a file or directory.
-	info, err := os.Stat(source)
+	info, err := root.Root.Stat(relPath(source))
 	if err != nil {
 		return err
 	}
 
-	if err := prepareDestination(info.IsDir(), dest, overwrite); err != nil {
+	if err := prepareDestination(root, info.IsDir(), dest, overwrite); err != nil {
 		return err
 	}
 
 	if info.IsDir() {
 		// If the source is a directory, copy it recursively.
-		return copyDirectoryWithCallbacks(source, dest, opts)
+		return copyDirectoryWithCallbacks(root, source, dest, opts)
 	}
 
 	// If the source is a file, copy the file.
-	return copySingleFileWithCallbacks(source, dest, opts)
+	return copySingleFileWithCallbacks(root, source, dest, opts)
 }
 
 // copySingleFileWithCallbacks handles copying a single file with progress callbacks.
-func copySingleFileWithCallbacks(source, dest string, opts *ipc.OperationCallbacks) error {
+func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, opts *ipc.OperationCallbacks) error {
 	// Check for cancellation
 	if opts != nil && opts.Cancel != nil && opts.Cancel() {
 		return ipc.ErrAborted
 	}
 
 	// Open the source file.
-	src, err := os.Open(source)
+	src, err := root.Root.Open(relPath(source))
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 
 	// Create the destination directory if needed.
-	err = os.MkdirAll(filepath.Dir(dest), PermDir)
+	err = root.Root.MkdirAll(relPath(filepath.Dir(dest)), PermDir)
 	if err != nil {
 		return err
 	}
 
 	// Create the destination file.
-	dst, err := os.OpenFile(dest, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
+	dst, err := root.Root.OpenFile(relPath(dest), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
 	}
@@ -245,7 +314,7 @@ func copySingleFileWithCallbacks(source, dest string, opts *ipc.OperationCallbac
 	}
 
 	// Set the configured file permissions instead of copying from source
-	err = os.Chmod(dest, PermFile)
+	err = root.Root.Chmod(relPath(dest), PermFile)
 	if err != nil {
 		return err
 	}
@@ -254,20 +323,20 @@ func copySingleFileWithCallbacks(source, dest string, opts *ipc.OperationCallbac
 }
 
 // copyDirectoryWithCallbacks handles copying directories recursively with progress callbacks.
-func copyDirectoryWithCallbacks(source, dest string, opts *ipc.OperationCallbacks) error {
+func copyDirectoryWithCallbacks(root *fsroot.FSRoot, source, dest string, opts *ipc.OperationCallbacks) error {
 	// Check for cancellation
 	if opts != nil && opts.Cancel != nil && opts.Cancel() {
 		return ipc.ErrAborted
 	}
 
 	// Create the destination directory.
-	err := os.MkdirAll(dest, PermDir)
+	err := root.Root.MkdirAll(relPath(dest), PermDir)
 	if err != nil {
 		return err
 	}
 
 	// Read the contents of the source directory.
-	entries, err := os.ReadDir(source)
+	entries, err := readDir(root, source)
 	if err != nil {
 		return err
 	}
@@ -279,13 +348,13 @@ func copyDirectoryWithCallbacks(source, dest string, opts *ipc.OperationCallback
 
 		if entry.IsDir() {
 			// Recursively copy subdirectories.
-			err = copyDirectoryWithCallbacks(srcPath, destPath, opts)
+			err = copyDirectoryWithCallbacks(root, srcPath, destPath, opts)
 			if err != nil {
 				return err
 			}
 		} else {
 			// Copy files.
-			err = copySingleFileWithCallbacks(srcPath, destPath, opts)
+			err = copySingleFileWithCallbacks(root, srcPath, destPath, opts)
 			if err != nil {
 				return err
 			}
@@ -298,7 +367,15 @@ func copyDirectoryWithCallbacks(source, dest string, opts *ipc.OperationCallback
 // ComputeCopySize calculates the total size of files to be copied.
 // For directories, it recursively sums the sizes of all contained files.
 func ComputeCopySize(path string) (int64, error) {
-	info, err := os.Stat(path)
+	path = cleanAbsPath(path)
+
+	root, err := fsroot.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+
+	info, err := root.Root.Stat(relPath(path))
 	if err != nil {
 		return 0, err
 	}
@@ -308,13 +385,18 @@ func ComputeCopySize(path string) (int64, error) {
 	}
 
 	var totalSize int64
-	err = filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	err = root.WalkDir(path, func(_ string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-		if !info.IsDir() {
-			totalSize += info.Size()
+		if entry.IsDir() {
+			return nil
 		}
+		entryInfo, entryInfoErr := entry.Info()
+		if entryInfoErr != nil {
+			return entryInfoErr
+		}
+		totalSize += entryInfo.Size()
 		return nil
 	})
 
@@ -325,9 +407,18 @@ func ComputeCopySize(path string) (int64, error) {
 // By default, the rename system call is used. If src and dst point to different volumes,
 // the file copy with callbacks is used as a fallback, followed by deletion of the source.
 func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationCallbacks) error {
-	// Validate the move operation before executing
-	if err := validateMoveDestination(src, dst); err != nil {
+	src = cleanAbsPath(src)
+	dst = cleanAbsPath(dst)
+
+	root, err := fsroot.Open()
+	if err != nil {
 		return err
+	}
+	defer root.Close()
+
+	// Validate the move operation before executing
+	if validateErr := validateMoveDestination(root, src, dst); validateErr != nil {
+		return validateErr
 	}
 
 	// Check for cancellation
@@ -335,28 +426,32 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 		return ipc.ErrAborted
 	}
 
-	srcInfo, err := os.Stat(src)
+	srcInfo, err := root.Root.Stat(relPath(src))
 	if err != nil {
 		return err
 	}
 
-	if destErr := prepareDestination(srcInfo.IsDir(), dst, overwrite); destErr != nil {
+	if destErr := prepareDestination(root, srcInfo.IsDir(), dst, overwrite); destErr != nil {
 		return destErr
 	}
 
 	// Try rename first (instant, no progress needed)
-	err = os.Rename(src, dst)
+	err = root.Root.Rename(relPath(src), relPath(dst))
 	if err == nil {
 		// Rename succeeded - update progress to 100%
 		if opts != nil && opts.Progress != nil {
-			totalSize, _ := ComputeCopySize(dst)
-			opts.Progress(totalSize)
+			totalSize, sizeErr := ComputeCopySize(dst)
+			if sizeErr != nil {
+				logger.Debugf("failed to compute move size after rename for %s: %v", dst, sizeErr)
+			} else {
+				opts.Progress(totalSize)
+			}
 		}
 		return nil
 	}
 
 	// Rename failed (likely different volumes) - fallback to copy with callbacks
-	err = CopyFileWithCallbacks(src, dst, overwrite, opts)
+	err = copyWithCallbacksAndRoot(root, src, dst, overwrite, opts)
 	if err != nil {
 		logger.Errorf("CopyFileWithCallbacks failed %v %v %v ", src, dst, err)
 		return err
@@ -368,8 +463,8 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	}
 
 	// Delete source after successful copy
-	if removeErr := os.RemoveAll(src); removeErr != nil {
-		logger.Errorf("os.RemoveAll failed %v %v ", src, removeErr)
+	if removeErr := root.Root.RemoveAll(relPath(src)); removeErr != nil {
+		logger.Errorf("Root.RemoveAll failed %v %v ", src, removeErr)
 		return fmt.Errorf("failed to remove source after copy: %w", removeErr)
 	}
 
@@ -378,37 +473,40 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 
 // DeleteFiles removes a file or directory
 func DeleteFiles(absPath string) error {
-	err := os.RemoveAll(absPath)
+	root, err := fsroot.Open()
 	if err != nil {
 		return err
 	}
-	return nil
+	defer root.Close()
+
+	return root.Root.RemoveAll(relPath(absPath))
 }
 
 // CreateDirectory creates a directory with proper permissions
 func CreateDirectory(opts iteminfo.FileOptions) error {
-	realPath := filepath.Join(opts.Path)
+	realPath := cleanAbsPath(opts.Path)
 
-	var stat os.FileInfo
-	var err error
+	root, err := fsroot.Open()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
 	// Check if the destination exists and is a file
-	if stat, err = os.Stat(realPath); err == nil && !stat.IsDir() {
+	if stat, err := root.Root.Stat(relPath(realPath)); err == nil && !stat.IsDir() {
 		// If it's a file and we're trying to create a directory, remove the file first
-		err = os.Remove(realPath)
-		if err != nil {
+		if err := root.Root.Remove(relPath(realPath)); err != nil {
 			return fmt.Errorf("could not remove existing file to create directory: %v", err)
 		}
 	}
 
 	// Ensure the parent directories exist
-	err = os.MkdirAll(realPath, PermDir)
-	if err != nil {
+	if err := root.Root.MkdirAll(relPath(realPath), PermDir); err != nil {
 		return err
 	}
 
 	// Explicitly set directory permissions to bypass umask
-	err = os.Chmod(realPath, PermDir)
-	if err != nil {
+	if err := root.Root.Chmod(relPath(realPath), PermDir); err != nil {
 		return err
 	}
 
@@ -417,29 +515,32 @@ func CreateDirectory(opts iteminfo.FileOptions) error {
 
 // WriteContentInFile writes content to a file with proper permissions
 func WriteContentInFile(opts iteminfo.FileOptions, in io.Reader) error {
-	realPath := filepath.Join(opts.Path)
+	realPath := cleanAbsPath(opts.Path)
 	// Strip trailing slash from realPath if it's meant to be a file
 	realPath = strings.TrimRight(realPath, "/")
 
-	// Ensure the parent directories exist
-	parentDir := filepath.Dir(realPath)
-	err := os.MkdirAll(parentDir, PermDir)
+	root, err := fsroot.Open()
 	if err != nil {
 		return err
 	}
+	defer root.Close()
 
-	var stat os.FileInfo
+	// Ensure the parent directories exist
+	parentDir := filepath.Dir(realPath)
+	if mkdirErr := root.Root.MkdirAll(relPath(parentDir), PermDir); mkdirErr != nil {
+		return mkdirErr
+	}
+
 	// Check if the destination exists and is a directory
-	if stat, err = os.Stat(realPath); err == nil && stat.IsDir() {
+	if stat, statErr := root.Root.Stat(relPath(realPath)); statErr == nil && stat.IsDir() {
 		// If it's a directory and we're trying to create a file, remove the directory first
-		err = os.RemoveAll(realPath)
-		if err != nil {
-			return fmt.Errorf("could not remove existing directory to create file: %v", err)
+		if removeErr := root.Root.RemoveAll(relPath(realPath)); removeErr != nil {
+			return fmt.Errorf("could not remove existing directory to create file: %v", removeErr)
 		}
 	}
 
 	// Open the file for writing (create if it doesn't exist, truncate if it does)
-	file, err := os.OpenFile(realPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
+	file, err := root.Root.OpenFile(relPath(realPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
 	}
@@ -452,8 +553,7 @@ func WriteContentInFile(opts iteminfo.FileOptions, in io.Reader) error {
 	}
 
 	// Explicitly set file permissions to bypass umask
-	err = os.Chmod(realPath, PermFile)
-	if err != nil {
+	if err := root.Root.Chmod(relPath(realPath), PermFile); err != nil {
 		return err
 	}
 
@@ -469,8 +569,16 @@ func GetContent(realPath string) (string, error) {
 	const maxNullByteRatioInFile = 0.05   // Max 5% null bytes in the entire file
 	const maxNonPrintableRuneRatio = 0.05 // Max 5% non-printable runes in the entire file
 
+	cleanPath := cleanAbsPath(realPath)
+
+	root, err := fsroot.Open()
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+
 	// Open file
-	f, err := os.Open(realPath)
+	f, err := root.Root.Open(relPath(cleanPath))
 	if err != nil {
 		return "", err
 	}
@@ -521,7 +629,7 @@ func GetContent(realPath string) (string, error) {
 	// --- End of new heuristic checks for header ---
 
 	// Now read the full file (original logic)
-	content, err := os.ReadFile(realPath)
+	content, err := root.Root.ReadFile(relPath(cleanPath))
 	if err != nil {
 		return "", err
 	}
@@ -624,34 +732,40 @@ func CommonPrefix(sep byte, paths ...string) string {
 // ChangePermissions changes the permissions of a file or directory
 // If recursive is true and the path is a directory, changes permissions recursively
 func ChangePermissions(path string, mode os.FileMode, recursive bool) error {
-	path = filepath.Clean(path)
+	path = cleanAbsPath(path)
+
+	root, err := fsroot.Open()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 
 	// Check if path exists
-	info, err := os.Stat(path)
+	info, err := root.Root.Stat(relPath(path))
 	if err != nil {
 		return fmt.Errorf("failed to stat path: %w", err)
 	}
 
 	// Change permissions of the main path
-	if err := os.Chmod(path, mode); err != nil {
+	if err := root.Root.Chmod(relPath(path), mode); err != nil {
 		return fmt.Errorf("failed to chmod %s: %w", path, err)
 	}
 
 	// If it's a directory and recursive is true, walk through and change all nested items
 	if info.IsDir() && recursive {
-		return filepath.Walk(path, func(walkPath string, walkInfo os.FileInfo, walkErr error) error {
+		return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
-				logger.Errorf("error walking path %s: %v", walkPath, walkErr)
+				logger.Errorf("error walking path %s: %v", walkRel, walkErr)
 				return nil // Continue walking even if one item fails
 			}
 
 			// Skip the root path as we already changed it
-			if walkPath == path {
+			if walkRel == "." || walkRel == relPath(path) {
 				return nil
 			}
 
-			if err := os.Chmod(walkPath, mode); err != nil {
-				logger.Errorf("failed to chmod %s: %v", walkPath, err)
+			if err := root.Root.Chmod(walkRel, mode); err != nil {
+				logger.Errorf("failed to chmod %s: %v", walkRel, err)
 				// Continue even if one item fails
 				return nil
 			}
@@ -667,31 +781,37 @@ func ChangePermissions(path string, mode os.FileMode, recursive bool) error {
 // If recursive is true and the path is a directory, changes ownership recursively.
 // Passing uid or gid as -1 will leave that field unchanged (POSIX semantics).
 func ChangeOwnership(path string, uid, gid int, recursive bool) error {
-	path = filepath.Clean(path)
+	path = cleanAbsPath(path)
 
-	info, err := os.Lstat(path)
+	root, err := fsroot.Open()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	info, err := root.Root.Lstat(relPath(path))
 	if err != nil {
 		return fmt.Errorf("failed to lstat path: %w", err)
 	}
 
-	if err := os.Lchown(path, uid, gid); err != nil {
+	if err := root.Root.Lchown(relPath(path), uid, gid); err != nil {
 		return fmt.Errorf("failed to chown %s: %w", path, err)
 	}
 
 	if info.IsDir() && recursive {
-		return filepath.Walk(path, func(walkPath string, walkInfo os.FileInfo, walkErr error) error {
+		return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
-				logger.Errorf("error walking path %s: %v", walkPath, walkErr)
+				logger.Errorf("error walking path %s: %v", walkRel, walkErr)
 				return nil
 			}
 
 			// Skip root (already changed)
-			if walkPath == path {
+			if walkRel == "." || walkRel == relPath(path) {
 				return nil
 			}
 
-			if err := os.Lchown(walkPath, uid, gid); err != nil {
-				logger.Errorf("failed to chown %s: %v", walkPath, err)
+			if err := root.Root.Lchown(walkRel, uid, gid); err != nil {
+				logger.Errorf("failed to chown %s: %v", walkRel, err)
 			}
 
 			return nil
@@ -702,17 +822,17 @@ func ChangeOwnership(path string, uid, gid int, recursive bool) error {
 }
 
 // validateMoveDestination validates that a move operation is safe
-func validateMoveDestination(src, dst string) error {
+func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	// Clean and normalize paths
-	src = filepath.Clean(src)
-	dst = filepath.Clean(dst)
+	src = cleanAbsPath(src)
+	dst = cleanAbsPath(dst)
 
 	if src == dst {
 		return fmt.Errorf("source and destination are the same")
 	}
 
 	// Check if source is a directory
-	srcInfo, err := os.Stat(src)
+	srcInfo, err := root.Root.Stat(relPath(src))
 	if err != nil {
 		return err
 	}
@@ -733,7 +853,7 @@ func validateMoveDestination(src, dst string) error {
 	// Check if destination parent directory exists
 	dstParent := filepath.Dir(dst)
 	if dstParent != "." && dstParent != "/" {
-		if _, err := os.Stat(dstParent); os.IsNotExist(err) {
+		if _, err := root.Root.Stat(relPath(dstParent)); os.IsNotExist(err) {
 			return fmt.Errorf("destination directory does not exist: '%s'", dstParent)
 		}
 	}
@@ -741,8 +861,8 @@ func validateMoveDestination(src, dst string) error {
 	return nil
 }
 
-func prepareDestination(srcIsDir bool, dst string, overwrite bool) error {
-	dstInfo, err := os.Stat(dst)
+func prepareDestination(root *fsroot.FSRoot, srcIsDir bool, dst string, overwrite bool) error {
+	dstInfo, err := root.Root.Stat(relPath(dst))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -758,5 +878,5 @@ func prepareDestination(srcIsDir bool, dst string, overwrite bool) error {
 		return fmt.Errorf("destination exists with different type")
 	}
 
-	return os.RemoveAll(dst)
+	return root.Root.RemoveAll(relPath(dst))
 }

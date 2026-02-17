@@ -318,7 +318,9 @@ func TestWriteContentInFile(t *testing.T) {
 		}
 
 		// WriteContentInFile may error or may create a file, just verify it handles the case
-		_ = WriteContentInFile(opts, reader)
+		if err := WriteContentInFile(opts, reader); err != nil {
+			t.Logf("WriteContentInFile on directory returned error (acceptable for this case): %v", err)
+		}
 	})
 }
 
@@ -346,7 +348,7 @@ func TestGetContent(t *testing.T) {
 
 	t.Run("get_large_file_content", func(t *testing.T) {
 		largeContent := "x"
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			largeContent += "1234567890"
 		}
 		filePath := createTestFile(t, tmpDir, "large.txt", []byte(largeContent))

@@ -44,11 +44,15 @@ func TestStartLinuxIO_UnknownCommand_ShowsHelp(t *testing.T) {
 	os.Stderr = w
 	defer func() {
 		os.Stderr = oldStderr
-		_ = r.Close()
+		if err := r.Close(); err != nil {
+			t.Fatalf("close read pipe: %v", err)
+		}
 	}()
 
 	withArgs([]string{"linuxio", "wat"}, func() { StartLinuxIO() })
-	_ = w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("close write pipe: %v", err)
+	}
 	if _, err := errb.ReadFrom(r); err != nil {
 		t.Fatalf("read stderr: %v", err)
 	}

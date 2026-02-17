@@ -37,9 +37,13 @@ func TestMemStore_AllFiltersExpired(t *testing.T) {
 	now := time.Now()
 
 	// Active
-	_ = st.Commit("live", []byte("x"), now.Add(50*time.Millisecond))
+	if err := st.Commit("live", []byte("x"), now.Add(50*time.Millisecond)); err != nil {
+		t.Fatalf("commit live: %v", err)
+	}
 	// Expired
-	_ = st.Commit("dead", []byte("y"), now.Add(-10*time.Millisecond))
+	if err := st.Commit("dead", []byte("y"), now.Add(-10*time.Millisecond)); err != nil {
+		t.Fatalf("commit dead: %v", err)
+	}
 
 	mm, err := st.All()
 	if err != nil {

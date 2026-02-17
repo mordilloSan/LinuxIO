@@ -1,5 +1,12 @@
 import { Add as AddIcon } from "@mui/icons-material";
-import { Box, Button } from "@mui/material";
+import {
+  Alert,
+  AlertTitle,
+  Box,
+  Button,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import React, { useState } from "react";
 
 import ComposeStacksPage from "./ComposeStacksPage";
@@ -9,8 +16,11 @@ import DockerNetworksTable from "./NetworkList";
 import VolumeList from "./VolumeList";
 
 import { TabContainer } from "@/components/tabbar";
+import useAuth from "@/hooks/useAuth";
 
 const DockerPage: React.FC = () => {
+  const { dockerAvailable, indexerAvailable } = useAuth();
+
   const [createStackHandler, setCreateStackHandler] = useState<
     (() => void) | null
   >(null);
@@ -26,6 +36,51 @@ const DockerPage: React.FC = () => {
   const [createImageHandler, setCreateImageHandler] = useState<
     (() => void) | null
   >(null);
+
+  if (dockerAvailable === null) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="info">
+          <AlertTitle>Checking Docker</AlertTitle>
+          <Typography variant="body2">
+            Verifying Docker daemon access...
+          </Typography>
+        </Alert>
+      </Box>
+    );
+  }
+
+  // Show error if Docker is not available
+  if (dockerAvailable === false) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="warning">
+          <AlertTitle>Docker Not Available</AlertTitle>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Docker daemon is not accessible
+          </Typography>
+          <Typography variant="body2" component="div">
+            <strong>Common causes:</strong>
+            <Box component="ul" sx={{ mt: 1, mb: 0 }}>
+              <li>Docker is not installed on this system</li>
+              <li>
+                Docker service is not running (try: sudo systemctl start docker)
+              </li>
+              <li>
+                You don&apos;t have permission to access the Docker socket
+                <br />
+                (try: sudo usermod -aG docker $USER, then log out and back in)
+              </li>
+              <li>
+                Docker socket path is not set correctly (check DOCKER_HOST
+                environment variable)
+              </li>
+            </Box>
+          </Typography>
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <TabContainer
@@ -43,7 +98,7 @@ const DockerPage: React.FC = () => {
               onMountCreateHandler={(handler) =>
                 setCreateStackHandler(() => handler)
               }
-              onMountReindexHandler={(handler) =>
+              onMountIndexerHandler={(handler) =>
                 setReindexStackHandler(() => handler)
               }
             />
@@ -51,19 +106,33 @@ const DockerPage: React.FC = () => {
           rightContent: (
             <>
               {reindexStackHandler && (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={reindexStackHandler}
-                  sx={{
-                    minWidth: { xs: "40px", sm: "auto" },
-                    px: { xs: 1, sm: 2 },
-                    mr: 1,
-                  }}
+                <Tooltip
+                  title={
+                    indexerAvailable === false
+                      ? "Indexer service is not available. Start linuxio-indexer.service to enable scanning."
+                      : "Scan Docker folder for compose stacks"
+                  }
+                  arrow
                 >
-                  <Box sx={{ display: { xs: "none", sm: "block" } }}>Scan</Box>
-                  <Box sx={{ display: { xs: "block", sm: "none" } }}>↻</Box>
-                </Button>
+                  <span>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={reindexStackHandler}
+                      disabled={indexerAvailable === false}
+                      sx={{
+                        minWidth: { xs: "40px", sm: "auto" },
+                        px: { xs: 1, sm: 2 },
+                        mr: 1,
+                      }}
+                    >
+                      <Box sx={{ display: { xs: "none", sm: "block" } }}>
+                        Scan
+                      </Box>
+                      <Box sx={{ display: { xs: "block", sm: "none" } }}>↻</Box>
+                    </Button>
+                  </span>
+                </Tooltip>
               )}
               {createStackHandler && (
                 <Button

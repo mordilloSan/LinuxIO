@@ -2,7 +2,7 @@ import ThermostatIcon from "@mui/icons-material/Thermostat";
 import { Typography, Box } from "@mui/material";
 import React from "react";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
 
 const GpuInfo: React.FC = () => {

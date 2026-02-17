@@ -2,10 +2,11 @@ import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Box, Typography } from "@mui/material";
 import React from "react";
 
-import linuxio from "@/api/react-query";
+import ProcessorGraph from "./ProcessorGraph";
+
+import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
-import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const Processor: React.FC = () => {
@@ -42,16 +43,20 @@ const Processor: React.FC = () => {
     ) : isPending ? (
       <ComponentLoader />
     ) : (
-      <GradientCircularGauge
-        value={averageCpuUsage}
-        gradientColors={["#82ca9d", "#eab308", "#ef4444"]}
-        size={108}
-        thickness={9.8}
-        showPercentage={true}
-      />
+      <Box sx={{ height: "90px", width: "100%", minWidth: 0 }}>
+        <ProcessorGraph usage={averageCpuUsage} />
+      </Box>
     ),
     stats: (
-      <Box sx={{ display: "flex", gap: 1, flexDirection: "column" }}>
+      <Box
+        sx={{
+          display: "flex",
+          gap: 1,
+          flexDirection: "column",
+          alignSelf: "flex-start",
+          mt: 4,
+        }}
+      >
         <Typography variant="body1">
           <strong>CPU:</strong> {CPUInfo?.modelName}
         </Typography>

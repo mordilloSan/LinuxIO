@@ -19,8 +19,15 @@ var systemBus *godbus.Conn
 var sessionBus *godbus.Conn
 
 func init() {
-	systemBus, _ = godbus.ConnectSystemBus()
-	sessionBus, _ = godbus.ConnectSessionBus()
+	var err error
+	systemBus, err = godbus.ConnectSystemBus()
+	if err != nil {
+		systemBus = nil
+	}
+	sessionBus, err = godbus.ConnectSessionBus()
+	if err != nil {
+		sessionBus = nil
+	}
 }
 
 func DbusHandlers() map[string]func([]string) (any, error) {
@@ -67,7 +74,7 @@ func CallDbusMethodDirect(args []string) (any, error) {
 	obj := conn.Object(destination, godbus.ObjectPath(path))
 
 	// Convert string args to interface{} for DBus
-	dbusArgs := make([]interface{}, len(methodArgs))
+	dbusArgs := make([]any, len(methodArgs))
 	for i, arg := range methodArgs {
 		dbusArgs[i] = arg
 	}
@@ -88,8 +95,8 @@ func CallDbusMethodDirect(args []string) (any, error) {
 
 // DbusSignalData represents a D-Bus signal forwarded to the client
 type DbusSignalData struct {
-	SignalName string        `json:"signal_name"`
-	Body       []interface{} `json:"body"`
+	SignalName string `json:"signal_name"`
+	Body       []any  `json:"body"`
 }
 
 // HandleDbusStream handles D-Bus operations with signal streaming.
@@ -111,8 +118,9 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 
 	if len(args) < 5 {
 		errMsg := "dbus stream requires at least [bus, destination, path, interface, method]"
-		_ = ipc.WriteResultError(stream, 0, errMsg, 400)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if err := ipc.WriteResultErrorAndClose(stream, 0, errMsg, 400); err != nil {
+			logger.Debugf("[DbusStream] failed to write error+close frame: %v", err)
+		}
 		return errors.New(errMsg)
 	}
 
@@ -151,8 +159,9 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 	}
 	if err != nil {
 		errMsg := fmt.Sprintf("failed to connect to %s bus: %v", busType, err)
-		_ = ipc.WriteResultError(stream, 0, errMsg, 500)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, errMsg, 500); writeErr != nil {
+			logger.Debugf("[DbusStream] failed to write error+close frame: %v", writeErr)
+		}
 		return errors.New(errMsg)
 	}
 	defer func() {
@@ -175,7 +184,7 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 	}
 
 	// Convert method args to interface{}
-	dbusArgs := make([]interface{}, len(methodArgs))
+	dbusArgs := make([]any, len(methodArgs))
 	for i, arg := range methodArgs {
 		dbusArgs[i] = arg
 	}
@@ -185,8 +194,9 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 	call := obj.Call(iface+"."+method, 0, dbusArgs...)
 	if call.Err != nil {
 		errMsg := fmt.Sprintf("D-Bus method call failed: %v", call.Err)
-		_ = ipc.WriteResultError(stream, 0, errMsg, 500)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, errMsg, 500); writeErr != nil {
+			logger.Debugf("[DbusStream] failed to write error+close frame: %v", writeErr)
+		}
 		return errors.New(errMsg)
 	}
 
@@ -234,17 +244,21 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 				continue
 			}
 
-			_ = ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
+			if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
 				Opcode:   ipc.OpStreamData,
 				StreamID: 0,
 				Payload:  payload,
-			})
+			}); err != nil {
+				logger.Debugf("[DbusStream] failed to write data frame: %v", err)
+				return err
+			}
 
 			// If this is a "Finished" signal, we're done
 			if hasFinishedSignal && (sig.Name == iface+".Finished" || sig.Name == iface+".Done" || sig.Name == iface+".Complete") {
 				logger.Infof("[DbusStream] Received Finished signal, operation complete")
-				_ = ipc.WriteResultOK(stream, 0, map[string]interface{}{"completed": true})
-				_ = ipc.WriteStreamClose(stream, 0)
+				if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{"completed": true}); err != nil {
+					logger.Debugf("[DbusStream] failed to write ok+close frame: %v", err)
+				}
 				return nil
 			}
 
@@ -252,12 +266,15 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 			// Timeout - but this might be OK if there's no explicit Finished signal
 			if !hasFinishedSignal {
 				logger.Infof("[DbusStream] Context timeout, operation assumed complete")
-				_ = ipc.WriteResultOK(stream, 0, map[string]interface{}{"completed": true})
+				if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{"completed": true}); err != nil {
+					logger.Debugf("[DbusStream] failed to write ok+close frame: %v", err)
+				}
 			} else {
 				logger.Warnf("[DbusStream] Timeout waiting for signals")
-				_ = ipc.WriteResultError(stream, 0, "timeout waiting for D-Bus signals", 500)
+				if err := ipc.WriteResultErrorAndClose(stream, 0, "timeout waiting for D-Bus signals", 500); err != nil {
+					logger.Debugf("[DbusStream] failed to write error+close frame: %v", err)
+				}
 			}
-			_ = ipc.WriteStreamClose(stream, 0)
 			return ctx.Err()
 		}
 	}

@@ -34,12 +34,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import type {
-  LogicalVolume,
-  PhysicalVolume,
-  VolumeGroup,
-} from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import {
+  linuxio,
+  type LogicalVolume,
+  type PhysicalVolume,
+  type VolumeGroup,
+} from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -86,10 +86,10 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
       onSuccess: () => {
         toast.success(`Logical volume ${lvName} created successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_lvs"],
+          queryKey: linuxio.storage.list_lvs.queryKey(),
         });
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_vgs"],
+          queryKey: linuxio.storage.list_vgs.queryKey(),
         });
         onSuccess();
         handleClose();
@@ -201,10 +201,10 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
       onSuccess: () => {
         toast.success(`Logical volume ${lv?.name} resized successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_lvs"],
+          queryKey: linuxio.storage.list_lvs.queryKey(),
         });
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_vgs"],
+          queryKey: linuxio.storage.list_vgs.queryKey(),
         });
         onSuccess();
         handleClose();
@@ -293,10 +293,10 @@ const DeleteLVDialog: React.FC<DeleteLVDialogProps> = ({
       onSuccess: () => {
         toast.success(`Logical volume ${lv?.name} deleted successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_lvs"],
+          queryKey: linuxio.storage.list_lvs.queryKey(),
         });
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "storage", "list_vgs"],
+          queryKey: linuxio.storage.list_vgs.queryKey(),
         });
         onSuccess();
         handleClose();

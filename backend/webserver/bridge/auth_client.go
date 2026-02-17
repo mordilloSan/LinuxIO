@@ -78,7 +78,10 @@ func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 		"privileged", privileged)
 
 	// Clear deadlines for Yamux use
-	_ = conn.SetDeadline(time.Time{})
+	if err = conn.SetDeadline(time.Time{}); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to clear deadlines: %w", err)
+	}
 
 	return &AuthResult{
 		Conn:       conn,

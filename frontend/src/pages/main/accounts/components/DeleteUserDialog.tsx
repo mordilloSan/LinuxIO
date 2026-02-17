@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DeleteUserDialogProps {
@@ -47,7 +47,7 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
         : `${usernames.length} users deleted successfully`;
     toast.success(successMessage);
     queryClient.invalidateQueries({
-      queryKey: ["linuxio", "accounts", "list_users"],
+      queryKey: linuxio.accounts.list_users.queryKey(),
     });
     onSuccess();
     onClose();

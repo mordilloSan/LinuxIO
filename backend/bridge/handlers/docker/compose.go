@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -750,7 +751,7 @@ type ComposeFilePathInfo struct {
 // NormalizeComposeFile automatically adds container_name to services that don't have it
 // This prevents Docker from using auto-generated names like "project-service-1"
 func NormalizeComposeFile(content string) (string, error) {
-	var composeData map[string]interface{}
+	var composeData map[string]any
 	if err := yaml.Unmarshal([]byte(content), &composeData); err != nil {
 		// Return original content if we can't parse it (validation will catch this later)
 		return content, nil
@@ -762,7 +763,7 @@ func NormalizeComposeFile(content string) (string, error) {
 		return content, nil
 	}
 
-	servicesMap, ok := services.(map[string]interface{})
+	servicesMap, ok := services.(map[string]any)
 	if !ok {
 		return content, nil
 	}
@@ -770,7 +771,7 @@ func NormalizeComposeFile(content string) (string, error) {
 	// Add container_name to each service that doesn't have it
 	modified := false
 	for serviceName, serviceData := range servicesMap {
-		serviceMap, ok := serviceData.(map[string]interface{})
+		serviceMap, ok := serviceData.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -804,7 +805,7 @@ func ValidateComposeFile(content string) (any, error) {
 	}
 
 	// Parse YAML to verify syntax
-	var composeData map[string]interface{}
+	var composeData map[string]any
 	if err := yaml.Unmarshal([]byte(content), &composeData); err != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
@@ -825,7 +826,7 @@ func ValidateComposeFile(content string) (any, error) {
 		})
 	} else {
 		// Validate services is a map
-		servicesMap, ok := services.(map[string]interface{})
+		servicesMap, ok := services.(map[string]any)
 		if !ok {
 			result.Valid = false
 			result.Errors = append(result.Errors, ValidationError{
@@ -843,7 +844,7 @@ func ValidateComposeFile(content string) (any, error) {
 		} else {
 			// Validate each service
 			for serviceName, serviceData := range servicesMap {
-				serviceMap, ok := serviceData.(map[string]interface{})
+				serviceMap, ok := serviceData.(map[string]any)
 				if !ok {
 					result.Valid = false
 					result.Errors = append(result.Errors, ValidationError{
@@ -1171,7 +1172,7 @@ func isValidComposeFile(filePath string) bool {
 	}
 
 	// Try to parse as YAML
-	var content map[string]interface{}
+	var content map[string]any
 	if err := yaml.Unmarshal(data, &content); err != nil {
 		return false
 	}
@@ -1210,8 +1211,8 @@ func getProjectNameFromComposePath(composePath string) string {
 	return filepath.Base(dir)
 }
 
-// reindexDockerFolder triggers a reindex of the user's docker folder in the indexer
-func reindexDockerFolder(username string) error {
+// indexDockerFolder triggers indexing of the user's docker folder in the indexer
+func indexDockerFolder(username string) error {
 	// Get the user's docker folder from config
 	cfg, _, err := config.Load(username)
 	if err != nil {
@@ -1224,36 +1225,36 @@ func reindexDockerFolder(username string) error {
 
 	dockerFolder := string(cfg.Docker.Folder)
 
-	// Trigger reindex of the docker folder
-	reindexURL := fmt.Sprintf("http://unix/reindex?path=%s", url.QueryEscape(dockerFolder))
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, reindexURL, nil)
+	// Trigger indexing of the docker folder
+	indexURL := fmt.Sprintf("http://unix/reindex?path=%s", url.QueryEscape(dockerFolder))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, indexURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to build reindex request: %w", err)
+		return fmt.Errorf("failed to build indexer request: %w", err)
 	}
 
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("indexer reindex request failed: %w", err)
+		return fmt.Errorf("indexer request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("indexer reindex returned status %s", resp.Status)
+		return fmt.Errorf("indexer returned status %s", resp.Status)
 	}
 
-	logger.InfoKV("triggered reindex of docker folder", "path", dockerFolder, "user", username)
+	logger.InfoKV("triggered indexing of docker folder", "path", dockerFolder, "user", username)
 
 	return nil
 }
 
-// ReindexDockerFolder is the handler function for reindexing the docker folder
-func ReindexDockerFolder(username string) (any, error) {
-	if err := reindexDockerFolder(username); err != nil {
+// IndexDockerFolder is the handler function for indexing the docker folder
+func IndexDockerFolder(username string) (any, error) {
+	if err := indexDockerFolder(username); err != nil {
 		return nil, err
 	}
 
 	return map[string]any{
-		"message": "Reindex started",
+		"message": "Indexing started",
 		"status":  "running",
 	}, nil
 }
@@ -1319,11 +1320,8 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 		var existingProject *ComposeProject
 		for _, project := range projects {
 			// Check if config file already listed
-			for _, cf := range project.ConfigFiles {
-				if cf == yamlFile.Path {
-					existingProject = project
-					break
-				}
+			if slices.Contains(project.ConfigFiles, yamlFile.Path) {
+				existingProject = project
 			}
 			if existingProject != nil {
 				break
@@ -1338,13 +1336,7 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 
 		if existingProject != nil {
 			// Project exists with containers, just ensure config file is listed
-			configFileExists := false
-			for _, cf := range existingProject.ConfigFiles {
-				if cf == yamlFile.Path {
-					configFileExists = true
-					break
-				}
-			}
+			configFileExists := slices.Contains(existingProject.ConfigFiles, yamlFile.Path)
 			if !configFileExists {
 				existingProject.ConfigFiles = append(existingProject.ConfigFiles, yamlFile.Path)
 			}

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"io"
 	"io/fs"
 	"net/http"
@@ -27,6 +28,7 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 
 	// Apply middleware chain
 	var handler http.Handler = mux
+	handler = http.NewCrossOriginProtection().Handler(handler)
 	handler = LoggerMiddleware(handler)
 	handler = RecoveryMiddleware(handler)
 
@@ -124,7 +126,9 @@ func serveFileFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string
 	}
 
 	// Fallback: just copy the content
-	_, _ = io.Copy(w, f)
+	if _, err := io.Copy(w, f); err != nil {
+		logger.Warnf("Failed to copy %q to response: %v", name, err)
+	}
 }
 
 // ServeModuleFiles serves static files for modules from their directories
@@ -134,40 +138,28 @@ func ServeModuleFiles(w http.ResponseWriter, r *http.Request, ui fs.FS) {
 	urlPath := strings.TrimPrefix(r.URL.Path, "/modules/")
 	ext := filepath.Ext(urlPath)
 
-	// Security: prevent directory traversal
-	if strings.Contains(urlPath, "..") {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
-		return
-	}
-
 	// Try user modules first, then system modules
 	userHome := os.Getenv("HOME")
 	if userHome == "" {
 		userHome = "/root"
 	}
 
-	paths := []string{
-		filepath.Join(userHome, ".config/linuxio/modules", urlPath),
-		filepath.Join("/etc/linuxio/modules", urlPath),
+	moduleRoots := []string{
+		filepath.Join(userHome, ".config/linuxio/modules"),
+		"/etc/linuxio/modules",
 	}
 
-	var filePath string
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			filePath = p
-			break
-		}
-	}
-
-	if filePath == "" {
-		http.NotFound(w, r)
-		return
-	}
-
-	// Read and serve the file
-	content, err := os.ReadFile(filePath)
+	content, err := readModuleFileFromRoots(urlPath, moduleRoots)
 	if err != nil {
-		http.Error(w, "Failed to read file", http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			http.NotFound(w, r)
+		case isRootEscapeError(err):
+			http.Error(w, "Invalid path", http.StatusBadRequest)
+		default:
+			logger.Warnf("Failed to read module file %q: %v", urlPath, err)
+			http.Error(w, "Failed to read file", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -190,6 +182,35 @@ func ServeModuleFiles(w http.ResponseWriter, r *http.Request, ui fs.FS) {
 	if _, err := w.Write(content); err != nil {
 		logger.Warnf("Failed to write module file response: %v", err)
 	}
+}
+
+func readModuleFileFromRoots(relPath string, roots []string) ([]byte, error) {
+	for _, rootPath := range roots {
+		root, err := os.OpenRoot(rootPath)
+		if err != nil {
+			logger.Warnf("Failed to open module root %q: %v", rootPath, err)
+			continue
+		}
+
+		content, readErr := root.ReadFile(relPath)
+		if cerr := root.Close(); cerr != nil {
+			logger.Warnf("Failed to close module root %q: %v", rootPath, cerr)
+		}
+
+		if readErr == nil {
+			return content, nil
+		}
+		if errors.Is(readErr, fs.ErrNotExist) {
+			continue
+		}
+		return nil, readErr
+	}
+	return nil, fs.ErrNotExist
+}
+
+func isRootEscapeError(err error) bool {
+	var pathErr *fs.PathError
+	return errors.As(err, &pathErr) && strings.Contains(pathErr.Err.Error(), "path escapes from parent")
 }
 
 // HTTPErrorLogAdapter adapts logger.Warnf to the log.Logger interface for http.Server.ErrorLog.

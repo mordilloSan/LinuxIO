@@ -1,6 +1,6 @@
 export type ViewMode = "card" | "list";
 
-type ItemMetadata = {
+interface ItemMetadata {
   name: string;
   type: string;
   size?: number;
@@ -10,7 +10,7 @@ type ItemMetadata = {
   hasPreview?: boolean;
   symlink?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
-};
+}
 
 type ItemWithPath = ItemMetadata & {
   path: string;
@@ -18,11 +18,11 @@ type ItemWithPath = ItemMetadata & {
 
 export type ApiItem = ItemMetadata;
 
-type DirectoryListing = {
+interface DirectoryListing {
   files?: ApiItem[];
   folders?: ApiItem[];
   parentDirItems?: ApiItem[];
-};
+}
 
 export type ApiResource = ItemWithPath &
   DirectoryListing & {
@@ -38,7 +38,7 @@ export type FileResource = Omit<ApiResource, "files" | "folders"> & {
 export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
 
-export type ResourceStatData = {
+export interface ResourceStatData {
   mode: string;
   owner: string;
   group: string;
@@ -49,7 +49,7 @@ export type ResourceStatData = {
   path: string;
   realPath: string;
   name: string;
-};
+}
 
 export type MultiStatsItem = Pick<
   FileItem,
@@ -57,12 +57,13 @@ export type MultiStatsItem = Pick<
 > & {
   fileCount?: number;
   folderCount?: number;
+  aggregateSize?: number;
 };
 
-export type MultiStatsResponse = {
+export interface MultiStatsResponse {
   totalSize: number;
   totalFiles: number;
   totalFolders: number;
   items: MultiStatsItem[];
   count: number;
-};
+}

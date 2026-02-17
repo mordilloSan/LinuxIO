@@ -33,6 +33,7 @@
       "@/assets/*": ["assets/*"],
       "@/services/*": ["services/*"],
       // Files
+      "@/api": ["api/index"],
       "@/constants": ["theme/constants"],
       "@/config": ["config"],
       "@/theme": ["theme/index"],

@@ -38,7 +38,9 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	privileged, err := startBridge(sess, req.Password, h.Verbose)
 	if err != nil {
-		_ = h.SM.DeleteSession(sess.SessionID, session.ReasonManual)
+		if delErr := h.SM.DeleteSession(sess.SessionID, session.ReasonManual); delErr != nil {
+			logger.Warnf("[auth.login] failed to cleanup session after bridge error: %v", delErr)
+		}
 
 		// Classify auth failures to 401; others 500.
 		msg := strings.ToLower(err.Error())
@@ -57,7 +59,9 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Persist actual mode (informational)
-	_ = h.SM.SetPrivileged(sess.SessionID, privileged)
+	if setErr := h.SM.SetPrivileged(sess.SessionID, privileged); setErr != nil {
+		logger.Warnf("[auth.login] failed to persist privilege mode: %v", setErr)
+	}
 
 	h.SM.WriteCookie(w, sess.SessionID)
 

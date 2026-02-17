@@ -1,18 +1,24 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { normalizeResource } from "@/components/filebrowser/utils";
 import { useFileMultipleDirectoryDetails } from "@/hooks/useFileMultipleDirectoryDetails";
-import { ApiResource, FileResource } from "@/types/filebrowser";
-import linuxio, { LinuxIOError } from "@/api/react-query";
+import { FileResource } from "@/types/filebrowser";
+import {
+  linuxio,
+  CACHE_TTL_MS,
+  LinuxIOError,
+  useIsUpdating,
+  useStreamMux,
+} from "@/api";
 
-type useFileQueriesParams = {
+interface useFileQueriesParams {
   normalizedPath: string;
   detailTarget: string[] | null;
   editingPath: string | null;
   hasSingleDetailTarget: boolean;
   hasMultipleDetailTargets: boolean;
-};
+}
 
 export const useFileQueries = ({
   normalizedPath,
@@ -21,13 +27,16 @@ export const useFileQueries = ({
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
 }: useFileQueriesParams) => {
+  const queryClient = useQueryClient();
+  const { isOpen } = useStreamMux();
+  const isUpdating = useIsUpdating();
   const {
     data: resourceData,
     isPending,
     isError,
     error,
   } = linuxio.filebrowser.resource_get.useQuery(normalizedPath, {
-    staleTime: 0,
+    staleTime: CACHE_TTL_MS.NONE,
   });
 
   const resource = useMemo(
@@ -38,7 +47,7 @@ export const useFileQueries = ({
   const errorMessage = useMemo(() => {
     if (!isError || error === null || error === undefined) return null;
 
-    const err = error as Error | LinuxIOError;
+    const err = error as Error | LinuxIOError | null | undefined;
     if (err instanceof LinuxIOError) {
       if (err.code === 403) {
         return `Permission denied: You don't have access to "${normalizedPath}".`;
@@ -82,9 +91,17 @@ export const useFileQueries = ({
       },
     );
 
+  const multipleResourceQueryKey = useMemo(
+    () => [
+      ...linuxio.filebrowser.resource_get.queryKey("multi"),
+      ...(detailTarget ?? []),
+    ],
+    [detailTarget],
+  );
+
   const { data: multipleFileResources, isPending: isMultipleFilesPending } =
     useQuery<Record<string, FileResource>>({
-      queryKey: ["linuxio", "filebrowser", "resource_get_multi", detailTarget],
+      queryKey: multipleResourceQueryKey,
       queryFn: async () => {
         const currentDetailTarget = detailTarget;
         if (!currentDetailTarget || currentDetailTarget.length <= 1) {
@@ -93,11 +110,10 @@ export const useFileQueries = ({
         const results: Record<string, FileResource> = {};
         await Promise.all(
           currentDetailTarget.map(async (path) => {
-            // Args: [path]
-            const data = await linuxio.call<ApiResource>(
-              "filebrowser",
-              "resource_get",
-              [path],
+            const data = await queryClient.fetchQuery(
+              linuxio.filebrowser.resource_get.queryOptions(path, {
+                staleTime: CACHE_TTL_MS.NONE,
+              }),
             );
             results[path] = normalizeResource(data);
           }),
@@ -105,6 +121,8 @@ export const useFileQueries = ({
         return results;
       },
       enabled:
+        isOpen &&
+        !isUpdating &&
         hasMultipleDetailTargets &&
         detailTarget !== null &&
         detailTarget.length > 1,

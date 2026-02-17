@@ -13,37 +13,39 @@ export type ActionMap<M extends Record<string, any>> = {
 /**
  * Represents an authenticated user in the session.
  */
-export type AuthUser = {
+export interface AuthUser {
   /** Unique user identifier (typically a username or UID). */
   id: string;
   /** Friendly display name for the user. */
   name: string;
-};
+}
 
 /**
  * Reducer-managed state representing the authentication context.
  */
-export type AuthState = {
+export interface AuthState {
   isAuthenticated: boolean;
   isInitialized: boolean;
   user: AuthUser | null;
   privileged: boolean;
+  dockerAvailable: boolean | null;
   indexerAvailable: boolean | null;
-};
+}
 
 /**
  * The shape of the public API exposed by `useAuth()` or `AuthContext`.
  */
-export type AuthContextType = {
+export interface AuthContextType {
   isAuthenticated: boolean;
   isInitialized: boolean;
   user: AuthUser | null;
   privileged: boolean;
+  dockerAvailable: boolean | null;
   indexerAvailable: boolean | null;
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-};
+}
 
 /**
  * Enum-like constants for reducer action types.
@@ -64,30 +66,38 @@ export const AUTH_ACTIONS = {
 
   /** Dispatched after logout or session expiration. */
   SIGN_OUT: "SIGN_OUT",
+
+  /** Dispatched after the bridge is connected to refresh capability flags. */
+  UPDATE_CAPABILITIES: "UPDATE_CAPABILITIES",
 } as const satisfies Record<string, string>;
 
 /**
  * Mapping between action types and their expected payloads.
  * Used to infer strong types for the reducer's action object.
  */
-export type AuthActionTypes = {
+export interface AuthActionTypes {
   [AUTH_ACTIONS.INITIALIZE_START]: undefined;
   [AUTH_ACTIONS.INITIALIZE_SUCCESS]: {
     user: AuthUser;
     privileged: boolean;
+    dockerAvailable?: boolean | null;
     indexerAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
   [AUTH_ACTIONS.SIGN_IN]: {
     user: AuthUser;
     privileged: boolean;
+    dockerAvailable?: boolean | null;
     indexerAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
-};
+  [AUTH_ACTIONS.UPDATE_CAPABILITIES]: {
+    dockerAvailable: boolean;
+    indexerAvailable: boolean;
+  };
+}
 
-export type AuthActions =
-  ActionMap<AuthActionTypes>[keyof ActionMap<AuthActionTypes>];
+export type AuthActions = ActionMap<AuthActionTypes>[keyof AuthActionTypes];
 
 export interface UpdateInfo {
   available: boolean;
@@ -100,6 +110,7 @@ export interface LoginResponse {
   success: boolean;
   privileged: boolean;
   update?: UpdateInfo;
+  docker_available?: boolean;
   indexer_available?: boolean;
 }
 /**

@@ -1,7 +1,7 @@
 import { Box, Typography } from "@mui/material";
 import React, { useState, useMemo } from "react";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";

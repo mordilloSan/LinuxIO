@@ -15,7 +15,7 @@ import LucidePower from "lucide-react/dist/esm/icons/power";
 import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
 
@@ -29,7 +29,7 @@ function NavbarUserDropdown() {
   const [confirm, setConfirm] = useState<"reboot" | "poweroff" | null>(null);
 
   // Mutations for power actions
-  const { mutate: reboot } = linuxio.dbus.Reboot.useMutation({
+  const { mutate: reboot } = linuxio.dbus.reboot.useMutation({
     onSuccess: () => {
       // Server may die before responding - this is expected
     },
@@ -39,7 +39,7 @@ function NavbarUserDropdown() {
     },
   });
 
-  const { mutate: powerOff } = linuxio.dbus.PowerOff.useMutation({
+  const { mutate: powerOff } = linuxio.dbus.power_off.useMutation({
     onSuccess: () => {
       // Server may die before responding - this is expected
     },

@@ -71,11 +71,11 @@ type DbusStreamHandler struct {
 
 // HandlerArg defines an argument for a handler
 type HandlerArg struct {
-	Name        string      `yaml:"name"`
-	Type        string      `yaml:"type"`
-	Required    bool        `yaml:"required"`
-	Default     interface{} `yaml:"default"`
-	Description string      `yaml:"description"`
+	Name        string `yaml:"name"`
+	Type        string `yaml:"type"`
+	Required    bool   `yaml:"required"`
+	Default     any    `yaml:"default"`
+	Description string `yaml:"description"`
 }
 
 // HandlerReturns defines the return type of a handler
@@ -86,12 +86,12 @@ type HandlerReturns struct {
 
 // SettingConfig defines a configurable setting
 type SettingConfig struct {
-	Name        string      `yaml:"name"`
-	Type        string      `yaml:"type"`
-	Default     interface{} `yaml:"default"`
-	Description string      `yaml:"description"`
-	Min         interface{} `yaml:"min"`
-	Max         interface{} `yaml:"max"`
+	Name        string `yaml:"name"`
+	Type        string `yaml:"type"`
+	Default     any    `yaml:"default"`
+	Description string `yaml:"description"`
+	Min         any    `yaml:"min"`
+	Max         any    `yaml:"max"`
 }
 
 // ModuleInfo is the runtime representation of a loaded module

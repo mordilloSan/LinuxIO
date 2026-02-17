@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	godbus "github.com/godbus/dbus/v5"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 // Login1Manager abstracts the org.freedesktop.login1.Manager interface.
@@ -27,7 +28,9 @@ func NewLogin1Manager(context.Context) (*Login1Manager, error) {
 // Properly closes D-Bus connection when done
 func (m *Login1Manager) Close() {
 	if m.conn != nil {
-		_ = m.conn.Close()
+		if err := m.conn.Close(); err != nil {
+			logger.Debugf("failed to close login1 D-Bus connection: %v", err)
+		}
 	}
 }
 

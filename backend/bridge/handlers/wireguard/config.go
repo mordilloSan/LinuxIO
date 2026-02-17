@@ -25,9 +25,13 @@ func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 	ifSec := iniFile.Section("Interface")
 	cfg.PrivateKey = ifSec.Key("PrivateKey").String()
 	cfg.Address = parseCSV(ifSec.Key("Address").String())
-	cfg.ListenPort, _ = ifSec.Key("ListenPort").Int()
+	if listenPort, parseErr := ifSec.Key("ListenPort").Int(); parseErr == nil {
+		cfg.ListenPort = listenPort
+	}
 	cfg.DNS = parseCSV(ifSec.Key("DNS").String())
-	cfg.MTU, _ = ifSec.Key("MTU").Int()
+	if mtu, parseErr := ifSec.Key("MTU").Int(); parseErr == nil {
+		cfg.MTU = mtu
+	}
 
 	// Parse Peer sections
 	peerIdx := 1
@@ -48,7 +52,9 @@ func ParseWireGuardConfig(path string) (InterfaceConfig, error) {
 			pc.Name = fmt.Sprintf("peer%d", peerIdx)
 		}
 
-		pc.PersistentKeepalive, _ = sec.Key("PersistentKeepalive").Int()
+		if keepalive, parseErr := sec.Key("PersistentKeepalive").Int(); parseErr == nil {
+			pc.PersistentKeepalive = keepalive
+		}
 		cfg.Peers = append(cfg.Peers, pc)
 		peerIdx++
 	}

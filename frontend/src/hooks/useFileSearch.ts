@@ -1,4 +1,4 @@
-import linuxio from "@/api/react-query";
+import { linuxio, CACHE_TTL_MS } from "@/api";
 import useAuth from "@/hooks/useAuth";
 
 export interface SearchResult {
@@ -48,8 +48,8 @@ export const useFileSearch = ({
     basePath,
     {
       enabled: queryEnabled,
-      staleTime: 30000, // 30 seconds - search results stay fresh longer
-      gcTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: CACHE_TTL_MS.THIRTY_SECONDS, // Search results stay fresh longer
+      gcTime: CACHE_TTL_MS.FIVE_MINUTES,
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       retry: 1,

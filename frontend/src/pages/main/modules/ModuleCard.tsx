@@ -35,12 +35,12 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
   const [uninstallDialogOpen, setUninstallDialogOpen] = useState(false);
 
   // Fetch detailed info to check if it's a system module
-  const { data: moduleDetails } = linuxio.modules.GetModuleDetails.useQuery(
+  const { data: moduleDetails } = linuxio.modules.get_module_details.useQuery(
     module.name,
   );
 
   // Uninstall mutation
-  const uninstallMutation = linuxio.modules.UninstallModule.useMutation({
+  const uninstallMutation = linuxio.modules.uninstall_module.useMutation({
     onSuccess: (result) => {
       toast.success(
         result.message || `Module ${module.title} uninstalled successfully`,

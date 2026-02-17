@@ -12,13 +12,13 @@ import { useMemo, useState } from "react";
 import { cardBorderRadius } from "@/constants";
 import { CollapsibleTableProps } from "@/types/collapsible";
 
-type Props<T extends Record<string, any>> = {
+interface Props<T extends Record<string, any>> {
   row: T;
   columns: CollapsibleTableProps<T>["columns"];
   renderCollapseContent: CollapsibleTableProps<T>["renderCollapseContent"];
   selected: boolean;
   onToggleSelected: () => void;
-};
+}
 
 export default function CollapsibleCard<T extends Record<string, any>>({
   row,

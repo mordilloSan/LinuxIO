@@ -2,24 +2,64 @@ import React, { createContext, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
 import {
-  getStreamMux,
-  Stream,
-  ProgressFrame,
-  ResultFrame,
-  encodeString,
+  linuxio,
+  bindStreamHandlers,
+  LinuxIOError,
+  isConnected,
+  openFileUploadStream,
+  openFileDownloadStream,
+  openFileCompressStream,
+  openFileExtractStream,
+  openFileIndexerStream,
+  openFileIndexerAttachStream,
+  openFileCopyStream,
+  openFileMoveStream,
   STREAM_CHUNK_SIZE,
   UPLOAD_WINDOW_SIZE,
-} from "@/api/linuxio";
-import linuxio from "@/api/react-query";
+  type Stream,
+  type ProgressFrame,
+} from "@/api";
+import { useStreamResult } from "@/hooks/useStreamResult";
 
-// Stream types matching backend constants
-const STREAM_TYPE_FB_DOWNLOAD = "fb-download";
-const STREAM_TYPE_FB_UPLOAD = "fb-upload";
-const STREAM_TYPE_FB_COMPRESS = "fb-compress";
-const STREAM_TYPE_FB_EXTRACT = "fb-extract";
-const STREAM_TYPE_FB_REINDEX = "fb-reindex";
-const STREAM_TYPE_FB_COPY = "fb-copy";
-const STREAM_TYPE_FB_MOVE = "fb-move";
+const REMOTE_INDEXER_ID = "remote-indexer";
+
+const isIndexerConflictError = (error: unknown): boolean => {
+  const message =
+    error instanceof Error ? error.message.toLowerCase().trim() : "";
+  if (error instanceof LinuxIOError && Number(error.code) === 409) {
+    return true;
+  }
+
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = Number((error as { code?: unknown }).code);
+    if (code === 409) {
+      return true;
+    }
+  }
+
+  return message.includes("already running") || message.includes("conflict");
+};
+
+const isIndexerAttachUnavailableError = (error: unknown): boolean => {
+  const message =
+    error instanceof Error ? error.message.toLowerCase().trim() : "";
+  if (error instanceof LinuxIOError && Number(error.code) === 404) {
+    return true;
+  }
+
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = Number((error as { code?: unknown }).code);
+    if (code === 404) {
+      return true;
+    }
+  }
+
+  return (
+    message.includes("no active") ||
+    message.includes("not found") ||
+    message.includes("status stream error: 404")
+  );
+};
 
 interface Download {
   id: string;
@@ -69,18 +109,31 @@ interface Extraction {
   stream?: Stream | null;
 }
 
-interface Reindex {
-  id: string;
-  type: "reindex";
+interface Indexer {
   path: string;
   filesIndexed: number;
   dirsIndexed: number;
+  totalSize: number;
+  durationMs: number;
+  id?: string;
+  type?: "indexer";
+  currentPath?: string;
+  phase?: string;
+  progress?: number;
+  label?: string;
+  abortController?: AbortController;
+  stream?: Stream | null;
+}
+
+type ActiveIndexer = Indexer & {
+  id: string;
+  type: "indexer";
   currentPath: string;
+  phase: string;
   progress: number;
   label: string;
   abortController: AbortController;
-  stream?: Stream | null;
-}
+};
 
 interface Copy {
   id: string;
@@ -115,16 +168,35 @@ type Transfer =
   | Upload
   | Compression
   | Extraction
-  | Reindex
+  | ActiveIndexer
   | Copy
   | Move;
+
+function createProgressSpeedCalculator(minWindowMs = 500) {
+  let lastBytes = 0;
+  let lastTime = Date.now();
+
+  return (bytes: number): number | undefined => {
+    const now = Date.now();
+    const deltaBytes = bytes - lastBytes;
+    const deltaMs = now - lastTime;
+
+    if (deltaMs > minWindowMs && deltaBytes > 0) {
+      lastBytes = bytes;
+      lastTime = now;
+      return deltaBytes / (deltaMs / 1000);
+    }
+
+    return undefined;
+  };
+}
 
 export interface FileTransferContextValue {
   downloads: Download[];
   uploads: Upload[];
   compressions: Compression[];
   extractions: Extraction[];
-  reindexes: Reindex[];
+  indexers: ActiveIndexer[];
   copies: Copy[];
   moves: Move[];
   transfers: Transfer[];
@@ -143,16 +215,16 @@ export interface FileTransferContextValue {
     onComplete?: () => void;
   }) => Promise<void>;
   cancelExtraction: (id: string) => void;
-  startReindex: (options: {
+  startIndexer: (options: {
     path?: string;
-    onComplete?: (result: {
-      filesIndexed: number;
-      dirsIndexed: number;
-      totalSize: number;
-      durationMs: number;
-    }) => void;
+    onComplete?: (result: Indexer) => void;
   }) => Promise<void>;
-  isReindexing: boolean;
+  isIndexing: boolean;
+  isIndexerDialogOpen: boolean;
+  openIndexerDialog: () => void;
+  closeIndexerDialog: () => void;
+  lastIndexerResult: Indexer | null;
+  lastIndexerError: string | null;
   startCopy: (options: {
     source: string;
     destination: string;
@@ -166,17 +238,17 @@ export interface FileTransferContextValue {
   }) => Promise<void>;
   cancelMove: (id: string) => void;
   startUpload: (
-    entries: Array<{ file?: File; relativePath: string; isDirectory: boolean }>,
+    entries: { file?: File; relativePath: string; isDirectory: boolean }[],
     targetPath: string,
     override?: boolean,
   ) => Promise<{
-    conflicts: Array<{
+    conflicts: {
       file?: File;
       relativePath: string;
       isDirectory: boolean;
-    }>;
+    }[];
     uploaded: number;
-    failures: Array<{ path: string; message: string }>;
+    failures: { path: string; message: string }[];
   }>;
   cancelUpload: (id: string) => void;
 }
@@ -191,12 +263,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [compressions, setCompressions] = useState<Compression[]>([]);
   const [extractions, setExtractions] = useState<Extraction[]>([]);
-  const [reindexes, setReindexes] = useState<Reindex[]>([]);
+  const [indexers, setIndexers] = useState<ActiveIndexer[]>([]);
+  const [isIndexerDialogOpen, setIsIndexerDialogOpen] = useState(false);
+  const [lastIndexerResult, setLastIndexerResult] = useState<Indexer | null>(
+    null,
+  );
+  const [lastIndexerError, setLastIndexerError] = useState<string | null>(null);
   const [copies, setCopies] = useState<Copy[]>([]);
   const [moves, setMoves] = useState<Move[]>([]);
   const activeCompressionIdsRef = useRef<Set<string>>(new Set());
   const activeExtractionIdsRef = useRef<Set<string>>(new Set());
-  const activeReindexIdsRef = useRef<Set<string>>(new Set());
+  const activeIndexerIdsRef = useRef<Set<string>>(new Set());
+  const remoteIndexerActiveRef = useRef(false);
+  const attachedStreamRef = useRef(false);
   const activeCopyIdsRef = useRef<Set<string>>(new Set());
   const activeMoveIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
@@ -204,6 +283,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const transferRatesRef = useRef<
     Map<string, { bytes: number; timestamp: number; emitted: boolean }>
   >(new Map());
+  const { run: runStreamResult } = useStreamResult();
   // Store stream references synchronously for immediate cancellation access
   const streamRefsRef = useRef<Map<string, Stream>>(new Map());
   const TRANSFER_RATE_SAMPLE_MS = 1000;
@@ -294,12 +374,20 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     ...uploads,
     ...compressions,
     ...extractions,
-    ...reindexes,
+    ...indexers,
     ...copies,
     ...moves,
   ];
 
-  const isReindexing = reindexes.length > 0;
+  const isIndexing = indexers.length > 0;
+
+  const openIndexerDialog = useCallback(() => {
+    setIsIndexerDialogOpen(true);
+  }, []);
+
+  const closeIndexerDialog = useCallback(() => {
+    setIsIndexerDialogOpen(false);
+  }, []);
 
   const updateDownload = useCallback(
     (
@@ -332,41 +420,28 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       paths: string[],
       reqId: string,
       _downloadLabelBase: string,
+      abortSignal: AbortSignal,
       formatDownloadLabel: (
         stage: string,
         options?: { percent?: number; name?: string },
       ) => string,
     ) => {
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
-        throw new Error("Stream connection not ready");
-      }
-
-      // Determine stream type: use fb-download only for single files (not directories)
-      // Directories end with '/' and need fb-archive to create a zip
       const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
-      const streamType = isSingleFile ? STREAM_TYPE_FB_DOWNLOAD : "fb-archive";
-
-      // Build payload
-      const payloadParts = isSingleFile
-        ? [STREAM_TYPE_FB_DOWNLOAD, paths[0]]
-        : ["fb-archive", "zip", ...paths];
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(streamType, payload);
-      if (!stream) {
-        throw new Error("Failed to open download stream");
-      }
-
-      // Store stream reference for cancellation (sync ref for immediate access)
-      streamRefsRef.current.set(reqId, stream);
-
       const chunks: Uint8Array[] = [];
       let lastBytes = 0;
       let lastTime = Date.now();
-
-      return new Promise<Blob>((resolve, reject) => {
-        stream.onProgress = (progress: ProgressFrame) => {
+      await runStreamResult({
+        open: () => openFileDownloadStream(paths),
+        openErrorMessage: "Failed to open download stream",
+        signal: abortSignal,
+        onOpen: (stream) => {
+          // Store stream reference for cancellation (sync ref for immediate access)
+          streamRefsRef.current.set(reqId, stream);
+        },
+        onData: (data) => {
+          chunks.push(data);
+        },
+        onProgress: (progress) => {
           const now = Date.now();
           const deltaBytes = progress.bytes - lastBytes;
           const deltaMs = now - lastTime;
@@ -378,7 +453,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             lastTime = now;
           }
 
-          // Map backend phases to user-friendly labels
           let phaseLabel: string;
           switch (progress.phase) {
             case "preparing":
@@ -398,33 +472,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             label: formatDownloadLabel(phaseLabel, { percent: progress.pct }),
             ...(speed !== undefined && { speed }),
           });
-        };
-
-        stream.onData = (data: Uint8Array) => {
-          chunks.push(data);
-        };
-
-        stream.onResult = (result: ResultFrame) => {
-          if (result.status === "ok") {
-            const mimeType = isSingleFile
-              ? "application/octet-stream"
-              : "application/zip";
-            const blob = new Blob(chunks as BlobPart[], { type: mimeType });
-            resolve(blob);
-          } else {
-            reject(new Error(result.error || "Download failed"));
-          }
-        };
-
-        stream.onClose = () => {
-          // If no result was received, treat as error
-          if (chunks.length === 0) {
-            reject(new Error("Stream closed before transfer completed"));
-          }
-        };
+        },
+        closeMessage: "Stream closed before transfer completed",
+        onFinally: () => {
+          streamRefsRef.current.delete(reqId);
+        },
       });
+
+      const mimeType = isSingleFile
+        ? "application/octet-stream"
+        : "application/zip";
+      return new Blob(chunks as BlobPart[], { type: mimeType });
     },
-    [updateDownload],
+    [runStreamResult, updateDownload],
   );
 
   const startDownload = useCallback(
@@ -473,8 +533,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
       setDownloads((prev) => [...prev, download]);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeDownload(reqId);
         return;
@@ -486,6 +545,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           paths,
           reqId,
           downloadLabelBase,
+          abortController.signal,
           formatDownloadLabel,
         );
 
@@ -540,6 +600,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     (id: string) => {
       const download = downloads.find((d) => d.id === id);
       if (download) {
+        download.abortController.abort();
         // Abort stream if using stream-based download (RST for immediate cancel)
         // Use ref first (synchronous) then fallback to state
         const stream = streamRefsRef.current.get(id) || download.stream;
@@ -547,7 +608,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           stream.abort(); // Use abort() instead of close() for immediate cancellation
           streamRefsRef.current.delete(id);
         }
-        download.abortController.abort();
         toast.info("Download cancelled");
         removeDownload(id);
       }
@@ -602,78 +662,68 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setCompressions((prev) => [...prev, compression]);
       activeCompressionIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeCompression(id);
         return;
       }
 
-      // Build payload: "fb-compress\0format\0destination\0path1\0path2\0..."
       const format = archiveName.toLowerCase().endsWith(".tar.gz")
         ? "tar.gz"
         : "zip";
       const fullDestination = destination.endsWith("/")
         ? `${destination}${archiveName}`
         : `${destination}/${archiveName}`;
-      const payloadParts = [
-        STREAM_TYPE_FB_COMPRESS,
-        format,
-        fullDestination,
-        ...paths,
-      ];
-      const payload = encodeString(payloadParts.join("\0"));
 
-      const stream = mux.openStream(STREAM_TYPE_FB_COMPRESS, payload);
-      if (!stream) {
-        toast.error("Failed to open compression stream");
-        removeCompression(id);
-        return;
-      }
-
-      // Store stream reference for cancellation
-      streamRefsRef.current.set(id, stream);
-
-      stream.onProgress = (progress: ProgressFrame) => {
-        const percent = Math.min(99, progress.pct);
-        setCompressions((prev) =>
-          prev.map((c) => {
-            if (c.id !== id) return c;
-            const next = Math.max(c.progress, percent);
-            if (next === c.progress) return c;
-            return {
-              ...c,
-              progress: next,
-              label: `Compressing ${labelBase} (${next}%)`,
-            };
-          }),
-        );
-      };
-
-      stream.onResult = (result: ResultFrame) => {
-        streamRefsRef.current.delete(id);
-        setCompressions((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, stream: null } : c)),
-        );
-
-        if (result.status === "ok") {
+      void runStreamResult<void, ProgressFrame>({
+        open: () => openFileCompressStream(paths, fullDestination, format),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open compression stream",
+        closeMessage: "Compression stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setCompressions((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, stream } : c)),
+          );
+        },
+        onProgress: (progress) => {
+          const percent = Math.min(99, progress.pct);
+          setCompressions((prev) =>
+            prev.map((c) => {
+              if (c.id !== id) return c;
+              const next = Math.max(c.progress, percent);
+              if (next === c.progress) return c;
+              return {
+                ...c,
+                progress: next,
+                label: `Compressing ${labelBase} (${next}%)`,
+              };
+            }),
+          );
+        },
+        onSuccess: () => {
           toast.success(`Created ${labelBase}`);
           onComplete?.();
-        } else {
-          toast.error(result.error || "Compression failed");
-        }
-        removeCompression(id);
-      };
-
-      stream.onClose = () => {
-        streamRefsRef.current.delete(id);
-        // If aborted, handle cleanup
-        if (abortController.signal.aborted) {
+        },
+        onError: (error: unknown) => {
+          if (abortController.signal.aborted) {
+            return;
+          }
+          const message =
+            error instanceof Error ? error.message : "Compression failed";
+          toast.error(message);
+        },
+        onFinally: () => {
+          streamRefsRef.current.delete(id);
+          setCompressions((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, stream: null } : c)),
+          );
           removeCompression(id);
-        }
-      };
+        },
+      });
     },
-    [allocateDownloadLabelBase, removeCompression],
+    [allocateDownloadLabelBase, removeCompression, runStreamResult],
   );
 
   const cancelCompression = useCallback(
@@ -757,69 +807,61 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setExtractions((prev) => [...prev, extraction]);
       activeExtractionIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeExtraction(id);
         return;
       }
 
-      // Build payload: "fb-extract\0archivePath\0destination"
-      const payloadParts = destination
-        ? [STREAM_TYPE_FB_EXTRACT, archivePath, destination]
-        : [STREAM_TYPE_FB_EXTRACT, archivePath];
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(STREAM_TYPE_FB_EXTRACT, payload);
-      if (!stream) {
-        toast.error("Failed to open extraction stream");
-        removeExtraction(id);
-        return;
-      }
-
-      // Store stream reference for cancellation
-      streamRefsRef.current.set(id, stream);
-
-      stream.onProgress = (progress: ProgressFrame) => {
-        const percent = Math.min(99, progress.pct);
-        setExtractions((prev) =>
-          prev.map((item) => {
-            if (item.id !== id) return item;
-            const next = Math.max(item.progress, percent);
-            if (next === item.progress) return item;
-            return {
-              ...item,
-              progress: next,
-              label: `Extracting ${labelBase} (${next}%)`,
-            };
-          }),
-        );
-      };
-
-      stream.onResult = (result: ResultFrame) => {
-        streamRefsRef.current.delete(id);
-        setExtractions((prev) =>
-          prev.map((e) => (e.id === id ? { ...e, stream: null } : e)),
-        );
-
-        if (result.status === "ok") {
+      void runStreamResult<void, ProgressFrame>({
+        open: () => openFileExtractStream(archivePath, destination),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open extraction stream",
+        closeMessage: "Extraction stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setExtractions((prev) =>
+            prev.map((e) => (e.id === id ? { ...e, stream } : e)),
+          );
+        },
+        onProgress: (progress) => {
+          const percent = Math.min(99, progress.pct);
+          setExtractions((prev) =>
+            prev.map((item) => {
+              if (item.id !== id) return item;
+              const next = Math.max(item.progress, percent);
+              if (next === item.progress) return item;
+              return {
+                ...item,
+                progress: next,
+                label: `Extracting ${labelBase} (${next}%)`,
+              };
+            }),
+          );
+        },
+        onSuccess: () => {
           toast.success(`Extracted ${labelBase}`);
           onComplete?.();
-        } else {
-          toast.error(result.error || "Extraction failed");
-        }
-        removeExtraction(id);
-      };
-
-      stream.onClose = () => {
-        streamRefsRef.current.delete(id);
-        // If aborted, handle cleanup
-        if (abortController.signal.aborted) {
+        },
+        onError: (error: unknown) => {
+          if (abortController.signal.aborted) {
+            return;
+          }
+          const message =
+            error instanceof Error ? error.message : "Extraction failed";
+          toast.error(message);
+        },
+        onFinally: () => {
+          streamRefsRef.current.delete(id);
+          setExtractions((prev) =>
+            prev.map((e) => (e.id === id ? { ...e, stream: null } : e)),
+          );
           removeExtraction(id);
-        }
-      };
+        },
+      });
     },
-    [allocateDownloadLabelBase, removeExtraction],
+    [allocateDownloadLabelBase, removeExtraction, runStreamResult],
   );
 
   const cancelExtraction = useCallback(
@@ -840,14 +882,149 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [extractions, removeExtraction],
   );
 
-  const removeReindex = useCallback((id: string) => {
-    if (!activeReindexIdsRef.current.has(id)) {
+  const removeIndexer = useCallback((id: string) => {
+    if (!activeIndexerIdsRef.current.has(id)) {
       return;
     }
-    activeReindexIdsRef.current.delete(id);
-    setReindexes((prev) => prev.filter((r) => r.id !== id));
+    activeIndexerIdsRef.current.delete(id);
+    if (id === REMOTE_INDEXER_ID) {
+      remoteIndexerActiveRef.current = false;
+    }
+    setIndexers((prev) => prev.filter((r) => r.id !== id));
     streamRefsRef.current.delete(id);
   }, []);
+
+  const hasLocalIndexerInProgress = useCallback(() => {
+    for (const id of activeIndexerIdsRef.current) {
+      if (id !== REMOTE_INDEXER_ID) {
+        return true;
+      }
+    }
+    return false;
+  }, []);
+
+  const clearRemoteIndexer = useCallback(() => {
+    if (!remoteIndexerActiveRef.current) {
+      return;
+    }
+
+    remoteIndexerActiveRef.current = false;
+    activeIndexerIdsRef.current.delete(REMOTE_INDEXER_ID);
+    streamRefsRef.current.delete(REMOTE_INDEXER_ID);
+    setIndexers((prev) =>
+      prev.filter((transfer) => transfer.id !== REMOTE_INDEXER_ID),
+    );
+  }, []);
+
+  const attachToRunningIndexer = useCallback(
+    ({ force = false }: { force?: boolean } = {}) => {
+      if (
+        attachedStreamRef.current ||
+        (!force && hasLocalIndexerInProgress()) ||
+        !isConnected()
+      ) {
+        return false;
+      }
+
+      const stream = openFileIndexerAttachStream();
+      if (!stream) {
+        return false;
+      }
+
+      attachedStreamRef.current = true;
+
+      void runStreamResult<
+        | {
+            files_indexed?: number;
+            dirs_indexed?: number;
+            total_size?: number;
+            duration_ms?: number;
+          }
+        | undefined,
+        ProgressFrame
+      >({
+        open: () => stream,
+        signal: new AbortController().signal,
+        closeOnAbort: "none",
+        onProgress: (progress) => {
+          const progressData = progress as ProgressFrame & {
+            files_indexed?: number;
+            dirs_indexed?: number;
+            current_path?: string;
+            phase?: string;
+          };
+
+          const filesIndexed = Math.max(0, progressData.files_indexed ?? 0);
+          const dirsIndexed = Math.max(0, progressData.dirs_indexed ?? 0);
+          const currentPath = progressData.current_path ?? "";
+          const phase = progressData.phase ?? "indexing";
+          const label =
+            filesIndexed > 0 || dirsIndexed > 0
+              ? `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`
+              : "Indexing in progress...";
+
+          setIndexers((prev) => {
+            const existing = prev.find((item) => item.id === REMOTE_INDEXER_ID);
+            const remoteTransfer: ActiveIndexer = {
+              id: REMOTE_INDEXER_ID,
+              type: "indexer",
+              path: "/",
+              filesIndexed: Math.max(existing?.filesIndexed ?? 0, filesIndexed),
+              dirsIndexed: Math.max(existing?.dirsIndexed ?? 0, dirsIndexed),
+              totalSize: 0,
+              durationMs: 0,
+              currentPath,
+              phase,
+              progress: existing?.progress ?? 0,
+              label,
+              abortController:
+                existing?.abortController ?? new AbortController(),
+              stream: null,
+            };
+
+            if (existing) {
+              return prev.map((item) =>
+                item.id === REMOTE_INDEXER_ID ? remoteTransfer : item,
+              );
+            }
+            return [...prev, remoteTransfer];
+          });
+
+          activeIndexerIdsRef.current.add(REMOTE_INDEXER_ID);
+          remoteIndexerActiveRef.current = true;
+        },
+        onSuccess: (result) => {
+          const summary = {
+            path: "/",
+            filesIndexed: result?.files_indexed ?? 0,
+            dirsIndexed: result?.dirs_indexed ?? 0,
+            totalSize: result?.total_size ?? 0,
+            durationMs: result?.duration_ms ?? 0,
+          };
+          clearRemoteIndexer();
+          setLastIndexerResult(summary);
+          setLastIndexerError(null);
+        },
+        onError: (error: unknown) => {
+          clearRemoteIndexer();
+          if (isIndexerAttachUnavailableError(error)) {
+            return;
+          }
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to attach to running indexer";
+          setLastIndexerError(message);
+        },
+        onFinally: () => {
+          attachedStreamRef.current = false;
+        },
+      });
+
+      return true;
+    },
+    [clearRemoteIndexer, hasLocalIndexerInProgress, runStreamResult],
+  );
 
   const removeCopy = useCallback((id: string) => {
     if (!activeCopyIdsRef.current.has(id)) {
@@ -867,136 +1044,150 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     streamRefsRef.current.delete(id);
   }, []);
 
-  const startReindex = useCallback(
+  const startIndexer = useCallback(
     async ({
       path = "/",
       onComplete,
     }: {
       path?: string;
-      onComplete?: (result: {
-        filesIndexed: number;
-        dirsIndexed: number;
-        totalSize: number;
-        durationMs: number;
-      }) => void;
+      onComplete?: (result: Indexer) => void;
     }) => {
-      // Only allow one reindex at a time
-      if (activeReindexIdsRef.current.size > 0) {
-        toast.error("A reindex operation is already in progress");
+      // Only allow one indexer task at a time
+      if (activeIndexerIdsRef.current.size > 0) {
+        setIsIndexerDialogOpen(true);
         return;
       }
+
+      setIsIndexerDialogOpen(true);
+
+      if (!isConnected()) {
+        setLastIndexerError("Stream connection not ready");
+        toast.error("Stream connection not ready");
+        return;
+      }
+
+      setLastIndexerResult(null);
+      setLastIndexerError(null);
 
       const id = crypto.randomUUID();
       const abortController = new AbortController();
 
-      const reindex: Reindex = {
+      const indexerTask: ActiveIndexer = {
         id,
-        type: "reindex",
+        type: "indexer",
         path,
         filesIndexed: 0,
         dirsIndexed: 0,
+        totalSize: 0,
+        durationMs: 0,
         currentPath: "",
+        phase: "connecting",
         progress: 0,
-        label: "Starting reindex...",
+        label: "Starting indexer...",
         abortController,
       };
 
-      setReindexes((prev) => [...prev, reindex]);
-      activeReindexIdsRef.current.add(id);
+      setIndexers((prev) => [...prev, indexerTask]);
+      activeIndexerIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
-        toast.error("Stream connection not ready");
-        removeReindex(id);
-        return;
-      }
-
-      // Build payload: "fb-reindex\0path" (path is optional, defaults to "/" on backend)
-      const payloadParts = [STREAM_TYPE_FB_REINDEX];
-      if (path && path !== "/") {
-        payloadParts.push(path);
-      }
-      const payload = encodeString(payloadParts.join("\0"));
-
-      const stream = mux.openStream(STREAM_TYPE_FB_REINDEX, payload);
-      if (!stream) {
-        toast.error("Failed to open reindex stream");
-        removeReindex(id);
-        return;
-      }
-
-      // Store stream reference for cancellation
-      streamRefsRef.current.set(id, stream);
-
-      stream.onProgress = (progress: ProgressFrame) => {
-        const progressData = progress as ProgressFrame & {
-          files_indexed?: number;
-          dirs_indexed?: number;
-          current_path?: string;
-          phase?: string;
-        };
-
-        setReindexes((prev) =>
-          prev.map((r) => {
-            if (r.id !== id) return r;
-            const filesIndexed = progressData.files_indexed ?? r.filesIndexed;
-            const dirsIndexed = progressData.dirs_indexed ?? r.dirsIndexed;
-            const currentPath = progressData.current_path ?? r.currentPath;
-            const phase = progressData.phase ?? "indexing";
-
-            return {
-              ...r,
-              filesIndexed,
-              dirsIndexed,
-              currentPath,
-              label:
-                phase === "connecting"
-                  ? "Connecting to indexer..."
-                  : `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`,
-            };
-          }),
-        );
-      };
-
-      stream.onResult = (result: ResultFrame) => {
-        streamRefsRef.current.delete(id);
-        setReindexes((prev) =>
-          prev.map((r) => (r.id === id ? { ...r, stream: null } : r)),
-        );
-
-        if (result.status === "ok") {
-          const data = result.data as
-            | {
-                files_indexed?: number;
-                dirs_indexed?: number;
-                total_size?: number;
-                duration_ms?: number;
-              }
-            | undefined;
-
-          toast.success(
-            `Reindex complete: ${data?.files_indexed ?? 0} files, ${data?.dirs_indexed ?? 0} dirs`,
+      void runStreamResult<
+        | {
+            files_indexed?: number;
+            dirs_indexed?: number;
+            total_size?: number;
+            duration_ms?: number;
+          }
+        | undefined,
+        ProgressFrame
+      >({
+        open: () => openFileIndexerStream(path),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open indexer stream",
+        closeMessage: "Indexer stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setIndexers((prev) =>
+            prev.map((r) => (r.id === id ? { ...r, stream } : r)),
           );
-          onComplete?.({
-            filesIndexed: data?.files_indexed ?? 0,
-            dirsIndexed: data?.dirs_indexed ?? 0,
-            totalSize: data?.total_size ?? 0,
-            durationMs: data?.duration_ms ?? 0,
-          });
-        } else {
-          toast.error(result.error || "Reindex failed");
-        }
-        removeReindex(id);
-      };
+        },
+        onProgress: (progress) => {
+          const progressData = progress as ProgressFrame & {
+            files_indexed?: number;
+            dirs_indexed?: number;
+            current_path?: string;
+            phase?: string;
+          };
 
-      stream.onClose = () => {
-        streamRefsRef.current.delete(id);
-        if (abortController.signal.aborted) {
-          removeReindex(id);
-        }
-      };
+          setIndexers((prev) =>
+            prev.map((r) => {
+              if (r.id !== id) return r;
+              const filesIndexed = progressData.files_indexed ?? r.filesIndexed;
+              const dirsIndexed = progressData.dirs_indexed ?? r.dirsIndexed;
+              const currentPath = progressData.current_path ?? r.currentPath;
+              const phase = progressData.phase ?? "indexing";
+
+              return {
+                ...r,
+                filesIndexed,
+                dirsIndexed,
+                currentPath,
+                phase,
+                label:
+                  phase === "connecting"
+                    ? "Connecting to indexer..."
+                    : `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`,
+              };
+            }),
+          );
+        },
+        onSuccess: (result) => {
+          const summary = {
+            path,
+            filesIndexed: result?.files_indexed ?? 0,
+            dirsIndexed: result?.dirs_indexed ?? 0,
+            totalSize: result?.total_size ?? 0,
+            durationMs: result?.duration_ms ?? 0,
+          };
+          setLastIndexerResult(summary);
+          setLastIndexerError(null);
+          toast.success(
+            `Indexing complete: ${result?.files_indexed ?? 0} files, ${result?.dirs_indexed ?? 0} dirs`,
+          );
+          onComplete?.(summary);
+        },
+        onError: (error: unknown) => {
+          if (abortController.signal.aborted) {
+            return;
+          }
+          if (isIndexerConflictError(error)) {
+            setLastIndexerError(null);
+            setIsIndexerDialogOpen(true);
+            if (!attachToRunningIndexer({ force: true })) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Another indexing operation is already running";
+              setLastIndexerError(message);
+            }
+            return;
+          }
+          const message =
+            error instanceof Error ? error.message : "Indexing failed";
+          setLastIndexerError(message);
+          setLastIndexerResult(null);
+          toast.error(message);
+        },
+        onFinally: () => {
+          streamRefsRef.current.delete(id);
+          setIndexers((prev) =>
+            prev.map((r) => (r.id === id ? { ...r, stream: null } : r)),
+          );
+          removeIndexer(id);
+        },
+      });
     },
-    [removeReindex],
+    [attachToRunningIndexer, removeIndexer, runStreamResult],
   );
 
   const updateUpload = useCallback(
@@ -1029,17 +1220,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       onProgress: (loaded: number, total: number) => void,
       abortSignal: AbortSignal,
     ): Promise<{ success: boolean; error?: string; cancelled?: boolean }> => {
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         return { success: false, error: "Stream connection not ready" };
       }
 
-      // Build payload: "fb-upload\0/path/to/file\0size"
-      const payload = encodeString(
-        `${STREAM_TYPE_FB_UPLOAD}\0${targetPath}\0${file.size}`,
-      );
-      const stream = mux.openStream(STREAM_TYPE_FB_UPLOAD, payload);
-
+      const stream = openFileUploadStream(targetPath, file.size);
       if (!stream) {
         return { success: false, error: "Failed to open upload stream" };
       }
@@ -1052,52 +1237,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         error?: string;
         cancelled?: boolean;
       }>((resolve) => {
+        let settled = false;
         let resultReceived = false;
-
-        // Use backend progress updates (bytes actually written to disk)
-        stream.onProgress = (progress: ProgressFrame) => {
-          onProgress(progress.bytes, progress.total);
-        };
-
-        stream.onResult = (result: ResultFrame) => {
-          resultReceived = true;
-          // Clear stream reference
-          streamRefsRef.current.delete(uploadId);
-          setUploads((prev) =>
-            prev.map((u) => (u.id === uploadId ? { ...u, stream: null } : u)),
-          );
-          // Check if cancelled - even if bridge reports success, user cancelled
-          if (abortSignal.aborted) {
-            resolve({ success: false, cancelled: true });
-            return;
-          }
-          if (result.status === "ok") {
-            resolve({ success: true });
-          } else {
-            resolve({
-              success: false,
-              error: result.error || "Upload failed",
-            });
-          }
-        };
-
-        stream.onClose = () => {
-          if (!resultReceived) {
-            streamRefsRef.current.delete(uploadId);
-            setUploads((prev) =>
-              prev.map((u) => (u.id === uploadId ? { ...u, stream: null } : u)),
-            );
-            // Check if cancelled
-            if (abortSignal.aborted) {
-              resolve({ success: false, cancelled: true });
-              return;
-            }
-            resolve({
-              success: false,
-              error: "Stream closed before upload completed",
-            });
-          }
-        };
 
         // Flow control: track bytes in flight to allow meaningful cancellation
         const reader = new FileReader();
@@ -1106,17 +1247,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         let bytesAcked = 0;
         let pendingSend = false;
 
-        // Update onProgress to handle flow control ACKs
-        const originalOnProgress = stream.onProgress;
-        stream.onProgress = (progress: ProgressFrame) => {
-          bytesAcked = progress.bytes;
-          originalOnProgress?.(progress);
-
-          // Window opened - resume sending if we were waiting
-          if (pendingSend && bytesSent - bytesAcked < UPLOAD_WINDOW_SIZE) {
-            pendingSend = false;
-            sendNextChunk();
-          }
+        const resolveSafe = (result: {
+          success: boolean;
+          error?: string;
+          cancelled?: boolean;
+        }) => {
+          if (settled) return;
+          settled = true;
+          unbind();
+          streamRefsRef.current.delete(uploadId);
+          setUploads((prev) =>
+            prev.map((u) => (u.id === uploadId ? { ...u, stream: null } : u)),
+          );
+          resolve(result);
         };
 
         const sendNextChunk = () => {
@@ -1141,6 +1284,48 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           reader.readAsArrayBuffer(slice);
         };
 
+        const unbind = bindStreamHandlers(stream, {
+          onProgress: (progress: ProgressFrame) => {
+            bytesAcked = progress.bytes;
+            onProgress(progress.bytes, progress.total);
+
+            // Window opened - resume sending if we were waiting
+            if (pendingSend && bytesSent - bytesAcked < UPLOAD_WINDOW_SIZE) {
+              pendingSend = false;
+              sendNextChunk();
+            }
+          },
+          onResult: (result) => {
+            resultReceived = true;
+            // Check if cancelled - even if bridge reports success, user cancelled
+            if (abortSignal.aborted) {
+              resolveSafe({ success: false, cancelled: true });
+              return;
+            }
+            if (result.status === "ok") {
+              resolveSafe({ success: true });
+            } else {
+              resolveSafe({
+                success: false,
+                error: result.error || "Upload failed",
+              });
+            }
+          },
+          onClose: () => {
+            if (resultReceived) {
+              return;
+            }
+            if (abortSignal.aborted) {
+              resolveSafe({ success: false, cancelled: true });
+              return;
+            }
+            resolveSafe({
+              success: false,
+              error: "Stream closed before upload completed",
+            });
+          },
+        });
+
         reader.onload = () => {
           // Stop if stream was closed/aborted
           if (stream.status !== "open") {
@@ -1160,7 +1345,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
         reader.onerror = () => {
           stream.close();
-          resolve({ success: false, error: "Failed to read file" });
+          resolveSafe({ success: false, error: "Failed to read file" });
         };
 
         // Start sending
@@ -1172,11 +1357,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const startUpload = useCallback(
     async (
-      entries: Array<{
+      entries: {
         file?: File;
         relativePath: string;
         isDirectory: boolean;
-      }>,
+      }[],
       targetPath: string,
       override?: boolean,
     ) => {
@@ -1265,12 +1450,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           try {
             // Check if aborted before making the call
             if (abortController.signal.aborted) break;
-            // Args: [path, override?] - directory path with trailing slash
-            const args = [dirPath];
-            if (override) {
-              args.push("true");
-            }
-            await linuxio.call("filebrowser", "resource_post", args);
+            await linuxio.filebrowser.resource_post.call(
+              dirPath,
+              override ? "true" : undefined,
+            );
             uploaded += 1;
           } catch (err: any) {
             if (abortController.signal.aborted) break;
@@ -1339,8 +1522,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           fileBytes.set(idx, 0);
           updateOverallProgress(0, idx);
 
-          const mux = getStreamMux();
-          if (!mux || mux.status !== "open") {
+          if (!isConnected()) {
             failures.push({
               path: relativePath,
               message: "Stream connection not ready",
@@ -1495,92 +1677,68 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setCopies((prev) => [...prev, copy]);
       activeCopyIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeCopy(id);
         return;
       }
 
-      // Use direct stream handler for proper abort support
-      // Args: [source, destination]
-      const payloadParts = [STREAM_TYPE_FB_COPY, source, destination];
-      const payload = encodeString(payloadParts.join("\0"));
+      const getSpeed = createProgressSpeedCalculator();
 
-      const stream = mux.openStream(STREAM_TYPE_FB_COPY, payload);
-      if (!stream) {
-        toast.error("Failed to open copy stream");
-        removeCopy(id);
-        return;
-      }
+      void runStreamResult<void, ProgressFrame>({
+        open: () => openFileCopyStream(source, destination),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open copy stream",
+        closeMessage: "Copy stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setCopies((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, stream } : c)),
+          );
+        },
+        onProgress: (progress) => {
+          const percent = Math.min(99, progress.pct);
+          const speed = getSpeed(progress.bytes);
 
-      // Track speed calculation
-      let lastBytes = 0;
-      let lastTime = Date.now();
-
-      // Set up event handlers BEFORE storing stream in state
-      stream.onProgress = (progress: ProgressFrame) => {
-        const percent = Math.min(99, progress.pct);
-
-        // Calculate speed
-        const now = Date.now();
-        const deltaBytes = progress.bytes - lastBytes;
-        const deltaMs = now - lastTime;
-
-        let speed: number | undefined;
-        if (deltaMs > 500 && deltaBytes > 0) {
-          speed = deltaBytes / (deltaMs / 1000);
-          lastBytes = progress.bytes;
-          lastTime = now;
-        }
-
-        setCopies((prev) =>
-          prev.map((c) => {
-            if (c.id !== id) return c;
-            const next = Math.max(c.progress, percent);
-            if (next === c.progress && speed === undefined) return c;
-            return {
-              ...c,
-              progress: next,
-              label: `Copying ${labelBase} (${next}%)`,
-              bytes: progress.bytes,
-              total: progress.total,
-              ...(speed !== undefined && { speed }),
-            };
-          }),
-        );
-      };
-
-      stream.onResult = (result: ResultFrame) => {
-        streamRefsRef.current.delete(id);
-        setCopies((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, stream: null } : c)),
-        );
-
-        if (result.status === "ok") {
+          setCopies((prev) =>
+            prev.map((c) => {
+              if (c.id !== id) return c;
+              const next = Math.max(c.progress, percent);
+              if (next === c.progress && speed === undefined) return c;
+              return {
+                ...c,
+                progress: next,
+                label: `Copying ${labelBase} (${next}%)`,
+                bytes: progress.bytes,
+                total: progress.total,
+                ...(speed !== undefined && { speed }),
+              };
+            }),
+          );
+        },
+        onSuccess: () => {
           toast.success(`Copied ${labelBase}`);
           onComplete?.();
-        } else {
-          toast.error(result.error || "Copy failed");
-        }
-        removeCopy(id);
-      };
-
-      stream.onClose = () => {
-        streamRefsRef.current.delete(id);
-        // If aborted, handle cleanup
-        if (abortController.signal.aborted) {
+        },
+        onError: (error: unknown) => {
+          if (abortController.signal.aborted) {
+            return;
+          }
+          const message =
+            error instanceof Error ? error.message : "Copy failed";
+          toast.error(message);
+        },
+        onFinally: () => {
+          streamRefsRef.current.delete(id);
+          setCopies((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, stream: null } : c)),
+          );
           removeCopy(id);
-        }
-      };
-
-      // Store stream reference for cancellation AFTER setting up handlers
-      streamRefsRef.current.set(id, stream);
-      setCopies((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, stream } : c)),
-      );
+        },
+      });
     },
-    [removeCopy],
+    [removeCopy, runStreamResult],
   );
 
   const cancelCopy = useCallback(
@@ -1638,90 +1796,68 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       setMoves((prev) => [...prev, move]);
       activeMoveIdsRef.current.add(id);
 
-      const mux = getStreamMux();
-      if (!mux || mux.status !== "open") {
+      if (!isConnected()) {
         toast.error("Stream connection not ready");
         removeMove(id);
         return;
       }
 
-      // Use direct stream handler for proper abort support
-      // Args: [source, destination]
-      const payloadParts = [STREAM_TYPE_FB_MOVE, source, destination];
-      const payload = encodeString(payloadParts.join("\0"));
+      const getSpeed = createProgressSpeedCalculator();
 
-      const stream = mux.openStream(STREAM_TYPE_FB_MOVE, payload);
-      if (!stream) {
-        toast.error("Failed to open move stream");
-        removeMove(id);
-        return;
-      }
+      void runStreamResult<void, ProgressFrame>({
+        open: () => openFileMoveStream(source, destination),
+        signal: abortController.signal,
+        closeOnAbort: "none",
+        openErrorMessage: "Failed to open move stream",
+        closeMessage: "Move stream closed unexpectedly",
+        onOpen: (stream) => {
+          streamRefsRef.current.set(id, stream);
+          setMoves((prev) =>
+            prev.map((m) => (m.id === id ? { ...m, stream } : m)),
+          );
+        },
+        onProgress: (progress) => {
+          const percent = Math.min(99, progress.pct);
+          const speed = getSpeed(progress.bytes);
 
-      // Track speed calculation
-      let lastBytes = 0;
-      let lastTime = Date.now();
-
-      // Set up event handlers BEFORE storing stream in state
-      stream.onProgress = (progress: ProgressFrame) => {
-        const percent = Math.min(99, progress.pct);
-
-        // Calculate speed
-        const now = Date.now();
-        const deltaBytes = progress.bytes - lastBytes;
-        const deltaMs = now - lastTime;
-
-        let speed: number | undefined;
-        if (deltaMs > 500 && deltaBytes > 0) {
-          speed = deltaBytes / (deltaMs / 1000);
-          lastBytes = progress.bytes;
-          lastTime = now;
-        }
-
-        setMoves((prev) =>
-          prev.map((m) => {
-            if (m.id !== id) return m;
-            const next = Math.max(m.progress, percent);
-            if (next === m.progress && speed === undefined) return m;
-            return {
-              ...m,
-              progress: next,
-              label: `Moving ${labelBase} (${next}%)`,
-              bytes: progress.bytes,
-              total: progress.total,
-              ...(speed !== undefined && { speed }),
-            };
-          }),
-        );
-      };
-
-      stream.onResult = (result: ResultFrame) => {
-        streamRefsRef.current.delete(id);
-        setMoves((prev) =>
-          prev.map((m) => (m.id === id ? { ...m, stream: null } : m)),
-        );
-
-        if (result.status === "ok") {
+          setMoves((prev) =>
+            prev.map((m) => {
+              if (m.id !== id) return m;
+              const next = Math.max(m.progress, percent);
+              if (next === m.progress && speed === undefined) return m;
+              return {
+                ...m,
+                progress: next,
+                label: `Moving ${labelBase} (${next}%)`,
+                bytes: progress.bytes,
+                total: progress.total,
+                ...(speed !== undefined && { speed }),
+              };
+            }),
+          );
+        },
+        onSuccess: () => {
           toast.success(`Moved ${labelBase}`);
           onComplete?.();
-        } else {
-          toast.error(result.error || "Move failed");
-        }
-        removeMove(id);
-      };
-
-      stream.onClose = () => {
-        streamRefsRef.current.delete(id);
-        // If aborted, handle cleanup
-        if (abortController.signal.aborted) {
+        },
+        onError: (error: unknown) => {
+          if (abortController.signal.aborted) {
+            return;
+          }
+          const message =
+            error instanceof Error ? error.message : "Move failed";
+          toast.error(message);
+        },
+        onFinally: () => {
+          streamRefsRef.current.delete(id);
+          setMoves((prev) =>
+            prev.map((m) => (m.id === id ? { ...m, stream: null } : m)),
+          );
           removeMove(id);
-        }
-      };
-
-      // Store stream reference for cancellation AFTER setting up handlers
-      streamRefsRef.current.set(id, stream);
-      setMoves((prev) => prev.map((m) => (m.id === id ? { ...m, stream } : m)));
+        },
+      });
     },
-    [removeMove],
+    [removeMove, runStreamResult],
   );
 
   const cancelMove = useCallback(
@@ -1748,7 +1884,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         uploads,
         compressions,
         extractions,
-        reindexes,
+        indexers,
         copies,
         moves,
         transfers,
@@ -1758,8 +1894,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         cancelCompression,
         startExtraction,
         cancelExtraction,
-        startReindex,
-        isReindexing,
+        startIndexer,
+        isIndexing,
+        isIndexerDialogOpen,
+        openIndexerDialog,
+        closeIndexerDialog,
+        lastIndexerResult,
+        lastIndexerError,
         startCopy,
         cancelCopy,
         startMove,

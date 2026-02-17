@@ -1,26 +1,24 @@
 import { useQueries } from "@tanstack/react-query";
 
 import { MultiStatsItem } from "@/types/filebrowser";
-import linuxio from "@/api/react-query";
+import {
+  linuxio,
+  useIsUpdating,
+  useStreamMux,
+  type DirectorySizeData,
+} from "@/api";
 import {
   shouldSkipSizeCalculation,
   getDirectorySizeQueryOptions,
   useIndexerAvailability,
 } from "./useFileDirectorySizeBase";
 
-interface DirectoryDetailsData {
-  path: string;
-  size: number;
-}
-
 interface UseMultipleDirectoryDetailsResult {
-  items: Array<
-    MultiStatsItem & {
-      isLoading: boolean;
-      error: Error | null;
-      aggregateSize?: number;
-    }
-  >;
+  items: (MultiStatsItem & {
+    isLoading: boolean;
+    error: Error | null;
+    aggregateSize?: number;
+  })[];
   totalSize: number;
   isAnyError: boolean;
   isAnyLoading: boolean;
@@ -30,6 +28,8 @@ export const useFileMultipleDirectoryDetails = (
   paths: string[],
   fileResourceMap: Record<string, { name: string; type: string; size: number }>,
 ): UseMultipleDirectoryDetailsResult => {
+  const { isOpen } = useStreamMux();
+  const isUpdating = useIsUpdating();
   // Filter to only directories that should have size calculations
   const directoryPaths = paths.filter(
     (path) =>
@@ -45,14 +45,11 @@ export const useFileMultipleDirectoryDetails = (
   // Use useQueries to fetch directory sizes - shares cache with useDirectorySize!
   const queries = useQueries({
     queries: directoryPaths.map((path) => ({
-      queryKey: ["directorySize", path],
-      queryFn: async () => {
-        return linuxio.call<DirectoryDetailsData>("filebrowser", "dir_size", [
-          path,
-        ]);
-      },
-      ...getDirectorySizeQueryOptions(),
-      enabled: !indexerDisabled,
+      ...linuxio.filebrowser.dir_size.queryOptions(
+        path,
+        getDirectorySizeQueryOptions(),
+      ),
+      enabled: isOpen && !isUpdating && !indexerDisabled,
     })),
   });
 
@@ -89,9 +86,9 @@ export const useFileMultipleDirectoryDetails = (
           result.isAnyLoading = true;
         }
         if (query.isError && query.error) {
-          itemError = query.error as Error;
+          itemError = query.error;
         }
-        aggregateSize = query.data?.size;
+        aggregateSize = (query.data as DirectorySizeData | undefined)?.size;
       }
     }
 

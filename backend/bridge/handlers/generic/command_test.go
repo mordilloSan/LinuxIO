@@ -27,7 +27,7 @@ func TestExecCommandDirect_SimpleEcho(t *testing.T) {
 		t.Fatalf("ExecCommandDirect failed: %v", err)
 	}
 
-	resultMap, ok := result.(map[string]interface{})
+	resultMap, ok := result.(map[string]any)
 	if !ok {
 		t.Fatalf("expected map result, got %T", result)
 	}
@@ -55,7 +55,7 @@ func TestExecCommandDirect_JSONOutput(t *testing.T) {
 		t.Fatalf("ExecCommandDirect failed: %v", err)
 	}
 
-	resultMap, ok := result.(map[string]interface{})
+	resultMap, ok := result.(map[string]any)
 	if !ok {
 		t.Fatalf("expected map result, got %T", result)
 	}
@@ -83,7 +83,7 @@ func TestExecCommandDirect_FailedCommand(t *testing.T) {
 		t.Fatalf("ExecCommandDirect should not return error for failed command: %v", err)
 	}
 
-	resultMap, ok := result.(map[string]interface{})
+	resultMap, ok := result.(map[string]any)
 	if !ok {
 		t.Fatalf("expected map result, got %T", result)
 	}
@@ -108,7 +108,7 @@ func TestExecCommandDirect_WithTimeout(t *testing.T) {
 		t.Fatalf("ExecCommandDirect failed: %v", err)
 	}
 
-	resultMap, ok := result.(map[string]interface{})
+	resultMap, ok := result.(map[string]any)
 	if !ok {
 		t.Fatalf("expected map result, got %T", result)
 	}

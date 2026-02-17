@@ -1,4 +1,5 @@
 // src/contexts/ConfigContext.tsx
+import { useQueryClient } from "@tanstack/react-query";
 import React, {
   createContext,
   useEffect,
@@ -8,8 +9,7 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-import { waitForStreamMux } from "@/api/linuxio";
-import linuxio, { LinuxIOError } from "@/api/react-query";
+import { linuxio, CACHE_TTL_MS, LinuxIOError, waitForStreamMux } from "@/api";
 import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
@@ -83,6 +83,8 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   // Track if we successfully loaded from backend - only allow saves if true
   const [canSave, setCanSave] = useState(false);
   const { signOut } = useAuth();
+  const queryClient = useQueryClient();
+  const { mutate: setConfigRemote } = linuxio.config.set.useMutation();
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +111,9 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
           return;
         }
 
-        const settings = await linuxio.call<BackendSettings>("config", "get");
+        const settings = await queryClient.fetchQuery<BackendSettings>(
+          linuxio.config.get.queryOptions({ staleTime: CACHE_TTL_MS.NONE }),
+        );
 
         if (!cancelled) {
           setConfig(applyDefaults(fromBackendSettings(settings)));
@@ -148,22 +152,21 @@ export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
       cancelled = true;
       if (retryTimeout) clearTimeout(retryTimeout);
     };
-  }, [signOut]);
+  }, [queryClient, signOut]);
 
   const save = useCallback(
     (cfg: AppConfig) => {
       if (!canSave) return; // Only save if we successfully loaded from backend
       const payload = toBackendSettings(cfg);
-      linuxio.call("config", "set", [JSON.stringify(payload)]).catch(() => {});
+      setConfigRemote([JSON.stringify(payload)]);
     },
-    [canSave],
+    [canSave, setConfigRemote],
   );
 
   const setKey: ConfigContextType["setKey"] = useCallback(
     (key, value) => {
       setConfig((prev) => {
-        const nextVal =
-          typeof value === "function" ? (value as any)(prev[key]) : value;
+        const nextVal = typeof value === "function" ? value(prev[key]) : value;
         if (Object.is(prev[key], nextVal)) return prev;
         const next = applyDefaults({ ...prev, [key]: nextVal });
         save(next);

@@ -2,9 +2,10 @@ import CloseIcon from "@mui/icons-material/Close";
 import GridViewIcon from "@mui/icons-material/GridView";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import {
+  Alert,
+  AlertTitle,
   Box,
   Button,
-  Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
@@ -28,12 +29,13 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import {
-  getStreamMux,
-  encodeString,
+  linuxio,
+  CACHE_TTL_MS,
+  isConnected,
+  openFileUploadStream,
   STREAM_CHUNK_SIZE,
-  type ResultFrame,
-} from "@/api/linuxio";
-import linuxio from "@/api/react-query";
+} from "@/api";
+import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
@@ -54,6 +56,7 @@ import {
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import useAuth from "@/hooks/useAuth";
 import { useFileDialogs } from "@/hooks/useFileDialogs";
 import { useFileDragAndDrop } from "@/hooks/useFileDragAndDrop";
 import { useFileEditor } from "@/hooks/useFileEditor";
@@ -66,7 +69,8 @@ import { clearFileSubfoldersCache } from "@/hooks/useFileSubfolders";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useFileViewState } from "@/hooks/useFileViewState";
-import { ViewMode, FileItem, ResourceStatData } from "@/types/filebrowser";
+import { useStreamResult } from "@/hooks/useStreamResult";
+import { ViewMode, FileItem } from "@/types/filebrowser";
 import {
   buildEntriesFromFileList,
   mergeDroppedEntries,
@@ -147,6 +151,8 @@ const FileBrowser: React.FC = () => {
 
   const queryClient = useQueryClient();
   const { startDownload, startUpload } = useFileTransfers();
+  const { indexerAvailable } = useAuth();
+  const { runChunked: runChunkedStreamResult } = useStreamResult();
 
   // Extract path from URL: /filebrowser/path/to/dir -> /path/to/dir
   // Decode each segment to handle URL-encoded characters (spaces, parentheses, etc.)
@@ -536,10 +542,10 @@ const FileBrowser: React.FC = () => {
     try {
       // Fetch stat info to get current permissions (use first item as reference)
       // Args: [path]
-      const stat = await linuxio.call<ResourceStatData>(
-        "filebrowser",
-        "resource_stat",
-        [selectedPath],
+      const stat = await queryClient.fetchQuery(
+        linuxio.filebrowser.resource_stat.queryOptions(selectedPath, {
+          staleTime: CACHE_TTL_MS.FIVE_SECONDS,
+        }),
       );
       const mode = stat.mode || "0644"; // Default if not available
       const isDirectory = stat.mode?.startsWith("d") || hasDirectorySelected;
@@ -562,6 +568,7 @@ const FileBrowser: React.FC = () => {
     }
   }, [
     handleCloseContextMenu,
+    queryClient,
     selectedPaths,
     selectedItems,
     setPermissionsDialog,
@@ -773,11 +780,24 @@ const FileBrowser: React.FC = () => {
     [setDetailTarget, setEditingPath],
   );
 
+  const saveContentViaStream = useCallback(
+    async (path: string, contentBytes: Uint8Array) => {
+      await runChunkedStreamResult<void>({
+        open: () => openFileUploadStream(path, contentBytes.length),
+        openErrorMessage: "Failed to open save stream",
+        data: contentBytes,
+        chunkSize: STREAM_CHUNK_SIZE,
+        yieldMs: 0,
+        closeMessage: "Stream closed unexpectedly",
+      });
+    },
+    [runChunkedStreamResult],
+  );
+
   const handleSaveFile = useCallback(async () => {
     if (!editorRef.current || !editingPath) return;
 
-    const mux = getStreamMux();
-    if (!mux || mux.status !== "open") {
+    if (!isConnected()) {
       toast.error("Stream connection not ready");
       return;
     }
@@ -787,68 +807,19 @@ const FileBrowser: React.FC = () => {
       const content = editorRef.current.getContent();
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
-      const contentSize = contentBytes.length;
 
-      // Open stream with fb-upload type: "fb-upload\0path\0size"
-      const payload = encodeString(`fb-upload\0${editingPath}\0${contentSize}`);
-      const stream = mux.openStream("fb-upload", payload);
-
-      if (!stream) {
-        toast.error("Failed to open save stream");
-        return;
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        stream.onResult = (result: ResultFrame) => {
-          if (result.status === "ok") {
-            resolve();
-          } else {
-            reject(new Error(result.error || "Save failed"));
-          }
-        };
-
-        stream.onClose = () => {
-          reject(new Error("Stream closed unexpectedly"));
-        };
-
-        // Send content in chunks
-        let offset = 0;
-        const sendNextChunk = () => {
-          if (stream.status !== "open") return;
-
-          if (offset >= contentSize) {
-            stream.close();
-            return;
-          }
-
-          const chunk = contentBytes.slice(offset, offset + STREAM_CHUNK_SIZE);
-          stream.write(chunk);
-          offset += chunk.length;
-
-          // Continue sending
-          if (offset < contentSize) {
-            setTimeout(sendNextChunk, 0);
-          } else {
-            stream.close();
-          }
-        };
-
-        sendNextChunk();
-      });
+      await saveContentViaStream(editingPath, contentBytes);
 
       toast.success("File saved successfully!");
       setIsEditorDirty(false);
 
       // Invalidate the file cache so it reloads with new content
       queryClient.invalidateQueries({
-        queryKey: [
-          "linuxio",
-          "filebrowser",
-          "resource_get",
+        queryKey: linuxio.filebrowser.resource_get.queryKey(
           editingPath,
           "",
           "true",
-        ],
+        ),
       });
     } catch (error: any) {
       console.error("Save error:", error);
@@ -856,7 +827,14 @@ const FileBrowser: React.FC = () => {
     } finally {
       setIsSavingFile(false);
     }
-  }, [editingPath, queryClient, editorRef, setIsEditorDirty, setIsSavingFile]);
+  }, [
+    editingPath,
+    editorRef,
+    queryClient,
+    saveContentViaStream,
+    setIsEditorDirty,
+    setIsSavingFile,
+  ]);
 
   const handleCloseEditor = useCallback(() => {
     if (isEditorDirty) {
@@ -880,8 +858,7 @@ const FileBrowser: React.FC = () => {
   const handleSaveAndExit = useCallback(async () => {
     if (!editorRef.current || !editingPath) return;
 
-    const mux = getStreamMux();
-    if (!mux || mux.status !== "open") {
+    if (!isConnected()) {
       toast.error("Stream connection not ready");
       return;
     }
@@ -891,53 +868,7 @@ const FileBrowser: React.FC = () => {
       const content = editorRef.current.getContent();
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
-      const contentSize = contentBytes.length;
-
-      // Open stream with fb-upload type
-      const payload = encodeString(`fb-upload\0${editingPath}\0${contentSize}`);
-      const stream = mux.openStream("fb-upload", payload);
-
-      if (!stream) {
-        toast.error("Failed to open save stream");
-        return;
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        stream.onResult = (result: ResultFrame) => {
-          if (result.status === "ok") {
-            resolve();
-          } else {
-            reject(new Error(result.error || "Save failed"));
-          }
-        };
-
-        stream.onClose = () => {
-          reject(new Error("Stream closed unexpectedly"));
-        };
-
-        // Send content in chunks
-        let offset = 0;
-        const sendNextChunk = () => {
-          if (stream.status !== "open") return;
-
-          if (offset >= contentSize) {
-            stream.close();
-            return;
-          }
-
-          const chunk = contentBytes.slice(offset, offset + STREAM_CHUNK_SIZE);
-          stream.write(chunk);
-          offset += chunk.length;
-
-          if (offset < contentSize) {
-            setTimeout(sendNextChunk, 0);
-          } else {
-            stream.close();
-          }
-        };
-
-        sendNextChunk();
-      });
+      await saveContentViaStream(editingPath, contentBytes);
 
       toast.success("File saved successfully!");
       setIsEditorDirty(false);
@@ -945,14 +876,11 @@ const FileBrowser: React.FC = () => {
       setCloseEditorDialog(false);
 
       queryClient.invalidateQueries({
-        queryKey: [
-          "linuxio",
-          "filebrowser",
-          "resource_get",
+        queryKey: linuxio.filebrowser.resource_get.queryKey(
           editingPath,
           "",
           "true",
-        ],
+        ),
       });
     } catch (error: any) {
       toast.error(error.message || "Failed to save file");
@@ -967,11 +895,12 @@ const FileBrowser: React.FC = () => {
     setEditingPath,
     setIsEditorDirty,
     setIsSavingFile,
+    saveContentViaStream,
   ]);
 
   const invalidateListing = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ["linuxio", "filebrowser", "resource_get", normalizedPath],
+      queryKey: linuxio.filebrowser.resource_get.queryKey(normalizedPath),
     });
     clearFileSubfoldersCache(queryClient);
   }, [normalizedPath, queryClient]);
@@ -1107,6 +1036,19 @@ const FileBrowser: React.FC = () => {
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
         />
+
+        {/* Indexer unavailable warning */}
+        {indexerAvailable === false && !editingPath && (
+          <Alert severity="info" sx={{ mx: 2, mt: 1 }}>
+            <AlertTitle>Indexer Service Unavailable</AlertTitle>
+            <Typography variant="body2">
+              Directory size calculations and file search are disabled. Start
+              the <strong>linuxio-indexer.service</strong> to enable these
+              features.
+            </Typography>
+          </Alert>
+        )}
+
         <Box
           sx={{
             px: editingPath ? 0 : 2,
@@ -1259,7 +1201,7 @@ const FileBrowser: React.FC = () => {
         canRename={selectedPaths.size === 1}
       />
 
-      <Dialog
+      <FileBrowserDialog
         open={Boolean(detailTarget)}
         onClose={handleCloseDetailDialog}
         maxWidth="md"
@@ -1307,7 +1249,7 @@ const FileBrowser: React.FC = () => {
             />
           )}
         </DialogContent>
-      </Dialog>
+      </FileBrowserDialog>
 
       <InputDialog
         open={createFileDialog}
@@ -1348,7 +1290,7 @@ const FileBrowser: React.FC = () => {
         />
       )}
 
-      <Dialog
+      <FileBrowserDialog
         open={uploadDialogOpen}
         onClose={handleCloseUploadDialog}
         maxWidth="sm"
@@ -1424,9 +1366,9 @@ const FileBrowser: React.FC = () => {
             {isUploadProcessing ? "Uploading..." : "Upload"}
           </Button>
         </DialogActions>
-      </Dialog>
+      </FileBrowserDialog>
 
-      <Dialog
+      <FileBrowserDialog
         open={Boolean(overwriteTargets?.length)}
         onClose={handleCancelOverwrite}
         maxWidth="sm"
@@ -1456,7 +1398,7 @@ const FileBrowser: React.FC = () => {
             Overwrite
           </Button>
         </DialogActions>
-      </Dialog>
+      </FileBrowserDialog>
 
       <UnsavedChangesDialog
         open={closeEditorDialog}

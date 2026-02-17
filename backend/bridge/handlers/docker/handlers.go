@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 
+	"github.com/mordilloSan/go-logger/logger"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -14,8 +16,8 @@ func RegisterHandlers(sess *session.Session) {
 
 	// Initialize icon cache at startup to catch permission issues early
 	if err := initIconCache(); err != nil {
-		// Just log warning - cache will be created lazily if this fails
-		_ = err // Suppress unused error
+		// Cache will be created lazily if this fails.
+		logger.Warnf("[Docker] failed to initialize icon cache: %v", err)
 	}
 
 	ipc.RegisterFunc("docker", "list_containers", func(ctx context.Context, args []string, emit ipc.Events) error {
@@ -301,7 +303,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("docker", "reindex_docker_folder", func(ctx context.Context, args []string, emit ipc.Events) error {
-		result, err := ReindexDockerFolder(username)
+		result, err := IndexDockerFolder(username)
 		if err != nil {
 			return err
 		}
@@ -317,7 +319,7 @@ func RegisterHandlers(sess *session.Session) {
 		if err != nil {
 			return err
 		}
-		return emit.Result(map[string]interface{}{
+		return emit.Result(map[string]any{
 			"success": true,
 			"message": "Compose stack deleted successfully",
 		})

@@ -27,7 +27,7 @@ func ListDockerNetworks() (any, error) {
 		return nil, fmt.Errorf("failed to list networks: %w", err)
 	}
 
-	var results []map[string]interface{}
+	var results []map[string]any
 
 	for _, nw := range networks {
 		inspect, err := cli.NetworkInspect(context.Background(), nw.ID, network.InspectOptions{})
@@ -38,7 +38,7 @@ func ListDockerNetworks() (any, error) {
 		}
 
 		// Prepare your structure: copy summary + attach containers map
-		result := map[string]interface{}{
+		result := map[string]any{
 			"Name":       nw.Name,
 			"Id":         nw.ID,
 			"Scope":      nw.Scope,
@@ -60,8 +60,14 @@ func ListDockerNetworks() (any, error) {
 
 	// Sort networks by Name alphabetically
 	sort.Slice(results, func(i, j int) bool {
-		nameI, _ := results[i]["Name"].(string)
-		nameJ, _ := results[j]["Name"].(string)
+		nameI, okI := results[i]["Name"].(string)
+		if !okI {
+			nameI = ""
+		}
+		nameJ, okJ := results[j]["Name"].(string)
+		if !okJ {
+			nameJ = ""
+		}
 		return nameI < nameJ
 	})
 

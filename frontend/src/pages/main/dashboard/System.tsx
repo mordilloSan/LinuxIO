@@ -5,12 +5,12 @@ import { Link } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 // --- Types ---
-type Update = {
+interface Update {
   package_id: string;
   summary: string;
   version: string;
@@ -19,11 +19,11 @@ type Update = {
   cve: string[];
   restart: number;
   state: number;
-};
+}
 
-type SystemUpdatesResponse = {
+interface SystemUpdatesResponse {
   updates: Update[];
-};
+}
 
 // --- Component ---
 const SystemHealth = () => {

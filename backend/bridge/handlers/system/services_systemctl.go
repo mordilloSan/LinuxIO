@@ -29,8 +29,7 @@ func FetchServices() ([]ServiceInfo, error) {
 	)
 	out, err := cmd.Output()
 	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if _, ok := errors.AsType[*exec.ExitError](err); ok {
 			return nil, errors.New("systemctl returned an error; system may not be running systemd")
 		}
 		return nil, err

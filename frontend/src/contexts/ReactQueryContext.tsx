@@ -7,6 +7,8 @@ import {
 import React, { ReactNode } from "react";
 import { toast } from "sonner";
 
+import { CACHE_TTL_MS } from "@/api/cache-policy";
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
@@ -24,7 +26,7 @@ function makeQueryClient() {
         retry: (failureCount) => failureCount < 1,
         refetchOnWindowFocus: false,
         refetchIntervalInBackground: true, // Continue fetching when tab is hidden
-        staleTime: 2000,
+        staleTime: CACHE_TTL_MS.TWO_SECONDS,
       },
       mutations: {
         onError: (error) => {

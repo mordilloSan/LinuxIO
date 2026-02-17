@@ -161,10 +161,10 @@ if [[ -d /etc/motd.d ]]; then
     echo "  • Created SSH login banner symlink"
 fi
 
-# ========== ENABLE AND START ==========
+# ========== ENABLE AND RESTART ==========
 echo ""
 echo -e "${CYAN}════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  Enabling and starting services${NC}"
+echo -e "${CYAN}  Enabling and restarting services${NC}"
 echo -e "${CYAN}════════════════════════════════════════════${NC}"
 echo ""
 
@@ -176,17 +176,17 @@ echo -e "${YELLOW}✅ Enabling services...${NC}"
 systemctl enable linuxio.target
 echo -e "${GREEN}✓ Services enabled${NC}"
 
-echo -e "${YELLOW}🚀 Starting LinuxIO...${NC}"
-systemctl start linuxio.target
+echo -e "${YELLOW}🔄 Restarting LinuxIO...${NC}"
+linuxio restart
 
-# Wait a moment for service to start
+# Wait a moment for services to settle
 sleep 2
 
-# Check if service is running
-if systemctl is-active --quiet linuxio-webserver.service; then
-    echo -e "${GREEN}✓ LinuxIO service started successfully${NC}"
+# Check if target is active
+if systemctl is-active --quiet linuxio.target; then
+    echo -e "${GREEN}✓ LinuxIO restarted successfully${NC}"
 else
-    echo -e "${YELLOW}⚠  Warning: Service may not have started properly${NC}"
+    echo -e "${YELLOW}⚠  Warning: LinuxIO may not have restarted properly${NC}"
 fi
 
 # ========== SUMMARY ==========
@@ -203,10 +203,4 @@ echo "  • PAM config:      /etc/pam.d/linuxio"
 echo "  • Issue updater:   /usr/share/linuxio/issue/"
 echo ""
 echo -e "${CYAN}🌐 Access LinuxIO at: https://localhost:${PORT}${NC}"
-echo ""
-echo "Useful commands:"
-echo "  • Check status:  linuxio status"
-echo "  • View logs:     linuxio logs"
-echo "  • Restart:       sudo linuxio restart"
-echo "  • Stop:          sudo linuxio stop"
 echo ""

@@ -14,14 +14,14 @@ import {
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import type {
-  AutoUpdateOptions,
-  AutoUpdateState,
-  AutoUpdateFrequency,
-  AutoUpdateScope,
-  AutoUpdateRebootPolicy,
-} from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import {
+  linuxio,
+  type AutoUpdateOptions,
+  type AutoUpdateState,
+  type AutoUpdateFrequency,
+  type AutoUpdateScope,
+  type AutoUpdateRebootPolicy,
+} from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -43,7 +43,7 @@ const UpdateSettings: React.FC = () => {
     data: rawServerState,
     isPending: loading,
     refetch,
-  } = linuxio.dbus.GetAutoUpdates.useQuery();
+  } = linuxio.dbus.get_auto_updates.useQuery();
 
   const serverState = useMemo(
     () => (rawServerState ? normalizeState(rawServerState) : null),
@@ -73,7 +73,7 @@ const UpdateSettings: React.FC = () => {
 
   // -------- Mutations --------
   const { mutate: setAutoUpdates, isPending: isSettingAutoUpdates } =
-    linuxio.dbus.SetAutoUpdates.useMutation({
+    linuxio.dbus.set_auto_updates.useMutation({
       onSuccess: () => {
         // Clear overrides - server now has the saved values
         setDraftOverrides(null);
@@ -90,7 +90,7 @@ const UpdateSettings: React.FC = () => {
     });
 
   const { mutate: applyOfflineUpdates, isPending: isApplyingOffline } =
-    linuxio.dbus.ApplyOfflineUpdates.useMutation({
+    linuxio.dbus.apply_offline_updates.useMutation({
       onSuccess: (result) => {
         if (result?.status && result.status !== "ok") {
           const errMsg = result.error || "Failed to schedule offline update";

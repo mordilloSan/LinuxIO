@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface ChangePasswordDialogProps {
@@ -34,7 +34,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
       onSuccess: () => {
         toast.success(`Password changed for "${username}"`);
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "accounts", "list_users"],
+          queryKey: linuxio.accounts.list_users.queryKey(),
         });
         handleClose();
       },

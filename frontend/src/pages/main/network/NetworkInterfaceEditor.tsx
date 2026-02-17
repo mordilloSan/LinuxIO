@@ -16,7 +16,7 @@ import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 /* ================= helpers ================= */
@@ -25,8 +25,7 @@ const isIPv4 = (s: string) =>
   /^\s*(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\s*$/.test(s);
 
 const toCIDR = (addr?: string, prefix?: number | string) => {
-  const p =
-    typeof prefix === "string" ? parseInt(prefix, 10) : (prefix as number);
+  const p = typeof prefix === "string" ? parseInt(prefix, 10) : prefix!;
   return addr && Number.isInteger(p) ? `${addr}/${p}` : "";
 };
 
@@ -74,7 +73,7 @@ function getDNSv4List(i: any): string[] {
     [];
   if (typeof list === "string") list = list.split(/[,\s]+/);
   if (!Array.isArray(list)) return [];
-  return (list as any[])
+  return list
     .map((item: any) => String(item))
     .map((s: string) => s.trim())
     .filter((s: string) => isIPv4(s));
@@ -110,11 +109,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   // Mutations
   const { mutate: setIPv4, isPending: isSettingIPv4 } =
-    linuxio.dbus.SetIPv4.useMutation({
+    linuxio.dbus.set_ipv4.useMutation({
       onSuccess: () => {
         toast.success("Switched to DHCP mode");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "ListNetworkInterfaces"],
+          queryKey: linuxio.dbus.get_network_info.queryKey(),
         });
         onSave(iface);
         onClose();
@@ -127,11 +126,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     });
 
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
-    linuxio.dbus.SetIPv4Manual.useMutation({
+    linuxio.dbus.set_ipv4_manual.useMutation({
       onSuccess: () => {
         toast.success("Manual configuration saved");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "ListNetworkInterfaces"],
+          queryKey: linuxio.dbus.get_network_info.queryKey(),
         });
         onSave(iface);
         onClose();
@@ -147,11 +146,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     });
 
   const { mutate: enableConnection, isPending: isEnabling } =
-    linuxio.dbus.EnableConnection.useMutation({
+    linuxio.dbus.enable_connection.useMutation({
       onSuccess: () => {
         toast.success("Connection enabled");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+          queryKey: linuxio.dbus.get_network_info.queryKey(),
         });
       },
       onError: (error: Error) => {
@@ -162,11 +161,11 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     });
 
   const { mutate: disableConnection, isPending: isDisabling } =
-    linuxio.dbus.DisableConnection.useMutation({
+    linuxio.dbus.disable_connection.useMutation({
       onSuccess: () => {
         toast.success("Connection disabled");
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "dbus", "GetNetworkInfo"],
+          queryKey: linuxio.dbus.get_network_info.queryKey(),
         });
       },
       onError: (error: Error) => {
@@ -191,9 +190,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   // Compute sane defaults from iface (will be used to prefill manual fields)
   const defaults = useMemo(() => {
-    const ipv4 = getIPv4FromIface(iface as any);
-    const gateway = getGatewayV4(iface as any);
-    const dnsArr = getDNSv4List(iface as any);
+    const ipv4 = getIPv4FromIface(iface);
+    const gateway = getGatewayV4(iface);
+    const dnsArr = getDNSv4List(iface);
     return { ipv4, gateway, dns: dnsArr.join(", ") };
   }, [iface]);
 

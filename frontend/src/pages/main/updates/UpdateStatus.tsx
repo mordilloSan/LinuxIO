@@ -13,10 +13,10 @@ interface UpdateStatusProps {
   updatingPackage: string | null;
   progress: number;
   status?: string | null;
+  eventLog?: string[];
   error?: string | null;
   onClearError?: () => void;
   onCancel?: () => void;
-  onComplete: () => void | Promise<unknown>;
 }
 
 const UpdateStatus: React.FC<UpdateStatusProps> = ({
@@ -26,10 +26,10 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({
   updatingPackage,
   progress,
   status,
+  eventLog,
   error,
   onClearError,
   onCancel,
-  onComplete,
 }) => {
   return (
     <Box>
@@ -38,6 +38,7 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({
         currentPackage={updatingPackage}
         progress={progress}
         status={status}
+        eventLog={eventLog}
         error={error}
         onClearError={onClearError}
         onCancel={onCancel}
@@ -48,7 +49,6 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({
         onUpdateClick={onUpdateOne}
         isUpdating={!!updatingPackage || isLoading}
         currentPackage={updatingPackage}
-        onComplete={onComplete}
         isLoading={isLoading}
       />
     </Box>

@@ -9,6 +9,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/fsutil"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/dbus/internal/systemd"
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 type dnfBackend struct{}
@@ -99,10 +100,16 @@ emit_via = motd
 			return err
 		}
 		// Restart to apply new schedule
-		_ = sd.Restart(ctx, timer)
+		if err := sd.Restart(ctx, timer); err != nil {
+			logger.Debugf("failed to restart %s: %v", timer, err)
+		}
 	} else {
-		_ = sd.Stop(ctx, timer)
-		_ = sd.Disable(ctx, timer)
+		if err := sd.Stop(ctx, timer); err != nil {
+			logger.Debugf("failed to stop %s while disabling updates: %v", timer, err)
+		}
+		if err := sd.Disable(ctx, timer); err != nil {
+			logger.Debugf("failed to disable %s while disabling updates: %v", timer, err)
+		}
 	}
 
 	return nil

@@ -8,7 +8,7 @@ import ActionButton from "../../pages/main/docker/ActionButton";
 import LogsDialog from "../../pages/main/docker/LogsDialog";
 import ComponentLoader from "../loaders/ComponentLoader";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
@@ -61,7 +61,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       onSuccess: () => {
         toast.success(`Container ${name} started successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "list_containers"],
+          queryKey: linuxio.docker.list_containers.queryKey(),
         });
       },
       onError: (error: Error) => {
@@ -76,7 +76,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       onSuccess: () => {
         toast.success(`Container ${name} stopped successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "list_containers"],
+          queryKey: linuxio.docker.list_containers.queryKey(),
         });
       },
       onError: (error: Error) => {
@@ -91,7 +91,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       onSuccess: () => {
         toast.success(`Container ${name} restarted successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "list_containers"],
+          queryKey: linuxio.docker.list_containers.queryKey(),
         });
       },
       onError: (error: Error) => {
@@ -106,7 +106,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       onSuccess: () => {
         toast.success(`Container ${name} removed successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["stream", "docker", "list_containers"],
+          queryKey: linuxio.docker.list_containers.queryKey(),
         });
       },
       onError: (error: Error) => {

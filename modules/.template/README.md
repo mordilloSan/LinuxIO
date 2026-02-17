@@ -19,36 +19,52 @@ example-module/
 ## Module Types
 
 **UI-Only Modules** (like the example):
-- Use existing LinuxIO handlers: `linuxio.useCall("system", "get_cpu_info")`
-- Execute commands via exec stream: `linuxio.useStream("exec", payload, callbacks)`
+- Use existing LinuxIO handlers: `linuxio.system.get_cpu_info.useQuery()`
+- Execute commands via exec stream: `openExecStream("ls", ["-lh", "/home"])`
 - Access all LinuxIO components, theme, and utilities
 - No backend handlers needed
 
 **Backend Modules** (define new handlers in `module.yaml`):
 - Define whitelisted commands, DBus calls, or streams in `handlers:` section
-- Call them via: `linuxio.useCall("module.{name}", "command_name", args)`
+- Call them via the type-safe proxy: `linuxio["module.myModule"].command_name.useQuery()`
+- Or via core API: `await call("module.myModule", "command_name", args)`
 - Useful for system-specific commands or custom integrations
 
 ## Frontend API Patterns
 
-### 1. JSON RPC Handlers (useCall)
-For existing handlers that return JSON responses:
+### 1. Type-Safe API (useQuery / useMutation)
+For handlers that return JSON responses:
 
 ```javascript
-const { data, refetch } = linuxio.useCall("system", "get_cpu_info", [], { enabled: false });
+import linuxio from '@/api/react-query';
 
-// Trigger manually
+// Query with auto-fetching
+const { data } = linuxio.system.get_cpu_info.useQuery();
+
+// Query with manual trigger
+const { data, refetch } = linuxio.system.get_cpu_info.useQuery({ enabled: false });
 await refetch();
+
+// Mutation
+const { mutate } = linuxio.docker.start_container.useMutation();
+mutate([containerId]);
+
+// Imperative call (non-hook, for use in callbacks/effects)
+const cpuInfo = await linuxio.system.get_cpu_info.call();
 ```
 
-### 2. Exec Stream (useStream)
+### 2. Exec Stream (openExecStream)
 For executing commands and streaming stdout/stderr:
 
 ```javascript
-// Unified signature matching useCall
-linuxio.useStream('exec', 'ls', ['-lh', '/home'], {
+import { openExecStream, bindStreamHandlers, decodeString } from '@/api';
+
+const stream = openExecStream('ls', ['-lh', '/home']);
+if (!stream) return;
+
+bindStreamHandlers(stream, {
   onData: (data) => {
-    const text = linuxio.decodeString(data);
+    const text = decodeString(data);
     console.log(text); // stdout output
   },
   onResult: (result) => {
@@ -58,10 +74,6 @@ linuxio.useStream('exec', 'ls', ['-lh', '/home'], {
     console.log('Stream closed');
   }
 });
-
-// Other examples
-linuxio.useStream('exec', 'df', ['-h', '/'], callbacks);
-linuxio.useStream('exec', 'tail', ['-f', '/var/log/syslog'], callbacks);
 ```
 
 ## Handler Types
@@ -80,7 +92,7 @@ get_cpu_info:
 
 **Frontend Usage:**
 ```typescript
-const { data, isLoading } = linuxio.useCall("module.example-module", "get_cpu_info");
+const { data, isLoading } = linuxio["module.example-module"].get_cpu_info.useQuery();
 ```
 
 **Example: List Directory (with arguments)**
@@ -93,7 +105,7 @@ list_directory:
 
 **Frontend Usage:**
 ```typescript
-const { data } = linuxio.useCall("module.example-module", "list_directory", ["/home"]);
+const { data } = linuxio["module.example-module"].list_directory.useQuery("/home");
 ```
 
 ### 2. DBus Handlers
@@ -117,7 +129,7 @@ get_hostname:
 
 **Frontend Usage:**
 ```typescript
-const { data } = linuxio.useCall("module.example-module", "get_hostname");
+const { data } = linuxio["module.example-module"].get_hostname.useQuery();
 ```
 
 ### 3. DBus Stream Handlers
@@ -162,7 +174,7 @@ command: df -h {{.arg0}}
 
 **Frontend call:**
 ```typescript
-linuxio.useCall("module.example-module", "get_disk_usage", ["/home"]);
+const { data } = linuxio["module.example-module"].get_disk_usage.useQuery("/home");
 ```
 
 ## Installing Your Module
@@ -178,12 +190,6 @@ curl -X POST http://localhost:9090/api/json \
     "command": "InstallModule",
     "args": ["/path/to/your/module", "my-module", "true"]
   }'
-```
-
-**Or use the frontend:**
-```typescript
-const { mutate } = linuxio.useMutate("modules", "InstallModule");
-mutate(["/path/to/your/module", "my-module", "true"]);
 ```
 
 ### Production Mode (Copy)
@@ -204,19 +210,16 @@ curl -X POST http://localhost:9090/api/json \
 After installing, test your handlers from the browser console:
 
 ```typescript
-// Test CPU info
-const cpuInfo = await linuxio.request("module.example-module", "get_cpu_info");
+// Test CPU info (imperative call)
+const cpuInfo = await linuxio["module.example-module"].get_cpu_info.call();
 console.log(cpuInfo);
 
 // Test ls -l
-const dirListing = await linuxio.request("module.example-module", "list_directory", ["/home"]);
+const dirListing = await linuxio["module.example-module"].list_directory.call("/home");
 console.log(dirListing);
 
 // Test with React hooks
-const { data, isLoading, error } = linuxio.useCall(
-  "module.example-module",
-  "get_cpu_info"
-);
+const { data, isLoading, error } = linuxio["module.example-module"].get_cpu_info.useQuery();
 ```
 
 ## Example Responses

@@ -3,7 +3,7 @@
  *
  * Shared utilities for stream multiplexer access.
  * For API calls, use:
- * - @/api/react-query for React Query hooks (useCall, useMutate)
+ * - @/api/react-query for React Query hooks (type-safe API)
  * - @/api/linuxio-core for direct calls (call, spawn, openStream)
  */
 
@@ -23,8 +23,43 @@ import {
   encodeString,
   decodeString,
 } from "./StreamMultiplexer";
-import { LinuxIOError, spawn } from "./linuxio-core";
-import { useCall, useMutate } from "./react-query";
+import { LinuxIOError } from "./linuxio-core";
+
+const STREAM_TYPE_TERMINAL = "terminal";
+const STREAM_TYPE_CONTAINER = "container";
+const STREAM_TYPE_DOCKER_LOGS = "docker-logs";
+const STREAM_TYPE_SERVICE_LOGS = "service-logs";
+const STREAM_TYPE_GENERAL_LOGS = "general-logs";
+const STREAM_TYPE_DOCKER_COMPOSE = "docker-compose";
+const STREAM_TYPE_DOCKER_INDEXER = "docker-indexer";
+const STREAM_TYPE_DOCKER_INDEXER_ATTACH = "docker-indexer-attach";
+const STREAM_TYPE_EXEC = "exec";
+const STREAM_TYPE_PKG_UPDATE = "pkg-update";
+const STREAM_TYPE_SMART_TEST = "smart-test";
+const STREAM_TYPE_FB_DOWNLOAD = "fb-download";
+const STREAM_TYPE_FB_ARCHIVE = "fb-archive";
+const STREAM_TYPE_FB_UPLOAD = "fb-upload";
+const STREAM_TYPE_FB_COMPRESS = "fb-compress";
+const STREAM_TYPE_FB_EXTRACT = "fb-extract";
+const STREAM_TYPE_FB_REINDEX = "fb-reindex";
+const STREAM_TYPE_FB_INDEXER_ATTACH = "fb-indexer-attach";
+const STREAM_TYPE_FB_COPY = "fb-copy";
+const STREAM_TYPE_FB_MOVE = "fb-move";
+
+function isSingleFileDownload(paths: string[]): boolean {
+  return paths.length === 1 && !paths[0].endsWith("/");
+}
+
+function openMuxStream(
+  type: StreamType,
+  initialPayload: Uint8Array,
+): Stream | null {
+  const mux = getStreamMux();
+  if (!mux || mux.status !== "open") {
+    return null;
+  }
+  return mux.openStream(type, initialPayload);
+}
 
 // ============================================================================
 // React Hook: useStreamMux
@@ -146,14 +181,14 @@ export function useIsUpdating(): boolean {
 }
 
 // ============================================================================
-// Payload Helpers (using new bridge protocol)
+// Payload Helpers (stream handler protocol)
 // ============================================================================
 
 /**
  * Build payload for terminal stream
  */
 export function terminalPayload(cols: number, rows: number): Uint8Array {
-  return encodeString(`bridge\0terminal\0bash\0${cols}\0${rows}`);
+  return encodeString(`${STREAM_TYPE_TERMINAL}\0${cols}\0${rows}`);
 }
 
 /**
@@ -163,7 +198,7 @@ export function dockerLogsPayload(
   containerId: string,
   tail: string = "100",
 ): Uint8Array {
-  return encodeString(`docker-logs\0${containerId}\0${tail}`);
+  return encodeString(`${STREAM_TYPE_DOCKER_LOGS}\0${containerId}\0${tail}`);
 }
 
 /**
@@ -173,7 +208,7 @@ export function serviceLogsPayload(
   serviceName: string,
   lines: string = "100",
 ): Uint8Array {
-  return encodeString(`service-logs\0${serviceName}\0${lines}`);
+  return encodeString(`${STREAM_TYPE_SERVICE_LOGS}\0${serviceName}\0${lines}`);
 }
 
 /**
@@ -190,7 +225,7 @@ export function generalLogsPayload(
   identifier: string = "",
 ): Uint8Array {
   return encodeString(
-    `general-logs\0${lines}\0${timePeriod}\0${priority}\0${identifier}`,
+    `${STREAM_TYPE_GENERAL_LOGS}\0${lines}\0${timePeriod}\0${priority}\0${identifier}`,
   );
 }
 
@@ -204,22 +239,36 @@ export function containerPayload(
   rows: number,
 ): Uint8Array {
   return encodeString(
-    `bridge\0docker\0container_exec\0${containerId}\0${shell}\0${cols}\0${rows}`,
+    `${STREAM_TYPE_CONTAINER}\0${containerId}\0${shell}\0${cols}\0${rows}`,
   );
 }
 
 /**
  * Build payload for file upload stream
  */
-export function uploadPayload(path: string, size: number): Uint8Array {
-  return encodeString(`bridge\0filebrowser\0upload\0${path}\0${size}`);
+export function uploadPayload(
+  path: string,
+  size: number,
+  override: boolean = false,
+): Uint8Array {
+  const parts = [STREAM_TYPE_FB_UPLOAD, path, String(size)];
+  if (override) {
+    parts.push("true");
+  }
+  return encodeString(parts.join("\0"));
 }
 
 /**
  * Build payload for file download stream
  */
 export function downloadPayload(paths: string[]): Uint8Array {
-  return encodeString(`bridge\0filebrowser\0download\0${paths.join("\0")}`);
+  if (paths.length === 0) {
+    throw new Error("downloadPayload requires at least one path");
+  }
+  if (isSingleFileDownload(paths)) {
+    return encodeString(`${STREAM_TYPE_FB_DOWNLOAD}\0${paths[0]}`);
+  }
+  return encodeString(`${STREAM_TYPE_FB_ARCHIVE}\0zip\0${paths.join("\0")}`);
 }
 
 /**
@@ -231,7 +280,7 @@ export function compressPayload(
   format: string,
 ): Uint8Array {
   return encodeString(
-    `bridge\0filebrowser\0compress\0${paths.join("\0")}\0${destination}\0${format}`,
+    `${STREAM_TYPE_FB_COMPRESS}\0${format}\0${destination}\0${paths.join("\0")}`,
   );
 }
 
@@ -240,11 +289,94 @@ export function compressPayload(
  */
 export function extractPayload(
   archive: string,
+  destination?: string,
+): Uint8Array {
+  const parts = [STREAM_TYPE_FB_EXTRACT, archive];
+  if (destination) {
+    parts.push(destination);
+  }
+  return encodeString(parts.join("\0"));
+}
+
+/**
+ * Build payload for package update stream
+ */
+export function packageUpdatePayload(packages: string[]): Uint8Array {
+  if (packages.length === 0) {
+    throw new Error("packageUpdatePayload requires at least one package");
+  }
+  return encodeString([STREAM_TYPE_PKG_UPDATE, ...packages].join("\0"));
+}
+
+/**
+ * Build payload for exec stream
+ */
+export function execPayload(program: string, args: string[] = []): Uint8Array {
+  return encodeString([STREAM_TYPE_EXEC, program, ...args].join("\0"));
+}
+
+/**
+ * Build payload for SMART test stream
+ */
+export function smartTestPayload(device: string, testType: string): Uint8Array {
+  return encodeString(`${STREAM_TYPE_SMART_TEST}\0${device}\0${testType}`);
+}
+
+/**
+ * Build payload for docker-compose stream
+ */
+export function dockerComposePayload(
+  action: "up" | "down" | "stop" | "restart",
+  projectName: string,
+  composePath?: string,
+): Uint8Array {
+  const parts = [STREAM_TYPE_DOCKER_COMPOSE, action, projectName];
+  if (composePath) {
+    parts.push(composePath);
+  }
+  return encodeString(parts.join("\0"));
+}
+
+/**
+ * Build payload for docker reindex stream
+ */
+export function dockerIndexerPayload(): Uint8Array {
+  return encodeString(STREAM_TYPE_DOCKER_INDEXER);
+}
+
+export function dockerIndexerAttachPayload(): Uint8Array {
+  return encodeString(STREAM_TYPE_DOCKER_INDEXER_ATTACH);
+}
+
+/**
+ * Build payload for file indexer stream
+ */
+export function fileIndexerPayload(path?: string): Uint8Array {
+  const parts = [STREAM_TYPE_FB_REINDEX];
+  if (path && path !== "/") {
+    parts.push(path);
+  }
+  return encodeString(parts.join("\0"));
+}
+
+/**
+ * Build payload for file copy stream
+ */
+export function fileCopyPayload(
+  source: string,
   destination: string,
 ): Uint8Array {
-  return encodeString(
-    `bridge\0filebrowser\0extract\0${archive}\0${destination}`,
-  );
+  return encodeString([STREAM_TYPE_FB_COPY, source, destination].join("\0"));
+}
+
+/**
+ * Build payload for file move stream
+ */
+export function fileMovePayload(
+  source: string,
+  destination: string,
+): Uint8Array {
+  return encodeString([STREAM_TYPE_FB_MOVE, source, destination].join("\0"));
 }
 
 // ============================================================================
@@ -268,6 +400,171 @@ export function getStatus(): "connecting" | "open" | "closed" | "error" | null {
 }
 
 // ============================================================================
+// Stream Open Helpers
+// ============================================================================
+
+export function openTerminalStream(cols: number, rows: number): Stream | null {
+  return openMuxStream(STREAM_TYPE_TERMINAL, terminalPayload(cols, rows));
+}
+
+export function openContainerStream(
+  containerId: string,
+  shell: string,
+  cols: number,
+  rows: number,
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_CONTAINER,
+    containerPayload(containerId, shell, cols, rows),
+  );
+}
+
+export function openDockerLogsStream(
+  containerId: string,
+  tail: string = "100",
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_DOCKER_LOGS,
+    dockerLogsPayload(containerId, tail),
+  );
+}
+
+export function openServiceLogsStream(
+  serviceName: string,
+  lines: string = "100",
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_SERVICE_LOGS,
+    serviceLogsPayload(serviceName, lines),
+  );
+}
+
+export function openGeneralLogsStream(
+  lines: string = "100",
+  timePeriod: string = "",
+  priority: string = "",
+  identifier: string = "",
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_GENERAL_LOGS,
+    generalLogsPayload(lines, timePeriod, priority, identifier),
+  );
+}
+
+export function openDockerComposeStream(
+  action: "up" | "down" | "stop" | "restart",
+  projectName: string,
+  composePath?: string,
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_DOCKER_COMPOSE,
+    dockerComposePayload(action, projectName, composePath),
+  );
+}
+
+export function openDockerIndexerStream(): Stream | null {
+  return openMuxStream(STREAM_TYPE_DOCKER_INDEXER, dockerIndexerPayload());
+}
+
+export function openDockerIndexerAttachStream(): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_DOCKER_INDEXER_ATTACH,
+    dockerIndexerAttachPayload(),
+  );
+}
+
+export function openExecStream(
+  program: string,
+  args: string[] = [],
+): Stream | null {
+  return openMuxStream(STREAM_TYPE_EXEC, execPayload(program, args));
+}
+
+export function openPackageUpdateStream(packages: string[]): Stream | null {
+  return openMuxStream(STREAM_TYPE_PKG_UPDATE, packageUpdatePayload(packages));
+}
+
+export function openSmartTestStream(
+  device: string,
+  testType: string,
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_SMART_TEST,
+    smartTestPayload(device, testType),
+  );
+}
+
+export function openFileUploadStream(
+  path: string,
+  size: number,
+  override: boolean = false,
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_FB_UPLOAD,
+    uploadPayload(path, size, override),
+  );
+}
+
+export function openFileDownloadStream(paths: string[]): Stream | null {
+  const streamType = isSingleFileDownload(paths)
+    ? STREAM_TYPE_FB_DOWNLOAD
+    : STREAM_TYPE_FB_ARCHIVE;
+  return openMuxStream(streamType, downloadPayload(paths));
+}
+
+export function openFileCompressStream(
+  paths: string[],
+  destination: string,
+  format: string,
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_FB_COMPRESS,
+    compressPayload(paths, destination, format),
+  );
+}
+
+export function openFileExtractStream(
+  archive: string,
+  destination?: string,
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_FB_EXTRACT,
+    extractPayload(archive, destination),
+  );
+}
+
+export function openFileIndexerStream(path?: string): Stream | null {
+  return openMuxStream(STREAM_TYPE_FB_REINDEX, fileIndexerPayload(path));
+}
+
+export function openFileIndexerAttachStream(): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_FB_INDEXER_ATTACH,
+    encodeString(STREAM_TYPE_FB_INDEXER_ATTACH),
+  );
+}
+
+export function openFileCopyStream(
+  source: string,
+  destination: string,
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_FB_COPY,
+    fileCopyPayload(source, destination),
+  );
+}
+
+export function openFileMoveStream(
+  source: string,
+  destination: string,
+): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_FB_MOVE,
+    fileMovePayload(source, destination),
+  );
+}
+
+// ============================================================================
 // Re-exports
 // ============================================================================
 
@@ -283,115 +580,3 @@ export {
 };
 export type { Stream, ProgressFrame, ResultFrame, MuxStatus, StreamType };
 export { LinuxIOError };
-
-// ============================================================================
-// useStream - Callback-based streaming for modules
-// ============================================================================
-
-export interface UseStreamOptions {
-  onData?: (data: Uint8Array) => void;
-  onResult?: (result: ResultFrame) => void;
-  onProgress?: (progress: ProgressFrame) => void;
-  onClose?: () => void;
-  onError?: (error: Error) => void;
-}
-
-/**
- * Opens a stream with callback-style API for module use.
- *
- * @param handler - Handler name (e.g., "exec", "system")
- * @param command - Command name (e.g., "ls", "get_cpu_info")
- * @param args - Command arguments
- * @param options - Callback options
- * @returns The stream or SpawnedProcess, or null on error
- *
- * @example
- * // Execute a command (exec stream)
- * linuxio.useStream('exec', 'ls', ['-lh', '/home'], {
- *   onData: (data) => console.log(decodeString(data)),
- *   onResult: (result) => console.log('Exit code:', result.data?.exitCode),
- *   onClose: () => console.log('Stream closed')
- * });
- *
- * @example
- * // Call a bridge handler (RPC-style)
- * linuxio.useStream('system', 'get_cpu_info', [], {
- *   onResult: (result) => console.log(result.data)
- * });
- */
-export function useStream(
-  handler: string,
-  command: string,
-  args: string[] = [],
-  options?: UseStreamOptions,
-) {
-  try {
-    const mux = getStreamMux();
-    if (!mux) {
-      throw new Error("StreamMux not initialized");
-    }
-
-    // Special handling for exec streams - they use a different protocol
-    if (handler === "exec") {
-      const payloadParts = ["exec", command, ...args];
-      const payload = encodeString(payloadParts.join("\0"));
-      const stream = mux.openStream("exec", payload);
-
-      if (options?.onData) {
-        stream.onData = options.onData;
-      }
-      if (options?.onProgress) {
-        stream.onProgress = options.onProgress;
-      }
-      if (options?.onResult) {
-        stream.onResult = (result) => {
-          options.onResult?.(result);
-          options?.onClose?.();
-        };
-      }
-      stream.onClose = () => {
-        options?.onClose?.();
-      };
-
-      return stream;
-    }
-
-    // For bridge handlers, use spawn
-    const process = spawn(handler, command, args, {
-      onData: options?.onData,
-      onProgress: options?.onProgress,
-    });
-
-    // Handle result and completion via the promise
-    process
-      .then((result) => {
-        options?.onResult?.({ status: "ok", data: result });
-        options?.onClose?.();
-      })
-      .catch((error: Error) => {
-        options?.onError?.(error);
-        options?.onClose?.();
-      });
-
-    return process;
-  } catch (error) {
-    options?.onError?.(
-      error instanceof Error ? error : new Error(String(error)),
-    );
-    return null;
-  }
-}
-
-// ============================================================================
-// Default Export - Unified API for modules
-// ============================================================================
-
-const linuxio = {
-  useCall,
-  useMutate,
-  useStream,
-  decodeString,
-  encodeString,
-};
-
-export default linuxio;

@@ -70,7 +70,7 @@ func ExecCommandDirect(command, timeoutStr string) (any, error) {
 		if cmd.ProcessState != nil {
 			exitCode = cmd.ProcessState.ExitCode()
 		}
-		return map[string]interface{}{
+		return map[string]any{
 			"exitCode": exitCode,
 			"stdout":   string(output),
 			"error":    err.Error(),
@@ -80,13 +80,13 @@ func ExecCommandDirect(command, timeoutStr string) (any, error) {
 	result := string(output)
 
 	// Try to parse as JSON if it looks like JSON
-	var jsonResult interface{}
+	var jsonResult any
 	if err := json.Unmarshal([]byte(result), &jsonResult); err == nil {
 		return jsonResult, nil
 	}
 
 	// Return as plain string
-	return map[string]interface{}{
+	return map[string]any{
 		"exitCode": 0,
 		"stdout":   result,
 	}, nil
@@ -101,8 +101,9 @@ func HandleExecStream(sess *session.Session, stream net.Conn, args []string) err
 	logger.Debugf("[ExecStream] Starting with %d args", len(args))
 
 	if len(args) == 0 {
-		_ = ipc.WriteResultError(stream, 0, "no command specified", 400)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if err := ipc.WriteResultErrorAndClose(stream, 0, "no command specified", 400); err != nil {
+			logger.Debugf("[ExecStream] failed to write error+close frame: %v", err)
+		}
 		return fmt.Errorf("no command specified")
 	}
 
@@ -120,22 +121,25 @@ func HandleExecStream(sess *session.Session, stream net.Conn, args []string) err
 	// Get stdout and stderr pipes
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("failed to get stdout pipe: %v", err), 500)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("failed to get stdout pipe: %v", err), 500); writeErr != nil {
+			logger.Debugf("[ExecStream] failed to write error+close frame: %v", writeErr)
+		}
 		return err
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("failed to get stderr pipe: %v", err), 500)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("failed to get stderr pipe: %v", err), 500); writeErr != nil {
+			logger.Debugf("[ExecStream] failed to write error+close frame: %v", writeErr)
+		}
 		return err
 	}
 
 	// Start command
 	if err = cmd.Start(); err != nil {
-		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("failed to start command: %v", err), 500)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("failed to start command: %v", err), 500); writeErr != nil {
+			logger.Debugf("[ExecStream] failed to write error+close frame: %v", writeErr)
+		}
 		return err
 	}
 
@@ -159,11 +163,14 @@ func HandleExecStream(sess *session.Session, stream net.Conn, args []string) err
 
 			// Send to client as raw data (with newline)
 			payload := []byte(cleanLine + "\n")
-			_ = ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
+			if frameErr := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
 				Opcode:   ipc.OpStreamData,
 				StreamID: 0,
 				Payload:  payload,
-			})
+			}); frameErr != nil {
+				logger.Debugf("[ExecStream] failed to write data frame: %v", frameErr)
+				return
+			}
 		}
 	}
 
@@ -193,14 +200,16 @@ func HandleExecStream(sess *session.Session, stream net.Conn, args []string) err
 
 	// Send result with exit code
 	if exitCode == 0 {
-		_ = ipc.WriteResultOK(stream, 0, map[string]interface{}{
+		if resultErr := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 			"exit_code": exitCode,
-		})
+		}); resultErr != nil {
+			logger.Debugf("[ExecStream] failed to write ok+close frame: %v", resultErr)
+		}
 	} else {
-		_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("command exited with code %d", exitCode), exitCode)
+		if resultErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("command exited with code %d", exitCode), exitCode); resultErr != nil {
+			logger.Debugf("[ExecStream] failed to write error+close frame: %v", resultErr)
+		}
 	}
-
-	_ = ipc.WriteStreamClose(stream, 0)
 	return nil
 }
 
@@ -220,8 +229,9 @@ func HandleJSONStream(sess *session.Session, stream net.Conn, args []string, han
 	if len(args) < 2 {
 		errMsg := "json stream requires at least [type, command]"
 		logger.Warnf("[JSONStream] %s, got: %v", errMsg, args)
-		_ = ipc.WriteResultError(stream, 0, errMsg, 400)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if err := ipc.WriteResultErrorAndClose(stream, 0, errMsg, 400); err != nil {
+			logger.Debugf("[JSONStream] failed to write error+close frame: %v", err)
+		}
 		return errors.New(errMsg)
 	}
 
@@ -234,8 +244,9 @@ func HandleJSONStream(sess *session.Session, stream net.Conn, args []string, han
 	if !found {
 		errMsg := fmt.Sprintf("unknown handler type: %s", handlerType)
 		logger.Warnf("[JSONStream] %s", errMsg)
-		_ = ipc.WriteResultError(stream, 0, errMsg, 404)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if err := ipc.WriteResultErrorAndClose(stream, 0, errMsg, 404); err != nil {
+			logger.Debugf("[JSONStream] failed to write error+close frame: %v", err)
+		}
 		return errors.New(errMsg)
 	}
 
@@ -244,8 +255,9 @@ func HandleJSONStream(sess *session.Session, stream net.Conn, args []string, han
 	if !ok {
 		errMsg := fmt.Sprintf("unknown command: %s/%s", handlerType, command)
 		logger.Warnf("[JSONStream] %s", errMsg)
-		_ = ipc.WriteResultError(stream, 0, errMsg, 404)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if err := ipc.WriteResultErrorAndClose(stream, 0, errMsg, 404); err != nil {
+			logger.Debugf("[JSONStream] failed to write error+close frame: %v", err)
+		}
 		return errors.New(errMsg)
 	}
 
@@ -253,8 +265,9 @@ func HandleJSONStream(sess *session.Session, stream net.Conn, args []string, han
 	result, err := handler(handlerArgs)
 	if err != nil {
 		logger.Warnf("[JSONStream] Handler error %s/%s: %v", handlerType, command, err)
-		_ = ipc.WriteResultError(stream, 0, err.Error(), 500)
-		_ = ipc.WriteStreamClose(stream, 0)
+		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 500); writeErr != nil {
+			logger.Debugf("[JSONStream] failed to write error+close frame: %v", writeErr)
+		}
 		return err
 	}
 
@@ -264,8 +277,9 @@ func HandleJSONStream(sess *session.Session, stream net.Conn, args []string, han
 		b, err := json.Marshal(result)
 		if err != nil {
 			logger.Warnf("[JSONStream] Marshal error: %v", err)
-			_ = ipc.WriteResultError(stream, 0, fmt.Sprintf("marshal error: %v", err), 500)
-			_ = ipc.WriteStreamClose(stream, 0)
+			if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("marshal error: %v", err), 500); writeErr != nil {
+				logger.Debugf("[JSONStream] failed to write error+close frame: %v", writeErr)
+			}
 			return err
 		}
 		data = b
@@ -273,11 +287,12 @@ func HandleJSONStream(sess *session.Session, stream net.Conn, args []string, han
 
 	// Send result
 	logger.Debugf("[JSONStream] Success %s/%s, data len=%d", handlerType, command, len(data))
-	_ = ipc.WriteResultFrame(stream, 0, &ipc.ResultFrame{
+	if err := ipc.WriteResultFrameAndClose(stream, 0, &ipc.ResultFrame{
 		Status: "ok",
 		Data:   data,
-	})
-	_ = ipc.WriteStreamClose(stream, 0)
+	}); err != nil {
+		logger.Debugf("[JSONStream] failed to write result+close frame: %v", err)
+	}
 
 	return nil
 }

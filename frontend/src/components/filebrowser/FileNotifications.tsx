@@ -19,7 +19,7 @@ interface CompletedTransfer {
     | "upload"
     | "compression"
     | "extraction"
-    | "reindex"
+    | "indexer"
     | "copy"
     | "move";
   label?: string;
@@ -35,6 +35,7 @@ const FileNotifications: React.FC = () => {
     cancelExtraction,
     cancelCopy,
     cancelMove,
+    openIndexerDialog,
   } = useFileTransfers();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [completedTransfers, setCompletedTransfers] = React.useState<
@@ -141,8 +142,8 @@ const FileNotifications: React.FC = () => {
         return "Compression Progress";
       case "extraction":
         return "Extraction Progress";
-      case "reindex":
-        return "Reindex Progress";
+      case "indexer":
+        return "Indexer Progress";
       case "copy":
         return "Copy Progress";
       case "move":
@@ -153,8 +154,8 @@ const FileNotifications: React.FC = () => {
   };
 
   const handleCancel = (transfer: (typeof transfers)[number]) => {
-    // Reindex cannot be cancelled - it must complete
-    if (transfer.type === "reindex") {
+    // Indexer sync cannot be cancelled - it must complete
+    if (transfer.type === "indexer") {
       return;
     }
     if (transfer.type === "download") {
@@ -172,18 +173,33 @@ const FileNotifications: React.FC = () => {
     }
   };
 
+  const handleOperationsToggle = () => {
+    setIsExpanded((prev) => !prev);
+  };
+
+  const handleOperationsKeyToggle = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+  ) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleOperationsToggle();
+    }
+  };
+
+  const handleIndexerRowKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openIndexerDialog();
+    }
+  };
+
   return (
     <Box sx={{ position: "relative", display: "inline-flex" }}>
       <Box
         role="button"
         tabIndex={0}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            setIsExpanded((prev) => !prev);
-          }
-        }}
-        onClick={() => setIsExpanded((prev) => !prev)}
+        onKeyDown={handleOperationsKeyToggle}
+        onClick={handleOperationsToggle}
         sx={{
           cursor: "pointer",
           display: "flex",
@@ -221,7 +237,7 @@ const FileNotifications: React.FC = () => {
             bottom: "calc(100% + 12px)",
             right: 0,
             zIndex: 1400,
-            minWidth: 220,
+            minWidth: 250,
             maxWidth: 380,
             boxShadow: 6,
             borderRadius: 2,
@@ -265,147 +281,176 @@ const FileNotifications: React.FC = () => {
             }}
           >
             {hasTransfers &&
-              transfers.map((transfer) => (
-                <Box key={transfer.id}>
+              transfers.map((transfer) => {
+                const isIndexerTransfer = transfer.type === "indexer";
+
+                return (
                   <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      mb: 0.5,
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      fontWeight="medium"
-                      color="text.secondary"
-                      sx={{ flex: 1 }}
-                    >
-                      {transfer.label
-                        ? removePercentage(transfer.label)
-                        : transfer.type === "download"
-                          ? "Preparing archive..."
-                          : transfer.type === "upload"
-                            ? "Preparing upload..."
-                            : transfer.type === "compression"
-                              ? "Compressing selection..."
-                              : transfer.type === "reindex"
-                                ? "Reindexing filesystem..."
-                                : transfer.type === "copy"
-                                  ? "Copying..."
-                                  : transfer.type === "move"
-                                    ? "Moving..."
-                                    : "Extracting archive..."}
-                    </Typography>
-                    {transfer.type !== "reindex" && (
-                      <IconButton
-                        size="small"
-                        onClick={() => handleCancel(transfer)}
-                        sx={{ ml: 1, p: 0.5 }}
-                      >
-                        <CloseIcon fontSize="small" />
-                      </IconButton>
-                    )}
-                  </Box>
-                  {(() => {
-                    const percentText = `${Math.round(transfer.progress)}%`;
-                    const speedText =
-                      "speed" in transfer
-                        ? formatSpeed(
-                            typeof (transfer as any).speed === "number"
-                              ? (transfer as any).speed
-                              : undefined,
-                          )
-                        : null;
-
-                    // Calculate time remaining if we have speed and progress data
-                    let timeRemainingText: string | null = null;
-                    if (
-                      "speed" in transfer &&
-                      typeof (transfer as any).speed === "number" &&
-                      (transfer as any).speed > 0
-                    ) {
-                      // Get bytes and total from transfer if available
-                      const bytesProcessed =
-                        "bytes" in transfer
-                          ? (transfer as any).bytes
-                          : undefined;
-                      const totalBytes =
-                        "total" in transfer
-                          ? (transfer as any).total
-                          : undefined;
-
-                      if (
-                        bytesProcessed !== undefined &&
-                        totalBytes !== undefined &&
-                        totalBytes > 0
-                      ) {
-                        const remainingBytes = totalBytes - bytesProcessed;
-                        const secondsRemaining =
-                          remainingBytes / (transfer as any).speed;
-                        timeRemainingText =
-                          formatTimeRemaining(secondsRemaining);
-                      }
+                    key={transfer.id}
+                    role={isIndexerTransfer ? "button" : undefined}
+                    tabIndex={isIndexerTransfer ? 0 : undefined}
+                    onClick={isIndexerTransfer ? openIndexerDialog : undefined}
+                    onKeyDown={
+                      isIndexerTransfer ? handleIndexerRowKeyDown : undefined
                     }
+                    sx={isIndexerTransfer ? { cursor: "pointer" } : undefined}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        mb: 0.5,
+                      }}
+                    >
+                      <Typography
+                        variant="body2"
+                        fontWeight="medium"
+                        color="text.secondary"
+                        sx={{ flex: 1 }}
+                      >
+                        {transfer.label
+                          ? removePercentage(transfer.label)
+                          : transfer.type === "download"
+                            ? "Preparing archive..."
+                            : transfer.type === "upload"
+                              ? "Preparing upload..."
+                              : transfer.type === "compression"
+                                ? "Compressing selection..."
+                                : transfer.type === "indexer"
+                                  ? "Indexing filesystem..."
+                                  : transfer.type === "copy"
+                                    ? "Copying..."
+                                    : transfer.type === "move"
+                                      ? "Moving..."
+                                      : "Extracting archive..."}
+                      </Typography>
+                      {transfer.type !== "indexer" && (
+                        <IconButton
+                          size="small"
+                          onClick={() => handleCancel(transfer)}
+                          sx={{ ml: 1, p: 0.5 }}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Box>
+                    {(() => {
+                      const percentText = `${Math.round(transfer.progress)}%`;
+                      const speedText =
+                        "speed" in transfer
+                          ? formatSpeed(
+                              typeof transfer.speed === "number"
+                                ? transfer.speed
+                                : undefined,
+                            )
+                          : null;
 
-                    const tooltipParts = [percentText];
-                    if (speedText) tooltipParts.push(speedText);
-                    if (timeRemainingText) tooltipParts.push(timeRemainingText);
-                    const tooltipTitle = tooltipParts.join(" • ");
+                      // Calculate time remaining if we have speed and progress data
+                      let timeRemainingText: string | null = null;
+                      if (
+                        "speed" in transfer &&
+                        typeof transfer.speed === "number" &&
+                        transfer.speed > 0
+                      ) {
+                        // Get bytes and total from transfer if available
+                        const bytesProcessed =
+                          "bytes" in transfer ? transfer.bytes : undefined;
+                        const totalBytes =
+                          "total" in transfer ? transfer.total : undefined;
 
-                    return (
-                      <Tooltip title={tooltipTitle} arrow placement="top">
-                        <LinearProgress
-                          variant="determinate"
-                          value={transfer.progress}
-                          sx={{ height: 6, borderRadius: 1, cursor: "pointer" }}
-                        />
-                      </Tooltip>
-                    );
-                  })()}
-                </Box>
-              ))}
+                        if (
+                          bytesProcessed !== undefined &&
+                          totalBytes !== undefined &&
+                          totalBytes > 0
+                        ) {
+                          const remainingBytes = totalBytes - bytesProcessed;
+                          const secondsRemaining =
+                            remainingBytes / transfer.speed;
+                          timeRemainingText =
+                            formatTimeRemaining(secondsRemaining);
+                        }
+                      }
+
+                      const tooltipParts = [percentText];
+                      if (speedText) tooltipParts.push(speedText);
+                      if (timeRemainingText)
+                        tooltipParts.push(timeRemainingText);
+                      const tooltipTitle = tooltipParts.join(" • ");
+
+                      return (
+                        <Tooltip title={tooltipTitle} arrow placement="top">
+                          <LinearProgress
+                            variant="determinate"
+                            value={transfer.progress}
+                            sx={{
+                              height: 6,
+                              borderRadius: 1,
+                              cursor: "pointer",
+                            }}
+                          />
+                        </Tooltip>
+                      );
+                    })()}
+                  </Box>
+                );
+              })}
 
             {hasCompletedTransfers &&
-              completedTransfers.map((transfer) => (
-                <Box key={transfer.id}>
+              completedTransfers.map((transfer) => {
+                const isIndexerTransfer = transfer.type === "indexer";
+
+                return (
                   <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
+                    key={transfer.id}
+                    role={isIndexerTransfer ? "button" : undefined}
+                    tabIndex={isIndexerTransfer ? 0 : undefined}
+                    onClick={isIndexerTransfer ? openIndexerDialog : undefined}
+                    onKeyDown={
+                      isIndexerTransfer ? handleIndexerRowKeyDown : undefined
+                    }
+                    sx={isIndexerTransfer ? { cursor: "pointer" } : undefined}
                   >
-                    <Typography
-                      variant="body2"
-                      fontWeight="medium"
-                      color="text.secondary"
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
                     >
-                      {transfer.label ||
-                        (transfer.type === "download"
-                          ? "Download complete"
-                          : transfer.type === "upload"
-                            ? "Upload complete"
-                            : transfer.type === "compression"
-                              ? "Compression complete"
-                              : transfer.type === "extraction"
-                                ? "Extraction complete"
-                                : transfer.type === "copy"
-                                  ? "Copy complete"
-                                  : transfer.type === "move"
-                                    ? "Move complete"
-                                    : "Operation complete")}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      color="success.main"
-                      fontWeight="bold"
-                    >
-                      ✓
-                    </Typography>
+                      <Typography
+                        variant="body2"
+                        fontWeight="medium"
+                        color="text.secondary"
+                      >
+                        {transfer.label ||
+                          (transfer.type === "download"
+                            ? "Download complete"
+                            : transfer.type === "upload"
+                              ? "Upload complete"
+                              : transfer.type === "compression"
+                                ? "Compression complete"
+                                : transfer.type === "extraction"
+                                  ? "Extraction complete"
+                                  : transfer.type === "indexer"
+                                    ? "Indexer complete"
+                                    : transfer.type === "copy"
+                                      ? "Copy complete"
+                                      : transfer.type === "move"
+                                        ? "Move complete"
+                                        : "Operation complete")}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="success.main"
+                        fontWeight="bold"
+                      >
+                        ✓
+                      </Typography>
+                    </Box>
                   </Box>
-                </Box>
-              ))}
+                );
+              })}
 
             {!hasTransfers && !hasCompletedTransfers && (
               <Typography

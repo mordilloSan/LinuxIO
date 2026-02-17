@@ -63,11 +63,8 @@ func CheckForUpdate() *UpdateInfo {
 // A release version (v1.2.3) is considered newer than a dev version (dev-v1.2.3) of the same number.
 func isNewerVersion(latest, current string) bool {
 	// Strip leading 'dev-' prefix for comparison (but remember if current was dev)
-	currentIsDev := strings.HasPrefix(current, "dev-")
-	latestIsDev := strings.HasPrefix(latest, "dev-")
-
-	latest = strings.TrimPrefix(latest, "dev-")
-	current = strings.TrimPrefix(current, "dev-")
+	current, currentIsDev := strings.CutPrefix(current, "dev-")
+	latest, latestIsDev := strings.CutPrefix(latest, "dev-")
 
 	// Normalize versions (remove 'v' prefix if present)
 	latest = strings.TrimPrefix(latest, "v")
@@ -170,9 +167,9 @@ func getComponentVersions() map[string]string {
 	}
 
 	components := make(map[string]string)
-	lines := strings.Split(string(output), "\n")
+	lines := strings.SplitSeq(string(output), "\n")
 
-	for _, line := range lines {
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		// Look for lines like: "  LinuxIO Web Server dev-v0.6.9"
 		if strings.HasPrefix(line, "LinuxIO ") {

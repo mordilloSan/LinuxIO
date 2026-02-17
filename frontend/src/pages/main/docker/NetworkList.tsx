@@ -27,7 +27,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -63,7 +63,7 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
       onSuccess: () => {
         toast.success(`Network "${networkName}" created successfully`);
         queryClient.invalidateQueries({
-          queryKey: ["linuxio", "docker", "list_networks"],
+          queryKey: linuxio.docker.list_networks.queryKey(),
         });
         handleClose();
       },
@@ -191,7 +191,7 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
         : `${networkNames.length} networks deleted successfully`;
     toast.success(successMessage);
     queryClient.invalidateQueries({
-      queryKey: ["linuxio", "docker", "list_networks"],
+      queryKey: linuxio.docker.list_networks.queryKey(),
     });
     onSuccess();
     handleClose();

@@ -13,7 +13,7 @@ import {
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 
 interface StackSetupDialogProps {
   open: boolean;
@@ -108,14 +108,9 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
 
     try {
       // Validate the directory with the backend
-      const result = await linuxio.call<{
-        valid: boolean;
-        exists: boolean;
-        canCreate: boolean;
-        canWrite: boolean;
-        error?: string;
-        isDirectory: boolean;
-      }>("docker", "validate_stack_directory", [workingDir.trim()]);
+      const result = await linuxio.docker.validate_stack_directory.call(
+        workingDir.trim(),
+      );
 
       if (!result.valid) {
         setErrors({

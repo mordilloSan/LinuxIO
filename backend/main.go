@@ -75,10 +75,8 @@ func showVersion() {
 	// Check linuxio-webserver
 	out, err := exec.Command("linuxio-webserver", "version").CombinedOutput()
 	if err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		if len(lines) > 0 {
-			fmt.Printf("  %s\n", lines[0])
-		}
+		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+		fmt.Printf("  %s\n", line)
 	} else {
 		fmt.Println("  linuxio-webserver: not found or error")
 	}
@@ -86,10 +84,8 @@ func showVersion() {
 	// Check linuxio-bridge
 	out, err = exec.Command("linuxio-bridge", "version").CombinedOutput()
 	if err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		if len(lines) > 0 {
-			fmt.Printf("  %s\n", lines[0])
-		}
+		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+		fmt.Printf("  %s\n", line)
 	} else {
 		fmt.Println("  linuxio-bridge: not found or error")
 	}
@@ -97,12 +93,10 @@ func showVersion() {
 	// Check linuxio-auth
 	out, err = exec.Command("linuxio-auth", "version").CombinedOutput()
 	if err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		if len(lines) > 0 {
-			fmt.Printf("  %s\n", lines[0])
-		}
+		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+		fmt.Printf("  %s\n", line)
 	} else {
-		fmt.Println("  linuxio-auth: not found or error")
+		fmt.Println("linuxio-auth: not found or error")
 	}
 }
 
@@ -114,9 +108,9 @@ func runStatus() {
 	}
 
 	// Filter out legend and footer, keep header and unit lines
-	allLines := strings.Split(string(out), "\n")
 	var filtered []string
-	for _, line := range allLines {
+	for line := range strings.Lines(string(out)) {
+		line = strings.TrimRight(line, "\n")
 		if line == "" || strings.HasPrefix(line, "Legend:") || strings.HasPrefix(line, "To show all") {
 			break
 		}
@@ -280,7 +274,9 @@ func formatJournalEntry(jsonLine string) string {
 	}
 
 	// Clean unit name (remove @.* suffix, .service, .socket)
-	unit = strings.Split(unit, "@")[0]
+	if at := strings.Index(unit, "@"); at >= 0 {
+		unit = unit[:at]
+	}
 	unit = strings.TrimSuffix(unit, ".service")
 	unit = strings.TrimSuffix(unit, ".socket")
 

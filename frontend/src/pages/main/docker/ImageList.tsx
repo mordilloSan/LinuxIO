@@ -17,7 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -88,7 +88,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
     }
 
     queryClient.invalidateQueries({
-      queryKey: ["linuxio", "docker", "list_images"],
+      queryKey: linuxio.docker.list_images.queryKey(),
     });
     onSuccess();
     handleClose();

@@ -9,15 +9,12 @@ import React, {
 import { useBeforeUnload, useLocation, useNavigate } from "react-router-dom";
 
 import {
+  bindStreamHandlers,
   decodeString,
-  encodeString,
   getStreamMux,
-  type ResultFrame,
+  openExecStream,
   type Stream,
-} from "@/api/linuxio";
-
-// Stream type for command execution (must match backend generic.StreamTypeExec)
-const STREAM_TYPE_EXEC = "exec";
+} from "@/api";
 
 // In dev mode, use local test script; in production, use GitHub hosted script
 const INSTALL_SCRIPT_URL = import.meta.env.DEV
@@ -95,6 +92,7 @@ const useUpdateController = (): UpdateContextValue => {
   const [targetVersion, setTargetVersion] = useState<string | null>(null);
 
   const streamRef = useRef<Stream | null>(null);
+  const unbindStreamHandlersRef = useRef<(() => void) | null>(null);
   const updateStartedRef = useRef(false);
   const updateRunIdRef = useRef<string | null>(null);
   const targetVersionRef = useRef<string | null>(null);
@@ -126,8 +124,19 @@ const useUpdateController = (): UpdateContextValue => {
     timersRef.current.clear();
   }, []);
 
+  const detachStreamHandlers = useCallback(() => {
+    if (unbindStreamHandlersRef.current) {
+      unbindStreamHandlersRef.current();
+      unbindStreamHandlersRef.current = null;
+    }
+  }, []);
+
   const resetUpdate = useCallback(() => {
     clearTimers();
+    detachStreamHandlers();
+    if (streamRef.current) {
+      streamRef.current.close();
+    }
     streamRef.current = null;
     updateStartedRef.current = false;
     updateRunIdRef.current = null;
@@ -140,11 +149,16 @@ const useUpdateController = (): UpdateContextValue => {
     setTargetVersion(null);
     // Re-enable API requests
     getStreamMux()?.setUpdating(false);
-  }, [clearTimers]);
+  }, [clearTimers, detachStreamHandlers]);
 
   const failUpdate = useCallback(
     (message: string) => {
       clearTimers();
+      detachStreamHandlers();
+      if (streamRef.current) {
+        streamRef.current.close();
+      }
+      streamRef.current = null;
       updateRunIdRef.current = null;
       setPhase("failed");
       setError(message);
@@ -153,7 +167,7 @@ const useUpdateController = (): UpdateContextValue => {
       // Re-enable API requests
       getStreamMux()?.setUpdating(false);
     },
-    [clearTimers],
+    [clearTimers, detachStreamHandlers],
   );
 
   const markUpdateStarted = useCallback(() => {
@@ -399,11 +413,7 @@ const useUpdateController = (): UpdateContextValue => {
       mux.setUpdating(true);
 
       const cmd = buildUpdateCommand(runId, target);
-      const payload = encodeString(
-        [STREAM_TYPE_EXEC, "bash", "-c", cmd].join("\0"),
-      );
-
-      const stream = mux.openStream(STREAM_TYPE_EXEC, payload);
+      const stream = openExecStream("bash", ["-c", cmd]);
       if (!stream) {
         failUpdate("Failed to open update stream");
         return;
@@ -430,9 +440,8 @@ const useUpdateController = (): UpdateContextValue => {
             const currentStream = streamRef.current;
             streamRef.current = null;
 
-            // Clear stream handlers to prevent double-calling handleStreamFinished
-            currentStream.onClose = () => {};
-            currentStream.onResult = () => {};
+            // Detach stream handlers to prevent double-calling handleStreamFinished
+            detachStreamHandlers();
             currentStream.close();
 
             // Stop polling - clear all timers before starting verification
@@ -455,78 +464,81 @@ const useUpdateController = (): UpdateContextValue => {
         trackTimeout(() => clearInterval(intervalId), UPDATE_TIMEOUT_MS);
       }, POLL_START_DELAY_MS);
 
-      stream.onData = (data: Uint8Array) => {
-        const text = decodeString(data);
-        const lines = text
-          .split("\n")
-          .map((line) => {
-            const trimmed = line.trim();
-            // Filter out systemd journal metadata lines
-            if (!trimmed) return null;
-            if (trimmed.startsWith("Running as unit:")) return null;
-            // Truncate the verbose "Started linuxio-update.service - ..." line
-            if (trimmed.startsWith("Started linuxio-update.service - ")) {
-              return "Started linuxio-update.service";
+      unbindStreamHandlersRef.current = bindStreamHandlers(stream, {
+        onData: (data: Uint8Array) => {
+          const text = decodeString(data);
+          const lines = text
+            .split("\n")
+            .map((line) => {
+              const trimmed = line.trim();
+              // Filter out systemd journal metadata lines
+              if (!trimmed) return null;
+              if (trimmed.startsWith("Running as unit:")) return null;
+              // Truncate the verbose "Started linuxio-update.service - ..." line
+              if (trimmed.startsWith("Started linuxio-update.service - ")) {
+                return "Started linuxio-update.service";
+              }
+              return line;
+            })
+            .filter((line): line is string => line !== null);
+          if (lines.length === 0) return;
+          markUpdateStarted();
+
+          for (const line of lines) {
+            setOutput((prev) => [...prev, line]);
+            setStatus(line);
+
+            // Update progress based on installation steps
+            if (
+              line.includes("Step 1/5:") ||
+              line.includes("Downloading binaries")
+            ) {
+              setProgress(20);
+            } else if (
+              line.includes("Step 2/5:") ||
+              line.includes("Verifying checksums")
+            ) {
+              setProgress(35);
+            } else if (
+              line.includes("Step 3/5:") ||
+              line.includes("Installing binaries")
+            ) {
+              setProgress(50);
+            } else if (
+              line.includes("Step 4/5:") ||
+              line.includes("Installing configuration")
+            ) {
+              setProgress(65);
+            } else if (
+              line.includes("Step 5/5:") ||
+              line.includes("Installing systemd")
+            ) {
+              setProgress(75);
+            } else if (line.includes("Installation complete")) {
+              setProgress(85);
             }
-            return line;
-          })
-          .filter((line): line is string => line !== null);
-        if (lines.length === 0) return;
-        markUpdateStarted();
-
-        for (const line of lines) {
-          setOutput((prev) => [...prev, line]);
-          setStatus(line);
-
-          // Update progress based on installation steps
-          if (
-            line.includes("Step 1/5:") ||
-            line.includes("Downloading binaries")
-          ) {
-            setProgress(20);
-          } else if (
-            line.includes("Step 2/5:") ||
-            line.includes("Verifying checksums")
-          ) {
-            setProgress(35);
-          } else if (
-            line.includes("Step 3/5:") ||
-            line.includes("Installing binaries")
-          ) {
-            setProgress(50);
-          } else if (
-            line.includes("Step 4/5:") ||
-            line.includes("Installing configuration")
-          ) {
-            setProgress(65);
-          } else if (
-            line.includes("Step 5/5:") ||
-            line.includes("Installing systemd")
-          ) {
-            setProgress(75);
-          } else if (line.includes("Installation complete")) {
-            setProgress(85);
           }
-        }
-      };
-
-      stream.onResult = (result: ResultFrame) => {
-        streamRef.current = null;
-        const fallbackError =
-          result.status === "error"
-            ? result.error || "Update failed"
-            : undefined;
-        handleStreamFinished(fallbackError);
-      };
-
-      stream.onClose = () => {
-        streamRef.current = null;
-        handleStreamFinished();
-      };
+        },
+        onResult: (result) => {
+          detachStreamHandlers();
+          streamRef.current = null;
+          const fallbackError =
+            result.status === "error"
+              ? result.error || "Update failed"
+              : undefined;
+          handleStreamFinished(fallbackError);
+        },
+        onClose: () => {
+          detachStreamHandlers();
+          streamRef.current = null;
+          handleStreamFinished();
+        },
+      });
     },
     [
       buildUpdateCommand,
       clearTimers,
+      detachStreamHandlers,
       failUpdate,
       fetchUpdateStatus,
       handleStreamFinished,
@@ -540,8 +552,13 @@ const useUpdateController = (): UpdateContextValue => {
   useEffect(() => {
     return () => {
       clearTimers();
+      detachStreamHandlers();
+      if (streamRef.current) {
+        streamRef.current.close();
+        streamRef.current = null;
+      }
     };
-  }, [clearTimers]);
+  }, [clearTimers, detachStreamHandlers]);
 
   return useMemo(
     () => ({

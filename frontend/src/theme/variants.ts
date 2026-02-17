@@ -118,11 +118,11 @@ const darkVariant: VariantType = {
   },
 };
 
-const variants: Array<VariantType> = [defaultVariant, darkVariant];
+const variants: VariantType[] = [defaultVariant, darkVariant];
 
 export default variants;
 
-export type VariantType = {
+export interface VariantType {
   name: string;
   palette: {
     mode: "light" | "dark";
@@ -155,13 +155,13 @@ export type VariantType = {
     footer: ColorBgType;
     badge: ColorBgType;
   };
-};
+}
 
-type MainContrastTextType = {
+interface MainContrastTextType {
   main: string;
   contrastText: string;
-};
-type ColorBgType = {
+}
+interface ColorBgType {
   color: string;
   background: string;
-};
+}

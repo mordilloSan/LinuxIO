@@ -8,26 +8,28 @@ import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import React, { useEffect, useRef, useState } from "react";
 
 import "@xterm/xterm/css/xterm.css";
-import { useStreamMux, encodeString, decodeString } from "@/api/linuxio";
-import type { Stream } from "@/api/StreamMultiplexer";
+import {
+  useStreamMux,
+  bindStreamHandlers,
+  encodeString,
+  decodeString,
+  openTerminalStream,
+  type Stream,
+} from "@/api";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
 const DEFAULT_FONT = 16;
-
-// Build terminal open payload: "terminal\0cols\0rows"
-function buildTerminalPayload(cols: number, rows: number): Uint8Array {
-  return encodeString(`terminal\0${cols}\0${rows}`);
-}
 
 const TerminalXTerm: React.FC = () => {
   const termRef = useRef<HTMLDivElement>(null);
   const xterm = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const streamRef = useRef<Stream | null>(null);
+  const unbindRef = useRef<(() => void) | null>(null);
   const theme = useTheme();
 
-  const { isOpen, openStream, getStream } = useStreamMux();
+  const { isOpen, getStream } = useStreamMux();
   const [fontSize, setFontSize] = useState(DEFAULT_FONT);
   const [contextMenu, setContextMenu] = useState<{
     mouseX: number;
@@ -133,8 +135,7 @@ const TerminalXTerm: React.FC = () => {
         // Create new stream
         const cols = xterm.current.cols;
         const rows = xterm.current.rows;
-        const payload = buildTerminalPayload(cols, rows);
-        stream = openStream("terminal", payload);
+        stream = openTerminalStream(cols, rows);
 
         if (stream) {
           streamRef.current = stream;
@@ -143,18 +144,20 @@ const TerminalXTerm: React.FC = () => {
 
       if (stream) {
         // Wire up data handler (reattach on each mount)
-        stream.onData = (data: Uint8Array) => {
-          if (xterm.current) {
-            const text = decodeString(data);
-            xterm.current.write(text, () => {
-              xterm.current?.scrollToBottom();
-            });
-          }
-        };
-
-        stream.onClose = () => {
-          streamRef.current = null;
-        };
+        unbindRef.current = bindStreamHandlers(stream, {
+          onData: (data: Uint8Array) => {
+            if (xterm.current) {
+              const text = decodeString(data);
+              xterm.current.write(text, () => {
+                xterm.current?.scrollToBottom();
+              });
+            }
+          },
+          onClose: () => {
+            unbindRef.current = null;
+            streamRef.current = null;
+          },
+        });
 
         stream.resize(xterm.current.cols, xterm.current.rows);
       }
@@ -186,18 +189,17 @@ const TerminalXTerm: React.FC = () => {
       window.removeEventListener("resize", doFit);
       // Don't close stream - it persists for reconnection
       // Detach handler so data gets buffered while unmounted
-      if (streamRef.current) {
+      if (unbindRef.current && streamRef.current) {
         console.log(
-          `[Terminal] Setting onData=null for stream ${streamRef.current.id}`,
+          `[Terminal] Detaching handlers for stream ${streamRef.current.id}`,
         );
-        streamRef.current.onData = null;
-        streamRef.current.onClose = null;
+        unbindRef.current();
+        unbindRef.current = null;
       }
       streamRef.current = null;
     };
   }, [
     isOpen,
-    openStream,
     getStream,
     theme.palette.background.default,
     theme.palette.text.primary,
@@ -224,8 +226,10 @@ const TerminalXTerm: React.FC = () => {
 
     // Close existing stream (terminates PTY on bridge)
     if (streamRef.current) {
-      streamRef.current.onData = null;
-      streamRef.current.onClose = null;
+      if (unbindRef.current) {
+        unbindRef.current();
+        unbindRef.current = null;
+      }
       streamRef.current.close();
       streamRef.current = null;
     }
@@ -237,24 +241,25 @@ const TerminalXTerm: React.FC = () => {
     // Open fresh stream (creates new PTY)
     const cols = xterm.current.cols;
     const rows = xterm.current.rows;
-    const payload = buildTerminalPayload(cols, rows);
-    const stream = openStream("terminal", payload);
+    const stream = openTerminalStream(cols, rows);
 
     if (stream) {
       streamRef.current = stream;
 
-      stream.onData = (data: Uint8Array) => {
-        if (xterm.current) {
-          const text = decodeString(data);
-          xterm.current.write(text, () => {
-            xterm.current?.scrollToBottom();
-          });
-        }
-      };
-
-      stream.onClose = () => {
-        streamRef.current = null;
-      };
+      unbindRef.current = bindStreamHandlers(stream, {
+        onData: (data: Uint8Array) => {
+          if (xterm.current) {
+            const text = decodeString(data);
+            xterm.current.write(text, () => {
+              xterm.current?.scrollToBottom();
+            });
+          }
+        },
+        onClose: () => {
+          unbindRef.current = null;
+          streamRef.current = null;
+        },
+      });
     }
 
     xterm.current.focus();

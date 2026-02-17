@@ -15,6 +15,7 @@ interface UpdateActionsProps {
   currentPackage: string | null;
   progress: number;
   status?: string | null;
+  eventLog?: string[];
   error?: string | null;
   onClearError?: () => void;
   onCancel?: () => void;
@@ -25,6 +26,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
   currentPackage,
   progress,
   status,
+  eventLog,
   error,
   onClearError,
   onCancel,
@@ -36,6 +38,15 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
     }
     const packageName = currentPackage.split(";")[0];
     if (status) {
+      const normalized = status.toLowerCase();
+      if (
+        normalized.includes(packageName.toLowerCase()) ||
+        normalized.includes("unpack") ||
+        normalized.includes("setting up") ||
+        normalized.includes("processing triggers")
+      ) {
+        return status;
+      }
       return `${status}: ${packageName}`;
     }
     return `Updating: ${packageName}`;
@@ -97,6 +108,20 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
             value={progress}
             sx={{ height: 8, borderRadius: 1 }}
           />
+          {eventLog && eventLog.length > 0 && (
+            <Box sx={{ mt: 1 }}>
+              {eventLog.map((line, index) => (
+                <Typography
+                  key={`${index}-${line}`}
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block" }}
+                >
+                  {line}
+                </Typography>
+              ))}
+            </Box>
+          )}
         </Box>
       )}
     </Box>

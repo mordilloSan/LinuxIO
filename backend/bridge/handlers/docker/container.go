@@ -8,20 +8,17 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/mordilloSan/go-logger/logger"
-	"golang.org/x/sys/unix"
 )
 
 type Metrics struct {
-	CPUPercent     float64 `json:"cpu_percent"`
-	MemUsage       uint64  `json:"mem_usage"`
-	MemLimit       uint64  `json:"mem_limit"`
-	SystemMemTotal uint64  `json:"system_mem_total"`
-	NetInput       uint64  `json:"net_input"`
-	NetOutput      uint64  `json:"net_output"`
-	BlockRead      uint64  `json:"block_read"`
-	BlockWrite     uint64  `json:"block_write"`
+	CPUPercent float64 `json:"cpu_percent"`
+	MemUsage   uint64  `json:"mem_usage"`
+	MemLimit   uint64  `json:"mem_limit"`
+	NetInput   uint64  `json:"net_input"`
+	NetOutput  uint64  `json:"net_output"`
+	BlockRead  uint64  `json:"block_read"`
+	BlockWrite uint64  `json:"block_write"`
 }
 
 type ContainerWithMetrics struct {
@@ -29,20 +26,6 @@ type ContainerWithMetrics struct {
 	Metrics *Metrics `json:"metrics,omitempty"`
 	Icon    string   `json:"icon,omitempty"`
 	URL     string   `json:"url,omitempty"`
-}
-
-// Helper to get a docker client
-func getClient() (*client.Client, error) {
-	return client.NewClientWithOpts(client.FromEnv)
-}
-
-// Helper to get full system mm
-func getSystemMemoryTotal() (uint64, error) {
-	var info unix.Sysinfo_t
-	if err := unix.Sysinfo(&info); err != nil {
-		return 0, err
-	}
-	return uint64(info.Totalram) * uint64(info.Unit), nil
 }
 
 // List all containers with metrics
@@ -63,8 +46,6 @@ func ListContainers() (any, error) {
 	}
 
 	var enriched []ContainerWithMetrics
-
-	sysMemTotal, sysErr := getSystemMemoryTotal() // call once before the loop
 
 	for _, ctr := range containers {
 		metrics := &Metrics{}
@@ -104,9 +85,6 @@ func ListContainers() (any, error) {
 
 				metrics.MemUsage = stats.MemoryStats.Usage
 				metrics.MemLimit = stats.MemoryStats.Limit
-				if sysErr == nil {
-					metrics.SystemMemTotal = sysMemTotal
-				}
 
 				// net & block as before...
 				for _, net := range stats.Networks {

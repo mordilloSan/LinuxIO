@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -175,6 +176,30 @@ func WriteResultError(w io.Writer, streamID uint32, errMsg string, code int) err
 	})
 }
 
+// WriteResultOKAndClose writes a successful result and then closes the stream.
+func WriteResultOKAndClose(w io.Writer, streamID uint32, data any) error {
+	if err := WriteResultOK(w, streamID, data); err != nil {
+		return err
+	}
+	return WriteStreamClose(w, streamID)
+}
+
+// WriteResultErrorAndClose writes an error result and then closes the stream.
+func WriteResultErrorAndClose(w io.Writer, streamID uint32, errMsg string, code int) error {
+	if err := WriteResultError(w, streamID, errMsg, code); err != nil {
+		return err
+	}
+	return WriteStreamClose(w, streamID)
+}
+
+// WriteResultFrameAndClose writes a raw result frame and then closes the stream.
+func WriteResultFrameAndClose(w io.Writer, streamID uint32, r *ResultFrame) error {
+	if err := WriteResultFrame(w, streamID, r); err != nil {
+		return err
+	}
+	return WriteStreamClose(w, streamID)
+}
+
 // WriteStreamClose sends a close frame for the stream.
 func WriteStreamClose(w io.Writer, streamID uint32) error {
 	return WriteRelayFrame(w, &StreamFrame{
@@ -264,4 +289,55 @@ func AbortMonitor(r io.Reader) (cancelFn CancelFunc, cleanup func()) {
 	}
 
 	return cancelFn, cleanup
+}
+
+// AbortContext creates a context derived from parent that is cancelled when an
+// abort signal (OpStreamAbort) is received on the stream. Uses channel-based
+// notification — no polling.
+//
+// Returns:
+//   - ctx: a context that is cancelled on abort or when parent is done.
+//   - cancelFn: a CancelFunc that returns true once abort has been received.
+//     Can be passed to OperationCallbacks.Cancel for synchronous checks.
+//   - cleanup: blocks until the monitor goroutine exits (with a short timeout).
+//     Callers must always defer cleanup().
+func AbortContext(parent context.Context, stream io.Reader) (ctx context.Context, cancelFn CancelFunc, cleanup func()) {
+	ctx, cancel := context.WithCancel(parent)
+
+	aborted := make(chan struct{})
+	done := make(chan struct{})
+
+	// Monitor goroutine: reads frames until abort or stream error.
+	go func() {
+		defer close(done)
+		for {
+			frame, err := ReadRelayFrame(stream)
+			if err != nil {
+				return
+			}
+			if frame.Opcode == OpStreamAbort {
+				close(aborted)
+				cancel()
+				return
+			}
+		}
+	}()
+
+	cancelFn = func() bool {
+		select {
+		case <-aborted:
+			return true
+		default:
+			return false
+		}
+	}
+
+	cleanup = func() {
+		select {
+		case <-done:
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	return ctx, cancelFn, cleanup
 }

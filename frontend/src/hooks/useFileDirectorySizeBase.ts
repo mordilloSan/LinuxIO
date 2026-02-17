@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { LinuxIOError } from "@/api/linuxio";
+import { LinuxIOError } from "@/api";
 import useAuth from "@/hooks/useAuth";
 
 /**

@@ -6,8 +6,7 @@ import { useState, useEffect, useMemo } from "react";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 
-import type { NetworkInterface } from "@/api/linuxio-types";
-import linuxio from "@/api/react-query";
+import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
@@ -50,7 +49,7 @@ const NetworkInterfaceList = () => {
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
   const { data: rawInterfaces = [], isPending: isLoading } =
-    linuxio.dbus.GetNetworkInfo.useQuery({
+    linuxio.dbus.get_network_info.useQuery({
       refetchInterval: 1000,
     });
 

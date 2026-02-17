@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 )
 
 func (info *FileInfo) SortItems() {
@@ -39,36 +41,42 @@ func (info *FileInfo) SortItems() {
 // ResolveSymlinks resolves symlinks in the given path and returns
 // the final resolved path, whether it's a directory (considering bundle logic), and any error.
 func ResolveSymlinks(path string) (string, bool, error) {
+	root, err := fsroot.Open()
+	if err != nil {
+		return path, false, fmt.Errorf("could not open filesystem root: %v", err)
+	}
+	defer root.Close()
+
+	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
 	visited := make(map[string]struct{})
+
 	for {
-		if _, seen := visited[path]; seen {
-			return path, false, fmt.Errorf("detected symlink loop at %s", path)
+		if _, seen := visited[cleanPath]; seen {
+			return cleanPath, false, fmt.Errorf("detected symlink loop at %s", cleanPath)
 		}
-		visited[path] = struct{}{}
-		// Get the file info using os.Lstat to handle symlinks
-		info, err := os.Lstat(path)
+		visited[cleanPath] = struct{}{}
+
+		relPath := fsroot.ToRel(cleanPath)
+		info, err := root.Root.Lstat(relPath)
 		if err != nil {
-			return path, false, fmt.Errorf("could not stat path: %s, %v", path, err)
+			return cleanPath, false, fmt.Errorf("could not stat path: %s, %v", cleanPath, err)
 		}
 
-		// Check if the path is a symlink
 		if info.Mode()&os.ModeSymlink != 0 {
-			// Read the symlink target
-			target, err := os.Readlink(path)
+			target, err := root.Root.Readlink(relPath)
 			if err != nil {
-				return path, false, fmt.Errorf("could not read symlink: %s, %v", path, err)
+				return cleanPath, false, fmt.Errorf("could not read symlink: %s, %v", cleanPath, err)
 			}
 
-			// Resolve the symlink's target relative to its directory
 			if filepath.IsAbs(target) {
-				path = target
+				cleanPath = filepath.Clean("/" + strings.TrimPrefix(target, "/"))
 			} else {
-				path = filepath.Join(filepath.Dir(path), target)
+				cleanPath = filepath.Clean(filepath.Join(filepath.Dir(cleanPath), target))
 			}
-		} else {
-			// Not a symlink, check with bundle-aware directory logic
-			isDir := IsDirectory(info)
-			return path, isDir, nil
+			continue
 		}
+
+		isDir := IsDirectory(info)
+		return cleanPath, isDir, nil
 	}
 }

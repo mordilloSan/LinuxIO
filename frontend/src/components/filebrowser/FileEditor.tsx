@@ -64,12 +64,12 @@ const getLanguageMode = (fileName: string): string => {
   return modeMap[ext] || "text";
 };
 
-type EditorState = {
+interface EditorState {
   filePath: string;
   baseContent: string;
   content: string;
   isDirty: boolean;
-};
+}
 
 const createEditorState = (
   filePath: string,

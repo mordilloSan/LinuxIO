@@ -90,8 +90,8 @@ const MultiFileItemRow: React.FC<{
     if (item.error) {
       return "—";
     }
-    if (isDir && (item as any).aggregateSize !== undefined) {
-      return formatFileSize((item as any).aggregateSize);
+    if (isDir && item.aggregateSize !== undefined) {
+      return formatFileSize(item.aggregateSize);
     }
     return formatFileSize(item.size);
   };

@@ -61,19 +61,26 @@ import linuxio from "@/api/react-query";
 // Also available: initStreamMux, closeStreamMux, waitForStreamMux, getStreamMux
 ```
 
+### Schema & Types
+
+The type-safe surface comes from `frontend/src/api/linuxio-types.ts` (`LinuxIOSchema`).
+When the backend adds/changes a handler/command, update that schema entry to keep:
+- Autocomplete for `linuxio.<handler>.<command>`
+- Typed `args` / `result` inference
+
 ### Query Hooks
 
 Use `linuxio.handler.command.useQuery()` for fetching data:
 
 ```typescript
 // Basic usage - no arguments
-const { data, isLoading, error } = linuxio.system.get_drive_info.useQuery();
+const { data, isLoading, error } = linuxio.storage.get_drive_info.useQuery();
 
 // With string arguments
-const { data } = linuxio.docker.container_stats.useQuery(containerId);
+const { data } = linuxio.docker.get_container_logs.useQuery(containerId);
 
 // Multiple string arguments
-const { data } = linuxio.filebrowser.resource_get.useQuery(path, "file");
+const { data } = linuxio.filebrowser.resource_get.useQuery(path, "", "true");
 
 // With React Query options
 const { data } = linuxio.system.get_cpu_info.useQuery({
@@ -81,15 +88,9 @@ const { data } = linuxio.system.get_cpu_info.useQuery({
   refetchInterval: 5000,
 });
 
-// String args + options
-const { data } = linuxio.docker.list_containers.useQuery("all", {
+// Options-only (no args)
+const { data } = linuxio.docker.list_containers.useQuery({
   staleTime: 2000,
-});
-
-// Complex arguments (objects, arrays) - use explicit args
-const { data } = linuxio.dbus.SetAutoUpdates.useQuery({
-  args: ["enabled", { exclude_packages: ["kernel"], auto_reboot: true }],
-  staleTime: 60000,
 });
 ```
 
@@ -116,10 +117,16 @@ const { mutate } = linuxio.docker.start_container.useMutation();
 mutate([containerId]);
 
 // Complex arguments (objects, arrays)
-const { mutate } = linuxio.dbus.InstallPackages.useMutation();
+const { mutate } = linuxio.dbus.SetAutoUpdates.useMutation();
 mutate([
-  packageId,
-  { auto_confirm: true, skip_deps: false }
+  {
+    enabled: true,
+    frequency: "daily",
+    scope: "security",
+    download_only: true,
+    reboot_policy: "if_needed",
+    exclude_packages: [],
+  },
 ]);
 
 // With callbacks
@@ -139,40 +146,43 @@ mutate([containerId]);
 
 **Note:** Mutations always expect an array of arguments. Objects and arrays are JSON-serialized automatically.
 
----
+### Imperative Helpers (No Hooks)
 
-## String-Based API (for modules)
-
-For dynamic handlers (modules) or when handler/command names are not in the schema:
+For effects, contexts, or other non-hook code paths, every typed command also exposes:
+- `.call(...args)` – Promise-based helper using the same serialization as hooks
+- `.queryKey(...args)` / `.queryOptions(...)` – for `queryClient.fetchQuery()` / `ensureQueryData()`
 
 ```typescript
-// Query
-const { data } = linuxio.useCall<WeatherData>(
-  "module.weather",
-  "getForecast",
-  ["London"],
-  { staleTime: 60000 }
+import { useQueryClient } from "@tanstack/react-query";
+import linuxio from "@/api/react-query";
+
+const queryClient = useQueryClient();
+
+// Fetch via QueryClient (deduped + cached)
+const caps = await queryClient.fetchQuery(
+  linuxio.system.get_capabilities.queryOptions({ staleTime: 0 }),
 );
 
-// Mutation
-const { mutate } = linuxio.useMutate<void, string[]>(
-  "module.lights",
-  "toggle"
-);
-mutate(["living-room"]);
+// Or call directly (typed)
+const version = await linuxio.control.version.call();
 ```
 
 ---
 
 ## Core API (`@/api/linuxio-core`)
 
-For non-React code or when you need direct control. Imported via `linuxio` from `@/api/react-query`:
+For non-React code or when you need direct control.
+
+```typescript
+import { call, spawn, openStream } from "@/api/linuxio-core";
+```
+
+For built-in handlers, prefer the type-safe imperative helper:
 
 ```typescript
 import linuxio from "@/api/react-query";
 
-// or direct import
-import { call, spawn, openStream } from "@/api/linuxio-core";
+await linuxio.storage.get_drive_info.call();
 ```
 
 ### `call<T>(handler, command, args?, options?)`
@@ -181,17 +191,13 @@ Simple request/response call. Returns a Promise that rejects on timeout or if th
 
 ```typescript
 // Basic usage
-const drives = await linuxio.call<DiskInfo[]>("system", "get_drive_info");
+const drives = await call<DiskInfo[]>("storage", "get_drive_info");
 
 // With arguments
-const stats = await linuxio.call<ContainerStats>(
-  "docker",
-  "get_container_stats",
-  [containerId]
-);
+const logs = await call<string>("docker", "get_container_logs", [containerId]);
 
 // With timeout
-const result = await linuxio.call("dbus", "InstallPackage", [packageId], {
+const result = await call("dbus", "InstallPackage", [packageId], {
   timeout: 60000, // 60 second timeout (default: 30000)
 });
 ```
@@ -217,7 +223,7 @@ Streaming operation with progress and data callbacks. Returns a `SpawnedProcess`
 
 ```typescript
 // Download with progress
-const result = await linuxio.spawn("filebrowser", "download", ["/path/to/file"])
+const result = await spawn("filebrowser", "download", ["/path/to/file"])
   .onStream((chunk) => {
     // Handle binary data chunks
     writeToFile(chunk);
@@ -229,13 +235,13 @@ const result = await linuxio.spawn("filebrowser", "download", ["/path/to/file"])
   });
 
 // Package installation with timeout
-await linuxio.spawn("dbus", "InstallPackage", [packageId], {
+await spawn("dbus", "InstallPackage", [packageId], {
   timeout: 300000,  // 5 minutes (default: 300000)
   onProgress: (p) => setProgress(p.pct),
 });
 
 // With early cancellation
-const operation = linuxio.spawn("filebrowser", "compress", [paths, output, "zip"])
+const operation = spawn("filebrowser", "compress", [paths, output, "zip"])
   .progress((p) => setProgress(p.pct));
 
 // Later...
@@ -268,7 +274,7 @@ Opens a bidirectional stream for terminal, docker exec, or custom protocols.
 
 ```typescript
 // Terminal session with persistence (reusable stream)
-const stream = linuxio.openStream("terminal", "bash", ["120", "32"], "terminal");
+const stream = openStream("terminal", "bash", ["120", "32"], "terminal");
 
 stream.onData = (data) => {
   terminal.write(decodeString(data));
@@ -285,7 +291,7 @@ stream.write(encodeString("ls -la\n"));
 stream.close();
 
 // Docker container exec (one-off stream)
-const stream = linuxio.openStream(
+const stream = openStream(
   "docker",
   "container_exec",
   [containerId, "sh", "80", "24"]
@@ -360,7 +366,7 @@ import {
 } from "@/api/react-query";
 
 // Initialize connection (called by AuthContext on login)
-initStreamMux(wsUrl);
+initStreamMux();
 
 // Wait for connection to be ready
 await waitForStreamMux();
@@ -427,7 +433,7 @@ All API methods throw/reject with `LinuxIOError`:
 import { LinuxIOError } from "@/api/react-query";
 
 try {
-  await linuxio.call("system", "get_drive_info");
+  await linuxio.storage.get_drive_info.call();
 } catch (error) {
   if (error instanceof LinuxIOError) {
     console.error(`Error ${error.code}: ${error.message}`);
@@ -464,12 +470,13 @@ Complex types (objects, arrays) are JSON-serialized automatically when using the
 
 | Handler | Description | Example Commands |
 |---------|-------------|------------------|
-| `system` | System information | `get_drive_info`, `get_cpu_info`, `get_memory_info` |
+| `system` | System information | `get_cpu_info`, `get_memory_info`, `get_host_info` |
+| `storage` | Storage management | `get_drive_info`, `list_vgs`, `list_nfs_mounts` |
 | `docker` | Docker management | `list_containers`, `start_container`, `container_exec` |
 | `filebrowser` | File operations | `resource_get`, `subfolders`, `upload`, `download`, `compress` |
-| `dbus` | D-Bus services | `ListServices`, `GetUpdates`, `InstallPackages`, `SetAutoUpdates` |
+| `dbus` | D-Bus services | `ListServices`, `GetUpdates`, `InstallPackage`, `SetAutoUpdates` |
 | `wireguard` | WireGuard VPN | `list_interfaces`, `add_peer`, `remove_peer` |
-| `config` | User configuration | `theme_get`, `theme_set` |
+| `config` | User configuration | `get`, `set` |
 | `control` | System control | `version`, `shutdown`, `update` |
 | `modules` | Module management | `GetModules`, `InstallModule`, `UninstallModule` |
 
@@ -478,12 +485,11 @@ Complex types (objects, arrays) are JSON-serialized automatically when using the
 ## Best Practices
 
 1. **Use type-safe API** (`linuxio.handler.command.useQuery()`) for built-in handlers
-2. **Use string-based API** (`linuxio.useCall()`) for dynamic/module handlers
-3. **Use explicit args** when passing objects: `useQuery({ args: ["str", obj] })`
-4. **Handle errors** with try/catch or React Query's error states
-5. **Set appropriate timeouts** for long-running operations
-6. **Use `spawn` with progress** for file transfers and package operations
-7. **Invalidate queries** after mutations to refresh cached data
+2. **Use explicit args** when passing objects: `useQuery({ args: ["str", obj] })`
+3. **Handle errors** with try/catch or React Query's error states
+4. **Set appropriate timeouts** for long-running operations
+5. **Use `spawn` with progress** for file transfers and package operations
+6. **Invalidate queries** after mutations to refresh cached data
 
 ```typescript
 // Good: Type-safe with proper invalidation
@@ -495,29 +501,3 @@ const { mutate } = linuxio.docker.remove_container.useMutation({
 mutate([containerId]);
 ```
 
----
-
-## Migration from Old API
-
-If you're migrating from the old string-based API:
-
-```typescript
-// Old (still works, but deprecated for built-in handlers)
-const { data } = useCall("system", "get_drive_info");
-
-// New (recommended)
-const { data } = linuxio.system.get_drive_info.useQuery();
-
-// Old mutation
-const { mutate } = useMutate("docker", "start_container");
-mutate(containerId);  // Single string
-
-// New mutation
-const { mutate } = linuxio.docker.start_container.useMutation();
-mutate([containerId]);  // Array of args
-```
-
-Key differences:
-- Mutations now expect arrays: `mutate([arg1, arg2])` instead of `mutate(arg1)`
-- Complex objects need explicit args in queries: `useQuery({ args: [...] })`
-- Full TypeScript autocomplete and type checking

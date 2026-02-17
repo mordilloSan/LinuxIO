@@ -1,6 +1,6 @@
 import { Typography, Box } from "@mui/material";
 
-import linuxio from "@/api/react-query";
+import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
@@ -51,6 +51,10 @@ const MemoryUsage = () => {
         <Typography variant="body1">
           <strong>Used Memory:</strong>{" "}
           {formatFileSize(memoryData?.system?.active ?? 0, 2)}
+        </Typography>
+        <Typography variant="body1">
+          <strong>Docker:</strong>{" "}
+          {formatFileSize(memoryData?.docker?.used ?? 0, 2)}
         </Typography>
         <Typography variant="body1">
           <strong>Swap:</strong>{" "}
