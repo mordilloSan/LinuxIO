@@ -28,7 +28,7 @@ const GpuInfo: React.FC = () => {
         {gpus.map((gpu, idx) => (
           <Box
             key={`${gpu.vendor_id}-${gpu.device_id}-${idx}`}
-            sx={{ display: "flex", flexDirection: "column" }}
+            sx={{ display: "flex", flexDirection: "column", gap: 1 }}
           >
             <Typography variant="body1">{`${gpu.vendor} — ${gpu.model}`}</Typography>
             <Typography variant="body2">{`Driver: ${gpu.driver}`}</Typography>

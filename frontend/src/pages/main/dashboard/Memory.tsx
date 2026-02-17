@@ -62,8 +62,8 @@ const MemoryUsage = () => {
             (memoryData?.system?.swapTotal ?? 0) -
               (memoryData?.system?.swapFree ?? 0),
             2,
-          )}{" "}
-          of {formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}
+          )}
+          /{formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}
         </Typography>
       </Box>
     ),

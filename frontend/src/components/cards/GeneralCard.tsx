@@ -226,9 +226,19 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
             <Box
               sx={{
                 flex: 1,
+                minWidth: 0,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "left",
+                "& > *": {
+                  minWidth: 0,
+                  width: "100%",
+                },
+                "& .MuiTypography-root": {
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                },
               }}
             >
               {stats}
@@ -247,7 +257,18 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
             </Box>
           </Box>
         ) : (
-          <Box sx={{ mt: 7 }}>{stats}</Box>
+          <Box
+            sx={{
+              mt: 7,
+              "& .MuiTypography-root": {
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              },
+            }}
+          >
+            {stats}
+          </Box>
         )}
       </CardContent>
     </FrostedCard>

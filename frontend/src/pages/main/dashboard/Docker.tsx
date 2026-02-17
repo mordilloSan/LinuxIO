@@ -183,7 +183,7 @@ const DockerInfo: React.FC = () => {
     <Box
       sx={{
         display: "flex",
-        gap: 0.5,
+        gap: 1,
         flexDirection: "column",
         alignSelf: "flex-start",
         mt: 4,

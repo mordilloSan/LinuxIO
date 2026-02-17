@@ -12,6 +12,7 @@ import Processor from "./Processor";
 import SystemHealth from "./System";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import useAuth from "@/hooks/useAuth";
 
 const MemoSystemHealth = React.memo(SystemHealth);
 const MemoProcessor = React.memo(Processor);
@@ -23,7 +24,7 @@ const MemoGpuInfo = React.memo(GpuInfo);
 const MemoDriveInfo = React.memo(DriveInfo);
 const MemoDockerInfo = React.memo(DockerInfo);
 
-const cards = [
+const allCards = [
   { id: "system", component: MemoSystemHealth },
   { id: "cpu", component: MemoProcessor },
   { id: "memory", component: MemoMemory },
@@ -36,6 +37,12 @@ const cards = [
 ];
 
 const Dashboard: React.FC = () => {
+  const { dockerAvailable } = useAuth();
+
+  const cards = allCards.filter(
+    (card) => card.id !== "docker" || dockerAvailable,
+  );
+
   return (
     <Grid container spacing={4}>
       {cards.map(({ id, component: CardComponent }) => (
