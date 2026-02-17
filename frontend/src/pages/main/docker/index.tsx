@@ -98,7 +98,7 @@ const DockerPage: React.FC = () => {
               onMountCreateHandler={(handler) =>
                 setCreateStackHandler(() => handler)
               }
-              onMountReindexHandler={(handler) =>
+              onMountIndexerHandler={(handler) =>
                 setReindexStackHandler(() => handler)
               }
             />

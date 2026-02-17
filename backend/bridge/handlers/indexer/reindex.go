@@ -13,7 +13,7 @@ import (
 )
 
 // indexerClient is the HTTP client for SSE connections to the indexer service.
-// Unexported — only used by StreamReindex.
+// Unexported — only used by StreamIndexer and StreamIndexerAttach.
 var indexerClient = &http.Client{
 	Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -26,34 +26,44 @@ var indexerClient = &http.Client{
 	},
 }
 
-// ReindexCallbacks defines how reindex events are delivered to the caller.
+// IndexerCallbacks defines how indexer events are delivered to the caller.
 // Nil callbacks are safely skipped (no-op).
-type ReindexCallbacks struct {
-	OnProgress func(ReindexProgress) error
-	OnResult   func(ReindexResult) error
+type IndexerCallbacks struct {
+	OnProgress func(IndexerProgress) error
+	OnResult   func(IndexerResult) error
 	OnError    func(msg string, code int) error
 }
 
-// StreamReindex connects to the indexer SSE endpoint for the given path and
-// relays events via callbacks. The caller controls cancellation through ctx
-// (e.g. via ipc.AbortContext).
+// StreamIndexer triggers a reindex via POST /reindex?path=<path> and then
+// attaches to GET /status?stream=true for live SSE updates. The caller
+// controls cancellation through ctx (e.g. via ipc.AbortContext).
 //
 // HTTP status-to-error mapping is centralized here so handler wrappers stay thin.
-func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error {
+func StreamIndexer(ctx context.Context, path string, cb IndexerCallbacks) error {
+	// Send initial "connecting" progress
+	if progressErr := callOnProgress(cb, IndexerProgress{Phase: "connecting"}); progressErr != nil {
+		return fmt.Errorf("on progress callback: %w", progressErr)
+	}
+
+	// Step 1: Trigger the reindex operation
+	if err := triggerReindex(ctx, path, cb); err != nil {
+		return err
+	}
+
+	// Step 2: Attach to the status stream for live SSE events
+	return attachStatusStream(ctx, cb)
+}
+
+// triggerReindex sends POST /reindex?path=<path> to start the operation.
+func triggerReindex(ctx context.Context, path string, cb IndexerCallbacks) error {
 	query := url.Values{}
 	query.Set("path", path)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex/stream?"+query.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex?"+query.Encode(), nil)
 	if err != nil {
 		if callbackErr := callOnError(cb, fmt.Sprintf("failed to create request: %v", err), 500); callbackErr != nil {
 			return fmt.Errorf("on error callback: %w", callbackErr)
 		}
 		return fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Accept", "text/event-stream")
-
-	// Send initial "connecting" progress
-	if progressErr := callOnProgress(cb, ReindexProgress{Phase: "connecting"}); progressErr != nil {
-		return fmt.Errorf("on progress callback: %w", progressErr)
 	}
 
 	resp, err := indexerClient.Do(req)
@@ -71,7 +81,6 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 	}
 	defer resp.Body.Close()
 
-	// Centralized HTTP status mapping
 	switch {
 	case resp.StatusCode == http.StatusConflict:
 		if callbackErr := callOnError(cb, "another index operation is already running", 409); callbackErr != nil {
@@ -90,18 +99,73 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 		return fmt.Errorf("indexer error: %s", resp.Status)
 	}
 
-	// Parse SSE events
+	return nil
+}
+
+// attachStatusStream connects to GET /status?stream=true for live SSE events.
+func attachStatusStream(ctx context.Context, cb IndexerCallbacks) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/status?stream=true", nil)
+	if err != nil {
+		if callbackErr := callOnError(cb, fmt.Sprintf("failed to create request: %v", err), 500); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := indexerClient.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			if callbackErr := callOnError(cb, "operation aborted", 499); callbackErr != nil {
+				return fmt.Errorf("on error callback: %w", callbackErr)
+			}
+			return ipc.ErrAborted
+		}
+		if callbackErr := callOnError(cb, fmt.Sprintf("indexer connection failed: %v", err), 503); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return fmt.Errorf("indexer request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if callbackErr := callOnError(cb, fmt.Sprintf("indexer status stream error: %s", resp.Status), resp.StatusCode); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return fmt.Errorf("indexer status stream: %s", resp.Status)
+	}
+
+	return consumeSSEEvents(ctx, resp, cb)
+}
+
+// StreamIndexerAttach connects to the indexer status SSE endpoint to attach
+// to an already-running operation. Uses GET /status?stream=true which streams
+// the same SSE events (started, progress, complete, error) as StreamIndexer.
+//
+// Returns an error if no operation is currently running or the connection fails.
+func StreamIndexerAttach(ctx context.Context, cb IndexerCallbacks) error {
+	// Send initial "connecting" progress
+	if progressErr := callOnProgress(cb, IndexerProgress{Phase: "connecting"}); progressErr != nil {
+		return fmt.Errorf("on progress callback: %w", progressErr)
+	}
+
+	return attachStatusStream(ctx, cb)
+}
+
+// consumeSSEEvents reads SSE events from an HTTP response and dispatches them
+// via the provided callbacks. Shared by StreamIndexer and StreamIndexerAttach.
+func consumeSSEEvents(ctx context.Context, resp *http.Response, cb IndexerCallbacks) error {
 	events, errCh := ReadSSE(ctx, resp.Body)
 
 	for evt := range events {
 		switch evt.Type {
 		case "started":
-			if progressErr := callOnProgress(cb, ReindexProgress{Phase: "indexing"}); progressErr != nil {
+			if progressErr := callOnProgress(cb, IndexerProgress{Phase: "indexing"}); progressErr != nil {
 				return fmt.Errorf("on progress callback: %w", progressErr)
 			}
 
 		case "progress":
-			var progress ReindexProgress
+			var progress IndexerProgress
 			if unmarshalErr := json.Unmarshal([]byte(evt.Data), &progress); unmarshalErr == nil {
 				progress.Phase = "indexing"
 				if callbackErr := callOnProgress(cb, progress); callbackErr != nil {
@@ -110,7 +174,7 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 			}
 
 		case "complete":
-			var result ReindexResult
+			var result IndexerResult
 			if unmarshalErr := json.Unmarshal([]byte(evt.Data), &result); unmarshalErr == nil {
 				if cb.OnResult != nil {
 					if callbackErr := cb.OnResult(result); callbackErr != nil {
@@ -131,6 +195,14 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 				return fmt.Errorf("indexer error: %s", errData.Message)
 			}
 		}
+	}
+
+	// Check for context cancellation first
+	if ctx.Err() != nil {
+		if callbackErr := callOnError(cb, "operation aborted", 499); callbackErr != nil {
+			return fmt.Errorf("on error callback: %w", callbackErr)
+		}
+		return ipc.ErrAborted
 	}
 
 	// Check for SSE read error
@@ -154,14 +226,14 @@ func StreamReindex(ctx context.Context, path string, cb ReindexCallbacks) error 
 	return fmt.Errorf("indexer stream ended unexpectedly")
 }
 
-func callOnProgress(cb ReindexCallbacks, p ReindexProgress) error {
+func callOnProgress(cb IndexerCallbacks, p IndexerProgress) error {
 	if cb.OnProgress != nil {
 		return cb.OnProgress(p)
 	}
 	return nil
 }
 
-func callOnError(cb ReindexCallbacks, msg string, code int) error {
+func callOnError(cb IndexerCallbacks, msg string, code int) error {
 	if cb.OnError != nil {
 		return cb.OnError(msg, code)
 	}

@@ -22,16 +22,18 @@ import (
 )
 
 const (
-	StreamTypeDockerLogs    = "docker-logs"
-	StreamTypeDockerCompose = "docker-compose"
-	StreamTypeDockerReindex = "docker-reindex"
+	StreamTypeDockerLogs          = "docker-logs"
+	StreamTypeDockerCompose       = "docker-compose"
+	StreamTypeDockerIndexer       = "docker-indexer"
+	StreamTypeDockerIndexerAttach = "docker-indexer-attach"
 )
 
 // RegisterStreamHandlers registers all docker stream handlers.
 func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
 	handlers[StreamTypeDockerLogs] = HandleDockerLogsStream
 	handlers[StreamTypeDockerCompose] = HandleDockerComposeStream
-	handlers[StreamTypeDockerReindex] = HandleDockerReindexStream
+	handlers[StreamTypeDockerIndexer] = HandleDockerIndexerStream
+	handlers[StreamTypeDockerIndexerAttach] = HandleDockerIndexerAttachStream
 }
 
 // HandleDockerLogsStream streams container logs in real-time.
@@ -330,22 +332,22 @@ func sendComposeError(stream net.Conn, message string) {
 	}
 }
 
-// HandleDockerReindexStream triggers a reindex of the user's docker folder and streams progress.
+// HandleDockerIndexerStream triggers indexing of the user's docker folder and streams progress.
 // Args: none - uses the docker folder from user config
-func HandleDockerReindexStream(sess *session.Session, stream net.Conn, args []string) error {
+func HandleDockerIndexerStream(sess *session.Session, stream net.Conn, args []string) error {
 	username := sess.User.Username
 
 	cfg, _, err := config.Load(username)
 	if err != nil {
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, "failed to load user config", 500); writeErr != nil {
-			logger.Debugf("[DockerReindex] failed to write error+close frame: %v", writeErr)
+			logger.Debugf("failed to write error+close frame: %v", writeErr)
 		}
 		return err
 	}
 
 	if cfg.Docker.Folder == "" {
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, "docker folder not configured", 400); writeErr != nil {
-			logger.Debugf("[DockerReindex] failed to write error+close frame: %v", writeErr)
+			logger.Debugf("failed to write error+close frame: %v", writeErr)
 		}
 		return errors.New("docker folder not configured")
 	}
@@ -355,18 +357,18 @@ func HandleDockerReindexStream(sess *session.Session, stream net.Conn, args []st
 	ctx, _, cleanup := ipc.AbortContext(context.Background(), stream)
 	defer cleanup()
 
-	cb := indexer.ReindexCallbacks{
-		OnProgress: func(p indexer.ReindexProgress) error {
+	cb := indexer.IndexerCallbacks{
+		OnProgress: func(p indexer.IndexerProgress) error {
 			return ipc.WriteProgress(stream, 0, p)
 		},
-		OnResult: func(r indexer.ReindexResult) error {
+		OnResult: func(r indexer.IndexerResult) error {
 			if err := ipc.WriteResultOK(stream, 0, r); err != nil {
 				return err
 			}
 			if err := ipc.WriteStreamClose(stream, 0); err != nil {
 				return err
 			}
-			logger.Infof("[DockerReindex] Reindex complete: path=%s files=%d dirs=%d duration=%dms",
+			logger.Infof("Indexing complete: path=%s files=%d dirs=%d duration=%dms",
 				r.Path, r.FilesIndexed, r.DirsIndexed, r.DurationMs)
 			return nil
 		},
@@ -378,5 +380,36 @@ func HandleDockerReindexStream(sess *session.Session, stream net.Conn, args []st
 		},
 	}
 
-	return indexer.StreamReindex(ctx, dockerFolder, cb)
+	return indexer.StreamIndexer(ctx, dockerFolder, cb)
+}
+
+// HandleDockerIndexerAttachStream attaches to an already-running indexer operation.
+func HandleDockerIndexerAttachStream(sess *session.Session, stream net.Conn, args []string) error {
+	ctx, _, cleanup := ipc.AbortContext(context.Background(), stream)
+	defer cleanup()
+
+	cb := indexer.IndexerCallbacks{
+		OnProgress: func(p indexer.IndexerProgress) error {
+			return ipc.WriteProgress(stream, 0, p)
+		},
+		OnResult: func(r indexer.IndexerResult) error {
+			if err := ipc.WriteResultOK(stream, 0, r); err != nil {
+				return err
+			}
+			if err := ipc.WriteStreamClose(stream, 0); err != nil {
+				return err
+			}
+			logger.Infof("Attach complete: files=%d dirs=%d duration=%dms",
+				r.FilesIndexed, r.DirsIndexed, r.DurationMs)
+			return nil
+		},
+		OnError: func(msg string, code int) error {
+			if err := ipc.WriteResultError(stream, 0, msg, code); err != nil {
+				return err
+			}
+			return ipc.WriteStreamClose(stream, 0)
+		},
+	}
+
+	return indexer.StreamIndexerAttach(ctx, cb)
 }

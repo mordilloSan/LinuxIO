@@ -15,14 +15,14 @@ import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 
-export interface ReindexStat {
+export interface IndexerStat {
   value: React.ReactNode;
   label: string;
   valueColor?: string;
   valueVariant?: TypographyProps["variant"];
 }
 
-interface ReindexStatusDialogProps {
+interface IndexerStatusDialogProps {
   open: boolean;
   onClose: () => void;
   onExited?: () => void;
@@ -31,15 +31,15 @@ interface ReindexStatusDialogProps {
   success: boolean;
   error?: string | null;
   phaseLabel: string;
-  progressStats?: ReindexStat[];
+  progressStats?: IndexerStat[];
   showProgressStats?: boolean;
   successMessage?: string;
   successDescription?: React.ReactNode;
   summaryTitle?: string;
-  summaryStats?: ReindexStat[];
+  summaryStats?: IndexerStat[];
 }
 
-const ReindexStatusDialog: React.FC<ReindexStatusDialogProps> = ({
+const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
   open,
   onClose,
   onExited,
@@ -50,7 +50,7 @@ const ReindexStatusDialog: React.FC<ReindexStatusDialogProps> = ({
   phaseLabel,
   progressStats = [],
   showProgressStats = true,
-  successMessage = "Reindex completed successfully!",
+  successMessage = "Indexing completed successfully!",
   successDescription,
   summaryTitle,
   summaryStats = [],
@@ -193,4 +193,4 @@ const ReindexStatusDialog: React.FC<ReindexStatusDialogProps> = ({
   );
 };
 
-export default ReindexStatusDialog;
+export default IndexerStatusDialog;

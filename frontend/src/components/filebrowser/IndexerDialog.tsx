@@ -1,8 +1,8 @@
 import React from "react";
 
-import ReindexStatusDialog, {
-  type ReindexStat,
-} from "@/components/dialog/ReindexStatusDialog";
+import IndexerStatusDialog, {
+  type IndexerStat,
+} from "@/components/dialog/IndexerStatusDialog";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 
 const IndexerDialog: React.FC = () => {
@@ -17,6 +17,12 @@ const IndexerDialog: React.FC = () => {
   const isRunning = Boolean(activeIndexer);
   const success = !isRunning && Boolean(lastIndexerResult);
   const error = !isRunning ? lastIndexerError : null;
+  const filesIndexed = isRunning
+    ? (activeIndexer?.filesIndexed ?? 0)
+    : (lastIndexerResult?.filesIndexed ?? 0);
+  const dirsIndexed = isRunning
+    ? (activeIndexer?.dirsIndexed ?? 0)
+    : (lastIndexerResult?.dirsIndexed ?? 0);
 
   const getPhaseLabel = () => {
     if (isRunning) {
@@ -41,15 +47,15 @@ const IndexerDialog: React.FC = () => {
     return "Ready to index filesystem.";
   };
 
-  const progressStats: ReindexStat[] = [
+  const progressStats: IndexerStat[] = [
     {
-      value: (activeIndexer?.filesIndexed ?? 0).toLocaleString(),
+      value: filesIndexed.toLocaleString(),
       label: "Files indexed",
       valueColor: "primary.main",
       valueVariant: "h4",
     },
     {
-      value: (activeIndexer?.dirsIndexed ?? 0).toLocaleString(),
+      value: dirsIndexed.toLocaleString(),
       label: "Directories indexed",
       valueColor: "primary.main",
       valueVariant: "h4",
@@ -61,7 +67,7 @@ const IndexerDialog: React.FC = () => {
     : undefined;
 
   return (
-    <ReindexStatusDialog
+    <IndexerStatusDialog
       open={isIndexerDialogOpen}
       onClose={closeIndexerDialog}
       title="Indexing Filesystem"
@@ -70,7 +76,7 @@ const IndexerDialog: React.FC = () => {
       error={error}
       phaseLabel={getPhaseLabel()}
       progressStats={progressStats}
-      showProgressStats={isRunning}
+      showProgressStats={isRunning || success}
       successDescription={successDescription}
     />
   );

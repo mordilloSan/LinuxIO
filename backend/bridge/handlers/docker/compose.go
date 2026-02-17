@@ -1211,8 +1211,8 @@ func getProjectNameFromComposePath(composePath string) string {
 	return filepath.Base(dir)
 }
 
-// reindexDockerFolder triggers a reindex of the user's docker folder in the indexer
-func reindexDockerFolder(username string) error {
+// indexDockerFolder triggers indexing of the user's docker folder in the indexer
+func indexDockerFolder(username string) error {
 	// Get the user's docker folder from config
 	cfg, _, err := config.Load(username)
 	if err != nil {
@@ -1225,36 +1225,36 @@ func reindexDockerFolder(username string) error {
 
 	dockerFolder := string(cfg.Docker.Folder)
 
-	// Trigger reindex of the docker folder
-	reindexURL := fmt.Sprintf("http://unix/reindex?path=%s", url.QueryEscape(dockerFolder))
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, reindexURL, nil)
+	// Trigger indexing of the docker folder
+	indexURL := fmt.Sprintf("http://unix/reindex?path=%s", url.QueryEscape(dockerFolder))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, indexURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to build reindex request: %w", err)
+		return fmt.Errorf("failed to build indexer request: %w", err)
 	}
 
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("indexer reindex request failed: %w", err)
+		return fmt.Errorf("indexer request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("indexer reindex returned status %s", resp.Status)
+		return fmt.Errorf("indexer returned status %s", resp.Status)
 	}
 
-	logger.InfoKV("triggered reindex of docker folder", "path", dockerFolder, "user", username)
+	logger.InfoKV("triggered indexing of docker folder", "path", dockerFolder, "user", username)
 
 	return nil
 }
 
-// ReindexDockerFolder is the handler function for reindexing the docker folder
-func ReindexDockerFolder(username string) (any, error) {
-	if err := reindexDockerFolder(username); err != nil {
+// IndexDockerFolder is the handler function for indexing the docker folder
+func IndexDockerFolder(username string) (any, error) {
+	if err := indexDockerFolder(username); err != nil {
 		return nil, err
 	}
 
 	return map[string]any{
-		"message": "Reindex started",
+		"message": "Indexing started",
 		"status":  "running",
 	}, nil
 }

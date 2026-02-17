@@ -1,10 +1,4 @@
-import React, {
-  createContext,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-} from "react";
+import React, { createContext, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
 import {
@@ -17,13 +11,13 @@ import {
   openFileCompressStream,
   openFileExtractStream,
   openFileIndexerStream,
+  openFileIndexerAttachStream,
   openFileCopyStream,
   openFileMoveStream,
   STREAM_CHUNK_SIZE,
   UPLOAD_WINDOW_SIZE,
   type Stream,
   type ProgressFrame,
-  type IndexerStatusResponse,
 } from "@/api";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
@@ -44,6 +38,27 @@ const isIndexerConflictError = (error: unknown): boolean => {
   }
 
   return message.includes("already running") || message.includes("conflict");
+};
+
+const isIndexerAttachUnavailableError = (error: unknown): boolean => {
+  const message =
+    error instanceof Error ? error.message.toLowerCase().trim() : "";
+  if (error instanceof LinuxIOError && Number(error.code) === 404) {
+    return true;
+  }
+
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = Number((error as { code?: unknown }).code);
+    if (code === 404) {
+      return true;
+    }
+  }
+
+  return (
+    message.includes("no active") ||
+    message.includes("not found") ||
+    message.includes("status stream error: 404")
+  );
 };
 
 interface Download {
@@ -260,6 +275,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const activeExtractionIdsRef = useRef<Set<string>>(new Set());
   const activeIndexerIdsRef = useRef<Set<string>>(new Set());
   const remoteIndexerActiveRef = useRef(false);
+  const attachedStreamRef = useRef(false);
   const activeCopyIdsRef = useRef<Set<string>>(new Set());
   const activeMoveIdsRef = useRef<Set<string>>(new Set());
   const downloadLabelCounterRef = useRef<Map<string, number>>(new Map());
@@ -887,45 +903,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     return false;
   }, []);
 
-  const upsertRemoteIndexer = useCallback((status: IndexerStatusResponse) => {
-    const filesIndexed = Math.max(0, status.files_indexed ?? 0);
-    const dirsIndexed = Math.max(0, status.dirs_indexed ?? 0);
-    const label =
-      filesIndexed > 0 || dirsIndexed > 0
-        ? `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`
-        : "Indexing in progress...";
-
-    setIndexers((prev) => {
-      const existing = prev.find((item) => item.id === REMOTE_INDEXER_ID);
-      const remoteTransfer: ActiveIndexer = {
-        id: REMOTE_INDEXER_ID,
-        type: "indexer",
-        path: "/",
-        filesIndexed: Math.max(existing?.filesIndexed ?? 0, filesIndexed),
-        dirsIndexed: Math.max(existing?.dirsIndexed ?? 0, dirsIndexed),
-        totalSize: status.total_size ?? 0,
-        durationMs: 0,
-        currentPath: existing?.currentPath ?? "",
-        phase: "indexing",
-        progress: existing?.progress ?? 0,
-        label,
-        abortController: existing?.abortController ?? new AbortController(),
-        stream: null,
-      };
-
-      if (existing) {
-        return prev.map((item) =>
-          item.id === REMOTE_INDEXER_ID ? remoteTransfer : item,
-        );
-      }
-      return [...prev, remoteTransfer];
-    });
-
-    activeIndexerIdsRef.current.add(REMOTE_INDEXER_ID);
-    remoteIndexerActiveRef.current = true;
-  }, []);
-
-  const clearRemoteIndexer = useCallback((status?: IndexerStatusResponse) => {
+  const clearRemoteIndexer = useCallback(() => {
     if (!remoteIndexerActiveRef.current) {
       return;
     }
@@ -936,90 +914,117 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     setIndexers((prev) =>
       prev.filter((transfer) => transfer.id !== REMOTE_INDEXER_ID),
     );
+  }, []);
 
-    const filesIndexed = Math.max(0, status?.files_indexed ?? 0);
-    const dirsIndexed = Math.max(0, status?.dirs_indexed ?? 0);
-    const totalSize = Math.max(0, status?.total_size ?? 0);
-    const hasSummary =
-      filesIndexed > 0 ||
-      dirsIndexed > 0 ||
-      totalSize > 0 ||
-      Boolean(status?.last_indexed);
+  const attachToRunningIndexer = useCallback(
+    ({ force = false }: { force?: boolean } = {}) => {
+      if (
+        attachedStreamRef.current ||
+        (!force && hasLocalIndexerInProgress()) ||
+        !isConnected()
+      ) {
+        return false;
+      }
 
-    if (hasSummary) {
-      setLastIndexerResult({
-        path: "/",
-        filesIndexed,
-        dirsIndexed,
-        totalSize,
-        durationMs: 0,
+      const stream = openFileIndexerAttachStream();
+      if (!stream) {
+        return false;
+      }
+
+      attachedStreamRef.current = true;
+
+      void runStreamResult<
+        | {
+            files_indexed?: number;
+            dirs_indexed?: number;
+            total_size?: number;
+            duration_ms?: number;
+          }
+        | undefined,
+        ProgressFrame
+      >({
+        open: () => stream,
+        signal: new AbortController().signal,
+        closeOnAbort: "none",
+        onProgress: (progress) => {
+          const progressData = progress as ProgressFrame & {
+            files_indexed?: number;
+            dirs_indexed?: number;
+            current_path?: string;
+            phase?: string;
+          };
+
+          const filesIndexed = Math.max(0, progressData.files_indexed ?? 0);
+          const dirsIndexed = Math.max(0, progressData.dirs_indexed ?? 0);
+          const currentPath = progressData.current_path ?? "";
+          const phase = progressData.phase ?? "indexing";
+          const label =
+            filesIndexed > 0 || dirsIndexed > 0
+              ? `Indexing: ${filesIndexed} files, ${dirsIndexed} dirs`
+              : "Indexing in progress...";
+
+          setIndexers((prev) => {
+            const existing = prev.find((item) => item.id === REMOTE_INDEXER_ID);
+            const remoteTransfer: ActiveIndexer = {
+              id: REMOTE_INDEXER_ID,
+              type: "indexer",
+              path: "/",
+              filesIndexed: Math.max(existing?.filesIndexed ?? 0, filesIndexed),
+              dirsIndexed: Math.max(existing?.dirsIndexed ?? 0, dirsIndexed),
+              totalSize: 0,
+              durationMs: 0,
+              currentPath,
+              phase,
+              progress: existing?.progress ?? 0,
+              label,
+              abortController:
+                existing?.abortController ?? new AbortController(),
+              stream: null,
+            };
+
+            if (existing) {
+              return prev.map((item) =>
+                item.id === REMOTE_INDEXER_ID ? remoteTransfer : item,
+              );
+            }
+            return [...prev, remoteTransfer];
+          });
+
+          activeIndexerIdsRef.current.add(REMOTE_INDEXER_ID);
+          remoteIndexerActiveRef.current = true;
+        },
+        onSuccess: (result) => {
+          const summary = {
+            path: "/",
+            filesIndexed: result?.files_indexed ?? 0,
+            dirsIndexed: result?.dirs_indexed ?? 0,
+            totalSize: result?.total_size ?? 0,
+            durationMs: result?.duration_ms ?? 0,
+          };
+          clearRemoteIndexer();
+          setLastIndexerResult(summary);
+          setLastIndexerError(null);
+        },
+        onError: (error: unknown) => {
+          clearRemoteIndexer();
+          if (isIndexerAttachUnavailableError(error)) {
+            return;
+          }
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to attach to running indexer";
+          setLastIndexerError(message);
+        },
+        onFinally: () => {
+          attachedStreamRef.current = false;
+        },
       });
-      setLastIndexerError(null);
-    }
-  }, []);
 
-  const syncIndexerStatus = useCallback(
-    (status: IndexerStatusResponse) => {
-      const normalized = status.status?.toLowerCase?.() ?? "";
-      const running = status.running || normalized === "running";
-
-      if (running) {
-        if (hasLocalIndexerInProgress()) {
-          return;
-        }
-        upsertRemoteIndexer(status);
-        return;
-      }
-
-      clearRemoteIndexer(status);
+      return true;
     },
-    [clearRemoteIndexer, hasLocalIndexerInProgress, upsertRemoteIndexer],
+    [clearRemoteIndexer, hasLocalIndexerInProgress, runStreamResult],
   );
-
-  const fetchIndexerStatus = useCallback(async () => {
-    if (!isConnected()) {
-      return null;
-    }
-
-    try {
-      return await linuxio.filebrowser.indexer_status.call();
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const recoverRunningIndexer = useCallback(async () => {
-    const status = await fetchIndexerStatus();
-    if (!status) {
-      return false;
-    }
-
-    syncIndexerStatus(status);
-    const normalized = status.status?.toLowerCase?.() ?? "";
-    return status.running || normalized === "running";
-  }, [fetchIndexerStatus, syncIndexerStatus]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const poll = async () => {
-      const status = await fetchIndexerStatus();
-      if (cancelled || !status) {
-        return;
-      }
-      syncIndexerStatus(status);
-    };
-
-    void poll();
-    const intervalId = window.setInterval(() => {
-      void poll();
-    }, 5000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [fetchIndexerStatus, syncIndexerStatus]);
 
   const removeCopy = useCallback((id: string) => {
     if (!activeCopyIdsRef.current.has(id)) {
@@ -1058,13 +1063,6 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!isConnected()) {
         setLastIndexerError("Stream connection not ready");
         toast.error("Stream connection not ready");
-        return;
-      }
-
-      const recoveredExistingIndexer = await recoverRunningIndexer();
-      if (recoveredExistingIndexer) {
-        setLastIndexerResult(null);
-        setLastIndexerError(null);
         return;
       }
 
@@ -1165,7 +1163,13 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           if (isIndexerConflictError(error)) {
             setLastIndexerError(null);
             setIsIndexerDialogOpen(true);
-            void recoverRunningIndexer();
+            if (!attachToRunningIndexer({ force: true })) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Another indexing operation is already running";
+              setLastIndexerError(message);
+            }
             return;
           }
           const message =
@@ -1180,11 +1184,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             prev.map((r) => (r.id === id ? { ...r, stream: null } : r)),
           );
           removeIndexer(id);
-          void recoverRunningIndexer();
         },
       });
     },
-    [recoverRunningIndexer, removeIndexer, runStreamResult],
+    [attachToRunningIndexer, removeIndexer, runStreamResult],
   );
 
   const updateUpload = useCallback(

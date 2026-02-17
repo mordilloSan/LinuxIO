@@ -303,7 +303,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("docker", "reindex_docker_folder", func(ctx context.Context, args []string, emit ipc.Events) error {
-		result, err := ReindexDockerFolder(username)
+		result, err := IndexDockerFolder(username)
 		if err != nil {
 			return err
 		}

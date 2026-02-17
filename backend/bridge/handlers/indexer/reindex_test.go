@@ -44,10 +44,28 @@ func overrideClient(t *testing.T, srv *httptest.Server) {
 	t.Cleanup(func() { indexerClient = orig })
 }
 
-func TestStreamReindex_CompleteFlow(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// newTwoStepServer creates a test server that handles both
+// POST /reindex (trigger) and GET /status?stream=true (SSE).
+func newTwoStepServer(t *testing.T, triggerStatus int, sseHandler func(http.ResponseWriter, *http.Request)) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/reindex" {
+			w.WriteHeader(triggerStatus)
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/status" && r.URL.Query().Get("stream") == "true" {
+			sseHandler(w, r)
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.String())
+		w.WriteHeader(http.StatusNotFound)
+	}))
+}
+
+func TestStreamIndexer_CompleteFlow(t *testing.T) {
+	srv := newTwoStepServer(t, http.StatusAccepted, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK)
 		flusher := requireFlusher(t, w)
 
 		mustWrite(t, w, "event:started\ndata:{}\n\n")
@@ -58,19 +76,19 @@ func TestStreamReindex_CompleteFlow(t *testing.T) {
 
 		mustWrite(t, w, "event:complete\ndata:{\"path\":\"/\",\"files_indexed\":100,\"dirs_indexed\":20,\"total_size\":5000,\"duration_ms\":150}\n\n")
 		flusher.Flush()
-	}))
+	})
 	defer srv.Close()
 	overrideClient(t, srv)
 
 	var progressCount int
-	var gotResult ReindexResult
+	var gotResult IndexerResult
 
-	cb := ReindexCallbacks{
-		OnProgress: func(p ReindexProgress) error {
+	cb := IndexerCallbacks{
+		OnProgress: func(p IndexerProgress) error {
 			progressCount++
 			return nil
 		},
-		OnResult: func(r ReindexResult) error {
+		OnResult: func(r IndexerResult) error {
 			gotResult = r
 			return nil
 		},
@@ -80,7 +98,7 @@ func TestStreamReindex_CompleteFlow(t *testing.T) {
 		},
 	}
 
-	err := StreamReindex(context.Background(), "/", cb)
+	err := StreamIndexer(context.Background(), "/", cb)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,20 +111,20 @@ func TestStreamReindex_CompleteFlow(t *testing.T) {
 	}
 }
 
-func TestStreamReindex_ErrorEvent(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestStreamIndexer_ErrorEvent(t *testing.T) {
+	srv := newTwoStepServer(t, http.StatusAccepted, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK)
 		mustWrite(t, w, "event:error\ndata:{\"message\":\"disk full\"}\n\n")
-	}))
+	})
 	defer srv.Close()
 	overrideClient(t, srv)
 
 	var gotErrMsg string
 	var gotErrCode int
 
-	cb := ReindexCallbacks{
-		OnProgress: func(p ReindexProgress) error { return nil },
+	cb := IndexerCallbacks{
+		OnProgress: func(p IndexerProgress) error { return nil },
 		OnError: func(msg string, code int) error {
 			gotErrMsg = msg
 			gotErrCode = code
@@ -114,7 +132,7 @@ func TestStreamReindex_ErrorEvent(t *testing.T) {
 		},
 	}
 
-	err := StreamReindex(context.Background(), "/tmp", cb)
+	err := StreamIndexer(context.Background(), "/tmp", cb)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -126,23 +144,24 @@ func TestStreamReindex_ErrorEvent(t *testing.T) {
 	}
 }
 
-func TestStreamReindex_ConflictStatus(t *testing.T) {
+func TestStreamIndexer_ConflictStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// POST /reindex returns 409
 		w.WriteHeader(http.StatusConflict)
 	}))
 	defer srv.Close()
 	overrideClient(t, srv)
 
 	var gotErrCode int
-	cb := ReindexCallbacks{
-		OnProgress: func(p ReindexProgress) error { return nil },
+	cb := IndexerCallbacks{
+		OnProgress: func(p IndexerProgress) error { return nil },
 		OnError: func(msg string, code int) error {
 			gotErrCode = code
 			return nil
 		},
 	}
 
-	err := StreamReindex(context.Background(), "/", cb)
+	err := StreamIndexer(context.Background(), "/", cb)
 	if err == nil {
 		t.Fatal("expected error for conflict")
 	}
@@ -151,10 +170,10 @@ func TestStreamReindex_ConflictStatus(t *testing.T) {
 	}
 }
 
-func TestStreamReindex_ContextCancellation(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestStreamIndexer_ContextCancellation(t *testing.T) {
+	srv := newTwoStepServer(t, http.StatusAccepted, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK)
 		flusher := requireFlusher(t, w)
 
 		mustWrite(t, w, "event:started\ndata:{}\n\n")
@@ -162,17 +181,19 @@ func TestStreamReindex_ContextCancellation(t *testing.T) {
 
 		// Block until client disconnects
 		<-r.Context().Done()
-	}))
+	})
 	defer srv.Close()
 	overrideClient(t, srv)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var gotAbortError bool
-	cb := ReindexCallbacks{
-		OnProgress: func(p ReindexProgress) error {
-			// Cancel after first progress
-			cancel()
+	cb := IndexerCallbacks{
+		OnProgress: func(p IndexerProgress) error {
+			// Cancel after second progress ("indexing" from started event)
+			if p.Phase == "indexing" {
+				cancel()
+			}
 			return nil
 		},
 		OnError: func(msg string, code int) error {
@@ -183,7 +204,7 @@ func TestStreamReindex_ContextCancellation(t *testing.T) {
 		},
 	}
 
-	err := StreamReindex(ctx, "/", cb)
+	err := StreamIndexer(ctx, "/", cb)
 	if err == nil {
 		t.Fatal("expected error after cancellation")
 	}
@@ -195,58 +216,63 @@ func TestStreamReindex_ContextCancellation(t *testing.T) {
 	}
 }
 
-func TestStreamReindex_PathWithSpecialChars(t *testing.T) {
+func TestStreamIndexer_PathWithSpecialChars(t *testing.T) {
 	specialPath := "/tmp/space dir/a&b#frag?x=1"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath := r.URL.Query().Get("path")
-		if gotPath != specialPath {
-			t.Errorf("expected path %q, got %q", specialPath, gotPath)
+		if r.Method == http.MethodPost && r.URL.Path == "/reindex" {
+			gotPath := r.URL.Query().Get("path")
+			if gotPath != specialPath {
+				t.Errorf("expected path %q, got %q", specialPath, gotPath)
+			}
+			w.WriteHeader(http.StatusAccepted)
+			return
 		}
+		// GET /status?stream=true
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK)
 		mustWrite(t, w, "event:complete\ndata:{\"path\":\"/\"}\n\n")
 	}))
 	defer srv.Close()
 	overrideClient(t, srv)
 
-	if err := StreamReindex(context.Background(), specialPath, ReindexCallbacks{}); err != nil {
+	if err := StreamIndexer(context.Background(), specialPath, IndexerCallbacks{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestStreamReindex_NilCallbacks(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestStreamIndexer_NilCallbacks(t *testing.T) {
+	srv := newTwoStepServer(t, http.StatusAccepted, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK)
 		mustWrite(t, w, "event:started\ndata:{}\n\nevent:complete\ndata:{\"path\":\"/\"}\n\n")
-	}))
+	})
 	defer srv.Close()
 	overrideClient(t, srv)
 
 	// All nil callbacks — should not panic
-	err := StreamReindex(context.Background(), "/", ReindexCallbacks{})
+	err := StreamIndexer(context.Background(), "/", IndexerCallbacks{})
 	if err != nil {
 		t.Fatalf("unexpected error with nil callbacks: %v", err)
 	}
 }
 
-func TestStreamReindex_UnexpectedEOF(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestStreamIndexer_UnexpectedEOF(t *testing.T) {
+	srv := newTwoStepServer(t, http.StatusAccepted, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK)
 		flusher := requireFlusher(t, w)
 		// Send progress then close without "complete"
 		mustWrite(t, w, "event:started\ndata:{}\n\n")
 		flusher.Flush()
 		// Server closes connection
-	}))
+	})
 	defer srv.Close()
 	overrideClient(t, srv)
 
 	var gotErrCode int
-	cb := ReindexCallbacks{
-		OnProgress: func(p ReindexProgress) error { return nil },
+	cb := IndexerCallbacks{
+		OnProgress: func(p IndexerProgress) error { return nil },
 		OnError: func(msg string, code int) error {
 			gotErrCode = code
 			return nil
@@ -255,7 +281,7 @@ func TestStreamReindex_UnexpectedEOF(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- StreamReindex(context.Background(), "/", cb)
+		done <- StreamIndexer(context.Background(), "/", cb)
 	}()
 
 	select {
@@ -268,5 +294,79 @@ func TestStreamReindex_UnexpectedEOF(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("test timed out")
+	}
+}
+
+func TestStreamIndexerAttach_CompleteFlow(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("stream") != "true" {
+			t.Errorf("expected stream=true query param, got %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := requireFlusher(t, w)
+
+		mustWrite(t, w, "event:progress\ndata:{\"files_indexed\":50,\"dirs_indexed\":10}\n\n")
+		flusher.Flush()
+
+		mustWrite(t, w, "event:complete\ndata:{\"path\":\"/\",\"files_indexed\":200,\"dirs_indexed\":40,\"total_size\":10000,\"duration_ms\":300}\n\n")
+		flusher.Flush()
+	}))
+	defer srv.Close()
+	overrideClient(t, srv)
+
+	var progressCount int
+	var gotResult IndexerResult
+
+	cb := IndexerCallbacks{
+		OnProgress: func(p IndexerProgress) error {
+			progressCount++
+			return nil
+		},
+		OnResult: func(r IndexerResult) error {
+			gotResult = r
+			return nil
+		},
+		OnError: func(msg string, code int) error {
+			t.Errorf("unexpected error: %s (code %d)", msg, code)
+			return nil
+		},
+	}
+
+	err := StreamIndexerAttach(context.Background(), cb)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// "connecting" + "progress/indexing" = 2 progress calls
+	if progressCount != 2 {
+		t.Errorf("expected 2 progress calls, got %d", progressCount)
+	}
+	if gotResult.FilesIndexed != 200 || gotResult.DurationMs != 300 {
+		t.Errorf("unexpected result: %+v", gotResult)
+	}
+}
+
+func TestStreamIndexerAttach_NoActiveOperation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	overrideClient(t, srv)
+
+	var gotErrCode int
+	cb := IndexerCallbacks{
+		OnProgress: func(p IndexerProgress) error { return nil },
+		OnError: func(msg string, code int) error {
+			gotErrCode = code
+			return nil
+		},
+	}
+
+	err := StreamIndexerAttach(context.Background(), cb)
+	if err == nil {
+		t.Fatal("expected error when no active operation")
+	}
+	if gotErrCode != 404 {
+		t.Errorf("expected code 404, got %d", gotErrCode)
 	}
 }

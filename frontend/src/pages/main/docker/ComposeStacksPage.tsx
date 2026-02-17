@@ -27,7 +27,7 @@ import { ValidationResult } from "@/components/docker/ComposeValidationFeedback"
 import DeleteStackDialog, {
   type DeleteOption,
 } from "@/components/docker/DeleteStackDialog";
-import ReindexDialog from "@/components/docker/ReindexDialog";
+import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import StackSetupDialog from "@/components/docker/StackSetupDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useConfig } from "@/hooks/useConfig";
@@ -35,12 +35,12 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
-  onMountReindexHandler?: (handler: () => void) => void;
+  onMountIndexerHandler?: (handler: () => void) => void;
 }
 
 const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   onMountCreateHandler,
-  onMountReindexHandler,
+  onMountIndexerHandler,
 }) => {
   const queryClient = useQueryClient();
   const { config } = useConfig();
@@ -82,8 +82,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     string | undefined
   >(undefined);
 
-  // Reindex dialog state
-  const [reindexDialogOpen, setReindexDialogOpen] = useState(false);
+  // Indexer dialog state
+  const [indexerDialogOpen, setIndexerDialogOpen] = useState(false);
 
   // Delete stack dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -197,16 +197,16 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     }
   }, [deleteLoading]);
 
-  const handleReindex = useCallback(() => {
-    setReindexDialogOpen(true);
+  const handleIndexer = useCallback(() => {
+    setIndexerDialogOpen(true);
   }, []);
 
-  const handleReindexComplete = useCallback(() => {
+  const handleIndexerComplete = useCallback(() => {
     refetch();
-    toast.success("Docker folder reindexed successfully");
+    toast.success("Docker folder indexed successfully");
   }, [refetch]);
 
-  const isLoading = operationDialogOpen || reindexDialogOpen;
+  const isLoading = operationDialogOpen || indexerDialogOpen;
 
   // Create stack handler - open setup dialog first
   const handleCreateStack = useCallback(() => {
@@ -234,10 +234,10 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   }, [onMountCreateHandler, handleCreateStack]);
 
   useEffect(() => {
-    if (onMountReindexHandler) {
-      onMountReindexHandler(handleReindex);
+    if (onMountIndexerHandler) {
+      onMountIndexerHandler(handleIndexer);
     }
-  }, [onMountReindexHandler, handleReindex]);
+  }, [onMountIndexerHandler, handleIndexer]);
 
   // Edit stack handler
   const handleEditStack = useCallback(
@@ -484,10 +484,10 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
           composePath={operationComposePath}
         />
 
-        <ReindexDialog
-          open={reindexDialogOpen}
-          onClose={() => setReindexDialogOpen(false)}
-          onComplete={handleReindexComplete}
+        <DockerIndexerDialog
+          open={indexerDialogOpen}
+          onClose={() => setIndexerDialogOpen(false)}
+          onComplete={handleIndexerComplete}
         />
 
         <DeleteStackDialog

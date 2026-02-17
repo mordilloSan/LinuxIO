@@ -31,7 +31,8 @@ const STREAM_TYPE_DOCKER_LOGS = "docker-logs";
 const STREAM_TYPE_SERVICE_LOGS = "service-logs";
 const STREAM_TYPE_GENERAL_LOGS = "general-logs";
 const STREAM_TYPE_DOCKER_COMPOSE = "docker-compose";
-const STREAM_TYPE_DOCKER_REINDEX = "docker-reindex";
+const STREAM_TYPE_DOCKER_INDEXER = "docker-indexer";
+const STREAM_TYPE_DOCKER_INDEXER_ATTACH = "docker-indexer-attach";
 const STREAM_TYPE_EXEC = "exec";
 const STREAM_TYPE_PKG_UPDATE = "pkg-update";
 const STREAM_TYPE_SMART_TEST = "smart-test";
@@ -41,6 +42,7 @@ const STREAM_TYPE_FB_UPLOAD = "fb-upload";
 const STREAM_TYPE_FB_COMPRESS = "fb-compress";
 const STREAM_TYPE_FB_EXTRACT = "fb-extract";
 const STREAM_TYPE_FB_REINDEX = "fb-reindex";
+const STREAM_TYPE_FB_INDEXER_ATTACH = "fb-indexer-attach";
 const STREAM_TYPE_FB_COPY = "fb-copy";
 const STREAM_TYPE_FB_MOVE = "fb-move";
 
@@ -338,8 +340,12 @@ export function dockerComposePayload(
 /**
  * Build payload for docker reindex stream
  */
-export function dockerReindexPayload(): Uint8Array {
-  return encodeString(STREAM_TYPE_DOCKER_REINDEX);
+export function dockerIndexerPayload(): Uint8Array {
+  return encodeString(STREAM_TYPE_DOCKER_INDEXER);
+}
+
+export function dockerIndexerAttachPayload(): Uint8Array {
+  return encodeString(STREAM_TYPE_DOCKER_INDEXER_ATTACH);
 }
 
 /**
@@ -456,8 +462,15 @@ export function openDockerComposeStream(
   );
 }
 
-export function openDockerReindexStream(): Stream | null {
-  return openMuxStream(STREAM_TYPE_DOCKER_REINDEX, dockerReindexPayload());
+export function openDockerIndexerStream(): Stream | null {
+  return openMuxStream(STREAM_TYPE_DOCKER_INDEXER, dockerIndexerPayload());
+}
+
+export function openDockerIndexerAttachStream(): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_DOCKER_INDEXER_ATTACH,
+    dockerIndexerAttachPayload(),
+  );
 }
 
 export function openExecStream(
@@ -522,6 +535,13 @@ export function openFileExtractStream(
 
 export function openFileIndexerStream(path?: string): Stream | null {
   return openMuxStream(STREAM_TYPE_FB_REINDEX, fileIndexerPayload(path));
+}
+
+export function openFileIndexerAttachStream(): Stream | null {
+  return openMuxStream(
+    STREAM_TYPE_FB_INDEXER_ATTACH,
+    encodeString(STREAM_TYPE_FB_INDEXER_ATTACH),
+  );
 }
 
 export function openFileCopyStream(

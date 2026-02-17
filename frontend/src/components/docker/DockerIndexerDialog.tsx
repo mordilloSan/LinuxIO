@@ -3,40 +3,56 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   linuxio,
   useStreamMux,
-  openDockerReindexStream,
+  openDockerIndexerStream,
+  openDockerIndexerAttachStream,
   type Stream,
 } from "@/api";
-import ReindexStatusDialog, {
-  type ReindexStat,
-} from "@/components/dialog/ReindexStatusDialog";
+import IndexerStatusDialog, {
+  type IndexerStat,
+} from "@/components/dialog/IndexerStatusDialog";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
-interface ReindexDialogProps {
+interface DockerIndexerDialogProps {
   open: boolean;
   onClose: () => void;
   onComplete?: () => void;
 }
 
-interface ReindexProgress {
+interface IndexerProgress {
   files_indexed: number;
   dirs_indexed: number;
   current_path?: string;
   phase?: string;
 }
 
-interface ReindexResult {
+interface IndexerResult {
   path: string;
   files_indexed: number;
   dirs_indexed: number;
   duration_ms: number;
 }
 
-const ReindexDialog: React.FC<ReindexDialogProps> = ({
+const isIndexerConflictError = (error: unknown): boolean => {
+  const message =
+    error instanceof Error ? error.message.toLowerCase().trim() : "";
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? Number((error as { code?: unknown }).code)
+      : null;
+
+  return (
+    code === 409 ||
+    message.includes("already running") ||
+    message.includes("conflict")
+  );
+};
+
+const DockerIndexerDialog: React.FC<DockerIndexerDialogProps> = ({
   open,
   onClose,
   onComplete,
 }) => {
-  const [progress, setProgress] = useState<ReindexProgress>({
+  const [progress, setProgress] = useState<IndexerProgress>({
     files_indexed: 0,
     dirs_indexed: 0,
     phase: "connecting",
@@ -44,7 +60,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   const [isRunning, setIsRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [result, setResult] = useState<ReindexResult | null>(null);
+  const [result, setResult] = useState<IndexerResult | null>(null);
   const streamRef = useRef<Stream | null>(null);
   const hasCompletedRef = useRef(false);
   const closedByUserRef = useRef(false);
@@ -93,7 +109,60 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     }
   }, [open, closeStream]);
 
-  // Open stream when dialog opens
+  // Bind stream result handlers and track completion
+  const bindStream = useCallback(
+    (stream: Stream) => {
+      const runBoundStream = (activeStream: Stream) => {
+        streamRef.current = activeStream;
+        closedByUserRef.current = false;
+
+        void runStreamResult<IndexerResult, IndexerProgress>({
+          open: () => activeStream,
+          onProgress: (progressData) => {
+            setProgress(progressData);
+          },
+          closeMessage: "Indexer stream closed unexpectedly",
+        })
+          .then((indexerResult) => {
+            hasCompletedRef.current = true;
+            setResult(indexerResult);
+            setSuccess(true);
+            onComplete?.();
+          })
+          .catch((err: unknown) => {
+            if (closedByUserRef.current) {
+              return;
+            }
+
+            if (isIndexerConflictError(err)) {
+              const attachStream = openDockerIndexerAttachStream();
+              if (attachStream) {
+                setError(null);
+                setIsRunning(true);
+                runBoundStream(attachStream);
+                return;
+              }
+            }
+
+            hasCompletedRef.current = true;
+            const errorMessage =
+              err instanceof Error ? err.message : "Indexing failed";
+            setError(errorMessage);
+          })
+          .finally(() => {
+            if (streamRef.current === activeStream) {
+              streamRef.current = null;
+              setIsRunning(false);
+            }
+          });
+      };
+
+      runBoundStream(stream);
+    },
+    [onComplete, runStreamResult],
+  );
+
+  // Open stream when dialog opens.
   useEffect(() => {
     if (!open || !muxIsOpen) {
       return;
@@ -104,47 +173,29 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
       return;
     }
 
-    const stream = openDockerReindexStream();
+    let cancelled = false;
 
-    if (!stream) {
-      queueMicrotask(() => {
-        setError("Failed to start reindex operation");
-        setIsRunning(false);
-      });
-      return;
-    }
+    const openStream = () => {
+      if (cancelled) return;
 
-    streamRef.current = stream;
-    closedByUserRef.current = false;
+      const stream = openDockerIndexerStream();
+      if (!stream) {
+        queueMicrotask(() => {
+          setError("Failed to start indexer operation");
+          setIsRunning(false);
+        });
+        return;
+      }
 
-    void runStreamResult<ReindexResult, ReindexProgress>({
-      open: () => stream,
-      onProgress: (progressData) => {
-        setProgress(progressData);
-      },
-      closeMessage: "Reindex stream closed unexpectedly",
-    })
-      .then((reindexResult) => {
-        hasCompletedRef.current = true;
-        setResult(reindexResult);
-        setSuccess(true);
-        onComplete?.();
-      })
-      .catch((err: unknown) => {
-        if (closedByUserRef.current) {
-          return;
-        }
+      bindStream(stream);
+    };
 
-        hasCompletedRef.current = true;
-        const errorMessage =
-          err instanceof Error ? err.message : "Reindex failed";
-        setError(errorMessage);
-      })
-      .finally(() => {
-        streamRef.current = null;
-        setIsRunning(false);
-      });
-  }, [muxIsOpen, onComplete, open, runStreamResult]);
+    openStream();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [muxIsOpen, open, bindStream]);
 
   const handleClose = () => {
     if (isRunning) {
@@ -164,7 +215,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     }
   };
 
-  const progressStats: ReindexStat[] = [
+  const progressStats: IndexerStat[] = [
     {
       value: progress.files_indexed.toLocaleString(),
       label: "Files indexed",
@@ -179,7 +230,7 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     },
   ];
 
-  const summaryStats: ReindexStat[] = stacksSummary
+  const summaryStats: IndexerStat[] = stacksSummary
     ? [
         {
           value: stacksSummary.total,
@@ -207,11 +258,11 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
     : undefined;
 
   return (
-    <ReindexStatusDialog
+    <IndexerStatusDialog
       open={open}
       onClose={handleClose}
       onExited={resetState}
-      title="Reindexing Docker Folder"
+      title="Indexing Docker Folder"
       isRunning={isRunning}
       success={success}
       error={error}
@@ -225,4 +276,4 @@ const ReindexDialog: React.FC<ReindexDialogProps> = ({
   );
 };
 
-export default ReindexDialog;
+export default DockerIndexerDialog;

@@ -24,14 +24,15 @@ import (
 
 // Stream types for filebrowser operations.
 const (
-	StreamTypeFBDownload = "fb-download" // Single file download
-	StreamTypeFBUpload   = "fb-upload"   // Single file upload
-	StreamTypeFBArchive  = "fb-archive"  // Multi-file archive download
-	StreamTypeFBCompress = "fb-compress" // Create archive from paths
-	StreamTypeFBExtract  = "fb-extract"  // Extract archive to destination
-	StreamTypeFBReindex  = "fb-reindex"  // Reindex filesystem with progress
-	StreamTypeFBCopy     = "fb-copy"     // Copy file or directory with progress
-	StreamTypeFBMove     = "fb-move"     // Move file or directory with progress
+	StreamTypeFBDownload      = "fb-download"       // Single file download
+	StreamTypeFBUpload        = "fb-upload"         // Single file upload
+	StreamTypeFBArchive       = "fb-archive"        // Multi-file archive download
+	StreamTypeFBCompress      = "fb-compress"       // Create archive from paths
+	StreamTypeFBExtract       = "fb-extract"        // Extract archive to destination
+	StreamTypeFBReindex       = "fb-reindex"        // Reindex filesystem with progress
+	StreamTypeFBIndexerAttach = "fb-indexer-attach" // Attach to running indexer operation
+	StreamTypeFBCopy          = "fb-copy"           // Copy file or directory with progress
+	StreamTypeFBMove          = "fb-move"           // Move file or directory with progress
 )
 
 const (
@@ -82,6 +83,11 @@ func HandleReindexStream(sess *session.Session, stream net.Conn, args []string) 
 	return handleReindex(stream, args)
 }
 
+// HandleIndexerAttachStream attaches to an already-running indexer operation.
+func HandleIndexerAttachStream(sess *session.Session, stream net.Conn, args []string) error {
+	return handleIndexerAttach(stream)
+}
+
 // HandleCopyStream handles a copy stream with real-time progress.
 func HandleCopyStream(sess *session.Session, stream net.Conn, args []string) error {
 	return handleCopy(stream, args)
@@ -100,6 +106,7 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 	handlers[StreamTypeFBCompress] = HandleCompressStream
 	handlers[StreamTypeFBExtract] = HandleExtractStream
 	handlers[StreamTypeFBReindex] = HandleReindexStream
+	handlers[StreamTypeFBIndexerAttach] = HandleIndexerAttachStream
 	handlers[StreamTypeFBCopy] = HandleCopyStream
 	handlers[StreamTypeFBMove] = HandleMoveStream
 }
@@ -815,11 +822,11 @@ func handleReindex(stream net.Conn, args []string) error {
 	ctx, _, cleanup := ipc.AbortContext(context.Background(), stream)
 	defer cleanup()
 
-	cb := indexer.ReindexCallbacks{
-		OnProgress: func(p indexer.ReindexProgress) error {
+	cb := indexer.IndexerCallbacks{
+		OnProgress: func(p indexer.IndexerProgress) error {
 			return ipc.WriteProgress(stream, 0, p)
 		},
-		OnResult: func(r indexer.ReindexResult) error {
+		OnResult: func(r indexer.IndexerResult) error {
 			logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, r))
 			logger.Infof(" Reindex complete: path=%s files=%d dirs=%d duration=%dms",
 				r.Path, r.FilesIndexed, r.DirsIndexed, r.DurationMs)
@@ -831,7 +838,31 @@ func handleReindex(stream net.Conn, args []string) error {
 		},
 	}
 
-	return indexer.StreamReindex(ctx, path, cb)
+	return indexer.StreamIndexer(ctx, path, cb)
+}
+
+// handleIndexerAttach attaches to an already-running indexer operation and streams progress.
+func handleIndexerAttach(stream net.Conn) error {
+	ctx, _, cleanup := ipc.AbortContext(context.Background(), stream)
+	defer cleanup()
+
+	cb := indexer.IndexerCallbacks{
+		OnProgress: func(p indexer.IndexerProgress) error {
+			return ipc.WriteProgress(stream, 0, p)
+		},
+		OnResult: func(r indexer.IndexerResult) error {
+			logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, r))
+			logger.Infof(" Indexer attach complete: files=%d dirs=%d duration=%dms",
+				r.FilesIndexed, r.DirsIndexed, r.DurationMs)
+			return nil
+		},
+		OnError: func(msg string, code int) error {
+			logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, msg, code))
+			return nil
+		},
+	}
+
+	return indexer.StreamIndexerAttach(ctx, cb)
 }
 
 // handleCopy copies a file or directory with progress feedback.

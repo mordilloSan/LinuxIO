@@ -2,16 +2,16 @@
 // filesystem indexer service over its unix socket.
 package indexer
 
-// ReindexProgress represents progress for reindex operations.
-type ReindexProgress struct {
+// IndexerProgress represents progress for indexer operations.
+type IndexerProgress struct {
 	FilesIndexed int64  `json:"files_indexed"`
 	DirsIndexed  int64  `json:"dirs_indexed"`
 	CurrentPath  string `json:"current_path,omitempty"`
 	Phase        string `json:"phase,omitempty"`
 }
 
-// ReindexResult represents the final result of a reindex operation.
-type ReindexResult struct {
+// IndexerResult represents the final result of an indexer operation.
+type IndexerResult struct {
 	Path         string `json:"path"`
 	FilesIndexed int64  `json:"files_indexed"`
 	DirsIndexed  int64  `json:"dirs_indexed"`
