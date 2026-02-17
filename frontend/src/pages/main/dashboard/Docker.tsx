@@ -61,49 +61,17 @@ const DockerInfo: React.FC = () => {
     [queryClient],
   );
 
-  const { mutate: startContainer } = linuxio.docker.start_container.useMutation(
-    {
-      onSuccess: () => {
-        toast.success(`Container ${menuContainer?.name} started`);
-        invalidateContainers();
-      },
-      onError: (e: Error) => {
-        toast.error(getMutationErrorMessage(e, "Failed to start container"));
-      },
-    },
-  );
+  const { mutate: startContainer } =
+    linuxio.docker.start_container.useMutation();
 
-  const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation({
-    onSuccess: () => {
-      toast.success(`Container ${menuContainer?.name} stopped`);
-      invalidateContainers();
-    },
-    onError: (e: Error) => {
-      toast.error(getMutationErrorMessage(e, "Failed to stop container"));
-    },
-  });
+  const { mutate: stopContainer } =
+    linuxio.docker.stop_container.useMutation();
 
   const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${menuContainer?.name} restarted`);
-        invalidateContainers();
-      },
-      onError: (e: Error) => {
-        toast.error(getMutationErrorMessage(e, "Failed to restart container"));
-      },
-    });
+    linuxio.docker.restart_container.useMutation();
 
   const { mutate: removeContainer } =
-    linuxio.docker.remove_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${menuContainer?.name} removed`);
-        invalidateContainers();
-      },
-      onError: (e: Error) => {
-        toast.error(getMutationErrorMessage(e, "Failed to remove container"));
-      },
-    });
+    linuxio.docker.remove_container.useMutation();
 
   const handleContextMenu = useCallback(
     (
@@ -127,11 +95,21 @@ const DockerInfo: React.FC = () => {
   const handleAction = useCallback(
     (action: "start" | "stop" | "restart" | "remove") => {
       if (!menuContainer) return;
-      const args = [menuContainer.id];
-      if (action === "start") startContainer(args);
-      else if (action === "stop") stopContainer(args);
-      else if (action === "restart") restartContainer(args);
-      else removeContainer(args);
+      const { id, name } = menuContainer;
+      const args = [id];
+      const callbacks = {
+        onSuccess: () => {
+          toast.success(`Container ${name} ${action === "remove" ? "removed" : `${action}ed`}`);
+          invalidateContainers();
+        },
+        onError: (e: Error) => {
+          toast.error(getMutationErrorMessage(e, `Failed to ${action} container`));
+        },
+      };
+      if (action === "start") startContainer(args, callbacks);
+      else if (action === "stop") stopContainer(args, callbacks);
+      else if (action === "restart") restartContainer(args, callbacks);
+      else removeContainer(args, callbacks);
       handleMenuClose();
     },
     [
@@ -141,6 +119,7 @@ const DockerInfo: React.FC = () => {
       restartContainer,
       removeContainer,
       handleMenuClose,
+      invalidateContainers,
     ],
   );
 
