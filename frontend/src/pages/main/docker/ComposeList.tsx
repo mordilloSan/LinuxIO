@@ -17,6 +17,7 @@ import {
   Chip,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import React, { useCallback, useState } from "react";
 
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -124,6 +125,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
   // Render main row content
   const renderMainRow = useCallback(
     (project: ComposeProject) => {
+      const statusColor = getStatusColor(project.status);
+
       return (
         <>
           <TableCell sx={{ px: { xs: 1, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
@@ -131,21 +134,28 @@ const ComposeList: React.FC<ComposeListProps> = ({
               <Box
                 component="span"
                 sx={{
-                  display: "inline-block",
-                  width: 12,
-                  height: 12,
+                  display: { xs: "inline-block", sm: "none" },
+                  width: 10,
+                  height: 10,
                   borderRadius: "50%",
-                  bgcolor: getStatusColor(project.status),
-                  mr: { xs: 0, sm: 1 },
+                  bgcolor: statusColor,
                 }}
               />
               <Chip
                 label={project.status}
                 size="small"
                 sx={{
-                  textTransform: "capitalize",
-                  fontSize: "0.75rem",
                   display: { xs: "none", sm: "inline-flex" },
+                  textTransform: "capitalize",
+                  fontSize: "0.68rem",
+                  fontWeight: 500,
+                  color: statusColor,
+                  bgcolor: alpha(statusColor, 0.14),
+                  border: `1px solid ${alpha(statusColor, 0.45)}`,
+                  borderRadius: "999px",
+                  "& .MuiChip-label": {
+                    px: 3,
+                  },
                 }}
               />
             </Box>

@@ -1,23 +1,30 @@
-import { Box, Typography, useTheme } from "@mui/material";
+import { Box, Tooltip, Typography } from "@mui/material";
 import React, { useMemo } from "react";
 
 import { linuxio } from "@/api";
 import GeneralCard from "@/components/cards/GeneralCard";
+import DockerIcon from "@/components/docker/DockerIcon";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const stateColor: Record<string, string> = {
   running: "success.main",
+  healthy: "success.main",
   exited: "error.main",
+  unhealthy: "error.main",
   paused: "warning.main",
   restarting: "info.main",
 };
 
 const cleanName = (name: string) => name.replace(/^\//, "");
 
-const DockerInfo: React.FC = () => {
-  const theme = useTheme();
+const getStatusLabel = (status: string, state: string): string => {
+  const health = status.match(/\((\w+)\)/)?.[1];
+  if (health === "healthy" || health === "unhealthy") return health;
+  return state;
+};
 
+const DockerInfo: React.FC = () => {
   const {
     data: containers = [],
     isPending: isContainersLoading,
@@ -86,55 +93,71 @@ const DockerInfo: React.FC = () => {
     <Box
       className="custom-scrollbar"
       sx={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 0.5,
+        display: "grid",
+        gridTemplateColumns: {
+          xs: "repeat(3, 36px)",
+          sm: "repeat(4, 36px)",
+        },
+        gap: 2.5,
+        justifyContent: "center",
         width: "100%",
-        maxHeight: 110,
+        maxHeight: 90,
         overflowX: "hidden",
-        overflowY: "hidden",
+        overflowY: "auto",
         pr: 0.5,
-        "&:hover": {
-          overflowY: "auto",
+        "&::-webkit-scrollbar-thumb": {
+          backgroundColor: "transparent !important",
+        },
+        "&:hover::-webkit-scrollbar-thumb": {
+          backgroundColor: "rgba(100, 100, 100, 0.2) !important",
         },
       }}
     >
-      {sorted.map((c) => (
-        <Box
-          key={c.Id}
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 1,
-            px: 1,
-            py: 0.3,
-            borderRadius: 1,
-            bgcolor: theme.palette.action.hover,
-            flexShrink: 0,
-          }}
-        >
-          <Box
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              bgcolor: stateColor[c.State] ?? "grey.500",
-              flexShrink: 0,
-            }}
-          />
-          <Typography
-            variant="body2"
-            sx={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              flex: 1,
-            }}
+      {sorted.map((c) => {
+        const name = cleanName(c.Names[0] ?? c.Id.slice(0, 12));
+        return (
+          <Tooltip
+            key={c.Id}
+            title={
+              <>
+                {name}
+                <br />
+                <Box
+                  component="span"
+                  sx={{ color: stateColor[getStatusLabel(c.Status, c.State)] ?? "grey.500" }}
+                >
+                  {getStatusLabel(c.Status, c.State)}
+                </Box>
+              </>
+            }
+            arrow
+            placement="top"
           >
-            {cleanName(c.Names[0] ?? c.Id.slice(0, 12))}
-          </Typography>
-        </Box>
-      ))}
+            <Box
+              sx={{
+                position: "relative",
+                width: 36,
+                height: 36,
+              }}
+            >
+              <DockerIcon identifier={c.icon} size={36} alt={name} />
+              <Box
+                sx={{
+                  position: "absolute",
+                  bottom: 0,
+                  right: 0,
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  bgcolor: stateColor[c.State] ?? "grey.500",
+                  border: "1.5px solid",
+                  borderColor: "background.paper",
+                }}
+              />
+            </Box>
+          </Tooltip>
+        );
+      })}
     </Box>
   );
 
