@@ -91,6 +91,17 @@ const DockerInfo: React.FC = () => {
       },
     });
 
+  const { mutate: removeContainer } =
+    linuxio.docker.remove_container.useMutation({
+      onSuccess: () => {
+        toast.success(`Container ${menuContainer?.name} removed`);
+        invalidateContainers();
+      },
+      onError: (e: Error) => {
+        toast.error(getMutationErrorMessage(e, "Failed to remove container"));
+      },
+    });
+
   const handleContextMenu = useCallback(
     (
       e: React.MouseEvent<HTMLElement>,
@@ -111,12 +122,13 @@ const DockerInfo: React.FC = () => {
   }, []);
 
   const handleAction = useCallback(
-    (action: "start" | "stop" | "restart") => {
+    (action: "start" | "stop" | "restart" | "remove") => {
       if (!menuContainer) return;
       const args = [menuContainer.id];
       if (action === "start") startContainer(args);
       else if (action === "stop") stopContainer(args);
-      else restartContainer(args);
+      else if (action === "restart") restartContainer(args);
+      else removeContainer(args);
       handleMenuClose();
     },
     [
@@ -124,6 +136,7 @@ const DockerInfo: React.FC = () => {
       startContainer,
       stopContainer,
       restartContainer,
+      removeContainer,
       handleMenuClose,
     ],
   );
@@ -222,8 +235,10 @@ const DockerInfo: React.FC = () => {
           <Tooltip
             key={c.Id}
             title={
-              <>
-                {name}
+              <Box sx={{ textAlign: "center" }}>
+                <Box component="span" sx={{ fontSize: "0.8rem" }}>
+                  {name}
+                </Box>
                 <br />
                 <Box
                   component="span"
@@ -235,7 +250,7 @@ const DockerInfo: React.FC = () => {
                 >
                   {getStatusLabel(c.Status, c.State)}
                 </Box>
-              </>
+              </Box>
             }
             arrow
             placement="top"
@@ -271,6 +286,7 @@ const DockerInfo: React.FC = () => {
         anchorEl={menuAnchor}
         open={Boolean(menuAnchor)}
         onClose={handleMenuClose}
+        autoFocus={false}
         slotProps={{ paper: { sx: { minWidth: 140 } } }}
       >
         {menuContainer?.state !== "running" && (
@@ -295,6 +311,14 @@ const DockerInfo: React.FC = () => {
           </ListItemIcon>
           Restart
         </MenuItem>
+        {menuContainer?.state !== "running" && (
+          <MenuItem onClick={() => handleAction("remove")}>
+            <ListItemIcon>
+              <Icon icon="mdi:delete-outline" width={18} />
+            </ListItemIcon>
+            Remove
+          </MenuItem>
+        )}
         <Divider />
         <MenuItem
           onClick={() => {

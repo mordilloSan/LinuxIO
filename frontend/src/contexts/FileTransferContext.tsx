@@ -74,10 +74,19 @@ interface Reindex {
   filesIndexed: number;
   dirsIndexed: number;
   currentPath: string;
+  phase: string;
   progress: number;
   label: string;
   abortController: AbortController;
   stream?: Stream | null;
+}
+
+interface ReindexSummary {
+  path: string;
+  filesIndexed: number;
+  dirsIndexed: number;
+  totalSize: number;
+  durationMs: number;
 }
 
 interface Copy {
@@ -170,6 +179,11 @@ export interface FileTransferContextValue {
     }) => void;
   }) => Promise<void>;
   isReindexing: boolean;
+  isReindexDialogOpen: boolean;
+  openReindexDialog: () => void;
+  closeReindexDialog: () => void;
+  lastReindexResult: ReindexSummary | null;
+  lastReindexError: string | null;
   startCopy: (options: {
     source: string;
     destination: string;
@@ -209,6 +223,10 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   const [compressions, setCompressions] = useState<Compression[]>([]);
   const [extractions, setExtractions] = useState<Extraction[]>([]);
   const [reindexes, setReindexes] = useState<Reindex[]>([]);
+  const [isReindexDialogOpen, setIsReindexDialogOpen] = useState(false);
+  const [lastReindexResult, setLastReindexResult] =
+    useState<ReindexSummary | null>(null);
+  const [lastReindexError, setLastReindexError] = useState<string | null>(null);
   const [copies, setCopies] = useState<Copy[]>([]);
   const [moves, setMoves] = useState<Move[]>([]);
   const activeCompressionIdsRef = useRef<Set<string>>(new Set());
@@ -318,6 +336,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   ];
 
   const isReindexing = reindexes.length > 0;
+
+  const openReindexDialog = useCallback(() => {
+    setIsReindexDialogOpen(true);
+  }, []);
+
+  const closeReindexDialog = useCallback(() => {
+    setIsReindexDialogOpen(false);
+  }, []);
 
   const updateDownload = useCallback(
     (
@@ -854,9 +880,14 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     }) => {
       // Only allow one reindex at a time
       if (activeReindexIdsRef.current.size > 0) {
+        setIsReindexDialogOpen(true);
         toast.error("A reindex operation is already in progress");
         return;
       }
+
+      setIsReindexDialogOpen(true);
+      setLastReindexResult(null);
+      setLastReindexError(null);
 
       const id = crypto.randomUUID();
       const abortController = new AbortController();
@@ -868,6 +899,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         filesIndexed: 0,
         dirsIndexed: 0,
         currentPath: "",
+        phase: "connecting",
         progress: 0,
         label: "Starting reindex...",
         abortController,
@@ -877,6 +909,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       activeReindexIdsRef.current.add(id);
 
       if (!isConnected()) {
+        setLastReindexError("Stream connection not ready");
         toast.error("Stream connection not ready");
         removeReindex(id);
         return;
@@ -924,6 +957,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
                 filesIndexed,
                 dirsIndexed,
                 currentPath,
+                phase,
                 label:
                   phase === "connecting"
                     ? "Connecting to indexer..."
@@ -933,15 +967,19 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           );
         },
         onSuccess: (result) => {
-          toast.success(
-            `Reindex complete: ${result?.files_indexed ?? 0} files, ${result?.dirs_indexed ?? 0} dirs`,
-          );
-          onComplete?.({
+          const summary = {
+            path,
             filesIndexed: result?.files_indexed ?? 0,
             dirsIndexed: result?.dirs_indexed ?? 0,
             totalSize: result?.total_size ?? 0,
             durationMs: result?.duration_ms ?? 0,
-          });
+          };
+          setLastReindexResult(summary);
+          setLastReindexError(null);
+          toast.success(
+            `Reindex complete: ${result?.files_indexed ?? 0} files, ${result?.dirs_indexed ?? 0} dirs`,
+          );
+          onComplete?.(summary);
         },
         onError: (error: unknown) => {
           if (abortController.signal.aborted) {
@@ -949,6 +987,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           }
           const message =
             error instanceof Error ? error.message : "Reindex failed";
+          setLastReindexError(message);
+          setLastReindexResult(null);
           toast.error(message);
         },
         onFinally: () => {
@@ -1669,6 +1709,11 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         cancelExtraction,
         startReindex,
         isReindexing,
+        isReindexDialogOpen,
+        openReindexDialog,
+        closeReindexDialog,
+        lastReindexResult,
+        lastReindexError,
         startCopy,
         cancelCopy,
         startMove,
