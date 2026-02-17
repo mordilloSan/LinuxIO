@@ -21,6 +21,7 @@ type AppSettings struct {
 	SidebarCollapsed bool     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
 	ShowHiddenFiles  bool     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
 	DashboardOrder   []string `json:"dashboardOrder,omitempty" yaml:"dashboardOrder,omitempty"`
+	HiddenCards      []string `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
 }
 
 // Docker holds Docker-related settings

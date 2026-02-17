@@ -47,6 +47,7 @@ func RegisterHandlers(sess *session.Session) {
 				SidebarCollapsed *bool    `json:"sidebarCollapsed"`
 				ShowHiddenFiles  *bool    `json:"showHiddenFiles"`
 				DashboardOrder   []string `json:"dashboardOrder"`
+				HiddenCards      []string `json:"hiddenCards"`
 			} `json:"appSettings"`
 			Docker *struct {
 				Folder *string `json:"folder"`
@@ -85,6 +86,9 @@ func RegisterHandlers(sess *session.Session) {
 			}
 			if payload.AppSettings.DashboardOrder != nil {
 				cfg.AppSettings.DashboardOrder = payload.AppSettings.DashboardOrder
+			}
+			if payload.AppSettings.HiddenCards != nil {
+				cfg.AppSettings.HiddenCards = payload.AppSettings.HiddenCards
 			}
 		}
 

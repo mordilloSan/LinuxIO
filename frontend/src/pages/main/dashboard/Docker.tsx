@@ -64,8 +64,7 @@ const DockerInfo: React.FC = () => {
   const { mutate: startContainer } =
     linuxio.docker.start_container.useMutation();
 
-  const { mutate: stopContainer } =
-    linuxio.docker.stop_container.useMutation();
+  const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation();
 
   const { mutate: restartContainer } =
     linuxio.docker.restart_container.useMutation();
@@ -99,11 +98,15 @@ const DockerInfo: React.FC = () => {
       const args = [id];
       const callbacks = {
         onSuccess: () => {
-          toast.success(`Container ${name} ${action === "remove" ? "removed" : `${action}ed`}`);
+          toast.success(
+            `Container ${name} ${action === "remove" ? "removed" : `${action}ed`}`,
+          );
           invalidateContainers();
         },
         onError: (e: Error) => {
-          toast.error(getMutationErrorMessage(e, `Failed to ${action} container`));
+          toast.error(
+            getMutationErrorMessage(e, `Failed to ${action} container`),
+          );
         },
       };
       if (action === "start") startContainer(args, callbacks);
@@ -347,7 +350,6 @@ const DockerInfo: React.FC = () => {
         avatarIcon="mdi:docker"
         stats={stats}
         stats2={stats2}
-        connectionStatus={isContainersError ? "offline" : "online"}
       />
       {dialogContainer && (
         <>

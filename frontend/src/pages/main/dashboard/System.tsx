@@ -90,15 +90,15 @@ const SystemHealth = () => {
   );
 
   const stats = (
-          <Box
-            sx={{
-              display: "flex",
-              gap: 1,
-              flexDirection: "column",
-              alignSelf: "flex-start",
-              mt: 4,
-            }}
-          >
+    <Box
+      sx={{
+        display: "flex",
+        gap: 1,
+        flexDirection: "column",
+        alignSelf: "flex-start",
+        mt: 4,
+      }}
+    >
       <Typography variant="body1">
         <strong>Distro:</strong> {distro}
       </Typography>
