@@ -8,7 +8,7 @@ import {
   LocalOffer as TagIcon,
 } from "@mui/icons-material";
 import { Box, Button, Chip, Divider, Grid, MenuItem, Select, Typography } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { lighten, useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -85,7 +85,7 @@ const DaemonSection: React.FC<{
           width: 40,
           height: 40,
           borderRadius: 2,
-          background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.primary.dark} 100%)`,
+          background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -128,7 +128,7 @@ const ResourceCardHeader: React.FC<{
           width: 40,
           height: 40,
           borderRadius: 2,
-          background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.primary.dark} 100%)`,
+          background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -268,6 +268,9 @@ const DockerDashboard: React.FC = () => {
   return (
     <Box>
       {/* ── Stat Cards ─────────────────────────────────────────────────────── */}
+      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
+        Overview
+      </Typography>
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {(
           [
@@ -330,42 +333,60 @@ const DockerDashboard: React.FC = () => {
       {/* ── Resource Usage ─────────────────────────────────────────────────── */}
       {runningContainers.length > 0 && (
         <FrostedCard sx={{ p: 2, mb: 2 }}>
-          <Typography variant="overline" color="text.secondary">
-            Resource Usage
-          </Typography>
-          <Grid container spacing={4} sx={{ mt: 0.5 }}>
+          <Grid container spacing={4}>
             <Grid size={{ xs: 12, sm: 4 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+                <Box sx={{ width: 40, height: 40, borderRadius: 2, background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon icon="ph:cpu" style={{ fontSize: 20, color: "#fff" }} />
+                </Box>
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>CPU</Typography>
+                  <Typography variant="caption" color="text.secondary">Processor utilization</Typography>
+                </Box>
+              </Box>
               <MetricBar
                 label="CPU"
                 percent={Math.min(totalCpu, 100)}
                 color={theme.palette.primary.main}
                 tooltip={`Total CPU across ${runningContainers.length} running containers`}
                 rightLabel={`${totalCpu.toFixed(1)}%`}
-                icon={<Icon icon="ph:cpu" style={{ fontSize: 14 }} />}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+                <Box sx={{ width: 40, height: 40, borderRadius: 2, background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon icon="la:memory" style={{ fontSize: 20, color: "#fff" }} />
+                </Box>
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>Memory</Typography>
+                  <Typography variant="caption" color="text.secondary">RAM utilization</Typography>
+                </Box>
+              </Box>
               <MetricBar
                 label="Memory"
                 percent={totalMemPercent}
                 color={theme.palette.primary.main}
                 tooltip={`${formatFileSize(totalMemUsage)} / ${formatFileSize(systemMemTotal)}`}
                 rightLabel={formatFileSize(totalMemUsage)}
-                icon={<Icon icon="la:memory" style={{ fontSize: 14 }} />}
               />
             </Grid>
             {dockerInfo && dockerInfo.disk_total > 0 && (
               <Grid size={{ xs: 12, sm: 4 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+                  <Box sx={{ width: 40, height: 40, borderRadius: 2, background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon icon="mdi:harddisk" style={{ fontSize: 20, color: "#fff" }} />
+                  </Box>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>Disk Usage</Typography>
+                    <Typography variant="caption" color="text.secondary">Storage utilization</Typography>
+                  </Box>
+                </Box>
                 <MetricBar
                   label="Disk (Docker)"
-                  percent={Math.min(
-                    (dockerInfo.disk_used / dockerInfo.disk_total) * 100,
-                    100,
-                  )}
+                  percent={Math.min((dockerInfo.disk_used / dockerInfo.disk_total) * 100, 100)}
                   color={theme.palette.primary.main}
                   tooltip={`Docker disk usage: ${formatFileSize(dockerInfo.disk_used)} / ${formatFileSize(dockerInfo.disk_total)}`}
                   rightLabel={formatFileSize(dockerInfo.disk_used)}
-                  icon={<Icon icon="mdi:harddisk" style={{ fontSize: 14 }} />}
                 />
               </Grid>
             )}
