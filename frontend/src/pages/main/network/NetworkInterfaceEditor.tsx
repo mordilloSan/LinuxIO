@@ -100,7 +100,21 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 }) => {
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [dirty, setDirty] = useState(false);
+  const [prevIpv4Method, setPrevIpv4Method] = useState(iface.ipv4_method);
+  const [prevIfaceName, setPrevIfaceName] = useState(iface.name);
   const queryClient = useQueryClient();
+
+  // Keep mode in sync with iface (render-time state adjustment)
+  if (iface.ipv4_method !== prevIpv4Method) {
+    setPrevIpv4Method(iface.ipv4_method);
+    setMode(iface.ipv4_method === "manual" ? "manual" : "auto");
+  }
+
+  // Reset dirty when switching to another interface (render-time state adjustment)
+  if (iface.name !== prevIfaceName) {
+    setPrevIfaceName(iface.name);
+    setDirty(false);
+  }
 
   // Mutations
   const { mutate: setIPv4, isPending: isSettingIPv4 } =
@@ -193,11 +207,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     [defaultIpv4, defaultGateway, defaultDns],
   );
 
-  // Keep mode in sync with iface
-  useEffect(() => {
-    setMode(iface.ipv4_method === "manual" ? "manual" : "auto");
-  }, [iface.ipv4_method]);
-
   // Prefill when expanded + manual (without clobbering user input).
   // Deliberately omits editForm from deps to avoid a set→trigger→set loop.
   useEffect(() => {
@@ -215,11 +224,6 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       setEditForm((prev) => (Object.keys(prev).length === 0 ? prev : {}));
     }
   }, [expanded, mode, defaults, dirty, setEditForm]);
-
-  // Reset dirty when switching to another interface
-  useEffect(() => {
-    setDirty(false);
-  }, [iface.name]);
 
   const handleModeChange = (
     _: React.MouseEvent<HTMLElement>,

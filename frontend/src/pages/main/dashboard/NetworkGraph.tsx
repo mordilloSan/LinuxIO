@@ -17,8 +17,10 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
   const rxRef = useRef(rx);
   const txRef = useRef(tx);
 
-  rxRef.current = rx;
-  txRef.current = tx;
+  useEffect(() => {
+    rxRef.current = rx;
+    txRef.current = tx;
+  }, [rx, tx]);
 
   // Initialize chart once on mount
   useEffect(() => {

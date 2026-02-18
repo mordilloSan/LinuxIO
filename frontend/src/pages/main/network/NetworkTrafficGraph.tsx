@@ -17,8 +17,10 @@ const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
   const seriesRef = useRef<TimeSeries>(new TimeSeries());
   const valueRef = useRef(value);
 
-  // Always keep the ref in sync with the latest prop
-  valueRef.current = value;
+  // Keep the ref in sync with the latest prop
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

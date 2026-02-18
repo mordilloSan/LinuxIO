@@ -51,8 +51,8 @@ const NetworkInterfaceList = () => {
 
   const { data: rawInterfaces = [], isPending: isLoading } =
     linuxio.dbus.get_network_info.useQuery({
-    refetchInterval: 1000,
-  });
+      refetchInterval: 1000,
+    });
 
   // Transform data - filter veths and add type field
   const interfaces = useMemo(
@@ -253,7 +253,6 @@ const NetworkInterfaceList = () => {
                       value={selectedIface.rx_speed}
                       color="#8884d8"
                       label="RX"
-
                     />
                   </Box>
                 </Box>
@@ -271,7 +270,6 @@ const NetworkInterfaceList = () => {
                       value={selectedIface.tx_speed}
                       color="#82ca9d"
                       label="TX"
-
                     />
                   </Box>
                 </Box>

@@ -14,7 +14,9 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   const theme = useTheme();
   const color = theme.palette.primary.main;
 
-  usageRef.current = usage;
+  useEffect(() => {
+    usageRef.current = usage;
+  }, [usage]);
 
   // Initialize chart once on mount
   useEffect(() => {
