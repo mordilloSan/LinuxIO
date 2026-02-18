@@ -52,10 +52,12 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
 
     chart.addTimeSeries(rxSeriesRef.current, {
       strokeStyle: RX_COLOR,
+      fillStyle: `${RX_COLOR}18`,
       lineWidth: 2,
     });
     chart.addTimeSeries(txSeriesRef.current, {
       strokeStyle: TX_COLOR,
+      fillStyle: `${TX_COLOR}18`,
       lineWidth: 2,
     });
 

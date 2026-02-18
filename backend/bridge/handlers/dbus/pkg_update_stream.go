@@ -104,8 +104,9 @@ var pkInfoNames = map[uint32]string{
 	21: "Preparing",
 }
 
+//go:fix inline
 func toUint32Ptr(v uint32) *uint32 {
-	return &v
+	return new(v)
 }
 
 func packageInfoName(info uint32) string {
@@ -251,8 +252,8 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 						Type:       "item_progress",
 						PackageID:  pkgID,
 						Status:     statusName,
-						StatusCode: toUint32Ptr(status),
-						ItemPct:    toUint32Ptr(pct),
+						StatusCode: new(status),
+						ItemPct:    new(pct),
 					}); err != nil {
 						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 					}
@@ -270,7 +271,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 						PackageID:      pkgID,
 						PackageSummary: summary,
 						Status:         packageInfoName(info),
-						InfoCode:       toUint32Ptr(info),
+						InfoCode:       new(info),
 					}); err != nil {
 						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 					}
@@ -347,7 +348,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 								if pct, ok := pctVar.Value().(uint32); ok && isRealWorkStatus(statusForPercentage) {
 									if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 										Type:       "percentage",
-										Percentage: toUint32Ptr(pct),
+										Percentage: new(pct),
 									}); err != nil {
 										logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 									}
@@ -363,7 +364,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 								if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 									Type:       "status",
 									Status:     statusName,
-									StatusCode: toUint32Ptr(currentStatus),
+									StatusCode: new(currentStatus),
 								}); err != nil {
 									logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 								}

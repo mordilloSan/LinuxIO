@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo } from "react";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
+import NetworkTrafficGraph from "./NetworkTrafficGraph";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
@@ -48,10 +49,13 @@ const NetworkInterfaceList = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
-  const { data: rawInterfaces = [], isPending: isLoading } =
-    linuxio.dbus.get_network_info.useQuery({
-      refetchInterval: 1000,
-    });
+  const {
+    data: rawInterfaces = [],
+    isPending: isLoading,
+    dataUpdatedAt,
+  } = linuxio.dbus.get_network_info.useQuery({
+    refetchInterval: 1000,
+  });
 
   // Transform data - filter veths and add type field
   const interfaces = useMemo(
@@ -102,6 +106,8 @@ const NetworkInterfaceList = () => {
   if (isLoading) {
     return <ComponentLoader />;
   }
+  const selectedIface = interfaces.find((i) => i.name === expanded);
+
   return (
     <Box>
       <Grid container spacing={4}>
@@ -110,7 +116,11 @@ const NetworkInterfaceList = () => {
             expanded && expanded !== iface.name ? null : (
               <Grid
                 key={iface.name}
-                size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}
+                size={
+                  expanded === iface.name
+                    ? { xs: 12, md: 4, lg: 3 }
+                    : { xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }
+                }
                 component={motion.div}
                 layout
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -212,6 +222,64 @@ const NetworkInterfaceList = () => {
                 </FrostedCard>
               </Grid>
             ),
+          )}
+
+          {/* Traffic graphs — appear on the right when a NIC is selected */}
+          {selectedIface && (
+            <Grid
+              key="traffic-graphs"
+              size={{ xs: 12, md: 8, lg: 9 }}
+              component={motion.div}
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 40 }}
+              transition={{ duration: 0.3, delay: 0.05 }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 3,
+                }}
+              >
+                <Box>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ ml: 1, mb: 0.5, display: "block" }}
+                  >
+                    Receiving
+                  </Typography>
+                  <Box sx={{ height: 120, width: "100%", minWidth: 0 }}>
+                    <NetworkTrafficGraph
+                      key={`rx-${selectedIface.name}`}
+                      value={selectedIface.rx_speed}
+                      color="#8884d8"
+                      label="RX"
+                      dataUpdatedAt={dataUpdatedAt}
+                    />
+                  </Box>
+                </Box>
+                <Box>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ ml: 1, mb: 0.5, display: "block" }}
+                  >
+                    Transmitting
+                  </Typography>
+                  <Box sx={{ height: 120, width: "100%", minWidth: 0 }}>
+                    <NetworkTrafficGraph
+                      key={`tx-${selectedIface.name}`}
+                      value={selectedIface.tx_speed}
+                      color="#82ca9d"
+                      label="TX"
+                      dataUpdatedAt={dataUpdatedAt}
+                    />
+                  </Box>
+                </Box>
+              </Box>
+            </Grid>
           )}
         </AnimatePresence>
       </Grid>
