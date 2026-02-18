@@ -7,6 +7,7 @@ interface MetricBarProps {
   color: string;
   tooltip?: string;
   rightLabel?: React.ReactNode;
+  icon?: React.ReactNode;
 }
 
 const MetricBar: React.FC<MetricBarProps> = ({
@@ -15,6 +16,7 @@ const MetricBar: React.FC<MetricBarProps> = ({
   color,
   tooltip,
   rightLabel,
+  icon,
 }) => (
   <Tooltip title={tooltip ?? ""}>
     <Box sx={{ width: "100%", mb: 1 }}>
@@ -26,7 +28,10 @@ const MetricBar: React.FC<MetricBarProps> = ({
           px: 0.5,
         }}
       >
-        <Typography variant="caption">{label}</Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+          {icon}
+          <Typography variant="caption">{label}</Typography>
+        </Box>
         <Typography
           variant="caption"
           sx={{ fontVariantNumeric: "tabular-nums" }}

@@ -1,11 +1,15 @@
+import { Icon } from "@iconify/react";
 import {
+  Build as BuildIcon,
   ChevronRight as ChevronRightIcon,
+  Computer as ComputerIcon,
   Inventory2 as ContainersIcon,
   Layers as ImagesIcon,
+  LocalOffer as TagIcon,
 } from "@mui/icons-material";
-import { Box, Button, Chip, Divider, Grid, Typography } from "@mui/material";
+import { Box, Button, Chip, Divider, Grid, MenuItem, Select, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { linuxio } from "@/api";
@@ -70,20 +74,43 @@ const InfoRow: React.FC<{ label: string; value: React.ReactNode }> = ({
 
 const DaemonSection: React.FC<{
   title: string;
+  subtitle: string;
+  icon: React.ReactNode;
   children: React.ReactNode;
-}> = ({ title, children }) => (
-  <Box >
-    <Typography variant="overline" color="text.secondary">
-      {title}
-    </Typography>
-    <Box sx={{ mt: 0.75 }}>{children}</Box>
+}> = ({ title, subtitle, icon, children }) => (
+  <Box>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+      <Box
+        sx={{
+          width: 40,
+          height: 40,
+          borderRadius: 2,
+          background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.primary.dark} 100%)`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </Box>
+      <Box>
+        <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>
+          {title}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {subtitle}
+        </Typography>
+      </Box>
+    </Box>
+    <Box>{children}</Box>
   </Box>
 );
 
 const ResourceCardHeader: React.FC<{
   icon: React.ReactNode;
   title: string;
-  subtitle: string;
+  subtitle: React.ReactNode;
   onViewAll: () => void;
 }> = ({ icon, title, subtitle, onViewAll }) => (
   <Box
@@ -101,7 +128,7 @@ const ResourceCardHeader: React.FC<{
           width: 40,
           height: 40,
           borderRadius: 2,
-          background: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
+          background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.primary.dark} 100%)`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -216,11 +243,25 @@ const DockerDashboard: React.FC = () => {
     [images],
   );
 
-  const previewContainers = containers;
-  const previewImages = useMemo(
-    () => [...images].sort((a, b) => b.Size - a.Size),
-    [images],
-  );
+  const [containerSort, setContainerSort] = useState<"recent" | "name" | "state">("recent");
+
+  const previewContainers = useMemo(() => {
+    const list = [...containers];
+    if (containerSort === "recent") return list.sort((a, b) => b.Created - a.Created);
+    if (containerSort === "name") return list.sort((a, b) => (a.Names?.[0] ?? "").localeCompare(b.Names?.[0] ?? ""));
+    if (containerSort === "state") return list.sort((a, b) => (a.State === "running" ? -1 : 1) - (b.State === "running" ? -1 : 1));
+    return list;
+  }, [containers, containerSort]);
+
+  const [imageSort, setImageSort] = useState<"largest" | "recent" | "name">("largest");
+
+  const previewImages = useMemo(() => {
+    const list = [...images];
+    if (imageSort === "largest") return list.sort((a, b) => b.Size - a.Size);
+    if (imageSort === "recent") return list.sort((a, b) => b.Created - a.Created);
+    if (imageSort === "name") return list.sort((a, b) => (a.RepoTags?.[0] ?? "").localeCompare(b.RepoTags?.[0] ?? ""));
+    return list;
+  }, [images, imageSort]);
 
   const SCROLL_HEIGHT = 165;
 
@@ -300,6 +341,7 @@ const DockerDashboard: React.FC = () => {
                 color={theme.palette.primary.main}
                 tooltip={`Total CPU across ${runningContainers.length} running containers`}
                 rightLabel={`${totalCpu.toFixed(1)}%`}
+                icon={<Icon icon="ph:cpu" style={{ fontSize: 14 }} />}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
@@ -309,6 +351,7 @@ const DockerDashboard: React.FC = () => {
                 color={theme.palette.primary.main}
                 tooltip={`${formatFileSize(totalMemUsage)} / ${formatFileSize(systemMemTotal)}`}
                 rightLabel={formatFileSize(totalMemUsage)}
+                icon={<Icon icon="la:memory" style={{ fontSize: 14 }} />}
               />
             </Grid>
             {dockerInfo && dockerInfo.disk_total > 0 && (
@@ -322,6 +365,7 @@ const DockerDashboard: React.FC = () => {
                   color={theme.palette.primary.main}
                   tooltip={`Docker disk usage: ${formatFileSize(dockerInfo.disk_used)} / ${formatFileSize(dockerInfo.disk_total)}`}
                   rightLabel={formatFileSize(dockerInfo.disk_used)}
+                  icon={<Icon icon="mdi:harddisk" style={{ fontSize: 14 }} />}
                 />
               </Grid>
             )}
@@ -338,7 +382,7 @@ const DockerDashboard: React.FC = () => {
             <FrostedCard sx={{ p: 2, height: "100%" }}>
               <Grid container spacing={4} sx={{ mt: 1 }}>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <DaemonSection title="Version">
+                  <DaemonSection title="Version" subtitle="Engine & runtime versions" icon={<TagIcon sx={{ color: "#fff", fontSize: 16 }} />}>
                     <InfoRow label="Server" value={dockerInfo.server_version} />
                     <InfoRow label="API" value={dockerInfo.api_version} />
                     <InfoRow label="Go" value={dockerInfo.go_version} />
@@ -346,7 +390,7 @@ const DockerDashboard: React.FC = () => {
                   </DaemonSection>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <DaemonSection title="System">
+                  <DaemonSection title="System" subtitle="Host machine information" icon={<ComputerIcon sx={{ color: "#fff", fontSize: 16 }} />}>
                     <InfoRow label="Hostname" value={dockerInfo.name} />
                     <InfoRow label="OS" value={dockerInfo.operating_system} />
                     <InfoRow label="Architecture" value={dockerInfo.architecture} />
@@ -354,7 +398,7 @@ const DockerDashboard: React.FC = () => {
                   </DaemonSection>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <DaemonSection title="Configuration">
+                  <DaemonSection title="Configuration" subtitle="Storage & runtime settings" icon={<BuildIcon sx={{ color: "#fff", fontSize: 16 }} />}>
                     <InfoRow label="Storage Driver" value={dockerInfo.storage_driver} />
                     <InfoRow label="Cgroup Driver" value={dockerInfo.cgroup_driver} />
                     <InfoRow label="Cgroup Version" value={dockerInfo.cgroup_version} />
@@ -380,14 +424,32 @@ const DockerDashboard: React.FC = () => {
             <ResourceCardHeader
               icon={<ContainersIcon sx={{ color: "#fff", fontSize: 20 }} />}
               title="Containers"
-              subtitle="Recent containers"
+              subtitle={
+                <Select
+                  variant="standard"
+                  disableUnderline
+                  value={containerSort}
+                  onChange={(e) => setContainerSort(e.target.value as typeof containerSort)}
+                  sx={{
+                    fontSize: "0.75rem",
+                    color: "text.secondary",
+                    lineHeight: 1.4,
+                    "& .MuiSelect-select": { p: 0, pr: "18px !important" },
+                    "& .MuiSvgIcon-root": { fontSize: "0.9rem", color: "text.secondary" },
+                  }}
+                >
+                  <MenuItem value="recent">Recent containers</MenuItem>
+                  <MenuItem value="name">Sort by name</MenuItem>
+                  <MenuItem value="state">Sort by state</MenuItem>
+                </Select>
+              }
               onViewAll={() => navigateToTab("containers")}
             />
 
             <Box
               sx={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr 90px 1fr",
+                gridTemplateColumns: "1fr 220px 80px 140px",
                 px: 2,
                 py: 0.75,
               }}
@@ -421,7 +483,7 @@ const DockerDashboard: React.FC = () => {
                       <Box
                         sx={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 1fr 90px 1fr",
+                          gridTemplateColumns: "1fr 220px 80px 140px",
                           alignItems: "center",
                           px: 2,
                           py: 1.25,
@@ -487,7 +549,25 @@ const DockerDashboard: React.FC = () => {
             <ResourceCardHeader
               icon={<ImagesIcon sx={{ color: "#fff", fontSize: 20 }} />}
               title="Images"
-              subtitle="Largest images"
+              subtitle={
+                <Select
+                  variant="standard"
+                  disableUnderline
+                  value={imageSort}
+                  onChange={(e) => setImageSort(e.target.value as typeof imageSort)}
+                  sx={{
+                    fontSize: "0.75rem",
+                    color: "text.secondary",
+                    lineHeight: 1.4,
+                    "& .MuiSelect-select": { p: 0, pr: "18px !important" },
+                    "& .MuiSvgIcon-root": { fontSize: "0.9rem", color: "text.secondary" },
+                  }}
+                >
+                  <MenuItem value="largest">Largest images</MenuItem>
+                  <MenuItem value="recent">Most recent</MenuItem>
+                  <MenuItem value="name">Sort by name</MenuItem>
+                </Select>
+              }
               onViewAll={() => navigateToTab("images")}
             />
 
@@ -499,7 +579,7 @@ const DockerDashboard: React.FC = () => {
                 py: 0.75,
               }}
             >
-              {["Repository", "Status", "Tag", "Size"].map((col) => (
+              {["Repository", "Tag", "Status", "Size"].map((col) => (
                 <Typography
                   key={col}
                   variant="overline"
@@ -542,11 +622,6 @@ const DockerDashboard: React.FC = () => {
                         <Typography variant="body2" fontWeight={500} noWrap>
                           {repo}
                         </Typography>
-                        <Box>
-                          {inUse && (
-                            <Chip size="small" label="In Use" color="success" />
-                          )}
-                        </Box>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -554,7 +629,12 @@ const DockerDashboard: React.FC = () => {
                         >
                           {tag}
                         </Typography>
-                        <Typography variant="body2" noWrap>
+                        <Box>
+                          {inUse && (
+                            <Chip size="small" label="In Use" color="success" />
+                          )}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" noWrap>
                           {formatFileSize(image.Size)}
                         </Typography>
                       </Box>
