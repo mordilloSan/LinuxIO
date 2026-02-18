@@ -1,9 +1,10 @@
-import { Add as AddIcon } from "@mui/icons-material";
+import { Add as AddIcon, DragIndicator } from "@mui/icons-material";
 import {
   Alert,
   AlertTitle,
   Box,
   Button,
+  IconButton,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -11,6 +12,7 @@ import React, { useState } from "react";
 
 import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerList from "./ContainerList";
+import DockerDashboard from "./DockerDashboard";
 import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
 import VolumeList from "./VolumeList";
@@ -36,6 +38,7 @@ const DockerPage: React.FC = () => {
   const [createImageHandler, setCreateImageHandler] = useState<
     (() => void) | null
   >(null);
+  const [containerEditMode, setContainerEditMode] = useState(false);
 
   if (dockerAvailable === null) {
     return (
@@ -86,9 +89,25 @@ const DockerPage: React.FC = () => {
     <TabContainer
       tabs={[
         {
+          value: "dashboard",
+          label: "Dashboard",
+          component: <DockerDashboard />,
+        },
+        {
           value: "containers",
           label: "Containers",
-          component: <ContainerList />,
+          component: <ContainerList editMode={containerEditMode} />,
+          rightContent: (
+            <Tooltip title={containerEditMode ? "Lock layout" : "Edit layout"}>
+              <IconButton
+                onClick={() => setContainerEditMode((prev) => !prev)}
+                color={containerEditMode ? "primary" : "default"}
+                size="small"
+              >
+                <DragIndicator />
+              </IconButton>
+            </Tooltip>
+          ),
         },
         {
           value: "compose",
@@ -275,7 +294,7 @@ const DockerPage: React.FC = () => {
           ) : undefined,
         },
       ]}
-      defaultTab="containers"
+      defaultTab="dashboard"
       urlParam="dockerTab"
     />
   );

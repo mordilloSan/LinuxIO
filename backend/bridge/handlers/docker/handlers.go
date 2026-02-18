@@ -325,6 +325,14 @@ func RegisterHandlers(sess *session.Session) {
 		})
 	})
 
+	ipc.RegisterFunc("docker", "get_docker_info", func(ctx context.Context, args []string, emit ipc.Events) error {
+		info, err := GetDockerInfo()
+		if err != nil {
+			return err
+		}
+		return emit.Result(info)
+	})
+
 	// Icon handlers
 	ipc.RegisterFunc("docker", "get_icon_uri", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {

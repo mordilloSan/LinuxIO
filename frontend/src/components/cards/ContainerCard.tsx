@@ -1,4 +1,4 @@
-import { Box, Grid, Tooltip, Typography, Fade } from "@mui/material";
+import { Box, Tooltip, Typography, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState, useCallback } from "react";
@@ -156,8 +156,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
   return (
-    <Grid size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}>
-      <FrostedCard
+    <FrostedCard
         sx={{
           p: 2,
           display: "flex",
@@ -319,7 +318,6 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           )}
         </Box>
       </FrostedCard>
-    </Grid>
   );
 };
 

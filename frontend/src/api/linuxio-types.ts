@@ -199,6 +199,49 @@ export interface DockerVolume {
   Scope?: string;
 }
 
+export interface DockerSystemInfo {
+  // System
+  name: string;
+  id: string;
+  operating_system: string;
+  os_type: string;
+  architecture: string;
+  kernel_version: string;
+  system_time: string;
+  docker_root_dir: string;
+  ncpu: number;
+  mem_total: number;
+  // Version
+  server_version: string;
+  api_version: string;
+  go_version: string;
+  git_commit: string;
+  build_time: string;
+  experimental: boolean;
+  // Configuration
+  storage_driver: string;
+  logging_driver: string;
+  cgroup_driver: string;
+  cgroup_version: string;
+  init_binary: string;
+  default_runtime: string;
+  // Network & Proxy
+  ipv4_forwarding: boolean;
+  http_proxy: string;
+  https_proxy: string;
+  no_proxy: string;
+  // Security & Runtimes
+  security_options: string[];
+  runtimes: string[];
+  // Plugins
+  volume_plugins: string[];
+  network_plugins: string[];
+  log_plugins: string[];
+  // Disk
+  disk_used: number;
+  disk_total: number;
+}
+
 export interface ComposeService {
   name: string;
   image: string;
@@ -558,6 +601,7 @@ export interface LinuxIOSchema {
   };
 
   docker: {
+    get_docker_info: { args: []; result: DockerSystemInfo };
     list_containers: { args: []; result: ContainerInfo[] };
     start_container: { args: [containerId: string]; result: void };
     stop_container: { args: [containerId: string]; result: void };

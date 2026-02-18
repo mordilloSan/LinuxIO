@@ -1,6 +1,8 @@
 export interface ContainerInfo {
   Id: string;
   Names: string[];
+  Image: string;
+  Created: number;
   State: string;
   Status: string;
   icon?: string;

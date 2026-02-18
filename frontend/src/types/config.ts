@@ -7,6 +7,7 @@ export interface BackendSettings {
     showHiddenFiles: boolean;
     dashboardOrder?: string[];
     hiddenCards?: string[];
+    containerOrder?: string[];
   };
   docker: {
     folder: string;
@@ -22,6 +23,7 @@ export interface AppConfig {
   dockerFolder?: string;
   dashboardOrder?: string[];
   hiddenCards?: string[];
+  containerOrder?: string[];
 }
 
 export interface ConfigContextType {
