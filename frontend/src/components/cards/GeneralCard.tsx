@@ -35,6 +35,14 @@ interface GeneralCardProps {
   selectedOptionLabel?: string;
   onSelect?: (value: string) => void;
   connectionStatus?: "online" | "offline" | "warning" | "error";
+  /**
+   * Controls the flex split between the stats and stats2 panels.
+   * - "equal" (default): 50/50 split (flex: 1 each)
+   * - "auto": stats2 sizes to its content, stats fills the rest
+   * - [n, m]: explicit flex ratio, e.g. [1, 2]
+   * Both panels always have overflow clipping applied.
+   */
+  contentLayout?: "equal" | "auto" | [number, number];
 }
 
 const GeneralCard: React.FC<GeneralCardProps> = ({
@@ -50,9 +58,16 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
   selectedOptionLabel,
   onSelect,
   connectionStatus,
+  contentLayout = "equal",
 }) => {
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
+
+  const [statsFlex, stats2Flex] = (() => {
+    if (contentLayout === "equal") return [1, 1];
+    if (contentLayout === "auto") return [1, "0 0 auto"];
+    return contentLayout;
+  })();
 
   const handleSelectionChange = (event: SelectChangeEvent) => {
     onSelect?.(event.target.value);
@@ -225,8 +240,9 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
           >
             <Box
               sx={{
-                flex: 1,
+                flex: statsFlex,
                 minWidth: 0,
+                overflow: "hidden",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "left",
@@ -245,8 +261,9 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
             </Box>
             <Box
               sx={{
-                flex: 1,
+                flex: stats2Flex,
                 minWidth: 0,
+                overflow: "hidden",
                 display: "flex",
                 height: 120,
                 alignItems: "center",

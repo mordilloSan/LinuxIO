@@ -199,10 +199,10 @@ const DockerInfo: React.FC = () => {
           xs: "repeat(3, 36px)",
           sm: "repeat(4, 36px)",
         },
-        columnGap: 2.5,
+        columnGap: 4.5,
         rowGap: 5,
         justifyContent: "center",
-        width: "100%",
+        width: "fit-content",
         maxHeight: 110,
         overflowX: "hidden",
         overflowY: "auto",
@@ -351,6 +351,7 @@ const DockerInfo: React.FC = () => {
         avatarIcon="mdi:docker"
         stats={stats}
         stats2={stats2}
+        contentLayout="auto"
       />
       {dialogContainer && (
         <>
