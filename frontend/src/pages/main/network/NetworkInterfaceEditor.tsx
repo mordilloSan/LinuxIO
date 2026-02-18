@@ -214,8 +214,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       // Auto mode: clear manual-only inputs
       setEditForm((prev) => (Object.keys(prev).length === 0 ? prev : {}));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expanded, mode, defaults, dirty]);
+  }, [expanded, mode, defaults, dirty, setEditForm]);
 
   // Reset dirty when switching to another interface
   useEffect(() => {

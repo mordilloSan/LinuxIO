@@ -49,6 +49,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
 
     chart.addTimeSeries(seriesRef.current, {
       strokeStyle: color,
+      fillStyle: `${color}18`,
       lineWidth: 2,
     });
 

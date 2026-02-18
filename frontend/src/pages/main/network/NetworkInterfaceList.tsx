@@ -49,11 +49,8 @@ const NetworkInterfaceList = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
-  const {
-    data: rawInterfaces = [],
-    isPending: isLoading,
-    dataUpdatedAt,
-  } = linuxio.dbus.get_network_info.useQuery({
+  const { data: rawInterfaces = [], isPending: isLoading } =
+    linuxio.dbus.get_network_info.useQuery({
     refetchInterval: 1000,
   });
 
@@ -256,7 +253,7 @@ const NetworkInterfaceList = () => {
                       value={selectedIface.rx_speed}
                       color="#8884d8"
                       label="RX"
-                      dataUpdatedAt={dataUpdatedAt}
+
                     />
                   </Box>
                 </Box>
@@ -274,7 +271,7 @@ const NetworkInterfaceList = () => {
                       value={selectedIface.tx_speed}
                       color="#82ca9d"
                       label="TX"
-                      dataUpdatedAt={dataUpdatedAt}
+
                     />
                   </Box>
                 </Box>

@@ -5,16 +5,12 @@ interface NetworkTrafficGraphProps {
   value: number;
   color: string;
   label: string;
-  dataUpdatedAt: number;
 }
-
-const STREAM_DELAY = 1000;
 
 const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
   value,
   color,
   label,
-  dataUpdatedAt,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
@@ -49,6 +45,7 @@ const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
           .join(""),
       responsive: true,
       minValue: 0,
+      maxValueScale: 1.15,
     });
 
     chart.addTimeSeries(seriesRef.current, {
@@ -57,7 +54,7 @@ const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
       lineWidth: 1.5,
     });
 
-    chart.streamTo(canvas, STREAM_DELAY);
+    chart.streamTo(canvas, 1000);
     chartRef.current = chart;
 
     const chartAny = chart as SmoothieChart & { tooltipEl?: HTMLElement };
@@ -78,12 +75,10 @@ const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
     };
   }, [color, label]);
 
-  // Append a data point every time the query delivers fresh data
+  // Append data points when value changes
   useEffect(() => {
-    if (dataUpdatedAt > 0) {
-      seriesRef.current.append(Date.now(), value);
-    }
-  }, [dataUpdatedAt]);
+    seriesRef.current.append(Date.now(), value);
+  }, [value]);
 
   return (
     <div

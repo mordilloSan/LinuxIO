@@ -48,6 +48,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
       },
       responsive: true,
       minValue: 0,
+      maxValueScale: 1.15,
     });
 
     chart.addTimeSeries(rxSeriesRef.current, {
