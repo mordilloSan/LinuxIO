@@ -44,6 +44,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
             bottom: 0,
             zIndex: 10,
             cursor: isDragging ? "grabbing" : "grab",
+            touchAction: "none",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
