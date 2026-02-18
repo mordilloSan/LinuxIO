@@ -14,6 +14,11 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
   const chartRef = useRef<SmoothieChart | null>(null);
   const rxSeriesRef = useRef<TimeSeries>(new TimeSeries());
   const txSeriesRef = useRef<TimeSeries>(new TimeSeries());
+  const rxRef = useRef(rx);
+  const txRef = useRef(tx);
+
+  rxRef.current = rx;
+  txRef.current = tx;
 
   // Initialize chart once on mount
   useEffect(() => {
@@ -65,6 +70,12 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
     chart.streamTo(canvas, 1000);
     chartRef.current = chart;
 
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      rxSeriesRef.current.append(now, rxRef.current);
+      txSeriesRef.current.append(now, txRef.current);
+    }, 1000);
+
     // Flip tooltip to the left when mouse is on the right half
     const chartAny = chart as SmoothieChart & { tooltipEl?: HTMLElement };
     const onMove = (evt: MouseEvent) => {
@@ -79,17 +90,11 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
     canvas.addEventListener("mousemove", onMove);
 
     return () => {
+      clearInterval(intervalId);
       chart.stop();
       canvas.removeEventListener("mousemove", onMove);
     };
   }, []);
-
-  // Append data points when values change
-  useEffect(() => {
-    const now = Date.now();
-    rxSeriesRef.current.append(now, rx);
-    txSeriesRef.current.append(now, tx);
-  }, [rx, tx]);
 
   return (
     <div

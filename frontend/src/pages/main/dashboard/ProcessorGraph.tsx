@@ -10,8 +10,11 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
   const seriesRef = useRef<TimeSeries>(new TimeSeries());
+  const usageRef = useRef(usage);
   const theme = useTheme();
   const color = theme.palette.primary.main;
+
+  usageRef.current = usage;
 
   // Initialize chart once on mount
   useEffect(() => {
@@ -56,6 +59,10 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
     chart.streamTo(canvas, 2000);
     chartRef.current = chart;
 
+    const intervalId = setInterval(() => {
+      seriesRef.current.append(Date.now(), usageRef.current);
+    }, 1000);
+
     // Flip tooltip to the left when mouse is on the right half
     const chartAny = chart as SmoothieChart & { tooltipEl?: HTMLElement };
     const onMove = (evt: MouseEvent) => {
@@ -70,15 +77,11 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
     canvas.addEventListener("mousemove", onMove);
 
     return () => {
+      clearInterval(intervalId);
       chart.stop();
       canvas.removeEventListener("mousemove", onMove);
     };
   }, [color]);
-
-  // Append data points when value changes
-  useEffect(() => {
-    seriesRef.current.append(Date.now(), usage);
-  }, [usage]);
 
   return (
     <div

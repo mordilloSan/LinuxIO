@@ -15,6 +15,10 @@ const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
   const seriesRef = useRef<TimeSeries>(new TimeSeries());
+  const valueRef = useRef(value);
+
+  // Always keep the ref in sync with the latest prop
+  valueRef.current = value;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -57,6 +61,12 @@ const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
     chart.streamTo(canvas, 1000);
     chartRef.current = chart;
 
+    // Append a data point every second on a fixed interval,
+    // completely decoupled from React's render cycle.
+    const intervalId = setInterval(() => {
+      seriesRef.current.append(Date.now(), valueRef.current);
+    }, 1000);
+
     const chartAny = chart as SmoothieChart & { tooltipEl?: HTMLElement };
     const onMove = (evt: MouseEvent) => {
       const tooltip = chartAny.tooltipEl;
@@ -70,15 +80,11 @@ const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
     canvas.addEventListener("mousemove", onMove);
 
     return () => {
+      clearInterval(intervalId);
       chart.stop();
       canvas.removeEventListener("mousemove", onMove);
     };
   }, [color, label]);
-
-  // Append data points when value changes
-  useEffect(() => {
-    seriesRef.current.append(Date.now(), value);
-  }, [value]);
 
   return (
     <div
