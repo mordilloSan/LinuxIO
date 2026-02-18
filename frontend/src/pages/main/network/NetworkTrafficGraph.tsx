@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useImperativeHandle, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
 interface NetworkTrafficGraphProps {
@@ -7,15 +7,16 @@ interface NetworkTrafficGraphProps {
   label: string;
 }
 
-const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
-  value,
-  color,
-  label,
-}) => {
+const NetworkTrafficGraph = React.forwardRef<
+  HTMLCanvasElement,
+  NetworkTrafficGraphProps
+>(({ value, color, label }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
   const seriesRef = useRef<TimeSeries>(new TimeSeries());
   const valueRef = useRef(value);
+
+  useImperativeHandle(ref, () => canvasRef.current!);
 
   // Keep the ref in sync with the latest prop
   useEffect(() => {
@@ -46,7 +47,7 @@ const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
         data
           .map(
             (d) =>
-              `<span style="color:${color}">${label}: ${d.value.toFixed(2)} kB/s</span>`,
+              `<span style="color:${color}">${label}: ${(d.value / 1024).toFixed(1)} kB/s</span>`,
           )
           .join(""),
       responsive: true,
@@ -88,40 +89,9 @@ const NetworkTrafficGraph: React.FC<NetworkTrafficGraphProps> = ({
     };
   }, [color, label]);
 
-  return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        position: "relative",
-        minWidth: 0,
-      }}
-    >
-      <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
-      <div
-        style={{
-          position: "absolute",
-          bottom: 4,
-          right: 8,
-          fontSize: 11,
-          opacity: 0.7,
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-        }}
-      >
-        <div
-          style={{
-            width: 7,
-            height: 7,
-            backgroundColor: color,
-            borderRadius: "50%",
-          }}
-        />
-        {label}: {value.toFixed(1)} kB/s
-      </div>
-    </div>
-  );
-};
+  return <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />;
+});
+
+NetworkTrafficGraph.displayName = "NetworkTrafficGraph";
 
 export default NetworkTrafficGraph;

@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { Box, Typography, Grid, Tooltip, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 import NetworkTrafficGraph from "./NetworkTrafficGraph";
@@ -99,6 +99,52 @@ const NetworkInterfaceList = () => {
   };
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
+  const rxCanvasRef = useRef<HTMLCanvasElement>(null);
+  const txCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Dispatch a synthetic mouse event directly to a canvas (bubbles: false to avoid loops)
+  const dispatchToCanvas = useCallback(
+    (
+      canvas: HTMLCanvasElement | null,
+      type: string,
+      clientX: number,
+      clientY: number,
+    ) => {
+      if (!canvas) return;
+      canvas.dispatchEvent(
+        new MouseEvent(type, { clientX, clientY, bubbles: false }),
+      );
+    },
+    [],
+  );
+
+  const handleGraphMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      const containerRect = (
+        e.currentTarget as HTMLElement
+      ).getBoundingClientRect();
+      const relX = (e.clientX - containerRect.left) / containerRect.width;
+
+      for (const canvas of [rxCanvasRef.current, txCanvasRef.current]) {
+        if (!canvas) continue;
+        const rect = canvas.getBoundingClientRect();
+        dispatchToCanvas(
+          canvas,
+          "mousemove",
+          rect.left + relX * rect.width,
+          rect.top,
+        );
+      }
+    },
+    [dispatchToCanvas],
+  );
+
+  const handleGraphMouseLeave = useCallback(() => {
+    for (const canvas of [rxCanvasRef.current, txCanvasRef.current]) {
+      if (!canvas) continue;
+      canvas.dispatchEvent(new MouseEvent("mouseout", { bubbles: false }));
+    }
+  }, []);
 
   if (isLoading) {
     return <ComponentLoader />;
@@ -233,44 +279,76 @@ const NetworkInterfaceList = () => {
               transition={{ duration: 0.3, delay: 0.05 }}
             >
               <Box
+                onMouseMove={handleGraphMouseMove}
+                onMouseLeave={handleGraphMouseLeave}
                 sx={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: 3,
+                  gap: 2,
                 }}
               >
                 <Box>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ ml: 1, mb: 0.5, display: "block" }}
-                  >
-                    Receiving
-                  </Typography>
                   <Box sx={{ height: 120, width: "100%", minWidth: 0 }}>
                     <NetworkTrafficGraph
+                      ref={rxCanvasRef}
                       key={`rx-${selectedIface.name}`}
                       value={selectedIface.rx_speed}
                       color="#8884d8"
                       label="RX"
                     />
                   </Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.5,
+                      ml: 1,
+                      mt: 0.5,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 7,
+                        height: 7,
+                        backgroundColor: "#8884d8",
+                        borderRadius: "50%",
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                      RX: {(selectedIface.rx_speed / 1024).toFixed(1)} kB/s
+                    </Typography>
+                  </Box>
                 </Box>
                 <Box>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ ml: 1, mb: 0.5, display: "block" }}
-                  >
-                    Transmitting
-                  </Typography>
                   <Box sx={{ height: 120, width: "100%", minWidth: 0 }}>
                     <NetworkTrafficGraph
+                      ref={txCanvasRef}
                       key={`tx-${selectedIface.name}`}
                       value={selectedIface.tx_speed}
                       color="#82ca9d"
                       label="TX"
                     />
+                  </Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.5,
+                      ml: 1,
+                      mt: 0.5,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 7,
+                        height: 7,
+                        backgroundColor: "#82ca9d",
+                        borderRadius: "50%",
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                      TX: {(selectedIface.tx_speed / 1024).toFixed(1)} kB/s
+                    </Typography>
                   </Box>
                 </Box>
               </Box>
