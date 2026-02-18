@@ -8,7 +8,7 @@ import {
   LocalOffer as TagIcon,
 } from "@mui/icons-material";
 import { Box, Button, Chip, Divider, Grid, MenuItem, Select, Typography } from "@mui/material";
-import { lighten, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -85,7 +85,7 @@ const DaemonSection: React.FC<{
           width: 40,
           height: 40,
           borderRadius: 2,
-          background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`,
+          bgcolor: "primary.main",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -128,7 +128,7 @@ const ResourceCardHeader: React.FC<{
           width: 40,
           height: 40,
           borderRadius: 2,
-          background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`,
+          bgcolor: "primary.main",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -332,11 +332,11 @@ const DockerDashboard: React.FC = () => {
 
       {/* ── Resource Usage ─────────────────────────────────────────────────── */}
       {runningContainers.length > 0 && (
-        <FrostedCard sx={{ p: 2, mb: 2 }}>
-          <Grid container spacing={4}>
-            <Grid size={{ xs: 12, sm: 4 }}>
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <FrostedCard sx={{ p: 2 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Icon icon="ph:cpu" style={{ fontSize: 20, color: "#fff" }} />
                 </Box>
                 <Box>
@@ -351,10 +351,12 @@ const DockerDashboard: React.FC = () => {
                 tooltip={`Total CPU across ${runningContainers.length} running containers`}
                 rightLabel={`${totalCpu.toFixed(1)}%`}
               />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </FrostedCard>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <FrostedCard sx={{ p: 2 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Icon icon="la:memory" style={{ fontSize: 20, color: "#fff" }} />
                 </Box>
                 <Box>
@@ -369,11 +371,13 @@ const DockerDashboard: React.FC = () => {
                 tooltip={`${formatFileSize(totalMemUsage)} / ${formatFileSize(systemMemTotal)}`}
                 rightLabel={formatFileSize(totalMemUsage)}
               />
-            </Grid>
-            {dockerInfo && dockerInfo.disk_total > 0 && (
-              <Grid size={{ xs: 12, sm: 4 }}>
+            </FrostedCard>
+          </Grid>
+          {dockerInfo && dockerInfo.disk_total > 0 && (
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FrostedCard sx={{ p: 2 }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
-                  <Box sx={{ width: 40, height: 40, borderRadius: 2, background: (theme) => `linear-gradient(135deg, ${lighten(theme.palette.primary.main, 0.4)} 0%, ${theme.palette.primary.main} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <Icon icon="mdi:harddisk" style={{ fontSize: 20, color: "#fff" }} />
                   </Box>
                   <Box>
@@ -388,10 +392,10 @@ const DockerDashboard: React.FC = () => {
                   tooltip={`Docker disk usage: ${formatFileSize(dockerInfo.disk_used)} / ${formatFileSize(dockerInfo.disk_total)}`}
                   rightLabel={formatFileSize(dockerInfo.disk_used)}
                 />
-              </Grid>
-            )}
-          </Grid>
-        </FrostedCard>
+              </FrostedCard>
+            </Grid>
+          )}
+        </Grid>
       )}
       <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
         Docker Daemon
@@ -399,38 +403,38 @@ const DockerDashboard: React.FC = () => {
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {dockerInfo && (
-          <Grid size={{ xs: 12 }}>
-            <FrostedCard sx={{ p: 2, height: "100%" }}>
-              <Grid container spacing={4} sx={{ mt: 1 }}>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <DaemonSection title="Version" subtitle="Engine & runtime versions" icon={<TagIcon sx={{ color: "#fff", fontSize: 16 }} />}>
-                    <InfoRow label="Server" value={dockerInfo.server_version} />
-                    <InfoRow label="API" value={dockerInfo.api_version} />
-                    <InfoRow label="Go" value={dockerInfo.go_version} />
-                    <InfoRow label="Git Commit" value={dockerInfo.git_commit} />
-                  </DaemonSection>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <DaemonSection title="System" subtitle="Host machine information" icon={<ComputerIcon sx={{ color: "#fff", fontSize: 16 }} />}>
-                    <InfoRow label="Hostname" value={dockerInfo.name} />
-                    <InfoRow label="OS" value={dockerInfo.operating_system} />
-                    <InfoRow label="Architecture" value={dockerInfo.architecture} />
-                    <InfoRow label="Root Dir" value={dockerInfo.docker_root_dir} />
-                  </DaemonSection>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <DaemonSection title="Configuration" subtitle="Storage & runtime settings" icon={<BuildIcon sx={{ color: "#fff", fontSize: 16 }} />}>
-                    <InfoRow label="Storage Driver" value={dockerInfo.storage_driver} />
-                    <InfoRow label="Cgroup Driver" value={dockerInfo.cgroup_driver} />
-                    <InfoRow label="Cgroup Version" value={dockerInfo.cgroup_version} />
-                    <InfoRow label="Default Runtime" value={dockerInfo.default_runtime} />
-                  </DaemonSection>
-                </Grid>
-              </Grid>
-
-
-            </FrostedCard>
-          </Grid>
+          <>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FrostedCard sx={{ p: 2, height: "100%" }}>
+                <DaemonSection title="Version" subtitle="Engine & runtime versions" icon={<TagIcon sx={{ color: "#fff", fontSize: 16 }} />}>
+                  <InfoRow label="Server" value={dockerInfo.server_version} />
+                  <InfoRow label="API" value={dockerInfo.api_version} />
+                  <InfoRow label="Go" value={dockerInfo.go_version} />
+                  <InfoRow label="Git Commit" value={dockerInfo.git_commit} />
+                </DaemonSection>
+              </FrostedCard>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FrostedCard sx={{ p: 2, height: "100%" }}>
+                <DaemonSection title="System" subtitle="Host machine information" icon={<ComputerIcon sx={{ color: "#fff", fontSize: 16 }} />}>
+                  <InfoRow label="Hostname" value={dockerInfo.name} />
+                  <InfoRow label="OS" value={dockerInfo.operating_system} />
+                  <InfoRow label="Architecture" value={dockerInfo.architecture} />
+                  <InfoRow label="Root Dir" value={dockerInfo.docker_root_dir} />
+                </DaemonSection>
+              </FrostedCard>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <FrostedCard sx={{ p: 2, height: "100%" }}>
+                <DaemonSection title="Configuration" subtitle="Storage & runtime settings" icon={<BuildIcon sx={{ color: "#fff", fontSize: 16 }} />}>
+                  <InfoRow label="Storage Driver" value={dockerInfo.storage_driver} />
+                  <InfoRow label="Cgroup Driver" value={dockerInfo.cgroup_driver} />
+                  <InfoRow label="Cgroup Version" value={dockerInfo.cgroup_version} />
+                  <InfoRow label="Default Runtime" value={dockerInfo.default_runtime} />
+                </DaemonSection>
+              </FrostedCard>
+            </Grid>
+          </>
         )}
       </Grid>
 
