@@ -105,42 +105,23 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         height: "100%",
         position: "relative",
         minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
+      <canvas ref={canvasRef} style={{ width: "100%", flex: 1, minHeight: 0 }} />
       <div
         style={{
           display: "flex",
-          justifyContent: "center",
+          justifyContent: "space-between",
           alignItems: "center",
-          gap: 12,
           marginTop: 4,
           fontSize: 12,
           whiteSpace: "nowrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              backgroundColor: RX_COLOR,
-              borderRadius: "50%",
-            }}
-          />
-          Rx: {rx.toFixed(2)} kB/s
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              backgroundColor: TX_COLOR,
-              borderRadius: "50%",
-            }}
-          />
-          Tx: {tx.toFixed(2)} kB/s
-        </div>
+        <div style={{ color: RX_COLOR, fontWeight: 600 }}>Rx: {rx.toFixed(2)} kB/s</div>
+        <div style={{ color: TX_COLOR, fontWeight: 600 }}>Tx: {tx.toFixed(2)} kB/s</div>
       </div>
     </div>
   );

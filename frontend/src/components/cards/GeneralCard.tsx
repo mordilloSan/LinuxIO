@@ -9,41 +9,90 @@ import {
   SelectChangeEvent,
   Tooltip,
 } from "@mui/material";
+import type { SxProps } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import type { Theme } from "@mui/material/styles";
 import React from "react";
 
 import FrostedCard from "./RootCard";
 
 import { cardHeight } from "@/constants";
 
-interface SelectOption {
+/** A single option rendered inside the card's dropdown selector. */
+export interface SelectOption {
+  /** The internal value passed to `onSelect`. */
   value: string;
+  /** The human-readable label shown in the dropdown. */
   label: string;
+  /** Optional stable key; falls back to array index when omitted. */
   id?: string;
 }
 
-interface GeneralCardProps {
+/**
+ * Whether the card's data source is reachable.
+ * Drives the color of the status indicator dot in the header.
+ */
+export type ConnectionStatus = "online" | "offline" | "warning" | "error";
+
+/**
+ * Controls how horizontal space is divided between the primary stats
+ * column (left) and the secondary stats column (right).
+ *
+ * - `"equal"` — 50 / 50 split (default, both `flex: 1`)
+ * - `"auto"` — right column shrinks to its content width; left fills the rest
+ * - `[n, m]` — explicit CSS flex ratio, e.g. `[1, 2]` gives the right column twice the space
+ *
+ * Both columns always have `overflow: hidden` applied so neither can
+ * burst out of the card boundary.
+ */
+export type ContentLayout = "equal" | "auto" | [number, number];
+
+/**
+ * Discriminated union that enforces the dropdown props are used together.
+ * When `selectOptions` is provided, `onSelect` becomes required.
+ * Without `selectOptions`, none of the select props are accepted.
+ */
+type SelectProps =
+  | {
+      /** Items to populate the header dropdown. Requires `onSelect`. */
+      selectOptions: SelectOption[];
+      /** Currently selected value; defaults to `""` when omitted. */
+      selectedOption?: string;
+      /** Override label shown in the collapsed select trigger. */
+      selectedOptionLabel?: string;
+      /** Called with the new value whenever the user changes the selection. */
+      onSelect: (value: string) => void;
+    }
+  | {
+      selectOptions?: never;
+      selectedOption?: never;
+      selectedOptionLabel?: never;
+      onSelect?: never;
+    };
+
+export type GeneralCardProps = SelectProps & {
+  /** Displayed in the card header. */
   title: string;
+  /** Left-column content — typically a vertical list of `Typography` metrics. */
   stats: React.ReactNode;
-  stats2?: React.ReactNode;
-  avatarIcon: string;
-  icon?: React.ElementType;
-  iconProps?: Record<string, any>;
-  icon_text?: string;
-  selectOptions?: SelectOption[];
-  selectedOption?: string;
-  selectedOptionLabel?: string;
-  onSelect?: (value: string) => void;
-  connectionStatus?: "online" | "offline" | "warning" | "error";
   /**
-   * Controls the flex split between the stats and stats2 panels.
-   * - "equal" (default): 50/50 split (flex: 1 each)
-   * - "auto": stats2 sizes to its content, stats fills the rest
-   * - [n, m]: explicit flex ratio, e.g. [1, 2]
-   * Both panels always have overflow clipping applied.
+   * Right-column content — typically a chart, gauge, or icon grid.
+   * When omitted the card renders `stats` across the full width.
    */
-  contentLayout?: "equal" | "auto" | [number, number];
-}
+  stats2?: React.ReactNode;
+  /** Iconify icon ID rendered as the card's top-right avatar. */
+  avatarIcon: string;
+  /** Optional MUI SvgIcon component shown next to `icon_text` in the header. */
+  icon?: React.ElementType;
+  /** Style overrides forwarded to the `icon` component. */
+  iconProps?: { sx?: SxProps<Theme> };
+  /** Short string (e.g. temperature) rendered beside `icon`. */
+  icon_text?: string;
+  /** Shows a colored dot in the header indicating connectivity state. */
+  connectionStatus?: ConnectionStatus;
+  /** @see {@link ContentLayout} */
+  contentLayout?: ContentLayout;
+};
 
 const GeneralCard: React.FC<GeneralCardProps> = ({
   title,
@@ -63,7 +112,7 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
 
-  const [statsFlex, stats2Flex] = (() => {
+  const [statsFlex, stats2Flex]: [number | string, number | string] = (() => {
     if (contentLayout === "equal") return [1, 1];
     if (contentLayout === "auto") return [1, "0 0 auto"];
     return contentLayout;
