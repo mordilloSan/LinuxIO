@@ -23,8 +23,6 @@ const Dashboard: React.FC = () => {
   const { updateInfo, dismissUpdate } = useUpdateInfo();
   const sidebarItems = useSidebarItems();
 
-  useEffect(() => {}, [updateInfo]);
-
   // Auto-close mobile drawer on route change (mobile only)
   useEffect(() => {
     if (!isDesktop) setMobileOpen(false);
