@@ -109,7 +109,10 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         flexDirection: "column",
       }}
     >
-      <canvas ref={canvasRef} style={{ width: "100%", flex: 1, minHeight: 0 }} />
+      <canvas
+        ref={canvasRef}
+        style={{ width: "100%", flex: 1, minHeight: 0 }}
+      />
       <div
         style={{
           display: "flex",
@@ -120,8 +123,12 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
           whiteSpace: "nowrap",
         }}
       >
-        <div style={{ color: RX_COLOR, fontWeight: 600 }}>Rx: {rx.toFixed(2)} kB/s</div>
-        <div style={{ color: TX_COLOR, fontWeight: 600 }}>Tx: {tx.toFixed(2)} kB/s</div>
+        <div style={{ color: RX_COLOR, fontWeight: 600 }}>
+          Rx: {rx.toFixed(2)} kB/s
+        </div>
+        <div style={{ color: TX_COLOR, fontWeight: 600 }}>
+          Tx: {tx.toFixed(2)} kB/s
+        </div>
       </div>
     </div>
   );

@@ -34,7 +34,9 @@ const ContainerList: React.FC<ContainerListProps> = ({ editMode }) => {
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 2000, tolerance: 5 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 2000, tolerance: 5 },
+    }),
   );
 
   // Merge saved order with live containers:

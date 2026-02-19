@@ -157,167 +157,167 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
   return (
     <FrostedCard
-        sx={{
-          p: 2,
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          position: "relative",
-          transition: "transform 0.2s, box-shadow 0.2s",
-          "&:hover": {
-            transform: "translateY(-4px)",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-          },
-        }}
+      sx={{
+        p: 2,
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        position: "relative",
+        transition: "transform 0.2s, box-shadow 0.2s",
+        "&:hover": {
+          transform: "translateY(-4px)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+        },
+      }}
+    >
+      {/* Status dot */}
+      <Tooltip
+        title={getStatusTooltip(container)}
+        placement="top"
+        arrow
+        slots={{ transition: Fade }}
+        slotProps={{ transition: { timeout: 300 } }}
       >
-        {/* Status dot */}
-        <Tooltip
-          title={getStatusTooltip(container)}
-          placement="top"
-          arrow
-          slots={{ transition: Fade }}
-          slotProps={{ transition: { timeout: 300 } }}
-        >
-          <Box
-            sx={{
-              position: "absolute",
-              top: 18,
-              right: 8,
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              backgroundColor: getStatusColor(container),
-              cursor: "default",
-            }}
-          />
-        </Tooltip>
-
-        {/* Top row: Icon + Name + Buttons */}
         <Box
           sx={{
-            display: "flex",
-            flexDirection: "row",
-            alignItems: "center",
-            width: "100%",
+            position: "absolute",
+            top: 18,
+            right: 8,
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            backgroundColor: getStatusColor(container),
+            cursor: "default",
+          }}
+        />
+      </Tooltip>
+
+      {/* Top row: Icon + Name + Buttons */}
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          width: "100%",
+        }}
+      >
+        <Box
+          sx={{
+            width: 48,
+            height: 48,
+            minWidth: 48,
+            minHeight: 48,
+            flexShrink: 0,
+            mr: 1.5,
+            alignSelf: "flex-start",
           }}
         >
-          <Box
-            sx={{
-              width: 48,
-              height: 48,
-              minWidth: 48,
-              minHeight: 48,
-              flexShrink: 0,
-              mr: 1.5,
-              alignSelf: "flex-start",
-            }}
+          <DockerIcon identifier={container.icon} size={48} alt={name} />
+        </Box>
+        <Box sx={{ flex: 0.95, minWidth: 0 }}>
+          <Typography
+            variant="subtitle1"
+            fontWeight="600"
+            noWrap
+            sx={{ ml: 1, mr: 0.1, mb: 0.5, fontSize: "1.05rem" }}
           >
-            <DockerIcon identifier={container.icon} size={48} alt={name} />
-          </Box>
-          <Box sx={{ flex: 0.95, minWidth: 0 }}>
-            <Typography
-              variant="subtitle1"
-              fontWeight="600"
-              noWrap
-              sx={{ ml: 1, mr: 0.1, mb: 0.5, fontSize: "1.05rem" }}
-            >
-              {name}
-            </Typography>
-            <Box sx={{ display: "flex", gap: 0.5 }}>
-              {container.State !== "running" && (
-                <Tooltip title="Start Container" arrow>
-                  <span>
-                    <ActionButton
-                      icon="mdi:play"
-                      onClick={() => handleAction("start")}
-                    />
-                  </span>
-                </Tooltip>
-              )}
-              {container.State === "running" && (
-                <Tooltip title="Stop Container" arrow>
-                  <span>
-                    <ActionButton
-                      icon="mdi:stop"
-                      onClick={() => handleAction("stop")}
-                    />
-                  </span>
-                </Tooltip>
-              )}
-              <Tooltip title="Restart Container" arrow>
+            {name}
+          </Typography>
+          <Box sx={{ display: "flex", gap: 0.5 }}>
+            {container.State !== "running" && (
+              <Tooltip title="Start Container" arrow>
                 <span>
                   <ActionButton
-                    icon="mdi:restart"
-                    onClick={() => handleAction("restart")}
+                    icon="mdi:play"
+                    onClick={() => handleAction("start")}
                   />
                 </span>
               </Tooltip>
-              <Tooltip title="Remove Container" arrow>
+            )}
+            {container.State === "running" && (
+              <Tooltip title="Stop Container" arrow>
                 <span>
                   <ActionButton
-                    icon="mdi:delete"
-                    onClick={() => handleAction("remove")}
+                    icon="mdi:stop"
+                    onClick={() => handleAction("stop")}
                   />
                 </span>
               </Tooltip>
-              <Tooltip title="View Logs" arrow>
-                <span>
-                  <ActionButton
-                    icon="mdi:file-document-outline"
-                    onClick={handleLogsClick}
-                  />
-                </span>
-              </Tooltip>
-              <Tooltip title="Open Terminal" arrow>
-                <span>
-                  <ActionButton
-                    icon="mdi:console"
-                    onClick={() => setTerminalOpen(true)}
-                  />
-                </span>
-              </Tooltip>
-            </Box>
+            )}
+            <Tooltip title="Restart Container" arrow>
+              <span>
+                <ActionButton
+                  icon="mdi:restart"
+                  onClick={() => handleAction("restart")}
+                />
+              </span>
+            </Tooltip>
+            <Tooltip title="Remove Container" arrow>
+              <span>
+                <ActionButton
+                  icon="mdi:delete"
+                  onClick={() => handleAction("remove")}
+                />
+              </span>
+            </Tooltip>
+            <Tooltip title="View Logs" arrow>
+              <span>
+                <ActionButton
+                  icon="mdi:file-document-outline"
+                  onClick={handleLogsClick}
+                />
+              </span>
+            </Tooltip>
+            <Tooltip title="Open Terminal" arrow>
+              <span>
+                <ActionButton
+                  icon="mdi:console"
+                  onClick={() => setTerminalOpen(true)}
+                />
+              </span>
+            </Tooltip>
           </Box>
         </Box>
+      </Box>
 
-        <LogsDialog
-          open={logDialogOpen}
-          onClose={() => setLogDialogOpen(false)}
-          containerName={name}
-          containerId={container.Id}
-        />
+      <LogsDialog
+        open={logDialogOpen}
+        onClose={() => setLogDialogOpen(false)}
+        containerName={name}
+        containerId={container.Id}
+      />
 
-        <TerminalDialog
-          open={terminalOpen}
-          onClose={() => setTerminalOpen(false)}
-          containerId={container.Id}
-          containerName={name}
-        />
+      <TerminalDialog
+        open={terminalOpen}
+        onClose={() => setTerminalOpen(false)}
+        containerId={container.Id}
+        containerName={name}
+      />
 
-        {/* Metrics area: full width */}
-        <Box sx={{ mt: 2, width: "100%" }}>
-          {isActionPending ? (
-            <ComponentLoader />
-          ) : (
-            <>
-              <MetricBar
-                label="CPU"
-                percent={cpuPercent}
-                color={theme.palette.primary.main}
-                tooltip="CPU Usage"
-                rightLabel={`${cpuPercent.toFixed(1)}%`}
-              />
-              <MetricBar
-                label="MEM"
-                percent={memPercent}
-                color={theme.palette.primary.main}
-                tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
-                rightLabel={formatFileSize(memUsage)}
-              />
-            </>
-          )}
-        </Box>
-      </FrostedCard>
+      {/* Metrics area: full width */}
+      <Box sx={{ mt: 2, width: "100%" }}>
+        {isActionPending ? (
+          <ComponentLoader />
+        ) : (
+          <>
+            <MetricBar
+              label="CPU"
+              percent={cpuPercent}
+              color={theme.palette.primary.main}
+              tooltip="CPU Usage"
+              rightLabel={`${cpuPercent.toFixed(1)}%`}
+            />
+            <MetricBar
+              label="MEM"
+              percent={memPercent}
+              color={theme.palette.primary.main}
+              tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+              rightLabel={formatFileSize(memUsage)}
+            />
+          </>
+        )}
+      </Box>
+    </FrostedCard>
   );
 };
 

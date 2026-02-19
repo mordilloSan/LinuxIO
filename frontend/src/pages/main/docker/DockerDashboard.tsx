@@ -7,7 +7,16 @@ import {
   Layers as ImagesIcon,
   LocalOffer as TagIcon,
 } from "@mui/icons-material";
-import { Box, Button, Chip, Divider, Grid, MenuItem, Select, Typography } from "@mui/material";
+import {
+  Box,
+  Button,
+  Chip,
+  Divider,
+  Grid,
+  MenuItem,
+  Select,
+  Typography,
+} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -20,16 +29,51 @@ import { formatFileSize } from "@/utils/formaters";
 
 // ─── small helpers ────────────────────────────────────────────────────────────
 
+const stateChipSx = (color: string) => ({
+  bgcolor: `${color}22`,
+  color,
+  borderColor: `${color}55`,
+  border: "1px solid",
+  fontWeight: 600,
+});
+
 const StateChip: React.FC<{ state: string; status: string }> = ({
   state,
   status,
 }) => {
+  const theme = useTheme();
   if (status.toLowerCase().includes("unhealthy"))
-    return <Chip size="small" label="Unhealthy" color="warning" />;
+    return (
+      <Chip
+        size="small"
+        label="Unhealthy"
+        sx={stateChipSx(theme.palette.warning.main)}
+      />
+    );
+  if (status.toLowerCase().includes("healthy"))
+    return (
+      <Chip
+        size="small"
+        label="Healthy"
+        sx={stateChipSx(theme.palette.success.main)}
+      />
+    );
   if (state === "running")
-    return <Chip size="small" label="Running" color="success" />;
+    return (
+      <Chip
+        size="small"
+        label="Running"
+        sx={stateChipSx(theme.palette.success.main)}
+      />
+    );
   if (state === "exited" || state === "dead")
-    return <Chip size="small" label="Stopped" color="error" />;
+    return (
+      <Chip
+        size="small"
+        label="Stopped"
+        sx={stateChipSx(theme.palette.error.main)}
+      />
+    );
   return <Chip size="small" label={state} />;
 };
 
@@ -85,7 +129,6 @@ const DaemonSection: React.FC<{
           width: 40,
           height: 40,
           borderRadius: 2,
-          bgcolor: "primary.main",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -128,7 +171,6 @@ const ResourceCardHeader: React.FC<{
           width: 40,
           height: 40,
           borderRadius: 2,
-          bgcolor: "primary.main",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -243,23 +285,41 @@ const DockerDashboard: React.FC = () => {
     [images],
   );
 
-  const [containerSort, setContainerSort] = useState<"recent" | "name" | "state">("recent");
+  const [containerSort, setContainerSort] = useState<
+    "recent" | "name" | "state"
+  >("recent");
 
   const previewContainers = useMemo(() => {
     const list = [...containers];
-    if (containerSort === "recent") return list.sort((a, b) => b.Created - a.Created);
-    if (containerSort === "name") return list.sort((a, b) => (a.Names?.[0] ?? "").localeCompare(b.Names?.[0] ?? ""));
-    if (containerSort === "state") return list.sort((a, b) => (a.State === "running" ? -1 : 1) - (b.State === "running" ? -1 : 1));
+    if (containerSort === "recent")
+      return list.sort((a, b) => b.Created - a.Created);
+    if (containerSort === "name")
+      return list.sort((a, b) =>
+        (a.Names?.[0] ?? "").localeCompare(b.Names?.[0] ?? ""),
+      );
+    if (containerSort === "state")
+      return list.sort(
+        (a, b) =>
+          (a.State === "running" ? -1 : 1) - (b.State === "running" ? -1 : 1),
+      );
     return list;
   }, [containers, containerSort]);
 
-  const [imageSort, setImageSort] = useState<"largest" | "recent" | "name">("largest");
+  const [imageSort, setImageSort] = useState<
+    "largest" | "recent" | "name" | "usage"
+  >("largest");
 
   const previewImages = useMemo(() => {
     const list = [...images];
     if (imageSort === "largest") return list.sort((a, b) => b.Size - a.Size);
-    if (imageSort === "recent") return list.sort((a, b) => b.Created - a.Created);
-    if (imageSort === "name") return list.sort((a, b) => (a.RepoTags?.[0] ?? "").localeCompare(b.RepoTags?.[0] ?? ""));
+    if (imageSort === "recent")
+      return list.sort((a, b) => b.Created - a.Created);
+    if (imageSort === "name")
+      return list.sort((a, b) =>
+        (a.RepoTags?.[0] ?? "").localeCompare(b.RepoTags?.[0] ?? ""),
+      );
+    if (imageSort === "usage")
+      return list.sort((a, b) => (b.Containers ?? 0) - (a.Containers ?? 0));
     return list;
   }, [images, imageSort]);
 
@@ -317,11 +377,27 @@ const DockerDashboard: React.FC = () => {
               >
                 {label}
               </Typography>
-              <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", mt: 0.25 }}>
-                <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.2 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  mt: 0.25,
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  fontWeight={700}
+                  sx={{ lineHeight: 1.2 }}
+                >
                   {value}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" noWrap sx={{ textAlign: "right" }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  noWrap
+                  sx={{ textAlign: "right" }}
+                >
                   {detail}
                 </Typography>
               </Box>
@@ -330,73 +406,6 @@ const DockerDashboard: React.FC = () => {
         ))}
       </Grid>
 
-      {/* ── Resource Usage ─────────────────────────────────────────────────── */}
-      {runningContainers.length > 0 && (
-        <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid size={{ xs: 12, sm: 4 }}>
-            <FrostedCard sx={{ p: 2 }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon icon="ph:cpu" style={{ fontSize: 20, color: "#fff" }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>CPU</Typography>
-                  <Typography variant="caption" color="text.secondary">Processor utilization</Typography>
-                </Box>
-              </Box>
-              <MetricBar
-                label="CPU"
-                percent={Math.min(totalCpu, 100)}
-                color={theme.palette.primary.main}
-                tooltip={`Total CPU across ${runningContainers.length} running containers`}
-                rightLabel={`${totalCpu.toFixed(1)}%`}
-              />
-            </FrostedCard>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 4 }}>
-            <FrostedCard sx={{ p: 2 }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon icon="la:memory" style={{ fontSize: 20, color: "#fff" }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>Memory</Typography>
-                  <Typography variant="caption" color="text.secondary">RAM utilization</Typography>
-                </Box>
-              </Box>
-              <MetricBar
-                label="Memory"
-                percent={totalMemPercent}
-                color={theme.palette.primary.main}
-                tooltip={`${formatFileSize(totalMemUsage)} / ${formatFileSize(systemMemTotal)}`}
-                rightLabel={formatFileSize(totalMemUsage)}
-              />
-            </FrostedCard>
-          </Grid>
-          {dockerInfo && dockerInfo.disk_total > 0 && (
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FrostedCard sx={{ p: 2 }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
-                  <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Icon icon="mdi:harddisk" style={{ fontSize: 20, color: "#fff" }} />
-                  </Box>
-                  <Box>
-                    <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>Disk Usage</Typography>
-                    <Typography variant="caption" color="text.secondary">Storage utilization</Typography>
-                  </Box>
-                </Box>
-                <MetricBar
-                  label="Disk (Docker)"
-                  percent={Math.min((dockerInfo.disk_used / dockerInfo.disk_total) * 100, 100)}
-                  color={theme.palette.primary.main}
-                  tooltip={`Docker disk usage: ${formatFileSize(dockerInfo.disk_used)} / ${formatFileSize(dockerInfo.disk_total)}`}
-                  rightLabel={formatFileSize(dockerInfo.disk_used)}
-                />
-              </FrostedCard>
-            </Grid>
-          )}
-        </Grid>
-      )}
       <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
         Docker Daemon
       </Typography>
@@ -404,9 +413,82 @@ const DockerDashboard: React.FC = () => {
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {dockerInfo && (
           <>
+            {/* ── Resource Usage ────────────────────────────────────────────── */}
+            {runningContainers.length > 0 && (
+              <>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FrostedCard sx={{ p: 2 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+                      <Box sx={{ width: 40, height: 40, borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Icon icon="ph:cpu" width={28} height={28} color={theme.palette.primary.main} />
+                      </Box>
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>CPU</Typography>
+                        <Typography variant="caption" color="text.secondary">Processor utilization</Typography>
+                      </Box>
+                    </Box>
+                    <MetricBar
+                      label="CPU"
+                      percent={Math.min(totalCpu, 100)}
+                      color={theme.palette.primary.main}
+                      tooltip={`Total CPU across ${runningContainers.length} running containers`}
+                      rightLabel={`${totalCpu.toFixed(1)}%`}
+                    />
+                  </FrostedCard>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <FrostedCard sx={{ p: 2 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+                      <Box sx={{ width: 40, height: 40, borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Icon icon="la:memory" width={28} height={28} color={theme.palette.primary.main} />
+                      </Box>
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>Memory</Typography>
+                        <Typography variant="caption" color="text.secondary">RAM utilization</Typography>
+                      </Box>
+                    </Box>
+                    <MetricBar
+                      label="Memory"
+                      percent={totalMemPercent}
+                      color={theme.palette.primary.main}
+                      tooltip={`${formatFileSize(totalMemUsage)} / ${formatFileSize(systemMemTotal)}`}
+                      rightLabel={formatFileSize(totalMemUsage)}
+                    />
+                  </FrostedCard>
+                </Grid>
+                {dockerInfo.disk_total > 0 && (
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <FrostedCard sx={{ p: 2 }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+                        <Box sx={{ width: 40, height: 40, borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <Icon icon="mdi:harddisk" width={28} height={28} color={theme.palette.primary.main} />
+                        </Box>
+                        <Box>
+                          <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>Disk Usage</Typography>
+                          <Typography variant="caption" color="text.secondary">Storage utilization</Typography>
+                        </Box>
+                      </Box>
+                      <MetricBar
+                        label="Disk (Docker)"
+                        percent={Math.min((dockerInfo.disk_used / dockerInfo.disk_total) * 100, 100)}
+                        color={theme.palette.primary.main}
+                        tooltip={`Docker disk usage: ${formatFileSize(dockerInfo.disk_used)} / ${formatFileSize(dockerInfo.disk_total)}`}
+                        rightLabel={formatFileSize(dockerInfo.disk_used)}
+                      />
+                    </FrostedCard>
+                  </Grid>
+                )}
+              </>
+            )}
             <Grid size={{ xs: 12, sm: 4 }}>
               <FrostedCard sx={{ p: 2, height: "100%" }}>
-                <DaemonSection title="Version" subtitle="Engine & runtime versions" icon={<TagIcon sx={{ color: "#fff", fontSize: 16 }} />}>
+                <DaemonSection
+                  title="Version"
+                  subtitle="Engine & runtime versions"
+                  icon={
+                    <TagIcon sx={{ color: "primary.main", fontSize: 28 }} />
+                  }
+                >
                   <InfoRow label="Server" value={dockerInfo.server_version} />
                   <InfoRow label="API" value={dockerInfo.api_version} />
                   <InfoRow label="Go" value={dockerInfo.go_version} />
@@ -416,21 +498,53 @@ const DockerDashboard: React.FC = () => {
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
               <FrostedCard sx={{ p: 2, height: "100%" }}>
-                <DaemonSection title="System" subtitle="Host machine information" icon={<ComputerIcon sx={{ color: "#fff", fontSize: 16 }} />}>
+                <DaemonSection
+                  title="System"
+                  subtitle="Host machine information"
+                  icon={
+                    <ComputerIcon
+                      sx={{ color: "primary.main", fontSize: 28 }}
+                    />
+                  }
+                >
                   <InfoRow label="Hostname" value={dockerInfo.name} />
                   <InfoRow label="OS" value={dockerInfo.operating_system} />
-                  <InfoRow label="Architecture" value={dockerInfo.architecture} />
-                  <InfoRow label="Root Dir" value={dockerInfo.docker_root_dir} />
+                  <InfoRow
+                    label="Architecture"
+                    value={dockerInfo.architecture}
+                  />
+                  <InfoRow
+                    label="Root Dir"
+                    value={dockerInfo.docker_root_dir}
+                  />
                 </DaemonSection>
               </FrostedCard>
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
               <FrostedCard sx={{ p: 2, height: "100%" }}>
-                <DaemonSection title="Configuration" subtitle="Storage & runtime settings" icon={<BuildIcon sx={{ color: "#fff", fontSize: 16 }} />}>
-                  <InfoRow label="Storage Driver" value={dockerInfo.storage_driver} />
-                  <InfoRow label="Cgroup Driver" value={dockerInfo.cgroup_driver} />
-                  <InfoRow label="Cgroup Version" value={dockerInfo.cgroup_version} />
-                  <InfoRow label="Default Runtime" value={dockerInfo.default_runtime} />
+                <DaemonSection
+                  title="Configuration"
+                  subtitle="Storage & runtime settings"
+                  icon={
+                    <BuildIcon sx={{ color: "primary.main", fontSize: 28 }} />
+                  }
+                >
+                  <InfoRow
+                    label="Storage Driver"
+                    value={dockerInfo.storage_driver}
+                  />
+                  <InfoRow
+                    label="Cgroup Driver"
+                    value={dockerInfo.cgroup_driver}
+                  />
+                  <InfoRow
+                    label="Cgroup Version"
+                    value={dockerInfo.cgroup_version}
+                  />
+                  <InfoRow
+                    label="Default Runtime"
+                    value={dockerInfo.default_runtime}
+                  />
                 </DaemonSection>
               </FrostedCard>
             </Grid>
@@ -447,20 +561,27 @@ const DockerDashboard: React.FC = () => {
         <Grid size={{ xs: 12, lg: 6 }}>
           <FrostedCard>
             <ResourceCardHeader
-              icon={<ContainersIcon sx={{ color: "#fff", fontSize: 20 }} />}
+              icon={
+                <ContainersIcon sx={{ color: "primary.main", fontSize: 28 }} />
+              }
               title="Containers"
               subtitle={
                 <Select
                   variant="standard"
                   disableUnderline
                   value={containerSort}
-                  onChange={(e) => setContainerSort(e.target.value as typeof containerSort)}
+                  onChange={(e) =>
+                    setContainerSort(e.target.value as typeof containerSort)
+                  }
                   sx={{
                     fontSize: "0.75rem",
                     color: "text.secondary",
                     lineHeight: 1.4,
                     "& .MuiSelect-select": { p: 0, pr: "18px !important" },
-                    "& .MuiSvgIcon-root": { fontSize: "0.9rem", color: "text.secondary" },
+                    "& .MuiSvgIcon-root": {
+                      fontSize: "0.9rem",
+                      color: "text.secondary",
+                    },
                   }}
                 >
                   <MenuItem value="recent">Recent containers</MenuItem>
@@ -474,25 +595,41 @@ const DockerDashboard: React.FC = () => {
             <Box
               sx={{
                 display: "grid",
-                gridTemplateColumns: "1fr 220px 80px 140px",
+                gridTemplateColumns: {
+                  xs: "1fr 80px",
+                  sm: "1fr 220px 80px 80px",
+                },
                 px: 2,
                 py: 0.75,
               }}
             >
-              {["Name", "Image", "State", "Status"].map((col) => (
+              {(
+                [
+                  { label: "Name" },
+                  { label: "Image", hiddenXs: true },
+                  { label: "State" },
+                  { label: "Status", hiddenXs: true },
+                ] as { label: string; hiddenXs?: boolean }[]
+              ).map(({ label, hiddenXs }) => (
                 <Typography
-                  key={col}
+                  key={label}
                   variant="overline"
                   color="text.secondary"
-                  sx={{ fontSize: "0.65rem" }}
+                  sx={{
+                    fontSize: "0.65rem",
+                    ...(hiddenXs && { display: { xs: "none", sm: "block" } }),
+                  }}
                 >
-                  {col}
+                  {label}
                 </Typography>
               ))}
             </Box>
             <Divider />
 
-            <Box className="custom-scrollbar" sx={{ maxHeight: SCROLL_HEIGHT, overflowY: "auto" }}>
+            <Box
+              className="custom-scrollbar"
+              sx={{ maxHeight: SCROLL_HEIGHT, overflowY: "auto" }}
+            >
               {previewContainers.length === 0 ? (
                 <Box sx={{ px: 2, py: 3, textAlign: "center" }}>
                   <Typography variant="body2" color="text.secondary">
@@ -508,7 +645,10 @@ const DockerDashboard: React.FC = () => {
                       <Box
                         sx={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 220px 80px 140px",
+                          gridTemplateColumns: {
+                            xs: "1fr 80px",
+                            sm: "1fr 220px 80px 80px",
+                          },
                           alignItems: "center",
                           px: 2,
                           py: 1.25,
@@ -535,6 +675,7 @@ const DockerDashboard: React.FC = () => {
                           variant="caption"
                           color="text.secondary"
                           noWrap
+                          sx={{ display: { xs: "none", sm: "block" } }}
                         >
                           {container.Image}
                         </Typography>
@@ -548,8 +689,9 @@ const DockerDashboard: React.FC = () => {
                           variant="caption"
                           color="text.secondary"
                           noWrap
+                          sx={{ display: { xs: "none", sm: "block" } }}
                         >
-                          {container.Status}
+                          {container.Status.replace(/\s*\(.*?\)\s*$/, "")}
                         </Typography>
                       </Box>
                       {i < previewContainers.length - 1 && <Divider />}
@@ -572,25 +714,31 @@ const DockerDashboard: React.FC = () => {
         <Grid size={{ xs: 12, lg: 6 }}>
           <FrostedCard>
             <ResourceCardHeader
-              icon={<ImagesIcon sx={{ color: "#fff", fontSize: 20 }} />}
+              icon={<ImagesIcon sx={{ color: "primary.main", fontSize: 28 }} />}
               title="Images"
               subtitle={
                 <Select
                   variant="standard"
                   disableUnderline
                   value={imageSort}
-                  onChange={(e) => setImageSort(e.target.value as typeof imageSort)}
+                  onChange={(e) =>
+                    setImageSort(e.target.value as typeof imageSort)
+                  }
                   sx={{
                     fontSize: "0.75rem",
                     color: "text.secondary",
                     lineHeight: 1.4,
                     "& .MuiSelect-select": { p: 0, pr: "18px !important" },
-                    "& .MuiSvgIcon-root": { fontSize: "0.9rem", color: "text.secondary" },
+                    "& .MuiSvgIcon-root": {
+                      fontSize: "0.9rem",
+                      color: "text.secondary",
+                    },
                   }}
                 >
                   <MenuItem value="largest">Largest images</MenuItem>
                   <MenuItem value="recent">Most recent</MenuItem>
                   <MenuItem value="name">Sort by name</MenuItem>
+                  <MenuItem value="usage">Most used</MenuItem>
                 </Select>
               }
               onViewAll={() => navigateToTab("images")}
@@ -599,25 +747,41 @@ const DockerDashboard: React.FC = () => {
             <Box
               sx={{
                 display: "grid",
-                gridTemplateColumns: "1fr 80px 80px 80px",
+                gridTemplateColumns: {
+                  xs: "1fr 80px",
+                  sm: "1fr 80px 80px 80px",
+                },
                 px: 2,
                 py: 0.75,
               }}
             >
-              {["Repository", "Tag", "Status", "Size"].map((col) => (
+              {(
+                [
+                  { label: "Repository" },
+                  { label: "Tag", hiddenXs: true },
+                  { label: "Status" },
+                  { label: "Size", hiddenXs: true },
+                ] as { label: string; hiddenXs?: boolean }[]
+              ).map(({ label, hiddenXs }) => (
                 <Typography
-                  key={col}
+                  key={label}
                   variant="overline"
                   color="text.secondary"
-                  sx={{ fontSize: "0.65rem" }}
+                  sx={{
+                    fontSize: "0.65rem",
+                    ...(hiddenXs && { display: { xs: "none", sm: "block" } }),
+                  }}
                 >
-                  {col}
+                  {label}
                 </Typography>
               ))}
             </Box>
             <Divider />
 
-            <Box className="custom-scrollbar" sx={{ maxHeight: SCROLL_HEIGHT, overflowY: "auto" }}>
+            <Box
+              className="custom-scrollbar"
+              sx={{ maxHeight: SCROLL_HEIGHT, overflowY: "auto" }}
+            >
               {previewImages.length === 0 ? (
                 <Box sx={{ px: 2, py: 3, textAlign: "center" }}>
                   <Typography variant="body2" color="text.secondary">
@@ -638,7 +802,10 @@ const DockerDashboard: React.FC = () => {
                       <Box
                         sx={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 80px 80px 80px",
+                          gridTemplateColumns: {
+                            xs: "1fr 80px",
+                            sm: "1fr 80px 80px 80px",
+                          },
                           alignItems: "center",
                           px: 2,
                           py: 1.25,
@@ -651,15 +818,25 @@ const DockerDashboard: React.FC = () => {
                           variant="caption"
                           color="text.secondary"
                           noWrap
+                          sx={{ display: { xs: "none", sm: "block" } }}
                         >
                           {tag}
                         </Typography>
                         <Box>
                           {inUse && (
-                            <Chip size="small" label="In Use" color="success" />
+                            <Chip
+                              size="small"
+                              label="In Use"
+                              sx={stateChipSx(theme.palette.success.main)}
+                            />
                           )}
                         </Box>
-                        <Typography variant="caption" color="text.secondary" noWrap>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          noWrap
+                          sx={{ display: { xs: "none", sm: "block" } }}
+                        >
                           {formatFileSize(image.Size)}
                         </Typography>
                       </Box>

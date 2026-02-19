@@ -104,11 +104,6 @@ var pkInfoNames = map[uint32]string{
 	21: "Preparing",
 }
 
-//go:fix inline
-func toUint32Ptr(v uint32) *uint32 {
-	return new(v)
-}
-
 func packageInfoName(info uint32) string {
 	if n, ok := pkInfoNames[info]; ok {
 		return n
@@ -150,7 +145,7 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Initializing",
-		Percentage: toUint32Ptr(0),
+		Percentage: new(uint32(0)),
 	}); err != nil {
 		logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 	}
@@ -312,7 +307,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 				if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 					Type:       "status",
 					Status:     "Finished",
-					Percentage: toUint32Ptr(100),
+					Percentage: new(uint32(100)),
 				}); err != nil {
 					logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
 				}
