@@ -1,4 +1,12 @@
-import { Box, Chip, Collapse, Divider, Tooltip, Typography, Fade } from "@mui/material";
+import {
+  Box,
+  Chip,
+  Collapse,
+  Divider,
+  Tooltip,
+  Typography,
+  Fade,
+} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState, useCallback, useEffect } from "react";
@@ -350,10 +358,9 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         <Divider sx={{ mt: 1, mb: 1.5 }} />
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
           {ports.map((p, i) => {
-            const label =
-              p.PublicPort
-                ? `${p.PublicPort}:${p.PrivatePort}/${p.Type}`
-                : `${p.PrivatePort}/${p.Type}`;
+            const label = p.PublicPort
+              ? `${p.PublicPort}:${p.PrivatePort}/${p.Type}`
+              : `${p.PrivatePort}/${p.Type}`;
             return (
               <Chip
                 key={i}

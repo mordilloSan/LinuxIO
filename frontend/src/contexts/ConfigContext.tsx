@@ -61,7 +61,8 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     if (config.containerOrder !== undefined)
       payload.appSettings.containerOrder = config.containerOrder;
     if (config.dockerDashboardSections !== undefined)
-      payload.appSettings.dockerDashboardSections = config.dockerDashboardSections;
+      payload.appSettings.dockerDashboardSections =
+        config.dockerDashboardSections;
   }
 
   if (config.dockerFolder !== undefined) {
@@ -93,7 +94,8 @@ const applyDefaults = (
   dashboardOrder: cfg?.dashboardOrder ?? defaultConfig.dashboardOrder,
   hiddenCards: cfg?.hiddenCards ?? defaultConfig.hiddenCards,
   containerOrder: cfg?.containerOrder ?? defaultConfig.containerOrder,
-  dockerDashboardSections: cfg?.dockerDashboardSections ?? defaultConfig.dockerDashboardSections,
+  dockerDashboardSections:
+    cfg?.dockerDashboardSections ?? defaultConfig.dockerDashboardSections,
   dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,
 });
 

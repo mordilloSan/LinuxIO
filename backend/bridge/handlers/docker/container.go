@@ -223,3 +223,69 @@ func RestartContainer(id string) (any, error) {
 
 	return "restarted", nil
 }
+
+// StartAllStopped starts all exited/dead containers and returns counts.
+func StartAllStopped() (any, error) {
+	cli, err := getClient()
+	if err != nil {
+		return nil, fmt.Errorf("docker client error: %w", err)
+	}
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
+
+	ctx := context.Background()
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	started, failed := 0, 0
+	for _, c := range containers {
+		if c.State == "exited" || c.State == "dead" {
+			if err := cli.ContainerStart(ctx, c.ID, container.StartOptions{}); err != nil {
+				logger.Warnf("failed to start container %s: %v", c.ID[:12], err)
+				failed++
+			} else {
+				started++
+			}
+		}
+	}
+
+	return map[string]any{"started": started, "failed": failed}, nil
+}
+
+// StopAllRunning stops all running containers and returns counts.
+func StopAllRunning() (any, error) {
+	cli, err := getClient()
+	if err != nil {
+		return nil, fmt.Errorf("docker client error: %w", err)
+	}
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("failed to close Docker client: %v", cerr)
+		}
+	}()
+
+	ctx := context.Background()
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	stopped, failed := 0, 0
+	for _, c := range containers {
+		if c.State == "running" {
+			if err := cli.ContainerStop(ctx, c.ID, container.StopOptions{}); err != nil {
+				logger.Warnf("failed to stop container %s: %v", c.ID[:12], err)
+				failed++
+			} else {
+				stopped++
+			}
+		}
+	}
+
+	return map[string]any{"stopped": stopped, "failed": failed}, nil
+}

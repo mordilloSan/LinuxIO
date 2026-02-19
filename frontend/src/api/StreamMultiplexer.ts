@@ -149,9 +149,6 @@ class StreamImpl implements Stream {
 
   /** Set data handler - replays scrollback and flushes buffer when attaching */
   set onData(handler: ((data: Uint8Array) => void) | null) {
-    console.log(
-      `[Stream ${this.id}] onData set to ${handler ? "handler" : "null"}, scrollback: ${this.scrollback.length}, buffer items: ${this.buffer.length}, buffer bytes: ${this.bufferedBytes}`,
-    );
     this._onData = handler;
 
     if (handler) {

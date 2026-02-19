@@ -664,6 +664,24 @@ export interface LinuxIOSchema {
       result: { type: string; identifier: string; cached: boolean };
     };
     clear_icon_cache: { args: []; result: { message: string } };
+    start_all_stopped: {
+      args: [];
+      result: { started: number; failed: number };
+    };
+    stop_all_running: {
+      args: [];
+      result: { stopped: number; failed: number };
+    };
+    system_prune: {
+      args: [opts: string];
+      result: {
+        containersDeleted?: string[];
+        imagesDeleted?: string[];
+        networksDeleted?: string[];
+        volumesDeleted?: string[];
+        spaceReclaimed: number;
+      };
+    };
   };
 
   dbus: {

@@ -28,7 +28,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
     <Box
       sx={{
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "space-between",
         gap: 2,
         mb: 2,
@@ -86,7 +86,14 @@ const TabSelector: React.FC<TabSelectorProps> = ({
 
       {rightContent && (
         <Box
-          sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            alignSelf: "flex-start",
+            mt: 0.5,
+            gap: 1,
+            flexShrink: 0,
+          }}
         >
           {rightContent}
         </Box>

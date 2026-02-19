@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 
 	"github.com/mordilloSan/go-logger/logger"
 
@@ -372,5 +373,37 @@ func RegisterHandlers(sess *session.Session) {
 			return err
 		}
 		return emit.Result(map[string]string{"message": "Icon cache cleared successfully"})
+	})
+
+	ipc.RegisterFunc("docker", "start_all_stopped", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := StartAllStopped()
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "stop_all_running", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := StopAllRunning()
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	// args[0] = JSON-encoded PruneOptions
+	ipc.RegisterFunc("docker", "system_prune", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		var opts PruneOptions
+		if err := json.Unmarshal([]byte(args[0]), &opts); err != nil {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := SystemPrune(opts)
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
 	})
 }
