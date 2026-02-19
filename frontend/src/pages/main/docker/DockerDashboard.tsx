@@ -3,6 +3,7 @@ import {
   Build as BuildIcon,
   ChevronRight as ChevronRightIcon,
   Computer as ComputerIcon,
+  ExpandMore as ExpandMoreIcon,
   Inventory2 as ContainersIcon,
   Layers as ImagesIcon,
   LocalOffer as TagIcon,
@@ -11,8 +12,10 @@ import {
   Box,
   Button,
   Chip,
+  Collapse,
   Divider,
   Grid,
+  IconButton,
   MenuItem,
   Select,
   Typography,
@@ -232,6 +235,10 @@ const DockerDashboard: React.FC = () => {
     );
   };
 
+  const [overviewOpen, setOverviewOpen] = useState(true);
+  const [daemonOpen, setDaemonOpen] = useState(true);
+  const [resourcesOpen, setResourcesOpen] = useState(true);
+
   const runningContainers = useMemo(
     () => containers.filter((c) => c.State === "running"),
     [containers],
@@ -328,14 +335,19 @@ const DockerDashboard: React.FC = () => {
   return (
     <Box>
       {/* ── Stat Cards ─────────────────────────────────────────────────────── */}
-      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
-        Overview
-      </Typography>
+      <Box onClick={() => setOverviewOpen((v) => !v)} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, cursor: "pointer", userSelect: "none", "&:hover .section-toggle": { opacity: 1 } }}>
+        <Typography variant="subtitle1" fontWeight={700}>Overview</Typography>
+        <IconButton size="small" className="section-toggle" component="span" sx={{ opacity: 0, transition: "opacity 0.15s", pointerEvents: "none" }}>
+          <ExpandMoreIcon sx={{ transition: "transform 0.2s", transform: overviewOpen ? "rotate(0deg)" : "rotate(-90deg)" }} />
+        </IconButton>
+      </Box>
+      <Collapse in={overviewOpen}>
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {(
           [
             {
               label: "Containers",
+              tab: "containers",
               value: `${containers.length}`,
               detail: [
                 `${runningContainers.length} running`,
@@ -353,23 +365,35 @@ const DockerDashboard: React.FC = () => {
             },
             {
               label: "Images",
+              tab: "images",
               value: `${images.length}`,
               detail: `${formatFileSize(totalImageSize)} on disk`,
             },
             {
               label: "Networks",
+              tab: "networks",
               value: `${networks.length}`,
               detail: `${networks.filter((n) => !n.Internal).length} external`,
             },
             {
               label: "Volumes",
+              tab: "volumes",
               value: `${volumes.length}`,
               detail: `${volumes.filter((v) => v.Driver === "local").length} local`,
             },
-          ] as { label: string; value: string; detail: string }[]
-        ).map(({ label, value, detail }) => (
+          ] as { label: string; tab: string; value: string; detail: string }[]
+        ).map(({ label, tab, value, detail }) => (
           <Grid key={label} size={{ xs: 6, md: 3 }}>
-            <FrostedCard sx={{ px: 2.5, py: 2 }}>
+            <FrostedCard
+              onClick={() => navigateToTab(tab)}
+              sx={{
+                px: 2.5,
+                py: 2,
+                cursor: "pointer",
+                transition: "opacity 0.15s",
+                "&:hover": { opacity: 0.8 },
+              }}
+            >
               <Typography
                 variant="overline"
                 color="text.secondary"
@@ -405,11 +429,16 @@ const DockerDashboard: React.FC = () => {
           </Grid>
         ))}
       </Grid>
+      </Collapse>
 
-      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
-        Docker Daemon
-      </Typography>
+      <Box onClick={() => setDaemonOpen((v) => !v)} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, cursor: "pointer", userSelect: "none", "&:hover .section-toggle": { opacity: 1 } }}>
+        <Typography variant="subtitle1" fontWeight={700}>Docker Daemon</Typography>
+        <IconButton size="small" className="section-toggle" component="span" sx={{ opacity: 0, transition: "opacity 0.15s", pointerEvents: "none" }}>
+          <ExpandMoreIcon sx={{ transition: "transform 0.2s", transform: daemonOpen ? "rotate(0deg)" : "rotate(-90deg)" }} />
+        </IconButton>
+      </Box>
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
+      <Collapse in={daemonOpen}>
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {dockerInfo && (
           <>
@@ -551,11 +580,16 @@ const DockerDashboard: React.FC = () => {
           </>
         )}
       </Grid>
+      </Collapse>
 
       {/* ── Resources ──────────────────────────────────────────────────────── */}
-      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
-        Resources
-      </Typography>
+      <Box onClick={() => setResourcesOpen((v) => !v)} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, cursor: "pointer", userSelect: "none", "&:hover .section-toggle": { opacity: 1 } }}>
+        <Typography variant="subtitle1" fontWeight={700}>Resources</Typography>
+        <IconButton size="small" className="section-toggle" component="span" sx={{ opacity: 0, transition: "opacity 0.15s", pointerEvents: "none" }}>
+          <ExpandMoreIcon sx={{ transition: "transform 0.2s", transform: resourcesOpen ? "rotate(0deg)" : "rotate(-90deg)" }} />
+        </IconButton>
+      </Box>
+      <Collapse in={resourcesOpen}>
       <Grid container spacing={2}>
         {/* Containers table */}
         <Grid size={{ xs: 12, lg: 6 }}>
@@ -856,6 +890,7 @@ const DockerDashboard: React.FC = () => {
           </FrostedCard>
         </Grid>
       </Grid>
+      </Collapse>
     </Box>
   );
 };
