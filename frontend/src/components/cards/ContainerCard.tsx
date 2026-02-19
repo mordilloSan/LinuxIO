@@ -1,7 +1,7 @@
-import { Box, Tooltip, Typography, Fade } from "@mui/material";
+import { Box, Chip, Collapse, Divider, Tooltip, Typography, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
@@ -48,6 +48,30 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   // dialogs
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+
+  // expand / collapse
+  const [expanded, setExpanded] = useState(false);
+  const ports = useMemo(() => {
+    const seen = new Set<string>();
+    return (container.Ports ?? []).filter((p) => {
+      const key = p.PublicPort
+        ? `${p.PublicPort}:${p.PrivatePort}/${p.Type}`
+        : `${p.PrivatePort}/${p.Type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [container.Ports]);
+  const hasPorts = ports.length > 0;
+
+  useEffect(() => {
+    if (!expanded) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [expanded]);
 
   // derived
   const name = useMemo(
@@ -157,12 +181,15 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
 
   return (
     <FrostedCard
+      onClick={hasPorts ? () => setExpanded((v) => !v) : undefined}
+      onMouseDown={hasPorts ? (e) => e.preventDefault() : undefined}
       sx={{
         p: 2,
         display: "flex",
         flexDirection: "column",
         height: "100%",
         position: "relative",
+        cursor: hasPorts ? "pointer" : "default",
         transition: "transform 0.2s, box-shadow 0.2s",
         "&:hover": {
           transform: "translateY(-4px)",
@@ -226,7 +253,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           <Box sx={{ display: "flex", gap: 0.5 }}>
             {container.State !== "running" && (
               <Tooltip title="Start Container" arrow>
-                <span>
+                <span onClick={(e) => e.stopPropagation()}>
                   <ActionButton
                     icon="mdi:play"
                     onClick={() => handleAction("start")}
@@ -236,7 +263,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             )}
             {container.State === "running" && (
               <Tooltip title="Stop Container" arrow>
-                <span>
+                <span onClick={(e) => e.stopPropagation()}>
                   <ActionButton
                     icon="mdi:stop"
                     onClick={() => handleAction("stop")}
@@ -245,7 +272,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               </Tooltip>
             )}
             <Tooltip title="Restart Container" arrow>
-              <span>
+              <span onClick={(e) => e.stopPropagation()}>
                 <ActionButton
                   icon="mdi:restart"
                   onClick={() => handleAction("restart")}
@@ -253,7 +280,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               </span>
             </Tooltip>
             <Tooltip title="Remove Container" arrow>
-              <span>
+              <span onClick={(e) => e.stopPropagation()}>
                 <ActionButton
                   icon="mdi:delete"
                   onClick={() => handleAction("remove")}
@@ -261,7 +288,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               </span>
             </Tooltip>
             <Tooltip title="View Logs" arrow>
-              <span>
+              <span onClick={(e) => e.stopPropagation()}>
                 <ActionButton
                   icon="mdi:file-document-outline"
                   onClick={handleLogsClick}
@@ -269,7 +296,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               </span>
             </Tooltip>
             <Tooltip title="Open Terminal" arrow>
-              <span>
+              <span onClick={(e) => e.stopPropagation()}>
                 <ActionButton
                   icon="mdi:console"
                   onClick={() => setTerminalOpen(true)}
@@ -317,6 +344,27 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           </>
         )}
       </Box>
+
+      {/* Ports section */}
+      <Collapse in={expanded} timeout={250} unmountOnExit>
+        <Divider sx={{ mt: 1, mb: 1.5 }} />
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+          {ports.map((p, i) => {
+            const label =
+              p.PublicPort
+                ? `${p.PublicPort}:${p.PrivatePort}/${p.Type}`
+                : `${p.PrivatePort}/${p.Type}`;
+            return (
+              <Chip
+                key={i}
+                label={label}
+                size="small"
+                sx={{ fontFamily: "monospace", fontSize: "0.7rem", height: 22 }}
+              />
+            );
+          })}
+        </Box>
+      </Collapse>
     </FrostedCard>
   );
 };

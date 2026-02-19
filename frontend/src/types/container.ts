@@ -1,3 +1,10 @@
+export interface ContainerPort {
+  IP?: string;
+  PrivatePort: number;
+  PublicPort?: number;
+  Type: string;
+}
+
 export interface ContainerInfo {
   Id: string;
   Names: string[];
@@ -5,6 +12,7 @@ export interface ContainerInfo {
   Created: number;
   State: string;
   Status: string;
+  Ports?: ContainerPort[];
   icon?: string;
   url?: string;
   metrics?: {
