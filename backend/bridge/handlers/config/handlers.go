@@ -42,13 +42,14 @@ func RegisterHandlers(sess *session.Session) {
 		// Payload with optional nested fields
 		var payload struct {
 			AppSettings *struct {
-				Theme            *string  `json:"theme"`
-				PrimaryColor     *string  `json:"primaryColor"`
-				SidebarCollapsed *bool    `json:"sidebarCollapsed"`
-				ShowHiddenFiles  *bool    `json:"showHiddenFiles"`
-				DashboardOrder   []string `json:"dashboardOrder"`
-				HiddenCards      []string `json:"hiddenCards"`
-				ContainerOrder   []string `json:"containerOrder"`
+				Theme                   *string                  `json:"theme"`
+				PrimaryColor            *string                  `json:"primaryColor"`
+				SidebarCollapsed        *bool                    `json:"sidebarCollapsed"`
+				ShowHiddenFiles         *bool                    `json:"showHiddenFiles"`
+				DashboardOrder          []string                 `json:"dashboardOrder"`
+				HiddenCards             []string                 `json:"hiddenCards"`
+				ContainerOrder          []string                 `json:"containerOrder"`
+				DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections"`
 			} `json:"appSettings"`
 			Docker *struct {
 				Folder *string `json:"folder"`
@@ -93,6 +94,9 @@ func RegisterHandlers(sess *session.Session) {
 			}
 			if payload.AppSettings.ContainerOrder != nil {
 				cfg.AppSettings.ContainerOrder = payload.AppSettings.ContainerOrder
+			}
+			if payload.AppSettings.DockerDashboardSections != nil {
+				cfg.AppSettings.DockerDashboardSections = payload.AppSettings.DockerDashboardSections
 			}
 		}
 

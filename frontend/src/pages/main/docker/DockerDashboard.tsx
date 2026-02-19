@@ -21,13 +21,14 @@ import {
   Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import { useConfigValue } from "@/hooks/useConfig";
 import { formatFileSize } from "@/utils/formaters";
 
 // ─── small helpers ────────────────────────────────────────────────────────────
@@ -235,9 +236,17 @@ const DockerDashboard: React.FC = () => {
     );
   };
 
-  const [overviewOpen, setOverviewOpen] = useState(true);
-  const [daemonOpen, setDaemonOpen] = useState(true);
-  const [resourcesOpen, setResourcesOpen] = useState(true);
+  const [dockerDashboardSections, setDockerDashboardSections] =
+    useConfigValue("dockerDashboardSections");
+  const sections = dockerDashboardSections ?? { overview: true, daemon: true, resources: true };
+  const setSection = useCallback(
+    (key: "overview" | "daemon" | "resources") =>
+      setDockerDashboardSections((prev) => {
+        const cur = prev ?? { overview: true, daemon: true, resources: true };
+        return { ...cur, [key]: !cur[key] };
+      }),
+    [setDockerDashboardSections],
+  );
 
   const runningContainers = useMemo(
     () => containers.filter((c) => c.State === "running"),
@@ -335,13 +344,13 @@ const DockerDashboard: React.FC = () => {
   return (
     <Box>
       {/* ── Stat Cards ─────────────────────────────────────────────────────── */}
-      <Box onClick={() => setOverviewOpen((v) => !v)} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, cursor: "pointer", userSelect: "none", "&:hover .section-toggle": { opacity: 1 } }}>
+      <Box onClick={() => setSection("overview")} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, cursor: "pointer", userSelect: "none", "&:hover .section-toggle": { opacity: 1 } }}>
         <Typography variant="subtitle1" fontWeight={700}>Overview</Typography>
         <IconButton size="small" className="section-toggle" component="span" sx={{ opacity: 0, transition: "opacity 0.15s", pointerEvents: "none" }}>
-          <ExpandMoreIcon sx={{ transition: "transform 0.2s", transform: overviewOpen ? "rotate(0deg)" : "rotate(-90deg)" }} />
+          <ExpandMoreIcon sx={{ transition: "transform 0.2s", transform: sections.overview ? "rotate(0deg)" : "rotate(-90deg)" }} />
         </IconButton>
       </Box>
-      <Collapse in={overviewOpen}>
+      <Collapse in={sections.overview}>
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {(
           [
@@ -431,14 +440,14 @@ const DockerDashboard: React.FC = () => {
       </Grid>
       </Collapse>
 
-      <Box onClick={() => setDaemonOpen((v) => !v)} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, cursor: "pointer", userSelect: "none", "&:hover .section-toggle": { opacity: 1 } }}>
+      <Box onClick={() => setSection("daemon")} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, cursor: "pointer", userSelect: "none", "&:hover .section-toggle": { opacity: 1 } }}>
         <Typography variant="subtitle1" fontWeight={700}>Docker Daemon</Typography>
         <IconButton size="small" className="section-toggle" component="span" sx={{ opacity: 0, transition: "opacity 0.15s", pointerEvents: "none" }}>
-          <ExpandMoreIcon sx={{ transition: "transform 0.2s", transform: daemonOpen ? "rotate(0deg)" : "rotate(-90deg)" }} />
+          <ExpandMoreIcon sx={{ transition: "transform 0.2s", transform: sections.daemon ? "rotate(0deg)" : "rotate(-90deg)" }} />
         </IconButton>
       </Box>
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
-      <Collapse in={daemonOpen}>
+      <Collapse in={sections.daemon}>
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {dockerInfo && (
           <>
@@ -583,13 +592,13 @@ const DockerDashboard: React.FC = () => {
       </Collapse>
 
       {/* ── Resources ──────────────────────────────────────────────────────── */}
-      <Box onClick={() => setResourcesOpen((v) => !v)} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, cursor: "pointer", userSelect: "none", "&:hover .section-toggle": { opacity: 1 } }}>
+      <Box onClick={() => setSection("resources")} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, cursor: "pointer", userSelect: "none", "&:hover .section-toggle": { opacity: 1 } }}>
         <Typography variant="subtitle1" fontWeight={700}>Resources</Typography>
         <IconButton size="small" className="section-toggle" component="span" sx={{ opacity: 0, transition: "opacity 0.15s", pointerEvents: "none" }}>
-          <ExpandMoreIcon sx={{ transition: "transform 0.2s", transform: resourcesOpen ? "rotate(0deg)" : "rotate(-90deg)" }} />
+          <ExpandMoreIcon sx={{ transition: "transform 0.2s", transform: sections.resources ? "rotate(0deg)" : "rotate(-90deg)" }} />
         </IconButton>
       </Box>
-      <Collapse in={resourcesOpen}>
+      <Collapse in={sections.resources}>
       <Grid container spacing={2}>
         {/* Containers table */}
         <Grid size={{ xs: 12, lg: 6 }}>

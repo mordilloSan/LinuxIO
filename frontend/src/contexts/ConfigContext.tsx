@@ -27,6 +27,7 @@ const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   dashboardOrder: settings.appSettings.dashboardOrder,
   hiddenCards: settings.appSettings.hiddenCards,
   containerOrder: settings.appSettings.containerOrder,
+  dockerDashboardSections: settings.appSettings.dockerDashboardSections,
   dockerFolder: settings.docker.folder,
 });
 
@@ -42,7 +43,8 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     config.showHiddenFiles !== undefined ||
     config.dashboardOrder !== undefined ||
     config.hiddenCards !== undefined ||
-    config.containerOrder !== undefined
+    config.containerOrder !== undefined ||
+    config.dockerDashboardSections !== undefined
   ) {
     payload.appSettings = {};
     if (config.theme !== undefined) payload.appSettings.theme = config.theme;
@@ -58,6 +60,8 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
       payload.appSettings.hiddenCards = config.hiddenCards;
     if (config.containerOrder !== undefined)
       payload.appSettings.containerOrder = config.containerOrder;
+    if (config.dockerDashboardSections !== undefined)
+      payload.appSettings.dockerDashboardSections = config.dockerDashboardSections;
   }
 
   if (config.dockerFolder !== undefined) {
@@ -76,6 +80,7 @@ const defaultConfig: AppConfig = {
   dashboardOrder: undefined,
   hiddenCards: undefined,
   containerOrder: undefined,
+  dockerDashboardSections: undefined,
 };
 
 const applyDefaults = (
@@ -88,6 +93,7 @@ const applyDefaults = (
   dashboardOrder: cfg?.dashboardOrder ?? defaultConfig.dashboardOrder,
   hiddenCards: cfg?.hiddenCards ?? defaultConfig.hiddenCards,
   containerOrder: cfg?.containerOrder ?? defaultConfig.containerOrder,
+  dockerDashboardSections: cfg?.dockerDashboardSections ?? defaultConfig.dockerDashboardSections,
   dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,
 });
 

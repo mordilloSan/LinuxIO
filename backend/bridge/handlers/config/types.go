@@ -14,15 +14,23 @@ type Settings struct {
 	Docker      Docker      `json:"docker" yaml:"docker"`
 }
 
+// DockerDashboardSections holds the collapsed state of each dashboard section
+type DockerDashboardSections struct {
+	Overview  bool `json:"overview" yaml:"overview"`
+	Daemon    bool `json:"daemon" yaml:"daemon"`
+	Resources bool `json:"resources" yaml:"resources"`
+}
+
 // AppSettings holds UI-related settings
 type AppSettings struct {
-	Theme            Theme    `json:"theme" yaml:"theme"`
-	PrimaryColor     CSSColor `json:"primaryColor" yaml:"primaryColor"`
-	SidebarCollapsed bool     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
-	ShowHiddenFiles  bool     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
-	DashboardOrder   []string `json:"dashboardOrder,omitempty" yaml:"dashboardOrder,omitempty"`
-	HiddenCards      []string `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
-	ContainerOrder   []string `json:"containerOrder,omitempty" yaml:"containerOrder,omitempty"`
+	Theme                   Theme                    `json:"theme" yaml:"theme"`
+	PrimaryColor            CSSColor                 `json:"primaryColor" yaml:"primaryColor"`
+	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
+	ShowHiddenFiles         bool                     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
+	DashboardOrder          []string                 `json:"dashboardOrder,omitempty" yaml:"dashboardOrder,omitempty"`
+	HiddenCards             []string                 `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
+	ContainerOrder          []string                 `json:"containerOrder,omitempty" yaml:"containerOrder,omitempty"`
+	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections,omitempty" yaml:"dockerDashboardSections,omitempty"`
 }
 
 // Docker holds Docker-related settings

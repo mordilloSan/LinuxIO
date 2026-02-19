@@ -8,6 +8,7 @@ export interface BackendSettings {
     dashboardOrder?: string[];
     hiddenCards?: string[];
     containerOrder?: string[];
+    dockerDashboardSections?: { overview: boolean; daemon: boolean; resources: boolean };
   };
   docker: {
     folder: string;
@@ -24,6 +25,7 @@ export interface AppConfig {
   dashboardOrder?: string[];
   hiddenCards?: string[];
   containerOrder?: string[];
+  dockerDashboardSections?: { overview: boolean; daemon: boolean; resources: boolean };
 }
 
 export interface ConfigContextType {
