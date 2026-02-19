@@ -9,21 +9,30 @@ import {
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, {
+  Suspense,
+  useMemo,
+  useState,
+  useCallback,
+  useEffect,
+} from "react";
 import { toast } from "sonner";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
-import LogsDialog from "../../pages/main/docker/LogsDialog";
 import ComponentLoader from "../loaders/ComponentLoader";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
-import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
+const TerminalDialog = React.lazy(
+  () => import("@/pages/main/docker/TerminalDialog"),
+);
 
 const getStatusColor = (container: ContainerInfo) => {
   const status = container.Status.toLowerCase();
@@ -56,6 +65,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   // dialogs
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
+  const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
 
   // expand / collapse
   const [expanded, setExpanded] = useState(false);
@@ -178,7 +189,15 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     ],
   );
 
-  const handleLogsClick = () => setLogDialogOpen(true);
+  const handleLogsClick = () => {
+    setHasLoadedLogsDialog(true);
+    setLogDialogOpen(true);
+  };
+
+  const handleTerminalClick = () => {
+    setHasLoadedTerminalDialog(true);
+    setTerminalOpen(true);
+  };
 
   // ---- metrics ----
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
@@ -307,7 +326,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               <span onClick={(e) => e.stopPropagation()}>
                 <ActionButton
                   icon="mdi:console"
-                  onClick={() => setTerminalOpen(true)}
+                  onClick={handleTerminalClick}
                 />
               </span>
             </Tooltip>
@@ -315,19 +334,25 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         </Box>
       </Box>
 
-      <LogsDialog
-        open={logDialogOpen}
-        onClose={() => setLogDialogOpen(false)}
-        containerName={name}
-        containerId={container.Id}
-      />
+      <Suspense fallback={null}>
+        {hasLoadedLogsDialog && (
+          <LogsDialog
+            open={logDialogOpen}
+            onClose={() => setLogDialogOpen(false)}
+            containerName={name}
+            containerId={container.Id}
+          />
+        )}
 
-      <TerminalDialog
-        open={terminalOpen}
-        onClose={() => setTerminalOpen(false)}
-        containerId={container.Id}
-        containerName={name}
-      />
+        {hasLoadedTerminalDialog && (
+          <TerminalDialog
+            open={terminalOpen}
+            onClose={() => setTerminalOpen(false)}
+            containerId={container.Id}
+            containerName={name}
+          />
+        )}
+      </Suspense>
 
       {/* Metrics area: full width */}
       <Box sx={{ mt: 2, width: "100%" }}>

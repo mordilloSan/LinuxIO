@@ -29,6 +29,7 @@ const MemoryUsage = () => {
 
   const data = {
     title: "Memory Usage",
+    titleColor: "primary.main",
     stats2: isError ? (
       <ErrorMessage />
     ) : isPending ? (
@@ -43,28 +44,27 @@ const MemoryUsage = () => {
       />
     ),
     stats: (
+      // Variant C: theme-colored title + grey labels + white values
       <Box sx={{ display: "flex", gap: 1, flexDirection: "column" }}>
-        <Typography variant="body1">
-          <strong>Total Memory:</strong>{" "}
-          {formatFileSize(memoryData?.system?.total ?? 0, 2)}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Used Memory:</strong>{" "}
-          {formatFileSize(memoryData?.system?.active ?? 0, 2)}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Docker:</strong>{" "}
-          {formatFileSize(memoryData?.docker?.used ?? 0, 2)}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Swap:</strong>{" "}
-          {formatFileSize(
-            (memoryData?.system?.swapTotal ?? 0) -
-              (memoryData?.system?.swapFree ?? 0),
-            2,
-          )}
-          /{formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}
-        </Typography>
+        <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Total Memory:</Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>{formatFileSize(memoryData?.system?.total ?? 0, 2)}</Typography>
+        </Box>
+        <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Used Memory:</Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>{formatFileSize(memoryData?.system?.active ?? 0, 2)}</Typography>
+        </Box>
+        <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Docker:</Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>{formatFileSize(memoryData?.docker?.used ?? 0, 2)}</Typography>
+        </Box>
+        <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Swap:</Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>
+            {formatFileSize((memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0), 2)}
+            /{formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}
+          </Typography>
+        </Box>
       </Box>
     ),
     avatarIcon: "la:memory",

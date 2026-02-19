@@ -18,6 +18,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   ReactNode,
+  Suspense,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -43,7 +44,6 @@ import DirectoryListing from "@/components/filebrowser/DirectoryListing";
 import ErrorState from "@/components/filebrowser/ErrorState";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
-import FileEditor from "@/components/filebrowser/FileEditor";
 import InputDialog from "@/components/filebrowser/InputDialog";
 import MultiFileDetail from "@/components/filebrowser/MultiFileDetail";
 import PermissionsDialog from "@/components/filebrowser/PermissionsDialog";
@@ -82,6 +82,8 @@ const viewIconMap: Record<ViewMode, ReactNode> = {
   card: <GridViewIcon fontSize="small" />,
   list: <ViewListIcon fontSize="small" />,
 };
+
+const FileEditor = React.lazy(() => import("@/components/filebrowser/FileEditor"));
 
 const FileBrowser: React.FC = () => {
   const location = useLocation();
@@ -1127,15 +1129,17 @@ const FileBrowser: React.FC = () => {
               editingPath &&
               !isEditingFileLoading &&
               editingFileResource && (
-                <FileEditor
-                  ref={editorRef}
-                  filePath={editingPath}
-                  fileName={editingFileResource.name}
-                  initialContent={editingFileResource.content || ""}
-                  onSave={handleSaveFile}
-                  isSaving={isSavingFile}
-                  onDirtyChange={setIsEditorDirty}
-                />
+                <Suspense fallback={<ComponentLoader />}>
+                  <FileEditor
+                    ref={editorRef}
+                    filePath={editingPath}
+                    fileName={editingFileResource.name}
+                    initialContent={editingFileResource.content || ""}
+                    onSave={handleSaveFile}
+                    isSaving={isSavingFile}
+                    onDirtyChange={setIsEditorDirty}
+                  />
+                </Suspense>
               )}
 
             {!editingPath &&

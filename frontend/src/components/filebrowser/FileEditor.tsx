@@ -9,19 +9,8 @@ import {
   useCallback,
 } from "react";
 import AceEditor from "react-ace";
-import "ace-builds/src-noconflict/mode-javascript";
-import "ace-builds/src-noconflict/mode-python";
-import "ace-builds/src-noconflict/mode-java";
-import "ace-builds/src-noconflict/mode-c_cpp";
-import "ace-builds/src-noconflict/mode-html";
-import "ace-builds/src-noconflict/mode-css";
-import "ace-builds/src-noconflict/mode-sql";
-import "ace-builds/src-noconflict/mode-json";
-import "ace-builds/src-noconflict/mode-xml";
-import "ace-builds/src-noconflict/mode-yaml";
-import "ace-builds/src-noconflict/mode-sh";
-import "ace-builds/src-noconflict/theme-github";
-import "ace-builds/src-noconflict/theme-monokai";
+
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface FileEditorProps {
   filePath: string;
@@ -64,6 +53,28 @@ const getLanguageMode = (fileName: string): string => {
   return modeMap[ext] || "text";
 };
 
+const aceModeLoaders: Record<string, () => Promise<unknown>> = {
+  javascript: () => import("ace-builds/src-noconflict/mode-javascript"),
+  python: () => import("ace-builds/src-noconflict/mode-python"),
+  java: () => import("ace-builds/src-noconflict/mode-java"),
+  c_cpp: () => import("ace-builds/src-noconflict/mode-c_cpp"),
+  html: () => import("ace-builds/src-noconflict/mode-html"),
+  css: () => import("ace-builds/src-noconflict/mode-css"),
+  sql: () => import("ace-builds/src-noconflict/mode-sql"),
+  json: () => import("ace-builds/src-noconflict/mode-json"),
+  xml: () => import("ace-builds/src-noconflict/mode-xml"),
+  yaml: () => import("ace-builds/src-noconflict/mode-yaml"),
+  sh: () => import("ace-builds/src-noconflict/mode-sh"),
+};
+
+const aceThemeLoaders: Record<string, () => Promise<unknown>> = {
+  github: () => import("ace-builds/src-noconflict/theme-github"),
+  monokai: () => import("ace-builds/src-noconflict/theme-monokai"),
+};
+
+const loadedAceModes = new Set<string>();
+const loadedAceThemes = new Set<string>();
+
 interface EditorState {
   filePath: string;
   baseContent: string;
@@ -105,6 +116,9 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     const editorRef = useRef<AceEditor>(null);
     const theme = useTheme();
     const isDarkMode = theme.palette.mode === "dark";
+    const language = getLanguageMode(fileName);
+    const aceTheme = isDarkMode ? "monokai" : "github";
+    const [isEditorAssetsReady, setIsEditorAssetsReady] = useState(false);
 
     const updateEditorState = useCallback(
       (updater: (state: EditorState) => EditorState) => {
@@ -151,6 +165,50 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       return () => document.removeEventListener("keydown", handleKeyDown);
     }, []);
 
+    useEffect(() => {
+      let isCancelled = false;
+      const loaders: Promise<unknown>[] = [];
+
+      const loadMode = aceModeLoaders[language];
+      if (loadMode && !loadedAceModes.has(language)) {
+        loaders.push(
+          loadMode().then(() => {
+            loadedAceModes.add(language);
+          }),
+        );
+      }
+
+      const loadTheme = aceThemeLoaders[aceTheme];
+      if (loadTheme && !loadedAceThemes.has(aceTheme)) {
+        loaders.push(
+          loadTheme().then(() => {
+            loadedAceThemes.add(aceTheme);
+          }),
+        );
+      }
+
+      if (loaders.length === 0) {
+        setIsEditorAssetsReady(true);
+        return;
+      }
+
+      setIsEditorAssetsReady(false);
+
+      Promise.all(loaders)
+        .catch((error) => {
+          console.error("Failed to load Ace editor assets:", error);
+        })
+        .finally(() => {
+          if (!isCancelled) {
+            setIsEditorAssetsReady(true);
+          }
+        });
+
+      return () => {
+        isCancelled = true;
+      };
+    }, [language, aceTheme]);
+
     const handleContentChange = (newValue: string) => {
       updateEditorState((state) => ({
         ...state,
@@ -165,8 +223,21 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       isDirty: () => isDirty,
     }));
 
-    const language = getLanguageMode(fileName);
-    const aceTheme = isDarkMode ? "monokai" : "github";
+    if (!isEditorAssetsReady) {
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ComponentLoader />
+        </div>
+      );
+    }
 
     return (
       <AceEditor

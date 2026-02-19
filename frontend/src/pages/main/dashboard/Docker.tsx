@@ -9,7 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
@@ -17,9 +17,12 @@ import GeneralCard from "@/components/cards/GeneralCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import LogsDialog from "@/pages/main/docker/LogsDialog";
-import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
+const TerminalDialog = React.lazy(
+  () => import("@/pages/main/docker/TerminalDialog"),
+);
 
 const stateColor: Record<string, string> = {
   running: "success.main",
@@ -48,6 +51,8 @@ const DockerInfo: React.FC = () => {
   } | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
+  const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
   const [dialogContainer, setDialogContainer] = useState<{
     id: string;
     name: string;
@@ -313,6 +318,7 @@ const DockerInfo: React.FC = () => {
                 id: menuContainer.id,
                 name: menuContainer.name,
               });
+              setHasLoadedLogsDialog(true);
               setLogsOpen(true);
             }
             handleMenuClose();
@@ -330,6 +336,7 @@ const DockerInfo: React.FC = () => {
                 id: menuContainer.id,
                 name: menuContainer.name,
               });
+              setHasLoadedTerminalDialog(true);
               setTerminalOpen(true);
             }
             handleMenuClose();
@@ -354,20 +361,24 @@ const DockerInfo: React.FC = () => {
         contentLayout="auto"
       />
       {dialogContainer && (
-        <>
-          <LogsDialog
-            open={logsOpen}
-            onClose={() => setLogsOpen(false)}
-            containerId={dialogContainer.id}
-            containerName={dialogContainer.name}
-          />
-          <TerminalDialog
-            open={terminalOpen}
-            onClose={() => setTerminalOpen(false)}
-            containerId={dialogContainer.id}
-            containerName={dialogContainer.name}
-          />
-        </>
+        <Suspense fallback={null}>
+          {hasLoadedLogsDialog && (
+            <LogsDialog
+              open={logsOpen}
+              onClose={() => setLogsOpen(false)}
+              containerId={dialogContainer.id}
+              containerName={dialogContainer.name}
+            />
+          )}
+          {hasLoadedTerminalDialog && (
+            <TerminalDialog
+              open={terminalOpen}
+              onClose={() => setTerminalOpen(false)}
+              containerId={dialogContainer.id}
+              containerName={dialogContainer.name}
+            />
+          )}
+        </Suspense>
       )}
     </>
   );

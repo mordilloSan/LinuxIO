@@ -10,6 +10,7 @@ import {
   useTheme,
 } from "@mui/material";
 import React, {
+  Suspense,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -21,10 +22,9 @@ import ComposeValidationFeedback, {
   ValidationResult,
 } from "./ComposeValidationFeedback";
 
-import FileEditor, {
-  FileEditorHandle,
-} from "@/components/filebrowser/FileEditor";
+import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface ComposeEditorDialogProps {
   open: boolean;
@@ -40,6 +40,8 @@ interface ComposeEditorDialogProps {
   ) => Promise<void>;
   onValidate?: (content: string) => Promise<ValidationResult>;
 }
+
+const FileEditor = React.lazy(() => import("@/components/filebrowser/FileEditor"));
 
 const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   open,
@@ -258,14 +260,30 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
           />
 
           <Box sx={{ flex: 1, overflow: "hidden" }}>
-            <FileEditor
-              ref={editorRef}
-              filePath={filePath || "docker-compose.yml"}
-              fileName="docker-compose.yml"
-              initialContent={initialContent}
-              onSave={handleSave}
-              onDirtyChange={setIsEditorDirty}
-            />
+            <Suspense
+              fallback={
+                <Box
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <ComponentLoader />
+                </Box>
+              }
+            >
+              <FileEditor
+                ref={editorRef}
+                filePath={filePath || "docker-compose.yml"}
+                fileName="docker-compose.yml"
+                initialContent={initialContent}
+                onSave={handleSave}
+                onDirtyChange={setIsEditorDirty}
+              />
+            </Suspense>
           </Box>
         </DialogContent>
 

@@ -99,35 +99,31 @@ const SystemHealth = () => {
         mt: 4,
       }}
     >
-      <Typography variant="body1">
-        <strong>Distro:</strong> {distro}
-      </Typography>
-      <Typography variant="body1">
-        <strong>Updates:</strong>{" "}
-        <Link
-          component={RouterLink}
-          to="/updates"
-          underline="hover"
-          color="inherit"
-        >
-          {!systemHealth && (loadingHealth || fetchingHealth)
-            ? "Loading..."
-            : totalPackages > 0
-              ? `${totalPackages} available`
-              : "None available"}
-        </Link>
-      </Typography>
-      <Typography variant="body1">
-        <strong>Services:</strong>{" "}
-        <Link
-          component={RouterLink}
-          to="/services"
-          underline="hover"
-          color="inherit"
-        >
-          {`${running}/${units} running`}
-        </Link>
-      </Typography>
+      {/* Variant A: grey label + white value */}
+      <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
+        <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Distro:</Typography>
+        <Typography variant="body2" fontWeight={500} noWrap>{distro}</Typography>
+      </Box>
+      <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
+        <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Updates:</Typography>
+        <Typography variant="body2" fontWeight={500}>
+          <Link component={RouterLink} to="/updates" underline="hover" color="inherit">
+            {!systemHealth && (loadingHealth || fetchingHealth)
+              ? "Loading..."
+              : totalPackages > 0
+                ? `${totalPackages} available`
+                : "None available"}
+          </Link>
+        </Typography>
+      </Box>
+      <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
+        <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Services:</Typography>
+        <Typography variant="body2" fontWeight={500}>
+          <Link component={RouterLink} to="/services" underline="hover" color="inherit">
+            {`${running}/${units} running`}
+          </Link>
+        </Typography>
+      </Box>
     </Box>
   );
 

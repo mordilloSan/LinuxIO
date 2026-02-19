@@ -73,6 +73,8 @@ type SelectProps =
 export type GeneralCardProps = SelectProps & {
   /** Displayed in the card header. */
   title: string;
+  /** Optional color override for the card title (e.g. "primary.main"). */
+  titleColor?: string;
   /** Left-column content — typically a vertical list of `Typography` metrics. */
   stats: React.ReactNode;
   /**
@@ -96,6 +98,7 @@ export type GeneralCardProps = SelectProps & {
 
 const GeneralCard: React.FC<GeneralCardProps> = ({
   title,
+  titleColor,
   stats,
   stats2,
   avatarIcon,
@@ -224,7 +227,7 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Typography
               variant="h5"
-              sx={{ fontWeight: "bold", transform: "translateY(-1px)" }}
+              sx={{ fontWeight: "bold", transform: "translateY(-1px)", ...(titleColor && { color: titleColor }) }}
             >
               {title}
             </Typography>
