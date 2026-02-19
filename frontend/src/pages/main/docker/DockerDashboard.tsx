@@ -226,14 +226,11 @@ const DockerDashboard: React.FC = () => {
   });
 
   const navigateToTab = (tab: string) => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set("dockerTab", tab);
-        return next;
-      },
-      { replace: true },
-    );
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("dockerTab", tab);
+      return next;
+    });
   };
 
   const [dockerDashboardSections, setDockerDashboardSections] =
