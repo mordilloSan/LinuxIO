@@ -41,6 +41,8 @@ const getStatusLabel = (status: string, state: string): string => {
   return state;
 };
 
+const getCollectionCount = <T,>(items: T[]) => items.length;
+
 const DockerInfo: React.FC = () => {
   const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -139,17 +141,25 @@ const DockerInfo: React.FC = () => {
     refetchInterval: 5000,
   });
 
-  const { data: images = [] } = linuxio.docker.list_images.useQuery({
-    refetchInterval: 30_000,
-  });
+  const { data: imagesCount = 0 } = linuxio.docker.list_images.useQueryWithSelect(
+    {
+      refetchInterval: 30_000,
+      select: getCollectionCount,
+    },
+  );
 
-  const { data: networks = [] } = linuxio.docker.list_networks.useQuery({
-    refetchInterval: 30_000,
-  });
+  const { data: networksCount = 0 } =
+    linuxio.docker.list_networks.useQueryWithSelect({
+      refetchInterval: 30_000,
+      select: getCollectionCount,
+    });
 
-  const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
-    refetchInterval: 30_000,
-  });
+  const { data: volumesCount = 0 } = linuxio.docker.list_volumes.useQueryWithSelect(
+    {
+      refetchInterval: 30_000,
+      select: getCollectionCount,
+    },
+  );
 
   const runningCount = useMemo(
     () => containers.filter((c) => c.State === "running").length,
@@ -180,13 +190,13 @@ const DockerInfo: React.FC = () => {
         <strong>Containers:</strong> {runningCount}/{containers.length}
       </Typography>
       <Typography variant="body1">
-        <strong>Images:</strong> {images.length}
+        <strong>Images:</strong> {imagesCount}
       </Typography>
       <Typography variant="body1">
-        <strong>Networks:</strong> {networks.length}
+        <strong>Networks:</strong> {networksCount}
       </Typography>
       <Typography variant="body1">
-        <strong>Volumes:</strong> {volumes.length}
+        <strong>Volumes:</strong> {volumesCount}
       </Typography>
     </Box>
   );

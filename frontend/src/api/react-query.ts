@@ -59,7 +59,12 @@ function serializeArgs(args: readonly unknown[]): string[] {
  * Query options type
  */
 type QueryOptions<TResult> = Omit<
-  UseQueryOptions<TResult, LinuxIOError>,
+  UseQueryOptions<TResult, LinuxIOError, TResult>,
+  "queryKey" | "queryFn"
+>;
+
+type SelectableQueryOptions<TResult, TData = TResult> = Omit<
+  UseQueryOptions<TResult, LinuxIOError, TData>,
   "queryKey" | "queryFn"
 >;
 
@@ -69,6 +74,10 @@ type QueryOptions<TResult> = Omit<
 type QueryConfig<TResult> = {
   args?: unknown[];
 } & QueryOptions<TResult>;
+
+type SelectableQueryConfig<TResult, TData = TResult> = {
+  args?: unknown[];
+} & SelectableQueryOptions<TResult, TData>;
 
 /**
  * Mutation options type - accepts unknown[] to support complex types
@@ -100,6 +109,17 @@ interface CommandEndpoint<TResult> {
   ) => UseQueryOptions<TResult, LinuxIOError>;
 
   /**
+   * React Query options with support for transformed `select` output data.
+   */
+  queryOptionsWithSelect: <TData = TResult>(
+    ...params: (
+      | string
+      | SelectableQueryOptions<TResult, TData>
+      | SelectableQueryConfig<TResult, TData>
+    )[]
+  ) => UseQueryOptions<TResult, LinuxIOError, TData>;
+
+  /**
    * React Query hook for fetching data
    *
    * @example
@@ -121,6 +141,17 @@ interface CommandEndpoint<TResult> {
   useQuery: (
     ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
   ) => ReturnType<typeof useQuery<TResult, LinuxIOError>>;
+
+  /**
+   * React Query hook with support for transformed `select` output data.
+   */
+  useQueryWithSelect: <TData = TResult>(
+    ...params: (
+      | string
+      | SelectableQueryOptions<TResult, TData>
+      | SelectableQueryConfig<TResult, TData>
+    )[]
+  ) => ReturnType<typeof useQuery<TResult, LinuxIOError, TData>>;
 
   /**
    * React Query hook for mutations
@@ -169,6 +200,45 @@ function parseQueryParams<TResult>(
   return { args, options };
 }
 
+function parseSelectableQueryParams<TResult, TData = TResult>(
+  params: (
+    | string
+    | SelectableQueryOptions<TResult, TData>
+    | SelectableQueryConfig<TResult, TData>
+  )[],
+): {
+  args: unknown[];
+  options: SelectableQueryOptions<TResult, TData> | undefined;
+} {
+  let args: unknown[] = [];
+  let options: SelectableQueryOptions<TResult, TData> | undefined;
+
+  if (
+    params.length === 1 &&
+    params[0] &&
+    typeof params[0] === "object" &&
+    "args" in params[0]
+  ) {
+    const { args: explicitArgs, ...rest } = params[0] as SelectableQueryConfig<
+      TResult,
+      TData
+    >;
+    args = explicitArgs ?? [];
+    options = rest;
+    return { args, options };
+  }
+
+  for (const param of params) {
+    if (typeof param === "string") {
+      args.push(param);
+    } else if (param && typeof param === "object") {
+      options = param as SelectableQueryOptions<TResult, TData>;
+    }
+  }
+
+  return { args, options };
+}
+
 /**
  * Create a command endpoint factory
  */
@@ -199,10 +269,28 @@ function createEndpoint<TResult>(
     };
   };
 
+  const queryOptionsWithSelect = <TData = TResult>(
+    ...params: (
+      | string
+      | SelectableQueryOptions<TResult, TData>
+      | SelectableQueryConfig<TResult, TData>
+    )[]
+  ): UseQueryOptions<TResult, LinuxIOError, TData> => {
+    const { args, options } = parseSelectableQueryParams<TResult, TData>(params);
+    const serializedArgs = serializeArgs(args);
+
+    return {
+      queryKey: ["linuxio", handler, command, ...serializedArgs],
+      queryFn: () => core.call<TResult>(handler, command, serializedArgs),
+      ...(options ?? {}),
+    };
+  };
+
   return {
     call,
     queryKey,
     queryOptions,
+    queryOptionsWithSelect,
     useQuery(
       ...params: (string | QueryOptions<TResult> | QueryConfig<TResult>)[]
     ) {
@@ -211,6 +299,24 @@ function createEndpoint<TResult>(
 
       const baseOptions = queryOptions(...params);
       return useQuery<TResult, LinuxIOError>({
+        ...baseOptions,
+        enabled:
+          isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
+      });
+    },
+
+    useQueryWithSelect<TData = TResult>(
+      ...params: (
+        | string
+        | SelectableQueryOptions<TResult, TData>
+        | SelectableQueryConfig<TResult, TData>
+      )[]
+    ) {
+      const { isOpen } = useStreamMux();
+      const isUpdating = useIsUpdating();
+
+      const baseOptions = queryOptionsWithSelect<TData>(...params);
+      return useQuery<TResult, LinuxIOError, TData>({
         ...baseOptions,
         enabled:
           isOpen && !isUpdating && (baseOptions.enabled ?? true) === true,
@@ -247,6 +353,20 @@ type HandlerEndpoints<H extends HandlerName> = {
         | QueryConfig<CommandResult<H, C>>
       )[]
     ) => UseQueryOptions<CommandResult<H, C>, LinuxIOError>;
+    queryOptionsWithSelect: <TData = CommandResult<H, C>>(
+      ...params: (
+        | string
+        | SelectableQueryOptions<CommandResult<H, C>, TData>
+        | SelectableQueryConfig<CommandResult<H, C>, TData>
+      )[]
+    ) => UseQueryOptions<CommandResult<H, C>, LinuxIOError, TData>;
+    useQueryWithSelect: <TData = CommandResult<H, C>>(
+      ...params: (
+        | string
+        | SelectableQueryOptions<CommandResult<H, C>, TData>
+        | SelectableQueryConfig<CommandResult<H, C>, TData>
+      )[]
+    ) => ReturnType<typeof useQuery<CommandResult<H, C>, LinuxIOError, TData>>;
   };
 };
 
