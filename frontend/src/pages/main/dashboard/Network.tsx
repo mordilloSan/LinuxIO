@@ -106,11 +106,21 @@ const NetworkInterfacesCard: React.FC = () => {
             <Typography
               variant="caption"
               color="text.secondary"
-              sx={{ textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.62rem", flexShrink: 0 }}
+              sx={{
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                fontSize: "0.62rem",
+                flexShrink: 0,
+              }}
             >
               {label}
             </Typography>
-            <Typography variant="body2" fontWeight={500} noWrap sx={{ textAlign: "right" }}>
+            <Typography
+              variant="body2"
+              fontWeight={500}
+              noWrap
+              sx={{ textAlign: "right" }}
+            >
               {value}
             </Typography>
           </Box>

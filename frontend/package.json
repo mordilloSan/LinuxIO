@@ -10,9 +10,10 @@
   },
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/generate-icons.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "analyze": "BUNDLE_ANALYZE=true vite build"
+    "analyze": "node scripts/generate-icons.mjs && BUNDLE_ANALYZE=true vite build"
   },
   "browserslist": [
     "> 0.5%",
@@ -44,6 +45,10 @@
     "sonner": "^2.0.3"
   },
   "devDependencies": {
+    "@iconify-json/bi": "^1.2.7",
+    "@iconify-json/la": "^1.2.1",
+    "@iconify-json/mdi": "^1.2.3",
+    "@iconify-json/ph": "^1.2.2",
     "@tanstack/eslint-plugin-query": "^5.73.3",
     "@tanstack/react-query-devtools": "^5.74.4",
     "@types/node": "^24.3.0",

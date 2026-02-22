@@ -41,7 +41,9 @@ interface ComposeEditorDialogProps {
   onValidate?: (content: string) => Promise<ValidationResult>;
 }
 
-const FileEditor = React.lazy(() => import("@/components/filebrowser/FileEditor"));
+const FileEditor = React.lazy(
+  () => import("@/components/filebrowser/FileEditor"),
+);
 
 const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   open,

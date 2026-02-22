@@ -101,13 +101,32 @@ const SystemHealth = () => {
     >
       {/* Variant A: grey label + white value */}
       <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-        <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Distro:</Typography>
-        <Typography variant="body2" fontWeight={500} noWrap>{distro}</Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ flexShrink: 0 }}
+        >
+          Distro:
+        </Typography>
+        <Typography variant="body2" fontWeight={500} noWrap>
+          {distro}
+        </Typography>
       </Box>
       <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-        <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Updates:</Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ flexShrink: 0 }}
+        >
+          Updates:
+        </Typography>
         <Typography variant="body2" fontWeight={500}>
-          <Link component={RouterLink} to="/updates" underline="hover" color="inherit">
+          <Link
+            component={RouterLink}
+            to="/updates"
+            underline="hover"
+            color="inherit"
+          >
             {!systemHealth && (loadingHealth || fetchingHealth)
               ? "Loading..."
               : totalPackages > 0
@@ -117,9 +136,20 @@ const SystemHealth = () => {
         </Typography>
       </Box>
       <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-        <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>Services:</Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ flexShrink: 0 }}
+        >
+          Services:
+        </Typography>
         <Typography variant="body2" fontWeight={500}>
-          <Link component={RouterLink} to="/services" underline="hover" color="inherit">
+          <Link
+            component={RouterLink}
+            to="/services"
+            underline="hover"
+            color="inherit"
+          >
             {`${running}/${units} running`}
           </Link>
         </Typography>

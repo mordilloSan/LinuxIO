@@ -41,7 +41,8 @@ function PageLoader() {
             filter: "blur(1px)",
             borderRadius: 3,
             transform: "translateX(-150px)",
-            animation: "page-loader-slide 1s cubic-bezier(0.42, 0, 0.58, 1) infinite",
+            animation:
+              "page-loader-slide 1s cubic-bezier(0.42, 0, 0.58, 1) infinite",
             "@keyframes page-loader-slide": {
               "0%": {
                 transform: "translateX(-150px)",

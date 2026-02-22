@@ -74,6 +74,10 @@ const aceThemeLoaders: Record<string, () => Promise<unknown>> = {
 
 const loadedAceModes = new Set<string>();
 const loadedAceThemes = new Set<string>();
+const failedAceModes = new Set<string>();
+const failedAceThemes = new Set<string>();
+const loadingAceModes = new Map<string, Promise<void>>();
+const loadingAceThemes = new Map<string, Promise<void>>();
 
 interface EditorState {
   filePath: string;
@@ -118,7 +122,14 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     const isDarkMode = theme.palette.mode === "dark";
     const language = getLanguageMode(fileName);
     const aceTheme = isDarkMode ? "monokai" : "github";
-    const [isEditorAssetsReady, setIsEditorAssetsReady] = useState(false);
+    const [, forceAssetRefresh] = useState(0);
+    const isEditorAssetsReady =
+      (!aceModeLoaders[language] ||
+        loadedAceModes.has(language) ||
+        failedAceModes.has(language)) &&
+      (!aceThemeLoaders[aceTheme] ||
+        loadedAceThemes.has(aceTheme) ||
+        failedAceThemes.has(aceTheme));
 
     const updateEditorState = useCallback(
       (updater: (state: EditorState) => EditorState) => {
@@ -167,42 +178,69 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
 
     useEffect(() => {
       let isCancelled = false;
-      const loaders: Promise<unknown>[] = [];
+      const pendingLoads: Promise<unknown>[] = [];
 
       const loadMode = aceModeLoaders[language];
-      if (loadMode && !loadedAceModes.has(language)) {
-        loaders.push(
-          loadMode().then(() => {
-            loadedAceModes.add(language);
-          }),
-        );
+      if (
+        loadMode &&
+        !loadedAceModes.has(language) &&
+        !failedAceModes.has(language)
+      ) {
+        const existingModeLoad = loadingAceModes.get(language);
+        if (existingModeLoad) {
+          pendingLoads.push(existingModeLoad);
+        } else {
+          const modeLoad = loadMode()
+            .then(() => {
+              loadedAceModes.add(language);
+            })
+            .catch((error) => {
+              failedAceModes.add(language);
+              console.error(`Failed to load Ace mode "${language}":`, error);
+            })
+            .finally(() => {
+              loadingAceModes.delete(language);
+            });
+          loadingAceModes.set(language, modeLoad);
+          pendingLoads.push(modeLoad);
+        }
       }
 
       const loadTheme = aceThemeLoaders[aceTheme];
-      if (loadTheme && !loadedAceThemes.has(aceTheme)) {
-        loaders.push(
-          loadTheme().then(() => {
-            loadedAceThemes.add(aceTheme);
-          }),
-        );
+      if (
+        loadTheme &&
+        !loadedAceThemes.has(aceTheme) &&
+        !failedAceThemes.has(aceTheme)
+      ) {
+        const existingThemeLoad = loadingAceThemes.get(aceTheme);
+        if (existingThemeLoad) {
+          pendingLoads.push(existingThemeLoad);
+        } else {
+          const themeLoad = loadTheme()
+            .then(() => {
+              loadedAceThemes.add(aceTheme);
+            })
+            .catch((error) => {
+              failedAceThemes.add(aceTheme);
+              console.error(`Failed to load Ace theme "${aceTheme}":`, error);
+            })
+            .finally(() => {
+              loadingAceThemes.delete(aceTheme);
+            });
+          loadingAceThemes.set(aceTheme, themeLoad);
+          pendingLoads.push(themeLoad);
+        }
       }
 
-      if (loaders.length === 0) {
-        setIsEditorAssetsReady(true);
+      if (pendingLoads.length === 0) {
         return;
       }
 
-      setIsEditorAssetsReady(false);
-
-      Promise.all(loaders)
-        .catch((error) => {
-          console.error("Failed to load Ace editor assets:", error);
-        })
-        .finally(() => {
-          if (!isCancelled) {
-            setIsEditorAssetsReady(true);
-          }
-        });
+      Promise.allSettled(pendingLoads).finally(() => {
+        if (!isCancelled) {
+          forceAssetRefresh((version) => version + 1);
+        }
+      });
 
       return () => {
         isCancelled = true;

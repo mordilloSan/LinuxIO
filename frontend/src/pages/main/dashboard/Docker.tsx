@@ -141,12 +141,11 @@ const DockerInfo: React.FC = () => {
     refetchInterval: 5000,
   });
 
-  const { data: imagesCount = 0 } = linuxio.docker.list_images.useQueryWithSelect(
-    {
+  const { data: imagesCount = 0 } =
+    linuxio.docker.list_images.useQueryWithSelect({
       refetchInterval: 30_000,
       select: getCollectionCount,
-    },
-  );
+    });
 
   const { data: networksCount = 0 } =
     linuxio.docker.list_networks.useQueryWithSelect({
@@ -154,12 +153,11 @@ const DockerInfo: React.FC = () => {
       select: getCollectionCount,
     });
 
-  const { data: volumesCount = 0 } = linuxio.docker.list_volumes.useQueryWithSelect(
-    {
+  const { data: volumesCount = 0 } =
+    linuxio.docker.list_volumes.useQueryWithSelect({
       refetchInterval: 30_000,
       select: getCollectionCount,
-    },
-  );
+    });
 
   const runningCount = useMemo(
     () => containers.filter((c) => c.State === "running").length,

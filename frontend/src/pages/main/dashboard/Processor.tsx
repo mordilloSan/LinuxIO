@@ -59,16 +59,43 @@ const Processor: React.FC = () => {
       >
         {/* Variant B: theme-colored label + white value */}
         <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-          <Typography variant="body2" color="primary.main" fontWeight={600} sx={{ flexShrink: 0 }}>CPU:</Typography>
-          <Typography variant="body2" fontWeight={500} noWrap>{CPUInfo?.modelName}</Typography>
+          <Typography
+            variant="body2"
+            color="primary.main"
+            fontWeight={600}
+            sx={{ flexShrink: 0 }}
+          >
+            CPU:
+          </Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>
+            {CPUInfo?.modelName}
+          </Typography>
         </Box>
         <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-          <Typography variant="body2" color="primary.main" fontWeight={600} sx={{ flexShrink: 0 }}>Cores:</Typography>
-          <Typography variant="body2" fontWeight={500}>{CPUInfo?.cores} Threads</Typography>
+          <Typography
+            variant="body2"
+            color="primary.main"
+            fontWeight={600}
+            sx={{ flexShrink: 0 }}
+          >
+            Cores:
+          </Typography>
+          <Typography variant="body2" fontWeight={500}>
+            {CPUInfo?.cores} Threads
+          </Typography>
         </Box>
         <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-          <Typography variant="body2" color="primary.main" fontWeight={600} sx={{ flexShrink: 0 }}>Max Usage:</Typography>
-          <Typography variant="body2" fontWeight={500}>{Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%</Typography>
+          <Typography
+            variant="body2"
+            color="primary.main"
+            fontWeight={600}
+            sx={{ flexShrink: 0 }}
+          >
+            Max Usage:
+          </Typography>
+          <Typography variant="body2" fontWeight={500}>
+            {Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%
+          </Typography>
         </Box>
       </Box>
     ),

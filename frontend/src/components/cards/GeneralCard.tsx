@@ -227,7 +227,11 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Typography
               variant="h5"
-              sx={{ fontWeight: "bold", transform: "translateY(-1px)", ...(titleColor && { color: titleColor }) }}
+              sx={{
+                fontWeight: "bold",
+                transform: "translateY(-1px)",
+                ...(titleColor && { color: titleColor }),
+              }}
             >
               {title}
             </Typography>

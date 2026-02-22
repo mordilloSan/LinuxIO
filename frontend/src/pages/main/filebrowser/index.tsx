@@ -83,7 +83,9 @@ const viewIconMap: Record<ViewMode, ReactNode> = {
   list: <ViewListIcon fontSize="small" />,
 };
 
-const FileEditor = React.lazy(() => import("@/components/filebrowser/FileEditor"));
+const FileEditor = React.lazy(
+  () => import("@/components/filebrowser/FileEditor"),
+);
 
 const FileBrowser: React.FC = () => {
   const location = useLocation();

@@ -1,5 +1,4 @@
 import { Box, Typography, useTheme } from "@mui/material";
-import { motion } from "framer-motion";
 import React from "react";
 
 interface LogoDisplayProps {
@@ -8,6 +7,7 @@ interface LogoDisplayProps {
 
 const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
   const theme = useTheme();
+  const dur = theme.transitions.duration.standard;
 
   return (
     <Typography
@@ -20,24 +20,18 @@ const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
         alignItems: "center",
       }}
     >
-      <motion.span
-        initial={false}
-        animate={{
-          opacity: showText ? 1 : 0,
-          marginRight: showText ? 8 : -50,
-        }}
-        transition={{
-          duration: theme.transitions.duration.standard / 1000,
-          ease: "easeInOut",
-        }}
+      <span
         style={{
           color: theme.palette.text.primary,
           display: "inline-block",
           whiteSpace: "nowrap",
+          opacity: showText ? 1 : 0,
+          marginRight: showText ? 8 : -50,
+          transition: `opacity ${dur}ms ease-in-out, margin-right ${dur}ms ease-in-out`,
         }}
       >
         Linux
-      </motion.span>
+      </span>
 
       <Box
         sx={{
