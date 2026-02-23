@@ -178,24 +178,48 @@ const DockerInfo: React.FC = () => {
     <Box
       sx={{
         display: "flex",
-        gap: 1,
         flexDirection: "column",
         alignSelf: "flex-start",
         mt: 4,
+        width: "fit-content",
       }}
     >
-      <Typography variant="body1">
-        <strong>Containers:</strong> {runningCount}/{containers.length}
-      </Typography>
-      <Typography variant="body1">
-        <strong>Images:</strong> {imagesCount}
-      </Typography>
-      <Typography variant="body1">
-        <strong>Networks:</strong> {networksCount}
-      </Typography>
-      <Typography variant="body1">
-        <strong>Volumes:</strong> {volumesCount}
-      </Typography>
+      {[
+        { label: "Containers", value: `${runningCount}/${containers.length}` },
+        { label: "Images", value: imagesCount },
+        { label: "Networks", value: networksCount },
+        { label: "Volumes", value: volumesCount },
+      ].map(({ label, value }) => (
+        <Box
+          key={label}
+          sx={{
+            display: "flex",
+            justifyContent: "flex-start",
+            alignItems: "baseline",
+            py: 0.5,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            "&:last-child": { borderBottom: "none" },
+            gap: 1,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              fontSize: "0.62rem",
+              flexShrink: 0,
+            }}
+          >
+            {label}
+          </Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>
+            {value}
+          </Typography>
+        </Box>
+      ))}
     </Box>
   );
 

@@ -166,64 +166,7 @@ const components = {
       },
     },
   },
-  // Picker styles cleaned
-  MuiPickersDay: {
-    styleOverrides: {
-      day: { fontWeight: "300" },
-    },
-  },
-  MuiPickersYear: {
-    styleOverrides: {
-      root: { height: "64px" },
-    },
-  },
-  MuiPickersCalendar: {
-    styleOverrides: {
-      transitionContainer: { marginTop: "6px" },
-    },
-  },
-  MuiPickersCalendarHeader: {
-    styleOverrides: {
-      iconButton: {
-        backgroundColor: "transparent",
-        "& > *": { backgroundColor: "transparent" },
-      },
-      switchHeader: {
-        marginTop: "2px",
-        marginBottom: "4px",
-      },
-    },
-  },
-  MuiPickersClock: {
-    styleOverrides: {
-      container: { margin: "32px 0 4px" },
-    },
-  },
-  MuiPickersClockNumber: {
-    styleOverrides: {
-      clockNumber: {
-        left: "calc(50% - 16px)",
-        width: "32px",
-        height: "32px",
-      },
-    },
-  },
-  MuiPickerDTHeader: {
-    styleOverrides: {
-      dateHeader: { "& h4": { fontSize: "2.125rem", fontWeight: 400 } },
-      timeHeader: { "& h3": { fontSize: "3rem", fontWeight: 400 } },
-    },
-  },
-  MuiPickersTimePicker: {
-    styleOverrides: {
-      hourMinuteLabel: { "& h2": { fontSize: "3.75rem", fontWeight: 300 } },
-    },
-  },
-  MuiPickersToolbar: {
-    styleOverrides: {
-      toolbar: { "& h4": { fontSize: "2.125rem", fontWeight: 400 } },
-    },
-  },
+ 
 };
 
 export default components;

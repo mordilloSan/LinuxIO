@@ -93,67 +93,65 @@ const SystemHealth = () => {
     <Box
       sx={{
         display: "flex",
-        gap: 1,
         flexDirection: "column",
         alignSelf: "flex-start",
         mt: 4,
+        width: "fit-content",
       }}
     >
-      {/* Variant A: grey label + white value */}
-      <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ flexShrink: 0 }}
+      {[
+        { label: "Distro", value: <>{distro}</> },
+        {
+          label: "Updates",
+          value: (
+            <Link component={RouterLink} to="/updates" underline="hover" color="inherit">
+              {!systemHealth && (loadingHealth || fetchingHealth)
+                ? "Loading..."
+                : totalPackages > 0
+                  ? `${totalPackages} available`
+                  : "None available"}
+            </Link>
+          ),
+        },
+        {
+          label: "Services",
+          value: (
+            <Link component={RouterLink} to="/services" underline="hover" color="inherit">
+              {`${running}/${units} running`}
+            </Link>
+          ),
+        },
+      ].map(({ label, value }) => (
+        <Box
+          key={label}
+          sx={{
+            display: "flex",
+            justifyContent: "flex-start",
+            alignItems: "baseline",
+            py: 0.5,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            "&:last-child": { borderBottom: "none" },
+            gap: 1,
+          }}
         >
-          Distro:
-        </Typography>
-        <Typography variant="body2" fontWeight={500} noWrap>
-          {distro}
-        </Typography>
-      </Box>
-      <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ flexShrink: 0 }}
-        >
-          Updates:
-        </Typography>
-        <Typography variant="body2" fontWeight={500}>
-          <Link
-            component={RouterLink}
-            to="/updates"
-            underline="hover"
-            color="inherit"
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              fontSize: "0.62rem",
+              flexShrink: 0,
+            }}
           >
-            {!systemHealth && (loadingHealth || fetchingHealth)
-              ? "Loading..."
-              : totalPackages > 0
-                ? `${totalPackages} available`
-                : "None available"}
-          </Link>
-        </Typography>
-      </Box>
-      <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ flexShrink: 0 }}
-        >
-          Services:
-        </Typography>
-        <Typography variant="body2" fontWeight={500}>
-          <Link
-            component={RouterLink}
-            to="/services"
-            underline="hover"
-            color="inherit"
-          >
-            {`${running}/${units} running`}
-          </Link>
-        </Typography>
-      </Box>
+            {label}
+          </Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>
+            {value}
+          </Typography>
+        </Box>
+      ))}
     </Box>
   );
 

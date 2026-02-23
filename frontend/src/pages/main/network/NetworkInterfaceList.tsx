@@ -35,12 +35,6 @@ const getStatusTooltip = (state: number) => {
   return "Unknown";
 };
 
-const getInterfaceType = (name: string) => {
-  if (name.startsWith("wl")) return "wifi";
-  if (name.startsWith("lo")) return "loopback";
-  return "ethernet";
-};
-
 const getInterfaceIcon = (type?: string) => {
   if (type === "wifi") return "mdi:wifi";
   if (type === "ethernet") return "mdi:ethernet";
@@ -60,9 +54,19 @@ const NetworkInterfaceList = () => {
       refetchInterval: 1000,
     });
 
-  // Keep backend object identity where possible; only filter here.
+  // Transform data - filter veths and add type field
   const interfaces = useMemo(
-    () => rawInterfaces.filter((iface) => !iface.name.startsWith("veth")),
+    () =>
+      rawInterfaces
+        .filter((iface) => !iface.name.startsWith("veth"))
+        .map((iface) => ({
+          ...iface,
+          type: iface.name.startsWith("wl")
+            ? "wifi"
+            : iface.name.startsWith("lo")
+              ? "loopback"
+              : "ethernet",
+        })),
     [rawInterfaces],
   );
 
@@ -161,6 +165,7 @@ const NetworkInterfaceList = () => {
                     : { xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }
                 }
                 component={motion.div}
+                layout
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
@@ -216,7 +221,7 @@ const NetworkInterfaceList = () => {
                       }}
                     >
                       <Icon
-                        icon={getInterfaceIcon(getInterfaceType(iface.name))}
+                        icon={getInterfaceIcon(iface.type)}
                         width={36}
                         height={36}
                         color={primaryColor}

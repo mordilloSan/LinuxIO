@@ -51,52 +51,47 @@ const Processor: React.FC = () => {
       <Box
         sx={{
           display: "flex",
-          gap: 1,
           flexDirection: "column",
           alignSelf: "flex-start",
           mt: 4,
+          width: "fit-content",
         }}
       >
-        {/* Variant B: theme-colored label + white value */}
-        <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-          <Typography
-            variant="body2"
-            color="primary.main"
-            fontWeight={600}
-            sx={{ flexShrink: 0 }}
+        {[
+          { label: "CPU", value: CPUInfo?.modelName },
+          { label: "Cores", value: CPUInfo ? `${CPUInfo.cores} Threads` : undefined },
+          { label: "Max Usage", value: `${Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%` },
+        ].map(({ label, value }) => (
+          <Box
+            key={label}
+            sx={{
+              display: "flex",
+              justifyContent: "flex-start",
+              alignItems: "baseline",
+              py: 0.5,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+              "&:last-child": { borderBottom: "none" },
+              gap: 1,
+            }}
           >
-            CPU:
-          </Typography>
-          <Typography variant="body2" fontWeight={500} noWrap>
-            {CPUInfo?.modelName}
-          </Typography>
-        </Box>
-        <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-          <Typography
-            variant="body2"
-            color="primary.main"
-            fontWeight={600}
-            sx={{ flexShrink: 0 }}
-          >
-            Cores:
-          </Typography>
-          <Typography variant="body2" fontWeight={500}>
-            {CPUInfo?.cores} Threads
-          </Typography>
-        </Box>
-        <Box sx={{ display: "flex", gap: 0.5, alignItems: "baseline" }}>
-          <Typography
-            variant="body2"
-            color="primary.main"
-            fontWeight={600}
-            sx={{ flexShrink: 0 }}
-          >
-            Max Usage:
-          </Typography>
-          <Typography variant="body2" fontWeight={500}>
-            {Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%
-          </Typography>
-        </Box>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                fontSize: "0.62rem",
+                flexShrink: 0,
+              }}
+            >
+              {label}
+            </Typography>
+            <Typography variant="body2" fontWeight={500} noWrap>
+              {value}
+            </Typography>
+          </Box>
+        ))}
       </Box>
     ),
     icon_text: IconText,

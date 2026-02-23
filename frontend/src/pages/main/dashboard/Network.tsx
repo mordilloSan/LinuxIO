@@ -77,7 +77,7 @@ const NetworkInterfacesCard: React.FC = () => {
           flexDirection: "column",
           alignSelf: "flex-start",
           mt: 4,
-          width: "100%",
+          width: "fit-content",
         }}
       >
         {[
@@ -94,7 +94,7 @@ const NetworkInterfacesCard: React.FC = () => {
             key={label}
             sx={{
               display: "flex",
-              justifyContent: "space-between",
+              justifyContent: "flex-start",
               alignItems: "baseline",
               py: 0.5,
               borderBottom: "1px solid",
@@ -119,7 +119,6 @@ const NetworkInterfacesCard: React.FC = () => {
               variant="body2"
               fontWeight={500}
               noWrap
-              sx={{ textAlign: "right" }}
             >
               {value}
             </Typography>

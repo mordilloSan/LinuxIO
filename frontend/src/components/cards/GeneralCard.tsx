@@ -292,6 +292,7 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
               mt: 3,
               display: "flex",
               flexDirection: { xs: "row", sm: "row", xl: "row" },
+              gap: 2,
             }}
           >
             <Box
@@ -304,7 +305,6 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
                 justifyContent: "left",
                 "& > *": {
                   minWidth: 0,
-                  width: "100%",
                 },
                 "& .MuiTypography-root": {
                   overflow: "hidden",

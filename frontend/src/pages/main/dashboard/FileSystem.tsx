@@ -60,7 +60,11 @@ const FsInfoCard: React.FC = () => {
 
   const data = {
     title: "FileSystems",
-    stats: isPending ? <ComponentLoader /> : renderFsProgressBars(),
+    stats: (
+      <Box sx={{ width: "100%" }}>
+        {isPending ? <ComponentLoader /> : renderFsProgressBars()}
+      </Box>
+    ),
     avatarIcon: "eos-icons:file-system",
   };
 

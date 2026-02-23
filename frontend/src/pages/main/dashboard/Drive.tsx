@@ -112,27 +112,44 @@ const Drive: React.FC = () => {
     (drive) => drive.name === selectedDriveName,
   );
   const content = selectedDrive ? (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      <Typography variant="body2">
-        <strong>Model:</strong> {selectedDrive.model || "Unknown"}
-      </Typography>
-      <Typography variant="body2">
-        <strong>Type:</strong> {selectedDrive.transport || "Unknown"}
-      </Typography>
-      <Typography variant="body2">
-        <strong>Size:</strong>{" "}
-        {formatFileSize(selectedDrive.sizeBytes) || "Unknown"}
-      </Typography>
-      {selectedDrive.vendor && (
-        <Typography variant="body2">
-          <strong>Vendor:</strong> {selectedDrive.vendor}
-        </Typography>
-      )}
-      {selectedDrive.serial && (
-        <Typography variant="body2">
-          <strong>Serial:</strong> {selectedDrive.serial}
-        </Typography>
-      )}
+    <Box sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}>
+      {[
+        { label: "Model", value: selectedDrive.model || "Unknown" },
+        { label: "Type", value: selectedDrive.transport || "Unknown" },
+        { label: "Size", value: formatFileSize(selectedDrive.sizeBytes) || "Unknown" },
+        ...(selectedDrive.vendor ? [{ label: "Vendor", value: selectedDrive.vendor }] : []),
+        ...(selectedDrive.serial ? [{ label: "Serial", value: selectedDrive.serial }] : []),
+      ].map(({ label, value }) => (
+        <Box
+          key={label}
+          sx={{
+            display: "flex",
+            justifyContent: "flex-start",
+            alignItems: "baseline",
+            py: 0.5,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            "&:last-child": { borderBottom: "none" },
+            gap: 1,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              fontSize: "0.62rem",
+              flexShrink: 0,
+            }}
+          >
+            {label}
+          </Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>
+            {value}
+          </Typography>
+        </Box>
+      ))}
     </Box>
   ) : (
     <Typography variant="body2">No drive selected.</Typography>
