@@ -24,10 +24,16 @@ const GpuInfo: React.FC = () => {
     );
   } else {
     content = (
-      <Box sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}>
+      <Box
+        sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
+      >
         {gpus.flatMap((gpu, idx) =>
           [
-            { label: "GPU", value: `${gpu.vendor} — ${gpu.model}`, key: `gpu-${idx}` },
+            {
+              label: "GPU",
+              value: `${gpu.vendor} — ${gpu.model}`,
+              key: `gpu-${idx}`,
+            },
             { label: "Driver", value: gpu.driver, key: `driver-${idx}` },
             { label: "Address", value: gpu.address, key: `address-${idx}` },
           ].map(({ label, value, key }) => (
@@ -60,7 +66,7 @@ const GpuInfo: React.FC = () => {
                 {value}
               </Typography>
             </Box>
-          ))
+          )),
         )}
       </Box>
     );

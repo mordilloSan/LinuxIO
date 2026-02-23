@@ -13,7 +13,6 @@ interface DriveInfo {
   sizeBytes: number;
   transport: string;
   vendor?: string;
-  serial?: string;
 }
 
 // Parse "953.9G", "0B", "465.8G", "1024M", "1.8T" to bytes
@@ -64,7 +63,6 @@ const Drive: React.FC = () => {
         sizeBytes: parseSizeToBytes(d.size),
         transport: d.type ?? "unknown",
         vendor: d.vendor,
-        serial: d.serial,
       })),
     [rawDrives],
   );
@@ -112,13 +110,19 @@ const Drive: React.FC = () => {
     (drive) => drive.name === selectedDriveName,
   );
   const content = selectedDrive ? (
-    <Box sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}>
+    <Box
+      sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
+    >
       {[
         { label: "Model", value: selectedDrive.model || "Unknown" },
         { label: "Type", value: selectedDrive.transport || "Unknown" },
-        { label: "Size", value: formatFileSize(selectedDrive.sizeBytes) || "Unknown" },
-        ...(selectedDrive.vendor ? [{ label: "Vendor", value: selectedDrive.vendor }] : []),
-        ...(selectedDrive.serial ? [{ label: "Serial", value: selectedDrive.serial }] : []),
+        {
+          label: "Size",
+          value: formatFileSize(selectedDrive.sizeBytes) || "Unknown",
+        },
+        ...(selectedDrive.vendor
+          ? [{ label: "Vendor", value: selectedDrive.vendor }]
+          : []),
       ].map(({ label, value }) => (
         <Box
           key={label}

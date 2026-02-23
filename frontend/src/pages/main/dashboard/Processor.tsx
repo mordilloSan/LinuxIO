@@ -59,8 +59,14 @@ const Processor: React.FC = () => {
       >
         {[
           { label: "CPU", value: CPUInfo?.modelName },
-          { label: "Cores", value: CPUInfo ? `${CPUInfo.cores} Threads` : undefined },
-          { label: "Max Usage", value: `${Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%` },
+          {
+            label: "Cores",
+            value: CPUInfo ? `${CPUInfo.cores} Threads` : undefined,
+          },
+          {
+            label: "Max Usage",
+            value: `${Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%`,
+          },
         ].map(({ label, value }) => (
           <Box
             key={label}

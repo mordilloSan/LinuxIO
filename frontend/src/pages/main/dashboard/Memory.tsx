@@ -48,13 +48,23 @@ const MemoryUsage = () => {
           display: "flex",
           flexDirection: "column",
           alignSelf: "flex-start",
+          mt: 4,
           width: "fit-content",
         }}
       >
         {[
-          { label: "Total", value: formatFileSize(memoryData?.system?.total ?? 0, 2) },
-          { label: "Used", value: formatFileSize(memoryData?.system?.active ?? 0, 2) },
-          { label: "Docker", value: formatFileSize(memoryData?.docker?.used ?? 0, 2) },
+          {
+            label: "Total",
+            value: formatFileSize(memoryData?.system?.total ?? 0, 2),
+          },
+          {
+            label: "Used",
+            value: formatFileSize(memoryData?.system?.active ?? 0, 2),
+          },
+          {
+            label: "Docker",
+            value: formatFileSize(memoryData?.docker?.used ?? 0, 2),
+          },
           {
             label: "Swap",
             value: `${formatFileSize((memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0), 2)}/${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}`,

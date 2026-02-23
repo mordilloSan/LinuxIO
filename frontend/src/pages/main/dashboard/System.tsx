@@ -104,7 +104,12 @@ const SystemHealth = () => {
         {
           label: "Updates",
           value: (
-            <Link component={RouterLink} to="/updates" underline="hover" color="inherit">
+            <Link
+              component={RouterLink}
+              to="/updates"
+              underline="hover"
+              color="inherit"
+            >
               {!systemHealth && (loadingHealth || fetchingHealth)
                 ? "Loading..."
                 : totalPackages > 0
@@ -116,7 +121,12 @@ const SystemHealth = () => {
         {
           label: "Services",
           value: (
-            <Link component={RouterLink} to="/services" underline="hover" color="inherit">
+            <Link
+              component={RouterLink}
+              to="/services"
+              underline="hover"
+              color="inherit"
+            >
               {`${running}/${units} running`}
             </Link>
           ),

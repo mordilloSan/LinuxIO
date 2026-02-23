@@ -115,11 +115,7 @@ const NetworkInterfacesCard: React.FC = () => {
             >
               {label}
             </Typography>
-            <Typography
-              variant="body2"
-              fontWeight={500}
-              noWrap
-            >
+            <Typography variant="body2" fontWeight={500} noWrap>
               {value}
             </Typography>
           </Box>

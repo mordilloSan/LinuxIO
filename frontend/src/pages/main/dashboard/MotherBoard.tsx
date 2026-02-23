@@ -12,10 +12,18 @@ const MotherBoardInfo: React.FC = () => {
     });
 
   const visibleDetails = motherboardInfo ? (
-    <Box sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}>
+    <Box
+      sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
+    >
       {[
-        { label: "Board", value: `${motherboardInfo.baseboard.manufacturer} - ${motherboardInfo.baseboard.model}` },
-        { label: "BIOS", value: `${motherboardInfo.bios.vendor}, V.${motherboardInfo.bios.version}` },
+        {
+          label: "Board",
+          value: `${motherboardInfo.baseboard.manufacturer} - ${motherboardInfo.baseboard.model}`,
+        },
+        {
+          label: "BIOS",
+          value: `${motherboardInfo.bios.vendor}, V.${motherboardInfo.bios.version}`,
+        },
       ].map(({ label, value }) => (
         <Box
           key={label}
