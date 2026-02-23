@@ -2,7 +2,7 @@ import { Box, Typography } from "@mui/material";
 import React, { useState, useMemo } from "react";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -80,7 +80,7 @@ const Drive: React.FC = () => {
 
   if (isLoading) {
     return (
-      <GeneralCard
+      <DashboardCard
         title="Drives"
         avatarIcon="mdi:harddisk"
         stats={<ComponentLoader />}
@@ -94,7 +94,7 @@ const Drive: React.FC = () => {
 
   if (isError || drives.length === 0) {
     return (
-      <GeneralCard
+      <DashboardCard
         title="Drives"
         avatarIcon="mdi:harddisk"
         stats={<Typography variant="body2">No drives found.</Typography>}
@@ -165,7 +165,7 @@ const Drive: React.FC = () => {
   }));
 
   return (
-    <GeneralCard
+    <DashboardCard
       title="Drives"
       avatarIcon="mdi:harddisk"
       stats={content}

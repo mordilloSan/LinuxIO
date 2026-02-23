@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react";
 import NetworkGraph from "./NetworkGraph";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const NetworkInterfacesCard: React.FC = () => {
@@ -76,7 +76,6 @@ const NetworkInterfacesCard: React.FC = () => {
           display: "flex",
           flexDirection: "column",
           alignSelf: "flex-start",
-          mt: 4,
           width: "fit-content",
         }}
       >
@@ -143,7 +142,7 @@ const NetworkInterfacesCard: React.FC = () => {
   );
 
   return (
-    <GeneralCard
+    <DashboardCard
       title="Network"
       avatarIcon="mdi:ethernet"
       stats={content}

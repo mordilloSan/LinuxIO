@@ -1,7 +1,7 @@
 import { Typography, Box } from "@mui/material";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -48,7 +48,6 @@ const MemoryUsage = () => {
           display: "flex",
           flexDirection: "column",
           alignSelf: "flex-start",
-          mt: 4,
           width: "fit-content",
         }}
       >
@@ -105,7 +104,7 @@ const MemoryUsage = () => {
     avatarIcon: "la:memory",
   };
 
-  return <GeneralCard {...data} />;
+  return <DashboardCard {...data} />;
 };
 
 export default MemoryUsage;

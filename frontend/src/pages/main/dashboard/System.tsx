@@ -6,7 +6,7 @@ import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 // --- Types ---
@@ -95,7 +95,6 @@ const SystemHealth = () => {
         display: "flex",
         flexDirection: "column",
         alignSelf: "flex-start",
-        mt: 4,
         width: "fit-content",
       }}
     >
@@ -166,7 +165,7 @@ const SystemHealth = () => {
   );
 
   return (
-    <GeneralCard
+    <DashboardCard
       title="System Health"
       stats={stats}
       stats2={stats2}

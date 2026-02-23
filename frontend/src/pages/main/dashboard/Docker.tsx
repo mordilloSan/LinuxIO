@@ -13,7 +13,7 @@ import React, { Suspense, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -180,7 +180,6 @@ const DockerInfo: React.FC = () => {
         display: "flex",
         flexDirection: "column",
         alignSelf: "flex-start",
-        mt: 4,
         width: "fit-content",
       }}
     >
@@ -385,7 +384,7 @@ const DockerInfo: React.FC = () => {
 
   return (
     <>
-      <GeneralCard
+      <DashboardCard
         title="Docker"
         avatarIcon="mdi:docker"
         stats={stats}

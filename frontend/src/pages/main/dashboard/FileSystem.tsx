@@ -3,7 +3,7 @@ import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { FilesystemInfo } from "@/types/fs";
@@ -68,7 +68,7 @@ const FsInfoCard: React.FC = () => {
     avatarIcon: "eos-icons:file-system",
   };
 
-  return <GeneralCard {...data} />;
+  return <DashboardCard {...data} />;
 };
 
 export default FsInfoCard;

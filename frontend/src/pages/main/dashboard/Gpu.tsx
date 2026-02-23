@@ -3,7 +3,7 @@ import { Typography, Box } from "@mui/material";
 import React from "react";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 
 const GpuInfo: React.FC = () => {
   const {
@@ -73,7 +73,7 @@ const GpuInfo: React.FC = () => {
   }
 
   return (
-    <GeneralCard
+    <DashboardCard
       title="GPU"
       stats={content}
       icon={ThermostatIcon}

@@ -3,7 +3,7 @@ import { Typography, Box } from "@mui/material";
 import React from "react";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 
 const MotherBoardInfo: React.FC = () => {
   const { data: motherboardInfo } =
@@ -65,7 +65,7 @@ const MotherBoardInfo: React.FC = () => {
     : "--°C";
 
   return (
-    <GeneralCard
+    <DashboardCard
       title="Motherboard"
       stats={visibleDetails}
       icon_text={IconText}

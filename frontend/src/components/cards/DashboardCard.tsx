@@ -70,7 +70,7 @@ type SelectProps =
       onSelect?: never;
     };
 
-export type GeneralCardProps = SelectProps & {
+export type DashboardCardProps = SelectProps & {
   /** Displayed in the card header. */
   title: string;
   /** Optional color override for the card title (e.g. "primary.main"). */
@@ -96,7 +96,7 @@ export type GeneralCardProps = SelectProps & {
   contentLayout?: ContentLayout;
 };
 
-const GeneralCard: React.FC<GeneralCardProps> = ({
+const DashboardCard: React.FC<DashboardCardProps> = ({
   title,
   titleColor,
   stats,
@@ -305,6 +305,7 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
                 justifyContent: "left",
                 "& > *": {
                   minWidth: 0,
+                  mt: 4,
                 },
                 "& .MuiTypography-root": {
                   overflow: "hidden",
@@ -348,4 +349,4 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
   );
 };
 
-export default GeneralCard;
+export default DashboardCard;
