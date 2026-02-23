@@ -2,8 +2,8 @@ package dbus
 
 import (
 	"fmt"
+	stdnet "net"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -641,23 +641,129 @@ func SetIPv4DHCP(iface string) error {
 func SetIPv6DHCP(iface string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	cmd := exec.Command("nmcli", "con", "mod", iface, "ipv6.method", "auto")
-	if err := cmd.Run(); err != nil {
-		return err
+	if strings.TrimSpace(iface) == "" {
+		return fmt.Errorf("interface name is required")
 	}
-	cmd = exec.Command("nmcli", "con", "up", iface)
-	return cmd.Run()
+
+	return RetryOnceIfClosed(nil, func() error {
+		conn, err := godbus.SystemBus()
+		if err != nil {
+			return fmt.Errorf("connect system bus: %w", err)
+		}
+		defer conn.Close()
+
+		parts, err := getActiveConnForIface(conn, iface)
+		if err != nil {
+			return err
+		}
+
+		settingsConn := conn.Object("org.freedesktop.NetworkManager", parts.SettingsPath)
+		var settings map[string]map[string]godbus.Variant
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
+		).Store(&settings); err != nil {
+			return fmt.Errorf("GetSettings: %w", err)
+		}
+
+		ip6 := settings["ipv6"]
+		if ip6 == nil {
+			ip6 = make(map[string]godbus.Variant)
+		}
+
+		ip6["method"] = godbus.MakeVariant("auto")
+		delete(ip6, "addresses")
+		delete(ip6, "address-data")
+		delete(ip6, "routes")
+		delete(ip6, "route-data")
+		delete(ip6, "gateway")
+		delete(ip6, "dns")
+		delete(ip6, "dns-search")
+		delete(ip6, "dns-options")
+		delete(ip6, "never-default")
+		delete(ip6, "may-fail")
+		delete(ip6, "ignore-auto-dns")
+		delete(ip6, "ignore-auto-routes")
+
+		settings["ipv6"] = ip6
+
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings,
+		).Err; err != nil {
+			return fmt.Errorf("update IPv6 DHCP settings: %w", err)
+		}
+
+		return reloadConnection(conn, parts.SettingsPath)
+	})
 }
 
 func SetIPv6Static(iface, addressCIDR string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	cmd := exec.Command("nmcli", "con", "mod", iface, "ipv6.addresses", addressCIDR, "ipv6.method", "manual")
-	if err := cmd.Run(); err != nil {
-		return err
+	if strings.TrimSpace(iface) == "" {
+		return fmt.Errorf("interface name is required")
 	}
-	cmd = exec.Command("nmcli", "con", "up", iface)
-	return cmd.Run()
+	if strings.TrimSpace(addressCIDR) == "" {
+		return fmt.Errorf("IPv6 CIDR is required")
+	}
+
+	addr, ipNet, err := stdnet.ParseCIDR(strings.TrimSpace(addressCIDR))
+	if err != nil {
+		return fmt.Errorf("invalid IPv6 CIDR %q: %w", addressCIDR, err)
+	}
+	if addr.To16() == nil || addr.To4() != nil {
+		return fmt.Errorf("invalid IPv6 address %q", addressCIDR)
+	}
+
+	prefix, bits := ipNet.Mask.Size()
+	if bits != 128 || prefix < 0 {
+		return fmt.Errorf("invalid IPv6 prefix in %q", addressCIDR)
+	}
+
+	return RetryOnceIfClosed(nil, func() error {
+		conn, err := godbus.SystemBus()
+		if err != nil {
+			return fmt.Errorf("connect system bus: %w", err)
+		}
+		defer conn.Close()
+
+		parts, err := getActiveConnForIface(conn, iface)
+		if err != nil {
+			return err
+		}
+
+		settingsConn := conn.Object("org.freedesktop.NetworkManager", parts.SettingsPath)
+		var settings map[string]map[string]godbus.Variant
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.GetSettings", 0,
+		).Store(&settings); err != nil {
+			return fmt.Errorf("GetSettings: %w", err)
+		}
+
+		ip6 := settings["ipv6"]
+		if ip6 == nil {
+			ip6 = make(map[string]godbus.Variant)
+		}
+
+		addrDict := map[string]godbus.Variant{
+			"address": godbus.MakeVariant(addr.String()),
+			"prefix":  godbus.MakeVariant(uint32(prefix)),
+		}
+		ip6["method"] = godbus.MakeVariant("manual")
+		ip6["address-data"] = godbus.MakeVariant([]map[string]godbus.Variant{addrDict})
+		delete(ip6, "addresses")
+		delete(ip6, "routes")
+		delete(ip6, "route-data")
+
+		settings["ipv6"] = ip6
+
+		if err := settingsConn.Call(
+			"org.freedesktop.NetworkManager.Settings.Connection.Update", 0, settings,
+		).Err; err != nil {
+			return fmt.Errorf("update IPv6 static settings: %w", err)
+		}
+
+		return reloadConnection(conn, parts.SettingsPath)
+	})
 }
 
 // --- Other Network Configuration ---

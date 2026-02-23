@@ -18,6 +18,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/go-logger/logger"
 )
@@ -813,25 +814,16 @@ func EnableInterface(args []string) (any, error) {
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 
-	serviceName := fmt.Sprintf("wg-quick@%s", name)
-	cmd := exec.Command("systemctl", "enable", serviceName)
-
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{Uid: 0, Gid: 0},
-	}
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
-	cmd.Dir = "/"
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		logger.Errorf("EnableInterface: failed to enable %s: %v (%s)", serviceName, err, string(out))
+	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
+	if err := systemd.EnableUnit(serviceName); err != nil {
+		logger.Errorf("EnableInterface: failed to enable %s: %v", serviceName, err)
 		return nil, fmt.Errorf("enable interface: %w", err)
 	}
 
 	logger.Infof("EnableInterface: %s enabled for boot persistence", name)
 	return map[string]any{
 		"status": "enabled",
-		"output": string(out),
+		"output": "enabled via systemd D-Bus",
 	}, nil
 }
 
@@ -847,24 +839,15 @@ func DisableInterface(args []string) (any, error) {
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 
-	serviceName := fmt.Sprintf("wg-quick@%s", name)
-	cmd := exec.Command("systemctl", "disable", serviceName)
-
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{Uid: 0, Gid: 0},
-	}
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
-	cmd.Dir = "/"
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		logger.Errorf("DisableInterface: failed to disable %s: %v (%s)", serviceName, err, string(out))
+	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
+	if err := systemd.DisableUnit(serviceName); err != nil {
+		logger.Errorf("DisableInterface: failed to disable %s: %v", serviceName, err)
 		return nil, fmt.Errorf("disable interface: %w", err)
 	}
 
 	logger.Infof("DisableInterface: %s disabled from boot persistence", name)
 	return map[string]any{
 		"status": "disabled",
-		"output": string(out),
+		"output": "disabled via systemd D-Bus",
 	}, nil
 }
