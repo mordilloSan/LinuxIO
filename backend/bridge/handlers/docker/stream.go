@@ -1,16 +1,16 @@
 package docker
 
 import (
-	"bufio"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
 	"net"
-	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
+	"sync"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/mordilloSan/go-logger/logger"
@@ -205,23 +205,6 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 		}
 	}
 
-	// Build docker compose command based on action
-	var cmdArgs []string
-	switch action {
-	case "up":
-		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "up", "-d"}
-	case "down":
-		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "down"}
-	case "stop":
-		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "stop"}
-	case "restart":
-		// Use 'up -d --remove-orphans' instead of 'restart' to apply compose file changes
-		cmdArgs = []string{"compose", "-f", configFile, "-p", projectName, "up", "-d", "--remove-orphans"}
-	default:
-		sendComposeError(stream, "unsupported action: "+action)
-		return errors.New("unsupported action")
-	}
-
 	// Create context that can be cancelled
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -235,59 +218,36 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 		}
 	}()
 
-	// Execute docker compose command
-	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
-	cmd.Dir = workingDir
-
-	// Get stdout and stderr pipes
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		sendComposeError(stream, "failed to create stdout pipe: "+err.Error())
-		return err
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		sendComposeError(stream, "failed to create stderr pipe: "+err.Error())
-		return err
-	}
-
-	// Start the command
-	if err = cmd.Start(); err != nil {
-		sendComposeError(stream, "failed to start command: "+err.Error())
-		return err
-	}
-
-	// ANSI escape code regex for stripping colors
-	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
-	// Stream stdout in a goroutine
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			// Strip ANSI codes
-			cleanLine := ansiRegex.ReplaceAllString(line, "")
-			sendComposeMessage(stream, "stdout", cleanLine)
+	// Stream compose SDK events and serialize writes to avoid interleaving frames.
+	var streamMu sync.Mutex
+	emit := func(msgType, message string) {
+		if strings.TrimSpace(message) == "" {
+			return
 		}
-	}()
+		streamMu.Lock()
+		sendComposeMessage(stream, msgType, message)
+		streamMu.Unlock()
+	}
 
-	// Stream stderr in a goroutine
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			// Strip ANSI codes
-			cleanLine := ansiRegex.ReplaceAllString(line, "")
-			sendComposeMessage(stream, "stderr", cleanLine)
-		}
-	}()
+	var err error
+	switch action {
+	case "up":
+		err = composeUpWithSDK(ctx, projectName, configFile, workingDir, false, emit)
+	case "down":
+		err = composeDownWithSDK(ctx, projectName, configFile, workingDir, false, emit)
+	case "stop":
+		err = composeStopWithSDK(ctx, projectName, configFile, workingDir, emit)
+	case "restart":
+		// Use up+remove-orphans semantics for restart so compose file changes are applied.
+		err = composeUpWithSDK(ctx, projectName, configFile, workingDir, true, emit)
+	default:
+		sendComposeError(stream, "unsupported action: "+action)
+		return errors.New("unsupported action")
+	}
 
-	// Wait for command to complete
-	err = cmd.Wait()
 	if err != nil {
 		if ctx.Err() == context.Canceled {
-			sendComposeMessage(stream, "error", "operation cancelled")
+			emit("error", "operation cancelled")
 		} else {
 			sendComposeError(stream, "command failed: "+err.Error())
 		}
@@ -295,10 +255,12 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 	}
 
 	// Send completion message
+	streamMu.Lock()
 	sendComposeMessage(stream, "complete", "operation completed successfully")
 	if err := ipc.WriteStreamClose(stream, 1); err != nil {
 		logger.Debugf("[DockerCompose] failed to write stream close frame: %v", err)
 	}
+	streamMu.Unlock()
 	return nil
 }
 

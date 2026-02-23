@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -22,6 +22,11 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 )
+
+var validNetworkMode = regexp.MustCompile(`^(none|host|bridge|service:.+|container:.+)$`)
+var validRestartPolicy = regexp.MustCompile(`^(no|always|unless-stopped|on-failure(:\d+)?)$`)
+var validIPCMode = regexp.MustCompile(`^(host|private|shareable|service:.+)$`)
+var validPIDMode = regexp.MustCompile(`^(host|service:.+)$`)
 
 // ComposeService represents a service within a compose project
 type ComposeService struct {
@@ -254,15 +259,13 @@ func ComposeUp(username, projectName, composePath string) (any, error) {
 		}
 	}
 
-	// Execute docker compose up -d
-	cmd := exec.Command("docker", "compose", "-f", configFile, "-p", projectName, "up", "-d")
-	cmd.Dir = workingDir
-	output, err := cmd.CombinedOutput()
+	collector := &composeMessageCollector{}
+	err := composeUpWithSDK(context.Background(), projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start project: %w\nOutput: %s", err, string(output))
+		return nil, fmt.Errorf("failed to start project: %w\nOutput: %s", err, collector.String())
 	}
 
-	return map[string]string{"message": "Project started successfully", "output": string(output)}, nil
+	return map[string]string{"message": "Project started successfully", "output": collector.String()}, nil
 }
 
 // findComposeFile attempts to locate a compose file for a project
@@ -328,14 +331,13 @@ func ComposeDown(username, projectName string) (any, error) {
 		workingDir = filepath.Dir(configFile)
 	}
 
-	cmd := exec.Command("docker", "compose", "-f", configFile, "-p", projectName, "down")
-	cmd.Dir = workingDir
-	output, err := cmd.CombinedOutput()
+	collector := &composeMessageCollector{}
+	err = composeDownWithSDK(context.Background(), projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, string(output))
+		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
 
-	return map[string]string{"message": "Project stopped successfully", "output": string(output)}, nil
+	return map[string]string{"message": "Project stopped successfully", "output": collector.String()}, nil
 }
 
 // DeleteStackOptions defines what to delete when removing a stack
@@ -378,11 +380,10 @@ func DeleteStack(username, projectName string, options DeleteStackOptions) (any,
 
 	// First, run docker compose down to remove containers and networks
 	if configFile != "" {
-		cmd := exec.Command("docker", "compose", "-f", configFile, "-p", projectName, "down")
-		cmd.Dir = workingDir
-		output, cmdErr := cmd.CombinedOutput()
+		collector := &composeMessageCollector{}
+		cmdErr := composeDownWithSDK(context.Background(), projectName, configFile, workingDir, false, collector.Emit)
 		if cmdErr != nil {
-			logger.Warnf("docker compose down failed for %s: %v, output: %s", projectName, cmdErr, string(output))
+			logger.Warnf("docker compose down failed for %s: %v, output: %s", projectName, cmdErr, collector.String())
 			// Continue with file deletion even if down fails
 		}
 	}
@@ -550,16 +551,14 @@ func ComposeRestart(username, projectName string) (any, error) {
 			"path", configFile)
 	}
 
-	// Use 'docker compose up -d' instead of 'restart' to recreate containers with updated config
-	// This ensures that changes to the compose file (like service name changes) are applied
-	cmd := exec.Command("docker", "compose", "-f", configFile, "-p", projectName, "up", "-d", "--remove-orphans")
-	cmd.Dir = workingDir
-	output, err := cmd.CombinedOutput()
+	// Use up+remove-orphans semantics for restart so compose file changes are applied.
+	collector := &composeMessageCollector{}
+	err = composeUpWithSDK(context.Background(), projectName, configFile, workingDir, true, collector.Emit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, string(output))
+		return nil, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, collector.String())
 	}
 
-	return map[string]string{"message": "Project restarted successfully", "output": string(output)}, nil
+	return map[string]string{"message": "Project restarted successfully", "output": collector.String()}, nil
 }
 
 // ComposeStop stops a compose project without removing containers
@@ -584,14 +583,13 @@ func ComposeStop(username, projectName string) (any, error) {
 		workingDir = filepath.Dir(configFile)
 	}
 
-	cmd := exec.Command("docker", "compose", "-f", configFile, "-p", projectName, "stop")
-	cmd.Dir = workingDir
-	output, err := cmd.CombinedOutput()
+	collector := &composeMessageCollector{}
+	err = composeStopWithSDK(context.Background(), projectName, configFile, workingDir, collector.Emit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, string(output))
+		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
 
-	return map[string]string{"message": "Project stopped successfully", "output": string(output)}, nil
+	return map[string]string{"message": "Project stopped successfully", "output": collector.String()}, nil
 }
 
 // Helper functions
@@ -815,59 +813,116 @@ func ValidateComposeFile(content string) (any, error) {
 		return result, nil
 	}
 
-	// Check for services section
-	services, hasServices := composeData["services"]
-	if !hasServices {
+	// Use Compose SDK loader for authoritative compose schema/model validation.
+	if sdkErr := composeValidateContentWithSDK(context.Background(), content); sdkErr != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
-			Field:   "services",
-			Message: "Missing required 'services' section",
+			Message: strings.TrimPrefix(sdkErr.Error(), "load compose project: "),
 			Type:    "error",
 		})
-	} else {
-		// Validate services is a map
-		servicesMap, ok := services.(map[string]any)
-		if !ok {
-			result.Valid = false
-			result.Errors = append(result.Errors, ValidationError{
-				Field:   "services",
-				Message: "'services' must be a mapping of service names to service definitions",
-				Type:    "error",
-			})
-		} else if len(servicesMap) == 0 {
-			result.Valid = false
-			result.Errors = append(result.Errors, ValidationError{
-				Field:   "services",
-				Message: "At least one service must be defined",
-				Type:    "error",
-			})
-		} else {
-			// Validate each service
-			for serviceName, serviceData := range servicesMap {
-				serviceMap, ok := serviceData.(map[string]any)
-				if !ok {
-					result.Valid = false
-					result.Errors = append(result.Errors, ValidationError{
-						Field:   fmt.Sprintf("services.%s", serviceName),
-						Message: "Service definition must be a mapping",
-						Type:    "error",
-					})
-					continue
-				}
+		return result, nil
+	}
 
-				// Check that service has either image or build
-				_, hasImage := serviceMap["image"]
-				_, hasBuild := serviceMap["build"]
-				if !hasImage && !hasBuild {
+	// Validate semantic fields not covered by the JSON schema.
+	if services, ok := composeData["services"].(map[string]any); ok {
+		containerNames := map[string]string{} // container_name -> first service
+		hostPorts := map[string]string{}      // host port key -> first service
+
+		for svcName, svcData := range services {
+			svc, ok := svcData.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			// network_mode value
+			if nm, ok := svc["network_mode"].(string); ok && !validNetworkMode.MatchString(nm) {
+				result.Valid = false
+				result.Errors = append(result.Errors, ValidationError{
+					Field:   fmt.Sprintf("services.%s.network_mode", svcName),
+					Message: fmt.Sprintf("invalid value %q: must be none, host, bridge, service:<name>, or container:<name>", nm),
+					Type:    "error",
+				})
+			}
+
+			// network_mode=host + ports is a no-op (warn)
+			if nm, _ := svc["network_mode"].(string); nm == "host" {
+				if portList, _ := svc["ports"].([]any); len(portList) > 0 {
+					result.Errors = append(result.Errors, ValidationError{
+						Field:   fmt.Sprintf("services.%s.ports", svcName),
+						Message: "port mappings are ignored when network_mode is 'host'",
+						Type:    "warning",
+					})
+				}
+			}
+
+			// restart policy
+			if restart, ok := svc["restart"].(string); ok && restart != "" {
+				if !validRestartPolicy.MatchString(restart) {
 					result.Valid = false
 					result.Errors = append(result.Errors, ValidationError{
-						Field:   fmt.Sprintf("services.%s", serviceName),
-						Message: "Service must have either 'image' or 'build' defined",
+						Field:   fmt.Sprintf("services.%s.restart", svcName),
+						Message: fmt.Sprintf("invalid value %q: must be no, always, unless-stopped, or on-failure[:max-retries]", restart),
 						Type:    "error",
 					})
 				}
 			}
+
+			// ipc mode
+			if ipc, ok := svc["ipc"].(string); ok && ipc != "" {
+				if !validIPCMode.MatchString(ipc) {
+					result.Valid = false
+					result.Errors = append(result.Errors, ValidationError{
+						Field:   fmt.Sprintf("services.%s.ipc", svcName),
+						Message: fmt.Sprintf("invalid value %q: must be host, private, shareable, or service:<name>", ipc),
+						Type:    "error",
+					})
+				}
+			}
+
+			// pid mode
+			if pid, ok := svc["pid"].(string); ok && pid != "" {
+				if !validPIDMode.MatchString(pid) {
+					result.Valid = false
+					result.Errors = append(result.Errors, ValidationError{
+						Field:   fmt.Sprintf("services.%s.pid", svcName),
+						Message: fmt.Sprintf("invalid value %q: must be host or service:<name>", pid),
+						Type:    "error",
+					})
+				}
+			}
+
+			// container_name uniqueness
+			if cn, ok := svc["container_name"].(string); ok && cn != "" {
+				if first, seen := containerNames[cn]; seen {
+					result.Valid = false
+					result.Errors = append(result.Errors, ValidationError{
+						Field:   fmt.Sprintf("services.%s.container_name", svcName),
+						Message: fmt.Sprintf("duplicate container_name %q already used by service %q", cn, first),
+						Type:    "error",
+					})
+				} else {
+					containerNames[cn] = svcName
+				}
+			}
+
+			// port conflicts
+			for _, hp := range extractHostPorts(svc) {
+				if first, seen := hostPorts[hp]; seen {
+					result.Valid = false
+					result.Errors = append(result.Errors, ValidationError{
+						Field:   fmt.Sprintf("services.%s.ports", svcName),
+						Message: fmt.Sprintf("host port %q already bound by service %q", hp, first),
+						Type:    "error",
+					})
+				} else {
+					hostPorts[hp] = svcName
+				}
+			}
 		}
+	}
+
+	if !result.Valid {
+		return result, nil
 	}
 
 	// Optional: Check for version (deprecated in v3 but still common)
@@ -936,6 +991,46 @@ func GetComposeFilePath(username, stackName string) (any, error) {
 		Exists:    exists,
 		Directory: stackDir,
 	}, nil
+}
+
+// extractHostPorts returns host-port binding keys for all ports in a service.
+func extractHostPorts(svc map[string]any) []string {
+	portList, ok := svc["ports"].([]any)
+	if !ok || len(portList) == 0 {
+		return nil
+	}
+	var result []string
+	for _, p := range portList {
+		switch v := p.(type) {
+		case string:
+			if hp := parseHostPort(v); hp != "" {
+				result = append(result, hp)
+			}
+		case map[string]any:
+			// Long syntax: {target: 80, published: "8080", protocol: "tcp"}
+			if published, ok := v["published"]; ok && published != nil {
+				if s := fmt.Sprintf("%v", published); s != "" && s != "0" {
+					result = append(result, s)
+				}
+			}
+		}
+	}
+	return result
+}
+
+// parseHostPort extracts the host-side port key from a short-syntax port string.
+// Returns empty string when there is no explicit host binding.
+func parseHostPort(port string) string {
+	port = strings.SplitN(port, "/", 2)[0] // strip protocol
+	parts := strings.Split(port, ":")
+	switch len(parts) {
+	case 2:
+		return parts[0] // "8080:80" → "8080"
+	case 3:
+		return parts[0] + ":" + parts[1] // "127.0.0.1:8080:80" → "127.0.0.1:8080"
+	default:
+		return "" // container-only port, no host binding
+	}
 }
 
 // sanitizeStackName sanitizes a stack name for use in file paths
@@ -1413,19 +1508,25 @@ func DeleteComposeStack(username, projectName string) error {
 	}
 
 	// Run docker compose down first to clean up containers/networks
-	if len(project.ConfigFiles) > 0 && project.WorkingDir != "" {
+	if len(project.ConfigFiles) > 0 {
 		logger.InfoKV("running docker compose down before deleting files",
 			"project", projectName,
 			"working_dir", project.WorkingDir)
 
-		cmd := exec.Command("docker", "compose", "down", "--remove-orphans")
-		cmd.Dir = project.WorkingDir
-		output, err := cmd.CombinedOutput()
+		collector := &composeMessageCollector{}
+		err := composeDownWithSDK(
+			context.Background(),
+			projectName,
+			project.ConfigFiles[0],
+			project.WorkingDir,
+			true,
+			collector.Emit,
+		)
 		if err != nil {
 			logger.WarnKV("failed to run docker compose down",
 				"project", projectName,
 				"error", err.Error(),
-				"output", string(output))
+				"output", collector.String())
 			// Don't fail here - continue with file deletion even if down fails
 		}
 	}

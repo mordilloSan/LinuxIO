@@ -641,6 +641,7 @@ export interface LinuxIOSchema {
           message: string;
           type: "error" | "warning";
         }[];
+        normalized_content?: string;
       };
     };
     get_compose_file_path: {
