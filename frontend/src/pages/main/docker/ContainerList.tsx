@@ -91,8 +91,14 @@ const ContainerList: React.FC<ContainerListProps> = ({
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
         >
-          <SortableContext items={containerIds} strategy={verticalListSortingStrategy}>
-            <ContainerTable containers={orderedContainers} editMode={editMode} />
+          <SortableContext
+            items={containerIds}
+            strategy={verticalListSortingStrategy}
+          >
+            <ContainerTable
+              containers={orderedContainers}
+              editMode={editMode}
+            />
           </SortableContext>
         </DndContext>
       </Suspense>

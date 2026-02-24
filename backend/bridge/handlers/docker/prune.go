@@ -6,6 +6,7 @@ import (
 
 	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/versions"
 	"github.com/mordilloSan/go-logger/logger"
 )
 
@@ -25,6 +26,14 @@ type PruneResult struct {
 	NetworksDeleted   []string `json:"networksDeleted,omitempty"`
 	VolumesDeleted    []string `json:"volumesDeleted,omitempty"`
 	SpaceReclaimed    uint64   `json:"spaceReclaimed"`
+}
+
+func volumePruneFilters(apiVersion string) filters.Args {
+	if versions.GreaterThanOrEqualTo(apiVersion, "1.42") {
+		return filters.NewArgs(filters.Arg("all", "true"))
+	}
+
+	return filters.Args{}
 }
 
 // SystemPrune removes unused Docker resources according to opts.
@@ -83,7 +92,12 @@ func SystemPrune(opts PruneOptions) (*PruneResult, error) {
 	}
 
 	if opts.Volumes {
-		report, err := cli.VolumesPrune(ctx, filters.Args{})
+		volumeFilters := volumePruneFilters(cli.ClientVersion())
+		report, err := cli.VolumesPrune(ctx, volumeFilters)
+		if err != nil && volumeFilters.Contains("all") {
+			// Older API versions prune all volumes by default and may reject all=true.
+			report, err = cli.VolumesPrune(ctx, filters.Args{})
+		}
 		if err != nil {
 			return nil, fmt.Errorf("volume prune failed: %w", err)
 		}

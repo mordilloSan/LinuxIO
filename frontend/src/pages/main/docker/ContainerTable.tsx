@@ -1,3 +1,5 @@
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
@@ -16,8 +18,6 @@ import {
   Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
@@ -83,12 +83,22 @@ interface ContainerRowProps {
   editMode?: boolean;
 }
 
-const ContainerRow: React.FC<ContainerRowProps> = ({ container, index, editMode }) => {
+const ContainerRow: React.FC<ContainerRowProps> = ({
+  container,
+  index,
+  editMode,
+}) => {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: container.Id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: container.Id });
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogs, setHasLoadedLogs] = useState(false);
@@ -212,7 +222,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, index, editMode 
       queryClient.invalidateQueries({
         queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
       });
-      toast.success(`Auto-update ${enabled ? "enabled" : "disabled"} for ${name}`);
+      toast.success(
+        `Auto-update ${enabled ? "enabled" : "disabled"} for ${name}`,
+      );
     } catch {
       toast.error(`Failed to update auto-update setting for ${name}`);
     } finally {
@@ -251,7 +263,13 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, index, editMode 
               component="span"
               {...attributes}
               {...listeners}
-              sx={{ display: "flex", alignItems: "center", color: "text.disabled", cursor: "grab", "&:active": { cursor: "grabbing" } }}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                color: "text.disabled",
+                cursor: "grab",
+                "&:active": { cursor: "grabbing" },
+              }}
             >
               <DragIndicatorIcon fontSize="small" />
             </Box>
@@ -607,7 +625,10 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, index, editMode 
             backgroundColor: "transparent",
           }}
         >
-          <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={editMode ? 10 : 9}>
+          <TableCell
+            style={{ paddingBottom: 0, paddingTop: 0 }}
+            colSpan={editMode ? 10 : 9}
+          >
             <Collapse in={expanded} timeout="auto" unmountOnExit>
               <Box
                 component={motion.div}
@@ -740,7 +761,10 @@ interface ContainerTableProps {
   editMode?: boolean;
 }
 
-const ContainerTable: React.FC<ContainerTableProps> = ({ containers, editMode = false }) => {
+const ContainerTable: React.FC<ContainerTableProps> = ({
+  containers,
+  editMode = false,
+}) => {
   return (
     <Box>
       <TableContainer className="custom-scrollbar" sx={{ overflowX: "auto" }}>

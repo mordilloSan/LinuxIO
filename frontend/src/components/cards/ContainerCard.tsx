@@ -321,7 +321,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           </Typography>
           <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
             {container.Labels?.["com.docker.compose.project"] ===
-              "linuxio-watchtower" ? (
+            "linuxio-watchtower" ? (
               <Tooltip title="View Logs" arrow>
                 <Chip
                   label="Managed by LinuxIO"
@@ -389,15 +389,15 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             )}
             {container.Labels?.["com.docker.compose.project"] !==
               "linuxio-watchtower" && (
-                <Tooltip title="Open Terminal" arrow>
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <ActionButton
-                      icon="mdi:console"
-                      onClick={handleTerminalClick}
-                    />
-                  </span>
-                </Tooltip>
-              )}
+              <Tooltip title="Open Terminal" arrow>
+                <span onClick={(e) => e.stopPropagation()}>
+                  <ActionButton
+                    icon="mdi:console"
+                    onClick={handleTerminalClick}
+                  />
+                </span>
+              </Tooltip>
+            )}
           </Box>
         </Box>
       </Box>
@@ -472,15 +472,15 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               sx={
                 isWatchtowerContainer
                   ? {
-                    "& .MuiSwitch-switchBase.Mui-checked.Mui-disabled": {
-                      color: "action.disabled",
-                    },
-                    "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track":
-                    {
-                      opacity: 1,
-                      backgroundColor: "action.disabledBackground",
-                    },
-                  }
+                      "& .MuiSwitch-switchBase.Mui-checked.Mui-disabled": {
+                        color: "action.disabled",
+                      },
+                      "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track":
+                        {
+                          opacity: 1,
+                          backgroundColor: "action.disabledBackground",
+                        },
+                    }
                   : undefined
               }
             />
