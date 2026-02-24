@@ -42,13 +42,20 @@ func RegisterHandlers(sess *session.Session) {
 		// Payload with optional nested fields
 		var payload struct {
 			AppSettings *struct {
-				Theme            *string `json:"theme"`
-				PrimaryColor     *string `json:"primaryColor"`
-				SidebarCollapsed *bool   `json:"sidebarCollapsed"`
-				ShowHiddenFiles  *bool   `json:"showHiddenFiles"`
+				Theme                   *string                  `json:"theme"`
+				PrimaryColor            *string                  `json:"primaryColor"`
+				SidebarCollapsed        *bool                    `json:"sidebarCollapsed"`
+				ShowHiddenFiles         *bool                    `json:"showHiddenFiles"`
+				DashboardOrder          []string                 `json:"dashboardOrder"`
+				HiddenCards             []string                 `json:"hiddenCards"`
+				ContainerOrder          []string                 `json:"containerOrder"`
+				DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections"`
+				DockerContainersView    *string                  `json:"dockerContainersView"`
+				DockerStacksView        *string                  `json:"dockerStacksView"`
 			} `json:"appSettings"`
 			Docker *struct {
-				Folder *string `json:"folder"`
+				Folder           *string  `json:"folder"`
+				AutoUpdateStacks []string `json:"autoUpdateStacks"`
 			} `json:"docker"`
 		}
 
@@ -82,6 +89,24 @@ func RegisterHandlers(sess *session.Session) {
 			if payload.AppSettings.ShowHiddenFiles != nil {
 				cfg.AppSettings.ShowHiddenFiles = *payload.AppSettings.ShowHiddenFiles
 			}
+			if payload.AppSettings.DashboardOrder != nil {
+				cfg.AppSettings.DashboardOrder = payload.AppSettings.DashboardOrder
+			}
+			if payload.AppSettings.HiddenCards != nil {
+				cfg.AppSettings.HiddenCards = payload.AppSettings.HiddenCards
+			}
+			if payload.AppSettings.ContainerOrder != nil {
+				cfg.AppSettings.ContainerOrder = payload.AppSettings.ContainerOrder
+			}
+			if payload.AppSettings.DockerDashboardSections != nil {
+				cfg.AppSettings.DockerDashboardSections = payload.AppSettings.DockerDashboardSections
+			}
+			if payload.AppSettings.DockerContainersView != nil {
+				cfg.AppSettings.DockerContainersView = *payload.AppSettings.DockerContainersView
+			}
+			if payload.AppSettings.DockerStacksView != nil {
+				cfg.AppSettings.DockerStacksView = *payload.AppSettings.DockerStacksView
+			}
 		}
 
 		// Update Docker settings if provided
@@ -92,6 +117,9 @@ func RegisterHandlers(sess *session.Session) {
 					return fmt.Errorf("docker folder cannot be empty")
 				}
 				cfg.Docker.Folder = AbsolutePath(folder)
+			}
+			if payload.Docker.AutoUpdateStacks != nil {
+				cfg.Docker.AutoUpdateStacks = payload.Docker.AutoUpdateStacks
 			}
 		}
 

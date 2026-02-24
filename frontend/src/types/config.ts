@@ -5,6 +5,16 @@ export interface BackendSettings {
     primaryColor: string;
     sidebarCollapsed: boolean;
     showHiddenFiles: boolean;
+    dashboardOrder?: string[];
+    hiddenCards?: string[];
+    containerOrder?: string[];
+    dockerDashboardSections?: {
+      overview: boolean;
+      daemon: boolean;
+      resources: boolean;
+    };
+    dockerContainersView?: "card" | "table";
+    dockerStacksView?: "table" | "card";
   };
   docker: {
     folder: string;
@@ -18,6 +28,16 @@ export interface AppConfig {
   sidebarCollapsed: boolean;
   showHiddenFiles: boolean;
   dockerFolder?: string;
+  dashboardOrder?: string[];
+  hiddenCards?: string[];
+  containerOrder?: string[];
+  dockerDashboardSections?: {
+    overview: boolean;
+    daemon: boolean;
+    resources: boolean;
+  };
+  dockerContainersView?: "card" | "table";
+  dockerStacksView?: "table" | "card";
 }
 
 export interface ConfigContextType {

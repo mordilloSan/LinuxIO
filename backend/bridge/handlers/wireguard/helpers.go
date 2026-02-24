@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -14,9 +13,11 @@ import (
 	"time"
 
 	"github.com/vishvananda/netlink"
+	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 	"github.com/mordilloSan/go-logger/logger"
 )
 
@@ -52,13 +53,31 @@ func peerConfigPath(iface, peerName string) string {
 
 // --- Network Helpers ---
 func isInterfaceUp(name string) bool {
-	return exec.Command("wg", "show", name).Run() == nil
+	client, err := wgctrl.New()
+	if err != nil {
+		logger.Debugf("isInterfaceUp: failed to create wgctrl client: %v", err)
+		return false
+	}
+	defer client.Close()
+
+	_, err = client.Device(name)
+	return err == nil
 }
 
 func isInterfaceEnabled(name string) bool {
 	serviceName := fmt.Sprintf("wg-quick@%s.service", name)
-	cmd := exec.Command("systemctl", "is-enabled", serviceName)
-	return cmd.Run() == nil
+	state, err := systemd.GetUnitFileState(serviceName)
+	if err != nil {
+		logger.Debugf("isInterfaceEnabled: failed to query state for %s: %v", serviceName, err)
+		return false
+	}
+
+	switch state {
+	case "enabled", "enabled-runtime", "linked", "linked-runtime", "alias":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseCSV(s string) []string {

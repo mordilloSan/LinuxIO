@@ -6,6 +6,7 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import {
   Box,
+  Grid,
   Table,
   TableBody,
   TableCell,
@@ -19,6 +20,8 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import React, { useCallback, useState } from "react";
+
+import ComposeStackCard from "./ComposeStackCard";
 
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
@@ -40,6 +43,7 @@ export interface ComposeProject {
   name: string;
   icon?: string;
   status: string; // "running", "partial", "stopped"
+  auto_update?: boolean;
   services: Record<string, ComposeService>;
   config_files: string[];
   working_dir: string;
@@ -52,7 +56,9 @@ interface ComposeListProps {
   onRestart: (projectName: string) => void;
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
+  onPreview?: (projectName: string, configPath: string) => void;
   isLoading?: boolean;
+  viewMode?: "table" | "card";
 }
 
 const ComposeList: React.FC<ComposeListProps> = ({
@@ -62,7 +68,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
   onRestart,
   onDelete,
   onEdit,
+  onPreview,
   isLoading = false,
+  viewMode = "table",
 }) => {
   const [search, setSearch] = useState("");
 
@@ -210,75 +218,102 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 gap: { xs: 0, sm: 0.5 },
               }}
             >
-              {onEdit && project.config_files.length > 0 && (
-                <Tooltip title="Edit">
-                  <IconButton
+              {project.name === "linuxio-watchtower" ? (
+                <Tooltip title="View compose file" arrow>
+                  <Chip
+                    label="Managed by LinuxIO"
                     size="small"
-                    onClick={() =>
-                      onEdit(project.name, project.config_files[0])
+                    variant="outlined"
+                    onClick={
+                      onPreview && project.config_files.length > 0
+                        ? () => onPreview(project.name, project.config_files[0])
+                        : undefined
                     }
-                    disabled={isLoading}
-                    sx={{ p: { xs: 0.5, sm: 1 } }}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
+                    sx={{
+                      fontSize: "0.68rem",
+                      opacity: 0.7,
+                      cursor:
+                        onPreview && project.config_files.length > 0
+                          ? "pointer"
+                          : "default",
+                      "&:hover": { opacity: 1 },
+                    }}
+                  />
                 </Tooltip>
-              )}
-              {project.status === "running" || project.status === "partial" ? (
-                <>
-                  <Tooltip title="Restart">
-                    <IconButton
-                      size="small"
-                      onClick={() => onRestart(project.name)}
-                      disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <RestartAltIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Stop">
-                    <IconButton
-                      size="small"
-                      onClick={() => onStop(project.name)}
-                      disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <StopCircleIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Delete">
-                    <IconButton
-                      size="small"
-                      onClick={() => onDelete(project)}
-                      disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </>
               ) : (
                 <>
-                  <Tooltip title="Start">
-                    <IconButton
-                      size="small"
-                      onClick={() => onStart(project.name)}
-                      disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <PlayArrowIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Delete">
-                    <IconButton
-                      size="small"
-                      onClick={() => onDelete(project)}
-                      disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
+                  {onEdit && project.config_files.length > 0 && (
+                    <Tooltip title="Edit">
+                      <IconButton
+                        size="small"
+                        onClick={() =>
+                          onEdit(project.name, project.config_files[0])
+                        }
+                        disabled={isLoading}
+                        sx={{ p: { xs: 0.5, sm: 1 } }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  {project.status === "running" ||
+                  project.status === "partial" ? (
+                    <>
+                      <Tooltip title="Restart">
+                        <IconButton
+                          size="small"
+                          onClick={() => onRestart(project.name)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <RestartAltIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Stop">
+                        <IconButton
+                          size="small"
+                          onClick={() => onStop(project.name)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <StopCircleIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          onClick={() => onDelete(project)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </>
+                  ) : (
+                    <>
+                      <Tooltip title="Start">
+                        <IconButton
+                          size="small"
+                          onClick={() => onStart(project.name)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <PlayArrowIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          onClick={() => onDelete(project)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </>
+                  )}
                 </>
               )}
             </Box>
@@ -286,7 +321,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
         </>
       );
     },
-    [onEdit, isLoading, onRestart, onStop, onDelete, onStart],
+    [onEdit, onPreview, isLoading, onRestart, onStop, onDelete, onStart],
   );
 
   // Render expanded content
@@ -365,19 +400,56 @@ const ComposeList: React.FC<ComposeListProps> = ({
     );
   }, []);
 
+  const searchBar = (
+    <Box mb={2} display="flex" alignItems="center" gap={2}>
+      <TextField
+        variant="outlined"
+        size="small"
+        placeholder="Search stacks…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ width: 320 }}
+      />
+      <Box fontWeight="bold">{filtered.length} shown</Box>
+    </Box>
+  );
+
+  if (viewMode === "card") {
+    return (
+      <Box>
+        {searchBar}
+        {filtered.length === 0 ? (
+          <Box textAlign="center" py={4}>
+            <Typography variant="body2" color="text.secondary">
+              No compose stacks found. Start containers with docker compose to
+              see them here.
+            </Typography>
+          </Box>
+        ) : (
+          <Grid container spacing={2}>
+            {filtered.map((project) => (
+              <Grid key={project.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+                <ComposeStackCard
+                  project={project}
+                  onStart={onStart}
+                  onStop={onStop}
+                  onRestart={onRestart}
+                  onDelete={onDelete}
+                  onEdit={onEdit}
+                  onPreview={onPreview}
+                  isLoading={isLoading}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </Box>
+    );
+  }
+
   return (
     <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2}>
-        <TextField
-          variant="outlined"
-          size="small"
-          placeholder="Search stacks…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          sx={{ width: 320 }}
-        />
-        <Box fontWeight="bold">{filtered.length} shown</Box>
-      </Box>
+      {searchBar}
       <UnifiedCollapsibleTable
         data={filtered}
         columns={columns}

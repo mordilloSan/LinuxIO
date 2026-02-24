@@ -9,36 +9,96 @@ import {
   SelectChangeEvent,
   Tooltip,
 } from "@mui/material";
+import type { SxProps } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import type { Theme } from "@mui/material/styles";
 import React from "react";
 
 import FrostedCard from "./RootCard";
 
 import { cardHeight } from "@/constants";
 
-interface SelectOption {
+/** A single option rendered inside the card's dropdown selector. */
+export interface SelectOption {
+  /** The internal value passed to `onSelect`. */
   value: string;
+  /** The human-readable label shown in the dropdown. */
   label: string;
+  /** Optional stable key; falls back to array index when omitted. */
   id?: string;
 }
 
-interface GeneralCardProps {
-  title: string;
-  stats: React.ReactNode;
-  stats2?: React.ReactNode;
-  avatarIcon: string;
-  icon?: React.ElementType;
-  iconProps?: Record<string, any>;
-  icon_text?: string;
-  selectOptions?: SelectOption[];
-  selectedOption?: string;
-  selectedOptionLabel?: string;
-  onSelect?: (value: string) => void;
-  connectionStatus?: "online" | "offline" | "warning" | "error";
-}
+/**
+ * Whether the card's data source is reachable.
+ * Drives the color of the status indicator dot in the header.
+ */
+export type ConnectionStatus = "online" | "offline" | "warning" | "error";
 
-const GeneralCard: React.FC<GeneralCardProps> = ({
+/**
+ * Controls how horizontal space is divided between the primary stats
+ * column (left) and the secondary stats column (right).
+ *
+ * - `"equal"` — 50 / 50 split (default, both `flex: 1`)
+ * - `"auto"` — right column shrinks to its content width; left fills the rest
+ * - `[n, m]` — explicit CSS flex ratio, e.g. `[1, 2]` gives the right column twice the space
+ *
+ * Both columns always have `overflow: hidden` applied so neither can
+ * burst out of the card boundary.
+ */
+export type ContentLayout = "equal" | "auto" | [number, number];
+
+/**
+ * Discriminated union that enforces the dropdown props are used together.
+ * When `selectOptions` is provided, `onSelect` becomes required.
+ * Without `selectOptions`, none of the select props are accepted.
+ */
+type SelectProps =
+  | {
+      /** Items to populate the header dropdown. Requires `onSelect`. */
+      selectOptions: SelectOption[];
+      /** Currently selected value; defaults to `""` when omitted. */
+      selectedOption?: string;
+      /** Override label shown in the collapsed select trigger. */
+      selectedOptionLabel?: string;
+      /** Called with the new value whenever the user changes the selection. */
+      onSelect: (value: string) => void;
+    }
+  | {
+      selectOptions?: never;
+      selectedOption?: never;
+      selectedOptionLabel?: never;
+      onSelect?: never;
+    };
+
+export type DashboardCardProps = SelectProps & {
+  /** Displayed in the card header. */
+  title: string;
+  /** Optional color override for the card title (e.g. "primary.main"). */
+  titleColor?: string;
+  /** Left-column content — typically a vertical list of `Typography` metrics. */
+  stats: React.ReactNode;
+  /**
+   * Right-column content — typically a chart, gauge, or icon grid.
+   * When omitted the card renders `stats` across the full width.
+   */
+  stats2?: React.ReactNode;
+  /** Iconify icon ID rendered as the card's top-right avatar. */
+  avatarIcon: string;
+  /** Optional MUI SvgIcon component shown next to `icon_text` in the header. */
+  icon?: React.ElementType;
+  /** Style overrides forwarded to the `icon` component. */
+  iconProps?: { sx?: SxProps<Theme> };
+  /** Short string (e.g. temperature) rendered beside `icon`. */
+  icon_text?: string;
+  /** Shows a colored dot in the header indicating connectivity state. */
+  connectionStatus?: ConnectionStatus;
+  /** @see {@link ContentLayout} */
+  contentLayout?: ContentLayout;
+};
+
+const DashboardCard: React.FC<DashboardCardProps> = ({
   title,
+  titleColor,
   stats,
   stats2,
   avatarIcon,
@@ -50,9 +110,16 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
   selectedOptionLabel,
   onSelect,
   connectionStatus,
+  contentLayout = "equal",
 }) => {
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
+
+  const [statsFlex, stats2Flex]: [number | string, number | string] = (() => {
+    if (contentLayout === "equal") return [1, 1];
+    if (contentLayout === "auto") return [1, "0 0 auto"];
+    return contentLayout;
+  })();
 
   const handleSelectionChange = (event: SelectChangeEvent) => {
     onSelect?.(event.target.value);
@@ -160,7 +227,11 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Typography
               variant="h5"
-              sx={{ fontWeight: "bold", transform: "translateY(-1px)" }}
+              sx={{
+                fontWeight: "bold",
+                transform: "translateY(-1px)",
+                ...(titleColor && { color: titleColor }),
+              }}
             >
               {title}
             </Typography>
@@ -221,22 +292,35 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
               mt: 3,
               display: "flex",
               flexDirection: { xs: "row", sm: "row", xl: "row" },
+              gap: 2,
             }}
           >
             <Box
               sx={{
-                flex: 1,
+                flex: statsFlex,
+                minWidth: 0,
+                overflow: "hidden",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "left",
+                "& > *": {
+                  minWidth: 0,
+                  mt: 4,
+                },
+                "& .MuiTypography-root": {
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                },
               }}
             >
               {stats}
             </Box>
             <Box
               sx={{
-                flex: 1,
+                flex: stats2Flex,
                 minWidth: 0,
+                overflow: "hidden",
                 display: "flex",
                 height: 120,
                 alignItems: "center",
@@ -247,11 +331,22 @@ const GeneralCard: React.FC<GeneralCardProps> = ({
             </Box>
           </Box>
         ) : (
-          <Box sx={{ mt: 7 }}>{stats}</Box>
+          <Box
+            sx={{
+              mt: 7,
+              "& .MuiTypography-root": {
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              },
+            }}
+          >
+            {stats}
+          </Box>
         )}
       </CardContent>
     </FrostedCard>
   );
 };
 
-export default GeneralCard;
+export default DashboardCard;

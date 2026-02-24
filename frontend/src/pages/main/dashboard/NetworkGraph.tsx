@@ -14,6 +14,13 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
   const chartRef = useRef<SmoothieChart | null>(null);
   const rxSeriesRef = useRef<TimeSeries>(new TimeSeries());
   const txSeriesRef = useRef<TimeSeries>(new TimeSeries());
+  const rxRef = useRef(rx);
+  const txRef = useRef(tx);
+
+  useEffect(() => {
+    rxRef.current = rx;
+    txRef.current = tx;
+  }, [rx, tx]);
 
   // Initialize chart once on mount
   useEffect(() => {
@@ -48,19 +55,28 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
       },
       responsive: true,
       minValue: 0,
+      maxValueScale: 1.15,
     });
 
     chart.addTimeSeries(rxSeriesRef.current, {
       strokeStyle: RX_COLOR,
+      fillStyle: `${RX_COLOR}18`,
       lineWidth: 2,
     });
     chart.addTimeSeries(txSeriesRef.current, {
       strokeStyle: TX_COLOR,
+      fillStyle: `${TX_COLOR}18`,
       lineWidth: 2,
     });
 
     chart.streamTo(canvas, 1000);
     chartRef.current = chart;
+
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      rxSeriesRef.current.append(now, rxRef.current);
+      txSeriesRef.current.append(now, txRef.current);
+    }, 1000);
 
     // Flip tooltip to the left when mouse is on the right half
     const chartAny = chart as SmoothieChart & { tooltipEl?: HTMLElement };
@@ -76,17 +92,11 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
     canvas.addEventListener("mousemove", onMove);
 
     return () => {
+      clearInterval(intervalId);
       chart.stop();
       canvas.removeEventListener("mousemove", onMove);
     };
   }, []);
-
-  // Append data points when values change
-  useEffect(() => {
-    const now = Date.now();
-    rxSeriesRef.current.append(now, rx);
-    txSeriesRef.current.append(now, tx);
-  }, [rx, tx]);
 
   return (
     <div
@@ -95,40 +105,28 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
         height: "100%",
         position: "relative",
         minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
+      <canvas
+        ref={canvasRef}
+        style={{ width: "100%", flex: 1, minHeight: 0 }}
+      />
       <div
         style={{
           display: "flex",
-          justifyContent: "center",
+          justifyContent: "space-between",
           alignItems: "center",
-          gap: 12,
           marginTop: 4,
           fontSize: 12,
           whiteSpace: "nowrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              backgroundColor: RX_COLOR,
-              borderRadius: "50%",
-            }}
-          />
+        <div style={{ color: RX_COLOR, fontWeight: 600 }}>
           Rx: {rx.toFixed(2)} kB/s
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              backgroundColor: TX_COLOR,
-              borderRadius: "50%",
-            }}
-          />
+        <div style={{ color: TX_COLOR, fontWeight: 600 }}>
           Tx: {tx.toFixed(2)} kB/s
         </div>
       </div>

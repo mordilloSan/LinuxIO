@@ -3,7 +3,7 @@ import { Typography, Box } from "@mui/material";
 import React from "react";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 
 const GpuInfo: React.FC = () => {
   const {
@@ -24,23 +24,56 @@ const GpuInfo: React.FC = () => {
     );
   } else {
     content = (
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-        {gpus.map((gpu, idx) => (
-          <Box
-            key={`${gpu.vendor_id}-${gpu.device_id}-${idx}`}
-            sx={{ display: "flex", flexDirection: "column" }}
-          >
-            <Typography variant="body1">{`${gpu.vendor} — ${gpu.model}`}</Typography>
-            <Typography variant="body2">{`Driver: ${gpu.driver}`}</Typography>
-            <Typography variant="body2">{`Address: ${gpu.address}`}</Typography>
-          </Box>
-        ))}
+      <Box
+        sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
+      >
+        {gpus.flatMap((gpu, idx) =>
+          [
+            {
+              label: "GPU",
+              value: `${gpu.vendor} — ${gpu.model}`,
+              key: `gpu-${idx}`,
+            },
+            { label: "Driver", value: gpu.driver, key: `driver-${idx}` },
+            { label: "Address", value: gpu.address, key: `address-${idx}` },
+          ].map(({ label, value, key }) => (
+            <Box
+              key={key}
+              sx={{
+                display: "flex",
+                justifyContent: "flex-start",
+                alignItems: "baseline",
+                py: 0.5,
+                borderBottom: "1px solid",
+                borderColor: "divider",
+                "&:last-child": { borderBottom: "none" },
+                gap: 1,
+              }}
+            >
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  fontSize: "0.62rem",
+                  flexShrink: 0,
+                }}
+              >
+                {label}
+              </Typography>
+              <Typography variant="body2" fontWeight={500} noWrap>
+                {value}
+              </Typography>
+            </Box>
+          )),
+        )}
       </Box>
     );
   }
 
   return (
-    <GeneralCard
+    <DashboardCard
       title="GPU"
       stats={content}
       icon={ThermostatIcon}

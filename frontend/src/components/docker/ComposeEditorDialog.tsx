@@ -10,6 +10,7 @@ import {
   useTheme,
 } from "@mui/material";
 import React, {
+  Suspense,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -21,14 +22,14 @@ import ComposeValidationFeedback, {
   ValidationResult,
 } from "./ComposeValidationFeedback";
 
-import FileEditor, {
-  FileEditorHandle,
-} from "@/components/filebrowser/FileEditor";
+import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface ComposeEditorDialogProps {
   open: boolean;
   mode: "create" | "edit";
+  readOnly?: boolean;
   stackName?: string;
   filePath?: string;
   initialContent?: string;
@@ -41,9 +42,14 @@ interface ComposeEditorDialogProps {
   onValidate?: (content: string) => Promise<ValidationResult>;
 }
 
+const FileEditor = React.lazy(
+  () => import("@/components/filebrowser/FileEditor"),
+);
+
 const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   open,
   mode,
+  readOnly = false,
   stackName: initialStackName = "",
   filePath = "",
   initialContent = "",
@@ -72,7 +78,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   }, [open, initialStackName]);
 
   const handleClose = () => {
-    if (isEditorDirty) {
+    if (!readOnly && isEditorDirty) {
       setShowUnsavedDialog(true);
     } else {
       onClose();
@@ -222,9 +228,11 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
         >
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Typography variant="h6">
-              {mode === "create"
-                ? "Create Docker Compose Stack"
-                : "Edit Docker Compose Stack"}
+              {readOnly
+                ? "View Docker Compose Stack"
+                : mode === "create"
+                  ? "Create Docker Compose Stack"
+                  : "Edit Docker Compose Stack"}
             </Typography>
 
             {mode === "create" ? (
@@ -258,14 +266,31 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
           />
 
           <Box sx={{ flex: 1, overflow: "hidden" }}>
-            <FileEditor
-              ref={editorRef}
-              filePath={filePath || "docker-compose.yml"}
-              fileName="docker-compose.yml"
-              initialContent={initialContent}
-              onSave={handleSave}
-              onDirtyChange={setIsEditorDirty}
-            />
+            <Suspense
+              fallback={
+                <Box
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <ComponentLoader />
+                </Box>
+              }
+            >
+              <FileEditor
+                ref={editorRef}
+                filePath={filePath || "docker-compose.yml"}
+                fileName="docker-compose.yml"
+                initialContent={initialContent}
+                onSave={handleSave}
+                readOnly={readOnly}
+                onDirtyChange={readOnly ? undefined : setIsEditorDirty}
+              />
+            </Suspense>
           </Box>
         </DialogContent>
 
@@ -276,24 +301,32 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
             p: 2,
           }}
         >
-          <Button onClick={handleClose} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleValidate}
-            disabled={isSaving || isValidating}
-            variant="outlined"
-          >
-            {isValidating ? "Validating..." : "Validate"}
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isSaving || isValidating}
-            variant="contained"
-            color="primary"
-          >
-            {isSaving ? "Saving..." : "Save"}
-          </Button>
+          {readOnly ? (
+            <Button onClick={handleClose} variant="contained">
+              Close
+            </Button>
+          ) : (
+            <>
+              <Button onClick={handleClose} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleValidate}
+                disabled={isSaving || isValidating}
+                variant="outlined"
+              >
+                {isValidating ? "Validating..." : "Validate"}
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={isSaving || isValidating}
+                variant="contained"
+                color="primary"
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
 

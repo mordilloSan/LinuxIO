@@ -5,7 +5,7 @@ import React from "react";
 import ProcessorGraph from "./ProcessorGraph";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
@@ -51,22 +51,52 @@ const Processor: React.FC = () => {
       <Box
         sx={{
           display: "flex",
-          gap: 1,
           flexDirection: "column",
           alignSelf: "flex-start",
-          mt: 4,
+          width: "fit-content",
         }}
       >
-        <Typography variant="body1">
-          <strong>CPU:</strong> {CPUInfo?.modelName}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Cores:</strong> {CPUInfo?.cores} Threads
-        </Typography>
-        <Typography variant="body1">
-          <strong>Max Usage:</strong>{" "}
-          {Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%
-        </Typography>
+        {[
+          { label: "CPU", value: CPUInfo?.modelName },
+          {
+            label: "Cores",
+            value: CPUInfo ? `${CPUInfo.cores} Threads` : undefined,
+          },
+          {
+            label: "Max Usage",
+            value: `${Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%`,
+          },
+        ].map(({ label, value }) => (
+          <Box
+            key={label}
+            sx={{
+              display: "flex",
+              justifyContent: "flex-start",
+              alignItems: "baseline",
+              py: 0.5,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+              "&:last-child": { borderBottom: "none" },
+              gap: 1,
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                fontSize: "0.62rem",
+                flexShrink: 0,
+              }}
+            >
+              {label}
+            </Typography>
+            <Typography variant="body2" fontWeight={500} noWrap>
+              {value}
+            </Typography>
+          </Box>
+        ))}
       </Box>
     ),
     icon_text: IconText,
@@ -74,7 +104,7 @@ const Processor: React.FC = () => {
     iconProps: { sx: { color: "grey" } },
   };
 
-  return <GeneralCard {...data} />;
+  return <DashboardCard {...data} />;
 };
 
 export default Processor;

@@ -11,7 +11,7 @@ import {
   FormControlLabel,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
@@ -79,11 +79,6 @@ function getDNSv4List(i: any): string[] {
     .filter((s: string) => isIPv4(s));
 }
 
-const isEmptyForm = (f: Record<string, any> | undefined) =>
-  !f ||
-  (Object.keys(f).length === 0 && f.constructor === Object) ||
-  (!f.ipv4 && !f.gateway && !f.dns);
-
 /* ============================================ */
 
 interface Props {
@@ -105,7 +100,21 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 }) => {
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [dirty, setDirty] = useState(false);
+  const [prevIpv4Method, setPrevIpv4Method] = useState(iface.ipv4_method);
+  const [prevIfaceName, setPrevIfaceName] = useState(iface.name);
   const queryClient = useQueryClient();
+
+  // Keep mode in sync with iface (render-time state adjustment)
+  if (iface.ipv4_method !== prevIpv4Method) {
+    setPrevIpv4Method(iface.ipv4_method);
+    setMode(iface.ipv4_method === "manual" ? "manual" : "auto");
+  }
+
+  // Reset dirty when switching to another interface (render-time state adjustment)
+  if (iface.name !== prevIfaceName) {
+    setPrevIfaceName(iface.name);
+    setDirty(false);
+  }
 
   // Mutations
   const { mutate: setIPv4, isPending: isSettingIPv4 } =
@@ -188,32 +197,22 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
     }
   };
 
-  // Compute sane defaults from iface (will be used to prefill manual fields)
-  const defaults = useMemo(() => {
-    const ipv4 = getIPv4FromIface(iface);
-    const gateway = getGatewayV4(iface);
-    const dnsArr = getDNSv4List(iface);
-    return { ipv4, gateway, dns: dnsArr.join(", ") };
-  }, [iface]);
+  // Compute sane defaults from iface — stabilised on the actual values,
+  // NOT the iface object reference (which changes every refetch).
+  const defaultIpv4 = getIPv4FromIface(iface);
+  const defaultGateway = getGatewayV4(iface);
+  const defaultDns = getDNSv4List(iface).join(", ");
+  const defaults = useMemo(
+    () => ({ ipv4: defaultIpv4, gateway: defaultGateway, dns: defaultDns }),
+    [defaultIpv4, defaultGateway, defaultDns],
+  );
 
-  const syncModeWithIface = useEffectEvent(() => {
-    setMode(iface.ipv4_method === "manual" ? "manual" : "auto");
-  });
-
-  const resetDirtyState = useEffectEvent(() => {
-    setDirty(false);
-  });
-
-  // Keep mode in sync with iface
-  useEffect(() => {
-    syncModeWithIface();
-  }, [iface.ipv4_method]);
-
-  // Prefill when expanded + manual (without clobbering user input)
+  // Prefill when expanded + manual (without clobbering user input).
+  // Deliberately omits editForm from deps to avoid a set→trigger→set loop.
   useEffect(() => {
     if (!expanded) return;
     if (mode === "manual") {
-      if (!dirty || isEmptyForm(editForm)) {
+      if (!dirty) {
         setEditForm({
           ipv4: defaults.ipv4 || "",
           gateway: defaults.gateway || "",
@@ -222,14 +221,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
       }
     } else {
       // Auto mode: clear manual-only inputs
-      setEditForm({});
+      setEditForm((prev) => (Object.keys(prev).length === 0 ? prev : {}));
     }
-  }, [expanded, mode, defaults, dirty, editForm, setEditForm]);
-
-  // Reset dirty when switching to another interface
-  useEffect(() => {
-    resetDirtyState();
-  }, [iface.name]);
+  }, [expanded, mode, defaults, dirty, setEditForm]);
 
   const handleModeChange = (
     _: React.MouseEvent<HTMLElement>,

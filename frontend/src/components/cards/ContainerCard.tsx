@@ -1,21 +1,39 @@
-import { Box, Grid, Tooltip, Typography, Fade } from "@mui/material";
+import {
+  Box,
+  Chip,
+  Collapse,
+  Divider,
+  Switch,
+  Tooltip,
+  Typography,
+  Fade,
+} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useMemo, useState, useCallback } from "react";
+import React, {
+  Suspense,
+  useMemo,
+  useState,
+  useCallback,
+  useEffect,
+} from "react";
 import { toast } from "sonner";
 
 import ActionButton from "../../pages/main/docker/ActionButton";
-import LogsDialog from "../../pages/main/docker/LogsDialog";
 import ComponentLoader from "../loaders/ComponentLoader";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
-import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
+const TerminalDialog = React.lazy(
+  () => import("@/pages/main/docker/TerminalDialog"),
+);
 
 const getStatusColor = (container: ContainerInfo) => {
   const status = container.Status.toLowerCase();
@@ -48,6 +66,32 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
   // dialogs
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
+  const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
+
+  // expand / collapse
+  const [expanded, setExpanded] = useState(false);
+  const ports = useMemo(() => {
+    const seen = new Set<string>();
+    return (container.Ports ?? []).filter((p) => {
+      const key = p.PublicPort
+        ? `${p.PublicPort}:${p.PrivatePort}/${p.Type}`
+        : `${p.PrivatePort}/${p.Type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [container.Ports]);
+  const hasPorts = ports.length > 0;
+
+  useEffect(() => {
+    if (!expanded) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [expanded]);
 
   // derived
   const name = useMemo(
@@ -146,7 +190,56 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     ],
   );
 
-  const handleLogsClick = () => setLogDialogOpen(true);
+  const handleLogsClick = () => {
+    setHasLoadedLogsDialog(true);
+    setLogDialogOpen(true);
+  };
+
+  const handleTerminalClick = () => {
+    setHasLoadedTerminalDialog(true);
+    setTerminalOpen(true);
+  };
+
+  // ---- auto-update ----
+  const isWatchtowerContainer =
+    container.Labels?.["com.docker.compose.project"] === "linuxio-watchtower";
+
+  const { data: autoUpdateContainers = [] } =
+    linuxio.docker.list_auto_update_containers.useQuery({
+      enabled: !isWatchtowerContainer,
+    });
+  const autoUpdate = autoUpdateContainers.includes(name);
+  const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
+  const autoUpdateChecked = isWatchtowerContainer ? true : autoUpdate;
+  const autoUpdateDisabled = autoUpdateLoading || isWatchtowerContainer;
+  const autoUpdateTooltip = isWatchtowerContainer
+    ? "Auto Update: Managed by LinuxIO"
+    : autoUpdate
+      ? "Auto Update: On"
+      : "Auto Update: Off";
+
+  const handleAutoUpdateToggle = useCallback(
+    async (enabled: boolean) => {
+      if (isWatchtowerContainer) return;
+      setAutoUpdateLoading(true);
+      try {
+        await linuxio.docker.set_auto_update.call(
+          JSON.stringify({ container: name, enabled }),
+        );
+        queryClient.invalidateQueries({
+          queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
+        });
+        toast.success(
+          `Auto-update ${enabled ? "enabled" : "disabled"} for ${name}`,
+        );
+      } catch {
+        toast.error(`Failed to update auto-update setting for ${name}`);
+      } finally {
+        setAutoUpdateLoading(false);
+      }
+    },
+    [isWatchtowerContainer, name, queryClient],
+  );
 
   // ---- metrics ----
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
@@ -156,170 +249,265 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
   return (
-    <Grid size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}>
-      <FrostedCard
-        sx={{
-          p: 2,
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          position: "relative",
-          transition: "transform 0.2s, box-shadow 0.2s",
-          "&:hover": {
-            transform: "translateY(-4px)",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-          },
-        }}
+    <FrostedCard
+      onClick={hasPorts ? () => setExpanded((v) => !v) : undefined}
+      onMouseDown={hasPorts ? (e) => e.preventDefault() : undefined}
+      sx={{
+        p: 2,
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        position: "relative",
+        cursor: hasPorts ? "pointer" : "default",
+        transition: "transform 0.2s, box-shadow 0.2s",
+        "&:hover": {
+          transform: "translateY(-4px)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+        },
+      }}
+    >
+      {/* Status dot */}
+      <Tooltip
+        title={getStatusTooltip(container)}
+        placement="top"
+        arrow
+        slots={{ transition: Fade }}
+        slotProps={{ transition: { timeout: 300 } }}
       >
-        {/* Status dot */}
-        <Tooltip
-          title={getStatusTooltip(container)}
-          placement="top"
-          arrow
-          slots={{ transition: Fade }}
-          slotProps={{ transition: { timeout: 300 } }}
-        >
-          <Box
-            sx={{
-              position: "absolute",
-              top: 18,
-              right: 8,
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              backgroundColor: getStatusColor(container),
-              cursor: "default",
-            }}
-          />
-        </Tooltip>
-
-        {/* Top row: Icon + Name + Buttons */}
         <Box
           sx={{
-            display: "flex",
-            flexDirection: "row",
-            alignItems: "center",
-            width: "100%",
+            position: "absolute",
+            top: 18,
+            right: 8,
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            backgroundColor: getStatusColor(container),
+            cursor: "default",
+          }}
+        />
+      </Tooltip>
+
+      {/* Top row: Icon + Name + Buttons */}
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          width: "100%",
+        }}
+      >
+        <Box
+          sx={{
+            width: 48,
+            height: 48,
+            minWidth: 48,
+            minHeight: 48,
+            flexShrink: 0,
+            mr: 1.5,
+            alignSelf: "flex-start",
           }}
         >
-          <Box
-            sx={{
-              width: 48,
-              height: 48,
-              minWidth: 48,
-              minHeight: 48,
-              flexShrink: 0,
-              mr: 1.5,
-              alignSelf: "flex-start",
-            }}
+          <DockerIcon identifier={container.icon} size={48} alt={name} />
+        </Box>
+        <Box sx={{ flex: 0.95, minWidth: 0 }}>
+          <Typography
+            variant="subtitle1"
+            fontWeight="600"
+            noWrap
+            sx={{ ml: 1, mr: 0.1, mb: 0.5, fontSize: "1.05rem" }}
           >
-            <DockerIcon identifier={container.icon} size={48} alt={name} />
-          </Box>
-          <Box sx={{ flex: 0.95, minWidth: 0 }}>
-            <Typography
-              variant="subtitle1"
-              fontWeight="600"
-              noWrap
-              sx={{ ml: 1, mr: 0.1, mb: 0.5, fontSize: "1.05rem" }}
-            >
-              {name}
-            </Typography>
-            <Box sx={{ display: "flex", gap: 0.5 }}>
-              {container.State !== "running" && (
-                <Tooltip title="Start Container" arrow>
-                  <span>
-                    <ActionButton
-                      icon="mdi:play"
-                      onClick={() => handleAction("start")}
-                    />
-                  </span>
-                </Tooltip>
-              )}
-              {container.State === "running" && (
-                <Tooltip title="Stop Container" arrow>
-                  <span>
-                    <ActionButton
-                      icon="mdi:stop"
-                      onClick={() => handleAction("stop")}
-                    />
-                  </span>
-                </Tooltip>
-              )}
-              <Tooltip title="Restart Container" arrow>
-                <span>
-                  <ActionButton
-                    icon="mdi:restart"
-                    onClick={() => handleAction("restart")}
-                  />
-                </span>
-              </Tooltip>
-              <Tooltip title="Remove Container" arrow>
-                <span>
-                  <ActionButton
-                    icon="mdi:delete"
-                    onClick={() => handleAction("remove")}
-                  />
-                </span>
-              </Tooltip>
+            {name}
+          </Typography>
+          <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
+            {container.Labels?.["com.docker.compose.project"] ===
+            "linuxio-watchtower" ? (
               <Tooltip title="View Logs" arrow>
-                <span>
-                  <ActionButton
-                    icon="mdi:file-document-outline"
-                    onClick={handleLogsClick}
-                  />
-                </span>
+                <Chip
+                  label="Managed by LinuxIO"
+                  size="small"
+                  variant="outlined"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLogsClick();
+                  }}
+                  sx={{
+                    fontSize: "0.68rem",
+                    opacity: 0.7,
+                    cursor: "pointer",
+                    "&:hover": { opacity: 1 },
+                  }}
+                />
               </Tooltip>
+            ) : (
+              <>
+                {container.State !== "running" && (
+                  <Tooltip title="Start Container" arrow>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ActionButton
+                        icon="mdi:play"
+                        onClick={() => handleAction("start")}
+                      />
+                    </span>
+                  </Tooltip>
+                )}
+                {container.State === "running" && (
+                  <Tooltip title="Stop Container" arrow>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ActionButton
+                        icon="mdi:stop"
+                        onClick={() => handleAction("stop")}
+                      />
+                    </span>
+                  </Tooltip>
+                )}
+                <Tooltip title="Restart Container" arrow>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:restart"
+                      onClick={() => handleAction("restart")}
+                    />
+                  </span>
+                </Tooltip>
+                <Tooltip title="Remove Container" arrow>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:delete"
+                      onClick={() => handleAction("remove")}
+                    />
+                  </span>
+                </Tooltip>
+                <Tooltip title="View Logs" arrow>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:file-document-outline"
+                      onClick={handleLogsClick}
+                    />
+                  </span>
+                </Tooltip>
+              </>
+            )}
+            {container.Labels?.["com.docker.compose.project"] !==
+              "linuxio-watchtower" && (
               <Tooltip title="Open Terminal" arrow>
-                <span>
+                <span onClick={(e) => e.stopPropagation()}>
                   <ActionButton
                     icon="mdi:console"
-                    onClick={() => setTerminalOpen(true)}
+                    onClick={handleTerminalClick}
                   />
                 </span>
               </Tooltip>
-            </Box>
+            )}
           </Box>
         </Box>
+      </Box>
 
-        <LogsDialog
-          open={logDialogOpen}
-          onClose={() => setLogDialogOpen(false)}
-          containerName={name}
-          containerId={container.Id}
-        />
+      <Suspense fallback={null}>
+        {hasLoadedLogsDialog && (
+          <LogsDialog
+            open={logDialogOpen}
+            onClose={() => setLogDialogOpen(false)}
+            containerName={name}
+            containerId={container.Id}
+          />
+        )}
 
-        <TerminalDialog
-          open={terminalOpen}
-          onClose={() => setTerminalOpen(false)}
-          containerId={container.Id}
-          containerName={name}
-        />
+        {hasLoadedTerminalDialog && (
+          <TerminalDialog
+            open={terminalOpen}
+            onClose={() => setTerminalOpen(false)}
+            containerId={container.Id}
+            containerName={name}
+          />
+        )}
+      </Suspense>
 
-        {/* Metrics area: full width */}
-        <Box sx={{ mt: 2, width: "100%" }}>
-          {isActionPending ? (
-            <ComponentLoader />
-          ) : (
-            <>
-              <MetricBar
-                label="CPU"
-                percent={cpuPercent}
-                color={theme.palette.primary.main}
-                tooltip="CPU Usage"
-                rightLabel={`${cpuPercent.toFixed(1)}%`}
+      {/* Metrics area: full width */}
+      <Box sx={{ mt: 2, width: "100%" }}>
+        {isActionPending ? (
+          <ComponentLoader />
+        ) : (
+          <>
+            <MetricBar
+              label="CPU"
+              percent={cpuPercent}
+              color={theme.palette.primary.main}
+              tooltip="CPU Usage"
+              rightLabel={`${cpuPercent.toFixed(1)}%`}
+            />
+            <MetricBar
+              label="MEM"
+              percent={memPercent}
+              color={theme.palette.primary.main}
+              tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+              rightLabel={formatFileSize(memUsage)}
+            />
+          </>
+        )}
+      </Box>
+
+      {/* Auto-update toggle */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mt: 1.5,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Typography
+          variant="caption"
+          color={isWatchtowerContainer ? "text.disabled" : "text.secondary"}
+        >
+          Auto Update
+        </Typography>
+        <Tooltip title={autoUpdateTooltip}>
+          <Box component="span" sx={{ display: "inline-flex" }}>
+            <Switch
+              size="small"
+              checked={autoUpdateChecked}
+              onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
+              disabled={autoUpdateDisabled}
+              sx={
+                isWatchtowerContainer
+                  ? {
+                      "& .MuiSwitch-switchBase.Mui-checked.Mui-disabled": {
+                        color: "action.disabled",
+                      },
+                      "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track":
+                        {
+                          opacity: 1,
+                          backgroundColor: "action.disabledBackground",
+                        },
+                    }
+                  : undefined
+              }
+            />
+          </Box>
+        </Tooltip>
+      </Box>
+
+      {/* Ports section */}
+      <Collapse in={expanded} timeout={250} unmountOnExit>
+        <Divider sx={{ mt: 1, mb: 1.5 }} />
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+          {ports.map((p, i) => {
+            const label = p.PublicPort
+              ? `${p.PublicPort}:${p.PrivatePort}/${p.Type}`
+              : `${p.PrivatePort}/${p.Type}`;
+            return (
+              <Chip
+                key={i}
+                label={label}
+                size="small"
+                sx={{ fontFamily: "monospace", fontSize: "0.7rem", height: 22 }}
               />
-              <MetricBar
-                label="MEM"
-                percent={memPercent}
-                color={theme.palette.primary.main}
-                tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
-                rightLabel={formatFileSize(memUsage)}
-              />
-            </>
-          )}
+            );
+          })}
         </Box>
-      </FrostedCard>
-    </Grid>
+      </Collapse>
+    </FrostedCard>
   );
 };
 

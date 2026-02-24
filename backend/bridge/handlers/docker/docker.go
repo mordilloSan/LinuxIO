@@ -17,7 +17,7 @@ func getClient() (*client.Client, error) {
 func CheckDockerAvailability() (bool, error) {
 	cli, err := getClient()
 	if err != nil {
-		logger.Warnf("docker client error: %v", err)
+		logger.Infof("docker service not available")
 		return false, fmt.Errorf("docker client error: %w", err)
 	}
 	defer func() {
@@ -28,7 +28,7 @@ func CheckDockerAvailability() (bool, error) {
 
 	_, err = cli.Ping(context.Background())
 	if err != nil {
-		logger.Warnf("docker daemon not accessible: %v", err)
+		logger.Infof("docker service not available")
 		return false, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
 

@@ -1,7 +1,7 @@
 import { Typography, Box } from "@mui/material";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import ErrorMessage from "@/components/errors/Error";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -43,34 +43,68 @@ const MemoryUsage = () => {
       />
     ),
     stats: (
-      <Box sx={{ display: "flex", gap: 1, flexDirection: "column" }}>
-        <Typography variant="body1">
-          <strong>Total Memory:</strong>{" "}
-          {formatFileSize(memoryData?.system?.total ?? 0, 2)}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Used Memory:</strong>{" "}
-          {formatFileSize(memoryData?.system?.active ?? 0, 2)}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Docker:</strong>{" "}
-          {formatFileSize(memoryData?.docker?.used ?? 0, 2)}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Swap:</strong>{" "}
-          {formatFileSize(
-            (memoryData?.system?.swapTotal ?? 0) -
-              (memoryData?.system?.swapFree ?? 0),
-            2,
-          )}{" "}
-          of {formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}
-        </Typography>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignSelf: "flex-start",
+          width: "fit-content",
+        }}
+      >
+        {[
+          {
+            label: "Total",
+            value: formatFileSize(memoryData?.system?.total ?? 0, 2),
+          },
+          {
+            label: "Used",
+            value: formatFileSize(memoryData?.system?.active ?? 0, 2),
+          },
+          {
+            label: "Docker",
+            value: formatFileSize(memoryData?.docker?.used ?? 0, 2),
+          },
+          {
+            label: "Swap",
+            value: `${formatFileSize((memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0), 2)}/${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}`,
+          },
+        ].map(({ label, value }) => (
+          <Box
+            key={label}
+            sx={{
+              display: "flex",
+              justifyContent: "flex-start",
+              alignItems: "baseline",
+              py: 0.5,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+              "&:last-child": { borderBottom: "none" },
+              gap: 1,
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                fontSize: "0.62rem",
+                flexShrink: 0,
+              }}
+            >
+              {label}
+            </Typography>
+            <Typography variant="body2" fontWeight={500} noWrap>
+              {value}
+            </Typography>
+          </Box>
+        ))}
       </Box>
     ),
     avatarIcon: "la:memory",
   };
 
-  return <GeneralCard {...data} />;
+  return <DashboardCard {...data} />;
 };
 
 export default MemoryUsage;

@@ -9,17 +9,20 @@ import {
   Typography,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import LogsDialog from "@/pages/main/docker/LogsDialog";
-import TerminalDialog from "@/pages/main/docker/TerminalDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
+
+const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
+const TerminalDialog = React.lazy(
+  () => import("@/pages/main/docker/TerminalDialog"),
+);
 
 const stateColor: Record<string, string> = {
   running: "success.main",
@@ -38,6 +41,8 @@ const getStatusLabel = (status: string, state: string): string => {
   return state;
 };
 
+const getCollectionCount = <T,>(items: T[]) => items.length;
+
 const DockerInfo: React.FC = () => {
   const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -48,6 +53,8 @@ const DockerInfo: React.FC = () => {
   } | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
+  const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
   const [dialogContainer, setDialogContainer] = useState<{
     id: string;
     name: string;
@@ -61,49 +68,16 @@ const DockerInfo: React.FC = () => {
     [queryClient],
   );
 
-  const { mutate: startContainer } = linuxio.docker.start_container.useMutation(
-    {
-      onSuccess: () => {
-        toast.success(`Container ${menuContainer?.name} started`);
-        invalidateContainers();
-      },
-      onError: (e: Error) => {
-        toast.error(getMutationErrorMessage(e, "Failed to start container"));
-      },
-    },
-  );
+  const { mutate: startContainer } =
+    linuxio.docker.start_container.useMutation();
 
-  const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation({
-    onSuccess: () => {
-      toast.success(`Container ${menuContainer?.name} stopped`);
-      invalidateContainers();
-    },
-    onError: (e: Error) => {
-      toast.error(getMutationErrorMessage(e, "Failed to stop container"));
-    },
-  });
+  const { mutate: stopContainer } = linuxio.docker.stop_container.useMutation();
 
   const { mutate: restartContainer } =
-    linuxio.docker.restart_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${menuContainer?.name} restarted`);
-        invalidateContainers();
-      },
-      onError: (e: Error) => {
-        toast.error(getMutationErrorMessage(e, "Failed to restart container"));
-      },
-    });
+    linuxio.docker.restart_container.useMutation();
 
   const { mutate: removeContainer } =
-    linuxio.docker.remove_container.useMutation({
-      onSuccess: () => {
-        toast.success(`Container ${menuContainer?.name} removed`);
-        invalidateContainers();
-      },
-      onError: (e: Error) => {
-        toast.error(getMutationErrorMessage(e, "Failed to remove container"));
-      },
-    });
+    linuxio.docker.remove_container.useMutation();
 
   const handleContextMenu = useCallback(
     (
@@ -127,11 +101,25 @@ const DockerInfo: React.FC = () => {
   const handleAction = useCallback(
     (action: "start" | "stop" | "restart" | "remove") => {
       if (!menuContainer) return;
-      const args = [menuContainer.id];
-      if (action === "start") startContainer(args);
-      else if (action === "stop") stopContainer(args);
-      else if (action === "restart") restartContainer(args);
-      else removeContainer(args);
+      const { id, name } = menuContainer;
+      const args = [id];
+      const callbacks = {
+        onSuccess: () => {
+          toast.success(
+            `Container ${name} ${action === "remove" ? "removed" : `${action}ed`}`,
+          );
+          invalidateContainers();
+        },
+        onError: (e: Error) => {
+          toast.error(
+            getMutationErrorMessage(e, `Failed to ${action} container`),
+          );
+        },
+      };
+      if (action === "start") startContainer(args, callbacks);
+      else if (action === "stop") stopContainer(args, callbacks);
+      else if (action === "restart") restartContainer(args, callbacks);
+      else removeContainer(args, callbacks);
       handleMenuClose();
     },
     [
@@ -141,6 +129,7 @@ const DockerInfo: React.FC = () => {
       restartContainer,
       removeContainer,
       handleMenuClose,
+      invalidateContainers,
     ],
   );
 
@@ -152,17 +141,23 @@ const DockerInfo: React.FC = () => {
     refetchInterval: 5000,
   });
 
-  const { data: images = [] } = linuxio.docker.list_images.useQuery({
-    refetchInterval: 30_000,
-  });
+  const { data: imagesCount = 0 } =
+    linuxio.docker.list_images.useQueryWithSelect({
+      refetchInterval: 30_000,
+      select: getCollectionCount,
+    });
 
-  const { data: networks = [] } = linuxio.docker.list_networks.useQuery({
-    refetchInterval: 30_000,
-  });
+  const { data: networksCount = 0 } =
+    linuxio.docker.list_networks.useQueryWithSelect({
+      refetchInterval: 30_000,
+      select: getCollectionCount,
+    });
 
-  const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
-    refetchInterval: 30_000,
-  });
+  const { data: volumesCount = 0 } =
+    linuxio.docker.list_volumes.useQueryWithSelect({
+      refetchInterval: 30_000,
+      select: getCollectionCount,
+    });
 
   const runningCount = useMemo(
     () => containers.filter((c) => c.State === "running").length,
@@ -183,24 +178,47 @@ const DockerInfo: React.FC = () => {
     <Box
       sx={{
         display: "flex",
-        gap: 0.5,
         flexDirection: "column",
         alignSelf: "flex-start",
-        mt: 4,
+        width: "fit-content",
       }}
     >
-      <Typography variant="body1">
-        <strong>Containers:</strong> {runningCount}/{containers.length}
-      </Typography>
-      <Typography variant="body1">
-        <strong>Images:</strong> {images.length}
-      </Typography>
-      <Typography variant="body1">
-        <strong>Networks:</strong> {networks.length}
-      </Typography>
-      <Typography variant="body1">
-        <strong>Volumes:</strong> {volumes.length}
-      </Typography>
+      {[
+        { label: "Containers", value: `${runningCount}/${containers.length}` },
+        { label: "Images", value: imagesCount },
+        { label: "Networks", value: networksCount },
+        { label: "Volumes", value: volumesCount },
+      ].map(({ label, value }) => (
+        <Box
+          key={label}
+          sx={{
+            display: "flex",
+            justifyContent: "flex-start",
+            alignItems: "baseline",
+            py: 0.5,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            "&:last-child": { borderBottom: "none" },
+            gap: 1,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              fontSize: "0.62rem",
+              flexShrink: 0,
+            }}
+          >
+            {label}
+          </Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>
+            {value}
+          </Typography>
+        </Box>
+      ))}
     </Box>
   );
 
@@ -217,10 +235,11 @@ const DockerInfo: React.FC = () => {
           xs: "repeat(3, 36px)",
           sm: "repeat(4, 36px)",
         },
-        gap: 2.5,
+        columnGap: 4.5,
+        rowGap: 5,
         justifyContent: "center",
-        width: "100%",
-        maxHeight: 90,
+        width: "fit-content",
+        maxHeight: 110,
         overflowX: "hidden",
         overflowY: "auto",
         pr: 0.5,
@@ -330,6 +349,7 @@ const DockerInfo: React.FC = () => {
                 id: menuContainer.id,
                 name: menuContainer.name,
               });
+              setHasLoadedLogsDialog(true);
               setLogsOpen(true);
             }
             handleMenuClose();
@@ -347,6 +367,7 @@ const DockerInfo: React.FC = () => {
                 id: menuContainer.id,
                 name: menuContainer.name,
               });
+              setHasLoadedTerminalDialog(true);
               setTerminalOpen(true);
             }
             handleMenuClose();
@@ -363,28 +384,32 @@ const DockerInfo: React.FC = () => {
 
   return (
     <>
-      <GeneralCard
+      <DashboardCard
         title="Docker"
         avatarIcon="mdi:docker"
         stats={stats}
         stats2={stats2}
-        connectionStatus={isContainersError ? "offline" : "online"}
+        contentLayout="auto"
       />
       {dialogContainer && (
-        <>
-          <LogsDialog
-            open={logsOpen}
-            onClose={() => setLogsOpen(false)}
-            containerId={dialogContainer.id}
-            containerName={dialogContainer.name}
-          />
-          <TerminalDialog
-            open={terminalOpen}
-            onClose={() => setTerminalOpen(false)}
-            containerId={dialogContainer.id}
-            containerName={dialogContainer.name}
-          />
-        </>
+        <Suspense fallback={null}>
+          {hasLoadedLogsDialog && (
+            <LogsDialog
+              open={logsOpen}
+              onClose={() => setLogsOpen(false)}
+              containerId={dialogContainer.id}
+              containerName={dialogContainer.name}
+            />
+          )}
+          {hasLoadedTerminalDialog && (
+            <TerminalDialog
+              open={terminalOpen}
+              onClose={() => setTerminalOpen(false)}
+              containerId={dialogContainer.id}
+              containerName={dialogContainer.name}
+            />
+          )}
+        </Suspense>
       )}
     </>
   );

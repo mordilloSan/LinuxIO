@@ -1,5 +1,5 @@
 import { Add as AddIcon } from "@mui/icons-material";
-import { Box, Button } from "@mui/material";
+import { Button } from "@mui/material";
 import React, { useState } from "react";
 
 import DiskOverview from "./DiskOverview";
@@ -39,25 +39,9 @@ const StoragePage: React.FC = () => {
               variant="contained"
               size="small"
               onClick={createLVHandler}
-              sx={{
-                minWidth: { xs: "40px", sm: "auto" },
-                px: { xs: 1, sm: 2 },
-                "& .MuiButton-startIcon": {
-                  display: { xs: "none", sm: "flex" },
-                  margin: { xs: 0, sm: "0 8px 0 -4px" },
-                },
-              }}
               startIcon={<AddIcon />}
             >
-              <Box
-                sx={{
-                  display: { xs: "none", sm: "flex" },
-                  alignItems: "center",
-                }}
-              >
-                Create LV
-              </Box>
-              <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
+              Create LV
             </Button>
           ) : undefined,
         },
@@ -76,25 +60,9 @@ const StoragePage: React.FC = () => {
               variant="contained"
               size="small"
               onClick={mountNFSHandler}
-              sx={{
-                minWidth: { xs: "40px", sm: "auto" },
-                px: { xs: 1, sm: 2 },
-                "& .MuiButton-startIcon": {
-                  display: { xs: "none", sm: "flex" },
-                  margin: { xs: 0, sm: "0 8px 0 -4px" },
-                },
-              }}
               startIcon={<AddIcon />}
             >
-              <Box
-                sx={{
-                  display: { xs: "none", sm: "flex" },
-                  alignItems: "center",
-                }}
-              >
-                Mount NFS
-              </Box>
-              <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
+              Mount NFS
             </Button>
           ) : undefined,
         },

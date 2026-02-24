@@ -1,4 +1,7 @@
-import React from "react";
+import * as EmotionReact from "@emotion/react";
+import * as EmotionStyled from "@emotion/styled";
+import * as React from "react";
+import * as ReactDOM from "react-dom";
 
 // Cache for loaded module components
 const moduleCache = new Map<string, Promise<React.ComponentType>>();
@@ -92,6 +95,41 @@ async function loadModuleFromSource(
 }
 
 /**
+ * Lazily populate window globals required by production module bundles.
+ * Called only when a module is actually being loaded — never at app startup.
+ * The singleton promise is reset on failure so retries are possible.
+ */
+let globalsPromise: Promise<void> | null = null;
+
+function ensureGlobals(): Promise<void> {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  (window as any).React = React;
+  (window as any).ReactDOM = ReactDOM;
+  (window as any).EmotionReact = EmotionReact;
+  (window as any).EmotionStyled = EmotionStyled;
+
+  // MUI namespace is intentionally deferred because it is only needed by
+  // production dynamic modules loaded via script tag.
+  if ((window as any).MaterialUI) {
+    return Promise.resolve();
+  }
+
+  if (globalsPromise) return globalsPromise;
+  globalsPromise = import("@mui/material")
+    .then((MaterialUI) => {
+      (window as any).MaterialUI = MaterialUI;
+    })
+    .catch((err) => {
+      globalsPromise = null; // allow retry on next module open
+      throw err;
+    });
+  return globalsPromise;
+}
+
+/**
  * Load module from bundled script (production mode)
  * Modules must export to window.LinuxIOModules[moduleName].default
  */
@@ -99,33 +137,36 @@ function loadModuleFromBundle(
   url: string,
   moduleName: string,
 ): Promise<React.ComponentType> {
-  return new Promise<React.ComponentType>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.type = "module";
-    script.src = url;
+  return ensureGlobals().then(
+    () =>
+      new Promise<React.ComponentType>((resolve, reject) => {
+        const script = document.createElement("script");
+        script.type = "module";
+        script.src = url;
 
-    script.onload = () => {
-      const mod = (window as any).LinuxIOModules?.[moduleName];
+        script.onload = () => {
+          const mod = (window as any).LinuxIOModules?.[moduleName];
 
-      if (!mod?.default) {
-        reject(
-          new Error(
-            `Module ${moduleName} did not export default component to window.LinuxIOModules.${moduleName}.default`,
-          ),
-        );
-        return;
-      }
+          if (!mod?.default) {
+            reject(
+              new Error(
+                `Module ${moduleName} did not export default component to window.LinuxIOModules.${moduleName}.default`,
+              ),
+            );
+            return;
+          }
 
-      console.log(`✅ Loaded module ${moduleName} from bundle`);
-      resolve(mod.default);
-    };
+          console.log(`✅ Loaded module ${moduleName} from bundle`);
+          resolve(mod.default);
+        };
 
-    script.onerror = () => {
-      reject(new Error(`Failed to load module from ${url}`));
-    };
+        script.onerror = () => {
+          reject(new Error(`Failed to load module from ${url}`));
+        };
 
-    document.head.appendChild(script);
-  });
+        document.head.appendChild(script);
+      }),
+  );
 }
 
 /**

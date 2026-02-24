@@ -24,6 +24,12 @@ const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   primaryColor: settings.appSettings.primaryColor,
   sidebarCollapsed: settings.appSettings.sidebarCollapsed,
   showHiddenFiles: settings.appSettings.showHiddenFiles,
+  dashboardOrder: settings.appSettings.dashboardOrder,
+  hiddenCards: settings.appSettings.hiddenCards,
+  containerOrder: settings.appSettings.containerOrder,
+  dockerDashboardSections: settings.appSettings.dockerDashboardSections,
+  dockerContainersView: settings.appSettings.dockerContainersView,
+  dockerStacksView: settings.appSettings.dockerStacksView,
   dockerFolder: settings.docker.folder,
 });
 
@@ -36,7 +42,13 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     config.theme !== undefined ||
     config.primaryColor !== undefined ||
     config.sidebarCollapsed !== undefined ||
-    config.showHiddenFiles !== undefined
+    config.showHiddenFiles !== undefined ||
+    config.dashboardOrder !== undefined ||
+    config.hiddenCards !== undefined ||
+    config.containerOrder !== undefined ||
+    config.dockerDashboardSections !== undefined ||
+    config.dockerContainersView !== undefined ||
+    config.dockerStacksView !== undefined
   ) {
     payload.appSettings = {};
     if (config.theme !== undefined) payload.appSettings.theme = config.theme;
@@ -46,6 +58,19 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
       payload.appSettings.sidebarCollapsed = config.sidebarCollapsed;
     if (config.showHiddenFiles !== undefined)
       payload.appSettings.showHiddenFiles = config.showHiddenFiles;
+    if (config.dashboardOrder !== undefined)
+      payload.appSettings.dashboardOrder = config.dashboardOrder;
+    if (config.hiddenCards !== undefined)
+      payload.appSettings.hiddenCards = config.hiddenCards;
+    if (config.containerOrder !== undefined)
+      payload.appSettings.containerOrder = config.containerOrder;
+    if (config.dockerDashboardSections !== undefined)
+      payload.appSettings.dockerDashboardSections =
+        config.dockerDashboardSections;
+    if (config.dockerContainersView !== undefined)
+      payload.appSettings.dockerContainersView = config.dockerContainersView;
+    if (config.dockerStacksView !== undefined)
+      payload.appSettings.dockerStacksView = config.dockerStacksView;
   }
 
   if (config.dockerFolder !== undefined) {
@@ -61,6 +86,12 @@ const defaultConfig: AppConfig = {
   sidebarCollapsed: false,
   showHiddenFiles: false,
   dockerFolder: undefined,
+  dashboardOrder: undefined,
+  hiddenCards: undefined,
+  containerOrder: undefined,
+  dockerDashboardSections: undefined,
+  dockerContainersView: undefined,
+  dockerStacksView: undefined,
 };
 
 const applyDefaults = (
@@ -70,6 +101,14 @@ const applyDefaults = (
   primaryColor: cfg?.primaryColor ?? defaultConfig.primaryColor,
   sidebarCollapsed: cfg?.sidebarCollapsed ?? defaultConfig.sidebarCollapsed,
   showHiddenFiles: cfg?.showHiddenFiles ?? defaultConfig.showHiddenFiles,
+  dashboardOrder: cfg?.dashboardOrder ?? defaultConfig.dashboardOrder,
+  hiddenCards: cfg?.hiddenCards ?? defaultConfig.hiddenCards,
+  containerOrder: cfg?.containerOrder ?? defaultConfig.containerOrder,
+  dockerDashboardSections:
+    cfg?.dockerDashboardSections ?? defaultConfig.dockerDashboardSections,
+  dockerContainersView:
+    cfg?.dockerContainersView ?? defaultConfig.dockerContainersView,
+  dockerStacksView: cfg?.dockerStacksView ?? defaultConfig.dockerStacksView,
   dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,
 });
 

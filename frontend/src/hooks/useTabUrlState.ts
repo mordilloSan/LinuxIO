@@ -26,14 +26,11 @@ export function useTabUrlState(
   // Create setter function that updates URL
   const setTab = useCallback(
     (newTab: string) => {
-      setSearchParams(
-        (prev) => {
-          const newParams = new URLSearchParams(prev);
-          newParams.set(urlParam, newTab);
-          return newParams;
-        },
-        { replace: true }, // Don't add to browser history for each tab change
-      );
+      setSearchParams((prev) => {
+        const newParams = new URLSearchParams(prev);
+        newParams.set(urlParam, newTab);
+        return newParams;
+      });
     },
     [urlParam, setSearchParams],
   );

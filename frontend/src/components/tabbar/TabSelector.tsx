@@ -1,4 +1,13 @@
-import { Paper, ToggleButton, ToggleButtonGroup, Box } from "@mui/material";
+import TuneIcon from "@mui/icons-material/Tune";
+import {
+  Paper,
+  ToggleButton,
+  ToggleButtonGroup,
+  Box,
+  IconButton,
+  Popover,
+  useMediaQuery,
+} from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -20,6 +29,10 @@ const TabSelector: React.FC<TabSelectorProps> = ({
   rightContent,
 }) => {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
+    null,
+  );
 
   const primaryHex = theme.palette.primary.main;
   const contrast = theme.palette.getContrastText(primaryHex);
@@ -28,7 +41,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
     <Box
       sx={{
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "space-between",
         gap: 2,
         mb: 2,
@@ -85,11 +98,50 @@ const TabSelector: React.FC<TabSelectorProps> = ({
       </Paper>
 
       {rightContent && (
-        <Box
-          sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}
-        >
-          {rightContent}
-        </Box>
+        <>
+          {isMobile ? (
+            <>
+              <IconButton
+                size="small"
+                onClick={(e) => setAnchorEl(e.currentTarget)}
+                sx={{ mt: 0.5, flexShrink: 0 }}
+              >
+                <TuneIcon fontSize="small" />
+              </IconButton>
+              <Popover
+                open={Boolean(anchorEl)}
+                anchorEl={anchorEl}
+                onClose={() => setAnchorEl(null)}
+                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                transformOrigin={{ vertical: "top", horizontal: "right" }}
+              >
+                <Box
+                  sx={{
+                    p: 1.5,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                  }}
+                >
+                  {rightContent}
+                </Box>
+              </Popover>
+            </>
+          ) : (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                alignSelf: "flex-start",
+                mt: 0.5,
+                gap: 1,
+                flexShrink: 0,
+              }}
+            >
+              {rightContent}
+            </Box>
+          )}
+        </>
       )}
     </Box>
   );

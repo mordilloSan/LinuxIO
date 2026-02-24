@@ -3,9 +3,12 @@ package docker
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"slices"
 
 	"github.com/mordilloSan/go-logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -325,6 +328,14 @@ func RegisterHandlers(sess *session.Session) {
 		})
 	})
 
+	ipc.RegisterFunc("docker", "get_docker_info", func(ctx context.Context, args []string, emit ipc.Events) error {
+		info, err := GetDockerInfo()
+		if err != nil {
+			return err
+		}
+		return emit.Result(info)
+	})
+
 	// Icon handlers
 	ipc.RegisterFunc("docker", "get_icon_uri", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
@@ -364,5 +375,88 @@ func RegisterHandlers(sess *session.Session) {
 			return err
 		}
 		return emit.Result(map[string]string{"message": "Icon cache cleared successfully"})
+	})
+
+	ipc.RegisterFunc("docker", "start_all_stopped", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := StartAllStopped()
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "stop_all_running", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := StopAllRunning()
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "list_auto_update_containers", func(ctx context.Context, args []string, emit ipc.Events) error {
+		cfg, _, err := config.Load(username)
+		if err != nil {
+			return err
+		}
+		names := cfg.Docker.AutoUpdateStacks
+		if names == nil {
+			names = []string{}
+		}
+		return emit.Result(names)
+	})
+
+	// args[0] = JSON: { container: string, enabled: boolean }
+	ipc.RegisterFunc("docker", "set_auto_update", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		var payload struct {
+			Container string `json:"container"`
+			Enabled   bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+			return ipc.ErrInvalidArgs
+		}
+		if payload.Container == "" {
+			return ipc.ErrInvalidArgs
+		}
+
+		cfg, _, err := config.Load(username)
+		if err != nil {
+			return err
+		}
+
+		if payload.Enabled {
+			if !slices.Contains(cfg.Docker.AutoUpdateStacks, payload.Container) {
+				cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, payload.Container)
+			}
+		} else {
+			cfg.Docker.AutoUpdateStacks = slices.DeleteFunc(cfg.Docker.AutoUpdateStacks, func(s string) bool {
+				return s == payload.Container
+			})
+		}
+
+		if _, err := config.Save(username, cfg); err != nil {
+			return err
+		}
+
+		go SyncWatchtowerStack(username)
+
+		return emit.Result(map[string]any{"message": "auto-update updated"})
+	})
+
+	ipc.RegisterFunc("docker", "system_prune", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		var opts PruneOptions
+		if err := json.Unmarshal([]byte(args[0]), &opts); err != nil {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := SystemPrune(opts)
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
 	})
 }

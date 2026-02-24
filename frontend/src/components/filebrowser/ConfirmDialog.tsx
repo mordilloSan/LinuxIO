@@ -22,10 +22,8 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const handleConfirm = (
-    event?: React.FormEvent<HTMLFormElement> | React.MouseEvent,
-  ) => {
-    event?.preventDefault();
+  const handleConfirm: React.SubmitEventHandler<HTMLFormElement> = (event) => {
+    event.preventDefault();
     onConfirm();
     onClose();
   };
@@ -84,7 +82,6 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </Button>
           <Button
             type="submit"
-            onClick={handleConfirm}
             autoFocus
             sx={{
               px: 3,

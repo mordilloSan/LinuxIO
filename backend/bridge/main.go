@@ -17,6 +17,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -126,6 +127,12 @@ func main() {
 	// Ensure per-user config exists and is valid
 	config.EnsureConfigReady(Sess.User.Username)
 	logger.Debugf("[bridge] config ready")
+
+	// Ensure the shared linuxio-docker network exists (fails silently if Docker unavailable)
+	docker.EnsureLinuxIONetwork()
+
+	// Ensure Watchtower is running with current auto-update config (non-blocking)
+	go docker.SyncWatchtowerStack(Sess.User.Username)
 
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan, Sess)

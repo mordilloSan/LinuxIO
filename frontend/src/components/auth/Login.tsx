@@ -72,7 +72,7 @@ function LogIn() {
   const redirect = searchParams.get("redirect") || "/";
   const { signIn } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
 

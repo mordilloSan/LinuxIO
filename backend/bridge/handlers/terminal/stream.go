@@ -1,8 +1,11 @@
 package terminal
 
 import (
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -12,6 +15,8 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
@@ -276,48 +281,136 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 	var shellArgs []string
 	switch shell {
 	case "bash":
-		shellArgs = []string{"exec", "-it", "-e", "TERM=xterm-256color", containerID, "bash", "-il"}
+		shellArgs = []string{"bash", "-il"}
 	default:
-		shellArgs = []string{"exec", "-it", "-e", "TERM=xterm-256color", containerID, shell, "-i"}
+		shellArgs = []string{shell, "-i"}
 	}
 
-	cmd := exec.Command("docker", shellArgs...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	ptmx, err := pty.Start(cmd)
+	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
-		logger.Errorf("[ContainerTerminal] pty start failed: %v", err)
+		logger.Errorf("[ContainerTerminal] docker client error: %v", err)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
+		}
+		return err
+	}
+	defer cli.Close()
+
+	consoleSize := [2]uint{uint(rows), uint(cols)}
+	execResp, err := cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
+		Tty:          true,
+		AttachStdin:  true,
+		AttachStdout: true,
+		AttachStderr: true,
+		Env:          []string{"TERM=xterm-256color"},
+		ConsoleSize:  &consoleSize,
+		Cmd:          shellArgs,
+	})
+	if err != nil {
+		logger.Errorf("[ContainerTerminal] exec create failed: %v", err)
 		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
 			logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
 		}
 		return err
 	}
 
-	if err := pty.Setsize(ptmx, &pty.Winsize{
-		Cols: safeUint16(cols),
-		Rows: safeUint16(rows),
-	}); err != nil {
-		logger.Debugf("[ContainerTerminal] failed to set initial PTY size: %v", err)
+	attachResp, err := cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{
+		Tty:         true,
+		ConsoleSize: &consoleSize,
+	})
+	if err != nil {
+		logger.Errorf("[ContainerTerminal] exec attach failed: %v", err)
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
+		}
+		return err
+	}
+	defer attachResp.Close()
+
+	if resizeErr := cli.ContainerExecResize(ctx, execResp.ID, container.ResizeOptions{
+		Width:  uint(cols),
+		Height: uint(rows),
+	}); resizeErr != nil {
+		logger.Debugf("[ContainerTerminal] failed to set initial exec size: %v", resizeErr)
 	}
 
-	sts := &StreamTerminalSession{
-		PTY:      ptmx,
-		Cmd:      cmd,
-		Stream:   stream,
-		doneChan: make(chan struct{}),
+	done := make(chan error, 2)
+
+	// Docker exec output -> stream
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, readErr := attachResp.Reader.Read(buf)
+			if n > 0 {
+				payload := append([]byte(nil), buf[:n]...)
+				frame := &ipc.StreamFrame{
+					Opcode:   ipc.OpStreamData,
+					StreamID: 1,
+					Payload:  payload,
+				}
+				if writeErr := ipc.WriteRelayFrame(stream, frame); writeErr != nil {
+					done <- writeErr
+					return
+				}
+			}
+			if readErr != nil {
+				if errors.Is(readErr, io.EOF) {
+					done <- nil
+				} else {
+					done <- readErr
+				}
+				return
+			}
+		}
+	}()
+
+	// Stream input/resize -> docker exec
+	go func() {
+		for {
+			frame, readErr := ipc.ReadRelayFrame(stream)
+			if readErr != nil {
+				done <- readErr
+				return
+			}
+
+			switch frame.Opcode {
+			case ipc.OpStreamData:
+				if len(frame.Payload) == 0 {
+					continue
+				}
+				if _, writeErr := attachResp.Conn.Write(frame.Payload); writeErr != nil {
+					done <- writeErr
+					return
+				}
+			case ipc.OpStreamResize:
+				if len(frame.Payload) < 4 {
+					continue
+				}
+				resizeCols := binary.BigEndian.Uint16(frame.Payload[0:2])
+				resizeRows := binary.BigEndian.Uint16(frame.Payload[2:4])
+				if resizeErr := cli.ContainerExecResize(ctx, execResp.ID, container.ResizeOptions{
+					Width:  uint(resizeCols),
+					Height: uint(resizeRows),
+				}); resizeErr != nil {
+					logger.Debugf("[ContainerTerminal] failed to resize exec tty: %v", resizeErr)
+				}
+			case ipc.OpStreamClose:
+				done <- nil
+				return
+			}
+		}
+	}()
+
+	err = <-done
+	cancel()
+	if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+		logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
 	}
-
-	var wg sync.WaitGroup
-
-	wg.Go(func() {
-		sts.relayPTYToStream()
-	})
-
-	wg.Go(func() {
-		sts.relayStreamToPTY()
-	})
-
-	wg.Wait()
-	sts.cleanup()
+	if err != nil && !errors.Is(err, io.EOF) {
+		logger.Debugf("[ContainerTerminal] session ended with error: %v", err)
+	}
 	return nil
 }

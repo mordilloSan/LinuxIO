@@ -9,11 +9,7 @@ import prettierConfig from "eslint-config-prettier";
 import importPlugin from "eslint-plugin-import";
 import unusedImports from "eslint-plugin-unused-imports";
 import globals from "globals";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const compat = new FlatCompat({
-  baseDirectory: import.meta.dirname,
-});
+import tanstackQuery from "@tanstack/eslint-plugin-query";
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
@@ -115,9 +111,7 @@ export default [
     },
   },
 
-  ...compat.config({
-    extends: ["plugin:@tanstack/query/recommended"],
-  }),
+  ...tanstackQuery.configs["flat/recommended"],
 
   prettierConfig,
 ];

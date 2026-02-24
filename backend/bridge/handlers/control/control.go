@@ -19,6 +19,7 @@ import (
 	"github.com/mordilloSan/go-logger/logger"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 // buildScriptURLs constructs URLs to download install script and checksum from a specific release
@@ -122,7 +123,7 @@ func performUpdate(targetVersion string) (UpdateResult, error) {
 	}
 
 	logger.Debugf("reloading systemd daemon")
-	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
+	if err := systemdapi.DaemonReload(); err != nil {
 		logger.Warnf("daemon-reload failed: %v (continuing anyway)", err)
 	}
 
@@ -312,14 +313,17 @@ func fetchLatestVersion() (string, error) {
 
 func restartService() error {
 	logger.Infof("restarting linuxio service")
-	cmd := exec.Command("systemctl", "restart", "linuxio")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		logger.Errorf("restart failed: %v, output: %s", err, ansiRE.ReplaceAllString(string(output), ""))
-		return fmt.Errorf("restart failed: %w", err)
+	var lastErr error
+	for _, unit := range []string{"linuxio.service", "linuxio.target"} {
+		if err := systemdapi.RestartUnit(unit); err == nil {
+			logger.Infof("service restarted successfully via %s", unit)
+			return nil
+		} else {
+			lastErr = err
+			logger.Debugf("restart via %s failed: %v", unit, err)
+		}
 	}
-	logger.Infof("service restarted successfully")
-	return nil
+	return fmt.Errorf("restart failed: %w", lastErr)
 }
 
 // isNewerVersion returns true if latest is semantically newer than current.

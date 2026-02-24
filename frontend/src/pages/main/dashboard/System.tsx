@@ -6,7 +6,7 @@ import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 // --- Types ---
@@ -90,41 +90,82 @@ const SystemHealth = () => {
   );
 
   const stats = (
-    <Box sx={{ display: "flex", gap: 1, flexDirection: "column" }}>
-      <Typography variant="body1">
-        <strong>Distro:</strong> {distro}
-      </Typography>
-      <Typography variant="body1">
-        <strong>Updates:</strong>{" "}
-        <Link
-          component={RouterLink}
-          to="/updates"
-          underline="hover"
-          color="inherit"
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        alignSelf: "flex-start",
+        width: "fit-content",
+      }}
+    >
+      {[
+        { label: "Distro", value: <>{distro}</> },
+        {
+          label: "Updates",
+          value: (
+            <Link
+              component={RouterLink}
+              to="/updates"
+              underline="hover"
+              color="inherit"
+            >
+              {!systemHealth && (loadingHealth || fetchingHealth)
+                ? "Loading..."
+                : totalPackages > 0
+                  ? `${totalPackages} available`
+                  : "None available"}
+            </Link>
+          ),
+        },
+        {
+          label: "Services",
+          value: (
+            <Link
+              component={RouterLink}
+              to="/services"
+              underline="hover"
+              color="inherit"
+            >
+              {`${running}/${units} running`}
+            </Link>
+          ),
+        },
+      ].map(({ label, value }) => (
+        <Box
+          key={label}
+          sx={{
+            display: "flex",
+            justifyContent: "flex-start",
+            alignItems: "baseline",
+            py: 0.5,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            "&:last-child": { borderBottom: "none" },
+            gap: 1,
+          }}
         >
-          {!systemHealth && (loadingHealth || fetchingHealth)
-            ? "Loading..."
-            : totalPackages > 0
-              ? `${totalPackages} available`
-              : "None available"}
-        </Link>
-      </Typography>
-      <Typography variant="body1">
-        <strong>Services:</strong>{" "}
-        <Link
-          component={RouterLink}
-          to="/services"
-          underline="hover"
-          color="inherit"
-        >
-          {`${running}/${units} running`}
-        </Link>
-      </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              fontSize: "0.62rem",
+              flexShrink: 0,
+            }}
+          >
+            {label}
+          </Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>
+            {value}
+          </Typography>
+        </Box>
+      ))}
     </Box>
   );
 
   return (
-    <GeneralCard
+    <DashboardCard
       title="System Health"
       stats={stats}
       stats2={stats2}

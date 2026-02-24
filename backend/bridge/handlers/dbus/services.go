@@ -7,6 +7,7 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 	"github.com/mordilloSan/go-logger/logger"
 
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
@@ -139,168 +140,54 @@ func GetServiceInfo(serviceName string) (map[string]any, error) {
 func StartService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
-
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		// "replace" is the mode systemctl uses by default
-		call := systemd.Call("org.freedesktop.systemd1.Manager.StartUnit", 0, name, "replace")
-		return call.Err
-	})
+	return systemdapi.StartUnit(name)
 }
 
 // Stop a service
 func StopService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
-
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		call := systemd.Call("org.freedesktop.systemd1.Manager.StopUnit", 0, name, "replace")
-		return call.Err
-	})
+	return systemdapi.StopUnit(name)
 }
 
 // Restart a service
 func RestartService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
-
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		call := systemd.Call("org.freedesktop.systemd1.Manager.RestartUnit", 0, name, "replace")
-		return call.Err
-	})
+	return systemdapi.RestartUnit(name)
 }
 
 // Reload a service (if supported)
 func ReloadService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
-
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		call := systemd.Call("org.freedesktop.systemd1.Manager.ReloadUnit", 0, name, "replace")
-		return call.Err
-	})
+	return systemdapi.ReloadUnit(name)
 }
 
 // Enable a service (for boot)
 func EnableService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
-
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-
-		call := systemd.Call("org.freedesktop.systemd1.Manager.EnableUnitFiles", 0, []string{name}, false, true)
-		return call.Err
-	})
+	return systemdapi.EnableUnit(name)
 }
 
 // Disable a service (prevent start at boot)
 func DisableService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
-
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		call := systemd.Call("org.freedesktop.systemd1.Manager.DisableUnitFiles", 0, []string{name}, false)
-		return call.Err
-	})
+	return systemdapi.DisableUnit(name)
 }
 
 // Mask a service (make it unstartable even manually)
 func MaskService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
-
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		call := systemd.Call("org.freedesktop.systemd1.Manager.MaskUnitFiles", 0, []string{name}, false, true)
-		return call.Err
-	})
+	return systemdapi.MaskUnit(name)
 }
 
 // Unmask a service
 func UnmaskService(name string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
-
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		call := systemd.Call("org.freedesktop.systemd1.Manager.UnmaskUnitFiles", 0, []string{name}, false)
-		return call.Err
-	})
+	return systemdapi.UnmaskUnit(name)
 }

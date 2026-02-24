@@ -9,19 +9,8 @@ import {
   useCallback,
 } from "react";
 import AceEditor from "react-ace";
-import "ace-builds/src-noconflict/mode-javascript";
-import "ace-builds/src-noconflict/mode-python";
-import "ace-builds/src-noconflict/mode-java";
-import "ace-builds/src-noconflict/mode-c_cpp";
-import "ace-builds/src-noconflict/mode-html";
-import "ace-builds/src-noconflict/mode-css";
-import "ace-builds/src-noconflict/mode-sql";
-import "ace-builds/src-noconflict/mode-json";
-import "ace-builds/src-noconflict/mode-xml";
-import "ace-builds/src-noconflict/mode-yaml";
-import "ace-builds/src-noconflict/mode-sh";
-import "ace-builds/src-noconflict/theme-github";
-import "ace-builds/src-noconflict/theme-monokai";
+
+import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 interface FileEditorProps {
   filePath: string;
@@ -29,6 +18,7 @@ interface FileEditorProps {
   initialContent: string;
   onSave: (content: string) => Promise<void>;
   isSaving?: boolean;
+  readOnly?: boolean;
   onDirtyChange?: (isDirty: boolean) => void;
 }
 
@@ -64,6 +54,32 @@ const getLanguageMode = (fileName: string): string => {
   return modeMap[ext] || "text";
 };
 
+const aceModeLoaders: Record<string, () => Promise<unknown>> = {
+  javascript: () => import("ace-builds/src-noconflict/mode-javascript"),
+  python: () => import("ace-builds/src-noconflict/mode-python"),
+  java: () => import("ace-builds/src-noconflict/mode-java"),
+  c_cpp: () => import("ace-builds/src-noconflict/mode-c_cpp"),
+  html: () => import("ace-builds/src-noconflict/mode-html"),
+  css: () => import("ace-builds/src-noconflict/mode-css"),
+  sql: () => import("ace-builds/src-noconflict/mode-sql"),
+  json: () => import("ace-builds/src-noconflict/mode-json"),
+  xml: () => import("ace-builds/src-noconflict/mode-xml"),
+  yaml: () => import("ace-builds/src-noconflict/mode-yaml"),
+  sh: () => import("ace-builds/src-noconflict/mode-sh"),
+};
+
+const aceThemeLoaders: Record<string, () => Promise<unknown>> = {
+  github: () => import("ace-builds/src-noconflict/theme-github"),
+  monokai: () => import("ace-builds/src-noconflict/theme-monokai"),
+};
+
+const loadedAceModes = new Set<string>();
+const loadedAceThemes = new Set<string>();
+const failedAceModes = new Set<string>();
+const failedAceThemes = new Set<string>();
+const loadingAceModes = new Map<string, Promise<void>>();
+const loadingAceThemes = new Map<string, Promise<void>>();
+
 interface EditorState {
   filePath: string;
   baseContent: string;
@@ -89,6 +105,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       initialContent,
       onSave,
       isSaving = false,
+      readOnly = false,
       onDirtyChange,
     },
     ref,
@@ -105,6 +122,16 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
     const editorRef = useRef<AceEditor>(null);
     const theme = useTheme();
     const isDarkMode = theme.palette.mode === "dark";
+    const language = getLanguageMode(fileName);
+    const aceTheme = isDarkMode ? "monokai" : "github";
+    const [, forceAssetRefresh] = useState(0);
+    const isEditorAssetsReady =
+      (!aceModeLoaders[language] ||
+        loadedAceModes.has(language) ||
+        failedAceModes.has(language)) &&
+      (!aceThemeLoaders[aceTheme] ||
+        loadedAceThemes.has(aceTheme) ||
+        failedAceThemes.has(aceTheme));
 
     const updateEditorState = useCallback(
       (updater: (state: EditorState) => EditorState) => {
@@ -151,6 +178,77 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       return () => document.removeEventListener("keydown", handleKeyDown);
     }, []);
 
+    useEffect(() => {
+      let isCancelled = false;
+      const pendingLoads: Promise<unknown>[] = [];
+
+      const loadMode = aceModeLoaders[language];
+      if (
+        loadMode &&
+        !loadedAceModes.has(language) &&
+        !failedAceModes.has(language)
+      ) {
+        const existingModeLoad = loadingAceModes.get(language);
+        if (existingModeLoad) {
+          pendingLoads.push(existingModeLoad);
+        } else {
+          const modeLoad = loadMode()
+            .then(() => {
+              loadedAceModes.add(language);
+            })
+            .catch((error) => {
+              failedAceModes.add(language);
+              console.error(`Failed to load Ace mode "${language}":`, error);
+            })
+            .finally(() => {
+              loadingAceModes.delete(language);
+            });
+          loadingAceModes.set(language, modeLoad);
+          pendingLoads.push(modeLoad);
+        }
+      }
+
+      const loadTheme = aceThemeLoaders[aceTheme];
+      if (
+        loadTheme &&
+        !loadedAceThemes.has(aceTheme) &&
+        !failedAceThemes.has(aceTheme)
+      ) {
+        const existingThemeLoad = loadingAceThemes.get(aceTheme);
+        if (existingThemeLoad) {
+          pendingLoads.push(existingThemeLoad);
+        } else {
+          const themeLoad = loadTheme()
+            .then(() => {
+              loadedAceThemes.add(aceTheme);
+            })
+            .catch((error) => {
+              failedAceThemes.add(aceTheme);
+              console.error(`Failed to load Ace theme "${aceTheme}":`, error);
+            })
+            .finally(() => {
+              loadingAceThemes.delete(aceTheme);
+            });
+          loadingAceThemes.set(aceTheme, themeLoad);
+          pendingLoads.push(themeLoad);
+        }
+      }
+
+      if (pendingLoads.length === 0) {
+        return;
+      }
+
+      Promise.allSettled(pendingLoads).finally(() => {
+        if (!isCancelled) {
+          forceAssetRefresh((version) => version + 1);
+        }
+      });
+
+      return () => {
+        isCancelled = true;
+      };
+    }, [language, aceTheme]);
+
     const handleContentChange = (newValue: string) => {
       updateEditorState((state) => ({
         ...state,
@@ -165,8 +263,21 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       isDirty: () => isDirty,
     }));
 
-    const language = getLanguageMode(fileName);
-    const aceTheme = isDarkMode ? "monokai" : "github";
+    if (!isEditorAssetsReady) {
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ComponentLoader />
+        </div>
+      );
+    }
 
     return (
       <AceEditor
@@ -176,7 +287,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
         onChange={handleContentChange}
         value={content}
         name="file-editor"
-        readOnly={isSaving}
+        readOnly={isSaving || readOnly}
         style={{ width: "100%", height: "100%" }}
         fontSize={14}
         showPrintMargin={false}

@@ -2,7 +2,7 @@ import { Box, Typography } from "@mui/material";
 import React, { useState, useMemo } from "react";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -13,7 +13,6 @@ interface DriveInfo {
   sizeBytes: number;
   transport: string;
   vendor?: string;
-  serial?: string;
 }
 
 // Parse "953.9G", "0B", "465.8G", "1024M", "1.8T" to bytes
@@ -64,7 +63,6 @@ const Drive: React.FC = () => {
         sizeBytes: parseSizeToBytes(d.size),
         transport: d.type ?? "unknown",
         vendor: d.vendor,
-        serial: d.serial,
       })),
     [rawDrives],
   );
@@ -82,7 +80,7 @@ const Drive: React.FC = () => {
 
   if (isLoading) {
     return (
-      <GeneralCard
+      <DashboardCard
         title="Drives"
         avatarIcon="mdi:harddisk"
         stats={<ComponentLoader />}
@@ -96,7 +94,7 @@ const Drive: React.FC = () => {
 
   if (isError || drives.length === 0) {
     return (
-      <GeneralCard
+      <DashboardCard
         title="Drives"
         avatarIcon="mdi:harddisk"
         stats={<Typography variant="body2">No drives found.</Typography>}
@@ -112,27 +110,50 @@ const Drive: React.FC = () => {
     (drive) => drive.name === selectedDriveName,
   );
   const content = selectedDrive ? (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      <Typography variant="body2">
-        <strong>Model:</strong> {selectedDrive.model || "Unknown"}
-      </Typography>
-      <Typography variant="body2">
-        <strong>Type:</strong> {selectedDrive.transport || "Unknown"}
-      </Typography>
-      <Typography variant="body2">
-        <strong>Size:</strong>{" "}
-        {formatFileSize(selectedDrive.sizeBytes) || "Unknown"}
-      </Typography>
-      {selectedDrive.vendor && (
-        <Typography variant="body2">
-          <strong>Vendor:</strong> {selectedDrive.vendor}
-        </Typography>
-      )}
-      {selectedDrive.serial && (
-        <Typography variant="body2">
-          <strong>Serial:</strong> {selectedDrive.serial}
-        </Typography>
-      )}
+    <Box
+      sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
+    >
+      {[
+        { label: "Model", value: selectedDrive.model || "Unknown" },
+        { label: "Type", value: selectedDrive.transport || "Unknown" },
+        {
+          label: "Size",
+          value: formatFileSize(selectedDrive.sizeBytes) || "Unknown",
+        },
+        ...(selectedDrive.vendor
+          ? [{ label: "Vendor", value: selectedDrive.vendor }]
+          : []),
+      ].map(({ label, value }) => (
+        <Box
+          key={label}
+          sx={{
+            display: "flex",
+            justifyContent: "flex-start",
+            alignItems: "baseline",
+            py: 0.5,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            "&:last-child": { borderBottom: "none" },
+            gap: 1,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              fontSize: "0.62rem",
+              flexShrink: 0,
+            }}
+          >
+            {label}
+          </Typography>
+          <Typography variant="body2" fontWeight={500} noWrap>
+            {value}
+          </Typography>
+        </Box>
+      ))}
     </Box>
   ) : (
     <Typography variant="body2">No drive selected.</Typography>
@@ -144,7 +165,7 @@ const Drive: React.FC = () => {
   }));
 
   return (
-    <GeneralCard
+    <DashboardCard
       title="Drives"
       avatarIcon="mdi:harddisk"
       stats={content}

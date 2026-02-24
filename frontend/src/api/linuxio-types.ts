@@ -199,6 +199,49 @@ export interface DockerVolume {
   Scope?: string;
 }
 
+export interface DockerSystemInfo {
+  // System
+  name: string;
+  id: string;
+  operating_system: string;
+  os_type: string;
+  architecture: string;
+  kernel_version: string;
+  system_time: string;
+  docker_root_dir: string;
+  ncpu: number;
+  mem_total: number;
+  // Version
+  server_version: string;
+  api_version: string;
+  go_version: string;
+  git_commit: string;
+  build_time: string;
+  experimental: boolean;
+  // Configuration
+  storage_driver: string;
+  logging_driver: string;
+  cgroup_driver: string;
+  cgroup_version: string;
+  init_binary: string;
+  default_runtime: string;
+  // Network & Proxy
+  ipv4_forwarding: boolean;
+  http_proxy: string;
+  https_proxy: string;
+  no_proxy: string;
+  // Security & Runtimes
+  security_options: string[];
+  runtimes: string[];
+  // Plugins
+  volume_plugins: string[];
+  network_plugins: string[];
+  log_plugins: string[];
+  // Disk
+  disk_used: number;
+  disk_total: number;
+}
+
 export interface ComposeService {
   name: string;
   image: string;
@@ -212,6 +255,7 @@ export interface ComposeService {
 export interface ComposeProject {
   name: string;
   status: string;
+  auto_update?: boolean;
   services: Record<string, ComposeService>;
   config_files: string[];
   working_dir: string;
@@ -558,6 +602,7 @@ export interface LinuxIOSchema {
   };
 
   docker: {
+    get_docker_info: { args: []; result: DockerSystemInfo };
     list_containers: { args: []; result: ContainerInfo[] };
     start_container: { args: [containerId: string]; result: void };
     stop_container: { args: [containerId: string]; result: void };
@@ -597,6 +642,7 @@ export interface LinuxIOSchema {
           message: string;
           type: "error" | "warning";
         }[];
+        normalized_content?: string;
       };
     };
     get_compose_file_path: {
@@ -620,6 +666,29 @@ export interface LinuxIOSchema {
       result: { type: string; identifier: string; cached: boolean };
     };
     clear_icon_cache: { args: []; result: { message: string } };
+    list_auto_update_containers: { args: []; result: string[] };
+    set_auto_update: {
+      args: [payload: string]; // JSON { container: string, enabled: boolean }
+      result: { message: string };
+    };
+    start_all_stopped: {
+      args: [];
+      result: { started: number; failed: number };
+    };
+    stop_all_running: {
+      args: [];
+      result: { stopped: number; failed: number };
+    };
+    system_prune: {
+      args: [opts: string];
+      result: {
+        containersDeleted?: string[];
+        imagesDeleted?: string[];
+        networksDeleted?: string[];
+        volumesDeleted?: string[];
+        spaceReclaimed: number;
+      };
+    };
   };
 
   dbus: {

@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react";
 import NetworkGraph from "./NetworkGraph";
 
 import { linuxio } from "@/api";
-import GeneralCard from "@/components/cards/GeneralCard";
+import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const NetworkInterfacesCard: React.FC = () => {
@@ -70,27 +70,55 @@ const NetworkInterfacesCard: React.FC = () => {
     isLoading ? (
       <ComponentLoader />
     ) : (
+      // Variant D: uppercase overline grey label + right-aligned white value
       <Box
         sx={{
           display: "flex",
           flexDirection: "column",
-          gap: 1,
           alignSelf: "flex-start",
-          mt: 4,
+          width: "fit-content",
         }}
       >
-        <Typography variant="body2">
-          <strong>IPv4:</strong>{" "}
-          {selectedInterface.ipv4 && selectedInterface.ipv4.length > 0
-            ? selectedInterface.ipv4.join(", ")
-            : "None"}
-        </Typography>
-        <Typography variant="body2">
-          <strong>MAC:</strong> {selectedInterface.mac}
-        </Typography>
-        <Typography variant="body2">
-          <strong>Speed:</strong> {selectedInterface.speed}
-        </Typography>
+        {[
+          {
+            label: "IPv4",
+            value: selectedInterface.ipv4?.length
+              ? selectedInterface.ipv4.join(", ")
+              : "None",
+          },
+          { label: "MAC", value: selectedInterface.mac },
+          { label: "Speed", value: selectedInterface.speed },
+        ].map(({ label, value }) => (
+          <Box
+            key={label}
+            sx={{
+              display: "flex",
+              justifyContent: "flex-start",
+              alignItems: "baseline",
+              py: 0.5,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+              "&:last-child": { borderBottom: "none" },
+              gap: 1,
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                fontSize: "0.62rem",
+                flexShrink: 0,
+              }}
+            >
+              {label}
+            </Typography>
+            <Typography variant="body2" fontWeight={500} noWrap>
+              {value}
+            </Typography>
+          </Box>
+        ))}
       </Box>
     )
   ) : (
@@ -114,7 +142,7 @@ const NetworkInterfacesCard: React.FC = () => {
   );
 
   return (
-    <GeneralCard
+    <DashboardCard
       title="Network"
       avatarIcon="mdi:ethernet"
       stats={content}

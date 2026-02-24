@@ -1,5 +1,5 @@
 import { Alert, AlertTitle, Box, Collapse, Typography } from "@mui/material";
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 export interface ValidationError {
   line?: number;
@@ -24,6 +24,19 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
   validation,
   isValidating = false,
 }) => {
+  // Track which validation result has been dismissed. When a new validation
+  // arrives (different object reference), visible resets automatically without
+  // any synchronous setState in the effect body.
+  const [dismissedValidation, setDismissedValidation] =
+    useState<ValidationResult | null>(null);
+
+  // Only setState inside the timer callback — never synchronously.
+  useEffect(() => {
+    if (!validation) return;
+    const timer = setTimeout(() => setDismissedValidation(validation), 10000);
+    return () => clearTimeout(timer);
+  }, [validation]);
+
   if (isValidating) {
     return (
       <Collapse in={true}>
@@ -35,8 +48,22 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
     );
   }
 
-  if (!validation || (validation.valid && validation.errors.length === 0)) {
+  if (!validation) {
     return null;
+  }
+
+  const visible = dismissedValidation !== validation;
+  const dismiss = () => setDismissedValidation(validation);
+
+  if (validation.valid && validation.errors.length === 0) {
+    return (
+      <Collapse in={visible}>
+        <Alert severity="success" sx={{ mb: 2 }} onClose={dismiss}>
+          <AlertTitle>Valid</AlertTitle>
+          Compose file is valid.
+        </Alert>
+      </Collapse>
+    );
   }
 
   const errors = validation.errors.filter((e) => e.type === "error");
@@ -45,8 +72,12 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
   return (
     <Box sx={{ mb: 2 }}>
       {errors.length > 0 && (
-        <Collapse in={true}>
-          <Alert severity="error" sx={{ mb: warnings.length > 0 ? 2 : 0 }}>
+        <Collapse in={visible}>
+          <Alert
+            severity="error"
+            sx={{ mb: warnings.length > 0 ? 2 : 0 }}
+            onClose={dismiss}
+          >
             <AlertTitle>Validation Errors ({errors.length})</AlertTitle>
             {errors.map((error, index) => (
               <Box key={index} sx={{ mt: index > 0 ? 1 : 0 }}>
@@ -70,8 +101,8 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
       )}
 
       {warnings.length > 0 && (
-        <Collapse in={true}>
-          <Alert severity="warning">
+        <Collapse in={visible}>
+          <Alert severity="warning" onClose={dismiss}>
             <AlertTitle>Warnings ({warnings.length})</AlertTitle>
             {warnings.map((warning, index) => (
               <Box key={index} sx={{ mt: index > 0 ? 1 : 0 }}>
