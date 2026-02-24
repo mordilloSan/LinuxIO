@@ -173,17 +173,8 @@ const DockerPage: React.FC = () => {
                   startIcon={<PlayArrowIcon />}
                   disabled={isStartingAll || stoppedContainers.length === 0}
                   onClick={() => startAllStopped([])}
-                  sx={{
-                    minWidth: { xs: "40px", sm: "auto" },
-                    px: { xs: 1, sm: 2 },
-                    "& .MuiButton-startIcon": {
-                      margin: { xs: 0, sm: "0 8px 0 -4px" },
-                    },
-                  }}
                 >
-                  <Box sx={{ display: { xs: "none", sm: "block" } }}>
-                    Start All
-                  </Box>
+                  Start All
                 </Button>
                 <Button
                   size="small"
@@ -192,17 +183,8 @@ const DockerPage: React.FC = () => {
                   startIcon={<StopIcon />}
                   disabled={isStoppingAll || runningContainers.length === 0}
                   onClick={() => stopAllRunning([])}
-                  sx={{
-                    minWidth: { xs: "40px", sm: "auto" },
-                    px: { xs: 1, sm: 2 },
-                    "& .MuiButton-startIcon": {
-                      margin: { xs: 0, sm: "0 8px 0 -4px" },
-                    },
-                  }}
                 >
-                  <Box sx={{ display: { xs: "none", sm: "block" } }}>
-                    Stop All
-                  </Box>
+                  Stop All
                 </Button>
                 <Button
                   size="small"
@@ -211,17 +193,8 @@ const DockerPage: React.FC = () => {
                   startIcon={<CleaningServicesIcon />}
                   disabled={isPruning}
                   onClick={() => setPruneDialogOpen(true)}
-                  sx={{
-                    minWidth: { xs: "40px", sm: "auto" },
-                    px: { xs: 1, sm: 2 },
-                    "& .MuiButton-startIcon": {
-                      margin: { xs: 0, sm: "0 8px 0 -4px" },
-                    },
-                  }}
                 >
-                  <Box sx={{ display: { xs: "none", sm: "block" } }}>
-                    Prune System
-                  </Box>
+                  Prune All
                 </Button>
               </>
             ),
@@ -274,18 +247,9 @@ const DockerPage: React.FC = () => {
                         size="small"
                         onClick={reindexStackHandler}
                         disabled={indexerAvailable === false}
-                        sx={{
-                          minWidth: { xs: "40px", sm: "auto" },
-                          px: { xs: 1, sm: 2 },
-                          mr: 1,
-                        }}
+                        sx={{ mr: 1 }}
                       >
-                        <Box sx={{ display: { xs: "none", sm: "block" } }}>
-                          Scan
-                        </Box>
-                        <Box sx={{ display: { xs: "block", sm: "none" } }}>
-                          ↻
-                        </Box>
+                        Scan
                       </Button>
                     </span>
                   </Tooltip>
@@ -295,25 +259,9 @@ const DockerPage: React.FC = () => {
                     variant="contained"
                     size="small"
                     onClick={createStackHandler}
-                    sx={{
-                      minWidth: { xs: "40px", sm: "auto" },
-                      px: { xs: 1, sm: 2 },
-                      "& .MuiButton-startIcon": {
-                        display: { xs: "none", sm: "flex" },
-                        margin: { xs: 0, sm: "0 8px 0 -4px" },
-                      },
-                    }}
                     startIcon={<AddIcon />}
                   >
-                    <Box
-                      sx={{
-                        display: { xs: "none", sm: "flex" },
-                        alignItems: "center",
-                      }}
-                    >
-                      Create Stack
-                    </Box>
-                    <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
+                    Create Stack
                   </Button>
                 )}
               </>
@@ -334,25 +282,9 @@ const DockerPage: React.FC = () => {
                 variant="contained"
                 size="small"
                 onClick={createNetworkHandler}
-                sx={{
-                  minWidth: { xs: "40px", sm: "auto" },
-                  px: { xs: 1, sm: 2 },
-                  "& .MuiButton-startIcon": {
-                    display: { xs: "none", sm: "flex" },
-                    margin: { xs: 0, sm: "0 8px 0 -4px" },
-                  },
-                }}
                 startIcon={<AddIcon />}
               >
-                <Box
-                  sx={{
-                    display: { xs: "none", sm: "flex" },
-                    alignItems: "center",
-                  }}
-                >
-                  Add Network
-                </Box>
-                <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
+                Add Network
               </Button>
             ) : undefined,
           },
@@ -371,25 +303,9 @@ const DockerPage: React.FC = () => {
                 variant="contained"
                 size="small"
                 onClick={createVolumeHandler}
-                sx={{
-                  minWidth: { xs: "40px", sm: "auto" },
-                  px: { xs: 1, sm: 2 },
-                  "& .MuiButton-startIcon": {
-                    display: { xs: "none", sm: "flex" },
-                    margin: { xs: 0, sm: "0 8px 0 -4px" },
-                  },
-                }}
                 startIcon={<AddIcon />}
               >
-                <Box
-                  sx={{
-                    display: { xs: "none", sm: "flex" },
-                    alignItems: "center",
-                  }}
-                >
-                  Add Volume
-                </Box>
-                <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
+                Add Volume
               </Button>
             ) : undefined,
           },
@@ -408,25 +324,9 @@ const DockerPage: React.FC = () => {
                 variant="contained"
                 size="small"
                 onClick={createImageHandler}
-                sx={{
-                  minWidth: { xs: "40px", sm: "auto" },
-                  px: { xs: 1, sm: 2 },
-                  "& .MuiButton-startIcon": {
-                    display: { xs: "none", sm: "flex" },
-                    margin: { xs: 0, sm: "0 8px 0 -4px" },
-                  },
-                }}
                 startIcon={<AddIcon />}
               >
-                <Box
-                  sx={{
-                    display: { xs: "none", sm: "flex" },
-                    alignItems: "center",
-                  }}
-                >
-                  Add Image
-                </Box>
-                <AddIcon sx={{ display: { xs: "block", sm: "none" } }} />
+                Add Image
               </Button>
             ) : undefined,
           },
