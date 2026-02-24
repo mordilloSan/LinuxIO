@@ -244,19 +244,17 @@ const DockerPage: React.FC = () => {
                     )}
                   </IconButton>
                 </Tooltip>
-                {containerView === "card" && (
-                  <Tooltip
-                    title={containerEditMode ? "Lock layout" : "Edit layout"}
+                <Tooltip
+                  title={containerEditMode ? "Lock layout" : "Edit layout"}
+                >
+                  <IconButton
+                    onClick={() => setContainerEditMode((prev) => !prev)}
+                    color={containerEditMode ? "primary" : "default"}
+                    size="small"
                   >
-                    <IconButton
-                      onClick={() => setContainerEditMode((prev) => !prev)}
-                      color={containerEditMode ? "primary" : "default"}
-                      size="small"
-                    >
-                      <DragIndicator />
-                    </IconButton>
-                  </Tooltip>
-                )}
+                    <DragIndicator />
+                  </IconButton>
+                </Tooltip>
               </>
             ),
           },

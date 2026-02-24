@@ -1,3 +1,4 @@
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
   Box,
@@ -14,6 +15,8 @@ import {
   Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
@@ -76,12 +79,15 @@ const formatUptime = (createdUnix: number) => {
 interface ContainerRowProps {
   container: ContainerInfo;
   index: number;
+  editMode?: boolean;
 }
 
-const ContainerRow: React.FC<ContainerRowProps> = ({ container, index }) => {
+const ContainerRow: React.FC<ContainerRowProps> = ({ container, index, editMode }) => {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: container.Id });
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogs, setHasLoadedLogs] = useState(false);
@@ -190,14 +196,33 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, index }) => {
   return (
     <React.Fragment>
       <TableRow
-        sx={{
+        ref={setNodeRef}
+        style={{
+          transform: CSS.Transform.toString(transform),
+          transition,
+          opacity: isDragging ? 0.4 : 1,
           backgroundColor: rowBg,
+        }}
+        sx={{
           "& .MuiTableCell-root": { borderBottom: "none" },
           "@media (max-width: 600px)": {
             "& .MuiTableCell-root": { fontSize: "0.75rem", padding: "8px 4px" },
           },
         }}
       >
+        {/* Drag handle */}
+        {editMode && (
+          <TableCell width="28px" sx={{ p: "0 4px" }}>
+            <Box
+              component="span"
+              {...attributes}
+              {...listeners}
+              sx={{ display: "flex", alignItems: "center", color: "text.disabled", cursor: "grab", "&:active": { cursor: "grabbing" } }}
+            >
+              <DragIndicatorIcon fontSize="small" />
+            </Box>
+          </TableCell>
+        )}
         {/* Name (with status dot) */}
         <TableCell>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -524,7 +549,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, index }) => {
             backgroundColor: "transparent",
           }}
         >
-          <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
+          <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={editMode ? 10 : 9}>
             <Collapse in={expanded} timeout="auto" unmountOnExit>
               <Box
                 component={motion.div}
@@ -654,9 +679,10 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, index }) => {
 
 interface ContainerTableProps {
   containers: ContainerInfo[];
+  editMode?: boolean;
 }
 
-const ContainerTable: React.FC<ContainerTableProps> = ({ containers }) => {
+const ContainerTable: React.FC<ContainerTableProps> = ({ containers, editMode = false }) => {
   return (
     <Box>
       <TableContainer className="custom-scrollbar" sx={{ overflowX: "auto" }}>
@@ -671,6 +697,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({ containers }) => {
                     : "rgba(0,0,0,0.08)",
               })}
             >
+              {editMode && <TableCell width="28px" />}
               <TableCell>Name</TableCell>
               <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
                 Version
@@ -711,6 +738,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({ containers }) => {
                 key={container.Id}
                 container={container}
                 index={index}
+                editMode={editMode}
               />
             ))}
           </TableBody>

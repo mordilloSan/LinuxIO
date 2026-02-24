@@ -11,6 +11,7 @@ import {
   arrayMove,
   rectSortingStrategy,
   SortableContext,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Box, Grid, Typography } from "@mui/material";
 import React, { Suspense, useMemo } from "react";
@@ -85,7 +86,15 @@ const ContainerList: React.FC<ContainerListProps> = ({
   if (viewMode === "table") {
     return (
       <Suspense fallback={<Typography>Loading containers...</Typography>}>
-        <ContainerTable containers={orderedContainers} />
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={containerIds} strategy={verticalListSortingStrategy}>
+            <ContainerTable containers={orderedContainers} editMode={editMode} />
+          </SortableContext>
+        </DndContext>
       </Suspense>
     );
   }
