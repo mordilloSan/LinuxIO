@@ -161,6 +161,18 @@ if [[ -d /etc/motd.d ]]; then
     echo "  • Created SSH login banner symlink"
 fi
 
+# Create global Watchtower data directory
+echo -e "${YELLOW}📦 Creating Watchtower data directory...${NC}"
+mkdir -p /var/lib/linuxIO/watchtower
+if getent group docker &>/dev/null; then
+    chown root:docker /var/lib/linuxIO/watchtower
+    chmod 775 /var/lib/linuxIO/watchtower
+    echo -e "${GREEN}✓ Watchtower directory created (/var/lib/linuxIO/watchtower, group: docker)${NC}"
+else
+    chmod 755 /var/lib/linuxIO/watchtower
+    echo -e "${YELLOW}⚠  docker group not found — Watchtower directory created with mode 755${NC}"
+fi
+
 # ========== ENABLE AND RESTART ==========
 echo ""
 echo -e "${CYAN}════════════════════════════════════════════${NC}"

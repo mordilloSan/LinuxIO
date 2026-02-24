@@ -46,6 +46,7 @@ type ComposeProject struct {
 	Name        string                     `json:"name"`
 	Icon        string                     `json:"icon,omitempty"`
 	Status      string                     `json:"status"` // "running", "partial", "stopped"
+	AutoUpdate  bool                       `json:"auto_update"`
 	Services    map[string]*ComposeService `json:"services"`
 	ConfigFiles []string                   `json:"config_files"`
 	WorkingDir  string                     `json:"working_dir"`
@@ -181,9 +182,15 @@ func ListComposeProjects(username string) (any, error) {
 		logger.Debugf("failed to discover offline stacks from indexer: %v", err)
 	}
 
-	// Calculate overall project status
+	// Load config once to check auto-update preferences.
+	cfg, _, _ := config.Load(username)
+
+	// Calculate overall project status and auto-update flag.
 	for _, project := range projects {
 		project.Status = calculateProjectStatus(project)
+		if cfg != nil {
+			project.AutoUpdate = slices.Contains(cfg.Docker.AutoUpdateStacks, project.Name)
+		}
 	}
 
 	// Convert map to sorted slice for consistent output

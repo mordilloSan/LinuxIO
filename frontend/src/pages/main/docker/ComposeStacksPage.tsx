@@ -52,6 +52,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   // Editor state
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
+  const [editorReadOnly, setEditorReadOnly] = useState(false);
   const [editingStackName, setEditingStackName] = useState("");
   const [editingFilePath, setEditingFilePath] = useState("");
   const [editingContent, setEditingContent] = useState("");
@@ -131,6 +132,25 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       setOperationDialogOpen(true);
     },
     [],
+  );
+
+  const handleAutoUpdateToggle = useCallback(
+    async (projectName: string, enabled: boolean) => {
+      try {
+        await linuxio.docker.set_auto_update.call(
+          JSON.stringify({ project: projectName, enabled }),
+        );
+        toast.success(
+          enabled
+            ? `Auto-update enabled for "${projectName}". Watchtower is syncing in the background.`
+            : `Auto-update disabled for "${projectName}". Watchtower is syncing in the background.`,
+        );
+        refetch();
+      } catch {
+        toast.error(`Failed to update auto-update for "${projectName}"`);
+      }
+    },
+    [refetch],
   );
 
   // Open delete dialog with project info
@@ -257,6 +277,41 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
         if (result && result.content) {
           setEditorMode("edit");
+          setEditorReadOnly(false);
+          setEditingStackName(projectName);
+          setEditingFilePath(configPath);
+          setEditingContent(result.content);
+          setEditorOpen(true);
+        } else {
+          toast.error("Failed to load compose file content");
+        }
+      } catch (error) {
+        toast.error(
+          `Failed to load compose file: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    },
+    [queryClient],
+  );
+
+  // Preview stack handler (read-only)
+  const handlePreviewStack = useCallback(
+    async (projectName: string, configPath: string) => {
+      try {
+        const result = await queryClient.fetchQuery(
+          linuxio.filebrowser.resource_get.queryOptions(
+            configPath,
+            "",
+            "true",
+            {
+              staleTime: CACHE_TTL_MS.NONE,
+            },
+          ),
+        );
+
+        if (result && result.content) {
+          setEditorMode("edit");
+          setEditorReadOnly(true);
           setEditingStackName(projectName);
           setEditingFilePath(configPath);
           setEditingContent(result.content);
@@ -444,6 +499,8 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             onRestart={restartProject}
             onDelete={handleOpenDeleteDialog}
             onEdit={handleEditStack}
+            onPreview={handlePreviewStack}
+            onAutoUpdateToggle={handleAutoUpdateToggle}
             isLoading={isLoading}
           />
         )}
@@ -451,6 +508,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         <ComposeEditorDialog
           open={editorOpen}
           mode={editorMode}
+          readOnly={editorReadOnly}
           stackName={editingStackName}
           filePath={editingFilePath}
           initialContent={editingContent}

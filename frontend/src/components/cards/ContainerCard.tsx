@@ -277,59 +277,85 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           >
             {name}
           </Typography>
-          <Box sx={{ display: "flex", gap: 0.5 }}>
-            {container.State !== "running" && (
-              <Tooltip title="Start Container" arrow>
+          <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
+            {container.Labels?.["com.docker.compose.project"] ===
+            "linuxio-watchtower" ? (
+              <Tooltip title="View Logs" arrow>
+                <Chip
+                  label="Managed by LinuxIO"
+                  size="small"
+                  variant="outlined"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLogsClick();
+                  }}
+                  sx={{
+                    fontSize: "0.68rem",
+                    opacity: 0.7,
+                    cursor: "pointer",
+                    "&:hover": { opacity: 1 },
+                  }}
+                />
+              </Tooltip>
+            ) : (
+              <>
+                {container.State !== "running" && (
+                  <Tooltip title="Start Container" arrow>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ActionButton
+                        icon="mdi:play"
+                        onClick={() => handleAction("start")}
+                      />
+                    </span>
+                  </Tooltip>
+                )}
+                {container.State === "running" && (
+                  <Tooltip title="Stop Container" arrow>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ActionButton
+                        icon="mdi:stop"
+                        onClick={() => handleAction("stop")}
+                      />
+                    </span>
+                  </Tooltip>
+                )}
+                <Tooltip title="Restart Container" arrow>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:restart"
+                      onClick={() => handleAction("restart")}
+                    />
+                  </span>
+                </Tooltip>
+                <Tooltip title="Remove Container" arrow>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:delete"
+                      onClick={() => handleAction("remove")}
+                    />
+                  </span>
+                </Tooltip>
+                <Tooltip title="View Logs" arrow>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:file-document-outline"
+                      onClick={handleLogsClick}
+                    />
+                  </span>
+                </Tooltip>
+              </>
+            )}
+            {container.Labels?.["com.docker.compose.project"] !==
+              "linuxio-watchtower" && (
+              <Tooltip title="Open Terminal" arrow>
                 <span onClick={(e) => e.stopPropagation()}>
                   <ActionButton
-                    icon="mdi:play"
-                    onClick={() => handleAction("start")}
+                    icon="mdi:console"
+                    onClick={handleTerminalClick}
                   />
                 </span>
               </Tooltip>
             )}
-            {container.State === "running" && (
-              <Tooltip title="Stop Container" arrow>
-                <span onClick={(e) => e.stopPropagation()}>
-                  <ActionButton
-                    icon="mdi:stop"
-                    onClick={() => handleAction("stop")}
-                  />
-                </span>
-              </Tooltip>
-            )}
-            <Tooltip title="Restart Container" arrow>
-              <span onClick={(e) => e.stopPropagation()}>
-                <ActionButton
-                  icon="mdi:restart"
-                  onClick={() => handleAction("restart")}
-                />
-              </span>
-            </Tooltip>
-            <Tooltip title="Remove Container" arrow>
-              <span onClick={(e) => e.stopPropagation()}>
-                <ActionButton
-                  icon="mdi:delete"
-                  onClick={() => handleAction("remove")}
-                />
-              </span>
-            </Tooltip>
-            <Tooltip title="View Logs" arrow>
-              <span onClick={(e) => e.stopPropagation()}>
-                <ActionButton
-                  icon="mdi:file-document-outline"
-                  onClick={handleLogsClick}
-                />
-              </span>
-            </Tooltip>
-            <Tooltip title="Open Terminal" arrow>
-              <span onClick={(e) => e.stopPropagation()}>
-                <ActionButton
-                  icon="mdi:console"
-                  onClick={handleTerminalClick}
-                />
-              </span>
-            </Tooltip>
           </Box>
         </Box>
       </Box>

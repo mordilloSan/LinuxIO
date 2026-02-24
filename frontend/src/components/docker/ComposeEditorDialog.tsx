@@ -29,6 +29,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 interface ComposeEditorDialogProps {
   open: boolean;
   mode: "create" | "edit";
+  readOnly?: boolean;
   stackName?: string;
   filePath?: string;
   initialContent?: string;
@@ -48,6 +49,7 @@ const FileEditor = React.lazy(
 const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   open,
   mode,
+  readOnly = false,
   stackName: initialStackName = "",
   filePath = "",
   initialContent = "",
@@ -76,7 +78,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
   }, [open, initialStackName]);
 
   const handleClose = () => {
-    if (isEditorDirty) {
+    if (!readOnly && isEditorDirty) {
       setShowUnsavedDialog(true);
     } else {
       onClose();
@@ -226,9 +228,11 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
         >
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Typography variant="h6">
-              {mode === "create"
-                ? "Create Docker Compose Stack"
-                : "Edit Docker Compose Stack"}
+              {readOnly
+                ? "View Docker Compose Stack"
+                : mode === "create"
+                  ? "Create Docker Compose Stack"
+                  : "Edit Docker Compose Stack"}
             </Typography>
 
             {mode === "create" ? (
@@ -283,7 +287,8 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
                 fileName="docker-compose.yml"
                 initialContent={initialContent}
                 onSave={handleSave}
-                onDirtyChange={setIsEditorDirty}
+                readOnly={readOnly}
+                onDirtyChange={readOnly ? undefined : setIsEditorDirty}
               />
             </Suspense>
           </Box>
@@ -296,24 +301,32 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
             p: 2,
           }}
         >
-          <Button onClick={handleClose} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleValidate}
-            disabled={isSaving || isValidating}
-            variant="outlined"
-          >
-            {isValidating ? "Validating..." : "Validate"}
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isSaving || isValidating}
-            variant="contained"
-            color="primary"
-          >
-            {isSaving ? "Saving..." : "Save"}
-          </Button>
+          {readOnly ? (
+            <Button onClick={handleClose} variant="contained">
+              Close
+            </Button>
+          ) : (
+            <>
+              <Button onClick={handleClose} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleValidate}
+                disabled={isSaving || isValidating}
+                variant="outlined"
+              >
+                {isValidating ? "Validating..." : "Validate"}
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={isSaving || isValidating}
+                variant="contained"
+                color="primary"
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
 

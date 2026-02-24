@@ -13,6 +13,7 @@ export interface ContainerInfo {
   State: string;
   Status: string;
   Ports?: ContainerPort[];
+  Labels?: Record<string, string>;
   icon?: string;
   url?: string;
   metrics?: {

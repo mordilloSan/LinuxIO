@@ -52,7 +52,8 @@ func RegisterHandlers(sess *session.Session) {
 				DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections"`
 			} `json:"appSettings"`
 			Docker *struct {
-				Folder *string `json:"folder"`
+				Folder           *string  `json:"folder"`
+				AutoUpdateStacks []string `json:"autoUpdateStacks"`
 			} `json:"docker"`
 		}
 
@@ -108,6 +109,9 @@ func RegisterHandlers(sess *session.Session) {
 					return fmt.Errorf("docker folder cannot be empty")
 				}
 				cfg.Docker.Folder = AbsolutePath(folder)
+			}
+			if payload.Docker.AutoUpdateStacks != nil {
+				cfg.Docker.AutoUpdateStacks = payload.Docker.AutoUpdateStacks
 			}
 		}
 

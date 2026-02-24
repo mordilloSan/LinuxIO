@@ -12,6 +12,7 @@ import {
   TableHead,
   TableRow,
   IconButton,
+  Switch,
   TextField,
   Tooltip,
   Chip,
@@ -40,6 +41,7 @@ export interface ComposeProject {
   name: string;
   icon?: string;
   status: string; // "running", "partial", "stopped"
+  auto_update?: boolean;
   services: Record<string, ComposeService>;
   config_files: string[];
   working_dir: string;
@@ -52,6 +54,8 @@ interface ComposeListProps {
   onRestart: (projectName: string) => void;
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
+  onPreview?: (projectName: string, configPath: string) => void;
+  onAutoUpdateToggle?: (projectName: string, enabled: boolean) => void;
   isLoading?: boolean;
 }
 
@@ -62,6 +66,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
   onRestart,
   onDelete,
   onEdit,
+  onPreview,
+  onAutoUpdateToggle,
   isLoading = false,
 }) => {
   const [search, setSearch] = useState("");
@@ -210,75 +216,118 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 gap: { xs: 0, sm: 0.5 },
               }}
             >
-              {onEdit && project.config_files.length > 0 && (
-                <Tooltip title="Edit">
-                  <IconButton
+              {project.name === "linuxio-watchtower" ? (
+                <Tooltip title="View compose file" arrow>
+                  <Chip
+                    label="Managed by LinuxIO"
                     size="small"
-                    onClick={() =>
-                      onEdit(project.name, project.config_files[0])
+                    variant="outlined"
+                    onClick={
+                      onPreview && project.config_files.length > 0
+                        ? () => onPreview(project.name, project.config_files[0])
+                        : undefined
                     }
-                    disabled={isLoading}
-                    sx={{ p: { xs: 0.5, sm: 1 } }}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
+                    sx={{
+                      fontSize: "0.68rem",
+                      opacity: 0.7,
+                      cursor:
+                        onPreview && project.config_files.length > 0
+                          ? "pointer"
+                          : "default",
+                      "&:hover": { opacity: 1 },
+                    }}
+                  />
                 </Tooltip>
-              )}
-              {project.status === "running" || project.status === "partial" ? (
-                <>
-                  <Tooltip title="Restart">
-                    <IconButton
-                      size="small"
-                      onClick={() => onRestart(project.name)}
-                      disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <RestartAltIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Stop">
-                    <IconButton
-                      size="small"
-                      onClick={() => onStop(project.name)}
-                      disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <StopCircleIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Delete">
-                    <IconButton
-                      size="small"
-                      onClick={() => onDelete(project)}
-                      disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </>
               ) : (
                 <>
-                  <Tooltip title="Start">
-                    <IconButton
+                  <Tooltip
+                    title={
+                      project.auto_update
+                        ? "Auto Update: On"
+                        : "Auto Update: Off"
+                    }
+                  >
+                    <Switch
                       size="small"
-                      onClick={() => onStart(project.name)}
+                      checked={!!project.auto_update}
+                      onChange={(e) =>
+                        onAutoUpdateToggle?.(project.name, e.target.checked)
+                      }
                       disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <PlayArrowIcon fontSize="small" />
-                    </IconButton>
+                    />
                   </Tooltip>
-                  <Tooltip title="Delete">
-                    <IconButton
-                      size="small"
-                      onClick={() => onDelete(project)}
-                      disabled={isLoading}
-                      sx={{ p: { xs: 0.5, sm: 1 } }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
+                  {onEdit && project.config_files.length > 0 && (
+                    <Tooltip title="Edit">
+                      <IconButton
+                        size="small"
+                        onClick={() =>
+                          onEdit(project.name, project.config_files[0])
+                        }
+                        disabled={isLoading}
+                        sx={{ p: { xs: 0.5, sm: 1 } }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  {project.status === "running" ||
+                  project.status === "partial" ? (
+                    <>
+                      <Tooltip title="Restart">
+                        <IconButton
+                          size="small"
+                          onClick={() => onRestart(project.name)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <RestartAltIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Stop">
+                        <IconButton
+                          size="small"
+                          onClick={() => onStop(project.name)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <StopCircleIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          onClick={() => onDelete(project)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </>
+                  ) : (
+                    <>
+                      <Tooltip title="Start">
+                        <IconButton
+                          size="small"
+                          onClick={() => onStart(project.name)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <PlayArrowIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          onClick={() => onDelete(project)}
+                          disabled={isLoading}
+                          sx={{ p: { xs: 0.5, sm: 1 } }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </>
+                  )}
                 </>
               )}
             </Box>
@@ -286,7 +335,16 @@ const ComposeList: React.FC<ComposeListProps> = ({
         </>
       );
     },
-    [onEdit, isLoading, onRestart, onStop, onDelete, onStart],
+    [
+      onEdit,
+      onPreview,
+      isLoading,
+      onRestart,
+      onStop,
+      onDelete,
+      onStart,
+      onAutoUpdateToggle,
+    ],
   );
 
   // Render expanded content

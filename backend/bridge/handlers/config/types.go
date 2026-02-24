@@ -35,7 +35,8 @@ type AppSettings struct {
 
 // Docker holds Docker-related settings
 type Docker struct {
-	Folder AbsolutePath `json:"folder" yaml:"folder"`
+	Folder           AbsolutePath `json:"folder" yaml:"folder"`
+	AutoUpdateStacks []string     `json:"autoUpdateStacks,omitempty" yaml:"autoUpdateStacks,omitempty"`
 }
 
 // Theme represents a validated theme value (LIGHT or DARK)

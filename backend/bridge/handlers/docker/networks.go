@@ -5,10 +5,59 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mordilloSan/go-logger/logger"
-
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
+	"github.com/mordilloSan/go-logger/logger"
 )
+
+const linuxIONetworkName = "linuxio-docker"
+
+// EnsureLinuxIONetwork checks that the linuxio-docker bridge network exists and
+// creates it if it does not. Failures are logged but never fatal — the bridge
+// starts normally even when Docker is unavailable.
+func EnsureLinuxIONetwork() {
+	cli, err := getClient()
+	if err != nil {
+		logger.Debugf("[docker] cannot ensure %s network: %v", linuxIONetworkName, err)
+		return
+	}
+	defer func() {
+		if cerr := cli.Close(); cerr != nil {
+			logger.Warnf("[docker] failed to close Docker client: %v", cerr)
+		}
+	}()
+
+	ctx := context.Background()
+
+	networks, err := cli.NetworkList(ctx, network.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("name", linuxIONetworkName)),
+	})
+	if err != nil {
+		logger.Warnf("[docker] failed to list networks while checking %s: %v", linuxIONetworkName, err)
+		return
+	}
+
+	// NetworkList filter is a substring match — verify exact name.
+	for _, nw := range networks {
+		if nw.Name == linuxIONetworkName {
+			logger.Debugf("[docker] %s network already exists", linuxIONetworkName)
+			return
+		}
+	}
+
+	_, err = cli.NetworkCreate(ctx, linuxIONetworkName, network.CreateOptions{
+		Driver: "bridge",
+		Labels: map[string]string{
+			"io.linuxio.managed": "true",
+		},
+	})
+	if err != nil {
+		logger.Warnf("[docker] failed to create %s network: %v", linuxIONetworkName, err)
+		return
+	}
+
+	logger.Infof("[docker] created %s bridge network", linuxIONetworkName)
+}
 
 // List all networks
 func ListDockerNetworks() (any, error) {

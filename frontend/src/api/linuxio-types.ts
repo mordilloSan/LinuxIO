@@ -255,6 +255,7 @@ export interface ComposeService {
 export interface ComposeProject {
   name: string;
   status: string;
+  auto_update?: boolean;
   services: Record<string, ComposeService>;
   config_files: string[];
   working_dir: string;
@@ -665,6 +666,10 @@ export interface LinuxIOSchema {
       result: { type: string; identifier: string; cached: boolean };
     };
     clear_icon_cache: { args: []; result: { message: string } };
+    set_auto_update: {
+      args: [payload: string]; // JSON { project: string, enabled: boolean }
+      result: { message: string };
+    };
     start_all_stopped: {
       args: [];
       result: { started: number; failed: number };

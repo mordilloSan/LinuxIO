@@ -379,6 +379,18 @@ install_systemd_files() {
         log_ok "Installed tmpfiles.d configuration"
     fi
 
+    # Create global Watchtower data directory
+    log_info "Creating Watchtower data directory..."
+    mkdir -p /var/lib/linuxIO/watchtower
+    if getent group docker &>/dev/null; then
+        chown root:docker /var/lib/linuxIO/watchtower
+        chmod 775 /var/lib/linuxIO/watchtower
+        log_ok "Watchtower directory created (/var/lib/linuxIO/watchtower, group: docker)"
+    else
+        chmod 755 /var/lib/linuxIO/watchtower
+        log_warn "docker group not found — Watchtower directory created with mode 755"
+    fi
+
     # Reload systemd
     log_info "Reloading systemd daemon..."
     systemctl daemon-reload

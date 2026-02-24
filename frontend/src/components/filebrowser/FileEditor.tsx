@@ -18,6 +18,7 @@ interface FileEditorProps {
   initialContent: string;
   onSave: (content: string) => Promise<void>;
   isSaving?: boolean;
+  readOnly?: boolean;
   onDirtyChange?: (isDirty: boolean) => void;
 }
 
@@ -104,6 +105,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
       initialContent,
       onSave,
       isSaving = false,
+      readOnly = false,
       onDirtyChange,
     },
     ref,
@@ -285,7 +287,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
         onChange={handleContentChange}
         value={content}
         name="file-editor"
-        readOnly={isSaving}
+        readOnly={isSaving || readOnly}
         style={{ width: "100%", height: "100%" }}
         fontSize={14}
         showPrintMargin={false}

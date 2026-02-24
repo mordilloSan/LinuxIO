@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"slices"
 
 	"github.com/mordilloSan/go-logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -392,6 +394,45 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	// args[0] = JSON-encoded PruneOptions
+	ipc.RegisterFunc("docker", "set_auto_update", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		var payload struct {
+			Project string `json:"project"`
+			Enabled bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+			return ipc.ErrInvalidArgs
+		}
+		if payload.Project == "" {
+			return ipc.ErrInvalidArgs
+		}
+
+		cfg, _, err := config.Load(username)
+		if err != nil {
+			return err
+		}
+
+		if payload.Enabled {
+			if !slices.Contains(cfg.Docker.AutoUpdateStacks, payload.Project) {
+				cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, payload.Project)
+			}
+		} else {
+			cfg.Docker.AutoUpdateStacks = slices.DeleteFunc(cfg.Docker.AutoUpdateStacks, func(s string) bool {
+				return s == payload.Project
+			})
+		}
+
+		if _, err := config.Save(username, cfg); err != nil {
+			return err
+		}
+
+		go SyncWatchtowerStack(username)
+
+		return emit.Result(map[string]any{"message": "auto-update updated"})
+	})
+
 	ipc.RegisterFunc("docker", "system_prune", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
