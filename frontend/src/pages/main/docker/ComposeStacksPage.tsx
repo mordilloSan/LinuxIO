@@ -36,11 +36,13 @@ import { useStreamResult } from "@/hooks/useStreamResult";
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;
   onMountIndexerHandler?: (handler: () => void) => void;
+  viewMode?: "table" | "card";
 }
 
 const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
   onMountCreateHandler,
   onMountIndexerHandler,
+  viewMode = "table",
 }) => {
   const queryClient = useQueryClient();
   const { config } = useConfig();
@@ -502,6 +504,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             onPreview={handlePreviewStack}
             onAutoUpdateToggle={handleAutoUpdateToggle}
             isLoading={isLoading}
+            viewMode={viewMode}
           />
         )}
 

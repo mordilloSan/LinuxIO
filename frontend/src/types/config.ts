@@ -13,6 +13,8 @@ export interface BackendSettings {
       daemon: boolean;
       resources: boolean;
     };
+    dockerContainersView?: "card" | "table";
+    dockerStacksView?: "table" | "card";
   };
   docker: {
     folder: string;
@@ -34,6 +36,8 @@ export interface AppConfig {
     daemon: boolean;
     resources: boolean;
   };
+  dockerContainersView?: "card" | "table";
+  dockerStacksView?: "table" | "card";
 }
 
 export interface ConfigContextType {

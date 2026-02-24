@@ -6,6 +6,7 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import {
   Box,
+  Grid,
   Table,
   TableBody,
   TableCell,
@@ -20,6 +21,8 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import React, { useCallback, useState } from "react";
+
+import ComposeStackCard from "./ComposeStackCard";
 
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
@@ -57,6 +60,7 @@ interface ComposeListProps {
   onPreview?: (projectName: string, configPath: string) => void;
   onAutoUpdateToggle?: (projectName: string, enabled: boolean) => void;
   isLoading?: boolean;
+  viewMode?: "table" | "card";
 }
 
 const ComposeList: React.FC<ComposeListProps> = ({
@@ -69,6 +73,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
   onPreview,
   onAutoUpdateToggle,
   isLoading = false,
+  viewMode = "table",
 }) => {
   const [search, setSearch] = useState("");
 
@@ -423,19 +428,57 @@ const ComposeList: React.FC<ComposeListProps> = ({
     );
   }, []);
 
+  const searchBar = (
+    <Box mb={2} display="flex" alignItems="center" gap={2}>
+      <TextField
+        variant="outlined"
+        size="small"
+        placeholder="Search stacks…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ width: 320 }}
+      />
+      <Box fontWeight="bold">{filtered.length} shown</Box>
+    </Box>
+  );
+
+  if (viewMode === "card") {
+    return (
+      <Box>
+        {searchBar}
+        {filtered.length === 0 ? (
+          <Box textAlign="center" py={4}>
+            <Typography variant="body2" color="text.secondary">
+              No compose stacks found. Start containers with docker compose to
+              see them here.
+            </Typography>
+          </Box>
+        ) : (
+          <Grid container spacing={2}>
+            {filtered.map((project) => (
+              <Grid key={project.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+                <ComposeStackCard
+                  project={project}
+                  onStart={onStart}
+                  onStop={onStop}
+                  onRestart={onRestart}
+                  onDelete={onDelete}
+                  onEdit={onEdit}
+                  onPreview={onPreview}
+                  onAutoUpdateToggle={onAutoUpdateToggle}
+                  isLoading={isLoading}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </Box>
+    );
+  }
+
   return (
     <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2}>
-        <TextField
-          variant="outlined"
-          size="small"
-          placeholder="Search stacks…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          sx={{ width: 320 }}
-        />
-        <Box fontWeight="bold">{filtered.length} shown</Box>
-      </Box>
+      {searchBar}
       <UnifiedCollapsibleTable
         data={filtered}
         columns={columns}

@@ -15,6 +15,7 @@ import {
 import { Box, Grid, Typography } from "@mui/material";
 import React, { Suspense, useMemo } from "react";
 
+import ContainerTable from "./ContainerTable";
 import ContainerCard from "../../../components/cards/ContainerCard";
 
 import { linuxio } from "@/api";
@@ -23,9 +24,13 @@ import { useConfigValue } from "@/hooks/useConfig";
 
 interface ContainerListProps {
   editMode: boolean;
+  viewMode?: "card" | "table";
 }
 
-const ContainerList: React.FC<ContainerListProps> = ({ editMode }) => {
+const ContainerList: React.FC<ContainerListProps> = ({
+  editMode,
+  viewMode = "card",
+}) => {
   const { data: containers = [] } = linuxio.docker.list_containers.useQuery({
     refetchInterval: 5000,
   });
@@ -76,6 +81,14 @@ const ContainerList: React.FC<ContainerListProps> = ({ editMode }) => {
     const newIndex = containerIds.indexOf(over.id as string);
     setContainerOrder(arrayMove(containerIds, oldIndex, newIndex));
   };
+
+  if (viewMode === "table") {
+    return (
+      <Suspense fallback={<Typography>Loading containers...</Typography>}>
+        <ContainerTable containers={orderedContainers} />
+      </Suspense>
+    );
+  }
 
   return (
     <Suspense fallback={<Typography>Loading containers...</Typography>}>

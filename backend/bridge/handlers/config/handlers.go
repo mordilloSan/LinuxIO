@@ -50,6 +50,8 @@ func RegisterHandlers(sess *session.Session) {
 				HiddenCards             []string                 `json:"hiddenCards"`
 				ContainerOrder          []string                 `json:"containerOrder"`
 				DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections"`
+				DockerContainersView    *string                  `json:"dockerContainersView"`
+				DockerStacksView        *string                  `json:"dockerStacksView"`
 			} `json:"appSettings"`
 			Docker *struct {
 				Folder           *string  `json:"folder"`
@@ -98,6 +100,12 @@ func RegisterHandlers(sess *session.Session) {
 			}
 			if payload.AppSettings.DockerDashboardSections != nil {
 				cfg.AppSettings.DockerDashboardSections = payload.AppSettings.DockerDashboardSections
+			}
+			if payload.AppSettings.DockerContainersView != nil {
+				cfg.AppSettings.DockerContainersView = *payload.AppSettings.DockerContainersView
+			}
+			if payload.AppSettings.DockerStacksView != nil {
+				cfg.AppSettings.DockerStacksView = *payload.AppSettings.DockerStacksView
 			}
 		}
 

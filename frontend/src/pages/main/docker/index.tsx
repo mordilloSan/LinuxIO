@@ -2,8 +2,10 @@ import {
   Add as AddIcon,
   CleaningServices as CleaningServicesIcon,
   DragIndicator,
+  GridView as GridViewIcon,
   PlayArrow as PlayArrowIcon,
   Stop as StopIcon,
+  TableRows as TableRowsIcon,
 } from "@mui/icons-material";
 import {
   Alert,
@@ -29,6 +31,7 @@ import { linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
 import useAuth from "@/hooks/useAuth";
+import { useConfigValue } from "@/hooks/useConfig";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const DockerPage: React.FC = () => {
@@ -94,6 +97,15 @@ const DockerPage: React.FC = () => {
       onError: (err: Error) =>
         toast.error(getMutationErrorMessage(err, "Prune failed")),
     });
+
+  const [dockerContainersView, setDockerContainersView] = useConfigValue(
+    "dockerContainersView",
+  );
+  const [dockerStacksView, setDockerStacksView] =
+    useConfigValue("dockerStacksView");
+
+  const containerView = dockerContainersView ?? "card";
+  const stacksView = dockerStacksView ?? "table";
 
   const [createStackHandler, setCreateStackHandler] = useState<
     (() => void) | null
@@ -202,19 +214,50 @@ const DockerPage: React.FC = () => {
           {
             value: "containers",
             label: "Containers",
-            component: <ContainerList editMode={containerEditMode} />,
+            component: (
+              <ContainerList
+                editMode={containerEditMode}
+                viewMode={containerView}
+              />
+            ),
             rightContent: (
-              <Tooltip
-                title={containerEditMode ? "Lock layout" : "Edit layout"}
-              >
-                <IconButton
-                  onClick={() => setContainerEditMode((prev) => !prev)}
-                  color={containerEditMode ? "primary" : "default"}
-                  size="small"
+              <>
+                <Tooltip
+                  title={
+                    containerView === "card"
+                      ? "Switch to table view"
+                      : "Switch to card view"
+                  }
                 >
-                  <DragIndicator />
-                </IconButton>
-              </Tooltip>
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      setDockerContainersView(
+                        containerView === "card" ? "table" : "card",
+                      )
+                    }
+                  >
+                    {containerView === "card" ? (
+                      <TableRowsIcon fontSize="small" />
+                    ) : (
+                      <GridViewIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                {containerView === "card" && (
+                  <Tooltip
+                    title={containerEditMode ? "Lock layout" : "Edit layout"}
+                  >
+                    <IconButton
+                      onClick={() => setContainerEditMode((prev) => !prev)}
+                      color={containerEditMode ? "primary" : "default"}
+                      size="small"
+                    >
+                      <DragIndicator />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </>
             ),
           },
           {
@@ -228,10 +271,33 @@ const DockerPage: React.FC = () => {
                 onMountIndexerHandler={(handler) =>
                   setReindexStackHandler(() => handler)
                 }
+                viewMode={stacksView}
               />
             ),
             rightContent: (
               <>
+                <Tooltip
+                  title={
+                    stacksView === "table"
+                      ? "Switch to card view"
+                      : "Switch to table view"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      setDockerStacksView(
+                        stacksView === "table" ? "card" : "table",
+                      )
+                    }
+                  >
+                    {stacksView === "table" ? (
+                      <GridViewIcon fontSize="small" />
+                    ) : (
+                      <TableRowsIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
                 {reindexStackHandler && (
                   <Tooltip
                     title={

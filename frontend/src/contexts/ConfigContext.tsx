@@ -28,6 +28,8 @@ const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   hiddenCards: settings.appSettings.hiddenCards,
   containerOrder: settings.appSettings.containerOrder,
   dockerDashboardSections: settings.appSettings.dockerDashboardSections,
+  dockerContainersView: settings.appSettings.dockerContainersView,
+  dockerStacksView: settings.appSettings.dockerStacksView,
   dockerFolder: settings.docker.folder,
 });
 
@@ -44,7 +46,9 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     config.dashboardOrder !== undefined ||
     config.hiddenCards !== undefined ||
     config.containerOrder !== undefined ||
-    config.dockerDashboardSections !== undefined
+    config.dockerDashboardSections !== undefined ||
+    config.dockerContainersView !== undefined ||
+    config.dockerStacksView !== undefined
   ) {
     payload.appSettings = {};
     if (config.theme !== undefined) payload.appSettings.theme = config.theme;
@@ -63,6 +67,10 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     if (config.dockerDashboardSections !== undefined)
       payload.appSettings.dockerDashboardSections =
         config.dockerDashboardSections;
+    if (config.dockerContainersView !== undefined)
+      payload.appSettings.dockerContainersView = config.dockerContainersView;
+    if (config.dockerStacksView !== undefined)
+      payload.appSettings.dockerStacksView = config.dockerStacksView;
   }
 
   if (config.dockerFolder !== undefined) {
@@ -82,6 +90,8 @@ const defaultConfig: AppConfig = {
   hiddenCards: undefined,
   containerOrder: undefined,
   dockerDashboardSections: undefined,
+  dockerContainersView: undefined,
+  dockerStacksView: undefined,
 };
 
 const applyDefaults = (
@@ -96,6 +106,9 @@ const applyDefaults = (
   containerOrder: cfg?.containerOrder ?? defaultConfig.containerOrder,
   dockerDashboardSections:
     cfg?.dockerDashboardSections ?? defaultConfig.dockerDashboardSections,
+  dockerContainersView:
+    cfg?.dockerContainersView ?? defaultConfig.dockerContainersView,
+  dockerStacksView: cfg?.dockerStacksView ?? defaultConfig.dockerStacksView,
   dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,
 });
 

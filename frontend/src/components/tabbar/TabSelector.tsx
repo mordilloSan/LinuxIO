@@ -1,3 +1,4 @@
+import TuneIcon from "@mui/icons-material/Tune";
 import {
   Paper,
   ToggleButton,
@@ -8,7 +9,6 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import TuneIcon from "@mui/icons-material/Tune";
 import React from "react";
 
 interface TabOption {
