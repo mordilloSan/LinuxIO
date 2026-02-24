@@ -1204,6 +1204,42 @@ type indexerSearchResult struct {
 	IsDir   bool   `json:"isDir"`
 }
 
+const (
+	indexerEntriesPageSize = 5000
+	indexerEntriesMaxPages = 2000
+)
+
+func fetchIndexerEntriesPage(basePath string, limit, offset int) ([]indexerSearchResult, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/entries", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build indexer request: %w", err)
+	}
+
+	q := req.URL.Query()
+	q.Set("path", basePath)
+	q.Set("recursive", "true")
+	q.Set("limit", fmt.Sprintf("%d", limit))
+	q.Set("offset", fmt.Sprintf("%d", offset))
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := indexerHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("indexer returned status %s", resp.Status)
+	}
+
+	var results []indexerSearchResult
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		return nil, fmt.Errorf("failed to decode indexer response: %w", err)
+	}
+
+	return results, nil
+}
+
 // searchIndexerForYAML searches the indexer for YAML files in the specified base path
 func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
 	// Normalize the base path
@@ -1217,44 +1253,46 @@ func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
 		}
 	}
 
-	// Search for .yml and .yaml files in the base path
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://unix/entries", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build indexer request: %w", err)
-	}
-
-	q := req.URL.Query()
-	q.Set("path", normPath)
-	q.Set("recursive", "true")
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		logger.Debugf("indexer search request failed (indexer may be offline): %v", err)
-		return nil, fmt.Errorf("indexer unavailable: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.Debugf("indexer returned non-OK status: %s", resp.Status)
-		return nil, fmt.Errorf("indexer returned status %s", resp.Status)
-	}
-
-	var results []indexerSearchResult
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		return nil, fmt.Errorf("failed to decode indexer response: %w", err)
-	}
-
-	// Filter for YAML files only
+	// Fetch entries in pages to ensure we scan the entire directory recursively.
+	// Then keep only YAML candidates for compose validation.
 	var yamlFiles []indexerSearchResult
-	for _, result := range results {
-		if result.IsDir {
-			continue
+	seenPaths := make(map[string]struct{})
+	offset := 0
+
+	for page := 0; page < indexerEntriesMaxPages; page++ {
+		results, err := fetchIndexerEntriesPage(normPath, indexerEntriesPageSize, offset)
+		if err != nil {
+			logger.Debugf("indexer search request failed (indexer may be offline): %v", err)
+			return nil, fmt.Errorf("indexer unavailable: %w", err)
 		}
-		lowerName := strings.ToLower(result.Name)
-		if strings.HasSuffix(lowerName, ".yml") || strings.HasSuffix(lowerName, ".yaml") {
+
+		if len(results) == 0 {
+			break
+		}
+
+		for _, result := range results {
+			if result.IsDir {
+				continue
+			}
+			lowerName := strings.ToLower(result.Name)
+			if !strings.HasSuffix(lowerName, ".yml") && !strings.HasSuffix(lowerName, ".yaml") {
+				continue
+			}
+			if _, exists := seenPaths[result.Path]; exists {
+				continue
+			}
+			seenPaths[result.Path] = struct{}{}
 			yamlFiles = append(yamlFiles, result)
 		}
+
+		offset += len(results)
+		if len(results) < indexerEntriesPageSize {
+			break
+		}
+	}
+
+	if offset >= indexerEntriesPageSize*indexerEntriesMaxPages {
+		logger.Warnf("indexer YAML scan reached max pages for path %s", normPath)
 	}
 
 	return yamlFiles, nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -70,13 +69,14 @@ func stopWatchtower() {
 	}
 }
 
-// collectContainerNames returns the running container names belonging to any of
-// the given compose projects. Falls back to project names if Docker is unavailable.
-func collectContainerNames(autoUpdateStacks []string) []string {
+// collectContainerNames filters autoUpdateContainers to only include currently
+// running containers. Falls back to the full list if Docker is unavailable,
+// so Watchtower is ready once containers start.
+func collectContainerNames(autoUpdateContainers []string) []string {
 	cli, err := getClient()
 	if err != nil {
-		logger.Debugf("[watchtower] docker client unavailable, using project names as fallback: %v", err)
-		return autoUpdateStacks
+		logger.Debugf("[watchtower] docker client unavailable, using container names as fallback: %v", err)
+		return autoUpdateContainers
 	}
 	defer func() {
 		if cerr := cli.Close(); cerr != nil {
@@ -84,27 +84,30 @@ func collectContainerNames(autoUpdateStacks []string) []string {
 		}
 	}()
 
-	containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: false})
+	running, err := cli.ContainerList(context.Background(), container.ListOptions{All: false})
 	if err != nil {
 		logger.Warnf("[watchtower] failed to list containers: %v", err)
-		return autoUpdateStacks
+		return autoUpdateContainers
+	}
+
+	runningNames := make(map[string]bool, len(running))
+	for _, ctr := range running {
+		if len(ctr.Names) > 0 {
+			runningNames[strings.TrimPrefix(ctr.Names[0], "/")] = true
+		}
 	}
 
 	var names []string
-	for _, ctr := range containers {
-		project := ctr.Labels["com.docker.compose.project"]
-		if !slices.Contains(autoUpdateStacks, project) {
-			continue
-		}
-		if len(ctr.Names) > 0 {
-			names = append(names, strings.TrimPrefix(ctr.Names[0], "/"))
+	for _, name := range autoUpdateContainers {
+		if runningNames[name] {
+			names = append(names, name)
 		}
 	}
 
 	if len(names) == 0 {
-		// No running containers found — fall back to project names so Watchtower
-		// at least has something to watch once the stacks are started.
-		return autoUpdateStacks
+		// None running yet — pass the full list so Watchtower is configured
+		// and ready as soon as the containers start.
+		return autoUpdateContainers
 	}
 
 	return names

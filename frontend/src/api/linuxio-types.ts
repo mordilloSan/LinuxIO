@@ -666,8 +666,9 @@ export interface LinuxIOSchema {
       result: { type: string; identifier: string; cached: boolean };
     };
     clear_icon_cache: { args: []; result: { message: string } };
+    list_auto_update_containers: { args: []; result: string[] };
     set_auto_update: {
-      args: [payload: string]; // JSON { project: string, enabled: boolean }
+      args: [payload: string]; // JSON { container: string, enabled: boolean }
       result: { message: string };
     };
     start_all_stopped: {

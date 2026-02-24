@@ -8,7 +8,6 @@ import {
   Chip,
   Divider,
   IconButton,
-  Switch,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -40,7 +39,6 @@ interface ComposeStackCardProps {
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
   onPreview?: (projectName: string, configPath: string) => void;
-  onAutoUpdateToggle?: (projectName: string, enabled: boolean) => void;
   isLoading?: boolean;
 }
 
@@ -52,7 +50,6 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
   onDelete,
   onEdit,
   onPreview,
-  onAutoUpdateToggle,
   isLoading = false,
 }) => {
   const statusColor = getStatusColor(project.status);
@@ -160,21 +157,6 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
           </Tooltip>
         ) : (
           <>
-            <Tooltip
-              title={
-                project.auto_update ? "Auto Update: On" : "Auto Update: Off"
-              }
-            >
-              <Switch
-                size="small"
-                checked={!!project.auto_update}
-                onChange={(e) =>
-                  onAutoUpdateToggle?.(project.name, e.target.checked)
-                }
-                disabled={isLoading}
-              />
-            </Tooltip>
-
             <Box sx={{ display: "flex", gap: 0.5 }}>
               {onEdit && project.config_files.length > 0 && (
                 <Tooltip title="Edit">

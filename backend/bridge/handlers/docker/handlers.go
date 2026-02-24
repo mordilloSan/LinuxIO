@@ -393,19 +393,31 @@ func RegisterHandlers(sess *session.Session) {
 		return emit.Result(result)
 	})
 
-	// args[0] = JSON-encoded PruneOptions
+	ipc.RegisterFunc("docker", "list_auto_update_containers", func(ctx context.Context, args []string, emit ipc.Events) error {
+		cfg, _, err := config.Load(username)
+		if err != nil {
+			return err
+		}
+		names := cfg.Docker.AutoUpdateStacks
+		if names == nil {
+			names = []string{}
+		}
+		return emit.Result(names)
+	})
+
+	// args[0] = JSON: { container: string, enabled: boolean }
 	ipc.RegisterFunc("docker", "set_auto_update", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
 		var payload struct {
-			Project string `json:"project"`
-			Enabled bool   `json:"enabled"`
+			Container string `json:"container"`
+			Enabled   bool   `json:"enabled"`
 		}
 		if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
 			return ipc.ErrInvalidArgs
 		}
-		if payload.Project == "" {
+		if payload.Container == "" {
 			return ipc.ErrInvalidArgs
 		}
 
@@ -415,12 +427,12 @@ func RegisterHandlers(sess *session.Session) {
 		}
 
 		if payload.Enabled {
-			if !slices.Contains(cfg.Docker.AutoUpdateStacks, payload.Project) {
-				cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, payload.Project)
+			if !slices.Contains(cfg.Docker.AutoUpdateStacks, payload.Container) {
+				cfg.Docker.AutoUpdateStacks = append(cfg.Docker.AutoUpdateStacks, payload.Container)
 			}
 		} else {
 			cfg.Docker.AutoUpdateStacks = slices.DeleteFunc(cfg.Docker.AutoUpdateStacks, func(s string) bool {
-				return s == payload.Project
+				return s == payload.Container
 			})
 		}
 

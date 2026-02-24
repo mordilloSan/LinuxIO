@@ -136,25 +136,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
     [],
   );
 
-  const handleAutoUpdateToggle = useCallback(
-    async (projectName: string, enabled: boolean) => {
-      try {
-        await linuxio.docker.set_auto_update.call(
-          JSON.stringify({ project: projectName, enabled }),
-        );
-        toast.success(
-          enabled
-            ? `Auto-update enabled for "${projectName}". Watchtower is syncing in the background.`
-            : `Auto-update disabled for "${projectName}". Watchtower is syncing in the background.`,
-        );
-        refetch();
-      } catch {
-        toast.error(`Failed to update auto-update for "${projectName}"`);
-      }
-    },
-    [refetch],
-  );
-
   // Open delete dialog with project info
   const handleOpenDeleteDialog = useCallback((project: ComposeProject) => {
     setDeleteDialogProject(project);
@@ -502,7 +483,6 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             onDelete={handleOpenDeleteDialog}
             onEdit={handleEditStack}
             onPreview={handlePreviewStack}
-            onAutoUpdateToggle={handleAutoUpdateToggle}
             isLoading={isLoading}
             viewMode={viewMode}
           />

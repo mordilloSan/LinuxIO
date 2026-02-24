@@ -3,6 +3,7 @@ import {
   Chip,
   Collapse,
   Divider,
+  Switch,
   Tooltip,
   Typography,
   Fade,
@@ -199,6 +200,47 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     setTerminalOpen(true);
   };
 
+  // ---- auto-update ----
+  const isWatchtowerContainer =
+    container.Labels?.["com.docker.compose.project"] === "linuxio-watchtower";
+
+  const { data: autoUpdateContainers = [] } =
+    linuxio.docker.list_auto_update_containers.useQuery({
+      enabled: !isWatchtowerContainer,
+    });
+  const autoUpdate = autoUpdateContainers.includes(name);
+  const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
+  const autoUpdateChecked = isWatchtowerContainer ? true : autoUpdate;
+  const autoUpdateDisabled = autoUpdateLoading || isWatchtowerContainer;
+  const autoUpdateTooltip = isWatchtowerContainer
+    ? "Auto Update: Managed by LinuxIO"
+    : autoUpdate
+      ? "Auto Update: On"
+      : "Auto Update: Off";
+
+  const handleAutoUpdateToggle = useCallback(
+    async (enabled: boolean) => {
+      if (isWatchtowerContainer) return;
+      setAutoUpdateLoading(true);
+      try {
+        await linuxio.docker.set_auto_update.call(
+          JSON.stringify({ container: name, enabled }),
+        );
+        queryClient.invalidateQueries({
+          queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
+        });
+        toast.success(
+          `Auto-update ${enabled ? "enabled" : "disabled"} for ${name}`,
+        );
+      } catch {
+        toast.error(`Failed to update auto-update setting for ${name}`);
+      } finally {
+        setAutoUpdateLoading(false);
+      }
+    },
+    [isWatchtowerContainer, name, queryClient],
+  );
+
   // ---- metrics ----
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
   const memUsage = container.metrics?.mem_usage ?? 0;
@@ -279,7 +321,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           </Typography>
           <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
             {container.Labels?.["com.docker.compose.project"] ===
-            "linuxio-watchtower" ? (
+              "linuxio-watchtower" ? (
               <Tooltip title="View Logs" arrow>
                 <Chip
                   label="Managed by LinuxIO"
@@ -347,15 +389,15 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             )}
             {container.Labels?.["com.docker.compose.project"] !==
               "linuxio-watchtower" && (
-              <Tooltip title="Open Terminal" arrow>
-                <span onClick={(e) => e.stopPropagation()}>
-                  <ActionButton
-                    icon="mdi:console"
-                    onClick={handleTerminalClick}
-                  />
-                </span>
-              </Tooltip>
-            )}
+                <Tooltip title="Open Terminal" arrow>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ActionButton
+                      icon="mdi:console"
+                      onClick={handleTerminalClick}
+                    />
+                  </span>
+                </Tooltip>
+              )}
           </Box>
         </Box>
       </Box>
@@ -402,6 +444,48 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             />
           </>
         )}
+      </Box>
+
+      {/* Auto-update toggle */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mt: 1.5,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Typography
+          variant="caption"
+          color={isWatchtowerContainer ? "text.disabled" : "text.secondary"}
+        >
+          Auto Update
+        </Typography>
+        <Tooltip title={autoUpdateTooltip}>
+          <Box component="span" sx={{ display: "inline-flex" }}>
+            <Switch
+              size="small"
+              checked={autoUpdateChecked}
+              onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
+              disabled={autoUpdateDisabled}
+              sx={
+                isWatchtowerContainer
+                  ? {
+                    "& .MuiSwitch-switchBase.Mui-checked.Mui-disabled": {
+                      color: "action.disabled",
+                    },
+                    "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track":
+                    {
+                      opacity: 1,
+                      backgroundColor: "action.disabledBackground",
+                    },
+                  }
+                  : undefined
+              }
+            />
+          </Box>
+        </Tooltip>
       </Box>
 
       {/* Ports section */}

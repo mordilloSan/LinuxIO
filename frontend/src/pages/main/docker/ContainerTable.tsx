@@ -5,6 +5,7 @@ import {
   Chip,
   Collapse,
   IconButton,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -185,6 +186,39 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, index, editMode 
 
   const isWatchtower =
     container.Labels?.["com.docker.compose.project"] === "linuxio-watchtower";
+
+  // ---- auto-update ----
+  const { data: autoUpdateContainers = [] } =
+    linuxio.docker.list_auto_update_containers.useQuery({
+      enabled: !isWatchtower,
+    });
+  const autoUpdate = autoUpdateContainers.includes(name);
+  const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
+  const autoUpdateChecked = isWatchtower ? true : autoUpdate;
+  const autoUpdateDisabled = autoUpdateLoading || isWatchtower;
+  const autoUpdateTooltip = isWatchtower
+    ? "Auto Update: Managed by LinuxIO"
+    : autoUpdate
+      ? "Auto Update: On"
+      : "Auto Update: Off";
+
+  const handleAutoUpdateToggle = async (enabled: boolean) => {
+    if (isWatchtower) return;
+    setAutoUpdateLoading(true);
+    try {
+      await linuxio.docker.set_auto_update.call(
+        JSON.stringify({ container: name, enabled }),
+      );
+      queryClient.invalidateQueries({
+        queryKey: linuxio.docker.list_auto_update_containers.queryKey(),
+      });
+      toast.success(`Auto-update ${enabled ? "enabled" : "disabled"} for ${name}`);
+    } catch {
+      toast.error(`Failed to update auto-update setting for ${name}`);
+    } finally {
+      setAutoUpdateLoading(false);
+    }
+  };
 
   const rowBg =
     index % 2 === 0
@@ -520,6 +554,30 @@ const ContainerRow: React.FC<ContainerRowProps> = ({ container, index, editMode 
                 </span>
               </Tooltip>
             )}
+            <Tooltip title={autoUpdateTooltip}>
+              <Box component="span" sx={{ display: "inline-flex" }}>
+                <Switch
+                  size="small"
+                  checked={autoUpdateChecked}
+                  onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
+                  disabled={autoUpdateDisabled}
+                  sx={
+                    isWatchtower
+                      ? {
+                          "& .MuiSwitch-switchBase.Mui-checked.Mui-disabled": {
+                            color: "action.disabled",
+                          },
+                          "& .MuiSwitch-switchBase.Mui-disabled + .MuiSwitch-track":
+                            {
+                              opacity: 1,
+                              backgroundColor: "action.disabledBackground",
+                            },
+                        }
+                      : undefined
+                  }
+                />
+              </Box>
+            </Tooltip>
             <IconButton
               size="small"
               onClick={() => setExpanded((v) => !v)}

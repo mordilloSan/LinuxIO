@@ -13,7 +13,6 @@ import {
   TableHead,
   TableRow,
   IconButton,
-  Switch,
   TextField,
   Tooltip,
   Chip,
@@ -58,7 +57,6 @@ interface ComposeListProps {
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
   onPreview?: (projectName: string, configPath: string) => void;
-  onAutoUpdateToggle?: (projectName: string, enabled: boolean) => void;
   isLoading?: boolean;
   viewMode?: "table" | "card";
 }
@@ -71,7 +69,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
   onDelete,
   onEdit,
   onPreview,
-  onAutoUpdateToggle,
   isLoading = false,
   viewMode = "table",
 }) => {
@@ -245,22 +242,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
                 </Tooltip>
               ) : (
                 <>
-                  <Tooltip
-                    title={
-                      project.auto_update
-                        ? "Auto Update: On"
-                        : "Auto Update: Off"
-                    }
-                  >
-                    <Switch
-                      size="small"
-                      checked={!!project.auto_update}
-                      onChange={(e) =>
-                        onAutoUpdateToggle?.(project.name, e.target.checked)
-                      }
-                      disabled={isLoading}
-                    />
-                  </Tooltip>
                   {onEdit && project.config_files.length > 0 && (
                     <Tooltip title="Edit">
                       <IconButton
@@ -340,16 +321,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
         </>
       );
     },
-    [
-      onEdit,
-      onPreview,
-      isLoading,
-      onRestart,
-      onStop,
-      onDelete,
-      onStart,
-      onAutoUpdateToggle,
-    ],
+    [onEdit, onPreview, isLoading, onRestart, onStop, onDelete, onStart],
   );
 
   // Render expanded content
@@ -465,7 +437,6 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   onDelete={onDelete}
                   onEdit={onEdit}
                   onPreview={onPreview}
-                  onAutoUpdateToggle={onAutoUpdateToggle}
                   isLoading={isLoading}
                 />
               </Grid>
