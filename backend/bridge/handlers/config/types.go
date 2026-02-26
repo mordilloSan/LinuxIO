@@ -35,10 +35,18 @@ type AppSettings struct {
 	DockerStacksView        string                   `json:"dockerStacksView,omitempty" yaml:"dockerStacksView,omitempty"`
 }
 
+// DockerProxy holds Caddy reverse proxy configuration
+type DockerProxy struct {
+	CaddyEnabled bool   `json:"caddyEnabled" yaml:"caddyEnabled"`
+	BaseDomain   string `json:"baseDomain,omitempty" yaml:"baseDomain,omitempty"` // empty = use .localhost
+	TLSEmail     string `json:"tlsEmail,omitempty" yaml:"tlsEmail,omitempty"`
+}
+
 // Docker holds Docker-related settings
 type Docker struct {
 	Folder           AbsolutePath `json:"folder" yaml:"folder"`
 	AutoUpdateStacks []string     `json:"autoUpdateStacks,omitempty" yaml:"autoUpdateStacks,omitempty"`
+	Proxy            DockerProxy  `json:"proxy,omitempty" yaml:"proxy,omitempty"`
 }
 
 // Theme represents a validated theme value (LIGHT or DARK)

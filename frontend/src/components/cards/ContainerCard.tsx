@@ -398,6 +398,18 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 </span>
               </Tooltip>
             )}
+            {container.url && (
+              <Tooltip title="Open App" arrow>
+                <span onClick={(e) => e.stopPropagation()}>
+                  <ActionButton
+                    icon="mdi:open-in-new"
+                    onClick={() =>
+                      window.open(container.url, "_blank", "noopener")
+                    }
+                  />
+                </span>
+              </Tooltip>
+            )}
           </Box>
         </Box>
       </Box>

@@ -2,18 +2,9 @@
 
 2 - Notifications!!!! See notifications.md
 
-3 - exec.command safety and efeciency?
+8 - different view modes on cards/tables with user config (migrate all tables to cards)
 
-4 - docker auto update
-
-5 - docker auto start
-
-6 - docker start order
-
-7 - migrate all tables to cards
-
-8 - different view modes on cards/tables with user config
-
+docker auto update - Done
 Docker compose UI - Done
 Right now hash can be reproduced if build from same code base. - DONE
 fix indexer status check and calls. DONE

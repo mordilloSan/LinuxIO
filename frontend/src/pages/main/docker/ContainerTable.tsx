@@ -572,6 +572,18 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 </span>
               </Tooltip>
             )}
+            {container.url && (
+              <Tooltip title="Open App">
+                <span>
+                  <ActionButton
+                    icon="mdi:open-in-new"
+                    onClick={() =>
+                      window.open(container.url, "_blank", "noopener")
+                    }
+                  />
+                </span>
+              </Tooltip>
+            )}
             <Tooltip title={autoUpdateTooltip}>
               <Box component="span" sx={{ display: "inline-flex" }}>
                 <Switch

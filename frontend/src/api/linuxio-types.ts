@@ -689,6 +689,22 @@ export interface LinuxIOSchema {
         spaceReclaimed: number;
       };
     };
+    get_caddy_status: {
+      args: [];
+      result: {
+        enabled: boolean;
+        baseDomain: string;
+        running: boolean;
+        routes: Array<{ host: string; container: string; port: string }>;
+      };
+    };
+    enable_caddy: { args: []; result: { message: string } };
+    disable_caddy: { args: []; result: { message: string } };
+    reload_caddy: { args: []; result: { message: string } };
+    connect_to_proxy: {
+      args: [containerId: string];
+      result: { message: string };
+    };
   };
 
   dbus: {
