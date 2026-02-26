@@ -8,7 +8,13 @@
  */
 
 import type { Stream, ProgressFrame, ResultFrame } from "./StreamMultiplexer";
-import { getStreamMux, encodeString, decodeString } from "./StreamMultiplexer";
+import {
+  getStreamMux,
+  initStreamMux,
+  waitForStreamMux,
+  encodeString,
+  decodeString,
+} from "./StreamMultiplexer";
 import { waitForStreamResult, bindStreamHandlers } from "./stream-helpers";
 
 /**
@@ -40,30 +46,53 @@ export interface SpawnOptions {
   onProgress?: (progress: ProgressFrame) => void;
 }
 
-/**
- * Simple request/response call
- * Returns a Promise that resolves with the result
- *
- * @example
- * const drives = await call<ApiDisk[]>("storage", "get_drive_info");
- */
-export async function call<T = unknown>(
-  handler: string,
-  command: string,
-  args: string[] = [],
-  options?: CallOptions,
-): Promise<T> {
-  const mux = getStreamMux();
-  if (!mux) {
+const DEFAULT_CALL_TIMEOUT_MS = 30000;
+const MAX_CALL_ATTEMPTS = 2;
+
+function isConnectionClosedError(error: unknown): boolean {
+  return error instanceof LinuxIOError && error.code === "connection_closed";
+}
+
+async function ensureCallMuxReady(timeoutMs: number) {
+  const existingMux = getStreamMux();
+  if (!existingMux) {
     throw new LinuxIOError("StreamMux not initialized", "not_initialized");
   }
 
-  const timeoutMs = options?.timeout ?? 30000;
+  if (existingMux.status === "closed") {
+    initStreamMux();
+  }
 
+  const ready = await waitForStreamMux(timeoutMs);
+  if (!ready) {
+    throw new LinuxIOError(
+      "Connection closed before receiving result",
+      "connection_closed",
+    );
+  }
+
+  const mux = getStreamMux();
+  if (!mux || mux.status !== "open") {
+    throw new LinuxIOError(
+      "Connection closed before receiving result",
+      "connection_closed",
+    );
+  }
+
+  return mux;
+}
+
+async function executeCallAttempt<T>(
+  handler: string,
+  command: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<T> {
   // Build payload: "bridge\0handlerType\0command\0arg1\0arg2..."
   const parts = ["bridge", handler, command, ...args];
   const payload = encodeString(parts.join("\0"));
 
+  const mux = await ensureCallMuxReady(timeoutMs);
   const stream = mux.openStream("bridge", payload);
   const operation = waitForStreamResult<T>(stream, {
     closeMessage: "Connection closed before receiving result",
@@ -85,6 +114,48 @@ export async function call<T = unknown>(
         reject(error);
       });
   });
+}
+
+/**
+ * Simple request/response call
+ * Returns a Promise that resolves with the result
+ *
+ * @example
+ * const drives = await call<ApiDisk[]>("storage", "get_drive_info");
+ */
+export async function call<T = unknown>(
+  handler: string,
+  command: string,
+  args: string[] = [],
+  options?: CallOptions,
+): Promise<T> {
+  const timeoutMs = options?.timeout ?? DEFAULT_CALL_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_CALL_ATTEMPTS; attempt += 1) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new LinuxIOError("Request timeout", "timeout");
+    }
+
+    try {
+      return await executeCallAttempt<T>(handler, command, args, remainingMs);
+    } catch (error) {
+      lastError = error;
+
+      const canRetry =
+        attempt < MAX_CALL_ATTEMPTS && isConnectionClosedError(error);
+      if (!canRetry) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+  throw new LinuxIOError("Request timeout", "timeout");
 }
 
 /**

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	dtypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
@@ -285,7 +284,7 @@ func buildHost(subdomain, baseDomain string) string {
 }
 
 // caddyContainerShortName returns the best human-readable name for routing.
-func caddyContainerShortName(c dtypes.Container) string {
+func caddyContainerShortName(c container.Summary) string {
 	serviceName := c.Labels["com.docker.compose.service"]
 	projectName := c.Labels["com.docker.compose.project"]
 	if len(c.Names) == 0 {
@@ -313,7 +312,7 @@ func reloadCaddyfile(proxyCfg config.DockerProxy) error {
 	caddyfile := generateCaddyfile(routes, proxyCfg)
 
 	cfgPath := filepath.Join(caddyConfigDir, "Caddyfile")
-	if err := os.WriteFile(cfgPath, []byte(caddyfile), 0o644); err != nil {
+	if err = os.WriteFile(cfgPath, []byte(caddyfile), 0o644); err != nil {
 		return fmt.Errorf("write Caddyfile: %w", err)
 	}
 

@@ -386,24 +386,61 @@ export class StreamMultiplexer {
   private url: string;
   private statusListeners = new Set<(status: MuxStatus) => void>();
   private updatingListeners = new Set<(isUpdating: boolean) => void>();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
+  private shouldReconnect = true;
+
+  private readonly handleVisibilityChange = () => {
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+    this.reconnect();
+  };
+
+  private readonly handleOnline = () => {
+    this.reconnect();
+  };
 
   constructor(url: string) {
     this.url = url;
+    if (typeof document !== "undefined") {
+      document.addEventListener(
+        "visibilitychange",
+        this.handleVisibilityChange,
+      );
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", this.handleOnline);
+    }
     this.connect();
   }
 
   private connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (
+      this.ws?.readyState === WebSocket.OPEN ||
+      this.ws?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
+
+    if (this._status !== "connecting") {
+      this._status = "connecting";
+      this.notifyStatusChange("connecting");
+    }
 
     this.ws = new WebSocket(this.url);
     this.ws.binaryType = "arraybuffer";
 
     this.ws.onopen = () => {
+      this.clearReconnectTimer();
+      this.reconnectAttempts = 0;
+      this.shouldReconnect = true;
       this._status = "open";
       this.notifyStatusChange("open");
     };
 
     this.ws.onclose = (event: CloseEvent) => {
+      this.ws = null;
       console.log(
         `[StreamMultiplexer] WebSocket closed: code=${event.code}, reason="${event.reason}"`,
       );
@@ -411,6 +448,8 @@ export class StreamMultiplexer {
       // Close code 1008 = Policy Violation (session expired)
       // This means the backend terminated the session - user must re-authenticate
       if (event.code === 1008) {
+        this.shouldReconnect = false;
+        this.clearReconnectTimer();
         this._status = "error";
         this.notifyStatusChange("error");
         this.closeAllStreams();
@@ -420,12 +459,12 @@ export class StreamMultiplexer {
         this._status = "closed";
         this.notifyStatusChange("closed");
         this.closeAllStreams();
+        this.scheduleReconnect();
       }
     };
 
-    this.ws.onerror = () => {
-      this._status = "error";
-      this.notifyStatusChange("error");
+    this.ws.onerror = (event) => {
+      console.warn("[StreamMultiplexer] WebSocket error:", event);
     };
 
     this.ws.onmessage = (event) => {
@@ -433,6 +472,46 @@ export class StreamMultiplexer {
         this.handleMessage(event.data);
       }
     };
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (!this.shouldReconnect) {
+      return;
+    }
+    if (
+      this.ws?.readyState === WebSocket.OPEN ||
+      this.ws?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
+    if (this.reconnectTimer !== null) {
+      return;
+    }
+
+    const baseDelay = Math.min(1000 * 2 ** this.reconnectAttempts, 10000);
+    const jitter = Math.floor(Math.random() * 250);
+    const delay = baseDelay + jitter;
+    this.reconnectAttempts += 1;
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
+  }
+
+  reconnect(): void {
+    if (!this.shouldReconnect) {
+      return;
+    }
+    this.clearReconnectTimer();
+    this.connect();
   }
 
   private notifyStatusChange(status: MuxStatus): void {
@@ -631,6 +710,17 @@ export class StreamMultiplexer {
   }
 
   close(): void {
+    this.shouldReconnect = false;
+    this.clearReconnectTimer();
+    if (typeof document !== "undefined") {
+      document.removeEventListener(
+        "visibilitychange",
+        this.handleVisibilityChange,
+      );
+    }
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", this.handleOnline);
+    }
     this.closeAllStreams();
     if (this.ws) {
       this.ws.close();
@@ -686,7 +776,10 @@ export function getStreamMux(): StreamMultiplexer | null {
  * Should be called once after successful authentication.
  */
 export function initStreamMux(): StreamMultiplexer {
-  if (instance && instance.status !== "closed") {
+  if (instance) {
+    if (instance.status === "closed") {
+      instance.reconnect();
+    }
     return instance;
   }
 
