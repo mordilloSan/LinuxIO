@@ -40,7 +40,7 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 	// WebSocket relay — session validated inside wsAuthMiddleware so that auth
 	// failures are sent as WS close code 1008 ("no-session") rather than HTTP
 	// 401, which browsers cannot distinguish from a network error.
-	mux.Handle("GET /ws", wsAuthMiddleware(sm, http.HandlerFunc(WebSocketRelayHandler)))
+	mux.Handle("GET /ws", wsAuthMiddleware(sm, WebSocketRelayHandler(sm)))
 
 	// Serve module static files
 	// SPA routes (no file extension) are public - React handles auth

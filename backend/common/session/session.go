@@ -31,7 +31,7 @@ const (
 type SessionConfig struct {
 	IdleTimeout          time.Duration
 	AbsoluteTimeout      time.Duration
-	RefreshThrottle      time.Duration
+	RefreshThrottle      time.Duration // 0 means refresh on every activity
 	SingleSessionPerUser bool
 	GCInterval           time.Duration
 	Cookie               CookieConfig
@@ -96,6 +96,8 @@ type Store interface {
 	Find(string) ([]byte, bool, error)
 	Commit(string, []byte, time.Time) error
 	Delete(string) error
+	// All returns all records still present in the store.
+	// Manager expiry checks determine whether those records are still usable.
 	All() (map[string][]byte, error)
 }
 
@@ -113,31 +115,17 @@ type Manager struct {
 	gcStop chan struct{}
 }
 
+// NewManager constructs a manager from a fully resolved SessionConfig.
+// Callers should start from DefaultConfig and override fields explicitly.
 func NewManager(store Store, cfg SessionConfig) *Manager {
 	m := &Manager{st: store, cfg: cfg}
-	// Fill defaults
-	if m.cfg.IdleTimeout == 0 {
-		m.cfg.IdleTimeout = DefaultConfig.IdleTimeout
-	}
-	if m.cfg.AbsoluteTimeout == 0 {
-		m.cfg.AbsoluteTimeout = DefaultConfig.AbsoluteTimeout
-	}
-	if m.cfg.RefreshThrottle == 0 {
-		m.cfg.RefreshThrottle = DefaultConfig.RefreshThrottle
-	}
-	if m.cfg.GCInterval == 0 {
-		m.cfg.GCInterval = DefaultConfig.GCInterval
-	}
-	if m.cfg.Cookie.Name == "" {
-		m.cfg.Cookie = DefaultConfig.Cookie
-	}
-
 	logger.Infof("Session manager ready")
 	logger.Debugf("Session timings (idle=%v, absolute=%v, refresh=%v, singleUser=%v, gc=%v)",
 		m.cfg.IdleTimeout, m.cfg.AbsoluteTimeout, m.cfg.RefreshThrottle, m.cfg.SingleSessionPerUser, m.cfg.GCInterval)
 
-	// Store TTL handles absolute-expired records.
-	// Manager GC handles idle expiry and emits delete hooks.
+	// Stored records get a short TTL grace after absolute expiry so manager GC
+	// can emit delete hooks before the store prunes any leftovers.
+	// Manager GC handles idle expiry and transport teardown hooks.
 	if m.cfg.GCInterval > 0 {
 		m.gcStop = make(chan struct{})
 		go m.gcLoop()
@@ -232,6 +220,38 @@ func (m *Manager) encode(s *Session) ([]byte, error) {
 	return json.Marshal(s)
 }
 
+func (m *Manager) storeExpiry(absolute time.Time) time.Time {
+	if m.cfg.GCInterval <= 0 {
+		return absolute
+	}
+	// Keep the stored record briefly past absolute expiry so manager GC can emit
+	// delete hooks and tear down websocket/yamux state consistently.
+	return absolute.Add(m.cfg.GCInterval)
+}
+
+func (m *Manager) commitSession(s *Session) error {
+	b, err := m.encode(s)
+	if err != nil {
+		return err
+	}
+	return m.st.Commit(s.SessionID, b, m.storeExpiry(s.Timing.AbsoluteUntil))
+}
+
+func (m *Manager) refreshLoadedSession(s *Session, now time.Time) error {
+	if now.Sub(s.Timing.LastRefresh) < m.cfg.RefreshThrottle {
+		s.Timing.LastAccess = now
+	} else {
+		s.Timing.LastAccess = now
+		s.Timing.LastRefresh = now
+		newIdle := now.Add(m.cfg.IdleTimeout)
+		if newIdle.After(s.Timing.AbsoluteUntil) {
+			newIdle = s.Timing.AbsoluteUntil
+		}
+		s.Timing.IdleUntil = newIdle
+	}
+	return m.commitSession(s)
+}
+
 // -----------------------------------------------------------------------------
 // Public API
 // -----------------------------------------------------------------------------
@@ -280,11 +300,7 @@ func (m *Manager) CreateSession(user User, privileged bool) (*Session, error) {
 		}
 	}
 
-	b, err := m.encode(sess)
-	if err != nil {
-		return nil, err
-	}
-	if err := m.st.Commit(id, b, abs); err != nil {
+	if err := m.commitSession(sess); err != nil {
 		return nil, err
 	}
 
@@ -340,11 +356,7 @@ func (m *Manager) SetPrivileged(id string, v bool) error {
 		return err
 	}
 	s.Privileged = v
-	b, err := m.encode(s)
-	if err != nil {
-		return err
-	}
-	return m.st.Commit(id, b, s.Timing.AbsoluteUntil)
+	return m.commitSession(s)
 }
 
 func (m *Manager) Refresh(id string) error {
@@ -353,22 +365,19 @@ func (m *Manager) Refresh(id string) error {
 		return err
 	}
 	now := time.Now()
-	if now.Sub(s.Timing.LastRefresh) < m.cfg.RefreshThrottle {
-		s.Timing.LastAccess = now
-	} else {
-		s.Timing.LastAccess = now
-		s.Timing.LastRefresh = now
-		newIdle := now.Add(m.cfg.IdleTimeout)
-		if newIdle.After(s.Timing.AbsoluteUntil) {
-			newIdle = s.Timing.AbsoluteUntil
+	if expiredAbsolute(s, now) {
+		if delErr := m.DeleteSession(id, ReasonGCAbsolute); delErr != nil {
+			logger.Warnf("failed to delete absolute-expired session '%s': %v", id, delErr)
 		}
-		s.Timing.IdleUntil = newIdle
+		return fmt.Errorf("session expired")
 	}
-	b, err := m.encode(s)
-	if err != nil {
-		return err
+	if expiredIdle(s, now) {
+		if delErr := m.DeleteSession(id, ReasonGCIdle); delErr != nil {
+			logger.Warnf("failed to delete idle-expired session '%s': %v", id, delErr)
+		}
+		return fmt.Errorf("session expired")
 	}
-	return m.st.Commit(id, b, s.Timing.AbsoluteUntil)
+	return m.refreshLoadedSession(s, now)
 }
 
 // -----------------------------------------------------------------------------
@@ -427,7 +436,7 @@ func (m *Manager) ValidateFromRequest(r *http.Request) (*Session, error) {
 		logger.Warnf("Expired session (idle) by '%s'", s.User.Username)
 		return nil, fmt.Errorf("session expired")
 	}
-	if refreshErr := m.Refresh(s.SessionID); refreshErr != nil {
+	if refreshErr := m.refreshLoadedSession(s, now); refreshErr != nil {
 		logger.Warnf("failed to refresh session '%s': %v", s.SessionID, refreshErr)
 	}
 	return s, nil
@@ -473,9 +482,10 @@ func WithSession(ctx context.Context, s *Session) context.Context {
 }
 
 // -----------------------------------------------------------------------------
-// Background idle sweep.
-// Store TTL prunes absolute-expired records.
-// Manager GC enforces idle expiry and emits delete hooks.
+// Background session sweep.
+// Stored records get a short TTL grace after absolute expiry so manager GC can
+// emit delete hooks before the store eventually prunes any leftovers.
+// Manager GC enforces both absolute and idle expiry.
 // -----------------------------------------------------------------------------
 
 func (m *Manager) gcLoop() {
@@ -495,14 +505,19 @@ func (m *Manager) gcLoop() {
 				if err != nil {
 					continue
 				}
-				// absolute expiry likely already gone due to Commit(expiry),
-				// here we enforce idle expiry.
-				if expiredIdle(s, now) {
+				reason := DeleteReason("")
+				switch {
+				case expiredAbsolute(s, now):
+					reason = ReasonGCAbsolute
+				case expiredIdle(s, now):
+					reason = ReasonGCIdle
+				}
+				if reason != "" {
 					if err := m.st.Delete(tok); err != nil {
-						logger.Warnf("failed to delete idle-expired session '%s': %v", tok, err)
+						logger.Warnf("failed to delete expired session '%s': %v", tok, err)
 						continue
 					}
-					m.broadcastOnDelete(s, ReasonGCIdle)
+					m.broadcastOnDelete(s, reason)
 					collected++
 				}
 			}

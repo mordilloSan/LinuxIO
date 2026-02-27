@@ -174,106 +174,117 @@ func wsAuthMiddleware(sm *session.Manager, next http.Handler) http.Handler {
 	})
 }
 
+func refreshSessionActivity(sm *session.Manager, sessionID string) {
+	if err := sm.Refresh(sessionID); err != nil {
+		logger.Debugf("failed to refresh websocket session '%s': %v", sessionID, err)
+	}
+}
+
 // WebSocketRelayHandler handles binary WebSocket connections as a pure byte relay.
 // The server never parses payloads - just routes bytes between WebSocket and yamux streams.
-func WebSocketRelayHandler(w http.ResponseWriter, r *http.Request) {
-	sess := session.SessionFromContext(r.Context())
-	if sess == nil {
-		// Should not happen — wsAuthMiddleware guarantees session in context.
-		logger.Errorf("WebSocketRelayHandler: missing session in context")
-		return
-	}
-
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		logger.Errorf("upgrade failed: %v", err)
-		return
-	}
-
-	relay := &streamRelay{
-		streams: make(map[uint32]*relayStream),
-		ws:      conn,
-		done:    make(chan struct{}),
-	}
-
-	// Track this WebSocket by session ID for session expiry handling
-	// Multiple tabs/windows can share the same session
-	addWebSocketForSession(sess.SessionID, conn)
-	defer func() {
-		removeWebSocketForSession(sess.SessionID, conn)
-		relay.closeAll()
-	}()
-
-	logger.Infof("Connected: user=%s", sess.User.Username)
-
-	// Set up pong handler - this resets the read deadline when pong is received
-	conn.SetPongHandler(func(string) error {
-		logger.Debugf("pong received, resetting deadline to %v", pongWait)
-		if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-			logger.Debugf("failed to set read deadline in pong handler: %v", err)
-			return err
+func WebSocketRelayHandler(sm *session.Manager) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess := session.SessionFromContext(r.Context())
+		if sess == nil {
+			// Should not happen — wsAuthMiddleware guarantees session in context.
+			logger.Errorf("WebSocketRelayHandler: missing session in context")
+			return
 		}
-		return nil
-	})
 
-	// Set initial read deadline
-	logger.Debugf("setting initial read deadline: %v (pingInterval=%v, pongWait=%v)", pongWait, pingInterval, pongWait)
-	if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-		logger.Warnf("failed to set initial read deadline: %v", err)
-		return
-	}
-
-	// Start ping goroutine to keep connection alive
-	go relay.pingLoop()
-
-	// Read binary messages from WebSocket
-	for {
-		messageType, data, err := conn.ReadMessage()
+		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			if !isExpectedWSClose(err) {
-				logger.Warnf("read error: %v", err)
+			logger.Errorf("upgrade failed: %v", err)
+			return
+		}
+
+		relay := &streamRelay{
+			streams: make(map[uint32]*relayStream),
+			ws:      conn,
+			done:    make(chan struct{}),
+		}
+
+		// Track this WebSocket by session ID for session expiry handling
+		// Multiple tabs/windows can share the same session
+		addWebSocketForSession(sess.SessionID, conn)
+		defer func() {
+			removeWebSocketForSession(sess.SessionID, conn)
+			relay.closeAll()
+		}()
+
+		logger.Infof("Connected: user=%s", sess.User.Username)
+
+		// Count websocket liveness toward session activity so transport and
+		// idle-session lifecycles stay aligned under the configured throttle.
+		conn.SetPongHandler(func(string) error {
+			logger.Debugf("pong received, resetting deadline to %v", pongWait)
+			if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+				logger.Debugf("failed to set read deadline in pong handler: %v", err)
+				return err
 			}
-			break
-		}
+			refreshSessionActivity(sm, sess.SessionID)
+			return nil
+		})
 
-		// Reset read deadline on any successful read (data keeps connection alive too)
+		// Set initial read deadline
+		logger.Debugf("setting initial read deadline: %v (pingInterval=%v, pongWait=%v)", pongWait, pingInterval, pongWait)
 		if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-			logger.Debugf("failed to reset read deadline: %v", err)
-			break
+			logger.Warnf("failed to set initial read deadline: %v", err)
+			return
 		}
 
-		// Only handle binary messages
-		if messageType != websocket.BinaryMessage {
-			logger.Debugf("ignoring non-binary message type=%d", messageType)
-			continue
+		// Start ping goroutine to keep connection alive
+		go relay.pingLoop()
+
+		// Read binary messages from WebSocket
+		for {
+			messageType, data, err := conn.ReadMessage()
+			if err != nil {
+				if !isExpectedWSClose(err) {
+					logger.Warnf("read error: %v", err)
+				}
+				break
+			}
+
+			// Reset read deadline on any successful read (data keeps connection alive too)
+			if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+				logger.Debugf("failed to reset read deadline: %v", err)
+				break
+			}
+			refreshSessionActivity(sm, sess.SessionID)
+
+			// Only handle binary messages
+			if messageType != websocket.BinaryMessage {
+				logger.Debugf("ignoring non-binary message type=%d", messageType)
+				continue
+			}
+
+			// Parse frame header: [streamID:4][flags:1][payload:N]
+			if len(data) < 5 {
+				logger.Warnf("frame too short: %d bytes", len(data))
+				continue
+			}
+
+			streamID := binary.BigEndian.Uint32(data[0:4])
+			flags := data[4]
+			payload := data[5:]
+
+			if flags&FlagSYN != 0 {
+				// Open new stream
+				relay.handleSYN(sess, streamID, payload)
+			} else if flags&FlagDATA != 0 {
+				// Write data to stream
+				relay.handleDATA(streamID, payload)
+			} else if flags&FlagFIN != 0 {
+				// Close stream (forward payload first if present)
+				relay.handleFIN(streamID, payload)
+			} else if flags&FlagRST != 0 {
+				// Abort stream
+				relay.handleRST(streamID)
+			}
 		}
 
-		// Parse frame header: [streamID:4][flags:1][payload:N]
-		if len(data) < 5 {
-			logger.Warnf("frame too short: %d bytes", len(data))
-			continue
-		}
-
-		streamID := binary.BigEndian.Uint32(data[0:4])
-		flags := data[4]
-		payload := data[5:]
-
-		if flags&FlagSYN != 0 {
-			// Open new stream
-			relay.handleSYN(sess, streamID, payload)
-		} else if flags&FlagDATA != 0 {
-			// Write data to stream
-			relay.handleDATA(streamID, payload)
-		} else if flags&FlagFIN != 0 {
-			// Close stream (forward payload first if present)
-			relay.handleFIN(streamID, payload)
-		} else if flags&FlagRST != 0 {
-			// Abort stream
-			relay.handleRST(streamID)
-		}
-	}
-
-	logger.Infof("Disconnected: user=%s", sess.User.Username)
+		logger.Infof("Disconnected: user=%s", sess.User.Username)
+	})
 }
 
 // handleSYN opens a new yamux stream and starts relaying

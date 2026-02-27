@@ -69,7 +69,8 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		return true, nil // privileged
 	}
 	// Manager + handlers
-	sm := session.NewManager(session.New(), session.SessionConfig{})
+	cfg := session.DefaultConfig
+	sm := session.NewManager(session.New(), cfg)
 	h := &Handlers{SM: sm, Verbose: true}
 	r := newRouterForTests(h)
 
@@ -117,7 +118,8 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	startBridge = func(_ *session.Session, _ string, _ bool) (bool, error) {
 		return false, fmt.Errorf("authentication failed: bad credentials")
 	}
-	sm := session.NewManager(session.New(), session.SessionConfig{})
+	cfg := session.DefaultConfig
+	sm := session.NewManager(session.New(), cfg)
 	h := &Handlers{SM: sm}
 	r := newRouterForTests(h)
 
@@ -137,7 +139,8 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 
 func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	// Minimal happy path to get a session cookie:
-	sm := session.NewManager(session.New(), session.SessionConfig{})
+	cfg := session.DefaultConfig
+	sm := session.NewManager(session.New(), cfg)
 	h := &Handlers{SM: sm}
 	r := newRouterForTests(h)
 

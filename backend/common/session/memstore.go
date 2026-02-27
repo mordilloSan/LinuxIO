@@ -83,8 +83,7 @@ func (m *MemStore) Delete(token string) error {
 	return nil
 }
 
-// All returns a map containing the token and data for all active (i.e.
-// not expired) sessions.
+// All returns every record still present in the store TTL window.
 func (m *MemStore) All() (map[string][]byte, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
