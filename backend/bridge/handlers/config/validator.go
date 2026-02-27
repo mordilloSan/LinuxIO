@@ -19,17 +19,22 @@ func repairConfig(cfgPath, base string) error {
 		return err
 	}
 
-	// Try strict parsing - custom types handle validation automatically
 	var cfg Settings
-	if err := yaml.UnmarshalWithOptions(raw, &cfg, yaml.Strict()); err != nil {
-		// Extract detailed error info from goccy/go-yaml
-		logYAMLError(err, cfgPath)
-		logger.Warnf("config validation failed, rewriting defaults")
-		return writeConfig(cfgPath, base)
-	}
-
 	defaults := DefaultSettings(base)
 	changed := false
+
+	// Parse in strict mode first. If strict parsing fails because of unknown keys,
+	// fall back to permissive parsing to preserve known values and rewrite a clean file.
+	if err := yaml.UnmarshalWithOptions(raw, &cfg, yaml.Strict()); err != nil {
+		if permissiveErr := yaml.Unmarshal(raw, &cfg); permissiveErr != nil {
+			logYAMLError(err, cfgPath)
+			logger.Warnf("config validation failed, rewriting defaults")
+			return writeConfig(cfgPath, base)
+		}
+		logger.Warnf("config contained unsupported fields; rewriting sanitized config")
+		changed = true
+	}
+
 	if errs := ValidateConfig(&cfg); len(errs) > 0 {
 		logger.Warnf("config validation issues: %s", strings.Join(errs, "; "))
 

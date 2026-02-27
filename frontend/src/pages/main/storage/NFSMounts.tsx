@@ -11,6 +11,7 @@ import {
   DialogContentText,
   DialogTitle,
   FormControlLabel,
+  Grid,
   LinearProgress,
   Switch,
   TableCell,
@@ -28,6 +29,7 @@ import React, {
 import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
+import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
@@ -37,6 +39,7 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface NFSMountsProps {
   onMountCreateHandler?: (handler: () => void) => void;
+  viewMode?: "table" | "card";
 }
 
 interface MountNFSDialogProps {
@@ -548,7 +551,10 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
   );
 };
 
-const NFSMounts: React.FC<NFSMountsProps> = ({ onMountCreateHandler }) => {
+const NFSMounts: React.FC<NFSMountsProps> = ({
+  onMountCreateHandler,
+  viewMode = "table",
+}) => {
   const [search, setSearch] = useState("");
   const [mountDialogOpen, setMountDialogOpen] = useState(false);
   const [unmountDialogOpen, setUnmountDialogOpen] = useState(false);
@@ -625,95 +631,179 @@ const NFSMounts: React.FC<NFSMountsProps> = ({ onMountCreateHandler }) => {
         <Typography fontWeight="bold">{filtered.length} mounts</Typography>
       </Box>
 
-      <UnifiedCollapsibleTable
-        data={filtered}
-        columns={columns}
-        getRowKey={(mount) => mount.mountpoint}
-        renderMainRow={(mount) => (
-          <>
-            <TableCell>
-              <Typography variant="body2" fontFamily="monospace">
-                {mount.source}
-              </Typography>
-            </TableCell>
-            <TableCell>
-              <Typography variant="body2" fontFamily="monospace">
-                {mount.mountpoint}
-              </Typography>
-            </TableCell>
-            <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-              <Box sx={{ width: "100%" }}>
-                <LinearProgress
-                  variant="determinate"
-                  value={mount.usedPct}
-                  sx={{ height: 6, borderRadius: 3, mb: 0.5 }}
-                  color={
-                    mount.usedPct > 90
-                      ? "error"
-                      : mount.usedPct > 70
-                        ? "warning"
-                        : "primary"
-                  }
-                />
-                <Typography variant="caption" color="text.secondary">
-                  {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
-                </Typography>
-              </Box>
-            </TableCell>
-            <TableCell>
-              <Box sx={{ display: "flex", gap: 1 }}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEdit(mount);
-                  }}
-                >
-                  Edit
-                </Button>
-                <Button
-                  size="small"
-                  color="error"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleUnmount(mount);
-                  }}
-                >
-                  Unmount
-                </Button>
-              </Box>
-            </TableCell>
-          </>
-        )}
-        renderExpandedContent={(mount) => (
-          <Box>
-            <Typography variant="subtitle2" gutterBottom>
-              <strong>Options:</strong>
-            </Typography>
-            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 2 }}>
-              {mount.options && mount.options.length > 0 ? (
-                mount.options.map((opt, i) => (
-                  <Chip key={i} label={opt} size="small" />
-                ))
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  (no options)
-                </Typography>
-              )}
-            </Box>
-            <Typography variant="subtitle2" gutterBottom>
-              <strong>Filesystem Type:</strong> {mount.fsType}
-            </Typography>
-            <Typography variant="subtitle2" gutterBottom>
-              <strong>Storage:</strong> {formatFileSize(mount.used)} used of{" "}
-              {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}% used,{" "}
-              {formatFileSize(mount.free)} free)
+      {viewMode === "card" ? (
+        filtered.length > 0 ? (
+          <Grid container spacing={2}>
+            {filtered.map((mount) => (
+              <Grid
+                key={mount.mountpoint}
+                size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+              >
+                <FrostedCard sx={{ p: 2 }}>
+                  <Typography
+                    variant="body2"
+                    fontWeight="bold"
+                    sx={{ mb: 0.5, fontFamily: "monospace" }}
+                  >
+                    {mount.source}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{ mb: 1, fontFamily: "monospace" }}
+                  >
+                    {mount.mountpoint}
+                  </Typography>
+
+                  <Box sx={{ width: "100%", mb: 1 }}>
+                    <LinearProgress
+                      variant="determinate"
+                      value={mount.usedPct}
+                      sx={{ height: 6, borderRadius: 3, mb: 0.5 }}
+                      color={
+                        mount.usedPct > 90
+                          ? "error"
+                          : mount.usedPct > 70
+                            ? "warning"
+                            : "primary"
+                      }
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      {formatFileSize(mount.used)} /{" "}
+                      {formatFileSize(mount.size)}
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mb: 1 }}
+                  >
+                    <Chip label={mount.fsType} size="small" />
+                    {mount.options?.slice(0, 2).map((opt, i) => (
+                      <Chip
+                        key={`${mount.mountpoint}-${i}`}
+                        label={opt}
+                        size="small"
+                      />
+                    ))}
+                  </Box>
+
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleEdit(mount)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => handleUnmount(mount)}
+                    >
+                      Unmount
+                    </Button>
+                  </Box>
+                </FrostedCard>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Box textAlign="center" py={4}>
+            <Typography variant="body2" color="text.secondary">
+              No NFS mounts found. Click Mount NFS to add one.
             </Typography>
           </Box>
-        )}
-        emptyMessage="No NFS mounts found. Click 'Mount NFS' to add one."
-      />
+        )
+      ) : (
+        <UnifiedCollapsibleTable
+          data={filtered}
+          columns={columns}
+          getRowKey={(mount) => mount.mountpoint}
+          renderMainRow={(mount) => (
+            <>
+              <TableCell>
+                <Typography variant="body2" fontFamily="monospace">
+                  {mount.source}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2" fontFamily="monospace">
+                  {mount.mountpoint}
+                </Typography>
+              </TableCell>
+              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                <Box sx={{ width: "100%" }}>
+                  <LinearProgress
+                    variant="determinate"
+                    value={mount.usedPct}
+                    sx={{ height: 6, borderRadius: 3, mb: 0.5 }}
+                    color={
+                      mount.usedPct > 90
+                        ? "error"
+                        : mount.usedPct > 70
+                          ? "warning"
+                          : "primary"
+                    }
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
+                  </Typography>
+                </Box>
+              </TableCell>
+              <TableCell>
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit(mount);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUnmount(mount);
+                    }}
+                  >
+                    Unmount
+                  </Button>
+                </Box>
+              </TableCell>
+            </>
+          )}
+          renderExpandedContent={(mount) => (
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                <strong>Options:</strong>
+              </Typography>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 2 }}>
+                {mount.options && mount.options.length > 0 ? (
+                  mount.options.map((opt, i) => (
+                    <Chip key={i} label={opt} size="small" />
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    (no options)
+                  </Typography>
+                )}
+              </Box>
+              <Typography variant="subtitle2" gutterBottom>
+                <strong>Filesystem Type:</strong> {mount.fsType}
+              </Typography>
+              <Typography variant="subtitle2" gutterBottom>
+                <strong>Storage:</strong> {formatFileSize(mount.used)} used of{" "}
+                {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}% used,{" "}
+                {formatFileSize(mount.free)} free)
+              </Typography>
+            </Box>
+          )}
+          emptyMessage="No NFS mounts found. Click 'Mount NFS' to add one."
+        />
+      )}
 
       <MountNFSDialog
         open={mountDialogOpen}

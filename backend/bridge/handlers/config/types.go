@@ -31,8 +31,7 @@ type AppSettings struct {
 	HiddenCards             []string                 `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
 	ContainerOrder          []string                 `json:"containerOrder,omitempty" yaml:"containerOrder,omitempty"`
 	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections,omitempty" yaml:"dockerDashboardSections,omitempty"`
-	DockerContainersView    string                   `json:"dockerContainersView,omitempty" yaml:"dockerContainersView,omitempty"`
-	DockerStacksView        string                   `json:"dockerStacksView,omitempty" yaml:"dockerStacksView,omitempty"`
+	ViewModes               map[string]string        `json:"viewModes,omitempty" yaml:"viewModes,omitempty"`
 }
 
 // DockerProxy holds Caddy reverse proxy configuration

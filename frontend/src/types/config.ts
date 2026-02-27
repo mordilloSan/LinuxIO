@@ -1,3 +1,6 @@
+export type TableCardViewMode = "card" | "table";
+export type AppViewModes = Record<string, TableCardViewMode>;
+
 // Backend Settings structure
 export interface BackendSettings {
   appSettings: {
@@ -13,8 +16,7 @@ export interface BackendSettings {
       daemon: boolean;
       resources: boolean;
     };
-    dockerContainersView?: "card" | "table";
-    dockerStacksView?: "table" | "card";
+    viewModes?: AppViewModes;
   };
   docker: {
     folder: string;
@@ -36,8 +38,7 @@ export interface AppConfig {
     daemon: boolean;
     resources: boolean;
   };
-  dockerContainersView?: "card" | "table";
-  dockerStacksView?: "table" | "card";
+  viewModes?: AppViewModes;
 }
 
 export interface ConfigContextType {

@@ -1,6 +1,7 @@
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
   Box,
+  Grid,
   TableCell,
   TextField,
   Chip,
@@ -18,6 +19,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
+import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -30,6 +32,7 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
+  viewMode?: "table" | "card";
 }
 
 interface DeleteVolumeDialogProps {
@@ -114,7 +117,10 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   );
 };
 
-const VolumeList: React.FC<VolumeListProps> = ({ onMountCreateHandler }) => {
+const VolumeList: React.FC<VolumeListProps> = ({
+  onMountCreateHandler,
+  viewMode = "table",
+}) => {
   const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,
   });
@@ -241,134 +247,208 @@ const VolumeList: React.FC<VolumeListProps> = ({ onMountCreateHandler }) => {
           </Button>
         )}
       </Box>
-      <UnifiedCollapsibleTable
-        data={filtered}
-        columns={columns}
-        getRowKey={(volume) => volume.Name}
-        renderFirstCell={(volume) => (
-          <Checkbox
-            size="small"
-            checked={effectiveSelected.has(volume.Name)}
-            onChange={(e) => handleSelectOne(volume.Name, e.target.checked)}
-            onClick={(e) => e.stopPropagation()}
-          />
-        )}
-        renderHeaderFirstCell={() => (
-          <Checkbox
-            size="small"
-            checked={allSelected}
-            indeterminate={someSelected}
-            onChange={(e) => handleSelectAll(e.target.checked)}
-          />
-        )}
-        renderMainRow={(volume) => (
-          <>
-            <TableCell>
-              <Typography
-                variant="body2"
-                fontWeight="medium"
-                sx={responsiveTextStyles}
-              >
-                {volume.Name}
+      {viewMode === "card" ? (
+        filtered.length > 0 ? (
+          <Grid container spacing={2}>
+            {filtered.map((volume) => (
+              <Grid key={volume.Name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+                <FrostedCard sx={{ p: 2 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 1,
+                      mb: 1,
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Checkbox
+                        size="small"
+                        checked={effectiveSelected.has(volume.Name)}
+                        onChange={(e) =>
+                          handleSelectOne(volume.Name, e.target.checked)
+                        }
+                      />
+                      <Typography variant="body2" fontWeight="bold" noWrap>
+                        {volume.Name}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={volume.Driver}
+                      size="small"
+                      sx={{ fontSize: "0.75rem" }}
+                    />
+                  </Box>
+
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      mb: 1,
+                      fontFamily: "monospace",
+                      fontSize: "0.8rem",
+                      ...longTextStyles,
+                    }}
+                  >
+                    {volume.Mountpoint || "-"}
+                  </Typography>
+
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                    <Chip
+                      label={`Scope: ${volume.Scope || "local"}`}
+                      size="small"
+                    />
+                    {volume.CreatedAt && (
+                      <Chip
+                        label={new Date(volume.CreatedAt).toLocaleDateString()}
+                        size="small"
+                      />
+                    )}
+                  </Box>
+                </FrostedCard>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Box textAlign="center" py={4}>
+            <Typography variant="body2" color="text.secondary">
+              No volumes found.
+            </Typography>
+          </Box>
+        )
+      ) : (
+        <UnifiedCollapsibleTable
+          data={filtered}
+          columns={columns}
+          getRowKey={(volume) => volume.Name}
+          renderFirstCell={(volume) => (
+            <Checkbox
+              size="small"
+              checked={effectiveSelected.has(volume.Name)}
+              onChange={(e) => handleSelectOne(volume.Name, e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+          renderHeaderFirstCell={() => (
+            <Checkbox
+              size="small"
+              checked={allSelected}
+              indeterminate={someSelected}
+              onChange={(e) => handleSelectAll(e.target.checked)}
+            />
+          )}
+          renderMainRow={(volume) => (
+            <>
+              <TableCell>
+                <Typography
+                  variant="body2"
+                  fontWeight="medium"
+                  sx={responsiveTextStyles}
+                >
+                  {volume.Name}
+                </Typography>
+              </TableCell>
+              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                <Chip
+                  label={volume.Driver}
+                  size="small"
+                  sx={{ fontSize: "0.75rem" }}
+                />
+              </TableCell>
+              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontFamily: "monospace",
+                    fontSize: "0.85rem",
+                    ...longTextStyles,
+                  }}
+                >
+                  {volume.Mountpoint || "-"}
+                </Typography>
+              </TableCell>
+              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                <Typography variant="body2" sx={responsiveTextStyles}>
+                  {volume.Scope || "local"}
+                </Typography>
+              </TableCell>
+            </>
+          )}
+          renderExpandedContent={(volume) => (
+            <>
+              <Typography variant="subtitle2" gutterBottom>
+                <b>Full Mountpoint:</b>
               </Typography>
-            </TableCell>
-            <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-              <Chip
-                label={volume.Driver}
-                size="small"
-                sx={{ fontSize: "0.75rem" }}
-              />
-            </TableCell>
-            <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
               <Typography
                 variant="body2"
                 sx={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
+                  mb: 2,
                   ...longTextStyles,
                 }}
               >
                 {volume.Mountpoint || "-"}
               </Typography>
-            </TableCell>
-            <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-              <Typography variant="body2" sx={responsiveTextStyles}>
-                {volume.Scope || "local"}
+
+              {volume.CreatedAt && (
+                <>
+                  <Typography variant="subtitle2" gutterBottom>
+                    <b>Created:</b>
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{ mb: 2, fontSize: "0.85rem" }}
+                  >
+                    {new Date(volume.CreatedAt).toLocaleString()}
+                  </Typography>
+                </>
+              )}
+
+              <Typography variant="subtitle2" gutterBottom>
+                <b>Labels:</b>
               </Typography>
-            </TableCell>
-          </>
-        )}
-        renderExpandedContent={(volume) => (
-          <>
-            <Typography variant="subtitle2" gutterBottom>
-              <b>Full Mountpoint:</b>
-            </Typography>
-            <Typography
-              variant="body2"
-              sx={{
-                fontFamily: "monospace",
-                fontSize: "0.85rem",
-                mb: 2,
-                ...longTextStyles,
-              }}
-            >
-              {volume.Mountpoint || "-"}
-            </Typography>
+              <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
+                {volume.Labels && Object.keys(volume.Labels).length > 0 ? (
+                  Object.entries(volume.Labels).map(([key, val]) => (
+                    <Chip
+                      key={key}
+                      label={`${key}: ${val}`}
+                      size="small"
+                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
+                    />
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    (no labels)
+                  </Typography>
+                )}
+              </Box>
 
-            {volume.CreatedAt && (
-              <>
-                <Typography variant="subtitle2" gutterBottom>
-                  <b>Created:</b>
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 2, fontSize: "0.85rem" }}>
-                  {new Date(volume.CreatedAt).toLocaleString()}
-                </Typography>
-              </>
-            )}
-
-            <Typography variant="subtitle2" gutterBottom>
-              <b>Labels:</b>
-            </Typography>
-            <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
-              {volume.Labels && Object.keys(volume.Labels).length > 0 ? (
-                Object.entries(volume.Labels).map(([key, val]) => (
-                  <Chip
-                    key={key}
-                    label={`${key}: ${val}`}
-                    size="small"
-                    sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                  />
-                ))
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  (no labels)
-                </Typography>
-              )}
-            </Box>
-
-            <Typography variant="subtitle2" gutterBottom>
-              <b>Options:</b>
-            </Typography>
-            <Box>
-              {volume.Options && Object.keys(volume.Options).length > 0 ? (
-                Object.entries(volume.Options).map(([key, val]) => (
-                  <Chip
-                    key={key}
-                    label={`${key}: ${val}`}
-                    size="small"
-                    sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                  />
-                ))
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  (no options)
-                </Typography>
-              )}
-            </Box>
-          </>
-        )}
-        emptyMessage="No volumes found."
-      />
+              <Typography variant="subtitle2" gutterBottom>
+                <b>Options:</b>
+              </Typography>
+              <Box>
+                {volume.Options && Object.keys(volume.Options).length > 0 ? (
+                  Object.entries(volume.Options).map(([key, val]) => (
+                    <Chip
+                      key={key}
+                      label={`${key}: ${val}`}
+                      size="small"
+                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
+                    />
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    (no options)
+                  </Typography>
+                )}
+              </Box>
+            </>
+          )}
+          emptyMessage="No volumes found."
+        />
+      )}
 
       <DeleteVolumeDialog
         open={deleteDialogOpen}

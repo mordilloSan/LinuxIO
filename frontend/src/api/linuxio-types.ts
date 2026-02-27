@@ -562,12 +562,6 @@ export interface ConfigSetResult {
   path: string;
 }
 
-export interface DockerConfigSetResult {
-  message: string;
-  path: string;
-  appliedFolder: string;
-}
-
 export interface DirectoryValidationResult {
   valid: boolean;
   exists: boolean;
@@ -802,11 +796,6 @@ export interface LinuxIOSchema {
   config: {
     get: { args: []; result: ConfigSettings };
     set: { args: [payload: string]; result: ConfigSetResult };
-    docker_config_get: { args: []; result: { folder: string } };
-    docker_config_set: {
-      args: [payload: string];
-      result: DockerConfigSetResult;
-    };
   };
 
   control: {

@@ -172,6 +172,5 @@ export type {
   DeleteStackResult,
   ConfigSettings,
   ConfigSetResult,
-  DockerConfigSetResult,
   DirectoryValidationResult,
 } from "./linuxio-types";

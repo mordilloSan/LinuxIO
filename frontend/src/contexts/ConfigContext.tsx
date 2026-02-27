@@ -13,11 +13,29 @@ import { linuxio, CACHE_TTL_MS, LinuxIOError, waitForStreamMux } from "@/api";
 import useAuth from "@/hooks/useAuth";
 import {
   AppConfig,
+  AppViewModes,
   BackendSettings,
   ConfigContextType,
   ConfigProviderProps,
+  TableCardViewMode,
 } from "@/types/config";
 
+const isTableCardViewMode = (mode: unknown): mode is TableCardViewMode =>
+  mode === "card" || mode === "table";
+
+const normalizeViewModes = (
+  viewModes: BackendSettings["appSettings"]["viewModes"] | undefined,
+): AppViewModes | undefined => {
+  if (!viewModes) return undefined;
+
+  const normalized: AppViewModes = {};
+  for (const [key, value] of Object.entries(viewModes)) {
+    if (!key || !isTableCardViewMode(value)) continue;
+    normalized[key] = value;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+};
 // Transform backend settings to frontend flat config
 const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   theme: settings.appSettings.theme,
@@ -28,8 +46,7 @@ const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   hiddenCards: settings.appSettings.hiddenCards,
   containerOrder: settings.appSettings.containerOrder,
   dockerDashboardSections: settings.appSettings.dockerDashboardSections,
-  dockerContainersView: settings.appSettings.dockerContainersView,
-  dockerStacksView: settings.appSettings.dockerStacksView,
+  viewModes: normalizeViewModes(settings.appSettings.viewModes),
   dockerFolder: settings.docker.folder,
 });
 
@@ -47,8 +64,7 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     config.hiddenCards !== undefined ||
     config.containerOrder !== undefined ||
     config.dockerDashboardSections !== undefined ||
-    config.dockerContainersView !== undefined ||
-    config.dockerStacksView !== undefined
+    config.viewModes !== undefined
   ) {
     payload.appSettings = {};
     if (config.theme !== undefined) payload.appSettings.theme = config.theme;
@@ -67,10 +83,8 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     if (config.dockerDashboardSections !== undefined)
       payload.appSettings.dockerDashboardSections =
         config.dockerDashboardSections;
-    if (config.dockerContainersView !== undefined)
-      payload.appSettings.dockerContainersView = config.dockerContainersView;
-    if (config.dockerStacksView !== undefined)
-      payload.appSettings.dockerStacksView = config.dockerStacksView;
+    if (config.viewModes !== undefined)
+      payload.appSettings.viewModes = config.viewModes;
   }
 
   if (config.dockerFolder !== undefined) {
@@ -90,8 +104,7 @@ const defaultConfig: AppConfig = {
   hiddenCards: undefined,
   containerOrder: undefined,
   dockerDashboardSections: undefined,
-  dockerContainersView: undefined,
-  dockerStacksView: undefined,
+  viewModes: undefined,
 };
 
 const applyDefaults = (
@@ -106,9 +119,7 @@ const applyDefaults = (
   containerOrder: cfg?.containerOrder ?? defaultConfig.containerOrder,
   dockerDashboardSections:
     cfg?.dockerDashboardSections ?? defaultConfig.dockerDashboardSections,
-  dockerContainersView:
-    cfg?.dockerContainersView ?? defaultConfig.dockerContainersView,
-  dockerStacksView: cfg?.dockerStacksView ?? defaultConfig.dockerStacksView,
+  viewModes: cfg?.viewModes ?? defaultConfig.viewModes,
   dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,
 });
 
