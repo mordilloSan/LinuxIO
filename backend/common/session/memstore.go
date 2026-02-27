@@ -14,9 +14,8 @@ type item struct {
 
 // MemStore represents the session store.
 type MemStore struct {
-	items       map[string]item
-	mu          sync.RWMutex
-	stopCleanup chan bool
+	items map[string]item
+	mu    sync.RWMutex
 }
 
 // New returns a new MemStore instance, with a background cleanup goroutine that
@@ -102,32 +101,11 @@ func (m *MemStore) All() (map[string][]byte, error) {
 }
 
 func (m *MemStore) startCleanup(interval time.Duration) {
-	m.stopCleanup = make(chan bool)
 	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 	for {
-		select {
-		case <-ticker.C:
-			m.deleteExpired()
-		case <-m.stopCleanup:
-			ticker.Stop()
-			return
-		}
-	}
-}
-
-// StopCleanup terminates the background cleanup goroutine for the MemStore
-// instance. It's rare to terminate this; generally MemStore instances and
-// their cleanup goroutines are intended to be long-lived and run for the lifetime
-// of your application.
-//
-// There may be occasions though when your use of the MemStore is transient.
-// An example is creating a new MemStore instance in a test function. In this
-// scenario, the cleanup goroutine (which will run forever) will prevent the
-// MemStore object from being garbage collected even after the test function
-// has finished. You can prevent this by manually calling StopCleanup.
-func (m *MemStore) StopCleanup() {
-	if m.stopCleanup != nil {
-		m.stopCleanup <- true
+		<-ticker.C
+		m.deleteExpired()
 	}
 }
 

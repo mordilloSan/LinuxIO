@@ -49,6 +49,7 @@ func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
 	ms := session.New()
 	sm := session.NewManager(ms, session.SessionConfig{
+		SingleSessionPerUser: false,
 		Cookie: session.CookieConfig{
 			Secure: true,
 		},
