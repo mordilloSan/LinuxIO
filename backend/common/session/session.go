@@ -510,6 +510,11 @@ func SessionFromContext(ctx context.Context) *Session {
 	return nil
 }
 
+// WithSession returns a new context with the session stored in it.
+func WithSession(ctx context.Context, s *Session) context.Context {
+	return context.WithValue(ctx, ctxKey, s)
+}
+
 // -----------------------------------------------------------------------------
 // Background idle sweep (absolute expiry is handled by TTL in Store)
 // -----------------------------------------------------------------------------

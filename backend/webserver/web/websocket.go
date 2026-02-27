@@ -150,12 +150,37 @@ func isExpectedWSClose(err error) bool {
 		strings.Contains(errStr, "i/o timeout")
 }
 
+// wsAuthMiddleware validates the session for WebSocket connections.
+// Unlike RequireSession, it upgrades the WebSocket before rejecting invalid
+// sessions, so auth failures are communicated as close code 1008 ("no-session")
+// rather than HTTP 401 — which browsers cannot distinguish from network errors.
+func wsAuthMiddleware(sm *session.Manager, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess, err := sm.ValidateFromRequest(r)
+		if err != nil {
+			conn, upgradeErr := upgrader.Upgrade(w, r, nil)
+			if upgradeErr != nil {
+				logger.Debugf("failed to upgrade unauthenticated WebSocket: %v", upgradeErr)
+				return
+			}
+			closeMsg := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "no-session")
+			if writeErr := conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(writeWait)); writeErr != nil {
+				logger.Debugf("failed to send no-session close: %v", writeErr)
+			}
+			conn.Close()
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(session.WithSession(r.Context(), sess)))
+	})
+}
+
 // WebSocketRelayHandler handles binary WebSocket connections as a pure byte relay.
 // The server never parses payloads - just routes bytes between WebSocket and yamux streams.
 func WebSocketRelayHandler(w http.ResponseWriter, r *http.Request) {
 	sess := session.SessionFromContext(r.Context())
 	if sess == nil {
-		w.WriteHeader(http.StatusUnauthorized)
+		// Should not happen — wsAuthMiddleware guarantees session in context.
+		logger.Errorf("WebSocketRelayHandler: missing session in context")
 		return
 	}
 

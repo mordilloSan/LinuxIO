@@ -6,14 +6,20 @@ import {
   Typography,
   Alert,
 } from "@mui/material";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
-import { useConfigValue } from "@/hooks/useConfig";
 import useAuth from "@/hooks/useAuth";
+import { useConfigValue } from "@/hooks/useConfig";
 
 const normalizePathInput = (value: string): string => {
   const trimmed = value.trim();
@@ -129,9 +135,8 @@ const DockerFolderSettingsSection: React.FC = () => {
     setIsSaving(true);
 
     try {
-      const validation = await linuxio.docker.validate_stack_directory.call(
-        normalized,
-      );
+      const validation =
+        await linuxio.docker.validate_stack_directory.call(normalized);
       if (!validation.valid) {
         setErrorText(validation.error || "Docker folder is not valid.");
         return;
@@ -201,7 +206,9 @@ const DockerFolderSettingsSection: React.FC = () => {
           placeholder="/home/user/docker"
           fullWidth
           error={Boolean(errorText)}
-          helperText={errorText || "Absolute path only. Root (/) is not allowed."}
+          helperText={
+            errorText || "Absolute path only. Root (/) is not allowed."
+          }
           disabled={isSaving}
         />
 

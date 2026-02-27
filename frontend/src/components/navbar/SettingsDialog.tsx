@@ -9,12 +9,12 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import React, { useEffect, useState } from "react";
-
-import GeneralDialog from "@/components/dialog/GeneralDialog";
+import React, { useState } from "react";
 
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 
 type SettingsTab = "general" | "docker";
 
@@ -27,14 +27,13 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const theme = useTheme();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
-  useEffect(() => {
-    if (!open) {
-      setActiveTab("general");
-    }
-  }, [open]);
+  const handleClose = () => {
+    setActiveTab("general");
+    onClose();
+  };
 
   return (
-    <GeneralDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle
         sx={{
           backgroundColor: theme.header.background,
@@ -47,7 +46,11 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Settings
           </Typography>
-          <IconButton size="small" onClick={onClose} aria-label="Close settings">
+          <IconButton
+            size="small"
+            onClick={handleClose}
+            aria-label="Close settings"
+          >
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
