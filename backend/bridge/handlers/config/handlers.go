@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/mordilloSan/go-logger/logger"
@@ -112,9 +113,16 @@ func RegisterHandlers(sess *session.Session) {
 		// Update Docker settings if provided
 		if payload.Docker != nil {
 			if payload.Docker.Folder != nil {
-				folder := strings.TrimSpace(*payload.Docker.Folder)
-				if folder == "" {
+				folderInput := strings.TrimSpace(*payload.Docker.Folder)
+				if folderInput == "" {
 					return fmt.Errorf("docker folder cannot be empty")
+				}
+				folder := filepath.Clean(folderInput)
+				if !filepath.IsAbs(folder) {
+					return fmt.Errorf("docker folder must be an absolute path")
+				}
+				if folder == string(filepath.Separator) {
+					return fmt.Errorf("docker folder cannot be root")
 				}
 				cfg.Docker.Folder = AbsolutePath(folder)
 			}
