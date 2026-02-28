@@ -40,6 +40,7 @@ const normalizeViewModes = (
 const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   theme: settings.appSettings.theme,
   primaryColor: settings.appSettings.primaryColor,
+  themeColors: settings.appSettings.themeColors,
   sidebarCollapsed: settings.appSettings.sidebarCollapsed,
   showHiddenFiles: settings.appSettings.showHiddenFiles,
   dashboardOrder: settings.appSettings.dashboardOrder,
@@ -58,6 +59,7 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
   if (
     config.theme !== undefined ||
     config.primaryColor !== undefined ||
+    config.themeColors !== undefined ||
     config.sidebarCollapsed !== undefined ||
     config.showHiddenFiles !== undefined ||
     config.dashboardOrder !== undefined ||
@@ -70,6 +72,8 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     if (config.theme !== undefined) payload.appSettings.theme = config.theme;
     if (config.primaryColor !== undefined)
       payload.appSettings.primaryColor = config.primaryColor;
+    if (config.themeColors !== undefined)
+      payload.appSettings.themeColors = config.themeColors;
     if (config.sidebarCollapsed !== undefined)
       payload.appSettings.sidebarCollapsed = config.sidebarCollapsed;
     if (config.showHiddenFiles !== undefined)
@@ -97,6 +101,7 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
 const defaultConfig: AppConfig = {
   theme: "DARK",
   primaryColor: "#2196f3",
+  themeColors: undefined,
   sidebarCollapsed: false,
   showHiddenFiles: false,
   dockerFolder: undefined,
@@ -112,6 +117,7 @@ const applyDefaults = (
 ): AppConfig => ({
   theme: cfg?.theme ?? defaultConfig.theme,
   primaryColor: cfg?.primaryColor ?? defaultConfig.primaryColor,
+  themeColors: cfg?.themeColors ?? defaultConfig.themeColors,
   sidebarCollapsed: cfg?.sidebarCollapsed ?? defaultConfig.sidebarCollapsed,
   showHiddenFiles: cfg?.showHiddenFiles ?? defaultConfig.showHiddenFiles,
   dashboardOrder: cfg?.dashboardOrder ?? defaultConfig.dashboardOrder,

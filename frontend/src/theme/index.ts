@@ -9,10 +9,12 @@ import breakpoints from "@/theme/breakpoints";
 import shadows from "@/theme/shadows";
 import components from "@/theme/components";
 import { resolvePrimaryColor, getContrastText } from "@/theme/colors";
+import { ThemeColors } from "@/types/config";
 
 const createTheme = (
   variantName: string,
   primaryColorToken?: string,
+  themeColors?: ThemeColors,
 ): Theme => {
   let themeConfig = variants.find((v) => v.name === variantName);
   if (!themeConfig) {
@@ -36,6 +38,47 @@ const createTheme = (
       main: primaryMain,
       contrastText: getContrastText(primaryMain),
     },
+    background: {
+      ...themeConfig.palette.background,
+      ...(themeColors?.backgroundDefault && {
+        default: themeColors.backgroundDefault,
+      }),
+      ...(themeColors?.backgroundPaper && {
+        paper: themeColors.backgroundPaper,
+      }),
+    },
+  };
+
+  const header = {
+    ...themeConfig.header,
+    ...(themeColors?.headerBackground && {
+      background: themeColors.headerBackground,
+    }),
+  };
+
+  const footer = {
+    ...themeConfig.footer,
+    ...(themeColors?.footerBackground && {
+      background: themeColors.footerBackground,
+    }),
+  };
+
+  const card = {
+    ...themeConfig.card,
+    ...(themeColors?.cardBackground && { background: themeColors.cardBackground }),
+  };
+
+  const sidebar = {
+    ...themeConfig.sidebar,
+    ...(themeColors?.sidebarBackground && {
+      background: themeColors.sidebarBackground,
+    }),
+    header: {
+      ...themeConfig.sidebar.header,
+      ...(themeColors?.sidebarBackground && {
+        background: themeColors.sidebarBackground,
+      }),
+    },
   };
 
   return createMuiTheme(
@@ -50,9 +93,10 @@ const createTheme = (
     },
     {
       name: themeConfig.name,
-      header: themeConfig.header,
-      footer: themeConfig.footer,
-      sidebar: themeConfig.sidebar,
+      card,
+      header,
+      footer,
+      sidebar,
     },
   );
 };

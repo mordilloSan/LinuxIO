@@ -46,6 +46,19 @@ func repairConfig(cfgPath, base string) error {
 			cfg.AppSettings.PrimaryColor = defaults.AppSettings.PrimaryColor
 			changed = true
 		}
+		if tc := cfg.AppSettings.ThemeColors; tc != nil {
+			for _, ptr := range []*CSSColor{
+				tc.BackgroundDefault, tc.BackgroundPaper,
+				tc.HeaderBackground, tc.FooterBackground, tc.SidebarBackground,
+				tc.CardBackground,
+			} {
+				if ptr != nil && !IsValidCSSColor(string(*ptr)) {
+					cfg.AppSettings.ThemeColors = nil
+					changed = true
+					break
+				}
+			}
+		}
 		if strings.TrimSpace(string(cfg.Docker.Folder)) == "" {
 			cfg.Docker.Folder = defaults.Docker.Folder
 			changed = true
@@ -100,6 +113,22 @@ func ValidateConfig(cfg *Settings) []string {
 	// PrimaryColor validation
 	if !IsValidCSSColor(string(cfg.AppSettings.PrimaryColor)) {
 		errs = append(errs, "appSettings.primaryColor must be a valid CSS color")
+	}
+
+	// ThemeColors validation (all fields optional, but if set must be valid CSS colors)
+	if tc := cfg.AppSettings.ThemeColors; tc != nil {
+		for key, ptr := range map[string]*CSSColor{
+			"backgroundDefault": tc.BackgroundDefault,
+			"backgroundPaper":   tc.BackgroundPaper,
+			"headerBackground":  tc.HeaderBackground,
+			"footerBackground":  tc.FooterBackground,
+			"sidebarBackground": tc.SidebarBackground,
+			"cardBackground":    tc.CardBackground,
+		} {
+			if ptr != nil && !IsValidCSSColor(string(*ptr)) {
+				errs = append(errs, "appSettings.themeColors."+key+" must be a valid CSS color")
+			}
+		}
 	}
 
 	// Docker.Folder validation

@@ -21,10 +21,21 @@ type DockerDashboardSections struct {
 	Resources bool `json:"resources" yaml:"resources"`
 }
 
+// ThemeColors holds optional per-field color overrides for the UI theme
+type ThemeColors struct {
+	BackgroundDefault *CSSColor `json:"backgroundDefault,omitempty" yaml:"backgroundDefault,omitempty"`
+	BackgroundPaper   *CSSColor `json:"backgroundPaper,omitempty" yaml:"backgroundPaper,omitempty"`
+	HeaderBackground  *CSSColor `json:"headerBackground,omitempty" yaml:"headerBackground,omitempty"`
+	FooterBackground  *CSSColor `json:"footerBackground,omitempty" yaml:"footerBackground,omitempty"`
+	SidebarBackground *CSSColor `json:"sidebarBackground,omitempty" yaml:"sidebarBackground,omitempty"`
+	CardBackground    *CSSColor `json:"cardBackground,omitempty" yaml:"cardBackground,omitempty"`
+}
+
 // AppSettings holds UI-related settings
 type AppSettings struct {
 	Theme                   Theme                    `json:"theme" yaml:"theme"`
 	PrimaryColor            CSSColor                 `json:"primaryColor" yaml:"primaryColor"`
+	ThemeColors             *ThemeColors             `json:"themeColors,omitempty" yaml:"themeColors,omitempty"`
 	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
 	ShowHiddenFiles         bool                     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
 	DashboardOrder          []string                 `json:"dashboardOrder,omitempty" yaml:"dashboardOrder,omitempty"`

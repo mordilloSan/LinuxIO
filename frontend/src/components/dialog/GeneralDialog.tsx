@@ -44,7 +44,7 @@ const GeneralDialog: React.FC<DialogProps> = ({
           ...slotProps?.paper,
           sx: [
             {
-              backgroundColor: theme.header.background,
+              backgroundColor: theme.palette.background.paper,
               borderRadius: 4,
               border: "1px solid rgba(255, 255, 255, 0.2)",
               boxShadow:

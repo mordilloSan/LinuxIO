@@ -35,8 +35,16 @@ func RegisterHandlers(sess *session.Session) {
 		// Payload with optional nested fields
 		var payload struct {
 			AppSettings *struct {
-				Theme                   *string                  `json:"theme"`
-				PrimaryColor            *string                  `json:"primaryColor"`
+				Theme        *string `json:"theme"`
+				PrimaryColor *string `json:"primaryColor"`
+				ThemeColors  *struct {
+					BackgroundDefault *string `json:"backgroundDefault"`
+					BackgroundPaper   *string `json:"backgroundPaper"`
+					HeaderBackground  *string `json:"headerBackground"`
+					FooterBackground  *string `json:"footerBackground"`
+					SidebarBackground *string `json:"sidebarBackground"`
+					CardBackground    *string `json:"cardBackground"`
+				} `json:"themeColors"`
 				SidebarCollapsed        *bool                    `json:"sidebarCollapsed"`
 				ShowHiddenFiles         *bool                    `json:"showHiddenFiles"`
 				DashboardOrder          []string                 `json:"dashboardOrder"`
@@ -74,6 +82,32 @@ func RegisterHandlers(sess *session.Session) {
 					return fmt.Errorf("invalid primaryColor")
 				}
 				cfg.AppSettings.PrimaryColor = CSSColor(*payload.AppSettings.PrimaryColor)
+			}
+			if tc := payload.AppSettings.ThemeColors; tc != nil {
+				colors := &ThemeColors{}
+				fields := []struct {
+					src *string
+					dst **CSSColor
+					key string
+				}{
+					{tc.BackgroundDefault, &colors.BackgroundDefault, "backgroundDefault"},
+					{tc.BackgroundPaper, &colors.BackgroundPaper, "backgroundPaper"},
+					{tc.HeaderBackground, &colors.HeaderBackground, "headerBackground"},
+					{tc.FooterBackground, &colors.FooterBackground, "footerBackground"},
+					{tc.SidebarBackground, &colors.SidebarBackground, "sidebarBackground"},
+					{tc.CardBackground, &colors.CardBackground, "cardBackground"},
+				}
+				for _, f := range fields {
+					if f.src == nil {
+						continue
+					}
+					if !IsValidCSSColor(*f.src) {
+						return fmt.Errorf("invalid themeColors.%s", f.key)
+					}
+					v := CSSColor(*f.src)
+					*f.dst = &v
+				}
+				cfg.AppSettings.ThemeColors = colors
 			}
 			if payload.AppSettings.SidebarCollapsed != nil {
 				cfg.AppSettings.SidebarCollapsed = *payload.AppSettings.SidebarCollapsed

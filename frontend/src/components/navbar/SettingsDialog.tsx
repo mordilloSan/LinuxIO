@@ -13,6 +13,7 @@ import React, { useState } from "react";
 
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
+import ThemeColorsSection from "./ThemeColorsSection";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 
@@ -36,7 +37,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
     <GeneralDialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle
         sx={{
-          backgroundColor: theme.header.background,
+          backgroundColor: theme.palette.background.paper,
           borderBottom: `1px solid ${theme.palette.divider}`,
           py: 1.5,
           px: 2,
@@ -97,9 +98,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
               <NavbarCustomizer />
             </Box>
 
-            <Typography variant="body2" color="text.secondary">
-              Additional general settings will be added in a future iteration.
-            </Typography>
+            <ThemeColorsSection />
           </Box>
         ) : (
           <DockerFolderSettingsSection />

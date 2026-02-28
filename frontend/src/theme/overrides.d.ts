@@ -2,6 +2,9 @@ import "@mui/material/styles";
 
 declare module "@mui/material/styles" {
   interface Theme {
+    card: {
+      background: string;
+    };
     footer: {
       color: string;
       background: string;
@@ -26,10 +29,6 @@ declare module "@mui/material/styles" {
           color: string;
         };
       };
-      footer: {
-        color: string;
-        background: string;
-      };
       badge: {
         color: string;
         background: string;
@@ -38,6 +37,9 @@ declare module "@mui/material/styles" {
   }
 
   interface ThemeOptions {
+    card?: {
+      background?: string;
+    };
     footer?: {
       color?: string;
       background?: string;
@@ -61,10 +63,6 @@ declare module "@mui/material/styles" {
         brand?: {
           color?: string;
         };
-      };
-      footer?: {
-        color?: string;
-        background?: string;
       };
       badge?: {
         color?: string;

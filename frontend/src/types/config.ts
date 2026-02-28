@@ -1,11 +1,21 @@
 export type TableCardViewMode = "card" | "table";
 export type AppViewModes = Record<string, TableCardViewMode>;
 
+export interface ThemeColors {
+  backgroundDefault?: string;
+  backgroundPaper?: string;
+  headerBackground?: string;
+  footerBackground?: string;
+  sidebarBackground?: string;
+  cardBackground?: string;
+}
+
 // Backend Settings structure
 export interface BackendSettings {
   appSettings: {
     theme: string;
     primaryColor: string;
+    themeColors?: ThemeColors;
     sidebarCollapsed: boolean;
     showHiddenFiles: boolean;
     dashboardOrder?: string[];
@@ -27,6 +37,7 @@ export interface BackendSettings {
 export interface AppConfig {
   theme: string;
   primaryColor: string;
+  themeColors?: ThemeColors;
   sidebarCollapsed: boolean;
   showHiddenFiles: boolean;
   dockerFolder?: string;

@@ -15,6 +15,9 @@ const customBlue = {
 
 const defaultVariant: VariantType = {
   name: "LIGHT",
+  card: {
+    background: "#FFFFFF",
+  },
   palette: {
     mode: "light",
     primary: {
@@ -58,10 +61,6 @@ const defaultVariant: VariantType = {
         color: customBlue[800],
       },
     },
-    footer: {
-      color: grey[800],
-      background: "#F7F9FC",
-    },
     badge: {
       color: grey[800],
       background: customBlue[500],
@@ -72,6 +71,9 @@ const defaultVariant: VariantType = {
 const darkVariant: VariantType = {
   ...defaultVariant,
   name: "DARK",
+  card: {
+    background: "#11192A",
+  },
   palette: {
     ...defaultVariant.palette,
     mode: "dark",
@@ -105,11 +107,6 @@ const darkVariant: VariantType = {
       background: "#1B2635",
       brand: { color: customBlue[500] },
     },
-    footer: {
-      ...defaultVariant.sidebar.footer,
-      color: grey[200],
-      background: "#1E2A38",
-    },
     badge: {
       ...defaultVariant.sidebar.badge,
       color: "#FFF",
@@ -124,6 +121,9 @@ export default variants;
 
 export interface VariantType {
   name: string;
+  card: {
+    background: string;
+  };
   palette: {
     mode: "light" | "dark";
     primary: MainContrastTextType;
@@ -152,7 +152,6 @@ export interface VariantType {
         color: string;
       };
     };
-    footer: ColorBgType;
     badge: ColorBgType;
   };
 }
