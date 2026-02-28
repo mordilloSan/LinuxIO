@@ -1,3 +1,4 @@
+import { alpha, useTheme } from "@mui/material/styles";
 import React, { useEffect, useImperativeHandle, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
@@ -11,6 +12,7 @@ const NetworkTrafficGraph = React.forwardRef<
   HTMLCanvasElement,
   NetworkTrafficGraphProps
 >(({ value, color, label }, ref) => {
+  const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
   const seriesRef = useRef<TimeSeries>(new TimeSeries());
@@ -32,14 +34,17 @@ const NetworkTrafficGraph = React.forwardRef<
       interpolation: "bezier",
       grid: {
         fillStyle: "transparent",
-        strokeStyle: "rgba(128, 128, 128, 0.08)",
+        strokeStyle: alpha(theme.chart.neutral, 0.08),
         verticalSections: 3,
         millisPerLine: 0,
         borderVisible: false,
       },
       labels: { disabled: true },
       tooltip: true,
-      tooltipLine: { strokeStyle: "rgba(128, 128, 128, 0.3)", lineWidth: 1 },
+      tooltipLine: {
+        strokeStyle: alpha(theme.chart.neutral, 0.3),
+        lineWidth: 1,
+      },
       tooltipFormatter: (
         _timestamp: number,
         data: { series: TimeSeries; index: number; value: number }[],
@@ -57,7 +62,7 @@ const NetworkTrafficGraph = React.forwardRef<
 
     chart.addTimeSeries(seriesRef.current, {
       strokeStyle: color,
-      fillStyle: `${color}18`,
+      fillStyle: alpha(color, 0.09),
       lineWidth: 1.5,
     });
 
@@ -87,7 +92,7 @@ const NetworkTrafficGraph = React.forwardRef<
       chart.stop();
       canvas.removeEventListener("mousemove", onMove);
     };
-  }, [color, label]);
+  }, [color, label, theme.chart.neutral]);
 
   return <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />;
 });

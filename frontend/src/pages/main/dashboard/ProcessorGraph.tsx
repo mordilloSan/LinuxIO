@@ -1,4 +1,4 @@
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
@@ -28,14 +28,17 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       interpolation: "bezier",
       grid: {
         fillStyle: "transparent",
-        strokeStyle: "rgba(128, 128, 128, 0.15)",
+        strokeStyle: alpha(theme.chart.neutral, 0.15),
         verticalSections: 4,
         millisPerLine: 0,
         borderVisible: false,
       },
       labels: { disabled: true },
       tooltip: true,
-      tooltipLine: { strokeStyle: "rgba(128, 128, 128, 0.4)", lineWidth: 1 },
+      tooltipLine: {
+        strokeStyle: alpha(theme.chart.neutral, 0.4),
+        lineWidth: 1,
+      },
       tooltipFormatter: (
         _timestamp: number,
         data: { series: TimeSeries; index: number; value: number }[],
@@ -100,7 +103,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
           justifyContent: "space-between",
           paddingLeft: 4,
           fontSize: 9,
-          color: "rgba(128, 128, 128, 0.7)",
+          color: alpha(theme.chart.neutral, 0.7),
           whiteSpace: "nowrap",
         }}
       >

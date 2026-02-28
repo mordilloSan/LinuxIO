@@ -8,6 +8,7 @@ import {
   Switch,
   FormControlLabel,
   Tooltip,
+  useTheme,
 } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
@@ -26,6 +27,7 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
   onClose,
   serviceName,
 }) => {
+  const theme = useTheme();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -195,8 +197,8 @@ const ServiceLogsDrawer: React.FC<ServiceLogsDrawerProps> = ({
             className="custom-scrollbar"
             sx={{
               flex: 1,
-              bgcolor: "#1e1e1e",
-              color: "#d4d4d4",
+              bgcolor: theme.codeBlock.background,
+              color: theme.codeBlock.color,
               p: 2,
               borderRadius: 1,
               overflow: "auto",

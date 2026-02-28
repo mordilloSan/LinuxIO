@@ -30,6 +30,7 @@
       "@/theme/*": ["theme/*"],
       "@/types/*": ["types/*"],
       "@/utils/*": ["utils/*"],
+      "@/constants/*": ["constants/*"],
       "@/assets/*": ["assets/*"],
       "@/services/*": ["services/*"],
       // Files

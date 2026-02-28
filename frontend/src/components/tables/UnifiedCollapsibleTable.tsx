@@ -11,6 +11,7 @@ import {
   Collapse,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
@@ -64,9 +65,7 @@ function UnifiedCollapsibleTable<T>({
               sx={(theme) => ({
                 "& .MuiTableCell-root": { borderBottom: "none" },
                 backgroundColor:
-                  theme.palette.mode === "dark"
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(0,0,0,0.08)",
+                  alpha(theme.palette.text.primary, 0.08),
                 borderRadius: "6px",
                 boxShadow: "none",
               })}
@@ -108,9 +107,10 @@ function UnifiedCollapsibleTable<T>({
                       backgroundColor:
                         index % 2 === 0
                           ? "transparent"
-                          : theme.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.04)"
-                            : "rgba(0,0,0,0.05)",
+                          : alpha(
+                              theme.palette.text.primary,
+                              theme.palette.mode === "dark" ? 0.04 : 0.05,
+                            ),
                       "@media (max-width: 600px)": {
                         "& .MuiTableCell-root": {
                           fontSize: "0.75rem",
@@ -164,9 +164,10 @@ function UnifiedCollapsibleTable<T>({
                             borderRadius: 2,
                             p: 2,
                             bgcolor: (theme) =>
-                              theme.palette.mode === "dark"
-                                ? "rgba(255,255,255,0.05)"
-                                : "rgba(0,0,0,0.03)",
+                              alpha(
+                                theme.palette.text.primary,
+                                theme.palette.mode === "dark" ? 0.05 : 0.03,
+                              ),
                             overflowX: "auto",
                             "@media (max-width: 600px)": {
                               fontSize: "0.85rem",

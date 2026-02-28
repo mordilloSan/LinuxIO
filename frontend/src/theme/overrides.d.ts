@@ -5,6 +5,26 @@ declare module "@mui/material/styles" {
     card: {
       background: string;
     };
+    dialog: {
+      border: string;
+      glow: string;
+      backdrop: string;
+    };
+    codeBlock: {
+      background: string;
+      color: string;
+    };
+    chart: {
+      rx: string;
+      tx: string;
+      neutral: string;
+    };
+    fileBrowser: {
+      surface: string;
+      chrome: string;
+      breadcrumbBackground: string;
+      breadcrumbText: string;
+    };
     footer: {
       color: string;
       background: string;
@@ -39,6 +59,26 @@ declare module "@mui/material/styles" {
   interface ThemeOptions {
     card?: {
       background?: string;
+    };
+    dialog?: {
+      border?: string;
+      glow?: string;
+      backdrop?: string;
+    };
+    codeBlock?: {
+      background?: string;
+      color?: string;
+    };
+    chart?: {
+      rx?: string;
+      tx?: string;
+      neutral?: string;
+    };
+    fileBrowser?: {
+      surface?: string;
+      chrome?: string;
+      breadcrumbBackground?: string;
+      breadcrumbText?: string;
     };
     footer?: {
       color?: string;

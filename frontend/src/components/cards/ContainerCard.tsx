@@ -8,7 +8,7 @@ import {
   Typography,
   Fade,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   Suspense,
@@ -262,7 +262,8 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         transition: "transform 0.2s, box-shadow 0.2s",
         "&:hover": {
           transform: "translateY(-4px)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          boxShadow: (theme) =>
+            `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`,
         },
       }}
     >

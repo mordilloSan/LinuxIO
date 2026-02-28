@@ -1,4 +1,5 @@
 import { Box, IconButton, Tooltip, Typography, useTheme } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import { useRef } from "react";
 
@@ -61,6 +62,78 @@ function ThemeColorsSection() {
       label: "Card",
       description: "Frosted glass card tint",
       effectiveColor: theme.card.background,
+    },
+    {
+      key: "dialogBorder",
+      label: "Dialog border",
+      description: "Modal border glow color",
+      effectiveColor: theme.dialog.border,
+    },
+    {
+      key: "dialogGlow",
+      label: "Dialog glow",
+      description: "Modal glow highlight color",
+      effectiveColor: theme.dialog.glow,
+    },
+    {
+      key: "dialogBackdrop",
+      label: "Dialog backdrop",
+      description: "Modal backdrop tint",
+      effectiveColor: theme.dialog.backdrop,
+    },
+    {
+      key: "codeBackground",
+      label: "Code background",
+      description: "Logs, terminal output, and code blocks",
+      effectiveColor: theme.codeBlock.background,
+    },
+    {
+      key: "codeText",
+      label: "Code text",
+      description: "Logs, terminal output, and code text",
+      effectiveColor: theme.codeBlock.color,
+    },
+    {
+      key: "chartRx",
+      label: "Chart RX",
+      description: "Receive traffic chart color",
+      effectiveColor: theme.chart.rx,
+    },
+    {
+      key: "chartTx",
+      label: "Chart TX",
+      description: "Transmit traffic chart color",
+      effectiveColor: theme.chart.tx,
+    },
+    {
+      key: "chartNeutral",
+      label: "Chart neutral",
+      description: "Chart gridlines and neutral graph accents",
+      effectiveColor: theme.chart.neutral,
+    },
+    {
+      key: "fileBrowserSurface",
+      label: "File surface",
+      description: "File cards and list surfaces",
+      effectiveColor: theme.fileBrowser.surface,
+    },
+    {
+      key: "fileBrowserChrome",
+      label: "File chrome",
+      description: "Quick actions and filebrowser chrome",
+      effectiveColor: theme.fileBrowser.chrome,
+    },
+    {
+      key: "fileBrowserBreadcrumbBackground",
+      label: "Breadcrumb bg",
+      description: "Filebrowser breadcrumb background",
+      effectiveColor: theme.fileBrowser.breadcrumbBackground,
+    },
+    {
+      key: "fileBrowserBreadcrumbText",
+      label: "Breadcrumb text",
+      description: "Filebrowser breadcrumb text",
+      effectiveColor: theme.fileBrowser.breadcrumbText,
     },
   ];
 
@@ -175,7 +248,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
           borderRadius: 1,
           bgcolor: normalized,
           cursor: "pointer",
-          border: "1px solid rgba(128,128,128,0.3)",
+          border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
         }}
       />
       <input

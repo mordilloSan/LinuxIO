@@ -197,7 +197,6 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
       elevation={2}
       sx={{
         minHeight: cardHeight,
-        m: 1,
         display: "flex",
         flexDirection: "column",
         transition:

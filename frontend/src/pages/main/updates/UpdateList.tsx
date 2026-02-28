@@ -7,6 +7,7 @@ import {
   Collapse,
   CircularProgress,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -111,12 +112,13 @@ const UpdateList: React.FC<Props> = ({
           <FrostedCard
             variant="outlined"
             sx={{
-              transition: "transform 0.2s, box-shadow 0.2s",
-              "&:hover": {
-                transform: "translateY(-4px)",
-                boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-              },
-            }}
+                transition: "transform 0.2s, box-shadow 0.2s",
+                "&:hover": {
+                  transform: "translateY(-4px)",
+                  boxShadow: (theme) =>
+                    `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`,
+                },
+              }}
           >
             <CardContent>
               <Box

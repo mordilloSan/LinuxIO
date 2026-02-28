@@ -56,8 +56,7 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
   summaryStats = [],
 }) => {
   const theme = useTheme();
-  const sectionBackground =
-    theme.palette.mode === "dark" ? "#1e1e1e" : "#f5f5f5";
+  const sectionBackground = theme.codeBlock.background;
   const hasProgressStats = showProgressStats && progressStats.length > 0;
   const hasSummary = Boolean(summaryTitle) && summaryStats.length > 0;
 

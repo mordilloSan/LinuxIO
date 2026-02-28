@@ -7,6 +7,7 @@ import {
   useTheme as useMuiTheme,
   Box,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import Paintbrush from "lucide-react/dist/esm/icons/paintbrush";
 import { useMemo, useState } from "react";
 
@@ -75,8 +76,8 @@ function NavbarColorCustomizer() {
                 bgcolor: hex,
                 border:
                   muiTheme.palette.mode === "dark"
-                    ? "1px solid rgba(255,255,255,0.3)"
-                    : "1px solid rgba(0,0,0,0.1)",
+                    ? `1px solid ${alpha(muiTheme.palette.common.white, 0.3)}`
+                    : `1px solid ${alpha(muiTheme.palette.common.black, 0.1)}`,
                 cursor: "pointer",
                 outline:
                   primaryColor?.toLowerCase() === name.toLowerCase()

@@ -26,6 +26,7 @@ import ComposeStackCard from "./ComposeStackCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
+import { getComposeStatusColor } from "@/constants/statusColors";
 
 interface ComposeService {
   name: string;
@@ -79,16 +80,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
   );
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case "running":
-        return "#00e676";
-      case "partial":
-        return "#ffc107";
-      case "stopped":
-        return "#bdbdbd";
-      default:
-        return "#bdbdbd";
-    }
+    return getComposeStatusColor(status);
   };
 
   const getTotalContainers = (project: ComposeProject) => {

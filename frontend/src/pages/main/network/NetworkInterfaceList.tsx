@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Box, Typography, Grid, Tooltip, Fade } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 
@@ -180,7 +180,7 @@ const NetworkInterfaceList = () => {
                     ...(expanded !== iface.name && {
                       "&:hover": {
                         transform: "translateY(-4px)",
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                        boxShadow: `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`,
                       },
                     }),
                   }}
@@ -293,7 +293,7 @@ const NetworkInterfaceList = () => {
                       ref={rxCanvasRef}
                       key={`rx-${selectedIface.name}`}
                       value={selectedIface.rx_speed}
-                      color="#8884d8"
+                      color={theme.chart.rx}
                       label="RX"
                     />
                   </Box>
@@ -310,7 +310,7 @@ const NetworkInterfaceList = () => {
                       sx={{
                         width: 7,
                         height: 7,
-                        backgroundColor: "#8884d8",
+                        backgroundColor: theme.chart.rx,
                         borderRadius: "50%",
                       }}
                     />
@@ -325,7 +325,7 @@ const NetworkInterfaceList = () => {
                       ref={txCanvasRef}
                       key={`tx-${selectedIface.name}`}
                       value={selectedIface.tx_speed}
-                      color="#82ca9d"
+                      color={theme.chart.tx}
                       label="TX"
                     />
                   </Box>
@@ -342,7 +342,7 @@ const NetworkInterfaceList = () => {
                       sx={{
                         width: 7,
                         height: 7,
-                        backgroundColor: "#82ca9d",
+                        backgroundColor: theme.chart.tx,
                         borderRadius: "50%",
                       }}
                     />

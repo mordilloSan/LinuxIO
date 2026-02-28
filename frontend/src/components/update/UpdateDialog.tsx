@@ -73,7 +73,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                 p: 2,
                 borderRadius: 1,
                 bgcolor: updateSuccess ? "success.main" : "error.main",
-                color: "white",
+                color: "common.white",
               }}
             >
               {updateSuccess ? (

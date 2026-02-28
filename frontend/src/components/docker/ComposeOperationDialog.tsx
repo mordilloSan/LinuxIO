@@ -201,9 +201,8 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
             fontSize: "0.875rem",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
-            backgroundColor:
-              theme.palette.mode === "dark" ? "#1e1e1e" : "#f5f5f5",
-            color: theme.palette.mode === "dark" ? "#d4d4d4" : "#333",
+            backgroundColor: theme.codeBlock.background,
+            color: theme.codeBlock.color,
             p: 2,
             minHeight: "400px",
             maxHeight: "600px",

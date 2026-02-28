@@ -8,6 +8,18 @@ export interface ThemeColors {
   footerBackground?: string;
   sidebarBackground?: string;
   cardBackground?: string;
+  dialogBorder?: string;
+  dialogGlow?: string;
+  dialogBackdrop?: string;
+  codeBackground?: string;
+  codeText?: string;
+  chartRx?: string;
+  chartTx?: string;
+  chartNeutral?: string;
+  fileBrowserSurface?: string;
+  fileBrowserChrome?: string;
+  fileBrowserBreadcrumbBackground?: string;
+  fileBrowserBreadcrumbText?: string;
 }
 
 // Backend Settings structure

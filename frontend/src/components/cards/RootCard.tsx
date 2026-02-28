@@ -19,16 +19,13 @@ const FrostedCard: React.FC<FrostedCardProps> = ({
           alpha(theme.card.background, theme.palette.mode === "dark" ? 0.6 : 0.82),
         backgroundImage: (theme) =>
           theme.palette.mode === "dark"
-            ? "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.14) 18%, rgba(255,255,255,0.11) 38%, rgba(255,255,255,0.09) 62%, rgba(255,255,255,0.08) 100%)"
-            : "linear-gradient(180deg, rgba(226,232,240,0.72) 0%, rgba(255,255,255,0.82) 18%, rgba(255,255,255,0.9) 40%, rgba(255,255,255,0.95) 70%, rgba(255,255,255,0.98) 100%)",
-        border: (theme) =>
-          theme.palette.mode === "dark"
-            ? "1px solid transparent"
-            : "1px solid transparent",
+            ? `linear-gradient(180deg, ${alpha(theme.palette.common.white, 0.18)} 0%, ${alpha(theme.palette.common.white, 0.14)} 18%, ${alpha(theme.palette.common.white, 0.11)} 38%, ${alpha(theme.palette.common.white, 0.09)} 62%, ${alpha(theme.palette.common.white, 0.08)} 100%)`
+            : `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.72)} 0%, ${alpha(theme.palette.common.white, 0.82)} 18%, ${alpha(theme.palette.common.white, 0.9)} 40%, ${alpha(theme.palette.common.white, 0.95)} 70%, ${alpha(theme.palette.common.white, 0.98)} 100%)`,
+        border: "1px solid transparent",
         backdropFilter: (theme) =>
           theme.palette.mode === "dark" ? "blur(20px)" : "blur(16px)",
         boxShadow: (theme) =>
-           "0 16px 40px -28px rgba(0,0,0,0.6)",
+          `0 16px 40px -28px ${alpha(theme.palette.common.black, 0.6)}`,
         ...sx, // allow overriding styles if needed
       }}
       {...props}

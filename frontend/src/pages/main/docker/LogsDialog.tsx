@@ -13,6 +13,7 @@ import {
   Switch,
   FormControlLabel,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import React, {
   useState,
   useMemo,
@@ -25,6 +26,7 @@ import { useStreamMux, openDockerLogsStream, decodeString } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useLiveStream } from "@/hooks/useLiveStream";
+import { useTheme } from "@mui/material/styles";
 
 interface LogsDialogProps {
   open: boolean;
@@ -39,6 +41,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
   containerName,
   containerId,
 }) => {
+  const theme = useTheme();
   const [search, setSearch] = useState("");
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState("");
@@ -241,8 +244,8 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
           maxHeight: 600,
           fontFamily: "Fira Mono, monospace",
           fontSize: "0.95rem",
-          background: "#19191d",
-          color: "#ececec",
+          background: theme.codeBlock.background,
+          color: theme.codeBlock.color,
           p: 2,
         }}
       >
@@ -271,7 +274,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
                 left: 0,
                 right: 0,
                 bottom: 0,
-                background: "rgba(25,25,29,0.85)",
+                background: alpha(theme.codeBlock.background, 0.85),
                 zIndex: 10,
                 borderRadius: 2,
               }}

@@ -18,17 +18,10 @@ import type { ComposeProject } from "./ComposeList";
 
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
+import { getComposeStatusColor } from "@/constants/statusColors";
 
 const getStatusColor = (status: string) => {
-  switch (status) {
-    case "running":
-      return "#00e676";
-    case "partial":
-      return "#ffc107";
-    case "stopped":
-    default:
-      return "#bdbdbd";
-  }
+  return getComposeStatusColor(status);
 };
 
 interface ComposeStackCardProps {
@@ -78,7 +71,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
         transition: "transform 0.2s, box-shadow 0.2s",
         "&:hover": {
           transform: "translateY(-4px)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          boxShadow: "0 8px 24px rgba(var(--mui-palette-common-blackChannel) / 0.35)",
         },
       }}
     >

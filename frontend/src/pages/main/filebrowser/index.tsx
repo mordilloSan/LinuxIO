@@ -1187,7 +1187,7 @@ const FileBrowser: React.FC = () => {
               inset: 0,
               border: "2px dashed",
               borderColor: "primary.main",
-              bgcolor: "rgba(25,118,210,0.08)",
+              bgcolor: "rgba(var(--mui-palette-primary-mainChannel) / 0.08)",
               zIndex: 5,
               display: "flex",
               flexDirection: "column",

@@ -19,6 +19,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import { getServiceStatusColor } from "@/constants/statusColors";
 import { useViewMode } from "@/hooks/useViewMode";
 
 export interface Service {
@@ -135,12 +136,7 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                           width: 10,
                           height: 10,
                           borderRadius: "50%",
-                          bgcolor:
-                            service.active_state === "active"
-                              ? "#00e676"
-                              : service.active_state === "failed"
-                                ? "#ff5252"
-                                : "#bdbdbd",
+                          bgcolor: getServiceStatusColor(service.active_state),
                         }}
                       />
                       <Typography variant="body2" fontWeight="bold" noWrap>
@@ -231,12 +227,7 @@ const ServiceTable: React.FC<ServiceTableProps> = ({
                     width: 12,
                     height: 12,
                     borderRadius: "50%",
-                    bgcolor:
-                      service.active_state === "active"
-                        ? "#00e676"
-                        : service.active_state === "failed"
-                          ? "#ff5252"
-                          : "#bdbdbd",
+                    bgcolor: getServiceStatusColor(service.active_state),
                     mr: 1,
                   }}
                 />

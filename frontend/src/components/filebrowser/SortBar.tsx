@@ -56,7 +56,7 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
       sx={{
         display: "grid",
         gridTemplateColumns: columnTemplate,
-        backgroundColor: theme.palette.mode === "dark" ? "#20292f" : "#ffffff",
+        backgroundColor: theme.fileBrowser.surface,
         border: `0.1px solid ${theme.palette.mode === "dark" ? "color-mix(in srgb, var(--mui-palette-divider), transparent 85%)" : "color-mix(in srgb, var(--mui-palette-divider), transparent 90%)"}`,
         borderRadius: 2,
       }}

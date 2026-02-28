@@ -163,12 +163,10 @@ const FileCard: React.FC<FileCardProps> = React.memo(
         return `color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)`;
       }
       if (hidden) {
-        return theme.palette.mode === "dark"
-          ? `color-mix(in srgb, #20292f, transparent 50%)`
-          : `color-mix(in srgb, #ffffff, transparent 50%)`;
+        return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
       }
-      return theme.palette.mode === "dark" ? "#20292f" : "#ffffff";
-    }, [selected, theme.palette.mode, hidden]);
+      return theme.fileBrowser.surface;
+    }, [hidden, selected, theme.fileBrowser.surface]);
 
     const baseBorderAlpha = theme.palette.mode === "dark" ? 0.15 : 0.1;
 

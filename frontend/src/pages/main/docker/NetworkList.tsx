@@ -24,6 +24,7 @@ import {
   FormControlLabel,
   Switch,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -637,9 +638,10 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     size="small"
                     sx={{
                       bgcolor: (theme) =>
-                        theme.palette.mode === "dark"
-                          ? "rgba(0,0,0,0.2)"
-                          : "rgba(255,255,255,0.5)",
+                        alpha(
+                          theme.palette.text.primary,
+                          theme.palette.mode === "dark" ? 0.2 : 0.08,
+                        ),
                       overflowX: "auto",
                       display: "block",
                     }}

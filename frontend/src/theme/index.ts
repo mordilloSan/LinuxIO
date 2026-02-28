@@ -68,6 +68,50 @@ const createTheme = (
     ...(themeColors?.cardBackground && { background: themeColors.cardBackground }),
   };
 
+  const dialog = {
+    ...themeConfig.dialog,
+    ...(themeColors?.dialogBorder && { border: themeColors.dialogBorder }),
+    ...(themeColors?.dialogGlow && { glow: themeColors.dialogGlow }),
+    ...(themeColors?.dialogBackdrop && {
+      backdrop: themeColors.dialogBackdrop,
+    }),
+  };
+
+  const codeBlock = {
+    ...themeConfig.codeBlock,
+    ...(themeColors?.codeBackground && {
+      background: themeColors.codeBackground,
+    }),
+    ...(themeColors?.codeText && {
+      color: themeColors.codeText,
+    }),
+  };
+
+  const chart = {
+    ...themeConfig.chart,
+    ...(themeColors?.chartRx && { rx: themeColors.chartRx }),
+    ...(themeColors?.chartTx && { tx: themeColors.chartTx }),
+    ...(themeColors?.chartNeutral && {
+      neutral: themeColors.chartNeutral,
+    }),
+  };
+
+  const fileBrowser = {
+    ...themeConfig.fileBrowser,
+    ...(themeColors?.fileBrowserSurface && {
+      surface: themeColors.fileBrowserSurface,
+    }),
+    ...(themeColors?.fileBrowserChrome && {
+      chrome: themeColors.fileBrowserChrome,
+    }),
+    ...(themeColors?.fileBrowserBreadcrumbBackground && {
+      breadcrumbBackground: themeColors.fileBrowserBreadcrumbBackground,
+    }),
+    ...(themeColors?.fileBrowserBreadcrumbText && {
+      breadcrumbText: themeColors.fileBrowserBreadcrumbText,
+    }),
+  };
+
   const sidebar = {
     ...themeConfig.sidebar,
     ...(themeColors?.sidebarBackground && {
@@ -94,6 +138,10 @@ const createTheme = (
     {
       name: themeConfig.name,
       card,
+      codeBlock,
+      chart,
+      dialog,
+      fileBrowser,
       header,
       footer,
       sidebar,

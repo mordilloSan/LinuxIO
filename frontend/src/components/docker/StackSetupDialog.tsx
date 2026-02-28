@@ -10,6 +10,7 @@ import {
   useTheme,
   CircularProgress,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -188,9 +189,10 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
           <Box
             sx={{
               backgroundColor:
-                theme.palette.mode === "dark"
-                  ? "rgba(255,255,255,0.05)"
-                  : "rgba(0,0,0,0.02)",
+                alpha(
+                  theme.palette.text.primary,
+                  theme.palette.mode === "dark" ? 0.05 : 0.02,
+                ),
               borderRadius: 1,
               p: 2,
             }}
