@@ -223,7 +223,6 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
               <Switch
                 checked={liveMode}
                 onChange={(_, checked) => setLiveMode(checked)}
-                color="primary"
                 size="small"
               />
             }

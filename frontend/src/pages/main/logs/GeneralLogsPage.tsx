@@ -678,12 +678,10 @@ const GeneralLogsPage: React.FC = () => {
               <Switch
                 checked={liveMode}
                 onChange={handleLiveModeChange}
-                color="success"
                 size="small"
               />
             }
             label="Live"
-            sx={{ ml: 1 }}
           />
         </Tooltip>
         <Box fontWeight="bold">{filteredLogs.length} shown</Box>
