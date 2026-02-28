@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useCallback } from "react";
 import { toast } from "sonner";
 
-import ServiceLogsDrawer from "./ServiceLogsDrawer";
+import ServiceLogsDialog from "./ServiceLogsDialog";
 import ServiceTable, { Service } from "./ServiceTable";
 
 import { linuxio } from "@/api";
@@ -11,7 +11,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const ServicesList: React.FC = () => {
-  const [logsDrawerOpen, setLogsDrawerOpen] = useState(false);
+  const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<string>("");
   const queryClient = useQueryClient();
 
@@ -257,7 +257,7 @@ const ServicesList: React.FC = () => {
 
   const handleViewLogs = (service: Service) => {
     setSelectedService(service.name);
-    setLogsDrawerOpen(true);
+    setLogsDialogOpen(true);
   };
 
   return (
@@ -278,9 +278,9 @@ const ServicesList: React.FC = () => {
           isLoading={isActionPending}
         />
       )}
-      <ServiceLogsDrawer
-        open={logsDrawerOpen}
-        onClose={() => setLogsDrawerOpen(false)}
+      <ServiceLogsDialog
+        open={logsDialogOpen}
+        onClose={() => setLogsDialogOpen(false)}
         serviceName={selectedService}
       />
     </Box>
