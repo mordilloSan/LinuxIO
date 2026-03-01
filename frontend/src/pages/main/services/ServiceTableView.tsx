@@ -34,7 +34,6 @@ const columns: UnifiedTableColumn[] = [
     width: "120px",
   },
   { field: "description", headerName: "Description", align: "left" },
-  { field: "actions", headerName: "Actions", align: "right", width: "180px" },
 ];
 
 const ServiceTableView: React.FC<ServiceTableViewProps> = ({ services }) => (

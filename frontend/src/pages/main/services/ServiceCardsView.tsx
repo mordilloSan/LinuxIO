@@ -1,8 +1,15 @@
 import BlockIcon from "@mui/icons-material/Block";
 import CheckIcon from "@mui/icons-material/Check";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import StopCircleIcon from "@mui/icons-material/StopCircle";
 import TerminalIcon from "@mui/icons-material/Terminal";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   Box,
+  Button,
   FormControlLabel,
   Grid,
   Skeleton,
@@ -253,6 +260,99 @@ const ServiceLogsCard: React.FC<{ service: Service }> = ({ service }) => {
   );
 };
 
+const ServiceCardActions: React.FC<{ service: Service }> = ({ service }) => {
+  const { data: info } = linuxio.dbus.get_service_info.useQuery(service.name, {
+    refetchInterval: 2000,
+  });
+
+  const { mutate: startService, isPending: isStarting } =
+    linuxio.dbus.start_service.useMutation();
+  const { mutate: stopService, isPending: isStopping } =
+    linuxio.dbus.stop_service.useMutation();
+  const { mutate: restartService, isPending: isRestarting } =
+    linuxio.dbus.restart_service.useMutation();
+  const { mutate: reloadService, isPending: isReloading } =
+    linuxio.dbus.reload_service.useMutation();
+  const { mutate: enableService, isPending: isEnabling } =
+    linuxio.dbus.enable_service.useMutation();
+  const { mutate: disableService, isPending: isDisabling } =
+    linuxio.dbus.disable_service.useMutation();
+  const { mutate: maskService, isPending: isMasking } =
+    linuxio.dbus.mask_service.useMutation();
+  const { mutate: unmaskService, isPending: isUnmasking } =
+    linuxio.dbus.unmask_service.useMutation();
+
+  const isActive = service.active_state === "active";
+  const unitFileState = String(info?.UnitFileState ?? "");
+  const isEnabled =
+    unitFileState === "enabled" || unitFileState === "enabled-runtime";
+  const isMasked = unitFileState === "masked";
+  const anyPending =
+    isStarting || isStopping || isRestarting || isReloading ||
+    isEnabling || isDisabling || isMasking || isUnmasking;
+
+  return (
+    <div
+      style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {isActive ? (
+        <Button size="small" variant="outlined" color="error"
+          startIcon={<StopCircleIcon fontSize="small" />}
+          onClick={() => stopService([service.name])} disabled={anyPending}>
+          Stop
+        </Button>
+      ) : (
+        <Button size="small" variant="outlined" color="success"
+          startIcon={<PlayArrowIcon fontSize="small" />}
+          onClick={() => startService([service.name])} disabled={anyPending}>
+          Start
+        </Button>
+      )}
+      <Button size="small" variant="outlined"
+        startIcon={<RestartAltIcon fontSize="small" />}
+        onClick={() => restartService([service.name])}
+        disabled={!isActive || anyPending}>
+        Restart
+      </Button>
+      <Button size="small" variant="outlined"
+        startIcon={<RefreshIcon fontSize="small" />}
+        onClick={() => reloadService([service.name])}
+        disabled={!isActive || anyPending}>
+        Reload
+      </Button>
+      {isEnabled ? (
+        <Button size="small" variant="outlined"
+          startIcon={<BlockIcon fontSize="small" />}
+          onClick={() => disableService([service.name])}
+          disabled={isMasked || anyPending}>
+          Disable
+        </Button>
+      ) : (
+        <Button size="small" variant="outlined" color="success"
+          startIcon={<PlayArrowIcon fontSize="small" />}
+          onClick={() => enableService([service.name])}
+          disabled={isMasked || anyPending}>
+          Enable
+        </Button>
+      )}
+      {isMasked ? (
+        <Button size="small" variant="outlined" color="warning"
+          startIcon={<VisibilityIcon fontSize="small" />}
+          onClick={() => unmaskService([service.name])} disabled={anyPending}>
+          Unmask
+        </Button>
+      ) : (
+        <Button size="small" variant="outlined"
+          startIcon={<VisibilityOffIcon fontSize="small" />}
+          onClick={() => maskService([service.name])} disabled={anyPending}>
+          Mask
+        </Button>
+      )}
+    </div>
+  );
+};
+
 const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
   services,
   expanded,
@@ -418,6 +518,7 @@ const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
                               {service.sub_state}
                             </Typography>
                           </DetailRow>
+                          <ServiceCardActions service={service} />
                         </>
                       )}
                     </Box>
