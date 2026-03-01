@@ -23,12 +23,19 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
 }) => {
   const [search, setSearch] = useState("");
 
-  const { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef, resetState } =
-    useLogStream({
-      open,
-      createStream: (tail) => openDockerLogsStream(containerId, tail),
-      initialTail: "100",
-    });
+  const {
+    logs,
+    isLoading,
+    error,
+    liveMode,
+    setLiveMode,
+    logsBoxRef,
+    resetState,
+  } = useLogStream({
+    open,
+    createStream: (tail) => openDockerLogsStream(containerId, tail),
+    initialTail: "100",
+  });
 
   const filtered = useMemo(() => {
     if (!search || !logs) return logs;

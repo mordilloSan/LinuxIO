@@ -65,7 +65,9 @@ const createTheme = (
 
   const card = {
     ...themeConfig.card,
-    ...(themeColors?.cardBackground && { background: themeColors.cardBackground }),
+    ...(themeColors?.cardBackground && {
+      background: themeColors.cardBackground,
+    }),
   };
 
   const dialog = {

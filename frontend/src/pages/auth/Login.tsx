@@ -34,8 +34,7 @@ const Login: React.FC = () => {
           py: { xs: 1.05, sm: 1.25 },
           borderRadius: 999,
           border: `1px solid ${alpha(theme.palette.text.secondary, 0.25)}`,
-          background:
-            `linear-gradient(160deg, ${alpha(theme.palette.background.paper, 0.95)} 0%, ${alpha(theme.palette.background.default, 0.92)} 100%)`,
+          background: `linear-gradient(160deg, ${alpha(theme.palette.background.paper, 0.95)} 0%, ${alpha(theme.palette.background.default, 0.92)} 100%)`,
           boxShadow: `0 24px 54px -36px ${alpha(theme.palette.common.black, 0.85)}`,
           display: "inline-flex",
           alignItems: "center",

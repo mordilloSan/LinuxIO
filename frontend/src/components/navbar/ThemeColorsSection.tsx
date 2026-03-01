@@ -144,6 +144,7 @@ function ThemeColorsSection() {
   const handleReset = (key: keyof ThemeColors) => {
     setThemeColors((prev) => {
       if (!prev) return prev;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [key]: _, ...rest } = prev;
       return Object.values(rest).some((v) => v != null)
         ? (rest as ThemeColors)
@@ -160,7 +161,13 @@ function ThemeColorsSection() {
         <Typography variant="body1" fontWeight={600} sx={{ flexGrow: 1 }}>
           Colors
         </Typography>
-        <Tooltip title={hasAnyOverride ? "Reset all colors to default" : "No color overrides active"}>
+        <Tooltip
+          title={
+            hasAnyOverride
+              ? "Reset all colors to default"
+              : "No color overrides active"
+          }
+        >
           <span>
             <IconButton
               size="small"
@@ -229,6 +236,7 @@ interface ColorSwatchProps {
 }
 
 function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
+  const theme = useTheme();
   const inputRef = useRef<HTMLInputElement>(null);
   const normalized = toInputColor(color);
 

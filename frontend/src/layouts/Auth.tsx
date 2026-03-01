@@ -23,8 +23,7 @@ const Auth: React.FC = () => {
           overflowY: "auto",
           px: { xs: 2, sm: 4 },
           py: { xs: 6, sm: 8 },
-          backgroundImage:
-            `radial-gradient(900px 420px at 12% 8%, ${alpha(theme.palette.primary.main, 0.25)}, ${alpha(theme.palette.background.default, 0)} 60%), radial-gradient(800px 360px at 90% 0%, ${alpha(theme.palette.primary.light, 0.2)}, ${alpha(theme.palette.background.default, 0)} 60%), linear-gradient(160deg, ${alpha(theme.palette.background.default, 0.92)} 0%, ${theme.palette.background.default} 45%, ${alpha(theme.palette.background.default, 0.72)} 100%)`,
+          backgroundImage: `radial-gradient(900px 420px at 12% 8%, ${alpha(theme.palette.primary.main, 0.25)}, ${alpha(theme.palette.background.default, 0)} 60%), radial-gradient(800px 360px at 90% 0%, ${alpha(theme.palette.primary.light, 0.2)}, ${alpha(theme.palette.background.default, 0)} 60%), linear-gradient(160deg, ${alpha(theme.palette.background.default, 0.92)} 0%, ${theme.palette.background.default} 45%, ${alpha(theme.palette.background.default, 0.72)} 100%)`,
         })}
       >
         <Box
@@ -36,8 +35,7 @@ const Auth: React.FC = () => {
             width: 420,
             height: 420,
             borderRadius: "50%",
-            background:
-              `radial-gradient(circle at 30% 30%, ${alpha(authTheme.palette.primary.main, 0.35)}, ${alpha(authTheme.palette.primary.main, 0)} 70%)`,
+            background: `radial-gradient(circle at 30% 30%, ${alpha(authTheme.palette.primary.main, 0.35)}, ${alpha(authTheme.palette.primary.main, 0)} 70%)`,
             opacity: 0.9,
           }}
         />
@@ -50,8 +48,7 @@ const Auth: React.FC = () => {
             width: 460,
             height: 460,
             borderRadius: "50%",
-            background:
-              `radial-gradient(circle at 70% 40%, ${alpha(authTheme.palette.primary.dark, 0.3)}, ${alpha(authTheme.palette.primary.dark, 0)} 70%)`,
+            background: `radial-gradient(circle at 70% 40%, ${alpha(authTheme.palette.primary.dark, 0.3)}, ${alpha(authTheme.palette.primary.dark, 0)} 70%)`,
             opacity: 0.8,
           }}
         />

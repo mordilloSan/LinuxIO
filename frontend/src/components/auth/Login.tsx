@@ -45,7 +45,9 @@ const fieldSx = (theme: any) => ({
     backgroundColor: alpha(theme.palette.background.default, 0.65),
     transition: "box-shadow 0.2s ease, border-color 0.2s ease",
     "& fieldset": { borderColor: alpha(theme.palette.text.secondary, 0.3) },
-    "&:hover fieldset": { borderColor: alpha(theme.palette.text.secondary, 0.55) },
+    "&:hover fieldset": {
+      borderColor: alpha(theme.palette.text.secondary, 0.55),
+    },
     "&.Mui-focused fieldset": { borderColor: theme.palette.primary.main },
     "&.Mui-focused": {
       boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.35)}`,
@@ -103,8 +105,7 @@ function LogIn() {
             borderRadius: 2,
             border: (theme) =>
               `1px solid ${alpha(theme.palette.warning.main, 0.35)}`,
-            backgroundColor: (theme) =>
-              alpha(theme.palette.warning.main, 0.18),
+            backgroundColor: (theme) => alpha(theme.palette.warning.main, 0.18),
             color: "text.primary",
             ...revealSx(60),
           }}

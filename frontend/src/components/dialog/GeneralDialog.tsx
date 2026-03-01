@@ -47,8 +47,7 @@ const GeneralDialog: React.FC<DialogProps> = ({
               backgroundColor: theme.palette.background.paper,
               borderRadius: 4,
               border: `1px solid ${alpha(theme.dialog.border, 0.2)}`,
-              boxShadow:
-                `0 0 10px ${alpha(theme.dialog.glow, 0.5)}, 0 0 20px ${alpha(theme.dialog.glow, 0.3)}, inset 0 0 20px ${alpha(theme.dialog.glow, 0.1)}`,
+              boxShadow: `0 0 10px ${alpha(theme.dialog.glow, 0.5)}, 0 0 20px ${alpha(theme.dialog.glow, 0.3)}, inset 0 0 20px ${alpha(theme.dialog.glow, 0.1)}`,
               backdropFilter: "blur(10px)",
             },
             ...paperSx,

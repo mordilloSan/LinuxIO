@@ -15,11 +15,18 @@ const ServiceLogsDialog: React.FC<ServiceLogsDialogProps> = ({
   onClose,
   serviceName,
 }) => {
-  const { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef, resetState } =
-    useLogStream({
-      open,
-      createStream: (tail) => openServiceLogsStream(serviceName, tail),
-    });
+  const {
+    logs,
+    isLoading,
+    error,
+    liveMode,
+    setLiveMode,
+    logsBoxRef,
+    resetState,
+  } = useLogStream({
+    open,
+    createStream: (tail) => openServiceLogsStream(serviceName, tail),
+  });
 
   return (
     <LogDialog

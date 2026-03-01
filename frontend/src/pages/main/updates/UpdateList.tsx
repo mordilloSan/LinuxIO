@@ -112,13 +112,13 @@ const UpdateList: React.FC<Props> = ({
           <FrostedCard
             variant="outlined"
             sx={{
-                transition: "transform 0.2s, box-shadow 0.2s",
-                "&:hover": {
-                  transform: "translateY(-4px)",
-                  boxShadow: (theme) =>
-                    `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`,
-                },
-              }}
+              transition: "transform 0.2s, box-shadow 0.2s",
+              "&:hover": {
+                transform: "translateY(-4px)",
+                boxShadow: (theme) =>
+                  `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`,
+              },
+            }}
           >
             <CardContent>
               <Box

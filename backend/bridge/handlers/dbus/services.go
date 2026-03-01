@@ -117,6 +117,8 @@ func GetServiceInfo(serviceName string) (map[string]any, error) {
 		props := []string{
 			"Id", "Description", "LoadState", "ActiveState", "SubState",
 			"UnitFileState", "FragmentPath", "ActiveEnterTimestamp", "InactiveEnterTimestamp",
+			"Requires", "Wants", "WantedBy", "Before", "After",
+			"Conflicts", "PartOf", "TriggeredBy", "MemoryCurrent",
 		}
 		info = make(map[string]any)
 		for _, prop := range props {

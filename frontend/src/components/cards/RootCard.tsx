@@ -16,7 +16,10 @@ const FrostedCard: React.FC<FrostedCardProps> = ({
       sx={{
         borderRadius: cardBorderRadius,
         backgroundColor: (theme) =>
-          alpha(theme.card.background, theme.palette.mode === "dark" ? 0.6 : 0.82),
+          alpha(
+            theme.card.background,
+            theme.palette.mode === "dark" ? 0.6 : 0.82,
+          ),
         backgroundImage: (theme) =>
           theme.palette.mode === "dark"
             ? `linear-gradient(180deg, ${alpha(theme.palette.common.white, 0.18)} 0%, ${alpha(theme.palette.common.white, 0.14)} 18%, ${alpha(theme.palette.common.white, 0.11)} 38%, ${alpha(theme.palette.common.white, 0.09)} 62%, ${alpha(theme.palette.common.white, 0.08)} 100%)`

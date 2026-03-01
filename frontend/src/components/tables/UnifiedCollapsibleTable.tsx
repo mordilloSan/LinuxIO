@@ -64,8 +64,7 @@ function UnifiedCollapsibleTable<T>({
             <TableRow
               sx={(theme) => ({
                 "& .MuiTableCell-root": { borderBottom: "none" },
-                backgroundColor:
-                  alpha(theme.palette.text.primary, 0.08),
+                backgroundColor: alpha(theme.palette.text.primary, 0.08),
                 borderRadius: "6px",
                 boxShadow: "none",
               })}

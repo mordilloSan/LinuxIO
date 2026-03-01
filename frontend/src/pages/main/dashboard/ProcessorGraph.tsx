@@ -13,6 +13,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
   const usageRef = useRef(usage);
   const theme = useTheme();
   const color = theme.palette.primary.main;
+  const neutral = theme.chart.neutral;
 
   useEffect(() => {
     usageRef.current = usage;
@@ -28,7 +29,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       interpolation: "bezier",
       grid: {
         fillStyle: "transparent",
-        strokeStyle: alpha(theme.chart.neutral, 0.15),
+        strokeStyle: alpha(neutral, 0.15),
         verticalSections: 4,
         millisPerLine: 0,
         borderVisible: false,
@@ -36,7 +37,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       labels: { disabled: true },
       tooltip: true,
       tooltipLine: {
-        strokeStyle: alpha(theme.chart.neutral, 0.4),
+        strokeStyle: alpha(neutral, 0.4),
         lineWidth: 1,
       },
       tooltipFormatter: (
@@ -86,7 +87,7 @@ const CpuGraph: React.FC<CpuGraphProps> = ({ usage }) => {
       chart.stop();
       canvas.removeEventListener("mousemove", onMove);
     };
-  }, [color]);
+  }, [color, neutral]);
 
   return (
     <div

@@ -654,7 +654,10 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   gap: 4,
                   flexWrap: "wrap",
                   bgcolor: (t) =>
-                    alpha(t.palette.text.primary, t.palette.mode === "dark" ? 0.04 : 0.03),
+                    alpha(
+                      t.palette.text.primary,
+                      t.palette.mode === "dark" ? 0.04 : 0.03,
+                    ),
                 }}
               >
                 {ports.length > 2 && (
@@ -782,8 +785,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
             <TableRow
               sx={(t) => ({
                 "& .MuiTableCell-root": { borderBottom: "none" },
-                backgroundColor:
-                  alpha(t.palette.text.primary, 0.08),
+                backgroundColor: alpha(t.palette.text.primary, 0.08),
               })}
             >
               {editMode && <TableCell width="28px" />}

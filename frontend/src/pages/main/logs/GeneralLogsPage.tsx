@@ -498,11 +498,10 @@ const GeneralLogsPage: React.FC = () => {
           sx={(theme) => ({
             p: 2,
             mb: 2,
-            bgcolor:
-              alpha(
-                theme.palette.common.black,
-                theme.palette.mode === "dark" ? 0.3 : 0.02,
-              ),
+            bgcolor: alpha(
+              theme.palette.common.black,
+              theme.palette.mode === "dark" ? 0.3 : 0.02,
+            ),
             fontFamily: "monospace",
             fontSize: "0.85rem",
             whiteSpace: "pre-wrap",
@@ -523,11 +522,10 @@ const GeneralLogsPage: React.FC = () => {
               className="custom-scrollbar"
               sx={(theme) => ({
                 p: 2,
-                bgcolor:
-                  alpha(
-                    theme.palette.common.black,
-                    theme.palette.mode === "dark" ? 0.3 : 0.02,
-                  ),
+                bgcolor: alpha(
+                  theme.palette.common.black,
+                  theme.palette.mode === "dark" ? 0.3 : 0.02,
+                ),
                 fontFamily: "monospace",
                 fontSize: "0.75rem",
                 maxHeight: 300,

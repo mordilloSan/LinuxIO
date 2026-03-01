@@ -19,7 +19,7 @@ export interface UseLogStreamResult {
   error: string | null;
   liveMode: boolean;
   setLiveMode: React.Dispatch<React.SetStateAction<boolean>>;
-  logsBoxRef: React.RefObject<HTMLDivElement>;
+  logsBoxRef: React.RefObject<HTMLDivElement | null>;
   resetState: () => void;
 }
 
@@ -118,5 +118,13 @@ export function useLogStream({
     if (!open) closeStream();
   }, [open, closeStream]);
 
-  return { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef, resetState };
+  return {
+    logs,
+    isLoading,
+    error,
+    liveMode,
+    setLiveMode,
+    logsBoxRef,
+    resetState,
+  };
 }

@@ -1,9 +1,10 @@
-import { cardBorderRadius } from "@/theme/constants";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DragIndicator } from "@mui/icons-material";
 import { Box } from "@mui/material";
 import React from "react";
+
+import { cardBorderRadius } from "@/theme/constants";
 
 interface SortableCardProps {
   id: string;

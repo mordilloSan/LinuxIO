@@ -253,7 +253,8 @@ const FilebrowserBreadcrumbs: React.FC<FilebrowserBreadcrumbsProps> = ({
 
   const handleHome = () => onNavigate("/");
   const cssVars = {
-    "--linuxio-filebrowser-breadcrumb-bg": theme.fileBrowser.breadcrumbBackground,
+    "--linuxio-filebrowser-breadcrumb-bg":
+      theme.fileBrowser.breadcrumbBackground,
     "--linuxio-filebrowser-breadcrumb-text": theme.fileBrowser.breadcrumbText,
     "--linuxio-filebrowser-chrome": theme.fileBrowser.chrome,
   } as React.CSSProperties;

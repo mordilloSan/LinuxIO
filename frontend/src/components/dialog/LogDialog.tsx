@@ -30,7 +30,7 @@ interface LogDialogProps {
   error: string | null;
   liveMode: boolean;
   onLiveModeChange: (value: boolean) => void;
-  logsBoxRef: React.RefObject<HTMLDivElement>;
+  logsBoxRef: React.RefObject<HTMLDivElement | null>;
   onExited?: () => void;
   maxWidth?: "sm" | "md" | "lg" | "xl";
 }
@@ -120,7 +120,9 @@ const LogDialog: React.FC<LogDialogProps> = ({
             )}
             {!isLoading &&
               (logs || (
-                <Typography color="text.secondary">No logs available.</Typography>
+                <Typography color="text.secondary">
+                  No logs available.
+                </Typography>
               ))}
           </Box>
         )}

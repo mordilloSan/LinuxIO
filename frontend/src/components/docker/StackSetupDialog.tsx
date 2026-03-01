@@ -188,11 +188,10 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
 
           <Box
             sx={{
-              backgroundColor:
-                alpha(
-                  theme.palette.text.primary,
-                  theme.palette.mode === "dark" ? 0.05 : 0.02,
-                ),
+              backgroundColor: alpha(
+                theme.palette.text.primary,
+                theme.palette.mode === "dark" ? 0.05 : 0.02,
+              ),
               borderRadius: 1,
               p: 2,
             }}

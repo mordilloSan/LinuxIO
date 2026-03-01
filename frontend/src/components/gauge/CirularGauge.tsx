@@ -204,14 +204,13 @@ export const GradientCircularGauge: React.FC<GradientGaugeProps> = ({
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const backgroundColor = isDark ? grey[700] : grey[300];
-  const resolvedGradientColors = gradientColors ?? [
-    theme.chart.tx,
-    theme.palette.warning.main,
-    theme.palette.error.main,
-  ];
-
   // Create multiple segments for smooth gradient effect
   const segments = useMemo(() => {
+    const resolvedGradientColors = gradientColors ?? [
+      theme.chart.tx,
+      theme.palette.warning.main,
+      theme.palette.error.main,
+    ];
     const numSegments = 100;
     const segmentAngle = 360 / numSegments;
     const filledSegments = Math.ceil((pct / 100) * numSegments);
@@ -224,7 +223,14 @@ export const GradientCircularGauge: React.FC<GradientGaugeProps> = ({
 
       return { color, rotation, strokeDasharray };
     });
-  }, [circumference, pct, resolvedGradientColors]);
+  }, [
+    circumference,
+    pct,
+    gradientColors,
+    theme.chart.tx,
+    theme.palette.warning.main,
+    theme.palette.error.main,
+  ]);
 
   return (
     <div

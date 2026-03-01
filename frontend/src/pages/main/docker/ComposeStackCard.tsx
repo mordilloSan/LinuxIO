@@ -71,7 +71,8 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
         transition: "transform 0.2s, box-shadow 0.2s",
         "&:hover": {
           transform: "translateY(-4px)",
-          boxShadow: "0 8px 24px rgba(var(--mui-palette-common-blackChannel) / 0.35)",
+          boxShadow:
+            "0 8px 24px rgba(var(--mui-palette-common-blackChannel) / 0.35)",
         },
       }}
     >

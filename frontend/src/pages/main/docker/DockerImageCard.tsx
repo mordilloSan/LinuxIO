@@ -51,7 +51,8 @@ export default function CollapsibleCard<T extends Record<string, any>>({
         transformOrigin: "left center", // scale out from the accent
         "&:hover": {
           transform: "scale(1.005)",
-          boxShadow: "0 8px 24px rgba(var(--mui-palette-common-blackChannel) / 0.35)",
+          boxShadow:
+            "0 8px 24px rgba(var(--mui-palette-common-blackChannel) / 0.35)",
         },
       }}
     >
