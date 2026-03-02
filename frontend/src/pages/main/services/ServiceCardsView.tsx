@@ -328,7 +328,9 @@ const ServiceCardInfoRows: React.FC<{ service: Service }> = ({ service }) => {
     <>
       {mainPid > 0 && (
         <DetailRow label="PID">
-          <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{mainPid}</span>
+          <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+            {mainPid}
+          </span>
         </DetailRow>
       )}
       {memory !== "—" && (
@@ -495,17 +497,12 @@ const ServiceCardActions: React.FC<{ service: Service }> = ({ service }) => {
   );
 };
 
-// Memoized so unchanged services skip re-render on each 2s poll
 const ServiceCard = React.memo<{
   service: Service;
   isSelected: boolean;
   onExpand: (name: string | null) => void;
 }>(({ service, isSelected, onExpand }) => {
   const statusColor = getServiceStatusColor(service.active_state);
-  const subStateColor =
-    service.sub_state === "running"
-      ? getServiceStatusColor("active")
-      : "var(--mui-palette-text-secondary)";
 
   return (
     <FrostedCard

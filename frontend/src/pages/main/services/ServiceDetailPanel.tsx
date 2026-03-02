@@ -20,11 +20,11 @@ const labelStyle: React.CSSProperties = {
   paddingTop: 3,
 };
 
-const Row: React.FC<{ label: string; children: React.ReactNode; noBorder?: boolean }> = ({
-  label,
-  children,
-  noBorder,
-}) => (
+const Row: React.FC<{
+  label: string;
+  children: React.ReactNode;
+  noBorder?: boolean;
+}> = ({ label, children, noBorder }) => (
   <div
     style={{
       display: "flex",
@@ -37,7 +37,6 @@ const Row: React.FC<{ label: string; children: React.ReactNode; noBorder?: boole
     <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
   </div>
 );
-
 
 const toStringArray = (val: unknown): string[] => {
   if (!Array.isArray(val)) return [];

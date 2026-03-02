@@ -2,6 +2,8 @@ package dbus
 
 import (
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -40,17 +42,20 @@ func ListServices() ([]ServiceStatus, error) {
 		}()
 
 		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
+
+		// --- Step 1: loaded units (runtime info) ---
 		var units [][]any
 		if err := systemd.Call("org.freedesktop.systemd1.Manager.ListUnits", 0).Store(&units); err != nil {
 			return err
 		}
 
-		// First pass: extract basic fields and unit object paths from ListUnits
 		type unitEntry struct {
 			svc  ServiceStatus
 			path godbus.ObjectPath
 		}
-		var entries []unitEntry
+
+		// Index loaded services by name
+		loaded := make(map[string]unitEntry)
 		for _, u := range units {
 			name, err := utils.AsString(u[0])
 			if err != nil {
@@ -59,24 +64,12 @@ func ListServices() ([]ServiceStatus, error) {
 			if !strings.HasSuffix(name, ".service") {
 				continue
 			}
-			desc, err := utils.AsString(u[1])
-			if err != nil {
-				return fmt.Errorf("invalid service description for %q: %w", name, err)
-			}
-			loadState, err := utils.AsString(u[2])
-			if err != nil {
-				return fmt.Errorf("invalid load state for %q: %w", name, err)
-			}
-			activeState, err := utils.AsString(u[3])
-			if err != nil {
-				return fmt.Errorf("invalid active state for %q: %w", name, err)
-			}
-			subState, err := utils.AsString(u[4])
-			if err != nil {
-				return fmt.Errorf("invalid substate for %q: %w", name, err)
-			}
+			desc, _ := utils.AsString(u[1])
+			loadState, _ := utils.AsString(u[2])
+			activeState, _ := utils.AsString(u[3])
+			subState, _ := utils.AsString(u[4])
 			unitPath, _ := u[6].(godbus.ObjectPath)
-			entries = append(entries, unitEntry{
+			loaded[name] = unitEntry{
 				svc: ServiceStatus{
 					Name:        name,
 					Description: desc,
@@ -85,10 +78,45 @@ func ListServices() ([]ServiceStatus, error) {
 					SubState:    subState,
 				},
 				path: unitPath,
-			})
+			}
 		}
 
-		// Second pass: fetch extra properties in parallel, one goroutine per unit
+		// --- Step 2: all unit files (catches unloaded/inactive services) ---
+		type unitFileRecord struct {
+			Path  string
+			State string
+		}
+		var unitFiles []unitFileRecord
+		if err := systemd.Call("org.freedesktop.systemd1.Manager.ListUnitFiles", 0).Store(&unitFiles); err != nil {
+			return err
+		}
+
+		// Build final entry list: loaded first, then unloaded
+		var entries []unitEntry
+		seen := make(map[string]bool)
+
+		for name, e := range loaded {
+			entries = append(entries, e)
+			seen[name] = true
+		}
+		for _, uf := range unitFiles {
+			name := filepath.Base(uf.Path)
+			if !strings.HasSuffix(name, ".service") || seen[name] {
+				continue
+			}
+			entries = append(entries, unitEntry{
+				svc: ServiceStatus{
+					Name:          name,
+					LoadState:     "not-loaded",
+					ActiveState:   "inactive",
+					SubState:      "dead",
+					UnitFileState: uf.State,
+				},
+			})
+			seen[name] = true
+		}
+
+		// --- Step 3: fetch extra properties for loaded services in parallel ---
 		results := make([]ServiceStatus, len(entries))
 		var wg sync.WaitGroup
 		for i, e := range entries {
@@ -118,6 +146,7 @@ func ListServices() ([]ServiceStatus, error) {
 			}(i, e)
 		}
 		wg.Wait()
+		sort.Slice(results, func(i, j int) bool { return results[i].Name < results[j].Name })
 		services = results
 		return nil
 	})

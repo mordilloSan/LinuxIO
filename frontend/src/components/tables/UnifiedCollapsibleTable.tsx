@@ -111,18 +111,27 @@ function UnifiedCollapsibleTable<T>({
                     onDoubleClick={() => onRowDoubleClick?.(row, index)}
                     sx={(theme) => ({
                       "& .MuiTableCell-root": { borderBottom: "none" },
-                      cursor: onRowClick || onRowDoubleClick ? "pointer" : "default",
+                      cursor:
+                        onRowClick || onRowDoubleClick ? "pointer" : "default",
                       backgroundColor:
                         rowKey === selectedKey
-                          ? alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.15 : 0.1)
+                          ? alpha(
+                              theme.palette.primary.main,
+                              theme.palette.mode === "dark" ? 0.15 : 0.1,
+                            )
                           : index % 2 === 0
-                          ? "transparent"
-                          : alpha(
-                              theme.palette.text.primary,
-                              theme.palette.mode === "dark" ? 0.04 : 0.05,
-                            ),
+                            ? "transparent"
+                            : alpha(
+                                theme.palette.text.primary,
+                                theme.palette.mode === "dark" ? 0.04 : 0.05,
+                              ),
                       "&:hover": onRowClick
-                        ? { backgroundColor: alpha(theme.palette.primary.main, 0.08) }
+                        ? {
+                            backgroundColor: alpha(
+                              theme.palette.primary.main,
+                              0.08,
+                            ),
+                          }
                         : undefined,
                       "@media (max-width: 600px)": {
                         "& .MuiTableCell-root": {
@@ -145,7 +154,10 @@ function UnifiedCollapsibleTable<T>({
                       <TableCell>
                         <IconButton
                           size="small"
-                          onClick={(e) => { e.stopPropagation(); setExpanded(isExpanded ? null : rowKey); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpanded(isExpanded ? null : rowKey);
+                          }}
                         >
                           <ExpandMoreIcon
                             style={{

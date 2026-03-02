@@ -141,6 +141,8 @@ export type {
   AutoUpdateOptions,
   AutoUpdateState,
   Service,
+  Timer,
+  Socket,
   UpgradeItem,
   UpdateHistoryRow,
   ApiResource,

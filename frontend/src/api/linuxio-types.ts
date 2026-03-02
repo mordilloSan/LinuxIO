@@ -300,6 +300,30 @@ export interface Service {
   [key: string]: unknown;
 }
 
+export interface Timer {
+  name: string;
+  description?: string;
+  load_state: string;
+  active_state: string;
+  sub_state: string;
+  unit_file_state: string;
+  next_elapse_usec: number;
+  last_trigger_usec: number;
+  unit: string;
+}
+
+export interface Socket {
+  name: string;
+  description?: string;
+  load_state: string;
+  active_state: string;
+  sub_state: string;
+  unit_file_state: string;
+  listen: string[];
+  n_connections: number;
+  n_accepted: number;
+}
+
 export interface UpgradeItem {
   package: string;
 }
@@ -723,6 +747,8 @@ export interface LinuxIOSchema {
     get_update_history: { args: []; result: UpdateHistoryRow[] };
     list_services: { args: []; result: Service[] };
     get_service_info: { args: [serviceName: string]; result: Service };
+    list_timers: { args: []; result: Timer[] };
+    list_sockets: { args: []; result: Socket[] };
     get_service_logs: {
       args: [serviceName: string, lines: string];
       result: string[];

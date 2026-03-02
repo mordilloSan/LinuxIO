@@ -23,8 +23,18 @@ const desktopColumns: UnifiedTableColumn[] = [
     sx: { paddingLeft: "8px" },
   },
   { field: "name", headerName: "Name", align: "left", width: "200px" },
-  { field: "load_state", headerName: "Load State", align: "left", width: "120px" },
-  { field: "sub_state", headerName: "Sub State", align: "left", width: "120px" },
+  {
+    field: "load_state",
+    headerName: "Load State",
+    align: "left",
+    width: "120px",
+  },
+  {
+    field: "sub_state",
+    headerName: "Sub State",
+    align: "left",
+    width: "120px",
+  },
   { field: "description", headerName: "Description", align: "left" },
 ];
 
@@ -72,13 +82,21 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
       onRowClick={
         isMobile
           ? undefined
-          : (service) => onSelect?.(selected === service.name ? null : service.name)
+          : (service) =>
+              onSelect?.(selected === service.name ? null : service.name)
       }
       onRowDoubleClick={(service) => onDoubleClick?.(service.name)}
       renderExpandedContent={
         isMobile
           ? (service) => (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "2px 0" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  padding: "2px 0",
+                }}
+              >
                 {[
                   { label: "Load", value: service.load_state },
                   { label: "Sub", value: service.sub_state },
@@ -98,7 +116,9 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
                     >
                       {label}
                     </span>
-                    <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>{value}</span>
+                    <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
+                      {value}
+                    </span>
                   </div>
                 ))}
               </div>

@@ -1,11 +1,13 @@
 import GridViewIcon from "@mui/icons-material/GridView";
 import TableRowsIcon from "@mui/icons-material/TableRows";
-import { Alert, Box, IconButton, TextField, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, IconButton, TextField, Tooltip } from "@mui/material";
 import React, { useState, useEffect, useMemo } from "react";
 
 import ServiceCardsView from "./ServiceCardsView";
 import ServiceDetailPanel from "./ServiceDetailPanel";
 import ServiceTableView from "./ServiceTableView";
+import SocketsTab from "./SocketsTab";
+import TimersTab from "./TimersTab";
 
 import { linuxio } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -16,7 +18,11 @@ import { useViewMode } from "@/hooks/useViewMode";
 const ServicesViewToggle: React.FC = () => {
   const [viewMode, setViewMode] = useViewMode("services.list", "table");
   return (
-    <Tooltip title={viewMode === "table" ? "Switch to card view" : "Switch to table view"}>
+    <Tooltip
+      title={
+        viewMode === "table" ? "Switch to card view" : "Switch to table view"
+      }
+    >
       <IconButton
         size="small"
         onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
@@ -65,7 +71,8 @@ const ServicesTab: React.FC = () => {
       (data ?? []).filter(
         (s) =>
           s.name.toLowerCase().includes(search.toLowerCase()) ||
-          (s.description?.toLowerCase().includes(search.toLowerCase()) ?? false),
+          (s.description?.toLowerCase().includes(search.toLowerCase()) ??
+            false),
       ),
     [data, search],
   );
@@ -136,12 +143,6 @@ const ServicesTab: React.FC = () => {
   );
 };
 
-const PlaceholderTab: React.FC<{ label: string }> = ({ label }) => (
-  <Box display="flex" alignItems="center" justifyContent="center" minHeight={200}>
-    <Typography color="text.secondary">{label} — coming soon</Typography>
-  </Box>
-);
-
 const TABS = [
   {
     value: "services",
@@ -152,12 +153,12 @@ const TABS = [
   {
     value: "timers",
     label: "Timers",
-    component: <PlaceholderTab label="Timers" />,
+    component: <TimersTab />,
   },
   {
     value: "sockets",
     label: "Sockets",
-    component: <PlaceholderTab label="Sockets" />,
+    component: <SocketsTab />,
   },
 ];
 
