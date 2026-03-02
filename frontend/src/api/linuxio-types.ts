@@ -294,6 +294,9 @@ export interface Service {
   load_state: string;
   active_state: string;
   sub_state: string;
+  unit_file_state: string;
+  active_enter_timestamp: number;
+  inactive_enter_timestamp: number;
   [key: string]: unknown;
 }
 

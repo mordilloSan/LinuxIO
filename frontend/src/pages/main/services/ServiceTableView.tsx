@@ -2,7 +2,6 @@ import { Box, TableCell } from "@mui/material";
 import React from "react";
 
 import type { Service } from "@/api";
-
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";

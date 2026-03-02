@@ -3,6 +3,7 @@ package dbus
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	godbus "github.com/godbus/dbus/v5"
 	"github.com/mordilloSan/go-logger/logger"
@@ -12,11 +13,14 @@ import (
 )
 
 type ServiceStatus struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	LoadState   string `json:"load_state"`
-	ActiveState string `json:"active_state"`
-	SubState    string `json:"sub_state"`
+	Name                   string `json:"name"`
+	Description            string `json:"description"`
+	LoadState              string `json:"load_state"`
+	ActiveState            string `json:"active_state"`
+	SubState               string `json:"sub_state"`
+	UnitFileState          string `json:"unit_file_state"`
+	ActiveEnterTimestamp   uint64 `json:"active_enter_timestamp"`
+	InactiveEnterTimestamp uint64 `json:"inactive_enter_timestamp"`
 }
 
 // --- List all services (robust) ---
@@ -41,6 +45,12 @@ func ListServices() ([]ServiceStatus, error) {
 			return err
 		}
 
+		// First pass: extract basic fields and unit object paths from ListUnits
+		type unitEntry struct {
+			svc  ServiceStatus
+			path godbus.ObjectPath
+		}
+		var entries []unitEntry
 		for _, u := range units {
 			name, err := utils.AsString(u[0])
 			if err != nil {
@@ -49,36 +59,66 @@ func ListServices() ([]ServiceStatus, error) {
 			if !strings.HasSuffix(name, ".service") {
 				continue
 			}
-
 			desc, err := utils.AsString(u[1])
 			if err != nil {
 				return fmt.Errorf("invalid service description for %q: %w", name, err)
 			}
-
 			loadState, err := utils.AsString(u[2])
 			if err != nil {
 				return fmt.Errorf("invalid load state for %q: %w", name, err)
 			}
-
 			activeState, err := utils.AsString(u[3])
 			if err != nil {
 				return fmt.Errorf("invalid active state for %q: %w", name, err)
 			}
-
 			subState, err := utils.AsString(u[4])
 			if err != nil {
 				return fmt.Errorf("invalid substate for %q: %w", name, err)
 			}
-
-			svc := ServiceStatus{
-				Name:        name,
-				Description: desc,
-				LoadState:   loadState,
-				ActiveState: activeState,
-				SubState:    subState,
-			}
-			services = append(services, svc)
+			unitPath, _ := u[6].(godbus.ObjectPath)
+			entries = append(entries, unitEntry{
+				svc: ServiceStatus{
+					Name:        name,
+					Description: desc,
+					LoadState:   loadState,
+					ActiveState: activeState,
+					SubState:    subState,
+				},
+				path: unitPath,
+			})
 		}
+
+		// Second pass: fetch extra properties in parallel, one goroutine per unit
+		results := make([]ServiceStatus, len(entries))
+		var wg sync.WaitGroup
+		for i, e := range entries {
+			wg.Add(1)
+			go func(i int, e unitEntry) {
+				defer wg.Done()
+				svc := e.svc
+				if e.path != "" {
+					unit := conn.Object("org.freedesktop.systemd1", e.path)
+					if val, err := unit.GetProperty("org.freedesktop.systemd1.Unit.UnitFileState"); err == nil {
+						if s, ok := val.Value().(string); ok {
+							svc.UnitFileState = s
+						}
+					}
+					if val, err := unit.GetProperty("org.freedesktop.systemd1.Unit.ActiveEnterTimestamp"); err == nil {
+						if t, ok := val.Value().(uint64); ok {
+							svc.ActiveEnterTimestamp = t
+						}
+					}
+					if val, err := unit.GetProperty("org.freedesktop.systemd1.Unit.InactiveEnterTimestamp"); err == nil {
+						if t, ok := val.Value().(uint64); ok {
+							svc.InactiveEnterTimestamp = t
+						}
+					}
+				}
+				results[i] = svc
+			}(i, e)
+		}
+		wg.Wait()
+		services = results
 		return nil
 	})
 	return services, err

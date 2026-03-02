@@ -1,10 +1,4 @@
 import CloseIcon from "@mui/icons-material/Close";
-import {
-  Box,
-  IconButton,
-  Skeleton,
-  Typography,
-} from "@mui/material";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -16,45 +10,31 @@ interface ServiceDetailPanelProps {
   onClose: () => void;
 }
 
-const labelSx = {
-  textTransform: "uppercase" as const,
+const labelStyle: React.CSSProperties = {
+  textTransform: "uppercase",
   letterSpacing: "0.06em",
   fontSize: "0.6rem",
-  color: "text.secondary",
+  color: "var(--mui-palette-text-secondary)",
   flexShrink: 0,
   width: 90,
-  pt: 0.3,
-};
-
-const sectionLabelSx = {
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.06em",
-  fontSize: "0.6rem",
-  color: "text.secondary",
-  display: "block",
-  mb: 0.75,
+  paddingTop: 3,
 };
 
 const Row: React.FC<{ label: string; children: React.ReactNode }> = ({
   label,
   children,
 }) => (
-  <Box
-    sx={{
+  <div
+    style={{
       display: "flex",
-      gap: 2,
-      py: 0.75,
-      borderBottom: "1px solid",
-      borderColor: "divider",
-      "&:last-child": { borderBottom: "none" },
+      padding: "1px 0",
+      borderTop: "1px solid var(--mui-palette-divider)",
       alignItems: "flex-start",
     }}
   >
-    <Typography variant="caption" sx={labelSx}>
-      {label}
-    </Typography>
-    <Box sx={{ flex: 1, minWidth: 0 }}>{children}</Box>
-  </Box>
+    <span style={labelStyle}>{label}</span>
+    <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+  </div>
 );
 
 const formatBytes = (val: unknown): string => {
@@ -97,69 +77,97 @@ const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = ({
 
   return (
     <FrostedCard sx={{ p: 3 }}>
-      {/* Header*/}
-      <Box
-        sx={{
+      {/* Header */}
+      <div
+        style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          mb: 1.5,
-          gap: 1,
+          marginBottom: 12,
+          gap: 8,
         }}
       >
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-                                  <Typography
-                                    variant="body2"
-                                    fontWeight="bold"
-                                    noWrap
-                                    sx={{ minWidth: 0 }}
-                                  >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "0.875rem",
+              fontWeight: "bold",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
             Relationships
-          </Typography>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            noWrap
-            sx={{ display: "block" }}
+          </div>
+          <div
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--mui-palette-text-secondary)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
           >
             teste
-          </Typography>
-        </Box>
+          </div>
+        </div>
 
-        <IconButton onClick={onClose} size="small">
+        <button
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 4,
+            borderRadius: 4,
+            color: "var(--mui-palette-text-secondary)",
+            display: "flex",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+        >
           <CloseIcon fontSize="small" />
-        </IconButton>
-      </Box>
+        </button>
+      </div>
 
       {/* Info rows */}
-      <Box>
+      <div>
         {mainPid > 0 && (
           <Row label="PID">
-            <Typography variant="body2" fontWeight={500}>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
               {mainPid}
-            </Typography>
+            </span>
           </Row>
         )}
 
         {memory !== "—" && (
           <Row label="Memory">
-            <Typography variant="body2" fontWeight={500}>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
               {memory}
-            </Typography>
+            </span>
           </Row>
         )}
 
         <Row label="Path">
           {isPending ? (
-            <Skeleton width="80%" height={20} />
+            <div
+              style={{
+                height: 18,
+                width: "80%",
+                borderRadius: 4,
+                backgroundColor: "var(--mui-palette-action-hover)",
+              }}
+            />
           ) : (
-            <Typography
-              variant="body2"
-              fontWeight={500}
-              sx={{ wordBreak: "break-all", fontSize: "0.8rem" }}
+            <span
+              style={{
+                fontSize: "0.8rem",
+                fontWeight: 500,
+                wordBreak: "break-all",
+              }}
             >
               {fragmentPath || "—"}
-            </Typography>
+            </span>
           )}
         </Row>
 
@@ -170,20 +178,19 @@ const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = ({
             if (!items.length) return null;
             return (
               <Row key={key} label={label}>
-                <Typography
-                  variant="body2"
-                  fontWeight={500}
-                  sx={{ wordBreak: "break-word" }}
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: 500,
+                    wordBreak: "break-word",
+                  }}
                 >
                   {items.join(", ")}
-                </Typography>
+                </span>
               </Row>
             );
           })}
-      </Box>
-
-
-
+      </div>
     </FrostedCard>
   );
 };

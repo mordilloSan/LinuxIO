@@ -8,14 +8,11 @@ import TerminalIcon from "@mui/icons-material/Terminal";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
-  Box,
   Button,
   FormControlLabel,
   Grid,
-  Skeleton,
   Switch,
   Tooltip,
-  Typography,
   useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -25,7 +22,6 @@ import React from "react";
 import ServiceDetailPanel from "./ServiceDetailPanel";
 
 import type { Service } from "@/api";
-
 import { linuxio, openServiceLogsStream } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -38,36 +34,74 @@ interface ServiceCardsViewProps {
   onExpand: (name: string | null) => void;
 }
 
-const detailLabelSx = {
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.06em",
-  fontSize: "0.6rem",
-  color: "text.secondary",
-  flexShrink: 0,
-  width: 90,
-  pt: 0.3,
-};
+// Static sx objects — emotion caches these; per-card dynamic color is injected
+// via the CSS variable --svc-status-color set on the card's style prop.
+const cardSx = {
+  p: 3,
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  cursor: "pointer",
+  transition:
+    "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
+  borderBottomWidth: "2px",
+  borderBottomStyle: "solid",
+  borderBottomColor:
+    "color-mix(in srgb, var(--svc-status-color), transparent 70%)",
+  "&:hover": {
+    transform: "translateY(-4px)",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+  },
+  "& .svc-card-details > .svc-detail-row:last-of-type": {
+    borderBottom: "none",
+  },
+} as const;
 
-const DetailRow: React.FC<{ label: string; children: React.ReactNode }> = ({
-  label,
-  children,
-}) => (
-  <Box
-    sx={{
+const selectedCardSx = {
+  p: 3,
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  cursor: "pointer",
+  transition:
+    "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
+  borderBottomWidth: "2px",
+  borderBottomStyle: "solid",
+  borderBottomColor: "var(--svc-status-color)",
+  "& .svc-card-details > .svc-detail-row:last-of-type": {
+    borderBottom: "none",
+  },
+} as const;
+
+const DetailRow: React.FC<{
+  label: string;
+  children: React.ReactNode;
+  noBorder?: boolean;
+}> = ({ label, children, noBorder }) => (
+  <div
+    className="svc-detail-row"
+    style={{
       display: "flex",
-      gap: 2,
-      py: 0.75,
-      borderBottom: "1px solid",
-      borderColor: "divider",
-      "&:last-child": { borderBottom: "none" },
+      padding: "1px 0",
+      borderTop: noBorder ? undefined : "1px solid var(--mui-palette-divider)",
       alignItems: "flex-start",
     }}
   >
-    <Typography variant="caption" sx={detailLabelSx}>
+    <span
+      style={{
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        fontSize: "0.6rem",
+        color: "var(--mui-palette-text-secondary)",
+        flexShrink: 0,
+        width: 90,
+        paddingTop: 3,
+      }}
+    >
       {label}
-    </Typography>
-    <Box sx={{ flex: 1, minWidth: 0 }}>{children}</Box>
-  </Box>
+    </span>
+    <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+  </div>
 );
 
 const formatTimestamp = (ts: unknown): string => {
@@ -103,72 +137,79 @@ const formatUnitFileState = (
   }
 };
 
-const SelectedServiceDetails: React.FC<{ service: Service }> = ({
-  service,
-}) => {
-  const statusColor = getServiceStatusColor(service.active_state);
-  const { data: info, isPending } = linuxio.dbus.get_service_info.useQuery(
-    service.name,
-    { refetchInterval: 2000 },
-  );
-  const isActive = service.active_state === "active";
-  const ts = isActive
-    ? formatTimestamp(info?.ActiveEnterTimestamp)
-    : formatTimestamp(info?.InactiveEnterTimestamp);
-  const unitFileState = String(info?.UnitFileState ?? "");
-  const { label: autoStartLabel, auto: autoStart } =
-    formatUnitFileState(unitFileState);
+const SelectedServiceDetails = React.memo<{ service: Service }>(
+  ({ service }) => {
+    const statusColor = getServiceStatusColor(service.active_state);
+    const isActive = service.active_state === "active";
+    const ts = isActive
+      ? formatTimestamp(service.active_enter_timestamp)
+      : formatTimestamp(service.inactive_enter_timestamp);
+    const { label: autoStartLabel, auto: autoStart } = formatUnitFileState(
+      service.unit_file_state,
+    );
 
-  return (
-    <>
-      <DetailRow label="Status">
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
-          <Typography
-            variant="body2"
-            fontWeight={600}
-            sx={{ color: statusColor }}
-          >
-            {isActive ? "Running" : service.active_state}
-            {service.sub_state &&
-              service.sub_state !== service.active_state && (
-                <Typography
-                  component="span"
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ ml: 1 }}
-                >
-                  ({service.sub_state})
-                </Typography>
-              )}
-          </Typography>
-          {isPending ? (
-            <Skeleton width={200} height={14} />
-          ) : (
-            <Typography variant="caption" color="text.secondary">
+    return (
+      <>
+        <DetailRow label="Status" noBorder>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span
+              style={{
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                color: statusColor,
+              }}
+            >
+              {isActive ? "Running" : service.active_state}
+              {service.sub_state &&
+                service.sub_state !== service.active_state && (
+                  <span
+                    style={{
+                      color: "var(--mui-palette-text-secondary)",
+                      marginLeft: 8,
+                      fontWeight: 400,
+                    }}
+                  >
+                    ({service.sub_state})
+                  </span>
+                )}
+            </span>
+            <span
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--mui-palette-text-secondary)",
+              }}
+            >
               {isActive ? "Active" : "Inactive"} since {ts}
-            </Typography>
-          )}
-        </Box>
-      </DetailRow>
-      <DetailRow label="Auto-start">
-        {isPending ? (
-          <Skeleton width={180} height={20} />
-        ) : (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            </span>
+          </div>
+        </DetailRow>
+        <DetailRow label="Auto-start">
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             {autoStart ? (
-              <CheckIcon sx={{ fontSize: 15, color: "success.main" }} />
+              <CheckIcon
+                style={{
+                  fontSize: 15,
+                  color: "var(--mui-palette-success-main)",
+                }}
+              />
             ) : (
-              <BlockIcon sx={{ fontSize: 15, color: "text.disabled" }} />
+              <BlockIcon
+                style={{
+                  fontSize: 15,
+                  color: "var(--mui-palette-text-disabled)",
+                }}
+              />
             )}
-            <Typography variant="body2" fontWeight={500}>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
               {autoStartLabel}
-            </Typography>
-          </Box>
-        )}
-      </DetailRow>
-    </>
-  );
-};
+            </span>
+          </div>
+        </DetailRow>
+      </>
+    );
+  },
+);
+SelectedServiceDetails.displayName = "SelectedServiceDetails";
 
 const ServiceLogsCard: React.FC<{ service: Service }> = ({ service }) => {
   const theme = useTheme();
@@ -180,20 +221,23 @@ const ServiceLogsCard: React.FC<{ service: Service }> = ({ service }) => {
 
   return (
     <FrostedCard sx={{ p: 3 }}>
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          mb: 1.5,
+          marginBottom: 12,
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <TerminalIcon fontSize="small" sx={{ color: "text.secondary" }} />
-          <Typography variant="body2" fontWeight={600}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <TerminalIcon
+            fontSize="small"
+            style={{ color: "var(--mui-palette-text-secondary)" }}
+          />
+          <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>
             Service Logs
-          </Typography>
-        </Box>
+          </span>
+        </div>
         <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
           <FormControlLabel
             control={
@@ -206,19 +250,19 @@ const ServiceLogsCard: React.FC<{ service: Service }> = ({ service }) => {
             label="Live"
           />
         </Tooltip>
-      </Box>
-      <Box
-        sx={{
+      </div>
+      <div
+        style={{
           position: "relative",
-          bgcolor: theme.codeBlock.background,
+          backgroundColor: theme.codeBlock.background,
           color: theme.codeBlock.color,
-          borderRadius: 1,
+          borderRadius: 4,
           overflow: "hidden",
         }}
       >
         {isLoading && (
-          <Box
-            sx={{
+          <div
+            style={{
               position: "absolute",
               inset: 0,
               background: alpha(theme.codeBlock.background, 0.85),
@@ -226,18 +270,18 @@ const ServiceLogsCard: React.FC<{ service: Service }> = ({ service }) => {
             }}
           >
             <ComponentLoader />
-          </Box>
+          </div>
         )}
         {error && (
-          <Typography color="error" sx={{ p: 2 }}>
+          <div style={{ color: "var(--mui-palette-error-main)", padding: 16 }}>
             {error}
-          </Typography>
+          </div>
         )}
-        <Box
+        <div
           ref={logsBoxRef}
           className="custom-scrollbar"
-          sx={{
-            p: 2,
+          style={{
+            padding: 16,
             overflow: "auto",
             fontFamily: "Fira Mono, monospace",
             fontSize: "0.8rem",
@@ -250,12 +294,17 @@ const ServiceLogsCard: React.FC<{ service: Service }> = ({ service }) => {
           {!isLoading &&
             !error &&
             (logs || (
-              <Typography color="text.secondary" variant="caption">
+              <span
+                style={{
+                  color: "var(--mui-palette-text-secondary)",
+                  fontSize: "0.75rem",
+                }}
+              >
                 No logs available.
-              </Typography>
+              </span>
             ))}
-        </Box>
-      </Box>
+        </div>
+      </div>
     </FrostedCard>
   );
 };
@@ -288,8 +337,14 @@ const ServiceCardActions: React.FC<{ service: Service }> = ({ service }) => {
     unitFileState === "enabled" || unitFileState === "enabled-runtime";
   const isMasked = unitFileState === "masked";
   const anyPending =
-    isStarting || isStopping || isRestarting || isReloading ||
-    isEnabling || isDisabling || isMasking || isUnmasking;
+    isStarting ||
+    isStopping ||
+    isRestarting ||
+    isReloading ||
+    isEnabling ||
+    isDisabling ||
+    isMasking ||
+    isUnmasking;
 
   return (
     <div
@@ -297,55 +352,87 @@ const ServiceCardActions: React.FC<{ service: Service }> = ({ service }) => {
       onClick={(e) => e.stopPropagation()}
     >
       {isActive ? (
-        <Button size="small" variant="outlined" color="error"
+        <Button
+          size="small"
+          variant="outlined"
+          color="error"
           startIcon={<StopCircleIcon fontSize="small" />}
-          onClick={() => stopService([service.name])} disabled={anyPending}>
+          onClick={() => stopService([service.name])}
+          disabled={anyPending}
+        >
           Stop
         </Button>
       ) : (
-        <Button size="small" variant="outlined" color="success"
+        <Button
+          size="small"
+          variant="outlined"
+          color="success"
           startIcon={<PlayArrowIcon fontSize="small" />}
-          onClick={() => startService([service.name])} disabled={anyPending}>
+          onClick={() => startService([service.name])}
+          disabled={anyPending}
+        >
           Start
         </Button>
       )}
-      <Button size="small" variant="outlined"
+      <Button
+        size="small"
+        variant="outlined"
         startIcon={<RestartAltIcon fontSize="small" />}
         onClick={() => restartService([service.name])}
-        disabled={!isActive || anyPending}>
+        disabled={!isActive || anyPending}
+      >
         Restart
       </Button>
-      <Button size="small" variant="outlined"
+      <Button
+        size="small"
+        variant="outlined"
         startIcon={<RefreshIcon fontSize="small" />}
         onClick={() => reloadService([service.name])}
-        disabled={!isActive || anyPending}>
+        disabled={!isActive || anyPending}
+      >
         Reload
       </Button>
       {isEnabled ? (
-        <Button size="small" variant="outlined"
+        <Button
+          size="small"
+          variant="outlined"
           startIcon={<BlockIcon fontSize="small" />}
           onClick={() => disableService([service.name])}
-          disabled={isMasked || anyPending}>
+          disabled={isMasked || anyPending}
+        >
           Disable
         </Button>
       ) : (
-        <Button size="small" variant="outlined" color="success"
+        <Button
+          size="small"
+          variant="outlined"
+          color="success"
           startIcon={<PlayArrowIcon fontSize="small" />}
           onClick={() => enableService([service.name])}
-          disabled={isMasked || anyPending}>
+          disabled={isMasked || anyPending}
+        >
           Enable
         </Button>
       )}
       {isMasked ? (
-        <Button size="small" variant="outlined" color="warning"
+        <Button
+          size="small"
+          variant="outlined"
+          color="warning"
           startIcon={<VisibilityIcon fontSize="small" />}
-          onClick={() => unmaskService([service.name])} disabled={anyPending}>
+          onClick={() => unmaskService([service.name])}
+          disabled={anyPending}
+        >
           Unmask
         </Button>
       ) : (
-        <Button size="small" variant="outlined"
+        <Button
+          size="small"
+          variant="outlined"
           startIcon={<VisibilityOffIcon fontSize="small" />}
-          onClick={() => maskService([service.name])} disabled={anyPending}>
+          onClick={() => maskService([service.name])}
+          disabled={anyPending}
+        >
           Mask
         </Button>
       )}
@@ -353,21 +440,143 @@ const ServiceCardActions: React.FC<{ service: Service }> = ({ service }) => {
   );
 };
 
+// Memoized so unchanged services skip re-render on each 2s poll
+const ServiceCard = React.memo<{
+  service: Service;
+  isSelected: boolean;
+  onExpand: (name: string | null) => void;
+}>(({ service, isSelected, onExpand }) => {
+  const statusColor = getServiceStatusColor(service.active_state);
+  const subStateColor =
+    service.sub_state === "running"
+      ? getServiceStatusColor("active")
+      : "var(--mui-palette-text-secondary)";
+
+  return (
+    <FrostedCard
+      onClick={() => onExpand(isSelected ? null : service.name)}
+      style={{ "--svc-status-color": statusColor } as React.CSSProperties}
+      sx={isSelected ? selectedCardSx : cardSx}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: 12,
+          gap: 8,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "0.875rem",
+              fontWeight: "bold",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {service.name}
+          </div>
+          {service.description && (
+            <div
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--mui-palette-text-secondary)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+              title={service.description}
+            >
+              {service.description}
+            </div>
+          )}
+        </div>
+        <span
+          style={{
+            display: "inline-block",
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            backgroundColor: statusColor,
+            flexShrink: 0,
+            marginTop: 4,
+          }}
+        />
+      </div>
+
+      {/* Stat rows */}
+      <div style={{ flex: 1 }} className="svc-card-details">
+        <SelectedServiceDetails service={service} />
+        {isSelected && (
+          <>
+            <DetailRow label="Active">
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  color: statusColor,
+                }}
+              >
+                {service.active_state}
+              </span>
+            </DetailRow>
+            <DetailRow label="Load">
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  color:
+                    service.load_state === "loaded"
+                      ? "var(--mui-palette-text-primary)"
+                      : "var(--mui-palette-text-secondary)",
+                }}
+              >
+                {service.load_state}
+              </span>
+            </DetailRow>
+            <DetailRow label="Sub">
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  color: subStateColor,
+                }}
+              >
+                {service.sub_state}
+              </span>
+            </DetailRow>
+            <ServiceCardActions service={service} />
+          </>
+        )}
+      </div>
+    </FrostedCard>
+  );
+});
+ServiceCard.displayName = "ServiceCard";
+
 const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
   services,
   expanded,
   onExpand,
 }) => {
-  const theme = useTheme();
   const expandedService = services.find((s) => s.name === expanded) ?? null;
 
   if (services.length === 0) {
     return (
-      <Box textAlign="center" py={4}>
-        <Typography variant="body2" color="text.secondary">
+      <div style={{ textAlign: "center", padding: "32px 0" }}>
+        <span
+          style={{
+            fontSize: "0.875rem",
+            color: "var(--mui-palette-text-secondary)",
+          }}
+        >
           No services found.
-        </Typography>
-      </Box>
+        </span>
+      </div>
     );
   }
 
@@ -390,146 +599,15 @@ const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.2 }}
             >
-              {(() => {
-                const statusColor = getServiceStatusColor(service.active_state);
-                const subStateColor =
-                  service.sub_state === "running"
-                    ? getServiceStatusColor("active")
-                    : theme.palette.text.secondary;
-                const isSelected = expanded === service.name;
-
-                return (
-                  <FrostedCard
-                    onClick={() => onExpand(isSelected ? null : service.name)}
-                    sx={{
-                      p: 3,
-                      display: "flex",
-                      flexDirection: "column",
-                      height: "100%",
-                      cursor: "pointer",
-                      transition:
-                        "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
-                      borderBottomWidth: "2px",
-                      borderBottomStyle: "solid",
-                      borderBottomColor: isSelected
-                        ? statusColor
-                        : `color-mix(in srgb, ${statusColor}, transparent 70%)`,
-                      ...(!isSelected && {
-                        "&:hover": {
-                          transform: "translateY(-4px)",
-                          boxShadow: `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`,
-                        },
-                      }),
-                    }}
-                  >
-                    {/* Header */}
-                    <Box
-                      sx={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        mb: 1.5,
-                        gap: 1,
-                      }}
-                    >
-                      {/* Left: name + description */}
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography
-                          variant="body2"
-                          fontWeight="bold"
-                          noWrap
-                          sx={{ minWidth: 0 }}
-                        >
-                          {service.name}
-                        </Typography>
-                        {service.description && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            noWrap
-                            title={service.description}
-                            sx={{ display: "block" }}
-                          >
-                            {service.description}
-                          </Typography>
-                        )}
-                      </Box>
-
-                      {/* Right: status dot */}
-                      <Box
-                        sx={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "flex-end",
-                          gap: 1,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Box
-                          component="span"
-                          sx={{
-                            display: "inline-block",
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            bgcolor: statusColor,
-                          }}
-                        />
-                      </Box>
-                    </Box>
-
-                    {/* Stat rows */}
-                    <Box sx={{ flex: 1 }}>
-                      <SelectedServiceDetails service={service} />
-                      {isSelected && (
-                        <>
-                          <DetailRow label="Active">
-                            <Typography
-                              variant="body2"
-                              fontWeight={500}
-                              noWrap
-                              sx={{ color: statusColor }}
-                            >
-                              {service.active_state}
-                            </Typography>
-                          </DetailRow>
-                          <DetailRow label="Load">
-                            <Typography
-                              variant="body2"
-                              fontWeight={500}
-                              noWrap
-                              sx={{
-                                color:
-                                  service.load_state === "loaded"
-                                    ? "text.primary"
-                                    : "text.secondary",
-                              }}
-                            >
-                              {service.load_state}
-                            </Typography>
-                          </DetailRow>
-                          <DetailRow label="Sub">
-                            <Typography
-                              variant="body2"
-                              fontWeight={500}
-                              noWrap
-                              sx={{ color: subStateColor }}
-                            >
-                              {service.sub_state}
-                            </Typography>
-                          </DetailRow>
-                          <ServiceCardActions service={service} />
-                        </>
-                      )}
-                    </Box>
-                  </FrostedCard>
-                );
-              })()}
+              <ServiceCard
+                service={service}
+                isSelected={expanded === service.name}
+                onExpand={onExpand}
+              />
             </Grid>
           ),
         )}
 
-        {/* Detail panel */}
         {expandedService && (
           <Grid
             key="detail-panel"
@@ -547,7 +625,6 @@ const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
           </Grid>
         )}
 
-        {/* Logs card — full width below the two info cards */}
         {expandedService && (
           <Grid
             key="logs-panel"
