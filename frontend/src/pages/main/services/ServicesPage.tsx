@@ -1,7 +1,7 @@
 import GridViewIcon from "@mui/icons-material/GridView";
 import TableRowsIcon from "@mui/icons-material/TableRows";
-import { Alert, Box, IconButton, TextField, Tooltip } from "@mui/material";
-import React, { useState, useEffect } from "react";
+import { Alert, Box, IconButton, TextField, Tooltip, Typography } from "@mui/material";
+import React, { useState, useEffect, useMemo } from "react";
 
 import ServiceCardsView from "./ServiceCardsView";
 import ServiceDetailPanel from "./ServiceDetailPanel";
@@ -9,9 +9,29 @@ import ServiceTableView from "./ServiceTableView";
 
 import { linuxio } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import TabContainer from "@/components/tabbar/TabContainer";
 import { useViewMode } from "@/hooks/useViewMode";
 
-const ServicesPage: React.FC = () => {
+// Self-contained toggle that shares the same config key as ServicesTab
+const ServicesViewToggle: React.FC = () => {
+  const [viewMode, setViewMode] = useViewMode("services.list", "table");
+  return (
+    <Tooltip title={viewMode === "table" ? "Switch to card view" : "Switch to table view"}>
+      <IconButton
+        size="small"
+        onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
+      >
+        {viewMode === "table" ? (
+          <GridViewIcon fontSize="small" />
+        ) : (
+          <TableRowsIcon fontSize="small" />
+        )}
+      </IconButton>
+    </Tooltip>
+  );
+};
+
+const ServicesTab: React.FC = () => {
   const {
     data,
     isPending: isLoading,
@@ -40,10 +60,14 @@ const ServicesPage: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [returnToTable, setViewMode]);
 
-  const filtered = (data ?? []).filter(
-    (s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      (s.description?.toLowerCase().includes(search.toLowerCase()) ?? false),
+  const filtered = useMemo(
+    () =>
+      (data ?? []).filter(
+        (s) =>
+          s.name.toLowerCase().includes(search.toLowerCase()) ||
+          (s.description?.toLowerCase().includes(search.toLowerCase()) ?? false),
+      ),
+    [data, search],
   );
 
   return (
@@ -66,27 +90,6 @@ const ServicesPage: React.FC = () => {
               sx={{ width: 320 }}
             />
             <Box fontWeight="bold">{filtered.length} shown</Box>
-            <Tooltip
-              title={
-                viewMode === "table"
-                  ? "Switch to card view"
-                  : "Switch to table view"
-              }
-            >
-              <IconButton
-                size="small"
-                onClick={() => {
-                  setViewMode(viewMode === "table" ? "card" : "table");
-                  setExpanded(null);
-                }}
-              >
-                {viewMode === "table" ? (
-                  <GridViewIcon fontSize="small" />
-                ) : (
-                  <TableRowsIcon fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
           </Box>
 
           {viewMode === "card" ? (
@@ -113,17 +116,18 @@ const ServicesPage: React.FC = () => {
                   setReturnToTable(true);
                 }}
               />
-              {expanded && (() => {
-                const svc = filtered.find((s) => s.name === expanded);
-                return svc ? (
-                  <Box mt={3}>
-                    <ServiceDetailPanel
-                      service={svc}
-                      onClose={() => setExpanded(null)}
-                    />
-                  </Box>
-                ) : null;
-              })()}
+              {expanded &&
+                (() => {
+                  const svc = filtered.find((s) => s.name === expanded);
+                  return svc ? (
+                    <Box mt={3}>
+                      <ServiceDetailPanel
+                        service={svc}
+                        onClose={() => setExpanded(null)}
+                      />
+                    </Box>
+                  ) : null;
+                })()}
             </>
           )}
         </>
@@ -131,5 +135,39 @@ const ServicesPage: React.FC = () => {
     </Box>
   );
 };
+
+const PlaceholderTab: React.FC<{ label: string }> = ({ label }) => (
+  <Box display="flex" alignItems="center" justifyContent="center" minHeight={200}>
+    <Typography color="text.secondary">{label} — coming soon</Typography>
+  </Box>
+);
+
+const TABS = [
+  {
+    value: "services",
+    label: "Services",
+    component: <ServicesTab />,
+    rightContent: <ServicesViewToggle />,
+  },
+  {
+    value: "timers",
+    label: "Timers",
+    component: <PlaceholderTab label="Timers" />,
+  },
+  {
+    value: "sockets",
+    label: "Sockets",
+    component: <PlaceholderTab label="Sockets" />,
+  },
+];
+
+const ServicesPage: React.FC = () => (
+  <TabContainer
+    tabs={TABS}
+    defaultTab="services"
+    urlParam="section"
+    containerSx={{ px: 0 }}
+  />
+);
 
 export default ServicesPage;
