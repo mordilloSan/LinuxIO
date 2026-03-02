@@ -104,6 +104,15 @@ const DetailRow: React.FC<{
   </div>
 );
 
+const formatBytes = (val: unknown): string => {
+  const b = Number(val ?? 0);
+  if (!b || b > 1e18) return "—";
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} kB`;
+  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
+
 const formatTimestamp = (ts: unknown): string => {
   const ms = Number(ts ?? 0) / 1000;
   if (!ms) return "—";
@@ -306,6 +315,28 @@ const ServiceLogsCard: React.FC<{ service: Service }> = ({ service }) => {
         </div>
       </div>
     </FrostedCard>
+  );
+};
+
+const ServiceCardInfoRows: React.FC<{ service: Service }> = ({ service }) => {
+  const { data: info } = linuxio.dbus.get_service_info.useQuery(service.name, {
+    refetchInterval: 2000,
+  });
+  const mainPid = Number(info?.MainPID ?? 0);
+  const memory = formatBytes(info?.MemoryCurrent);
+  return (
+    <>
+      {mainPid > 0 && (
+        <DetailRow label="PID">
+          <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{mainPid}</span>
+        </DetailRow>
+      )}
+      {memory !== "—" && (
+        <DetailRow label="Memory">
+          <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{memory}</span>
+        </DetailRow>
+      )}
+    </>
   );
 };
 
@@ -538,17 +569,8 @@ const ServiceCard = React.memo<{
                 {service.load_state}
               </span>
             </DetailRow>
-            <DetailRow label="Sub">
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 500,
-                  color: subStateColor,
-                }}
-              >
-                {service.sub_state}
-              </span>
-            </DetailRow>
+
+            <ServiceCardInfoRows service={service} />
             <ServiceCardActions service={service} />
           </>
         )}

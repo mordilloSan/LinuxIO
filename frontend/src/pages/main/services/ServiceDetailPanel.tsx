@@ -20,15 +20,16 @@ const labelStyle: React.CSSProperties = {
   paddingTop: 3,
 };
 
-const Row: React.FC<{ label: string; children: React.ReactNode }> = ({
+const Row: React.FC<{ label: string; children: React.ReactNode; noBorder?: boolean }> = ({
   label,
   children,
+  noBorder,
 }) => (
   <div
     style={{
       display: "flex",
       padding: "1px 0",
-      borderTop: "1px solid var(--mui-palette-divider)",
+      borderTop: noBorder ? undefined : "1px solid var(--mui-palette-divider)",
       alignItems: "flex-start",
     }}
   >
@@ -37,14 +38,6 @@ const Row: React.FC<{ label: string; children: React.ReactNode }> = ({
   </div>
 );
 
-const formatBytes = (val: unknown): string => {
-  const b = Number(val ?? 0);
-  if (!b || b > 1e18) return "—";
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} kB`;
-  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-};
 
 const toStringArray = (val: unknown): string[] => {
   if (!Array.isArray(val)) return [];
@@ -72,9 +65,6 @@ const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = ({
   );
 
   const fragmentPath = String(info?.FragmentPath ?? "");
-  const mainPid = Number(info?.MainPID ?? 0);
-  const memory = formatBytes(info?.MemoryCurrent);
-
   return (
     <FrostedCard sx={{ p: 3 }}>
       {/* Header */}
@@ -97,18 +87,7 @@ const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = ({
               textOverflow: "ellipsis",
             }}
           >
-            Relationships
-          </div>
-          <div
-            style={{
-              fontSize: "0.7rem",
-              color: "var(--mui-palette-text-secondary)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            teste
+            Unit file &amp; dependencies
           </div>
         </div>
 
@@ -132,23 +111,7 @@ const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = ({
 
       {/* Info rows */}
       <div>
-        {mainPid > 0 && (
-          <Row label="PID">
-            <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
-              {mainPid}
-            </span>
-          </Row>
-        )}
-
-        {memory !== "—" && (
-          <Row label="Memory">
-            <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
-              {memory}
-            </span>
-          </Row>
-        )}
-
-        <Row label="Path">
+        <Row label="Path" noBorder>
           {isPending ? (
             <div
               style={{

@@ -158,7 +158,7 @@ func GetServiceInfo(serviceName string) (map[string]any, error) {
 			"Id", "Description", "LoadState", "ActiveState", "SubState",
 			"UnitFileState", "FragmentPath", "ActiveEnterTimestamp", "InactiveEnterTimestamp",
 			"Requires", "Wants", "WantedBy", "Before", "After",
-			"Conflicts", "PartOf", "TriggeredBy", "MemoryCurrent",
+			"Conflicts", "PartOf", "TriggeredBy",
 		}
 		info = make(map[string]any)
 		for _, prop := range props {
@@ -169,6 +169,11 @@ func GetServiceInfo(serviceName string) (map[string]any, error) {
 		}
 		if val, err := unit.GetProperty("org.freedesktop.systemd1.Service.MainPID"); err == nil {
 			info["MainPID"] = val.Value()
+		}
+		if val, err := unit.GetProperty("org.freedesktop.systemd1.Service.MemoryCurrent"); err == nil {
+			info["MemoryCurrent"] = val.Value()
+		} else if val, err := unit.GetProperty("org.freedesktop.systemd1.Unit.MemoryCurrent"); err == nil {
+			info["MemoryCurrent"] = val.Value()
 		}
 		if val, err := unit.GetProperty("org.freedesktop.systemd1.Service.ExecMainStatus"); err == nil {
 			info["ExecMainStatus"] = val.Value()
