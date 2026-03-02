@@ -4,6 +4,7 @@ import { Alert, Box, IconButton, TextField, Tooltip } from "@mui/material";
 import React, { useState, useEffect } from "react";
 
 import ServiceCardsView from "./ServiceCardsView";
+import ServiceDetailPanel from "./ServiceDetailPanel";
 import ServiceTableView from "./ServiceTableView";
 
 import { linuxio } from "@/api";
@@ -23,14 +24,21 @@ const ServicesPage: React.FC = () => {
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useViewMode("services.list", "table");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [returnToTable, setReturnToTable] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setExpanded(null);
+      if (e.key === "Escape") {
+        setExpanded(null);
+        if (returnToTable) {
+          setViewMode("table");
+          setReturnToTable(false);
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [returnToTable, setViewMode]);
 
   const filtered = (data ?? []).filter(
     (s) =>
@@ -85,10 +93,38 @@ const ServicesPage: React.FC = () => {
             <ServiceCardsView
               services={filtered}
               expanded={expanded}
-              onExpand={setExpanded}
+              onExpand={(name) => {
+                setExpanded(name);
+                if (name === null && returnToTable) {
+                  setViewMode("table");
+                  setReturnToTable(false);
+                }
+              }}
             />
           ) : (
-            <ServiceTableView services={filtered} />
+            <>
+              <ServiceTableView
+                services={filtered}
+                selected={expanded}
+                onSelect={setExpanded}
+                onDoubleClick={(name) => {
+                  setViewMode("card");
+                  setExpanded(name);
+                  setReturnToTable(true);
+                }}
+              />
+              {expanded && (() => {
+                const svc = filtered.find((s) => s.name === expanded);
+                return svc ? (
+                  <Box mt={3}>
+                    <ServiceDetailPanel
+                      service={svc}
+                      onClose={() => setExpanded(null)}
+                    />
+                  </Box>
+                ) : null;
+              })()}
+            </>
           )}
         </>
       )}

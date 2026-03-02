@@ -383,89 +383,113 @@ const ServiceCardActions: React.FC<{ service: Service }> = ({ service }) => {
       onClick={(e) => e.stopPropagation()}
     >
       {isActive ? (
-        <Button
-          size="small"
-          variant="outlined"
-          color="error"
-          startIcon={<StopCircleIcon fontSize="small" />}
-          onClick={() => stopService([service.name])}
-          disabled={anyPending}
-        >
-          Stop
-        </Button>
+        <Tooltip title="Stop the service">
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<StopCircleIcon fontSize="small" />}
+            onClick={() => stopService([service.name])}
+            disabled={anyPending}
+          >
+            Stop
+          </Button>
+        </Tooltip>
       ) : (
-        <Button
-          size="small"
-          variant="outlined"
-          color="success"
-          startIcon={<PlayArrowIcon fontSize="small" />}
-          onClick={() => startService([service.name])}
-          disabled={anyPending}
-        >
-          Start
-        </Button>
+        <Tooltip title="Start the service">
+          <Button
+            size="small"
+            variant="outlined"
+            color="success"
+            startIcon={<PlayArrowIcon fontSize="small" />}
+            onClick={() => startService([service.name])}
+            disabled={anyPending}
+          >
+            Start
+          </Button>
+        </Tooltip>
       )}
-      <Button
-        size="small"
-        variant="outlined"
-        startIcon={<RestartAltIcon fontSize="small" />}
-        onClick={() => restartService([service.name])}
-        disabled={!isActive || anyPending}
-      >
-        Restart
-      </Button>
-      <Button
-        size="small"
-        variant="outlined"
-        startIcon={<RefreshIcon fontSize="small" />}
-        onClick={() => reloadService([service.name])}
-        disabled={!isActive || anyPending}
-      >
-        Reload
-      </Button>
+      <Tooltip title="Restart the service (stop then start)">
+        <span>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<RestartAltIcon fontSize="small" />}
+            onClick={() => restartService([service.name])}
+            disabled={!isActive || anyPending}
+          >
+            Restart
+          </Button>
+        </span>
+      </Tooltip>
+      <Tooltip title="Reload configuration without restarting (if supported)">
+        <span>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<RefreshIcon fontSize="small" />}
+            onClick={() => reloadService([service.name])}
+            disabled={!isActive || anyPending}
+          >
+            Reload
+          </Button>
+        </span>
+      </Tooltip>
       {isEnabled ? (
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<BlockIcon fontSize="small" />}
-          onClick={() => disableService([service.name])}
-          disabled={isMasked || anyPending}
-        >
-          Disable
-        </Button>
+        <Tooltip title="Disable autostart at boot">
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<BlockIcon fontSize="small" />}
+              onClick={() => disableService([service.name])}
+              disabled={isMasked || anyPending}
+            >
+              Disable
+            </Button>
+          </span>
+        </Tooltip>
       ) : (
-        <Button
-          size="small"
-          variant="outlined"
-          color="success"
-          startIcon={<PlayArrowIcon fontSize="small" />}
-          onClick={() => enableService([service.name])}
-          disabled={isMasked || anyPending}
-        >
-          Enable
-        </Button>
+        <Tooltip title="Enable autostart at boot">
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              color="success"
+              startIcon={<PlayArrowIcon fontSize="small" />}
+              onClick={() => enableService([service.name])}
+              disabled={isMasked || anyPending}
+            >
+              Enable
+            </Button>
+          </span>
+        </Tooltip>
       )}
       {isMasked ? (
-        <Button
-          size="small"
-          variant="outlined"
-          color="warning"
-          startIcon={<VisibilityIcon fontSize="small" />}
-          onClick={() => unmaskService([service.name])}
-          disabled={anyPending}
-        >
-          Unmask
-        </Button>
+        <Tooltip title="Unmask to allow the service to be started">
+          <Button
+            size="small"
+            variant="outlined"
+            color="warning"
+            startIcon={<VisibilityIcon fontSize="small" />}
+            onClick={() => unmaskService([service.name])}
+            disabled={anyPending}
+          >
+            Unmask
+          </Button>
+        </Tooltip>
       ) : (
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<VisibilityOffIcon fontSize="small" />}
-          onClick={() => maskService([service.name])}
-          disabled={anyPending}
-        >
-          Mask
-        </Button>
+        <Tooltip title="Mask to completely prevent the service from starting">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<VisibilityOffIcon fontSize="small" />}
+            onClick={() => maskService([service.name])}
+            disabled={anyPending}
+          >
+            Mask
+          </Button>
+        </Tooltip>
       )}
     </div>
   );
