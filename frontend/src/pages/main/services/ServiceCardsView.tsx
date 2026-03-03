@@ -9,7 +9,7 @@ import {
   formatBytes,
 } from "./UnitViews";
 
-import type { Service, UnitInfo } from "@/api";
+import type { Service } from "@/api";
 import { linuxio } from "@/api";
 import { getServiceStatusColor } from "@/constants/statusColors";
 

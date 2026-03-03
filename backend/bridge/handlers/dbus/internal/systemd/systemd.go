@@ -14,7 +14,7 @@ type Client struct {
 }
 
 func New() (*Client, error) {
-	c, err := dbus.SystemBus()
+	c, err := dbus.ConnectSystemBus()
 	if err != nil {
 		return nil, err
 	}

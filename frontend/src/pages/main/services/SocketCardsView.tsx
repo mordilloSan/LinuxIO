@@ -1,7 +1,12 @@
 import React from "react";
 
 import UnitLogsCard from "./UnitLogsCard";
-import { DetailRow, UnitCardActions, UnitCardsView, UnitStatusRows } from "./UnitViews";
+import {
+  DetailRow,
+  UnitCardActions,
+  UnitCardsView,
+  UnitStatusRows,
+} from "./UnitViews";
 
 import type { Socket } from "@/api";
 import { linuxio } from "@/api";

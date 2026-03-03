@@ -10,7 +10,7 @@ func GetHostname() (result string, err error) {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
 	err = RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return err
 		}

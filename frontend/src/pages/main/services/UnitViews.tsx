@@ -493,7 +493,13 @@ export function UnitInfoPanel({
 
   return (
     <FrostedCard
-      sx={{ p: 3, height: "100%", flex: 1, display: "flex", flexDirection: "column" }}
+      sx={{
+        p: 3,
+        height: "100%",
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
       <div
         style={{
@@ -725,9 +731,7 @@ function UnitCard<T extends UnitListItem>({
           {isSelected && renderSelectedRows?.(item)}
         </div>
         {isSelected && renderActions && (
-          <div onClick={(e) => e.stopPropagation()}>
-            {renderActions(item)}
-          </div>
+          <div onClick={(e) => e.stopPropagation()}>{renderActions(item)}</div>
         )}
       </div>
     </FrostedCard>
@@ -782,7 +786,13 @@ export function UnitCardsView<T extends UnitListItem>({
   return (
     <Box display="flex" flexDirection="column" gap={3}>
       <Box display="flex" alignItems="stretch" gap={2.5}>
-        <Box sx={{ width: { xs: "100%", md: "33.33%" }, flexShrink: 0, display: "flex" }}>
+        <Box
+          sx={{
+            width: { xs: "100%", md: "33.33%" },
+            flexShrink: 0,
+            display: "flex",
+          }}
+        >
           <UnitCard
             item={expandedItem}
             isSelected={true}

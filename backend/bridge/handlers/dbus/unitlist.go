@@ -39,7 +39,7 @@ func withSystemdManager(
 	defer systemDBusMu.Unlock()
 
 	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return err
 		}
