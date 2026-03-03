@@ -6,6 +6,7 @@ import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
 import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import SecurityIcon from "@mui/icons-material/Security";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
@@ -42,6 +43,8 @@ interface ContextMenuProps {
   canCompress?: boolean;
   canExtract?: boolean;
   canRename?: boolean;
+  onOpenContainingFolder?: () => void;
+  canOpenContainingFolder?: boolean;
 }
 
 const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -66,6 +69,8 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   canCompress,
   canExtract,
   canRename,
+  onOpenContainingFolder = () => {},
+  canOpenContainingFolder = false,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const detailsDisabled =
@@ -132,6 +137,18 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       </MenuItem>
 
       <Divider />
+
+      {/* Open containing folder (search results only) */}
+      {canOpenContainingFolder && (
+        <MenuItem onClick={onOpenContainingFolder}>
+          <ListItemIcon>
+            <FolderOpenIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Open Containing Folder</ListItemText>
+        </MenuItem>
+      )}
+
+      {canOpenContainingFolder && <Divider />}
 
       {/* Selection-based actions */}
       <MenuItem onClick={onChangePermissions} disabled={!hasSelection}>

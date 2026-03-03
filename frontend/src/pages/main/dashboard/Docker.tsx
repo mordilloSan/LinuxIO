@@ -247,7 +247,8 @@ const DockerInfo: React.FC = () => {
           backgroundColor: "transparent !important",
         },
         "&:hover::-webkit-scrollbar-thumb": {
-          backgroundColor: "rgba(100, 100, 100, 0.2) !important",
+          backgroundColor:
+            "rgba(var(--mui-palette-text-secondaryChannel) / 0.2) !important",
         },
       }}
     >

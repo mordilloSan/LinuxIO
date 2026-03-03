@@ -12,7 +12,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -41,6 +41,7 @@ import { linuxio, openSmartTestStream, type Stream, type ApiDisk } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -57,6 +58,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   rawDrive,
   refetchDrives,
 }) => {
+  const theme = useTheme();
   const [tabIndex, setTabIndex] = useState(0);
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
     null,
@@ -224,7 +226,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
                   height: 8,
                 },
                 "&::-webkit-scrollbar-thumb": {
-                  backgroundColor: "rgba(100, 100, 100, 0.2)",
+                  backgroundColor: alpha(theme.palette.text.secondary, 0.2),
                   borderRadius: 8,
                   border: "2px solid transparent",
                   backgroundClip: "content-box",
@@ -234,7 +236,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
                   borderRadius: 8,
                 },
                 "&::-webkit-scrollbar-thumb:hover": {
-                  backgroundColor: "rgba(100, 100, 100, 0.45)",
+                  backgroundColor: alpha(theme.palette.text.secondary, 0.45),
                 },
               },
             }}
@@ -387,10 +389,7 @@ const DiskOverview: React.FC = () => {
                       transition: "transform 0.2s, box-shadow 0.2s",
                       cursor: "pointer",
                       ...(expanded !== drive.name && {
-                        "&:hover": {
-                          transform: "translateY(-4px)",
-                          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-                        },
+                        "&:hover": getFrostedCardLiftStyles(theme),
                       }),
                     }}
                     onClick={() => handleToggle(drive.name)}

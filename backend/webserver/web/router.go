@@ -37,8 +37,10 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 		cfg.RegisterRoutes(mux)
 	}
 
-	// WebSocket relay (protected)
-	mux.Handle("GET /ws", sm.RequireSession(http.HandlerFunc(WebSocketRelayHandler)))
+	// WebSocket relay — session validated inside wsAuthMiddleware so that auth
+	// failures are sent as WS close code 1008 ("no-session") rather than HTTP
+	// 401, which browsers cannot distinguish from a network error.
+	mux.Handle("GET /ws", wsAuthMiddleware(sm, WebSocketRelayHandler(sm)))
 
 	// Serve module static files
 	// SPA routes (no file extension) are public - React handles auth
@@ -58,6 +60,10 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 			ServeModuleFiles(w, r, cfg.UI)
 		})).ServeHTTP(w, r)
 	}))
+
+	// Container reverse proxy — session-protected
+	// Requests: /proxy/{container-name}/[...] → container's internal IP:port
+	mux.Handle("/proxy/", sm.RequireSession(http.HandlerFunc(ContainerProxyHandler)))
 
 	// Serve embedded SPA
 	mountProductionSPA(mux, cfg.UI)

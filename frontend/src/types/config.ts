@@ -1,8 +1,33 @@
+export type TableCardViewMode = "card" | "table";
+export type AppViewModes = Record<string, TableCardViewMode>;
+
+export interface ThemeColors {
+  backgroundDefault?: string;
+  backgroundPaper?: string;
+  headerBackground?: string;
+  footerBackground?: string;
+  sidebarBackground?: string;
+  cardBackground?: string;
+  dialogBorder?: string;
+  dialogGlow?: string;
+  dialogBackdrop?: string;
+  codeBackground?: string;
+  codeText?: string;
+  chartRx?: string;
+  chartTx?: string;
+  chartNeutral?: string;
+  fileBrowserSurface?: string;
+  fileBrowserChrome?: string;
+  fileBrowserBreadcrumbBackground?: string;
+  fileBrowserBreadcrumbText?: string;
+}
+
 // Backend Settings structure
 export interface BackendSettings {
   appSettings: {
     theme: string;
     primaryColor: string;
+    themeColors?: ThemeColors;
     sidebarCollapsed: boolean;
     showHiddenFiles: boolean;
     dashboardOrder?: string[];
@@ -13,8 +38,7 @@ export interface BackendSettings {
       daemon: boolean;
       resources: boolean;
     };
-    dockerContainersView?: "card" | "table";
-    dockerStacksView?: "table" | "card";
+    viewModes?: AppViewModes;
   };
   docker: {
     folder: string;
@@ -25,6 +49,7 @@ export interface BackendSettings {
 export interface AppConfig {
   theme: string;
   primaryColor: string;
+  themeColors?: ThemeColors;
   sidebarCollapsed: boolean;
   showHiddenFiles: boolean;
   dockerFolder?: string;
@@ -36,8 +61,7 @@ export interface AppConfig {
     daemon: boolean;
     resources: boolean;
   };
-  dockerContainersView?: "card" | "table";
-  dockerStacksView?: "table" | "card";
+  viewModes?: AppViewModes;
 }
 
 export interface ConfigContextType {

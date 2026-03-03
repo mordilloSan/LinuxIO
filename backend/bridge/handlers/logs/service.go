@@ -2,8 +2,10 @@ package logs
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os/exec"
@@ -17,24 +19,36 @@ import (
 
 const StreamTypeServiceLogs = "service-logs"
 
+func writeServiceLogsError(stream net.Conn, message string, code int) {
+	if err := ipc.WriteResultErrorAndClose(stream, 0, message, code); err != nil {
+		logger.Debugf("[ServiceLogs] failed to write error+close frame: %v", err)
+	}
+}
+
 // HandleServiceLogsStream streams service logs from journalctl in real-time.
 // Args: [serviceName, lines] where lines is the number of initial lines (default "100")
 func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 1 {
 		logger.Errorf("[ServiceLogs] missing service name")
-		if err := ipc.WriteStreamClose(stream, 1); err != nil {
-			logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", err)
-		}
+		writeServiceLogsError(stream, "missing service name", 400)
 		return errors.New("missing service name")
 	}
 
 	serviceName := strings.TrimSpace(args[0])
 	if serviceName == "" {
 		logger.Errorf("[ServiceLogs] empty service name")
-		if err := ipc.WriteStreamClose(stream, 1); err != nil {
-			logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", err)
-		}
+		writeServiceLogsError(stream, "empty service name", 400)
 		return errors.New("empty service name")
+	}
+	if strings.Contains(serviceName, "@.") {
+		err := fmt.Errorf("template unit %s does not have logs until instantiated", serviceName)
+		logger.Debugf("[ServiceLogs] %v", err)
+		writeServiceLogsError(
+			stream,
+			"Logs are unavailable for template unit files. Select an instantiated unit instead.",
+			400,
+		)
+		return err
 	}
 
 	lines := "100"
@@ -55,21 +69,19 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	// --no-pager: don't use a pager
 	// -o short-iso: use a compact timestamp format
 	cmd := exec.CommandContext(ctx, "journalctl", "-u", serviceName, "-n", lines, "-f", "--no-pager", "-o", "short-iso")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		logger.Errorf("[ServiceLogs] failed to create stdout pipe: %v", err)
-		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-			logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", closeErr)
-		}
+		writeServiceLogsError(stream, "Failed to prepare log stream", 500)
 		return err
 	}
 
 	if err := cmd.Start(); err != nil {
 		logger.Errorf("[ServiceLogs] failed to start journalctl: %v", err)
-		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-			logger.Debugf("[ServiceLogs] failed to write stream close frame: %v", closeErr)
-		}
+		writeServiceLogsError(stream, "Failed to start log stream", 500)
 		return err
 	}
 
@@ -83,6 +95,7 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 
 	// Stream journalctl output to client
 	reader := bufio.NewReader(stdout)
+	sentData := false
 	for {
 		// Check if context was cancelled
 		select {
@@ -113,6 +126,7 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 			StreamID: 1,
 			Payload:  []byte(line),
 		}
+		sentData = true
 		if err := ipc.WriteRelayFrame(stream, frame); err != nil {
 			break
 		}
@@ -121,6 +135,14 @@ func HandleServiceLogsStream(sess *session.Session, stream net.Conn, args []stri
 	// Wait for command to finish
 	if err := cmd.Wait(); err != nil {
 		logger.Debugf("[ServiceLogs] journalctl exited with error: %v", err)
+		if ctx.Err() == nil && !sentData {
+			message := strings.TrimSpace(stderr.String())
+			if message == "" {
+				message = "Failed to load service logs"
+			}
+			writeServiceLogsError(stream, message, 500)
+			return err
+		}
 	}
 
 	if err := ipc.WriteStreamClose(stream, 1); err != nil {

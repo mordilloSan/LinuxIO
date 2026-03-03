@@ -10,8 +10,10 @@ import TableChartIcon from "@mui/icons-material/TableChart";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import TextFieldsIcon from "@mui/icons-material/TextFields";
 import VideocamIcon from "@mui/icons-material/Videocam";
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
+
+import { FILE_TYPE_COLORS } from "@/constants/fileTypeColors";
 
 interface FileIconProps {
   isDirectory: boolean;
@@ -90,13 +92,12 @@ const getIconForType = (filename?: string) => {
 
 const getIconColor = (
   filename: string | undefined,
-  hidden: boolean,
-  isDark: boolean,
+  defaultColor: string,
 ): string => {
-  if (!filename) return isDark ? "#ffffff" : "rgba(0, 0, 0, 0.6)";
+  if (!filename) return defaultColor;
 
   const lastDotIndex = filename.lastIndexOf(".");
-  if (lastDotIndex === -1) return isDark ? "#ffffff" : "rgba(0, 0, 0, 0.6)";
+  if (lastDotIndex === -1) return defaultColor;
 
   const ext = filename.slice(lastDotIndex + 1).toLowerCase();
 
@@ -122,53 +123,53 @@ const getIconColor = (
       "css",
     ].includes(ext)
   ) {
-    return "#f9a825";
+    return FILE_TYPE_COLORS.code;
   }
 
   // PDF - red
-  if (ext === "pdf") return "#d32f2f";
+  if (ext === "pdf") return FILE_TYPE_COLORS.pdf;
 
   // Images - purple
   if (
     ["png", "jpg", "jpeg", "gif", "svg", "bmp", "ico", "webp"].includes(ext)
   ) {
-    return "#7b1fa2";
+    return FILE_TYPE_COLORS.image;
   }
 
   // Video - pink
   if (["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"].includes(ext)) {
-    return "#c2185b";
+    return FILE_TYPE_COLORS.video;
   }
 
   // Audio - teal
   if (["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma"].includes(ext)) {
-    return "#00897b";
+    return FILE_TYPE_COLORS.audio;
   }
 
   // Archives - orange
   if (["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].includes(ext)) {
-    return "#f57c00";
+    return FILE_TYPE_COLORS.archive;
   }
 
   // Spreadsheets - green
   if (["xls", "xlsx", "csv", "ods"].includes(ext)) {
-    return "#388e3c";
+    return FILE_TYPE_COLORS.spreadsheet;
   }
 
   // Documents - blue
   if (
     ["doc", "docx", "odt", "rtf", "txt", "md", "markdown", "log"].includes(ext)
   ) {
-    return "#1976d2";
+    return FILE_TYPE_COLORS.document;
   }
 
   // Executables - red/dark
   if (["exe", "bin", "app", "dmg"].includes(ext)) {
-    return "#b71c1c";
+    return FILE_TYPE_COLORS.executable;
   }
 
   // Default
-  return isDark ? "#ffffff" : "rgba(0, 0, 0, 0.6)";
+  return defaultColor;
 };
 
 const FileIcon = React.memo(
@@ -181,9 +182,13 @@ const FileIcon = React.memo(
   }: FileIconProps) => {
     const theme = useTheme();
     const IconComponent = isDirectory ? FolderIcon : getIconForType(filename);
+    const defaultIconColor =
+      theme.palette.mode === "dark"
+        ? theme.palette.common.white
+        : alpha(theme.palette.common.black, 0.6);
     const iconColor = isDirectory
       ? theme.palette.primary.main
-      : getIconColor(filename, hidden || false, theme.palette.mode === "dark");
+      : getIconColor(filename, defaultIconColor);
     const wrapperOpacity = hidden ? 0.25 : 1;
     const iconProps = {
       sx: {
@@ -224,11 +229,11 @@ const FileIcon = React.memo(
           sx={{
             position: "absolute",
             fontSize: size * 0.35,
-            color: "#b0b0b0",
+            color: theme.palette.text.secondary,
             bottom: isDirectory ? "20%" : "10%",
             right: isDirectory ? "10%" : "15%",
             transform: "rotate(-45deg)",
-            filter: "drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.5))",
+            filter: `drop-shadow(0px 1px 2px ${alpha(theme.palette.common.black, 0.5)})`,
           }}
         />
       </div>

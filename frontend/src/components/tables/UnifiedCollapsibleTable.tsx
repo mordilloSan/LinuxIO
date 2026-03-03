@@ -11,6 +11,7 @@ import {
   Collapse,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
 
@@ -27,9 +28,12 @@ interface UnifiedCollapsibleTableProps<T> {
   columns: UnifiedTableColumn[];
   getRowKey: (row: T, index: number) => string | number;
   renderMainRow: (row: T, index: number) => React.ReactNode;
-  renderExpandedContent: (row: T, index: number) => React.ReactNode;
+  renderExpandedContent?: (row: T, index: number) => React.ReactNode;
   renderFirstCell?: (row: T, index: number) => React.ReactNode;
   renderHeaderFirstCell?: () => React.ReactNode;
+  onRowClick?: (row: T, index: number) => void;
+  onRowDoubleClick?: (row: T, index: number) => void;
+  selectedKey?: string | number | null;
   emptyMessage?: string;
 }
 
@@ -41,6 +45,9 @@ function UnifiedCollapsibleTable<T>({
   renderExpandedContent,
   renderFirstCell,
   renderHeaderFirstCell,
+  onRowClick,
+  onRowDoubleClick,
+  selectedKey,
   emptyMessage = "No data available.",
 }: UnifiedCollapsibleTableProps<T>) {
   const [expanded, setExpanded] = useState<string | number | null>(null);
@@ -63,10 +70,7 @@ function UnifiedCollapsibleTable<T>({
             <TableRow
               sx={(theme) => ({
                 "& .MuiTableCell-root": { borderBottom: "none" },
-                backgroundColor:
-                  theme.palette.mode === "dark"
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(0,0,0,0.08)",
+                backgroundColor: alpha(theme.palette.text.primary, 0.08),
                 borderRadius: "6px",
                 boxShadow: "none",
               })}
@@ -92,7 +96,7 @@ function UnifiedCollapsibleTable<T>({
                   {column.headerName}
                 </TableCell>
               ))}
-              <TableCell width="40px" />
+              {renderExpandedContent && <TableCell width="40px" />}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -103,14 +107,32 @@ function UnifiedCollapsibleTable<T>({
               return (
                 <React.Fragment key={rowKey}>
                   <TableRow
+                    onClick={() => onRowClick?.(row, index)}
+                    onDoubleClick={() => onRowDoubleClick?.(row, index)}
                     sx={(theme) => ({
                       "& .MuiTableCell-root": { borderBottom: "none" },
+                      cursor:
+                        onRowClick || onRowDoubleClick ? "pointer" : "default",
                       backgroundColor:
-                        index % 2 === 0
-                          ? "transparent"
-                          : theme.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.04)"
-                            : "rgba(0,0,0,0.05)",
+                        rowKey === selectedKey
+                          ? alpha(
+                              theme.palette.primary.main,
+                              theme.palette.mode === "dark" ? 0.15 : 0.1,
+                            )
+                          : index % 2 === 0
+                            ? "transparent"
+                            : alpha(
+                                theme.palette.text.primary,
+                                theme.palette.mode === "dark" ? 0.04 : 0.05,
+                              ),
+                      "&:hover": onRowClick
+                        ? {
+                            backgroundColor: alpha(
+                              theme.palette.primary.main,
+                              0.08,
+                            ),
+                          }
+                        : undefined,
                       "@media (max-width: 600px)": {
                         "& .MuiTableCell-root": {
                           fontSize: "0.75rem",
@@ -128,56 +150,64 @@ function UnifiedCollapsibleTable<T>({
                       </TableCell>
                     )}
                     {renderMainRow(row, index)}
-                    <TableCell>
-                      <IconButton
-                        size="small"
-                        onClick={() => setExpanded(isExpanded ? null : rowKey)}
-                      >
-                        <ExpandMoreIcon
-                          style={{
-                            transform: isExpanded
-                              ? "rotate(180deg)"
-                              : "rotate(0deg)",
-                            transition: "0.2s",
-                          }}
-                        />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow
-                    sx={{
-                      "& .MuiTableCell-root": { borderBottom: "none" },
-                      backgroundColor: "transparent",
-                    }}
-                  >
-                    <TableCell
-                      style={{ paddingBottom: 0, paddingTop: 0 }}
-                      colSpan={columns.length + (renderFirstCell ? 2 : 1)}
-                    >
-                      <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                        <Box
-                          component={motion.div}
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          sx={{
-                            margin: 2,
-                            borderRadius: 2,
-                            p: 2,
-                            bgcolor: (theme) =>
-                              theme.palette.mode === "dark"
-                                ? "rgba(255,255,255,0.05)"
-                                : "rgba(0,0,0,0.03)",
-                            overflowX: "auto",
-                            "@media (max-width: 600px)": {
-                              fontSize: "0.85rem",
-                            },
+                    {renderExpandedContent && (
+                      <TableCell>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpanded(isExpanded ? null : rowKey);
                           }}
                         >
-                          {renderExpandedContent(row, index)}
-                        </Box>
-                      </Collapse>
-                    </TableCell>
+                          <ExpandMoreIcon
+                            style={{
+                              transform: isExpanded
+                                ? "rotate(180deg)"
+                                : "rotate(0deg)",
+                              transition: "0.2s",
+                            }}
+                          />
+                        </IconButton>
+                      </TableCell>
+                    )}
                   </TableRow>
+                  {renderExpandedContent && (
+                    <TableRow
+                      sx={{
+                        "& .MuiTableCell-root": { borderBottom: "none" },
+                        backgroundColor: "transparent",
+                      }}
+                    >
+                      <TableCell
+                        style={{ paddingBottom: 0, paddingTop: 0 }}
+                        colSpan={columns.length + (renderFirstCell ? 2 : 1)}
+                      >
+                        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                          <Box
+                            component={motion.div}
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            sx={{
+                              margin: 2,
+                              borderRadius: 2,
+                              p: 2,
+                              bgcolor: (theme) =>
+                                alpha(
+                                  theme.palette.text.primary,
+                                  theme.palette.mode === "dark" ? 0.05 : 0.03,
+                                ),
+                              overflowX: "auto",
+                              "@media (max-width: 600px)": {
+                                fontSize: "0.85rem",
+                              },
+                            }}
+                          >
+                            {renderExpandedContent(row, index)}
+                          </Box>
+                        </Collapse>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </React.Fragment>
               );
             })}

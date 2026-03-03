@@ -1,3 +1,4 @@
+import { alpha, useTheme } from "@mui/material/styles";
 import React, { useEffect, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
 
@@ -6,16 +7,17 @@ interface NetworkGraphProps {
   tx: number;
 }
 
-const RX_COLOR = "#8884d8";
-const TX_COLOR = "#82ca9d";
-
 const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
+  const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<SmoothieChart | null>(null);
   const rxSeriesRef = useRef<TimeSeries>(new TimeSeries());
   const txSeriesRef = useRef<TimeSeries>(new TimeSeries());
   const rxRef = useRef(rx);
   const txRef = useRef(tx);
+  const rxColor = theme.chart.rx;
+  const txColor = theme.chart.tx;
+  const chartNeutral = theme.chart.neutral;
 
   useEffect(() => {
     rxRef.current = rx;
@@ -32,20 +34,20 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
       interpolation: "bezier",
       grid: {
         fillStyle: "transparent",
-        strokeStyle: "rgba(128, 128, 128, 0.15)",
+        strokeStyle: alpha(chartNeutral, 0.15),
         verticalSections: 4,
         millisPerLine: 0,
         borderVisible: false,
       },
       labels: { disabled: true },
       tooltip: true,
-      tooltipLine: { strokeStyle: "rgba(128, 128, 128, 0.4)", lineWidth: 1 },
+      tooltipLine: { strokeStyle: alpha(chartNeutral, 0.4), lineWidth: 1 },
       tooltipFormatter: (
         _timestamp: number,
         data: { series: TimeSeries; index: number; value: number }[],
       ) => {
         const labels = ["Rx", "Tx"];
-        const colors = [RX_COLOR, TX_COLOR];
+        const colors = [rxColor, txColor];
         return data
           .map(
             (d, i) =>
@@ -59,13 +61,13 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
     });
 
     chart.addTimeSeries(rxSeriesRef.current, {
-      strokeStyle: RX_COLOR,
-      fillStyle: `${RX_COLOR}18`,
+      strokeStyle: rxColor,
+      fillStyle: alpha(rxColor, 0.09),
       lineWidth: 2,
     });
     chart.addTimeSeries(txSeriesRef.current, {
-      strokeStyle: TX_COLOR,
-      fillStyle: `${TX_COLOR}18`,
+      strokeStyle: txColor,
+      fillStyle: alpha(txColor, 0.09),
       lineWidth: 2,
     });
 
@@ -96,7 +98,7 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
       chart.stop();
       canvas.removeEventListener("mousemove", onMove);
     };
-  }, []);
+  }, [chartNeutral, rxColor, txColor]);
 
   return (
     <div
@@ -123,10 +125,10 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({ rx, tx }) => {
           whiteSpace: "nowrap",
         }}
       >
-        <div style={{ color: RX_COLOR, fontWeight: 600 }}>
+        <div style={{ color: rxColor, fontWeight: 600 }}>
           Rx: {rx.toFixed(2)} kB/s
         </div>
-        <div style={{ color: TX_COLOR, fontWeight: 600 }}>
+        <div style={{ color: txColor, fontWeight: 600 }}>
           Tx: {tx.toFixed(2)} kB/s
         </div>
       </div>

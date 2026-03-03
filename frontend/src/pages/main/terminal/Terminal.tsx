@@ -342,26 +342,26 @@ const TerminalXTerm: React.FC = () => {
         {/* Font Size Controls */}
         <Typography
           variant="body2"
-          sx={{ color: "#82909e", fontWeight: 500, mr: 2 }}
+          sx={{ color: "text.secondary", fontWeight: 500, mr: 2 }}
         >
           Font
         </Typography>
         <IconButton
           size="small"
-          sx={{ color: "#82909e" }}
+          sx={{ color: "text.secondary" }}
           onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
         >
           <Minus size={18} />
         </IconButton>
         <Typography
           variant="body2"
-          sx={{ minWidth: 28, textAlign: "center", color: "#82909e" }}
+          sx={{ minWidth: 28, textAlign: "center", color: "text.secondary" }}
         >
           {fontSize}
         </Typography>
         <IconButton
           size="small"
-          sx={{ color: "#82909e" }}
+          sx={{ color: "text.secondary" }}
           onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
         >
           <Plus size={18} />
@@ -372,7 +372,7 @@ const TerminalXTerm: React.FC = () => {
         {/* Reset Button */}
         <IconButton
           size="small"
-          sx={{ color: "#82909e", ml: 1 }}
+          sx={{ color: "text.secondary", ml: 1 }}
           onClick={handleReset}
           title="Reset Terminal"
         >

@@ -8,6 +8,7 @@ import {
   InputAdornment,
   TextField,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -41,13 +42,15 @@ const fieldSx = (theme: any) => ({
 
   "& .MuiOutlinedInput-root": {
     borderRadius: 3,
-    backgroundColor: "rgba(15,23,42,0.65)",
+    backgroundColor: alpha(theme.palette.background.default, 0.65),
     transition: "box-shadow 0.2s ease, border-color 0.2s ease",
-    "& fieldset": { borderColor: "rgba(148,163,184,0.3)" },
-    "&:hover fieldset": { borderColor: "rgba(148,163,184,0.55)" },
+    "& fieldset": { borderColor: alpha(theme.palette.text.secondary, 0.3) },
+    "&:hover fieldset": {
+      borderColor: alpha(theme.palette.text.secondary, 0.55),
+    },
     "&.Mui-focused fieldset": { borderColor: theme.palette.primary.main },
     "&.Mui-focused": {
-      boxShadow: "0 0 0 3px rgba(64,122,214,0.35)",
+      boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.35)}`,
     },
   },
 
@@ -100,8 +103,9 @@ function LogIn() {
           sx={{
             mb: 2,
             borderRadius: 2,
-            border: "1px solid rgba(249,115,22,0.35)",
-            backgroundColor: "rgba(249,115,22,0.18)",
+            border: (theme) =>
+              `1px solid ${alpha(theme.palette.warning.main, 0.35)}`,
+            backgroundColor: (theme) => alpha(theme.palette.warning.main, 0.18),
             color: "text.primary",
             ...revealSx(60),
           }}
@@ -167,11 +171,11 @@ function LogIn() {
             letterSpacing: "0.02em",
             backgroundImage:
               "linear-gradient(135deg, var(--accent), var(--accent-soft))",
-            boxShadow: "0 18px 40px -26px rgba(64,122,214,0.75)",
+            boxShadow: `0 18px 40px -26px ${alpha(theme.palette.primary.main, 0.75)}`,
             "&:hover": {
               backgroundImage:
                 "linear-gradient(135deg, var(--accent-strong), var(--accent))",
-              boxShadow: "0 22px 46px -28px rgba(64,122,214,0.9)",
+              boxShadow: `0 22px 46px -28px ${alpha(theme.palette.primary.main, 0.9)}`,
             },
             "&:active": { transform: "translateY(1px)" },
             [theme.breakpoints.down("md")]: {

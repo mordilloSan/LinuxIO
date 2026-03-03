@@ -38,13 +38,13 @@ const breadcrumbStyles = `
     align-items: center;
     justify-content: center;
     height: 3.25em;
-    background: light-dark(#d0d4d8, #283136);
+    background: var(--linuxio-filebrowser-breadcrumb-bg);
     text-align: center;
     padding: 0 1em;
     padding-left: 2em;
     position: relative;
     text-decoration: none;
-    color: light-dark(#5a5a5a, var(--mui-palette-text-primary));
+    color: var(--linuxio-filebrowser-breadcrumb-text);
     border: none;
     border-radius: 0;
     cursor: pointer;
@@ -57,7 +57,7 @@ const breadcrumbStyles = `
     content: "";
     border-top: 1.625em solid transparent;
     border-bottom: 1.625em solid transparent;
-    border-left: 1em solid light-dark(#d0d4d8, #283136);
+    border-left: 1em solid var(--linuxio-filebrowser-breadcrumb-bg);
     position: absolute;
     right: -1em;
     top: 0;
@@ -155,15 +155,15 @@ const breadcrumbStyles = `
     padding: 0.35em 0.75em;
     max-width: 8.5em;
     border-radius: 0.75em;
-    background: color-mix(in srgb, #253137, transparent 67%);
+    background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 67%);
   }
 
   [data-mui-color-scheme="dark"] .linuxio-gallery-size {
-    background: color-mix(in srgb, #253137, transparent 67%);
+    background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 67%);
   }
 
   [data-mui-color-scheme="light"] .linuxio-gallery-size {
-    background: color-mix(in srgb, #253137, transparent 92%);
+    background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 92%);
   }
 
   .linuxio-range-input {
@@ -252,9 +252,19 @@ const FilebrowserBreadcrumbs: React.FC<FilebrowserBreadcrumbsProps> = ({
   }, [isMobile, normalizedPath]);
 
   const handleHome = () => onNavigate("/");
+  const cssVars = {
+    "--linuxio-filebrowser-breadcrumb-bg":
+      theme.fileBrowser.breadcrumbBackground,
+    "--linuxio-filebrowser-breadcrumb-text": theme.fileBrowser.breadcrumbText,
+    "--linuxio-filebrowser-chrome": theme.fileBrowser.chrome,
+  } as React.CSSProperties;
 
   return (
-    <div id="breadcrumbs" className="linuxio-breadcrumb-container">
+    <div
+      id="breadcrumbs"
+      className="linuxio-breadcrumb-container"
+      style={cssVars}
+    >
       <ul className="linuxio-breadcrumb-list">
         <li className="linuxio-breadcrumb-list-item">
           <button

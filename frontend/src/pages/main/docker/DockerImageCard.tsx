@@ -7,6 +7,7 @@ import {
   Collapse,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { useMemo, useState } from "react";
 
 import { cardBorderRadius } from "@/constants";
@@ -50,7 +51,8 @@ export default function CollapsibleCard<T extends Record<string, any>>({
         transformOrigin: "left center", // scale out from the accent
         "&:hover": {
           transform: "scale(1.005)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          boxShadow:
+            "0 8px 24px rgba(var(--mui-palette-common-blackChannel) / 0.35)",
         },
       }}
     >
@@ -61,9 +63,10 @@ export default function CollapsibleCard<T extends Record<string, any>>({
           inset: 0,
           borderRadius: cardBorderRadius,
           backgroundColor: (t) =>
-            t.palette.mode === "dark"
-              ? "rgba(255,255,255,0.08)"
-              : "rgba(0,0,0,0.05)",
+            alpha(
+              t.palette.text.primary,
+              t.palette.mode === "dark" ? 0.08 : 0.05,
+            ),
           backdropFilter: (t) =>
             t.palette.mode === "dark" ? "blur(12px)" : "blur(6px)",
           zIndex: 0,

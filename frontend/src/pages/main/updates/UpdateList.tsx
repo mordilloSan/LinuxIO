@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { Update } from "@/types/update";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -110,13 +111,12 @@ const UpdateList: React.FC<Props> = ({
         <Grid key={idx} size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}>
           <FrostedCard
             variant="outlined"
-            sx={{
+            sx={(theme) => ({
               transition: "transform 0.2s, box-shadow 0.2s",
               "&:hover": {
-                transform: "translateY(-4px)",
-                boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                ...getFrostedCardLiftStyles(theme),
               },
-            }}
+            })}
           >
             <CardContent>
               <Box

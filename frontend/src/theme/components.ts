@@ -59,6 +59,10 @@ const components = {
       ".custom-scrollbar::-webkit-scrollbar-thumb:hover": {
         backgroundColor: "rgba(100, 100, 100, 0.45) !important",
       },
+      /* Service card detail rows — remove border from last row */
+      ".svc-detail-row:last-child": {
+        borderBottom: "none",
+      },
 
       /* xterm.js 6.0 custom scrollbar */
       ".xterm .scrollbar": {

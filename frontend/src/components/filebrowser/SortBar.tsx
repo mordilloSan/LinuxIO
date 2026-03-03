@@ -3,6 +3,8 @@ import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import { Box, Typography, useTheme } from "@mui/material";
 import React from "react";
 
+import { getSubtleDividerColor } from "@/theme/surfaces";
+
 export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
 
@@ -56,8 +58,8 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
       sx={{
         display: "grid",
         gridTemplateColumns: columnTemplate,
-        backgroundColor: theme.palette.mode === "dark" ? "#20292f" : "#ffffff",
-        border: `0.1px solid ${theme.palette.mode === "dark" ? "color-mix(in srgb, var(--mui-palette-divider), transparent 85%)" : "color-mix(in srgb, var(--mui-palette-divider), transparent 90%)"}`,
+        backgroundColor: theme.fileBrowser.surface,
+        border: `1px solid ${getSubtleDividerColor(theme)}`,
         borderRadius: 2,
       }}
     >

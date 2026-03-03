@@ -98,6 +98,24 @@ func RegisterHandlers() {
 		return emit.Result(history)
 	})
 
+	// Timer management
+	ipc.RegisterFunc("dbus", "list_timers", func(ctx context.Context, args []string, emit ipc.Events) error {
+		timers, err := ListTimers()
+		if err != nil {
+			return err
+		}
+		return emit.Result(timers)
+	})
+
+	// Socket management
+	ipc.RegisterFunc("dbus", "list_sockets", func(ctx context.Context, args []string, emit ipc.Events) error {
+		sockets, err := ListSockets()
+		if err != nil {
+			return err
+		}
+		return emit.Result(sockets)
+	})
+
 	// Service management
 	ipc.RegisterFunc("dbus", "list_services", func(ctx context.Context, args []string, emit ipc.Events) error {
 		services, err := ListServices()
@@ -107,11 +125,11 @@ func RegisterHandlers() {
 		return emit.Result(services)
 	})
 
-	ipc.RegisterFunc("dbus", "get_service_info", func(ctx context.Context, args []string, emit ipc.Events) error {
+	ipc.RegisterFunc("dbus", "get_unit_info", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
 			return ipc.ErrInvalidArgs
 		}
-		info, err := GetServiceInfo(args[0])
+		info, err := GetUnitInfo(args[0])
 		if err != nil {
 			return err
 		}

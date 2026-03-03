@@ -15,6 +15,29 @@ const customBlue = {
 
 const defaultVariant: VariantType = {
   name: "LIGHT",
+  card: {
+    background: "#FFFFFF",
+  },
+  dialog: {
+    border: "#FFFFFF",
+    glow: "#FFFFFF",
+    backdrop: "#000000",
+  },
+  codeBlock: {
+    background: "#F5F5F5",
+    color: "#333333",
+  },
+  chart: {
+    rx: "#8884D8",
+    tx: "#82CA9D",
+    neutral: "#808080",
+  },
+  fileBrowser: {
+    surface: "#FFFFFF",
+    chrome: "#253137",
+    breadcrumbBackground: "#D0D4D8",
+    breadcrumbText: "#5A5A5A",
+  },
   palette: {
     mode: "light",
     primary: {
@@ -58,10 +81,6 @@ const defaultVariant: VariantType = {
         color: customBlue[800],
       },
     },
-    footer: {
-      color: grey[800],
-      background: "#F7F9FC",
-    },
     badge: {
       color: grey[800],
       background: customBlue[500],
@@ -72,6 +91,29 @@ const defaultVariant: VariantType = {
 const darkVariant: VariantType = {
   ...defaultVariant,
   name: "DARK",
+  card: {
+    background: "#11192A",
+  },
+  dialog: {
+    border: "#FFFFFF",
+    glow: "#FFFFFF",
+    backdrop: "#000000",
+  },
+  codeBlock: {
+    background: "#1E1E1E",
+    color: "#D4D4D4",
+  },
+  chart: {
+    rx: "#8884D8",
+    tx: "#82CA9D",
+    neutral: "#808080",
+  },
+  fileBrowser: {
+    surface: "#20292F",
+    chrome: "#253137",
+    breadcrumbBackground: "#283136",
+    breadcrumbText: "#FFFFFF",
+  },
   palette: {
     ...defaultVariant.palette,
     mode: "dark",
@@ -105,11 +147,6 @@ const darkVariant: VariantType = {
       background: "#1B2635",
       brand: { color: customBlue[500] },
     },
-    footer: {
-      ...defaultVariant.sidebar.footer,
-      color: grey[200],
-      background: "#1E2A38",
-    },
     badge: {
       ...defaultVariant.sidebar.badge,
       color: "#FFF",
@@ -124,6 +161,29 @@ export default variants;
 
 export interface VariantType {
   name: string;
+  card: {
+    background: string;
+  };
+  dialog: {
+    border: string;
+    glow: string;
+    backdrop: string;
+  };
+  codeBlock: {
+    background: string;
+    color: string;
+  };
+  chart: {
+    rx: string;
+    tx: string;
+    neutral: string;
+  };
+  fileBrowser: {
+    surface: string;
+    chrome: string;
+    breadcrumbBackground: string;
+    breadcrumbText: string;
+  };
   palette: {
     mode: "light" | "dark";
     primary: MainContrastTextType;
@@ -152,7 +212,6 @@ export interface VariantType {
         color: string;
       };
     };
-    footer: ColorBgType;
     badge: ColorBgType;
   };
 }

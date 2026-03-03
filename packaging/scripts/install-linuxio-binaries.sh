@@ -241,12 +241,6 @@ install_pam_config() {
 
     local pam_file="${PAM_DIR}/linuxio"
 
-    # Backup existing PAM config if it exists
-    if [[ -f "$pam_file" ]]; then
-        log_info "Backing up existing PAM config..."
-        cp "$pam_file" "${pam_file}.bak.$(date +%Y%m%d%H%M%S)"
-    fi
-
     log_info "Downloading PAM configuration..."
     if ! curl -fsSL "${RAW_BASE}/etc/pam.d/linuxio" -o "$pam_file"; then
         log_error "Failed to download PAM configuration"

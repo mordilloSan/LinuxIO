@@ -17,7 +17,7 @@ type Login1Manager struct {
 // NewLogin1Manager connects to system D-Bus and prepares the login1 interface.
 // Note: Caller must hold systemDBusMu lock if needed.
 func NewLogin1Manager(context.Context) (*Login1Manager, error) {
-	conn, err := godbus.SystemBus()
+	conn, err := godbus.ConnectSystemBus()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
 	}

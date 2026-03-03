@@ -294,7 +294,68 @@ export interface Service {
   load_state: string;
   active_state: string;
   sub_state: string;
+  unit_file_state: string;
+  active_enter_timestamp: number;
+  inactive_enter_timestamp: number;
   [key: string]: unknown;
+}
+
+export interface UnitInfo {
+  Id?: string;
+  Description?: string;
+  LoadState?: string;
+  ActiveState?: string;
+  SubState?: string;
+  UnitFileState?: string;
+  FragmentPath?: string;
+  ActiveEnterTimestamp?: number;
+  InactiveEnterTimestamp?: number;
+  Requires?: string[];
+  Wants?: string[];
+  WantedBy?: string[];
+  Before?: string[];
+  After?: string[];
+  Conflicts?: string[];
+  PartOf?: string[];
+  TriggeredBy?: string[];
+  MainPID?: number;
+  MemoryCurrent?: number;
+  ExecMainStatus?: number;
+  NextElapseUSec?: number;
+  LastTriggerUSec?: number;
+  Unit?: string;
+  Listen?: string[];
+  NConnections?: number;
+  NAccepted?: number;
+  [key: string]: unknown;
+}
+
+export interface Timer {
+  name: string;
+  description?: string;
+  load_state: string;
+  active_state: string;
+  sub_state: string;
+  unit_file_state: string;
+  active_enter_timestamp: number;
+  inactive_enter_timestamp: number;
+  next_elapse_usec: number;
+  last_trigger_usec: number;
+  unit: string;
+}
+
+export interface Socket {
+  name: string;
+  description?: string;
+  load_state: string;
+  active_state: string;
+  sub_state: string;
+  unit_file_state: string;
+  active_enter_timestamp: number;
+  inactive_enter_timestamp: number;
+  listen: string[];
+  n_connections: number;
+  n_accepted: number;
 }
 
 export interface UpgradeItem {
@@ -562,12 +623,6 @@ export interface ConfigSetResult {
   path: string;
 }
 
-export interface DockerConfigSetResult {
-  message: string;
-  path: string;
-  appliedFolder: string;
-}
-
 export interface DirectoryValidationResult {
   valid: boolean;
   exists: boolean;
@@ -689,6 +744,22 @@ export interface LinuxIOSchema {
         spaceReclaimed: number;
       };
     };
+    get_caddy_status: {
+      args: [];
+      result: {
+        enabled: boolean;
+        baseDomain: string;
+        running: boolean;
+        routes: Array<{ host: string; container: string; port: string }>;
+      };
+    };
+    enable_caddy: { args: []; result: { message: string } };
+    disable_caddy: { args: []; result: { message: string } };
+    reload_caddy: { args: []; result: { message: string } };
+    connect_to_proxy: {
+      args: [containerId: string];
+      result: { message: string };
+    };
   };
 
   dbus: {
@@ -709,7 +780,9 @@ export interface LinuxIOSchema {
     };
     get_update_history: { args: []; result: UpdateHistoryRow[] };
     list_services: { args: []; result: Service[] };
-    get_service_info: { args: [serviceName: string]; result: Service };
+    get_unit_info: { args: [unitName: string]; result: UnitInfo };
+    list_timers: { args: []; result: Timer[] };
+    list_sockets: { args: []; result: Socket[] };
     get_service_logs: {
       args: [serviceName: string, lines: string];
       result: string[];
@@ -786,11 +859,6 @@ export interface LinuxIOSchema {
   config: {
     get: { args: []; result: ConfigSettings };
     set: { args: [payload: string]; result: ConfigSetResult };
-    docker_config_get: { args: []; result: { folder: string } };
-    docker_config_set: {
-      args: [payload: string];
-      result: DockerConfigSetResult;
-    };
   };
 
   control: {

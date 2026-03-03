@@ -16,12 +16,17 @@ import createTheme from "@/theme";
 function AuthedThemeShell({ children }: PropsWithChildren) {
   const [themeName] = useConfigValue("theme");
   const [primaryColorName] = useConfigValue("primaryColor");
+  const [themeColors] = useConfigValue("themeColors");
   const isLoaded = useConfigReady();
 
   const muiTheme = useMemo(
     () =>
-      createTheme(String(themeName), primaryColorName as string | undefined),
-    [themeName, primaryColorName],
+      createTheme(
+        String(themeName),
+        primaryColorName as string | undefined,
+        themeColors,
+      ),
+    [themeName, primaryColorName, themeColors],
   );
 
   if (!isLoaded) return <PageLoader />;

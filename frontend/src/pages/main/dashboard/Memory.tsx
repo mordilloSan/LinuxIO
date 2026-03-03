@@ -1,4 +1,5 @@
 import { Typography, Box } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -13,6 +14,7 @@ const calculatePercentage = (used: number, total: number) =>
   ((used / total) * 100).toFixed(2);
 
 const MemoryUsage = () => {
+  const theme = useTheme();
   const {
     data: memoryData,
     isPending,
@@ -36,7 +38,11 @@ const MemoryUsage = () => {
     ) : (
       <GradientCircularGauge
         value={ramUsagePercentage}
-        gradientColors={["#82ca9d", "#eab308", "#ef4444"]}
+        gradientColors={[
+          theme.chart.tx,
+          theme.palette.warning.main,
+          theme.palette.error.main,
+        ]}
         size={108}
         thickness={9.8}
         showPercentage={true}

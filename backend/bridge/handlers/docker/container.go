@@ -23,9 +23,10 @@ type Metrics struct {
 
 type ContainerWithMetrics struct {
 	types.Container
-	Metrics *Metrics `json:"metrics,omitempty"`
-	Icon    string   `json:"icon,omitempty"`
-	URL     string   `json:"url,omitempty"`
+	Metrics   *Metrics `json:"metrics,omitempty"`
+	Icon      string   `json:"icon,omitempty"`
+	URL       string   `json:"url,omitempty"`
+	ProxyPort string   `json:"proxyPort,omitempty"`
 }
 
 // List all containers with metrics
@@ -105,9 +106,10 @@ func ListContainers() (any, error) {
 			}
 		}
 
-		// Extract icon and URL from container labels
+		// Extract icon, URL, and proxy labels
 		containerIcon := ctr.Labels["io.linuxio.container.icon"]
 		containerURL := ctr.Labels["io.linuxio.container.url"]
+		proxyPort := ctr.Labels[ProxyPortLabel]
 
 		// Determine best name for icon resolution
 		var iconName string
@@ -137,11 +139,22 @@ func ListContainers() (any, error) {
 		// Resolve icon with fallback to determined name
 		iconIdentifier := ResolveIconIdentifier(containerIcon, iconName)
 
+		// If proxy port is set and no explicit URL, auto-generate a path-proxy URL
+		resolvedURL := containerURL
+		if resolvedURL == "" && proxyPort != "" && iconName != "" {
+			resolvedURL = "/proxy/" + iconName + "/"
+			// Connect the container to linuxio-docker so the webserver can reach it
+			if ctr.State == "running" {
+				ConnectToProxyNetwork(ctr.ID)
+			}
+		}
+
 		enriched = append(enriched, ContainerWithMetrics{
 			Container: ctr,
 			Metrics:   metrics,
 			Icon:      iconIdentifier,
-			URL:       containerURL,
+			URL:       resolvedURL,
+			ProxyPort: proxyPort,
 		})
 	}
 

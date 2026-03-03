@@ -1,5 +1,6 @@
 // src/pages/auth/Login.tsx
 import { Box, Paper, Stack, Typography } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import React from "react";
 
@@ -25,17 +26,16 @@ const Login: React.FC = () => {
       }}
     >
       <Box
-        sx={{
+        sx={(theme) => ({
           position: "absolute",
           top: { xs: -80, sm: -96 },
           left: "50%",
           px: { xs: 2, sm: 2.5 },
           py: { xs: 1.05, sm: 1.25 },
           borderRadius: 999,
-          border: "1px solid rgba(148,163,184,0.25)",
-          background:
-            "linear-gradient(160deg, rgba(35,48,68,0.95) 0%, rgba(15,23,42,0.92) 100%)",
-          boxShadow: "0 24px 54px -36px rgba(0,0,0,0.85)",
+          border: `1px solid ${alpha(theme.palette.text.secondary, 0.25)}`,
+          background: `linear-gradient(160deg, ${alpha(theme.palette.background.paper, 0.95)} 0%, ${alpha(theme.palette.background.default, 0.92)} 100%)`,
+          boxShadow: `0 24px 54px -36px ${alpha(theme.palette.common.black, 0.85)}`,
           display: "inline-flex",
           alignItems: "center",
           gap: 1,
@@ -44,7 +44,7 @@ const Login: React.FC = () => {
           "@media (prefers-reduced-motion: reduce)": {
             animation: "none",
           },
-        }}
+        })}
       >
         <Typography
           sx={{
@@ -76,13 +76,13 @@ const Login: React.FC = () => {
       </Box>
 
       <Paper
-        sx={{
+        sx={(theme) => ({
           p: { xs: 3, sm: 4.5 },
           pt: { xs: 6, sm: 7 },
           borderRadius: 4,
-          backgroundColor: "rgba(17,25,40,0.9)",
-          border: "1px solid rgba(148,163,184,0.2)",
-          boxShadow: "0 26px 60px -40px rgba(0,0,0,0.75)",
+          backgroundColor: alpha(theme.palette.background.default, 0.9),
+          border: `1px solid ${alpha(theme.palette.text.secondary, 0.2)}`,
+          boxShadow: `0 26px 60px -40px ${alpha(theme.palette.common.black, 0.75)}`,
           backdropFilter: "blur(14px)",
           opacity: 0,
           transform: "translateY(18px) scale(0.98)",
@@ -92,7 +92,7 @@ const Login: React.FC = () => {
             opacity: 1,
             transform: "none",
           },
-        }}
+        })}
       >
         <Stack spacing={1} sx={{ textAlign: "center", mb: 2 }}>
           <Typography variant="h4">Welcome back</Typography>

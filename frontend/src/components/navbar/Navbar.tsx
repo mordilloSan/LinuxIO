@@ -11,8 +11,8 @@ import {
 import SearchIcon from "lucide-react/dist/esm/icons/search";
 import React from "react";
 
-import Customizer from "./NavbarCustomizer";
 import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
+import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
 import Settings from "./NavbarThemeToggle";
 import NavbarUserDropdown from "./NavbarUserDropdown";
 
@@ -100,7 +100,7 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
           <Grid>
             <NavbarNotificationsDropdown />
             <Settings />
-            <Customizer />
+            <NavbarSettingsDialogTrigger />
             <NavbarUserDropdown />
           </Grid>
         </Grid>

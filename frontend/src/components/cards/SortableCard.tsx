@@ -4,6 +4,8 @@ import { DragIndicator } from "@mui/icons-material";
 import { Box } from "@mui/material";
 import React from "react";
 
+import { cardBorderRadius } from "@/theme/constants";
+
 interface SortableCardProps {
   id: string;
   editMode: boolean;
@@ -48,10 +50,9 @@ const SortableCard: React.FC<SortableCardProps> = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: 1,
-            bgcolor: "rgba(0,0,0,0.05)",
+            borderRadius: cardBorderRadius,
             "&:hover": {
-              bgcolor: "rgba(0,0,0,0.1)",
+              bgcolor: "action.hover",
             },
           }}
         >

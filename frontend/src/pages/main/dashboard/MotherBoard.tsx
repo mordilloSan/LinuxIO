@@ -70,7 +70,7 @@ const MotherBoardInfo: React.FC = () => {
       stats={visibleDetails}
       icon_text={IconText}
       icon={TemperatureIcon}
-      iconProps={{ sx: { color: "grey" } }}
+      iconProps={{ sx: { color: "text.secondary" } }}
       avatarIcon="bi:motherboard"
     />
   );

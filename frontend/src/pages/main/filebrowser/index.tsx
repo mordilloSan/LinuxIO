@@ -309,8 +309,15 @@ const FileBrowser: React.FC = () => {
   });
   // Add keyboard shortcuts for copy/cut/paste operations
   const handleClipboardKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    // Only handle shortcuts when not editing a file
-    if (editingPath) return;
+    // Only handle shortcuts when not editing, renaming, or typing in any input
+    const active = document.activeElement;
+    if (
+      editingPath ||
+      renamingPath ||
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement
+    )
+      return;
 
     // Check if Ctrl (or Cmd on Mac) is pressed
     const isCtrlOrCmd = e.ctrlKey || e.metaKey;
@@ -664,6 +671,21 @@ const FileBrowser: React.FC = () => {
     setUploadEntries([]);
     setUploadDialogOpen(true);
   }, [handleCloseContextMenu, setUploadDialogOpen, setUploadEntries]);
+
+  const handleOpenContainingFolder = useCallback(() => {
+    handleCloseContextMenu();
+    const [selectedPath] = Array.from(selectedPaths);
+    if (!selectedPath) return;
+    const parentDir =
+      selectedPath.substring(0, selectedPath.lastIndexOf("/")) || "/";
+    setSearchQuery("");
+    handleOpenDirectory(parentDir);
+  }, [
+    handleCloseContextMenu,
+    selectedPaths,
+    handleOpenDirectory,
+    setSearchQuery,
+  ]);
 
   const handleCompressSelection = useCallback(async () => {
     handleCloseContextMenu();
@@ -1165,7 +1187,7 @@ const FileBrowser: React.FC = () => {
               inset: 0,
               border: "2px dashed",
               borderColor: "primary.main",
-              bgcolor: "rgba(25,118,210,0.08)",
+              bgcolor: "rgba(var(--mui-palette-primary-mainChannel) / 0.08)",
               zIndex: 5,
               display: "flex",
               flexDirection: "column",
@@ -1205,6 +1227,10 @@ const FileBrowser: React.FC = () => {
         canCompress={canCompressSelection}
         canExtract={canExtractSelection}
         canRename={selectedPaths.size === 1}
+        onOpenContainingFolder={handleOpenContainingFolder}
+        canOpenContainingFolder={
+          Boolean(searchQuery) && selectedPaths.size === 1
+        }
       />
 
       <FileBrowserDialog

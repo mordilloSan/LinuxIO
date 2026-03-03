@@ -26,6 +26,7 @@ import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -260,10 +261,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         position: "relative",
         cursor: hasPorts ? "pointer" : "default",
         transition: "transform 0.2s, box-shadow 0.2s",
-        "&:hover": {
-          transform: "translateY(-4px)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-        },
+        "&:hover": hasPorts ? getFrostedCardLiftStyles(theme) : undefined,
       }}
     >
       {/* Status dot */}
@@ -394,6 +392,18 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                   <ActionButton
                     icon="mdi:console"
                     onClick={handleTerminalClick}
+                  />
+                </span>
+              </Tooltip>
+            )}
+            {container.url && (
+              <Tooltip title="Open App" arrow>
+                <span onClick={(e) => e.stopPropagation()}>
+                  <ActionButton
+                    icon="mdi:open-in-new"
+                    onClick={() =>
+                      window.open(container.url, "_blank", "noopener")
+                    }
                   />
                 </span>
               </Tooltip>

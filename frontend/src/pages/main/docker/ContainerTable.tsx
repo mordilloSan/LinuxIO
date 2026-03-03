@@ -17,7 +17,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";
@@ -27,6 +27,7 @@ import ActionButton from "./ActionButton";
 
 import { linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
+import { getContainerStatusColor } from "@/constants/statusColors";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -49,10 +50,7 @@ const getDisplayState = (container: ContainerInfo) => {
 };
 
 const getStatusDotColor = (state: string) => {
-  if (state === "Healthy" || state === "Running") return "#00e676";
-  if (state === "Unhealthy") return "#ffc107";
-  if (state === "Stopped" || state === "Dead") return "#f44336";
-  return "#ffc107";
+  return getContainerStatusColor(state);
 };
 
 const getImageVersion = (image: string) => {
@@ -235,9 +233,10 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
   const rowBg =
     index % 2 === 0
       ? "transparent"
-      : theme.palette.mode === "dark"
-        ? "rgba(255,255,255,0.04)"
-        : "rgba(0,0,0,0.05)";
+      : alpha(
+          theme.palette.text.primary,
+          theme.palette.mode === "dark" ? 0.04 : 0.05,
+        );
 
   return (
     <React.Fragment>
@@ -572,6 +571,18 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 </span>
               </Tooltip>
             )}
+            {container.url && (
+              <Tooltip title="Open App">
+                <span>
+                  <ActionButton
+                    icon="mdi:open-in-new"
+                    onClick={() =>
+                      window.open(container.url, "_blank", "noopener")
+                    }
+                  />
+                </span>
+              </Tooltip>
+            )}
             <Tooltip title={autoUpdateTooltip}>
               <Box component="span" sx={{ display: "inline-flex" }}>
                 <Switch
@@ -643,9 +654,10 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   gap: 4,
                   flexWrap: "wrap",
                   bgcolor: (t) =>
-                    t.palette.mode === "dark"
-                      ? "rgba(255,255,255,0.04)"
-                      : "rgba(0,0,0,0.03)",
+                    alpha(
+                      t.palette.text.primary,
+                      t.palette.mode === "dark" ? 0.04 : 0.03,
+                    ),
                 }}
               >
                 {ports.length > 2 && (
@@ -773,10 +785,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
             <TableRow
               sx={(t) => ({
                 "& .MuiTableCell-root": { borderBottom: "none" },
-                backgroundColor:
-                  t.palette.mode === "dark"
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(0,0,0,0.08)",
+                backgroundColor: alpha(t.palette.text.primary, 0.08),
               })}
             >
               {editMode && <TableCell width="28px" />}

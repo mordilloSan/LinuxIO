@@ -19,17 +19,22 @@ func repairConfig(cfgPath, base string) error {
 		return err
 	}
 
-	// Try strict parsing - custom types handle validation automatically
 	var cfg Settings
-	if err := yaml.UnmarshalWithOptions(raw, &cfg, yaml.Strict()); err != nil {
-		// Extract detailed error info from goccy/go-yaml
-		logYAMLError(err, cfgPath)
-		logger.Warnf("config validation failed, rewriting defaults")
-		return writeConfig(cfgPath, base)
-	}
-
 	defaults := DefaultSettings(base)
 	changed := false
+
+	// Parse in strict mode first. If strict parsing fails because of unknown keys,
+	// fall back to permissive parsing to preserve known values and rewrite a clean file.
+	if err := yaml.UnmarshalWithOptions(raw, &cfg, yaml.Strict()); err != nil {
+		if permissiveErr := yaml.Unmarshal(raw, &cfg); permissiveErr != nil {
+			logYAMLError(err, cfgPath)
+			logger.Warnf("config validation failed, rewriting defaults")
+			return writeConfig(cfgPath, base)
+		}
+		logger.Warnf("config contained unsupported fields; rewriting sanitized config")
+		changed = true
+	}
+
 	if errs := ValidateConfig(&cfg); len(errs) > 0 {
 		logger.Warnf("config validation issues: %s", strings.Join(errs, "; "))
 
@@ -40,6 +45,19 @@ func repairConfig(cfgPath, base string) error {
 		if !IsValidCSSColor(string(cfg.AppSettings.PrimaryColor)) {
 			cfg.AppSettings.PrimaryColor = defaults.AppSettings.PrimaryColor
 			changed = true
+		}
+		if tc := cfg.AppSettings.ThemeColors; tc != nil {
+			for _, ptr := range []*CSSColor{
+				tc.BackgroundDefault, tc.BackgroundPaper,
+				tc.HeaderBackground, tc.FooterBackground, tc.SidebarBackground,
+				tc.CardBackground,
+			} {
+				if ptr != nil && !IsValidCSSColor(string(*ptr)) {
+					cfg.AppSettings.ThemeColors = nil
+					changed = true
+					break
+				}
+			}
 		}
 		if strings.TrimSpace(string(cfg.Docker.Folder)) == "" {
 			cfg.Docker.Folder = defaults.Docker.Folder
@@ -95,6 +113,22 @@ func ValidateConfig(cfg *Settings) []string {
 	// PrimaryColor validation
 	if !IsValidCSSColor(string(cfg.AppSettings.PrimaryColor)) {
 		errs = append(errs, "appSettings.primaryColor must be a valid CSS color")
+	}
+
+	// ThemeColors validation (all fields optional, but if set must be valid CSS colors)
+	if tc := cfg.AppSettings.ThemeColors; tc != nil {
+		for key, ptr := range map[string]*CSSColor{
+			"backgroundDefault": tc.BackgroundDefault,
+			"backgroundPaper":   tc.BackgroundPaper,
+			"headerBackground":  tc.HeaderBackground,
+			"footerBackground":  tc.FooterBackground,
+			"sidebarBackground": tc.SidebarBackground,
+			"cardBackground":    tc.CardBackground,
+		} {
+			if ptr != nil && !IsValidCSSColor(string(*ptr)) {
+				errs = append(errs, "appSettings.themeColors."+key+" must be a valid CSS color")
+			}
+		}
 	}
 
 	// Docker.Folder validation

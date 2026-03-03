@@ -235,7 +235,7 @@ func getUpdatesBasic() ([]UpdateDetail, error) {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
 
-	conn, err := godbus.SystemBus()
+	conn, err := godbus.ConnectSystemBus()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
 	}
@@ -260,6 +260,12 @@ func getUpdatesBasic() ([]UpdateDetail, error) {
 
 	sigCh := make(chan *godbus.Signal, 20)
 	conn.Signal(sigCh)
+	defer conn.RemoveSignal(sigCh)
+	defer func() {
+		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+			logger.Debugf("failed to remove D-Bus match signal: %v", err)
+		}
+	}()
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
 		logger.Errorf("Failed to add D-Bus match signal: %v", err)
 	}
@@ -319,7 +325,7 @@ func getSingleUpdateDetail(packageID string) (*UpdateDetail, error) {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
 
-	conn, err := godbus.SystemBus()
+	conn, err := godbus.ConnectSystemBus()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
 	}
@@ -344,6 +350,12 @@ func getSingleUpdateDetail(packageID string) (*UpdateDetail, error) {
 
 	sigCh := make(chan *godbus.Signal, 20)
 	conn.Signal(sigCh)
+	defer conn.RemoveSignal(sigCh)
+	defer func() {
+		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+			logger.Debugf("failed to remove D-Bus match signal: %v", err)
+		}
+	}()
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
 		logger.Warnf("failed to add D-Bus match signal: %v", err)
 	}
@@ -427,7 +439,7 @@ collectDetail:
 func getUpdatesWithDetails() ([]UpdateDetail, error) {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
-	conn, err := godbus.SystemBus()
+	conn, err := godbus.ConnectSystemBus()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
 	}
@@ -453,6 +465,12 @@ func getUpdatesWithDetails() ([]UpdateDetail, error) {
 
 	updatesCh := make(chan *godbus.Signal, 20)
 	conn.Signal(updatesCh)
+	defer conn.RemoveSignal(updatesCh)
+	defer func() {
+		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(updatesTransPath)); err != nil {
+			logger.Debugf("failed to remove D-Bus match signal: %v", err)
+		}
+	}()
 	if err := conn.AddMatchSignal(
 		godbus.WithMatchObjectPath(updatesTransPath),
 	); err != nil {
@@ -515,6 +533,12 @@ collectPackages:
 
 	detailsCh := make(chan *godbus.Signal, 20)
 	conn.Signal(detailsCh)
+	defer conn.RemoveSignal(detailsCh)
+	defer func() {
+		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(detailsTransPath)); err != nil {
+			logger.Debugf("failed to remove D-Bus match signal: %v", err)
+		}
+	}()
 	if err := conn.AddMatchSignal(
 		godbus.WithMatchObjectPath(detailsTransPath),
 	); err != nil {
@@ -753,7 +777,7 @@ func installPackage(packageID string) error {
 	defer systemDBusMu.Unlock()
 
 	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return fmt.Errorf("failed to connect to system bus: %w", err)
 		}
@@ -780,6 +804,12 @@ func installPackage(packageID string) error {
 		// Listen for signals
 		sigCh := make(chan *godbus.Signal, 20)
 		conn.Signal(sigCh)
+		defer conn.RemoveSignal(sigCh)
+		defer func() {
+			if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+				logger.Debugf("failed to remove D-Bus match signal: %v", err)
+			}
+		}()
 		if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
 			logger.Warnf("failed to add D-Bus match signal: %v", err)
 		}

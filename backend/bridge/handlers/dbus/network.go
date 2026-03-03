@@ -212,7 +212,7 @@ func GetNetworkInfo() ([]NMInterfaceInfo, error) {
 
 	var opErr error
 	err := RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return fmt.Errorf("failed to connect to system bus: %w", err)
 		}
@@ -413,7 +413,7 @@ func SetIPv4Manual(iface, addressCIDR, gateway string, dnsServers []string) erro
 	}
 
 	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
@@ -563,7 +563,7 @@ func SetIPv4DHCP(iface string) error {
 	defer systemDBusMu.Unlock()
 
 	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
@@ -646,7 +646,7 @@ func SetIPv6DHCP(iface string) error {
 	}
 
 	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
@@ -720,7 +720,7 @@ func SetIPv6Static(iface, addressCIDR string) error {
 	}
 
 	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
@@ -780,7 +780,7 @@ func DisableConnection(iface string) error {
 	}
 
 	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
@@ -826,7 +826,7 @@ func EnableConnection(iface string) error {
 	}
 
 	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return fmt.Errorf("connect system bus: %w", err)
 		}
@@ -907,7 +907,7 @@ func SetMTU(iface, mtu string) error {
 	}
 
 	return RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+		conn, err := godbus.ConnectSystemBus()
 		if err != nil {
 			return fmt.Errorf("failed to connect to system bus: %w", err)
 		}

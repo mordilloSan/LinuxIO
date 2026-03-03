@@ -74,7 +74,7 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
       {children}
       <Backdrop
         sx={{
-          color: "#fff",
+          color: "common.white",
           zIndex: (theme) => theme.zIndex.modal + 1,
           flexDirection: "column",
           gap: 3,

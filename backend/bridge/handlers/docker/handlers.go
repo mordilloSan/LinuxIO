@@ -445,6 +445,50 @@ func RegisterHandlers(sess *session.Session) {
 		return emit.Result(map[string]any{"message": "auto-update updated"})
 	})
 
+	// Caddy reverse proxy handlers
+	ipc.RegisterFunc("docker", "get_caddy_status", func(ctx context.Context, args []string, emit ipc.Events) error {
+		status, err := GetCaddyStatus(username)
+		if err != nil {
+			return err
+		}
+		return emit.Result(status)
+	})
+
+	ipc.RegisterFunc("docker", "enable_caddy", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := EnableCaddy(username)
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "disable_caddy", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := DisableCaddy(username)
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "reload_caddy", func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := ReloadCaddy(username)
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("docker", "connect_to_proxy", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			return ipc.ErrInvalidArgs
+		}
+		result, err := ConnectToProxy(args[0])
+		if err != nil {
+			return err
+		}
+		return emit.Result(result)
+	})
+
 	ipc.RegisterFunc("docker", "system_prune", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs

@@ -10,6 +10,7 @@ import NetworkTrafficGraph from "./NetworkTrafficGraph";
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 
 export type { NetworkInterface };
 
@@ -178,10 +179,7 @@ const NetworkInterfaceList = () => {
                     transition: "transform 0.2s, box-shadow 0.2s",
                     cursor: "pointer",
                     ...(expanded !== iface.name && {
-                      "&:hover": {
-                        transform: "translateY(-4px)",
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-                      },
+                      "&:hover": getFrostedCardLiftStyles(theme),
                     }),
                   }}
                 >
@@ -293,7 +291,7 @@ const NetworkInterfaceList = () => {
                       ref={rxCanvasRef}
                       key={`rx-${selectedIface.name}`}
                       value={selectedIface.rx_speed}
-                      color="#8884d8"
+                      color={theme.chart.rx}
                       label="RX"
                     />
                   </Box>
@@ -310,7 +308,7 @@ const NetworkInterfaceList = () => {
                       sx={{
                         width: 7,
                         height: 7,
-                        backgroundColor: "#8884d8",
+                        backgroundColor: theme.chart.rx,
                         borderRadius: "50%",
                       }}
                     />
@@ -325,7 +323,7 @@ const NetworkInterfaceList = () => {
                       ref={txCanvasRef}
                       key={`tx-${selectedIface.name}`}
                       value={selectedIface.tx_speed}
-                      color="#82ca9d"
+                      color={theme.chart.tx}
                       label="TX"
                     />
                   </Box>
@@ -342,7 +340,7 @@ const NetworkInterfaceList = () => {
                       sx={{
                         width: 7,
                         height: 7,
-                        backgroundColor: "#82ca9d",
+                        backgroundColor: theme.chart.tx,
                         borderRadius: "50%",
                       }}
                     />

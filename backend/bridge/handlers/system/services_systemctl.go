@@ -41,7 +41,7 @@ func FetchServices() ([]ServiceInfo, error) {
 }
 
 func fetchServicesViaDBus() ([]ServiceInfo, error) {
-	conn, err := godbus.SystemBus()
+	conn, err := godbus.ConnectSystemBus()
 	if err != nil {
 		return nil, errors.New("failed to connect to systemd D-Bus; system may not be running systemd")
 	}

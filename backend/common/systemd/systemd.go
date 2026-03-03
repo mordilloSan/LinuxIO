@@ -14,7 +14,7 @@ const (
 )
 
 func withManager(call func(manager godbus.BusObject) error) error {
-	conn, err := godbus.SystemBus()
+	conn, err := godbus.ConnectSystemBus()
 	if err != nil {
 		return fmt.Errorf("connect system bus: %w", err)
 	}

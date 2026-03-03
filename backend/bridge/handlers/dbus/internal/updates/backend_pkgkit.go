@@ -15,10 +15,11 @@ type pkgkitBackend struct{}
 func newPkgKitBackend() Backend     { return &pkgkitBackend{} }
 func (*pkgkitBackend) Name() string { return "packagekit" }
 func (*pkgkitBackend) Detect() bool {
-	conn, err := godbus.SystemBus()
+	conn, err := godbus.ConnectSystemBus()
 	if err != nil {
 		return false
 	}
+	defer conn.Close()
 	// Check if PackageKit service exists
 	var names []string
 	if err := conn.BusObject().Call("org.freedesktop.DBus.ListNames", 0).Store(&names); err != nil {
@@ -59,11 +60,11 @@ func (*pkgkitBackend) ApplyOfflineNow() error {
 		offlineIfc     = "org.freedesktop.PackageKit.Offline"
 	)
 
-	conn, err := godbus.SystemBus()
+	conn, err := godbus.ConnectSystemBus()
 	if err != nil {
 		return fmt.Errorf("failed to connect to system bus: %w", err)
 	}
-	// Don't close - shared system bus connection
+	defer conn.Close()
 
 	pkObj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
 
@@ -112,6 +113,12 @@ func pkTransactionCall(conn *godbus.Conn, busName, objPath, transIfc, method str
 	sigCh := make(chan *godbus.Signal, 20)
 	conn.Signal(sigCh)
 	defer conn.RemoveSignal(sigCh)
+	matchPath := transPath
+	defer func() {
+		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(matchPath)); err != nil {
+			logger.Debugf("failed to remove PackageKit signal match: %v", err)
+		}
+	}()
 
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
 		logger.Debugf("failed to add PackageKit signal match: %v", err)
@@ -157,6 +164,12 @@ func pkTransactionCallWithUpdates(conn *godbus.Conn, busName, objPath, transIfc 
 	sigCh := make(chan *godbus.Signal, 100)
 	conn.Signal(sigCh)
 	defer conn.RemoveSignal(sigCh)
+	matchPath := transPath
+	defer func() {
+		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(matchPath)); err != nil {
+			logger.Debugf("failed to remove PackageKit signal match: %v", err)
+		}
+	}()
 
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
 		logger.Debugf("failed to add PackageKit signal match: %v", err)
@@ -210,6 +223,12 @@ collectLoop:
 	sigCh2 := make(chan *godbus.Signal, 20)
 	conn.Signal(sigCh2)
 	defer conn.RemoveSignal(sigCh2)
+	matchPath2 := transPath
+	defer func() {
+		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(matchPath2)); err != nil {
+			logger.Debugf("failed to remove PackageKit signal match: %v", err)
+		}
+	}()
 
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
 		logger.Debugf("failed to add PackageKit signal match: %v", err)
