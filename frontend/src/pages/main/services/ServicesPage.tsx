@@ -10,9 +10,17 @@ import SocketsTab from "./SocketsTab";
 import TimersTab from "./TimersTab";
 
 import { linuxio } from "@/api";
+import type { Service } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import TabContainer from "@/components/tabbar/TabContainer";
 import { useViewMode } from "@/hooks/useViewMode";
+
+function compareServicesByName(a: Service, b: Service): number {
+  return a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
 
 // Self-contained toggle that shares the same config key as ServicesTab
 const ServicesViewToggle: React.FC = () => {
@@ -38,17 +46,17 @@ const ServicesViewToggle: React.FC = () => {
 };
 
 const ServicesTab: React.FC = () => {
+  const [viewMode, setViewMode] = useViewMode("services.list", "table");
   const {
     data,
     isPending: isLoading,
     isError,
     error,
   } = linuxio.dbus.list_services.useQuery({
-    refetchInterval: 2000,
+    refetchInterval: viewMode === "card" ? false : 2000,
   });
 
   const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useViewMode("services.list", "table");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [returnToTable, setReturnToTable] = useState(false);
 
@@ -73,7 +81,7 @@ const ServicesTab: React.FC = () => {
           s.name.toLowerCase().includes(search.toLowerCase()) ||
           (s.description?.toLowerCase().includes(search.toLowerCase()) ??
             false),
-      ),
+      ).sort(compareServicesByName),
     [data, search],
   );
 

@@ -65,7 +65,7 @@ const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = ({
 
   const fragmentPath = String(info?.FragmentPath ?? "");
   return (
-    <FrostedCard sx={{ p: 3 }}>
+    <FrostedCard sx={{ p: 3, height: "100%", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div
         style={{
@@ -109,7 +109,7 @@ const ServiceDetailPanel: React.FC<ServiceDetailPanelProps> = ({
       </div>
 
       {/* Info rows */}
-      <div>
+      <div style={{ flex: 1 }}>
         <Row label="Path" noBorder>
           {isPending ? (
             <div

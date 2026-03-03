@@ -73,6 +73,10 @@ const selectedCardSx = {
   },
 } as const;
 
+const expandedPaneSx = {
+  display: "flex",
+} as const;
+
 const DetailRow: React.FC<{
   label: string;
   children: React.ReactNode;
@@ -625,37 +629,33 @@ const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
 
   return (
     <Grid container spacing={3}>
-      <AnimatePresence>
-        {services.map((service) =>
-          expanded && expanded !== service.name ? null : (
-            <Grid
-              key={service.name}
-              size={
-                expanded === service.name
-                  ? { xs: 12, md: 4, lg: 4 }
-                  : { xs: 12, sm: 6, md: 4, lg: 3 }
-              }
-              component={motion.div}
-              layout
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.2 }}
-            >
-              <ServiceCard
-                service={service}
-                isSelected={expanded === service.name}
-                onExpand={onExpand}
-              />
-            </Grid>
-          ),
-        )}
+      {services.map((service) =>
+        expanded && expanded !== service.name ? null : (
+          <Grid
+            key={service.name}
+            size={
+              expanded === service.name
+                ? { xs: 12, md: 4, lg: 4 }
+                : { xs: 12, sm: 6, md: 4, lg: 3 }
+            }
+            sx={expanded === service.name ? expandedPaneSx : undefined}
+          >
+            <ServiceCard
+              service={service}
+              isSelected={expanded === service.name}
+              onExpand={onExpand}
+            />
+          </Grid>
+        ),
+      )}
 
+      <AnimatePresence initial={false}>
         {expandedService && (
           <Grid
             key="detail-panel"
             size={{ xs: 12, md: 8, lg: 8 }}
             component={motion.div}
+            sx={expandedPaneSx}
             initial={{ opacity: 0, x: 40 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 40 }}

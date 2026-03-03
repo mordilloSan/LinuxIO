@@ -1,9 +1,8 @@
 import ClearIcon from "@mui/icons-material/Clear";
 import SearchIcon from "@mui/icons-material/Search";
 import { IconButton, InputAdornment, TextField, useTheme } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import React, { useState, useCallback } from "react";
-
-import { getChromeSurfaceColor } from "@/theme/surfaces";
 
 interface SearchBarProps {
   value: string;
@@ -20,16 +19,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
 }) => {
   const theme = useTheme();
   const [isFocused, setIsFocused] = useState(false);
-  const chromeBackground = getChromeSurfaceColor(
-    theme,
-    theme.fileBrowser.chrome,
+  const ribbonBackground = alpha(
+    theme.palette.grey[500],
+    theme.palette.mode === "dark" ? 0.16 : 0.1,
   );
-  const chromeHoverBackground = getChromeSurfaceColor(
-    theme,
-    theme.fileBrowser.chrome,
-    "hover",
+  const ribbonHoverBackground = alpha(
+    theme.palette.grey[500],
+    theme.palette.mode === "dark" ? 0.24 : 0.18,
   );
-  const focusRing = getChromeSurfaceColor(theme, theme.palette.primary.main);
+  const focusRing = alpha(
+    theme.palette.primary.main,
+    theme.palette.mode === "dark" ? 0.34 : 0.22,
+  );
 
   const handleClear = useCallback(() => {
     onChange("");
@@ -89,17 +90,17 @@ const SearchBar: React.FC<SearchBarProps> = ({
         minWidth: 250,
         "& .MuiOutlinedInput-root": {
           borderRadius: "24px",
-          backgroundColor: chromeBackground,
+          backgroundColor: ribbonBackground,
           transition: "all 0.2s",
           boxShadow: isFocused ? `0 0 0 1px ${focusRing}` : "none",
           "& fieldset": {
             border: "none",
           },
           "&.Mui-focused": {
-            backgroundColor: chromeHoverBackground,
+            backgroundColor: ribbonHoverBackground,
           },
           "&:hover": {
-            backgroundColor: chromeHoverBackground,
+            backgroundColor: ribbonHoverBackground,
           },
         },
       }}
