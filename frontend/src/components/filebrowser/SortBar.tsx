@@ -1,8 +1,9 @@
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import { Box, Typography, useTheme } from "@mui/material";
-import { getSubtleDividerColor } from "@/theme/surfaces";
 import React from "react";
+
+import { getSubtleDividerColor } from "@/theme/surfaces";
 
 export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";

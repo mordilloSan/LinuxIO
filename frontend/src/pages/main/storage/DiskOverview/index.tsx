@@ -40,8 +40,8 @@ import {
 import { linuxio, openSmartTestStream, type Stream, type ApiDisk } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 

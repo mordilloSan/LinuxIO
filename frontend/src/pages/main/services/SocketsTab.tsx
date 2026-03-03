@@ -62,6 +62,13 @@ const statusDot = (activeState: string) => (
   />
 );
 
+function compareSocketsByName(a: Socket, b: Socket): number {
+  return a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
 const SocketsTab: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -75,15 +82,17 @@ const SocketsTab: React.FC = () => {
 
   const filtered = useMemo(
     () =>
-      (data ?? []).filter(
-        (s) =>
-          s.name.toLowerCase().includes(search.toLowerCase()) ||
-          (s.description?.toLowerCase().includes(search.toLowerCase()) ??
-            false) ||
-          s.listen.some((addr) =>
-            addr.toLowerCase().includes(search.toLowerCase()),
-          ),
-      ),
+      (data ?? [])
+        .filter(
+          (s) =>
+            s.name.toLowerCase().includes(search.toLowerCase()) ||
+            (s.description?.toLowerCase().includes(search.toLowerCase()) ??
+              false) ||
+            s.listen.some((addr) =>
+              addr.toLowerCase().includes(search.toLowerCase()),
+            ),
+        )
+        .sort(compareSocketsByName),
     [data, search],
   );
 

@@ -70,6 +70,13 @@ const statusDot = (activeState: string) => (
   />
 );
 
+function compareTimersByName(a: Timer, b: Timer): number {
+  return a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
 const TimersTab: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -84,13 +91,15 @@ const TimersTab: React.FC = () => {
 
   const filtered = useMemo(
     () =>
-      (data ?? []).filter(
-        (t) =>
-          t.name.toLowerCase().includes(search.toLowerCase()) ||
-          (t.description?.toLowerCase().includes(search.toLowerCase()) ??
-            false) ||
-          t.unit.toLowerCase().includes(search.toLowerCase()),
-      ),
+      (data ?? [])
+        .filter(
+          (t) =>
+            t.name.toLowerCase().includes(search.toLowerCase()) ||
+            (t.description?.toLowerCase().includes(search.toLowerCase()) ??
+              false) ||
+            t.unit.toLowerCase().includes(search.toLowerCase()),
+        )
+        .sort(compareTimersByName),
     [data, search],
   );
 

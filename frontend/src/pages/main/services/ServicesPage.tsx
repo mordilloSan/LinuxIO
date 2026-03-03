@@ -76,12 +76,14 @@ const ServicesTab: React.FC = () => {
 
   const filtered = useMemo(
     () =>
-      (data ?? []).filter(
-        (s) =>
-          s.name.toLowerCase().includes(search.toLowerCase()) ||
-          (s.description?.toLowerCase().includes(search.toLowerCase()) ??
-            false),
-      ).sort(compareServicesByName),
+      (data ?? [])
+        .filter(
+          (s) =>
+            s.name.toLowerCase().includes(search.toLowerCase()) ||
+            (s.description?.toLowerCase().includes(search.toLowerCase()) ??
+              false),
+        )
+        .sort(compareServicesByName),
     [data, search],
   );
 
