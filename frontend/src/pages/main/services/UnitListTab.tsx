@@ -1,4 +1,4 @@
-import { Alert, Box, TextField } from "@mui/material";
+import { Alert, Box, Grid, TextField } from "@mui/material";
 import React, { useEffect, useMemo, useState } from "react";
 
 import type { UnitListItem } from "./UnitViews";
@@ -131,19 +131,21 @@ function UnitListTab<T extends UnitListItem>({
                 renderDetailPanel(item, () => handleCardExpand(null)),
             })
           ) : (
-            <>
-              {renderTableView({
-                items: filtered,
-                selected: expanded,
-                onSelect: setExpanded,
-                onDoubleClick: handleOpenCardView,
-              })}
+            <Grid container spacing={3} alignItems="flex-start">
+              <Grid size={{ xs: 12, md: selectedItem ? 7 : 12 }}>
+                {renderTableView({
+                  items: filtered,
+                  selected: expanded,
+                  onSelect: setExpanded,
+                  onDoubleClick: handleOpenCardView,
+                })}
+              </Grid>
               {selectedItem && (
-                <Box mt={3}>
+                <Grid size={{ xs: 12, md: 5 }}>
                   {renderDetailPanel(selectedItem, () => setExpanded(null))}
-                </Box>
+                </Grid>
               )}
-            </>
+            </Grid>
           )}
         </>
       )}

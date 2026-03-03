@@ -1,10 +1,10 @@
 import React from "react";
 
-import { AutoStartRow, DetailRow, UnitCardsView } from "./UnitViews";
+import UnitLogsCard from "./UnitLogsCard";
+import { DetailRow, UnitCardActions, UnitCardsView, UnitStatusRows } from "./UnitViews";
 
 import type { Socket } from "@/api";
 import { linuxio } from "@/api";
-import { getServiceStatusColor } from "@/constants/statusColors";
 
 interface SocketCardsViewProps {
   sockets: Socket[];
@@ -13,37 +13,15 @@ interface SocketCardsViewProps {
   renderDetailPanel: (socket: Socket) => React.ReactNode;
 }
 
-const SocketSummaryRows: React.FC<{ socket: Socket }> = ({ socket }) => {
-  const statusColor = getServiceStatusColor(socket.active_state);
-
-  return (
-    <>
-      <DetailRow label="Status" noBorder>
-        <span
-          style={{
-            fontSize: "0.85rem",
-            fontWeight: 600,
-            color: statusColor,
-          }}
-        >
-          {socket.active_state}
-          {socket.sub_state && socket.sub_state !== socket.active_state && (
-            <span
-              style={{
-                color: "var(--mui-palette-text-secondary)",
-                marginLeft: 8,
-                fontWeight: 400,
-              }}
-            >
-              ({socket.sub_state})
-            </span>
-          )}
-        </span>
-      </DetailRow>
-      <AutoStartRow unitFileState={socket.unit_file_state} />
-    </>
-  );
-};
+const SocketSummaryRows: React.FC<{ socket: Socket }> = ({ socket }) => (
+  <UnitStatusRows
+    activeState={socket.active_state}
+    subState={socket.sub_state}
+    unitFileState={socket.unit_file_state}
+    activeEnterTimestamp={socket.active_enter_timestamp}
+    inactiveEnterTimestamp={socket.inactive_enter_timestamp}
+  />
+);
 
 const SocketSelectedRows: React.FC<{ socket: Socket }> = ({ socket }) => {
   const { data: info } = linuxio.dbus.get_unit_info.useQuery(socket.name, {
@@ -77,6 +55,20 @@ const SocketSelectedRows: React.FC<{ socket: Socket }> = ({ socket }) => {
   );
 };
 
+const SocketActionsWrapper: React.FC<{ socket: Socket }> = ({ socket }) => {
+  const { data: info } = linuxio.dbus.get_unit_info.useQuery(socket.name, {
+    refetchInterval: 2000,
+  });
+  return (
+    <UnitCardActions
+      unitName={socket.name}
+      activeState={socket.active_state}
+      unitFileState={socket.unit_file_state}
+      info={info}
+    />
+  );
+};
+
 const SocketCardsView: React.FC<SocketCardsViewProps> = ({
   sockets,
   expanded,
@@ -90,7 +82,11 @@ const SocketCardsView: React.FC<SocketCardsViewProps> = ({
     emptyMessage="No sockets found."
     renderSummaryRows={(socket) => <SocketSummaryRows socket={socket} />}
     renderSelectedRows={(socket) => <SocketSelectedRows socket={socket} />}
+    renderActions={(socket) => <SocketActionsWrapper socket={socket} />}
     renderDetailPanel={renderDetailPanel}
+    renderBottomPanel={(socket) => (
+      <UnitLogsCard unitName={socket.name} title="Socket Logs" />
+    )}
   />
 );
 

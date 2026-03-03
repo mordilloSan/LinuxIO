@@ -1,15 +1,16 @@
 import React from "react";
 
+import UnitLogsCard from "./UnitLogsCard";
 import {
-  AutoStartRow,
   DetailRow,
+  UnitCardActions,
   UnitCardsView,
+  UnitStatusRows,
   formatUsec,
 } from "./UnitViews";
 
 import type { Timer } from "@/api";
 import { linuxio } from "@/api";
-import { getServiceStatusColor } from "@/constants/statusColors";
 
 interface TimerCardsViewProps {
   timers: Timer[];
@@ -18,37 +19,15 @@ interface TimerCardsViewProps {
   renderDetailPanel: (timer: Timer) => React.ReactNode;
 }
 
-const TimerSummaryRows: React.FC<{ timer: Timer }> = ({ timer }) => {
-  const statusColor = getServiceStatusColor(timer.active_state);
-
-  return (
-    <>
-      <DetailRow label="Status" noBorder>
-        <span
-          style={{
-            fontSize: "0.85rem",
-            fontWeight: 600,
-            color: statusColor,
-          }}
-        >
-          {timer.active_state}
-          {timer.sub_state && timer.sub_state !== timer.active_state && (
-            <span
-              style={{
-                color: "var(--mui-palette-text-secondary)",
-                marginLeft: 8,
-                fontWeight: 400,
-              }}
-            >
-              ({timer.sub_state})
-            </span>
-          )}
-        </span>
-      </DetailRow>
-      <AutoStartRow unitFileState={timer.unit_file_state} />
-    </>
-  );
-};
+const TimerSummaryRows: React.FC<{ timer: Timer }> = ({ timer }) => (
+  <UnitStatusRows
+    activeState={timer.active_state}
+    subState={timer.sub_state}
+    unitFileState={timer.unit_file_state}
+    activeEnterTimestamp={timer.active_enter_timestamp}
+    inactiveEnterTimestamp={timer.inactive_enter_timestamp}
+  />
+);
 
 const TimerSelectedRows: React.FC<{ timer: Timer }> = ({ timer }) => {
   const { data: info } = linuxio.dbus.get_unit_info.useQuery(timer.name, {
@@ -81,6 +60,20 @@ const TimerSelectedRows: React.FC<{ timer: Timer }> = ({ timer }) => {
   );
 };
 
+const TimerActionsWrapper: React.FC<{ timer: Timer }> = ({ timer }) => {
+  const { data: info } = linuxio.dbus.get_unit_info.useQuery(timer.name, {
+    refetchInterval: 2000,
+  });
+  return (
+    <UnitCardActions
+      unitName={timer.name}
+      activeState={timer.active_state}
+      unitFileState={timer.unit_file_state}
+      info={info}
+    />
+  );
+};
+
 const TimerCardsView: React.FC<TimerCardsViewProps> = ({
   timers,
   expanded,
@@ -94,7 +87,11 @@ const TimerCardsView: React.FC<TimerCardsViewProps> = ({
     emptyMessage="No timers found."
     renderSummaryRows={(timer) => <TimerSummaryRows timer={timer} />}
     renderSelectedRows={(timer) => <TimerSelectedRows timer={timer} />}
+    renderActions={(timer) => <TimerActionsWrapper timer={timer} />}
     renderDetailPanel={renderDetailPanel}
+    renderBottomPanel={(timer) => (
+      <UnitLogsCard unitName={timer.name} title="Timer Logs" />
+    )}
   />
 );
 

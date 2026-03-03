@@ -7,15 +7,17 @@ import (
 )
 
 type TimerStatus struct {
-	Name            string `json:"name"`
-	Description     string `json:"description"`
-	LoadState       string `json:"load_state"`
-	ActiveState     string `json:"active_state"`
-	SubState        string `json:"sub_state"`
-	UnitFileState   string `json:"unit_file_state"`
-	NextElapseUSec  uint64 `json:"next_elapse_usec"`
-	LastTriggerUSec uint64 `json:"last_trigger_usec"`
-	Unit            string `json:"unit"`
+	Name                   string `json:"name"`
+	Description            string `json:"description"`
+	LoadState              string `json:"load_state"`
+	ActiveState            string `json:"active_state"`
+	SubState               string `json:"sub_state"`
+	UnitFileState          string `json:"unit_file_state"`
+	ActiveEnterTimestamp   uint64 `json:"active_enter_timestamp"`
+	InactiveEnterTimestamp uint64 `json:"inactive_enter_timestamp"`
+	NextElapseUSec         uint64 `json:"next_elapse_usec"`
+	LastTriggerUSec        uint64 `json:"last_trigger_usec"`
+	Unit                   string `json:"unit"`
 }
 
 func ListTimers() ([]TimerStatus, error) {
@@ -45,6 +47,12 @@ func ListTimers() ([]TimerStatus, error) {
 					unit := unitObject(conn, entry.Path)
 					if state, ok := getStringProperty(unit, "org.freedesktop.systemd1.Unit.UnitFileState"); ok {
 						timer.UnitFileState = state
+					}
+					if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.ActiveEnterTimestamp"); ok {
+						timer.ActiveEnterTimestamp = ts
+					}
+					if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.InactiveEnterTimestamp"); ok {
+						timer.InactiveEnterTimestamp = ts
 					}
 					if next, ok := getUint64Property(unit, "org.freedesktop.systemd1.Timer.NextElapseUSecRealtime"); ok && next > 0 {
 						timer.NextElapseUSec = next

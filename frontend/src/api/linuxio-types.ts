@@ -337,6 +337,8 @@ export interface Timer {
   active_state: string;
   sub_state: string;
   unit_file_state: string;
+  active_enter_timestamp: number;
+  inactive_enter_timestamp: number;
   next_elapse_usec: number;
   last_trigger_usec: number;
   unit: string;
@@ -349,6 +351,8 @@ export interface Socket {
   active_state: string;
   sub_state: string;
   unit_file_state: string;
+  active_enter_timestamp: number;
+  inactive_enter_timestamp: number;
   listen: string[];
   n_connections: number;
   n_accepted: number;

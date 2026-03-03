@@ -1,9 +1,22 @@
 import BlockIcon from "@mui/icons-material/Block";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
-import { Box, Grid, useMediaQuery, useTheme } from "@mui/material";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import StopCircleIcon from "@mui/icons-material/StopCircle";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import {
+  Box,
+  Button,
+  Grid,
+  Tooltip,
+  useMediaQuery,
+  useTheme,
+} from "@mui/material";
 import { type Theme } from "@mui/material/styles";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -50,6 +63,7 @@ interface UnitCardsViewProps<T extends UnitListItem> {
   onExpand: (name: string | null) => void;
   renderSummaryRows: (item: T) => React.ReactNode;
   renderSelectedRows?: (item: T) => React.ReactNode;
+  renderActions?: (item: T) => React.ReactNode;
   renderDetailPanel: (item: T) => React.ReactNode;
   renderBottomPanel?: (item: T) => React.ReactNode;
   emptyMessage: string;
@@ -90,7 +104,7 @@ const cardSx = (theme: Theme) => ({
   "&:hover": {
     ...getFrostedCardLiftStyles(theme),
   },
-  "& .svc-card-details > .svc-detail-row:last-of-type": {
+  "& .svc-rows-wrapper > .svc-detail-row:last-of-type": {
     borderBottom: "none",
   },
 });
@@ -100,19 +114,16 @@ const selectedCardSx = {
   display: "flex",
   flexDirection: "column",
   height: "100%",
+  width: "100%",
   cursor: "pointer",
   transition:
     "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
   borderBottomWidth: "2px",
   borderBottomStyle: "solid",
   borderBottomColor: "var(--svc-status-color)",
-  "& .svc-card-details > .svc-detail-row:last-of-type": {
+  "& .svc-rows-wrapper > .svc-detail-row:last-of-type": {
     borderBottom: "none",
   },
-} as const;
-
-const expandedPaneSx = {
-  display: "flex",
 } as const;
 
 const depFields: Array<{ label: string; key: keyof UnitInfo }> = [
@@ -239,6 +250,226 @@ export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
   );
 }
 
+interface UnitStatusRowsProps {
+  activeState: string;
+  subState: string;
+  unitFileState: string;
+  activeEnterTimestamp?: number;
+  inactiveEnterTimestamp?: number;
+  activeLabel?: string;
+}
+
+export function UnitStatusRows({
+  activeState,
+  subState,
+  unitFileState,
+  activeEnterTimestamp,
+  inactiveEnterTimestamp,
+  activeLabel,
+}: UnitStatusRowsProps) {
+  const statusColor = getServiceStatusColor(activeState);
+  const isActive = activeState === "active";
+  const timestamp = formatTimestamp(
+    isActive ? activeEnterTimestamp : inactiveEnterTimestamp,
+  );
+
+  return (
+    <>
+      <DetailRow label="Status" noBorder>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span
+            style={{
+              fontSize: "0.85rem",
+              fontWeight: 600,
+              color: statusColor,
+            }}
+          >
+            {isActive ? (activeLabel ?? activeState) : activeState}
+            {subState && subState !== activeState && (
+              <span
+                style={{
+                  color: "var(--mui-palette-text-secondary)",
+                  marginLeft: 8,
+                  fontWeight: 400,
+                }}
+              >
+                ({subState})
+              </span>
+            )}
+          </span>
+          {timestamp !== "—" && (
+            <span
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--mui-palette-text-secondary)",
+              }}
+            >
+              {isActive ? "Active" : "Inactive"} since {timestamp}
+            </span>
+          )}
+        </div>
+      </DetailRow>
+      <AutoStartRow unitFileState={unitFileState} />
+    </>
+  );
+}
+
+export const UnitCardActions: React.FC<{
+  unitName: string;
+  activeState: string;
+  unitFileState: string;
+  info: UnitInfo | undefined;
+}> = ({ unitName, activeState, unitFileState, info }) => {
+  const { mutate: startService, isPending: isStarting } =
+    linuxio.dbus.start_service.useMutation();
+  const { mutate: stopService, isPending: isStopping } =
+    linuxio.dbus.stop_service.useMutation();
+  const { mutate: restartService, isPending: isRestarting } =
+    linuxio.dbus.restart_service.useMutation();
+  const { mutate: reloadService, isPending: isReloading } =
+    linuxio.dbus.reload_service.useMutation();
+  const { mutate: enableService, isPending: isEnabling } =
+    linuxio.dbus.enable_service.useMutation();
+  const { mutate: disableService, isPending: isDisabling } =
+    linuxio.dbus.disable_service.useMutation();
+  const { mutate: maskService, isPending: isMasking } =
+    linuxio.dbus.mask_service.useMutation();
+  const { mutate: unmaskService, isPending: isUnmasking } =
+    linuxio.dbus.unmask_service.useMutation();
+
+  const isActive = activeState === "active";
+  const liveUnitFileState = String(info?.UnitFileState ?? unitFileState ?? "");
+  const isEnabled =
+    liveUnitFileState === "enabled" || liveUnitFileState === "enabled-runtime";
+  const isMasked = liveUnitFileState === "masked";
+  const anyPending =
+    isStarting ||
+    isStopping ||
+    isRestarting ||
+    isReloading ||
+    isEnabling ||
+    isDisabling ||
+    isMasking ||
+    isUnmasking;
+
+  return (
+    <div
+      style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {isActive ? (
+        <Tooltip title="Stop">
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<StopCircleIcon fontSize="small" />}
+            onClick={() => stopService([unitName])}
+            disabled={anyPending}
+          >
+            Stop
+          </Button>
+        </Tooltip>
+      ) : (
+        <Tooltip title="Start">
+          <Button
+            size="small"
+            variant="outlined"
+            color="success"
+            startIcon={<PlayArrowIcon fontSize="small" />}
+            onClick={() => startService([unitName])}
+            disabled={anyPending}
+          >
+            Start
+          </Button>
+        </Tooltip>
+      )}
+      <Tooltip title="Restart (stop then start)">
+        <span>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<RestartAltIcon fontSize="small" />}
+            onClick={() => restartService([unitName])}
+            disabled={!isActive || anyPending}
+          >
+            Restart
+          </Button>
+        </span>
+      </Tooltip>
+      <Tooltip title="Reload configuration without restarting (if supported)">
+        <span>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<RefreshIcon fontSize="small" />}
+            onClick={() => reloadService([unitName])}
+            disabled={!isActive || anyPending}
+          >
+            Reload
+          </Button>
+        </span>
+      </Tooltip>
+      {isEnabled ? (
+        <Tooltip title="Disable autostart at boot">
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<BlockIcon fontSize="small" />}
+              onClick={() => disableService([unitName])}
+              disabled={isMasked || anyPending}
+            >
+              Disable
+            </Button>
+          </span>
+        </Tooltip>
+      ) : (
+        <Tooltip title="Enable autostart at boot">
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              color="success"
+              startIcon={<PlayArrowIcon fontSize="small" />}
+              onClick={() => enableService([unitName])}
+              disabled={isMasked || anyPending}
+            >
+              Enable
+            </Button>
+          </span>
+        </Tooltip>
+      )}
+      {isMasked ? (
+        <Tooltip title="Unmask to allow the unit to be started">
+          <Button
+            size="small"
+            variant="outlined"
+            color="warning"
+            startIcon={<VisibilityIcon fontSize="small" />}
+            onClick={() => unmaskService([unitName])}
+            disabled={anyPending}
+          >
+            Unmask
+          </Button>
+        </Tooltip>
+      ) : (
+        <Tooltip title="Mask to completely prevent the unit from starting">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<VisibilityOffIcon fontSize="small" />}
+            onClick={() => maskService([unitName])}
+            disabled={anyPending}
+          >
+            Mask
+          </Button>
+        </Tooltip>
+      )}
+    </div>
+  );
+};
+
 function toStringArray(val: unknown): string[] {
   if (!Array.isArray(val)) return [];
   return val.filter((v): v is string => typeof v === "string" && v.length > 0);
@@ -262,7 +493,7 @@ export function UnitInfoPanel({
 
   return (
     <FrostedCard
-      sx={{ p: 3, height: "100%", display: "flex", flexDirection: "column" }}
+      sx={{ p: 3, height: "100%", flex: 1, display: "flex", flexDirection: "column" }}
     >
       <div
         style={{
@@ -419,12 +650,14 @@ function UnitCard<T extends UnitListItem>({
   onExpand,
   renderSummaryRows,
   renderSelectedRows,
+  renderActions,
 }: {
   item: T;
   isSelected: boolean;
   onExpand: (name: string | null) => void;
   renderSummaryRows: (item: T) => React.ReactNode;
   renderSelectedRows?: (item: T) => React.ReactNode;
+  renderActions?: (item: T) => React.ReactNode;
 }) {
   const statusColor = getServiceStatusColor(item.active_state);
 
@@ -483,9 +716,19 @@ function UnitCard<T extends UnitListItem>({
         />
       </div>
 
-      <div style={{ flex: 1 }} className="svc-card-details">
-        {renderSummaryRows(item)}
-        {isSelected && renderSelectedRows?.(item)}
+      <div
+        style={{ flex: 1, display: "flex", flexDirection: "column" }}
+        className="svc-card-details"
+      >
+        <div style={{ flex: 1 }} className="svc-rows-wrapper">
+          {renderSummaryRows(item)}
+          {isSelected && renderSelectedRows?.(item)}
+        </div>
+        {isSelected && renderActions && (
+          <div onClick={(e) => e.stopPropagation()}>
+            {renderActions(item)}
+          </div>
+        )}
       </div>
     </FrostedCard>
   );
@@ -497,6 +740,7 @@ export function UnitCardsView<T extends UnitListItem>({
   onExpand,
   renderSummaryRows,
   renderSelectedRows,
+  renderActions,
   renderDetailPanel,
   renderBottomPanel,
   emptyMessage,
@@ -518,60 +762,54 @@ export function UnitCardsView<T extends UnitListItem>({
     );
   }
 
-  return (
-    <Grid container spacing={3}>
-      {items.map((item) =>
-        expanded && expanded !== item.name ? null : (
-          <Grid
-            key={item.name}
-            size={
-              expanded === item.name
-                ? { xs: 12, md: 4, lg: 4 }
-                : { xs: 12, sm: 6, md: 4, lg: 3 }
-            }
-            sx={expanded === item.name ? expandedPaneSx : undefined}
-          >
+  if (!expandedItem) {
+    return (
+      <Grid container spacing={3}>
+        {items.map((item) => (
+          <Grid key={item.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
             <UnitCard
               item={item}
-              isSelected={expanded === item.name}
+              isSelected={false}
               onExpand={onExpand}
               renderSummaryRows={renderSummaryRows}
-              renderSelectedRows={renderSelectedRows}
             />
           </Grid>
-        ),
+        ))}
+      </Grid>
+    );
+  }
+
+  return (
+    <Box display="flex" flexDirection="column" gap={3}>
+      <Box display="flex" alignItems="stretch" gap={2.5}>
+        <Box sx={{ width: { xs: "100%", md: "33.33%" }, flexShrink: 0, display: "flex" }}>
+          <UnitCard
+            item={expandedItem}
+            isSelected={true}
+            onExpand={onExpand}
+            renderSummaryRows={renderSummaryRows}
+            renderSelectedRows={renderSelectedRows}
+            renderActions={renderActions}
+          />
+        </Box>
+        <motion.div
+          style={{ flex: 1, display: "flex" }}
+          initial={{ opacity: 0, x: 40 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.25, delay: 0.05 }}
+        >
+          {renderDetailPanel(expandedItem)}
+        </motion.div>
+      </Box>
+      {renderBottomPanel && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.1 }}
+        >
+          {renderBottomPanel(expandedItem)}
+        </motion.div>
       )}
-
-      <AnimatePresence initial={false}>
-        {expandedItem && (
-          <Grid
-            key="detail-panel"
-            size={{ xs: 12, md: 8, lg: 8 }}
-            component={motion.div}
-            sx={expandedPaneSx}
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 40 }}
-            transition={{ duration: 0.25, delay: 0.05 }}
-          >
-            {renderDetailPanel(expandedItem)}
-          </Grid>
-        )}
-
-        {expandedItem && renderBottomPanel && (
-          <Grid
-            key="bottom-panel"
-            size={{ xs: 12 }}
-            component={motion.div}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            transition={{ duration: 0.25, delay: 0.1 }}
-          >
-            {renderBottomPanel(expandedItem)}
-          </Grid>
-        )}
-      </AnimatePresence>
-    </Grid>
+    </Box>
   );
 }
