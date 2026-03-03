@@ -749,6 +749,8 @@ export function UnitCardsView<T extends UnitListItem>({
   renderBottomPanel,
   emptyMessage,
 }: UnitCardsViewProps<T>) {
+  const theme = useTheme();
+  const isCompactLayout = useMediaQuery(theme.breakpoints.down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
 
   if (items.length === 0) {
@@ -785,7 +787,12 @@ export function UnitCardsView<T extends UnitListItem>({
 
   return (
     <Box display="flex" flexDirection="column" gap={3}>
-      <Box display="flex" alignItems="stretch" gap={2.5}>
+      <Box
+        display="flex"
+        flexDirection={{ xs: "column", md: "row" }}
+        alignItems="stretch"
+        gap={2.5}
+      >
         <Box
           sx={{
             width: { xs: "100%", md: "33.33%" },
@@ -803,9 +810,13 @@ export function UnitCardsView<T extends UnitListItem>({
           />
         </Box>
         <motion.div
-          style={{ flex: 1, display: "flex" }}
-          initial={{ opacity: 0, x: 40 }}
-          animate={{ opacity: 1, x: 0 }}
+          style={{ flex: 1, display: "flex", width: "100%" }}
+          initial={{
+            opacity: 0,
+            x: isCompactLayout ? 0 : 40,
+            y: isCompactLayout ? 20 : 0,
+          }}
+          animate={{ opacity: 1, x: 0, y: 0 }}
           transition={{ duration: 0.25, delay: 0.05 }}
         >
           {renderDetailPanel(expandedItem)}
