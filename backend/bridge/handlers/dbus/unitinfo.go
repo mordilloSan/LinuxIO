@@ -2,6 +2,7 @@ package dbus
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	godbus "github.com/godbus/dbus/v5"
@@ -22,13 +23,13 @@ func GetUnitInfo(unitName string) (map[string]any, error) {
 
 	var info map[string]any
 	err := withSystemdManager(func(conn *godbus.Conn, systemd godbus.BusObject) error {
+		info = make(map[string]any)
 		unitPath, err := getUnitObjectPath(systemd, unitName)
 		if err != nil {
-			return err
+			return populateUnitFileInfo(systemd, unitName, info, err)
 		}
 
 		unit := unitObject(conn, unitPath)
-		info = make(map[string]any)
 
 		for _, prop := range commonUnitInfoProps {
 			val, err := unit.GetProperty("org.freedesktop.systemd1.Unit." + prop)
@@ -50,6 +51,48 @@ func GetUnitInfo(unitName string) (map[string]any, error) {
 	})
 
 	return info, err
+}
+
+func populateUnitFileInfo(
+	systemd godbus.BusObject,
+	unitName string,
+	info map[string]any,
+	loadErr error,
+) error {
+	record, found, err := findUnitFileRecord(systemd, unitName)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return loadErr
+	}
+
+	info["Id"] = unitName
+	info["LoadState"] = "not-loaded"
+	info["ActiveState"] = "inactive"
+	info["SubState"] = "dead"
+	info["UnitFileState"] = record.State
+	info["FragmentPath"] = record.Path
+
+	return nil
+}
+
+func findUnitFileRecord(
+	systemd godbus.BusObject,
+	unitName string,
+) (unitFileRecord, bool, error) {
+	var unitFiles []unitFileRecord
+	if err := systemd.Call("org.freedesktop.systemd1.Manager.ListUnitFiles", 0).Store(&unitFiles); err != nil {
+		return unitFileRecord{}, false, err
+	}
+
+	for _, unitFile := range unitFiles {
+		if filepath.Base(unitFile.Path) == unitName {
+			return unitFile, true, nil
+		}
+	}
+
+	return unitFileRecord{}, false, nil
 }
 
 func getUnitObjectPath(

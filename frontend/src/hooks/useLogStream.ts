@@ -23,6 +23,8 @@ export interface UseLogStreamResult {
   resetState: () => void;
 }
 
+const INITIAL_LOG_SILENCE_TIMEOUT_MS = 1500;
+
 /**
  * Manages a live log stream: opens/closes based on dialog state and live mode,
  * accumulates log text, and handles loading/error state.
@@ -41,6 +43,7 @@ export function useLogStream({
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const hasReceivedData = useRef(false);
+  const initialLoadTimeoutRef = useRef<number | null>(null);
 
   // Stable ref so effects don't need createStream in their dep arrays.
   const createStreamRef = useRef(createStream);
@@ -48,6 +51,61 @@ export function useLogStream({
 
   const { streamRef, openStream, closeStream } = useLiveStream();
   const { isOpen: muxIsOpen } = useStreamMux();
+
+  const clearInitialLoadTimeout = useCallback(() => {
+    if (initialLoadTimeoutRef.current !== null) {
+      window.clearTimeout(initialLoadTimeoutRef.current);
+      initialLoadTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleInitialLoadTimeout = useCallback(() => {
+    clearInitialLoadTimeout();
+    initialLoadTimeoutRef.current = window.setTimeout(() => {
+      if (!hasReceivedData.current) {
+        setIsLoading(false);
+      }
+    }, INITIAL_LOG_SILENCE_TIMEOUT_MS);
+  }, [clearInitialLoadTimeout]);
+
+  const handleStreamOpenError = useCallback(() => {
+    clearInitialLoadTimeout();
+    queueMicrotask(() => {
+      setError("Failed to connect to log stream");
+      setIsLoading(false);
+    });
+  }, [clearInitialLoadTimeout]);
+
+  const handleStreamData = useCallback(
+    (data: Uint8Array) => {
+      const text = decodeString(data);
+      if (!hasReceivedData.current) {
+        hasReceivedData.current = true;
+        clearInitialLoadTimeout();
+        setIsLoading(false);
+      }
+      setLogs((prev) => prev + text);
+    },
+    [clearInitialLoadTimeout],
+  );
+
+  const handleStreamResult = useCallback(
+    (result: { status: "ok" | "error"; error?: string }) => {
+      clearInitialLoadTimeout();
+      if (result.status === "error") {
+        setError(result.error || "Failed to load logs");
+        setIsLoading(false);
+      }
+    },
+    [clearInitialLoadTimeout],
+  );
+
+  const handleStreamClose = useCallback(() => {
+    clearInitialLoadTimeout();
+    if (!hasReceivedData.current) {
+      setIsLoading(false);
+    }
+  }, [clearInitialLoadTimeout]);
 
   // Scroll to bottom whenever new logs arrive.
   useEffect(() => {
@@ -57,13 +115,14 @@ export function useLogStream({
   }, [logs, open]);
 
   const resetState = useCallback(() => {
+    clearInitialLoadTimeout();
     closeStream();
     setLogs("");
     setError(null);
     setLiveMode(true);
     setIsLoading(true);
     hasReceivedData.current = false;
-  }, [closeStream]);
+  }, [clearInitialLoadTimeout, closeStream]);
 
   // Open stream when the dialog opens and the mux is ready.
   useEffect(() => {
@@ -71,52 +130,66 @@ export function useLogStream({
     if (streamRef.current) return;
 
     hasReceivedData.current = false;
+    scheduleInitialLoadTimeout();
 
     openStream({
       open: () => createStreamRef.current(initialTail),
-      onOpenError: () => {
-        queueMicrotask(() => {
-          setError("Failed to connect to log stream");
-          setIsLoading(false);
-        });
-      },
-      onData: (data: Uint8Array) => {
-        const text = decodeString(data);
-        if (!hasReceivedData.current) {
-          hasReceivedData.current = true;
-          setIsLoading(false);
-        }
-        setLogs((prev) => prev + text);
-      },
-      onClose: () => {
-        if (!hasReceivedData.current) {
-          setIsLoading(false);
-        }
-      },
+      onOpenError: handleStreamOpenError,
+      onData: handleStreamData,
+      onResult: handleStreamResult,
+      onClose: handleStreamClose,
     });
-  }, [open, muxIsOpen, openStream, streamRef, initialTail]);
+  }, [
+    open,
+    muxIsOpen,
+    openStream,
+    streamRef,
+    initialTail,
+    scheduleInitialLoadTimeout,
+    handleStreamOpenError,
+    handleStreamData,
+    handleStreamResult,
+    handleStreamClose,
+  ]);
 
   // Handle live mode toggle.
   useEffect(() => {
     if (!liveMode && streamRef.current) {
       closeStream();
+      clearInitialLoadTimeout();
       if (!hasReceivedData.current) {
         queueMicrotask(() => setIsLoading(false));
       }
     } else if (liveMode && !streamRef.current && open && muxIsOpen) {
       openStream({
         open: () => createStreamRef.current(liveTail),
-        onData: (data: Uint8Array) => {
-          setLogs((prev) => prev + decodeString(data));
-        },
+        onOpenError: handleStreamOpenError,
+        onData: handleStreamData,
+        onResult: handleStreamResult,
+        onClose: handleStreamClose,
       });
     }
-  }, [liveMode, open, muxIsOpen, closeStream, openStream, streamRef, liveTail]);
+  }, [
+    liveMode,
+    open,
+    muxIsOpen,
+    closeStream,
+    openStream,
+    streamRef,
+    liveTail,
+    clearInitialLoadTimeout,
+    handleStreamOpenError,
+    handleStreamData,
+    handleStreamResult,
+    handleStreamClose,
+  ]);
 
   // Close stream when the dialog closes (state is reset separately via onExited).
   useEffect(() => {
     if (!open) closeStream();
   }, [open, closeStream]);
+
+  useEffect(() => clearInitialLoadTimeout, [clearInitialLoadTimeout]);
 
   return {
     logs,
