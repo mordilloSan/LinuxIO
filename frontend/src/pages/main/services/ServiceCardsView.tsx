@@ -15,7 +15,7 @@ import {
   Tooltip,
   useTheme,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha, type Theme } from "@mui/material/styles";
 import { AnimatePresence, motion } from "framer-motion";
 import React from "react";
 
@@ -27,6 +27,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { useLogStream } from "@/hooks/useLogStream";
+import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 
 interface ServiceCardsViewProps {
   services: Service[];
@@ -36,7 +37,7 @@ interface ServiceCardsViewProps {
 
 // Static sx objects — emotion caches these; per-card dynamic color is injected
 // via the CSS variable --svc-status-color set on the card's style prop.
-const cardSx = {
+const cardSx = (theme: Theme) => ({
   p: 3,
   display: "flex",
   flexDirection: "column",
@@ -49,13 +50,12 @@ const cardSx = {
   borderBottomColor:
     "color-mix(in srgb, var(--svc-status-color), transparent 70%)",
   "&:hover": {
-    transform: "translateY(-4px)",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+    ...getFrostedCardLiftStyles(theme),
   },
   "& .svc-card-details > .svc-detail-row:last-of-type": {
     borderBottom: "none",
   },
-} as const;
+});
 
 const selectedCardSx = {
   p: 3,

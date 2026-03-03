@@ -241,7 +241,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                         <IconButton
                           aria-label="Delete"
                           onClick={() => handleDeletePeer(peer.name)}
-                          sx={{ color: "red" }}
+                          sx={{ color: "error.main" }}
                         >
                           <DeleteIcon />
                         </IconButton>

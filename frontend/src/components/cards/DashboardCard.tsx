@@ -17,6 +17,10 @@ import React from "react";
 import FrostedCard from "./RootCard";
 
 import { cardHeight } from "@/constants";
+import {
+  getAccentCardHoverStyles,
+  getAccentCardStyles,
+} from "@/theme/surfaces";
 
 /** A single option rendered inside the card's dropdown selector. */
 export interface SelectOption {
@@ -195,22 +199,17 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   return (
     <FrostedCard
       elevation={2}
-      sx={{
+      sx={(theme) => ({
         minHeight: cardHeight,
         display: "flex",
         flexDirection: "column",
         transition:
-          "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out",
-        borderBottomWidth: "2px",
-        borderBottomStyle: "solid",
-        borderBottomColor: `color-mix(in srgb, ${primaryColor}, transparent 70%)`,
+          "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
+        ...getAccentCardStyles(primaryColor),
         "&:hover": {
-          borderBottomWidth: "3px",
-          borderBottomColor: primaryColor,
-          boxShadow: theme.shadows[10],
-          marginBlockEnd: "-1px",
+          ...getAccentCardHoverStyles(theme, primaryColor),
         },
-      }}
+      })}
     >
       <CardContent>
         {/* Header */}
@@ -267,7 +266,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                 </Box>
                 <Typography
                   variant="body2"
-                  sx={{ color: "grey", ml: 0, lineHeight: 1 }}
+                  sx={{ color: "text.secondary", ml: 0, lineHeight: 1 }}
                 >
                   {icon_text}
                 </Typography>

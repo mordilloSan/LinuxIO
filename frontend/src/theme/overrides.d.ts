@@ -1,4 +1,11 @@
 import "@mui/material/styles";
+import "@mui/material/TextField";
+
+declare module "@mui/material/TextField" {
+  interface TextFieldPropsVariantOverrides {
+    search: true;
+  }
+}
 
 declare module "@mui/material/styles" {
   interface Theme {

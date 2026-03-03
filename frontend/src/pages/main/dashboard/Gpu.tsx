@@ -77,7 +77,7 @@ const GpuInfo: React.FC = () => {
       title="GPU"
       stats={content}
       icon={ThermostatIcon}
-      iconProps={{ sx: { color: "grey" } }}
+      iconProps={{ sx: { color: "text.secondary" } }}
       avatarIcon="bi:gpu-card"
     />
   );

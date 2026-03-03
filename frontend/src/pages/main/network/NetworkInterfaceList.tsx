@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Box, Typography, Grid, Tooltip, Fade } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 
@@ -10,6 +10,7 @@ import NetworkTrafficGraph from "./NetworkTrafficGraph";
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 
 export type { NetworkInterface };
 
@@ -178,10 +179,7 @@ const NetworkInterfaceList = () => {
                     transition: "transform 0.2s, box-shadow 0.2s",
                     cursor: "pointer",
                     ...(expanded !== iface.name && {
-                      "&:hover": {
-                        transform: "translateY(-4px)",
-                        boxShadow: `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`,
-                      },
+                      "&:hover": getFrostedCardLiftStyles(theme),
                     }),
                   }}
                 >

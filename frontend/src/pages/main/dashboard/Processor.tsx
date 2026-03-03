@@ -101,7 +101,7 @@ const Processor: React.FC = () => {
     ),
     icon_text: IconText,
     icon: TemperatureIcon,
-    iconProps: { sx: { color: "grey" } },
+    iconProps: { sx: { color: "text.secondary" } },
   };
 
   return <DashboardCard {...data} />;

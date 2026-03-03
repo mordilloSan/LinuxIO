@@ -8,7 +8,7 @@ import {
   Typography,
   Fade,
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   Suspense,
@@ -26,6 +26,7 @@ import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -260,11 +261,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         position: "relative",
         cursor: hasPorts ? "pointer" : "default",
         transition: "transform 0.2s, box-shadow 0.2s",
-        "&:hover": {
-          transform: "translateY(-4px)",
-          boxShadow: (theme) =>
-            `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`,
-        },
+        "&:hover": hasPorts ? getFrostedCardLiftStyles(theme) : undefined,
       }}
     >
       {/* Status dot */}

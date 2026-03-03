@@ -40,6 +40,7 @@ import {
 import { linuxio, openSmartTestStream, type Stream, type ApiDisk } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -388,10 +389,7 @@ const DiskOverview: React.FC = () => {
                       transition: "transform 0.2s, box-shadow 0.2s",
                       cursor: "pointer",
                       ...(expanded !== drive.name && {
-                        "&:hover": {
-                          transform: "translateY(-4px)",
-                          boxShadow: `0 8px 24px ${alpha(theme.palette.common.black, 0.35)}`,
-                        },
+                        "&:hover": getFrostedCardLiftStyles(theme),
                       }),
                     }}
                     onClick={() => handleToggle(drive.name)}
