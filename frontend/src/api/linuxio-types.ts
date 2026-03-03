@@ -300,6 +300,36 @@ export interface Service {
   [key: string]: unknown;
 }
 
+export interface UnitInfo {
+  Id?: string;
+  Description?: string;
+  LoadState?: string;
+  ActiveState?: string;
+  SubState?: string;
+  UnitFileState?: string;
+  FragmentPath?: string;
+  ActiveEnterTimestamp?: number;
+  InactiveEnterTimestamp?: number;
+  Requires?: string[];
+  Wants?: string[];
+  WantedBy?: string[];
+  Before?: string[];
+  After?: string[];
+  Conflicts?: string[];
+  PartOf?: string[];
+  TriggeredBy?: string[];
+  MainPID?: number;
+  MemoryCurrent?: number;
+  ExecMainStatus?: number;
+  NextElapseUSec?: number;
+  LastTriggerUSec?: number;
+  Unit?: string;
+  Listen?: string[];
+  NConnections?: number;
+  NAccepted?: number;
+  [key: string]: unknown;
+}
+
 export interface Timer {
   name: string;
   description?: string;
@@ -746,7 +776,7 @@ export interface LinuxIOSchema {
     };
     get_update_history: { args: []; result: UpdateHistoryRow[] };
     list_services: { args: []; result: Service[] };
-    get_service_info: { args: [serviceName: string]; result: Service };
+    get_unit_info: { args: [unitName: string]; result: UnitInfo };
     list_timers: { args: []; result: Timer[] };
     list_sockets: { args: []; result: Socket[] };
     get_service_logs: {

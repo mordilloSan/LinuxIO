@@ -125,11 +125,11 @@ func RegisterHandlers() {
 		return emit.Result(services)
 	})
 
-	ipc.RegisterFunc("dbus", "get_service_info", func(ctx context.Context, args []string, emit ipc.Events) error {
+	ipc.RegisterFunc("dbus", "get_unit_info", func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
 			return ipc.ErrInvalidArgs
 		}
-		info, err := GetServiceInfo(args[0])
+		info, err := GetUnitInfo(args[0])
 		if err != nil {
 			return err
 		}

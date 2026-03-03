@@ -1,12 +1,12 @@
 import { TableCell } from "@mui/material";
 import React from "react";
 
-import { UnitTableView, statusDot } from "./UnitViews";
+import { UnitTableView, formatUsec, statusDot } from "./UnitViews";
 
-import type { Service } from "@/api";
+import type { Timer } from "@/api";
 
-interface ServiceTableViewProps {
-  services: Service[];
+interface TimerTableViewProps {
+  timers: Timer[];
   selected?: string | null;
   onSelect?: (name: string | null) => void;
   onDoubleClick?: (name: string) => void;
@@ -20,20 +20,15 @@ const desktopColumns = [
     width: "120px",
     sx: { paddingLeft: "8px" },
   },
-  { field: "name", headerName: "Name", align: "left" as const, width: "200px" },
+  { field: "name", headerName: "Name", align: "left" as const, width: "220px" },
+  { field: "unit", headerName: "Unit", align: "left" as const, width: "220px" },
   {
-    field: "load_state",
-    headerName: "Load State",
+    field: "next_elapse",
+    headerName: "Next Elapse",
     align: "left" as const,
-    width: "120px",
+    width: "180px",
   },
-  {
-    field: "sub_state",
-    headerName: "Sub State",
-    align: "left" as const,
-    width: "120px",
-  },
-  { field: "description", headerName: "Description", align: "left" as const },
+  { field: "last_trigger", headerName: "Last Trigger", align: "left" as const },
 ];
 
 const mobileColumns = [
@@ -47,17 +42,17 @@ const mobileColumns = [
   { field: "name", headerName: "Name", align: "left" as const },
 ];
 
-const ServiceTableView: React.FC<ServiceTableViewProps> = ({
-  services,
+const TimerTableView: React.FC<TimerTableViewProps> = ({
+  timers,
   selected,
   onSelect,
   onDoubleClick,
 }) => (
   <UnitTableView
-    data={services}
+    data={timers}
     desktopColumns={desktopColumns}
     mobileColumns={mobileColumns}
-    getRowKey={(service) => service.name}
+    getRowKey={(timer) => timer.name}
     selected={selected}
     onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
     onDoubleClick={(key) => {
@@ -65,7 +60,7 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
         onDoubleClick?.(key);
       }
     }}
-    renderMobileExpandedContent={(service) => (
+    renderMobileExpandedContent={(timer) => (
       <div
         style={{
           display: "flex",
@@ -75,9 +70,9 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
         }}
       >
         {[
-          { label: "Load", value: service.load_state },
-          { label: "Sub", value: service.sub_state },
-          { label: "Description", value: service.description || "—" },
+          { label: "Unit", value: timer.unit || "—" },
+          { label: "Next", value: formatUsec(timer.next_elapse_usec) },
+          { label: "Last", value: formatUsec(timer.last_trigger_usec) },
         ].map(({ label, value }) => (
           <div key={label} style={{ display: "flex", gap: 12 }}>
             <span
@@ -98,24 +93,24 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
         ))}
       </div>
     )}
-    renderMainRow={(service, isMobile) => (
+    renderMainRow={(timer, isMobile) => (
       <>
         <TableCell sx={{ paddingLeft: "8px" }}>
-          {statusDot(service.active_state)}
-          {service.active_state}
+          {statusDot(timer.active_state)}
+          {timer.active_state}
         </TableCell>
-        <TableCell>{service.name}</TableCell>
+        <TableCell>{timer.name}</TableCell>
         {!isMobile && (
           <>
-            <TableCell>{service.load_state}</TableCell>
-            <TableCell>{service.sub_state}</TableCell>
-            <TableCell>{service.description || "-"}</TableCell>
+            <TableCell>{timer.unit || "—"}</TableCell>
+            <TableCell>{formatUsec(timer.next_elapse_usec)}</TableCell>
+            <TableCell>{formatUsec(timer.last_trigger_usec)}</TableCell>
           </>
         )}
       </>
     )}
-    emptyMessage="No services found."
+    emptyMessage="No timers found."
   />
 );
 
-export default ServiceTableView;
+export default TimerTableView;

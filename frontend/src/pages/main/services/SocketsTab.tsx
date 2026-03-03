@@ -1,66 +1,14 @@
-import {
-  Alert,
-  Box,
-  Chip,
-  TableCell,
-  TextField,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
-import React, { useMemo, useState } from "react";
+import React from "react";
 
-import type { Socket } from "@/api";
+import SocketCardsView from "./SocketCardsView";
+import SocketTableView from "./SocketTableView";
+import UnitListTab from "./UnitListTab";
+import { UnitInfoPanel } from "./UnitViews";
+
 import { linuxio } from "@/api";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
-import UnifiedCollapsibleTable, {
-  UnifiedTableColumn,
-} from "@/components/tables/UnifiedCollapsibleTable";
-import { getServiceStatusColor } from "@/constants/statusColors";
-
-const desktopColumns: UnifiedTableColumn[] = [
-  {
-    field: "status",
-    headerName: "Status",
-    align: "left",
-    width: "120px",
-    sx: { paddingLeft: "8px" },
-  },
-  { field: "name", headerName: "Name", align: "left", width: "220px" },
-  { field: "listen", headerName: "Listen", align: "left" },
-  {
-    field: "connections",
-    headerName: "Connections",
-    align: "right",
-    width: "130px",
-  },
-  { field: "accepted", headerName: "Accepted", align: "right", width: "120px" },
-];
-
-const mobileColumns: UnifiedTableColumn[] = [
-  {
-    field: "status",
-    headerName: "Status",
-    align: "left",
-    width: "110px",
-    sx: { paddingLeft: "8px" },
-  },
-  { field: "name", headerName: "Name", align: "left" },
-];
-
-const statusDot = (activeState: string) => (
-  <Box
-    component="span"
-    sx={{
-      display: "inline-block",
-      width: 10,
-      height: 10,
-      borderRadius: "50%",
-      bgcolor: getServiceStatusColor(activeState),
-      mr: 1,
-      flexShrink: 0,
-    }}
-  />
-);
+import type { Socket, UnitInfo } from "@/api";
+import { useViewMode } from "@/hooks/useViewMode";
+import type { TableCardViewMode } from "@/types/config";
 
 function compareSocketsByName(a: Socket, b: Socket): number {
   return a.name.localeCompare(b.name, undefined, {
@@ -69,135 +17,89 @@ function compareSocketsByName(a: Socket, b: Socket): number {
   });
 }
 
-const SocketsTab: React.FC = () => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-
-  const { data, isPending, isError, error } =
-    linuxio.dbus.list_sockets.useQuery({
-      refetchInterval: 5000,
-    });
-
-  const [search, setSearch] = useState("");
-
-  const filtered = useMemo(
-    () =>
-      (data ?? [])
-        .filter(
-          (s) =>
-            s.name.toLowerCase().includes(search.toLowerCase()) ||
-            (s.description?.toLowerCase().includes(search.toLowerCase()) ??
-              false) ||
-            s.listen.some((addr) =>
-              addr.toLowerCase().includes(search.toLowerCase()),
-            ),
-        )
-        .sort(compareSocketsByName),
-    [data, search],
+function matchesSocketSearch(socket: Socket, search: string): boolean {
+  return (
+    socket.name.toLowerCase().includes(search) ||
+    (socket.description?.toLowerCase().includes(search) ?? false) ||
+    socket.listen.some((address) => address.toLowerCase().includes(search))
   );
+}
+
+function useSocketsQuery(viewMode: TableCardViewMode) {
+  return linuxio.dbus.list_sockets.useQuery({
+    refetchInterval: viewMode === "card" ? false : 5000,
+  });
+}
+
+function buildSocketInfoRows(
+  socket: Socket,
+  info: UnitInfo | undefined,
+  isPending: boolean,
+) {
+  const listen = Array.isArray(info?.Listen)
+    ? info.Listen.join(", ")
+    : socket.listen.join(", ");
+
+  return [
+    {
+      label: "Listen",
+      value: listen || "—",
+    },
+    {
+      label: "Connections",
+      value: String(info?.NConnections ?? socket.n_connections),
+      hidden: isPending && !info && socket.n_connections === 0,
+    },
+    {
+      label: "Accepted",
+      value: String(info?.NAccepted ?? socket.n_accepted),
+      hidden: isPending && !info && socket.n_accepted === 0,
+    },
+  ];
+}
+
+const SocketsTab: React.FC = () => {
+  const [viewMode, setViewMode] = useViewMode("sockets.list", "table");
+  const { data, isPending, isError, error } = useSocketsQuery(viewMode);
 
   return (
-    <Box>
-      {isPending && <ComponentLoader />}
-      {isError && (
-        <Alert severity="error">
-          {error instanceof Error ? error.message : "Failed to load sockets"}
-        </Alert>
+    <UnitListTab
+      viewMode={viewMode}
+      setViewMode={setViewMode}
+      data={data}
+      isPending={isPending}
+      isError={isError}
+      error={error}
+      searchPlaceholder="Search sockets…"
+      errorMessage="Failed to load sockets"
+      compareItems={compareSocketsByName}
+      matchesSearch={matchesSocketSearch}
+      renderTableView={({ items, selected, onSelect, onDoubleClick }) => (
+        <SocketTableView
+          sockets={items}
+          selected={selected}
+          onSelect={onSelect}
+          onDoubleClick={onDoubleClick}
+        />
       )}
-      {data && (
-        <>
-          <Box mb={2} display="flex" alignItems="center" gap={2}>
-            <TextField
-              variant="outlined"
-              size="small"
-              placeholder="Search sockets…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              sx={{ width: 320 }}
-            />
-            <Box fontWeight="bold">{filtered.length} shown</Box>
-          </Box>
-
-          <UnifiedCollapsibleTable<Socket>
-            data={filtered}
-            columns={isMobile ? mobileColumns : desktopColumns}
-            getRowKey={(s) => s.name}
-            renderMainRow={(s) => (
-              <>
-                <TableCell sx={{ paddingLeft: "8px" }}>
-                  {statusDot(s.active_state)}
-                  {s.active_state}
-                </TableCell>
-                <TableCell>{s.name}</TableCell>
-                {!isMobile && (
-                  <>
-                    <TableCell>
-                      <Box display="flex" gap={0.5} flexWrap="wrap">
-                        {s.listen.length > 0
-                          ? s.listen.map((addr) => (
-                              <Chip
-                                key={addr}
-                                label={addr}
-                                size="small"
-                                variant="outlined"
-                              />
-                            ))
-                          : "—"}
-                      </Box>
-                    </TableCell>
-                    <TableCell align="right">{s.n_connections}</TableCell>
-                    <TableCell align="right">{s.n_accepted}</TableCell>
-                  </>
-                )}
-              </>
-            )}
-            renderExpandedContent={
-              isMobile
-                ? (s) => (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 6,
-                        padding: "2px 0",
-                      }}
-                    >
-                      {[
-                        { label: "Listen", value: s.listen.join(", ") || "—" },
-                        {
-                          label: "Connections",
-                          value: String(s.n_connections),
-                        },
-                        { label: "Accepted", value: String(s.n_accepted) },
-                      ].map(({ label, value }) => (
-                        <div key={label} style={{ display: "flex", gap: 12 }}>
-                          <span
-                            style={{
-                              fontSize: "0.6rem",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.06em",
-                              color: "var(--mui-palette-text-secondary)",
-                              width: 80,
-                              flexShrink: 0,
-                              paddingTop: 2,
-                            }}
-                          >
-                            {label}
-                          </span>
-                          <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-                            {value}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                : undefined
-            }
-            emptyMessage="No sockets found."
-          />
-        </>
+      renderCardsView={({ items, expanded, onExpand, renderDetailPanel }) => (
+        <SocketCardsView
+          sockets={items}
+          expanded={expanded}
+          onExpand={onExpand}
+          renderDetailPanel={renderDetailPanel}
+        />
       )}
-    </Box>
+      renderDetailPanel={(socket, onClose) => (
+        <UnitInfoPanel
+          unitName={socket.name}
+          onClose={onClose}
+          renderInfoRows={(info, isPending) =>
+            buildSocketInfoRows(socket, info, isPending)
+          }
+        />
+      )}
+    />
   );
 };
 

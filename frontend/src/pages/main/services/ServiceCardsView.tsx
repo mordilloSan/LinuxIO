@@ -1,5 +1,4 @@
 import BlockIcon from "@mui/icons-material/Block";
-import CheckIcon from "@mui/icons-material/Check";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
@@ -10,219 +9,82 @@ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   Button,
   FormControlLabel,
-  Grid,
   Switch,
   Tooltip,
   useTheme,
 } from "@mui/material";
-import { alpha, type Theme } from "@mui/material/styles";
-import { AnimatePresence, motion } from "framer-motion";
+import { alpha } from "@mui/material/styles";
 import React from "react";
 
-import ServiceDetailPanel from "./ServiceDetailPanel";
+import {
+  AutoStartRow,
+  DetailRow,
+  UnitCardsView,
+  formatBytes,
+  formatTimestamp,
+} from "./UnitViews";
 
-import type { Service } from "@/api";
+import type { Service, UnitInfo } from "@/api";
 import { linuxio, openServiceLogsStream } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import { useLogStream } from "@/hooks/useLogStream";
-import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 
 interface ServiceCardsViewProps {
   services: Service[];
   expanded: string | null;
   onExpand: (name: string | null) => void;
+  renderDetailPanel: (service: Service) => React.ReactNode;
 }
 
-// Static sx objects — emotion caches these; per-card dynamic color is injected
-// via the CSS variable --svc-status-color set on the card's style prop.
-const cardSx = (theme: Theme) => ({
-  p: 3,
-  display: "flex",
-  flexDirection: "column",
-  height: "100%",
-  cursor: "pointer",
-  transition:
-    "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
-  borderBottomWidth: "2px",
-  borderBottomStyle: "solid",
-  borderBottomColor:
-    "color-mix(in srgb, var(--svc-status-color), transparent 70%)",
-  "&:hover": {
-    ...getFrostedCardLiftStyles(theme),
-  },
-  "& .svc-card-details > .svc-detail-row:last-of-type": {
-    borderBottom: "none",
-  },
+const ServiceStatusRows = React.memo<{ service: Service }>(({ service }) => {
+  const statusColor = getServiceStatusColor(service.active_state);
+  const isActive = service.active_state === "active";
+  const ts = isActive
+    ? formatTimestamp(service.active_enter_timestamp)
+    : formatTimestamp(service.inactive_enter_timestamp);
+
+  return (
+    <>
+      <DetailRow label="Status" noBorder>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span
+            style={{
+              fontSize: "0.85rem",
+              fontWeight: 600,
+              color: statusColor,
+            }}
+          >
+            {isActive ? "Running" : service.active_state}
+            {service.sub_state &&
+              service.sub_state !== service.active_state && (
+                <span
+                  style={{
+                    color: "var(--mui-palette-text-secondary)",
+                    marginLeft: 8,
+                    fontWeight: 400,
+                  }}
+                >
+                  ({service.sub_state})
+                </span>
+              )}
+          </span>
+          <span
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--mui-palette-text-secondary)",
+            }}
+          >
+            {isActive ? "Active" : "Inactive"} since {ts}
+          </span>
+        </div>
+      </DetailRow>
+      <AutoStartRow unitFileState={service.unit_file_state} />
+    </>
+  );
 });
-
-const selectedCardSx = {
-  p: 3,
-  display: "flex",
-  flexDirection: "column",
-  height: "100%",
-  cursor: "pointer",
-  transition:
-    "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
-  borderBottomWidth: "2px",
-  borderBottomStyle: "solid",
-  borderBottomColor: "var(--svc-status-color)",
-  "& .svc-card-details > .svc-detail-row:last-of-type": {
-    borderBottom: "none",
-  },
-} as const;
-
-const expandedPaneSx = {
-  display: "flex",
-} as const;
-
-const DetailRow: React.FC<{
-  label: string;
-  children: React.ReactNode;
-  noBorder?: boolean;
-}> = ({ label, children, noBorder }) => (
-  <div
-    className="svc-detail-row"
-    style={{
-      display: "flex",
-      padding: "1px 0",
-      borderTop: noBorder ? undefined : "1px solid var(--mui-palette-divider)",
-      alignItems: "flex-start",
-    }}
-  >
-    <span
-      style={{
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        fontSize: "0.6rem",
-        color: "var(--mui-palette-text-secondary)",
-        flexShrink: 0,
-        width: 90,
-        paddingTop: 3,
-      }}
-    >
-      {label}
-    </span>
-    <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
-  </div>
-);
-
-const formatBytes = (val: unknown): string => {
-  const b = Number(val ?? 0);
-  if (!b || b > 1e18) return "—";
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} kB`;
-  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-};
-
-const formatTimestamp = (ts: unknown): string => {
-  const ms = Number(ts ?? 0) / 1000;
-  if (!ms) return "—";
-  return new Date(ms).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
-
-const formatUnitFileState = (
-  state: string,
-): { label: string; auto: boolean } => {
-  switch (state) {
-    case "enabled":
-      return { label: "Automatically starts", auto: true };
-    case "enabled-runtime":
-      return { label: "Automatically starts (runtime)", auto: true };
-    case "static":
-      return { label: "Statically enabled", auto: false };
-    case "disabled":
-      return { label: "Does not automatically start", auto: false };
-    case "masked":
-      return { label: "Masked (disabled)", auto: false };
-    case "generated":
-      return { label: "Generated by a generator", auto: false };
-    default:
-      return { label: state || "—", auto: false };
-  }
-};
-
-const SelectedServiceDetails = React.memo<{ service: Service }>(
-  ({ service }) => {
-    const statusColor = getServiceStatusColor(service.active_state);
-    const isActive = service.active_state === "active";
-    const ts = isActive
-      ? formatTimestamp(service.active_enter_timestamp)
-      : formatTimestamp(service.inactive_enter_timestamp);
-    const { label: autoStartLabel, auto: autoStart } = formatUnitFileState(
-      service.unit_file_state,
-    );
-
-    return (
-      <>
-        <DetailRow label="Status" noBorder>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <span
-              style={{
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                color: statusColor,
-              }}
-            >
-              {isActive ? "Running" : service.active_state}
-              {service.sub_state &&
-                service.sub_state !== service.active_state && (
-                  <span
-                    style={{
-                      color: "var(--mui-palette-text-secondary)",
-                      marginLeft: 8,
-                      fontWeight: 400,
-                    }}
-                  >
-                    ({service.sub_state})
-                  </span>
-                )}
-            </span>
-            <span
-              style={{
-                fontSize: "0.7rem",
-                color: "var(--mui-palette-text-secondary)",
-              }}
-            >
-              {isActive ? "Active" : "Inactive"} since {ts}
-            </span>
-          </div>
-        </DetailRow>
-        <DetailRow label="Auto-start">
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            {autoStart ? (
-              <CheckIcon
-                style={{
-                  fontSize: 15,
-                  color: "var(--mui-palette-success-main)",
-                }}
-              />
-            ) : (
-              <BlockIcon
-                style={{
-                  fontSize: 15,
-                  color: "var(--mui-palette-text-disabled)",
-                }}
-              />
-            )}
-            <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
-              {autoStartLabel}
-            </span>
-          </div>
-        </DetailRow>
-      </>
-    );
-  },
-);
-SelectedServiceDetails.displayName = "SelectedServiceDetails";
+ServiceStatusRows.displayName = "ServiceStatusRows";
 
 const ServiceLogsCard: React.FC<{ service: Service }> = ({ service }) => {
   const theme = useTheme();
@@ -322,14 +184,41 @@ const ServiceLogsCard: React.FC<{ service: Service }> = ({ service }) => {
   );
 };
 
-const ServiceCardInfoRows: React.FC<{ service: Service }> = ({ service }) => {
-  const { data: info } = linuxio.dbus.get_service_info.useQuery(service.name, {
+const ServiceInfoRows: React.FC<{ service: Service }> = ({ service }) => {
+  const { data: info } = linuxio.dbus.get_unit_info.useQuery(service.name, {
     refetchInterval: 2000,
   });
   const mainPid = Number(info?.MainPID ?? 0);
   const memory = formatBytes(info?.MemoryCurrent);
+  const statusColor = getServiceStatusColor(service.active_state);
+
   return (
     <>
+      <DetailRow label="Active">
+        <span
+          style={{
+            fontSize: "0.75rem",
+            fontWeight: 500,
+            color: statusColor,
+          }}
+        >
+          {service.active_state}
+        </span>
+      </DetailRow>
+      <DetailRow label="Load">
+        <span
+          style={{
+            fontSize: "0.75rem",
+            fontWeight: 500,
+            color:
+              service.load_state === "loaded"
+                ? "var(--mui-palette-text-primary)"
+                : "var(--mui-palette-text-secondary)",
+          }}
+        >
+          {service.load_state}
+        </span>
+      </DetailRow>
       {mainPid > 0 && (
         <DetailRow label="PID">
           <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
@@ -342,15 +231,15 @@ const ServiceCardInfoRows: React.FC<{ service: Service }> = ({ service }) => {
           <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{memory}</span>
         </DetailRow>
       )}
+      <ServiceCardActions service={service} info={info} />
     </>
   );
 };
 
-const ServiceCardActions: React.FC<{ service: Service }> = ({ service }) => {
-  const { data: info } = linuxio.dbus.get_service_info.useQuery(service.name, {
-    refetchInterval: 2000,
-  });
-
+const ServiceCardActions: React.FC<{
+  service: Service;
+  info: UnitInfo | undefined;
+}> = ({ service, info }) => {
   const { mutate: startService, isPending: isStarting } =
     linuxio.dbus.start_service.useMutation();
   const { mutate: stopService, isPending: isStopping } =
@@ -369,7 +258,9 @@ const ServiceCardActions: React.FC<{ service: Service }> = ({ service }) => {
     linuxio.dbus.unmask_service.useMutation();
 
   const isActive = service.active_state === "active";
-  const unitFileState = String(info?.UnitFileState ?? "");
+  const unitFileState = String(
+    info?.UnitFileState ?? service.unit_file_state ?? "",
+  );
   const isEnabled =
     unitFileState === "enabled" || unitFileState === "enabled-runtime";
   const isMasked = unitFileState === "masked";
@@ -501,192 +392,22 @@ const ServiceCardActions: React.FC<{ service: Service }> = ({ service }) => {
   );
 };
 
-const ServiceCard = React.memo<{
-  service: Service;
-  isSelected: boolean;
-  onExpand: (name: string | null) => void;
-}>(({ service, isSelected, onExpand }) => {
-  const statusColor = getServiceStatusColor(service.active_state);
-
-  return (
-    <FrostedCard
-      onClick={() => onExpand(isSelected ? null : service.name)}
-      style={{ "--svc-status-color": statusColor } as React.CSSProperties}
-      sx={isSelected ? selectedCardSx : cardSx}
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 12,
-          gap: 8,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: "bold",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {service.name}
-          </div>
-          {service.description && (
-            <div
-              style={{
-                fontSize: "0.7rem",
-                color: "var(--mui-palette-text-secondary)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-              title={service.description}
-            >
-              {service.description}
-            </div>
-          )}
-        </div>
-        <span
-          style={{
-            display: "inline-block",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            backgroundColor: statusColor,
-            flexShrink: 0,
-            marginTop: 4,
-          }}
-        />
-      </div>
-
-      {/* Stat rows */}
-      <div style={{ flex: 1 }} className="svc-card-details">
-        <SelectedServiceDetails service={service} />
-        {isSelected && (
-          <>
-            <DetailRow label="Active">
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 500,
-                  color: statusColor,
-                }}
-              >
-                {service.active_state}
-              </span>
-            </DetailRow>
-            <DetailRow label="Load">
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 500,
-                  color:
-                    service.load_state === "loaded"
-                      ? "var(--mui-palette-text-primary)"
-                      : "var(--mui-palette-text-secondary)",
-                }}
-              >
-                {service.load_state}
-              </span>
-            </DetailRow>
-
-            <ServiceCardInfoRows service={service} />
-            <ServiceCardActions service={service} />
-          </>
-        )}
-      </div>
-    </FrostedCard>
-  );
-});
-ServiceCard.displayName = "ServiceCard";
-
 const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
   services,
   expanded,
   onExpand,
-}) => {
-  const expandedService = services.find((s) => s.name === expanded) ?? null;
-
-  if (services.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: "32px 0" }}>
-        <span
-          style={{
-            fontSize: "0.875rem",
-            color: "var(--mui-palette-text-secondary)",
-          }}
-        >
-          No services found.
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <Grid container spacing={3}>
-      {services.map((service) =>
-        expanded && expanded !== service.name ? null : (
-          <Grid
-            key={service.name}
-            size={
-              expanded === service.name
-                ? { xs: 12, md: 4, lg: 4 }
-                : { xs: 12, sm: 6, md: 4, lg: 3 }
-            }
-            sx={expanded === service.name ? expandedPaneSx : undefined}
-          >
-            <ServiceCard
-              service={service}
-              isSelected={expanded === service.name}
-              onExpand={onExpand}
-            />
-          </Grid>
-        ),
-      )}
-
-      <AnimatePresence initial={false}>
-        {expandedService && (
-          <Grid
-            key="detail-panel"
-            size={{ xs: 12, md: 8, lg: 8 }}
-            component={motion.div}
-            sx={expandedPaneSx}
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 40 }}
-            transition={{ duration: 0.25, delay: 0.05 }}
-          >
-            <ServiceDetailPanel
-              service={expandedService}
-              onClose={() => onExpand(null)}
-            />
-          </Grid>
-        )}
-
-        {expandedService && (
-          <Grid
-            key="logs-panel"
-            size={{ xs: 12 }}
-            component={motion.div}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            transition={{ duration: 0.25, delay: 0.1 }}
-          >
-            <ServiceLogsCard
-              key={expandedService.name}
-              service={expandedService}
-            />
-          </Grid>
-        )}
-      </AnimatePresence>
-    </Grid>
-  );
-};
+  renderDetailPanel,
+}) => (
+  <UnitCardsView
+    items={services}
+    expanded={expanded}
+    onExpand={onExpand}
+    emptyMessage="No services found."
+    renderSummaryRows={(service) => <ServiceStatusRows service={service} />}
+    renderSelectedRows={(service) => <ServiceInfoRows service={service} />}
+    renderDetailPanel={renderDetailPanel}
+    renderBottomPanel={(service) => <ServiceLogsCard service={service} />}
+  />
+);
 
 export default ServiceCardsView;

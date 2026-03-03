@@ -141,6 +141,7 @@ export type {
   AutoUpdateOptions,
   AutoUpdateState,
   Service,
+  UnitInfo,
   Timer,
   Socket,
   UpgradeItem,

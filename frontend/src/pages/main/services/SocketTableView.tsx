@@ -1,12 +1,12 @@
-import { TableCell } from "@mui/material";
+import { Box, Chip, TableCell } from "@mui/material";
 import React from "react";
 
 import { UnitTableView, statusDot } from "./UnitViews";
 
-import type { Service } from "@/api";
+import type { Socket } from "@/api";
 
-interface ServiceTableViewProps {
-  services: Service[];
+interface SocketTableViewProps {
+  sockets: Socket[];
   selected?: string | null;
   onSelect?: (name: string | null) => void;
   onDoubleClick?: (name: string) => void;
@@ -20,20 +20,20 @@ const desktopColumns = [
     width: "120px",
     sx: { paddingLeft: "8px" },
   },
-  { field: "name", headerName: "Name", align: "left" as const, width: "200px" },
+  { field: "name", headerName: "Name", align: "left" as const, width: "220px" },
+  { field: "listen", headerName: "Listen", align: "left" as const },
   {
-    field: "load_state",
-    headerName: "Load State",
-    align: "left" as const,
-    width: "120px",
+    field: "connections",
+    headerName: "Connections",
+    align: "right" as const,
+    width: "130px",
   },
   {
-    field: "sub_state",
-    headerName: "Sub State",
-    align: "left" as const,
+    field: "accepted",
+    headerName: "Accepted",
+    align: "right" as const,
     width: "120px",
   },
-  { field: "description", headerName: "Description", align: "left" as const },
 ];
 
 const mobileColumns = [
@@ -47,17 +47,17 @@ const mobileColumns = [
   { field: "name", headerName: "Name", align: "left" as const },
 ];
 
-const ServiceTableView: React.FC<ServiceTableViewProps> = ({
-  services,
+const SocketTableView: React.FC<SocketTableViewProps> = ({
+  sockets,
   selected,
   onSelect,
   onDoubleClick,
 }) => (
   <UnitTableView
-    data={services}
+    data={sockets}
     desktopColumns={desktopColumns}
     mobileColumns={mobileColumns}
-    getRowKey={(service) => service.name}
+    getRowKey={(socket) => socket.name}
     selected={selected}
     onSelect={(key) => onSelect?.(typeof key === "string" ? key : null)}
     onDoubleClick={(key) => {
@@ -65,7 +65,7 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
         onDoubleClick?.(key);
       }
     }}
-    renderMobileExpandedContent={(service) => (
+    renderMobileExpandedContent={(socket) => (
       <div
         style={{
           display: "flex",
@@ -75,9 +75,9 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
         }}
       >
         {[
-          { label: "Load", value: service.load_state },
-          { label: "Sub", value: service.sub_state },
-          { label: "Description", value: service.description || "—" },
+          { label: "Listen", value: socket.listen.join(", ") || "—" },
+          { label: "Connections", value: String(socket.n_connections) },
+          { label: "Accepted", value: String(socket.n_accepted) },
         ].map(({ label, value }) => (
           <div key={label} style={{ display: "flex", gap: 12 }}>
             <span
@@ -98,24 +98,37 @@ const ServiceTableView: React.FC<ServiceTableViewProps> = ({
         ))}
       </div>
     )}
-    renderMainRow={(service, isMobile) => (
+    renderMainRow={(socket, isMobile) => (
       <>
         <TableCell sx={{ paddingLeft: "8px" }}>
-          {statusDot(service.active_state)}
-          {service.active_state}
+          {statusDot(socket.active_state)}
+          {socket.active_state}
         </TableCell>
-        <TableCell>{service.name}</TableCell>
+        <TableCell>{socket.name}</TableCell>
         {!isMobile && (
           <>
-            <TableCell>{service.load_state}</TableCell>
-            <TableCell>{service.sub_state}</TableCell>
-            <TableCell>{service.description || "-"}</TableCell>
+            <TableCell>
+              <Box display="flex" gap={0.5} flexWrap="wrap">
+                {socket.listen.length > 0
+                  ? socket.listen.map((addr) => (
+                      <Chip
+                        key={addr}
+                        label={addr}
+                        size="small"
+                        variant="outlined"
+                      />
+                    ))
+                  : "—"}
+              </Box>
+            </TableCell>
+            <TableCell align="right">{socket.n_connections}</TableCell>
+            <TableCell align="right">{socket.n_accepted}</TableCell>
           </>
         )}
       </>
     )}
-    emptyMessage="No services found."
+    emptyMessage="No sockets found."
   />
 );
 
-export default ServiceTableView;
+export default SocketTableView;

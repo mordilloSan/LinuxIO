@@ -1,17 +1,11 @@
 package dbus
 
 import (
-	"fmt"
-	"path/filepath"
-	"sort"
-	"strings"
 	"sync"
 
 	godbus "github.com/godbus/dbus/v5"
-	"github.com/mordilloSan/go-logger/logger"
 
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type ServiceStatus struct {
@@ -27,189 +21,50 @@ type ServiceStatus struct {
 
 // --- List all services (robust) ---
 func ListServices() ([]ServiceStatus, error) {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
 	var services []ServiceStatus
-	err := RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
+	err := withSystemdManager(func(conn *godbus.Conn, systemd godbus.BusObject) error {
+		entries, err := listUnitsBySuffix(systemd, ".service")
 		if err != nil {
 			return err
 		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
 
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-
-		// --- Step 1: loaded units (runtime info) ---
-		var units [][]any
-		if err := systemd.Call("org.freedesktop.systemd1.Manager.ListUnits", 0).Store(&units); err != nil {
-			return err
-		}
-
-		type unitEntry struct {
-			svc  ServiceStatus
-			path godbus.ObjectPath
-		}
-
-		// Index loaded services by name
-		loaded := make(map[string]unitEntry)
-		for _, u := range units {
-			name, err := utils.AsString(u[0])
-			if err != nil {
-				return fmt.Errorf("invalid service name: %w", err)
-			}
-			if !strings.HasSuffix(name, ".service") {
-				continue
-			}
-			desc, _ := utils.AsString(u[1])
-			loadState, _ := utils.AsString(u[2])
-			activeState, _ := utils.AsString(u[3])
-			subState, _ := utils.AsString(u[4])
-			unitPath, _ := u[6].(godbus.ObjectPath)
-			loaded[name] = unitEntry{
-				svc: ServiceStatus{
-					Name:        name,
-					Description: desc,
-					LoadState:   loadState,
-					ActiveState: activeState,
-					SubState:    subState,
-				},
-				path: unitPath,
-			}
-		}
-
-		// --- Step 2: all unit files (catches unloaded/inactive services) ---
-		type unitFileRecord struct {
-			Path  string
-			State string
-		}
-		var unitFiles []unitFileRecord
-		if err := systemd.Call("org.freedesktop.systemd1.Manager.ListUnitFiles", 0).Store(&unitFiles); err != nil {
-			return err
-		}
-
-		// Build final entry list: loaded first, then unloaded
-		var entries []unitEntry
-		seen := make(map[string]bool)
-
-		for name, e := range loaded {
-			entries = append(entries, e)
-			seen[name] = true
-		}
-		for _, uf := range unitFiles {
-			name := filepath.Base(uf.Path)
-			if !strings.HasSuffix(name, ".service") || seen[name] {
-				continue
-			}
-			entries = append(entries, unitEntry{
-				svc: ServiceStatus{
-					Name:          name,
-					LoadState:     "not-loaded",
-					ActiveState:   "inactive",
-					SubState:      "dead",
-					UnitFileState: uf.State,
-				},
-			})
-			seen[name] = true
-		}
-
-		// --- Step 3: fetch extra properties for loaded services in parallel ---
 		results := make([]ServiceStatus, len(entries))
 		var wg sync.WaitGroup
-		for i, e := range entries {
+		for i, entry := range entries {
 			wg.Add(1)
-			go func(i int, e unitEntry) {
+			go func(i int, entry listedUnit) {
 				defer wg.Done()
-				svc := e.svc
-				if e.path != "" {
-					unit := conn.Object("org.freedesktop.systemd1", e.path)
-					if val, err := unit.GetProperty("org.freedesktop.systemd1.Unit.UnitFileState"); err == nil {
-						if s, ok := val.Value().(string); ok {
-							svc.UnitFileState = s
-						}
+				service := ServiceStatus{
+					Name:          entry.Name,
+					Description:   entry.Description,
+					LoadState:     entry.LoadState,
+					ActiveState:   entry.ActiveState,
+					SubState:      entry.SubState,
+					UnitFileState: entry.UnitFileState,
+				}
+
+				if entry.Path != "" {
+					unit := unitObject(conn, entry.Path)
+					if state, ok := getStringProperty(unit, "org.freedesktop.systemd1.Unit.UnitFileState"); ok {
+						service.UnitFileState = state
 					}
-					if val, err := unit.GetProperty("org.freedesktop.systemd1.Unit.ActiveEnterTimestamp"); err == nil {
-						if t, ok := val.Value().(uint64); ok {
-							svc.ActiveEnterTimestamp = t
-						}
+					if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.ActiveEnterTimestamp"); ok {
+						service.ActiveEnterTimestamp = ts
 					}
-					if val, err := unit.GetProperty("org.freedesktop.systemd1.Unit.InactiveEnterTimestamp"); err == nil {
-						if t, ok := val.Value().(uint64); ok {
-							svc.InactiveEnterTimestamp = t
-						}
+					if ts, ok := getUint64Property(unit, "org.freedesktop.systemd1.Unit.InactiveEnterTimestamp"); ok {
+						service.InactiveEnterTimestamp = ts
 					}
 				}
-				results[i] = svc
-			}(i, e)
+
+				results[i] = service
+			}(i, entry)
 		}
+
 		wg.Wait()
-		sort.Slice(results, func(i, j int) bool { return results[i].Name < results[j].Name })
 		services = results
 		return nil
 	})
 	return services, err
-}
-
-// --- Get detailed info about a single service (robust) ---
-func GetServiceInfo(serviceName string) (map[string]any, error) {
-	systemDBusMu.Lock()
-	defer systemDBusMu.Unlock()
-	serviceName = strings.TrimSpace(serviceName)
-	if serviceName == "" {
-		err := fmt.Errorf("missing service name")
-		logger.Errorf(" GetServiceInfo failed: %v", err)
-		return nil, err
-	}
-
-	var info map[string]any
-	err := RetryOnceIfClosed(nil, func() error {
-		conn, err := godbus.SystemBus()
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := conn.Close(); cerr != nil {
-				logger.Warnf("failed to close D-Bus connection: %v", cerr)
-			}
-		}()
-
-		systemd := conn.Object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-		var unitPath godbus.ObjectPath
-		if err := systemd.Call("org.freedesktop.systemd1.Manager.GetUnit", 0, serviceName).Store(&unitPath); err != nil {
-			return err
-		}
-		unit := conn.Object("org.freedesktop.systemd1", unitPath)
-
-		props := []string{
-			"Id", "Description", "LoadState", "ActiveState", "SubState",
-			"UnitFileState", "FragmentPath", "ActiveEnterTimestamp", "InactiveEnterTimestamp",
-			"Requires", "Wants", "WantedBy", "Before", "After",
-			"Conflicts", "PartOf", "TriggeredBy",
-		}
-		info = make(map[string]any)
-		for _, prop := range props {
-			val, err := unit.GetProperty("org.freedesktop.systemd1.Unit." + prop)
-			if err == nil {
-				info[prop] = val.Value()
-			}
-		}
-		if val, err := unit.GetProperty("org.freedesktop.systemd1.Service.MainPID"); err == nil {
-			info["MainPID"] = val.Value()
-		}
-		if val, err := unit.GetProperty("org.freedesktop.systemd1.Service.MemoryCurrent"); err == nil {
-			info["MemoryCurrent"] = val.Value()
-		} else if val, err := unit.GetProperty("org.freedesktop.systemd1.Unit.MemoryCurrent"); err == nil {
-			info["MemoryCurrent"] = val.Value()
-		}
-		if val, err := unit.GetProperty("org.freedesktop.systemd1.Service.ExecMainStatus"); err == nil {
-			info["ExecMainStatus"] = val.Value()
-		}
-		return nil
-	})
-	return info, err
 }
 
 // Start a service
