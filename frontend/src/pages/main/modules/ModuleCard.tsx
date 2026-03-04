@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import DeleteIcon from "@mui/icons-material/Delete";
 import InfoIcon from "@mui/icons-material/Info";
 import {
-  Box,
   Grid,
   Typography,
   Chip,
@@ -70,15 +69,15 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
           }}
         >
           {/* Icon and Title */}
-          <Box sx={{ display: "flex", alignItems: "flex-start", mb: 2 }}>
-            <Box
-              sx={{
+          <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 8 }}>
+            <div
+              style={{
                 width: 48,
                 height: 48,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                mr: 2,
+                marginRight: 8,
               }}
             >
               {module.icon?.includes(":") ? (
@@ -86,16 +85,16 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
               ) : (
                 <Icon icon="mdi:puzzle" width={48} height={48} />
               )}
-            </Box>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <Typography variant="h6" noWrap>
                 {module.title}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 v{module.version}
               </Typography>
-            </Box>
-          </Box>
+            </div>
+          </div>
 
           {/* Description */}
           <Typography
@@ -115,7 +114,7 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
           </Typography>
 
           {/* Metadata Chips */}
-          <Box sx={{ display: "flex", gap: 1, mb: 2, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
             {isSystem && <Chip label="System" size="small" color="primary" />}
             {isSymlink && (
               <Chip label="Symlink" size="small" variant="outlined" />
@@ -125,10 +124,10 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
               size="small"
               variant="outlined"
             />
-          </Box>
+          </div>
 
           {/* Actions */}
-          <Box sx={{ display: "flex", gap: 1, mt: "auto" }}>
+          <div style={{ display: "flex", gap: 4, marginTop: "auto" }}>
             <Tooltip title="View Details">
               <IconButton size="small" onClick={onViewDetails}>
                 <InfoIcon />
@@ -143,7 +142,7 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
                 <DeleteIcon />
               </IconButton>
             </Tooltip>
-          </Box>
+          </div>
         </FrostedCard>
       </Grid>
 

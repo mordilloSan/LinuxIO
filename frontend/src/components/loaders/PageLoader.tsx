@@ -1,13 +1,15 @@
-import { Box, useTheme } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
+
+import "./page-loader.css";
 
 function PageLoader() {
   const theme = useTheme();
   const color = theme.palette.primary.main;
 
   return (
-    <Box
-      sx={{
+    <div
+      style={{
         position: "fixed",
         top: 0,
         left: 0,
@@ -20,18 +22,19 @@ function PageLoader() {
         zIndex: 1300,
       }}
     >
-      <Box
-        sx={{
+      <div
+        style={{
           width: 300,
           height: 6,
           backgroundColor: theme.palette.background.paper,
-          borderRadius: 3,
+          borderRadius: 12,
           overflow: "hidden",
           position: "relative",
         }}
       >
-        <Box
-          sx={{
+        <div
+          className="page-loader-bar"
+          style={{
             height: "100%",
             width: 150,
             position: "absolute",
@@ -39,22 +42,12 @@ function PageLoader() {
             top: 0,
             background: `linear-gradient(90deg, ${color}, color-mix(in srgb, ${color}, transparent 50%))`,
             filter: "blur(1px)",
-            borderRadius: 3,
+            borderRadius: 12,
             transform: "translateX(-150px)",
-            animation:
-              "page-loader-slide 1s cubic-bezier(0.42, 0, 0.58, 1) infinite",
-            "@keyframes page-loader-slide": {
-              "0%": {
-                transform: "translateX(-150px)",
-              },
-              "100%": {
-                transform: "translateX(300px)",
-              },
-            },
           }}
         />
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }
 

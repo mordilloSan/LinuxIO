@@ -4,7 +4,6 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import {
-  Box,
   Chip,
   Divider,
   IconButton,
@@ -72,7 +71,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
       }}
     >
       {/* Status chip top-right */}
-      <Box sx={{ position: "absolute", top: 12, right: 12 }}>
+      <div style={{ position: "absolute", top: 12, right: 12 }}>
         <Chip
           label={project.status}
           size="small"
@@ -87,18 +86,25 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
             "& .MuiChip-label": { px: 1.5 },
           }}
         />
-      </Box>
+      </div>
 
       {/* Icon + Name */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, pr: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          paddingRight: 32,
+        }}
+      >
         <DockerIcon identifier={project.icon} size={36} alt={project.name} />
         <Typography variant="subtitle1" fontWeight={600} noWrap>
           {project.name}
         </Typography>
-      </Box>
+      </div>
 
       {/* Stats */}
-      <Box sx={{ mt: 1.5, display: "flex", gap: 2 }}>
+      <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
         <Typography variant="body2" color="text.secondary">
           {totalServices > 0
             ? `${runningServices}/${totalServices} services`
@@ -109,17 +115,17 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
             {totalContainers} container{totalContainers !== 1 ? "s" : ""}
           </Typography>
         )}
-      </Box>
+      </div>
 
       <Divider sx={{ my: 1.5 }} />
 
       {/* Actions */}
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          mt: "auto",
+          marginTop: "auto",
         }}
       >
         {isWatchtower ? (
@@ -146,7 +152,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
           </Tooltip>
         ) : (
           <>
-            <Box sx={{ display: "flex", gap: 0.5 }}>
+            <div style={{ display: "flex", gap: 2 }}>
               {onEdit && project.config_files.length > 0 && (
                 <Tooltip title="Edit">
                   <IconButton
@@ -201,10 +207,10 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
-            </Box>
+            </div>
           </>
         )}
-      </Box>
+      </div>
     </FrostedCard>
   );
 };

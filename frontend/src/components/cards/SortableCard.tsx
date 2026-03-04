@@ -1,10 +1,15 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DragIndicator } from "@mui/icons-material";
-import { Box } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
+import "./frosted-card.css";
+
 import { cardBorderRadius } from "@/theme/constants";
+
+// MUI sx multiplies borderRadius by theme.shape.borderRadius (default 4).
+const BORDER_RADIUS_PX = cardBorderRadius * 4;
 
 interface SortableCardProps {
   id: string;
@@ -17,6 +22,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
   editMode,
   children,
 }) => {
+  const theme = useTheme();
   const {
     attributes,
     listeners,
@@ -34,35 +40,36 @@ const SortableCard: React.FC<SortableCardProps> = ({
   };
 
   return (
-    <Box ref={setNodeRef} style={style} {...attributes}>
+    <div ref={setNodeRef} style={style} {...attributes}>
       {editMode && (
-        <Box
+        <div
           {...listeners}
-          sx={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 10,
-            cursor: isDragging ? "grabbing" : "grab",
-            touchAction: "none",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: cardBorderRadius,
-            "&:hover": {
-              bgcolor: "action.hover",
-            },
-          }}
+          className="sc-drag-overlay"
+          style={
+            {
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 10,
+              cursor: isDragging ? "grabbing" : "grab",
+              touchAction: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: BORDER_RADIUS_PX,
+              "--sc-hover-bg": theme.palette.action.hover,
+            } as React.CSSProperties
+          }
         >
           <DragIndicator
             sx={{ fontSize: 40, color: "text.secondary", opacity: 0.7 }}
           />
-        </Box>
+        </div>
       )}
       {children}
-    </Box>
+    </div>
   );
 };
 

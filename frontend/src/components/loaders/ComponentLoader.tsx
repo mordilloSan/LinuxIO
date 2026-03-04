@@ -1,10 +1,10 @@
-import { Box, CircularProgress } from "@mui/material";
+import { CircularProgress } from "@mui/material";
 import React from "react";
 
 function ComponentLoader() {
   return (
-    <Box
-      sx={{
+    <div
+      style={{
         justifyContent: "center",
         alignItems: "center",
         display: "flex",
@@ -12,7 +12,7 @@ function ComponentLoader() {
       }}
     >
       <CircularProgress color="primary" />
-    </Box>
+    </div>
   );
 }
 

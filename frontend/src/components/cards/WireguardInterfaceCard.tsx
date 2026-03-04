@@ -5,7 +5,6 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import {
   CardContent,
   Typography,
-  Box,
   IconButton,
   Tooltip,
 } from "@mui/material";
@@ -76,15 +75,17 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
         onClick={() => handleSelectInterface(iface)}
       >
         <CardContent>
-          <Box
-            display="flex"
-            justifyContent="space-between"
-            alignItems="center"
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
           >
             <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
               {iface.name}
             </Typography>
-            <Box>
+            <div>
               <Tooltip
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
               >
@@ -150,8 +151,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   <DeleteIcon />
                 </IconButton>
               </Tooltip>
-            </Box>
-          </Box>
+            </div>
+          </div>
           <Typography variant="body2" color="text.secondary">
             Address: {iface.address}
           </Typography>
