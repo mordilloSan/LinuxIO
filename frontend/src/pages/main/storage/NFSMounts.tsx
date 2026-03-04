@@ -186,7 +186,14 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Mount NFS Share</DialogTitle>
       <DialogContent>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginTop: 4,
+          }}
+        >
           <TextField
             label="NFS Server"
             value={server}
@@ -478,7 +485,14 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
     >
       <DialogTitle>Edit NFS Mount Options</DialogTitle>
       <DialogContent>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginTop: 4,
+          }}
+        >
           <TextField
             label="Server Address"
             value={server}
@@ -613,7 +627,15 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
 
   return (
     <div>
-      <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div
+        style={{
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
         <TextField
           variant="outlined"
           size="small"
@@ -672,7 +694,14 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     </Typography>
                   </div>
 
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 4 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 3,
+                      marginBottom: 4,
+                    }}
+                  >
                     <Chip label={mount.fsType} size="small" />
                     {mount.options?.slice(0, 2).map((opt, i) => (
                       <Chip
@@ -777,7 +806,14 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
               <Typography variant="subtitle2" gutterBottom>
                 <strong>Options:</strong>
               </Typography>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 4,
+                  marginBottom: 8,
+                }}
+              >
                 {mount.options && mount.options.length > 0 ? (
                   mount.options.map((opt, i) => (
                     <Chip key={i} label={opt} size="small" />

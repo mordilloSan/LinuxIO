@@ -64,7 +64,14 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create Group</DialogTitle>
       <DialogContent>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginTop: 4,
+          }}
+        >
           <TextField
             label="Group Name"
             value={name}

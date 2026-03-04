@@ -1,9 +1,9 @@
 import CloseIcon from "@mui/icons-material/Close";
 import {
-  Box,
   DialogContent,
   DialogTitle,
   IconButton,
+  Stack,
   Tab,
   Tabs,
   Typography,
@@ -43,7 +43,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           px: 2,
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Settings
           </Typography>
@@ -54,7 +54,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           >
             <CloseIcon fontSize="small" />
           </IconButton>
-        </Box>
+        </Stack>
       </DialogTitle>
 
       <Tabs
@@ -72,34 +72,36 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
 
       <DialogContent sx={{ px: 3, py: 3 }}>
         {activeTab === "general" ? (
-          <Box sx={{ py: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+          <Stack
+            sx={{ py: 1, display: "flex", flexDirection: "column", gap: 2 }}
+          >
             <Typography variant="body1" fontWeight={600}>
               Appearance
             </Typography>
 
-            <Box
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
               sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
                 p: 1.5,
                 borderRadius: 1.5,
                 border: `1px solid ${theme.palette.divider}`,
               }}
             >
-              <Box>
+              <Stack>
                 <Typography variant="body2" fontWeight={600}>
                   Primary color
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Change the app accent color.
                 </Typography>
-              </Box>
+              </Stack>
               <NavbarCustomizer />
-            </Box>
+            </Stack>
 
             <ThemeColorsSection />
-          </Box>
+          </Stack>
         ) : (
           <DockerFolderSettingsSection />
         )}

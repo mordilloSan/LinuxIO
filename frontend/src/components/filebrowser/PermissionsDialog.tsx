@@ -1,12 +1,12 @@
 import {
   Autocomplete,
-  Box,
   Button,
   Checkbox,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -191,7 +191,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         </Typography>
       </DialogTitle>
       <DialogContent sx={{ overflow: "visible" }}>
-        <Box
+        <Stack
           sx={{
             display: "grid",
             gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
@@ -246,7 +246,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
               <TextField {...params} label="Group" size="small" />
             )}
           />
-        </Box>
+        </Stack>
 
         <Table size="small">
           <TableHead>
@@ -337,7 +337,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         </Table>
 
         {isDirectory && (
-          <Box sx={{ mt: 2 }}>
+          <Stack sx={{ mt: 2 }}>
             <FormControlLabel
               control={
                 <Checkbox
@@ -347,7 +347,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
               }
               label="Apply recursively to all files and subdirectories"
             />
-          </Box>
+          </Stack>
         )}
       </DialogContent>
       <DialogActions>

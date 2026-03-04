@@ -1,5 +1,5 @@
 import DownloadIcon from "@mui/icons-material/Download";
-import { Box, Button, Divider, Paper, Stack, Typography } from "@mui/material";
+import { Button, Divider, Paper, Stack, Typography } from "@mui/material";
 import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
@@ -46,7 +46,7 @@ const DetailRow: React.FC<{
   isLoading?: boolean;
 }> = ({ label, value, isLoading = false }) => {
   return (
-    <Box sx={{ display: "flex", gap: 2 }}>
+    <Stack direction="row" sx={{ gap: 2 }}>
       <Typography
         variant="body2"
         fontWeight={600}
@@ -67,11 +67,15 @@ const DetailRow: React.FC<{
           —
         </Typography>
       ) : (
-        <Typography variant="body2" sx={{ flex: 1, wordBreak: "break-all" }}>
+        <Typography
+          component="div"
+          variant="body2"
+          sx={{ flex: 1, wordBreak: "break-all" }}
+        >
           {value}
         </Typography>
       )}
-    </Box>
+    </Stack>
   );
 };
 
@@ -97,8 +101,7 @@ const MultiFileItemRow: React.FC<{
   };
 
   return (
-    <Box
-      key={item.path}
+    <Stack
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       sx={{
@@ -118,22 +121,20 @@ const MultiFileItemRow: React.FC<{
         transform: hovered ? "translateY(-1px)" : "none",
       }}
     >
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 2,
-        }}
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        sx={{ gap: 2 }}
       >
-        <Box>
+        <Stack>
           <Typography variant="subtitle1" fontWeight={600}>
             {item.name}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {isDir ? "Directory" : "File"}
           </Typography>
-        </Box>
+        </Stack>
         {!isDir && (
           <Button
             size="small"
@@ -143,11 +144,11 @@ const MultiFileItemRow: React.FC<{
             Download
           </Button>
         )}
-      </Box>
+      </Stack>
       <Typography variant="body2" color="text.secondary">
         Size: {renderSize()}
       </Typography>
-    </Box>
+    </Stack>
   );
 };
 
@@ -172,15 +173,13 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         gap: 2,
       }}
     >
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 2,
-        }}
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        sx={{ gap: 2 }}
       >
-        <Box>
+        <Stack>
           <Typography variant="h6" fontWeight={600}>
             {multiItems.length} Selected Item
             {multiItems.length === 1 ? "" : "s"}
@@ -188,8 +187,8 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
           <Typography variant="body2" color="text.secondary">
             Combined statistics for the selected files and folders
           </Typography>
-        </Box>
-      </Box>
+        </Stack>
+      </Stack>
 
       <Divider />
 
@@ -207,7 +206,7 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
 
       <Divider />
 
-      <Box
+      <Stack
         className="custom-scrollbar"
         sx={{
           maxHeight: 360,
@@ -226,7 +225,7 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
             );
           })}
         </Stack>
-      </Box>
+      </Stack>
     </Paper>
   );
 };

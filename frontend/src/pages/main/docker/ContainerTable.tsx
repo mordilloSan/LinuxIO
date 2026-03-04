@@ -343,7 +343,12 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               >
                 {networks[0][0]}
                 {networks.length > 1 && (
-                  <span style={{ marginLeft: 2, color: theme.palette.text.disabled }}>
+                  <span
+                    style={{
+                      marginLeft: 2,
+                      color: theme.palette.text.disabled,
+                    }}
+                  >
                     +{networks.length - 1}
                   </span>
                 )}
@@ -393,7 +398,12 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   <span style={{ color: theme.palette.text.primary }}>
                     {p.PrivatePort}/{p.Type}
                   </span>
-                  <span style={{ color: theme.palette.text.disabled, marginInline: 2 }}>
+                  <span
+                    style={{
+                      color: theme.palette.text.disabled,
+                      marginInline: 2,
+                    }}
+                  >
                     →
                   </span>
                   <span style={{ color: theme.palette.text.secondary }}>
@@ -430,7 +440,12 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     <span style={{ color: theme.palette.text.primary }}>
                       {m.Destination}
                     </span>
-                    <span style={{ color: theme.palette.text.disabled, marginInline: 2 }}>
+                    <span
+                      style={{
+                        color: theme.palette.text.disabled,
+                        marginInline: 2,
+                      }}
+                    >
                       →
                     </span>
                     <span style={{ color: theme.palette.text.secondary }}>
@@ -683,7 +698,12 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                           <span style={{ color: theme.palette.text.primary }}>
                             {p.PrivatePort}/{p.Type}
                           </span>
-                          <span style={{ color: theme.palette.text.disabled, marginInline: 3 }}>
+                          <span
+                            style={{
+                              color: theme.palette.text.disabled,
+                              marginInline: 3,
+                            }}
+                          >
                             →
                           </span>
                           <span style={{ color: theme.palette.text.secondary }}>
@@ -723,7 +743,12 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                           <span style={{ color: theme.palette.text.primary }}>
                             {m.Destination}
                           </span>
-                          <span style={{ color: theme.palette.text.disabled, marginInline: 3 }}>
+                          <span
+                            style={{
+                              color: theme.palette.text.disabled,
+                              marginInline: 3,
+                            }}
+                          >
                             →
                           </span>
                           <span style={{ color: theme.palette.text.secondary }}>

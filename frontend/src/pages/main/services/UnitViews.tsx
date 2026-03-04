@@ -657,10 +657,12 @@ function UnitCard<T extends UnitListItem>({
       onClick={() => onExpand(isSelected ? null : item.name)}
       hoverLift={!isSelected}
       className="fc-svc-card"
-      style={{
-        "--svc-status-color": statusColor,
-        ...(isSelected ? selectedCardStyle : cardStyle),
-      } as React.CSSProperties}
+      style={
+        {
+          "--svc-status-color": statusColor,
+          ...(isSelected ? selectedCardStyle : cardStyle),
+        } as React.CSSProperties
+      }
     >
       <div
         style={{

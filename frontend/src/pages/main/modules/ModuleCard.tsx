@@ -69,7 +69,13 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
           }}
         >
           {/* Icon and Title */}
-          <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              marginBottom: 8,
+            }}
+          >
             <div
               style={{
                 width: 48,
@@ -114,7 +120,14 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
           </Typography>
 
           {/* Metadata Chips */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              marginBottom: 8,
+              flexWrap: "wrap",
+            }}
+          >
             {isSystem && <Chip label="System" size="small" color="primary" />}
             {isSymlink && (
               <Chip label="Symlink" size="small" variant="outlined" />

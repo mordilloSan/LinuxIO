@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
 import {
-  Box,
   Divider,
   ListItemIcon,
   Menu,
   MenuItem,
+  Stack,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -175,7 +175,7 @@ const DockerInfo: React.FC = () => {
   );
 
   const stats = (
-    <Box
+    <Stack
       sx={{
         display: "flex",
         flexDirection: "column",
@@ -189,12 +189,12 @@ const DockerInfo: React.FC = () => {
         { label: "Networks", value: networksCount },
         { label: "Volumes", value: volumesCount },
       ].map(({ label, value }) => (
-        <Box
+        <Stack
           key={label}
+          direction="row"
+          alignItems="baseline"
           sx={{
-            display: "flex",
             justifyContent: "flex-start",
-            alignItems: "baseline",
             py: 0.5,
             borderBottom: "1px solid",
             borderColor: "divider",
@@ -217,9 +217,9 @@ const DockerInfo: React.FC = () => {
           <Typography variant="body2" fontWeight={500} noWrap>
             {value}
           </Typography>
-        </Box>
+        </Stack>
       ))}
-    </Box>
+    </Stack>
   );
 
   const stats2 = isContainersError ? (
@@ -227,7 +227,7 @@ const DockerInfo: React.FC = () => {
   ) : isContainersLoading ? (
     <ComponentLoader />
   ) : (
-    <Box
+    <Stack
       className="custom-scrollbar"
       sx={{
         display: "grid",
@@ -258,12 +258,11 @@ const DockerInfo: React.FC = () => {
           <Tooltip
             key={c.Id}
             title={
-              <Box sx={{ textAlign: "center" }}>
-                <Box component="span" sx={{ fontSize: "0.8rem" }}>
+              <Stack sx={{ textAlign: "center" }}>
+                <Typography component="span" sx={{ fontSize: "0.8rem" }}>
                   {name}
-                </Box>
-                <br />
-                <Box
+                </Typography>
+                <Typography
                   component="span"
                   sx={{
                     color:
@@ -272,13 +271,13 @@ const DockerInfo: React.FC = () => {
                   }}
                 >
                   {getStatusLabel(c.Status, c.State)}
-                </Box>
-              </Box>
+                </Typography>
+              </Stack>
             }
             arrow
             placement="top"
           >
-            <Box
+            <Stack
               onContextMenu={(e) => handleContextMenu(e, c.Id, name, c.State)}
               sx={{
                 position: "relative",
@@ -288,7 +287,7 @@ const DockerInfo: React.FC = () => {
               }}
             >
               <DockerIcon identifier={c.icon} size={36} alt={name} />
-              <Box
+              <Stack
                 sx={{
                   position: "absolute",
                   bottom: 0,
@@ -301,7 +300,7 @@ const DockerInfo: React.FC = () => {
                   borderColor: "background.paper",
                 }}
               />
-            </Box>
+            </Stack>
           </Tooltip>
         );
       })}
@@ -380,7 +379,7 @@ const DockerInfo: React.FC = () => {
           Terminal
         </MenuItem>
       </Menu>
-    </Box>
+    </Stack>
   );
 
   return (

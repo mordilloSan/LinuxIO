@@ -4,8 +4,8 @@ import {
   InputBase,
   AppBar,
   IconButton,
+  Stack,
   Toolbar,
-  Box,
   useTheme,
 } from "@mui/material";
 import SearchIcon from "lucide-react/dist/esm/icons/search";
@@ -50,7 +50,7 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
 
           {/* Search Field (only desktop) */}
           <Grid>
-            <Box
+            <Stack
               sx={{
                 position: "relative",
                 borderRadius: 2,
@@ -62,7 +62,7 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
                 },
               }}
             >
-              <Box
+              <Stack
                 sx={{
                   position: "absolute",
                   width: 50,
@@ -74,7 +74,7 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
                 }}
               >
                 <SearchIcon width={22} height={22} />
-              </Box>
+              </Stack>
               <InputBase
                 placeholder="Search"
                 id="search-input"
@@ -90,7 +90,7 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
                   },
                 }}
               />
-            </Box>
+            </Stack>
           </Grid>
 
           {/* Spacer */}

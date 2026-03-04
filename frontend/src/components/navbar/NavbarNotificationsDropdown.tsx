@@ -1,6 +1,5 @@
 import {
   Badge,
-  Box,
   Button,
   IconButton,
   List,
@@ -8,6 +7,7 @@ import {
   ListItemIcon,
   ListItemText,
   Popover,
+  Stack,
   Tooltip,
   Typography,
   useTheme,
@@ -45,7 +45,7 @@ function Notification({
 }) {
   const primaryText = description ? `${title} — ${description}` : title;
   const secondaryContent = (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+    <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
       <Typography variant="caption" color="text.secondary">
         {timeLabel || ""}
       </Typography>
@@ -60,7 +60,7 @@ function Notification({
           {link.label || "Open"}
         </Button>
       ) : null}
-    </Box>
+    </Stack>
   );
 
   return (
@@ -195,7 +195,7 @@ function NavbarNotificationsDropdown() {
           },
         }}
       >
-        <Box
+        <Stack
           sx={{
             textAlign: "center",
             borderBottom: `1px solid ${theme.palette.divider}`,
@@ -209,7 +209,7 @@ function NavbarNotificationsDropdown() {
                   recentToastCount === 1 ? "" : "s"
                 }`}
           </Typography>
-        </Box>
+        </Stack>
 
         <List disablePadding>
           {recentToastCount === 0 ? (
@@ -242,7 +242,7 @@ function NavbarNotificationsDropdown() {
           )}
         </List>
 
-        <Box p={1} display="flex" justifyContent="center" gap={1}>
+        <Stack direction="row" sx={{ p: 1, justifyContent: "center", gap: 1 }}>
           <Button size="small" component={Link} to="#">
             Show all notifications
           </Button>
@@ -253,7 +253,7 @@ function NavbarNotificationsDropdown() {
           >
             Clear
           </Button>
-        </Box>
+        </Stack>
       </Popover>
     </>
   );

@@ -1,4 +1,10 @@
-import { Box, IconButton, Tooltip, Typography, useTheme } from "@mui/material";
+import {
+  IconButton,
+  Stack,
+  Tooltip,
+  Typography,
+  useTheme,
+} from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import { useRef } from "react";
@@ -156,8 +162,8 @@ function ThemeColorsSection() {
     themeColors != null && Object.values(themeColors).some((v) => v != null);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      <Box sx={{ display: "flex", alignItems: "center" }}>
+    <Stack sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <Stack direction="row" alignItems="center">
         <Typography variant="body1" fontWeight={600} sx={{ flexGrow: 1 }}>
           Colors
         </Typography>
@@ -179,32 +185,32 @@ function ThemeColorsSection() {
             </IconButton>
           </span>
         </Tooltip>
-      </Box>
+      </Stack>
 
       {entries.map(({ key, label, description, effectiveColor }) => {
         const isOverridden = themeColors?.[key] != null;
         return (
-          <Box
+          <Stack
             key={key}
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
             sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
               p: 1.5,
               borderRadius: 1.5,
               border: `1px solid ${isOverridden ? theme.palette.primary.main : theme.palette.divider}`,
             }}
           >
-            <Box>
+            <Stack>
               <Typography variant="body2" fontWeight={600}>
                 {label}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {description}
               </Typography>
-            </Box>
+            </Stack>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <Stack direction="row" alignItems="center" sx={{ gap: 0.5 }}>
               {isOverridden && (
                 <Tooltip title="Reset to default">
                   <IconButton
@@ -221,11 +227,11 @@ function ThemeColorsSection() {
                 onChange={(val) => handleChange(key, val)}
                 label={label}
               />
-            </Box>
-          </Box>
+            </Stack>
+          </Stack>
         );
       })}
-    </Box>
+    </Stack>
   );
 }
 
@@ -241,14 +247,11 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
   const normalized = toInputColor(color);
 
   return (
-    <Box sx={{ position: "relative", flexShrink: 0 }}>
-      <Box
+    <Stack sx={{ position: "relative", flexShrink: 0 }}>
+      <Stack
+        component="button"
+        type="button"
         onClick={() => inputRef.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
-        }}
         aria-label={`Pick color for ${label}`}
         sx={{
           width: 28,
@@ -256,7 +259,9 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
           borderRadius: 1,
           bgcolor: normalized,
           cursor: "pointer",
+          p: 0,
           border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
+          appearance: "none",
         }}
       />
       <input
@@ -273,7 +278,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
         }}
         aria-hidden="true"
       />
-    </Box>
+    </Stack>
   );
 }
 

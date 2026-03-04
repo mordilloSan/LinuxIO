@@ -290,7 +290,9 @@ const FileNotifications: React.FC = () => {
                     onKeyDown={
                       isIndexerTransfer ? handleIndexerRowKeyDown : undefined
                     }
-                    style={isIndexerTransfer ? { cursor: "pointer" } : undefined}
+                    style={
+                      isIndexerTransfer ? { cursor: "pointer" } : undefined
+                    }
                   >
                     <div
                       style={{
@@ -406,7 +408,9 @@ const FileNotifications: React.FC = () => {
                     onKeyDown={
                       isIndexerTransfer ? handleIndexerRowKeyDown : undefined
                     }
-                    style={isIndexerTransfer ? { cursor: "pointer" } : undefined}
+                    style={
+                      isIndexerTransfer ? { cursor: "pointer" } : undefined
+                    }
                   >
                     <div
                       style={{

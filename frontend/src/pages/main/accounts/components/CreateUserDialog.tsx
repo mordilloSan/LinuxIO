@@ -105,7 +105,14 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create User</DialogTitle>
       <DialogContent>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginTop: 4,
+          }}
+        >
           <TextField
             label="Username"
             value={username}

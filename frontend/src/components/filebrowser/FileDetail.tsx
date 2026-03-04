@@ -5,7 +5,6 @@ import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import LinkIcon from "@mui/icons-material/Link";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
-  Box,
   Button,
   CircularProgress,
   Divider,
@@ -33,7 +32,7 @@ const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
   label,
   value,
 }) => (
-  <Box sx={{ display: "flex", gap: 2 }}>
+  <Stack direction="row" sx={{ gap: 2 }}>
     <Typography
       variant="body2"
       fontWeight={600}
@@ -42,10 +41,14 @@ const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
     >
       {label}:
     </Typography>
-    <Typography variant="body2" sx={{ flex: 1, wordBreak: "break-all" }}>
+    <Typography
+      component="div"
+      variant="body2"
+      sx={{ flex: 1, wordBreak: "break-all" }}
+    >
       {value}
     </Typography>
-  </Box>
+  </Stack>
 );
 
 const FileDetail: React.FC<FileDetailProps> = ({
@@ -117,13 +120,13 @@ const FileDetail: React.FC<FileDetailProps> = ({
       }}
     >
       {/* Header with icon and name */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-        <Box sx={{ color: "primary.main" }}>{getTypeIcon()}</Box>
-        <Box sx={{ flex: 1 }}>
+      <Stack direction="row" alignItems="center" sx={{ gap: 2 }}>
+        <Stack sx={{ color: "primary.main" }}>{getTypeIcon()}</Stack>
+        <Stack sx={{ flex: 1 }}>
           <Typography variant="h6" fontWeight={600}>
             {resource.name}
           </Typography>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
+          <Stack direction="row" alignItems="center" sx={{ gap: 1, mt: 0.5 }}>
             <Typography variant="body2" color="text.secondary">
               {getTypeLabel()}
             </Typography>
@@ -132,17 +135,17 @@ const FileDetail: React.FC<FileDetailProps> = ({
                 <Typography variant="body2" color="text.secondary">
                   •
                 </Typography>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Stack direction="row" alignItems="center" sx={{ gap: 0.5 }}>
                   <VisibilityOffIcon sx={{ fontSize: 16 }} />
                   <Typography variant="body2" color="text.secondary">
                     Hidden
                   </Typography>
-                </Box>
+                </Stack>
               </>
             )}
-          </Box>
-        </Box>
-      </Box>
+          </Stack>
+        </Stack>
+      </Stack>
 
       <Divider />
 
@@ -155,10 +158,10 @@ const FileDetail: React.FC<FileDetailProps> = ({
             !isDirectory ? (
               formatFileSize(resource.size)
             ) : isLoadingDirectoryDetails ? (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
                 <CircularProgress size={16} />
                 <Typography variant="body2">Calculating...</Typography>
-              </Box>
+              </Stack>
             ) : size !== undefined && size !== null && size !== 0 ? (
               formatFileSize(size)
             ) : (
@@ -190,10 +193,10 @@ const FileDetail: React.FC<FileDetailProps> = ({
       {isLoadingStat && (
         <>
           <Divider />
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
             <CircularProgress size={16} />
             <Typography variant="body2">Loading permissions...</Typography>
-          </Box>
+          </Stack>
         </>
       )}
 

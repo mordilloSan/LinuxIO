@@ -291,9 +291,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           renderMainRow={(group) => (
             <>
               <TableCell>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: 4 }}
-                >
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <Typography
                     variant="body2"
                     fontWeight="medium"
@@ -346,7 +344,11 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
               </TableCell>
               <TableCell align="right">
                 <div
-                  style={{ display: "flex", justifyContent: "flex-end", gap: 2 }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 2,
+                  }}
                 >
                   <Tooltip title="Edit Members">
                     <IconButton

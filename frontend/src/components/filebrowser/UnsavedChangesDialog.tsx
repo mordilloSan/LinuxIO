@@ -1,4 +1,4 @@
-import { Box, Button, Typography, useTheme } from "@mui/material";
+import { Button, Stack, Typography, useTheme } from "@mui/material";
 import React from "react";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
@@ -27,7 +27,7 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
       maxWidth="sm"
       fullWidth
     >
-      <Box
+      <Stack
         sx={{
           p: 4,
           display: "flex",
@@ -60,9 +60,9 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
         </Typography>
 
         {/* Buttons */}
-        <Box
+        <Stack
+          direction="row"
           sx={{
-            display: "flex",
             gap: 2,
             justifyContent: "center",
             width: "100%",
@@ -141,8 +141,8 @@ const UnsavedChangesDialog: React.FC<UnsavedChangesDialogProps> = ({
           >
             {isSaving ? "Saving..." : "Save and Exit"}
           </Button>
-        </Box>
-      </Box>
+        </Stack>
+      </Stack>
     </FileBrowserDialog>
   );
 };

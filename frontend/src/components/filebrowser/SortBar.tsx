@@ -116,7 +116,11 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         }}
         onMouseEnter={() => setHoveredField("modTime")}
         onMouseLeave={() => setHoveredField(null)}
-        style={{ ...columnStyle, justifyContent: "center", textAlign: "center" }}
+        style={{
+          ...columnStyle,
+          justifyContent: "center",
+          textAlign: "center",
+        }}
       >
         <Typography
           variant="h6"

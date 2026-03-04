@@ -55,11 +55,7 @@ const getStatusTooltip = (container: ContainerInfo) => {
 };
 
 /** Resolve a MUI palette path like "success.main" to an actual color string. */
-const resolveColor = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  palette: any,
-  path: string,
-): string => {
+const resolveColor = (palette: any, path: string): string => {
   const [group, key] = path.split(".") as [string, string];
   return palette[group]?.[key];
 };
@@ -287,7 +283,10 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             width: 10,
             height: 10,
             borderRadius: "50%",
-            backgroundColor: resolveColor(theme.palette, getStatusColor(container)),
+            backgroundColor: resolveColor(
+              theme.palette,
+              getStatusColor(container),
+            ),
             cursor: "default",
           }}
         />

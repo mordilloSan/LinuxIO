@@ -447,7 +447,13 @@ const DiskOverview: React.FC = () => {
                         </div>
                       </Tooltip>
                     ) : null}
-                    <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        marginBottom: 6,
+                      }}
+                    >
                       <Icon
                         icon={
                           drive.transport === "nvme"

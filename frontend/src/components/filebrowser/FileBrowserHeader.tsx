@@ -4,7 +4,6 @@ import SyncIcon from "@mui/icons-material/Sync";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
-  Box,
   CircularProgress,
   IconButton,
   Stack,
@@ -66,27 +65,27 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
 
   return (
     <>
-      <Box
-        sx={(theme) => ({
+      <div
+        style={{
           display: "flex",
           alignItems: "center",
-          px: 3,
+          paddingInline: 12,
           minHeight: 64,
           backgroundColor:
             theme.palette.mode === "light"
               ? theme.darken(theme.sidebar.background, 0.13)
               : theme.lighten(theme.sidebar.background, 0.06),
           boxShadow: theme.shadows[2],
-        })}
+        }}
       >
         {/* Left section - Status indicator when editing */}
         {showQuickSave && (
-          <Box
-            sx={{
+          <div
+            style={{
               minWidth: 150,
               display: "flex",
               alignItems: "center",
-              gap: 1,
+              gap: 4,
             }}
           >
             {isDirty && (
@@ -103,25 +102,25 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                 • Unsaved changes
               </Typography>
             )}
-          </Box>
+          </div>
         )}
         {/* Center section - File info when editing OR search bar when browsing */}
         {showQuickSave && editingFileName ? (
-          <Box sx={{ flex: 1, textAlign: "center", mx: 2 }}>
+          <div style={{ flex: 1, textAlign: "center", marginInline: 8 }}>
             <Typography variant="h6" fontWeight={600}>
               {editingFileName}
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {editingFilePath}
             </Typography>
-          </Box>
+          </div>
         ) : (
-          <Box
-            sx={{
+          <div
+            style={{
               flex: 1,
               display: "flex",
               justifyContent: "center",
-              mx: 2,
+              marginInline: 8,
             }}
           >
             <SearchBar
@@ -129,14 +128,14 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
               onChange={onSearchChange}
               placeholder="Search files and folders..."
             />
-          </Box>
+          </div>
         )}
         {/* Right section - Action buttons */}
-        <Box
+        <div
           className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}
-          sx={{
+          style={{
             display: "flex",
-            ml: "auto",
+            marginLeft: "auto",
           }}
         >
           <Stack
@@ -235,8 +234,8 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
               </>
             )}
           </Stack>
-        </Box>
-      </Box>
+        </div>
+      </div>
       <IndexerDialog />
     </>
   );

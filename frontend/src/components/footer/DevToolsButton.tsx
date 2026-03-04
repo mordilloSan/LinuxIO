@@ -29,22 +29,24 @@ const DevToolsButton: React.FC = () => {
             }
           }}
           onClick={() => setIsOpen((prev) => !prev)}
-          style={{
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 3,
-            border: "1px solid",
-            borderColor: isOpen ? theme.palette.primary.main : "transparent",
-            borderRadius: 4,
-            padding: 4,
-            boxShadow: isOpen ? theme.shadows[2] : "none",
-            whiteSpace: "nowrap",
-            minWidth: 90,
-            transition: "all 0.2s",
-            "--devtools-hover-border": theme.palette.primary.main,
-            "--devtools-hover-shadow": theme.shadows[1],
-          } as React.CSSProperties}
+          style={
+            {
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 3,
+              border: "1px solid",
+              borderColor: isOpen ? theme.palette.primary.main : "transparent",
+              borderRadius: 4,
+              padding: 4,
+              boxShadow: isOpen ? theme.shadows[2] : "none",
+              whiteSpace: "nowrap",
+              minWidth: 90,
+              transition: "all 0.2s",
+              "--devtools-hover-border": theme.palette.primary.main,
+              "--devtools-hover-shadow": theme.shadows[1],
+            } as React.CSSProperties
+          }
         >
           <BuildIcon sx={{ fontSize: 16, color: "primary.main" }} />
           <Typography variant="caption" color="text.secondary">
