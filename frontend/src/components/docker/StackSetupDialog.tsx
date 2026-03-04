@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -158,7 +157,13 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       </DialogTitle>
 
       <DialogContent sx={{ pt: 3 }}>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: theme.spacing(3),
+          }}
+        >
           <TextField
             label="Stack Name"
             value={stackName}
@@ -186,14 +191,14 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
             error={!!errors.workingDir}
           />
 
-          <Box
-            sx={{
+          <div
+            style={{
               backgroundColor: alpha(
                 theme.palette.text.primary,
                 theme.palette.mode === "dark" ? 0.05 : 0.02,
               ),
-              borderRadius: 1,
-              p: 2,
+              borderRadius: theme.shape.borderRadius,
+              padding: theme.spacing(2),
             }}
           >
             <Typography variant="caption" color="text.secondary">
@@ -203,8 +208,8 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
                 ? `${workingDir}/docker-compose.yml`
                 : "Enter stack name and directory"}
             </Typography>
-          </Box>
-        </Box>
+          </div>
+        </div>
       </DialogContent>
 
       <DialogActions

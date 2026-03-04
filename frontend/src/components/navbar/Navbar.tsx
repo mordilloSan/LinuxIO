@@ -4,12 +4,12 @@ import {
   InputBase,
   AppBar,
   IconButton,
-  Stack,
   Toolbar,
+  useMediaQuery,
   useTheme,
 } from "@mui/material";
 import SearchIcon from "lucide-react/dist/esm/icons/search";
-import React from "react";
+import React, { useState } from "react";
 
 import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
 import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
@@ -24,6 +24,9 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
   const theme = useTheme();
+  const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
+  const [isSearchHovered, setIsSearchHovered] = useState(false);
+  const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
 
   return (
     <AppBar
@@ -49,49 +52,51 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
           </Grid>
 
           {/* Search Field (only desktop) */}
-          <Grid>
-            <Stack
-              sx={{
-                position: "relative",
-                borderRadius: 2,
-                backgroundColor: theme.header.background,
-                width: "100%",
-                display: { xs: "none", md: "block" },
-                "&:hover": {
-                  backgroundColor: getHoverBackground(theme),
-                },
-              }}
-            >
-              <Stack
-                sx={{
-                  position: "absolute",
-                  width: 50,
-                  height: "100%",
-                  pointerEvents: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+          {isDesktop && (
+            <Grid>
+              <div
+                onMouseEnter={() => setIsSearchHovered(true)}
+                onMouseLeave={() => setIsSearchHovered(false)}
+                style={{
+                  position: "relative",
+                  borderRadius: `${baseBorderRadius * 2}px`,
+                  backgroundColor: isSearchHovered
+                    ? getHoverBackground(theme)
+                    : theme.header.background,
+                  width: "100%",
                 }}
               >
-                <SearchIcon width={22} height={22} />
-              </Stack>
-              <InputBase
-                placeholder="Search"
-                id="search-input"
-                name="search"
-                inputProps={{ "aria-label": "Search containers or services" }}
-                sx={{
-                  color: "inherit",
-                  width: "100%",
-                  input: {
-                    color: theme.header.search.color,
-                    p: theme.spacing(2.5, 2.5, 2.5, 12),
-                    width: 160,
-                  },
-                }}
-              />
-            </Stack>
-          </Grid>
+                <div
+                  style={{
+                    position: "absolute",
+                    width: 50,
+                    height: "100%",
+                    pointerEvents: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <SearchIcon width={22} height={22} />
+                </div>
+                <InputBase
+                  placeholder="Search"
+                  id="search-input"
+                  name="search"
+                  inputProps={{ "aria-label": "Search containers or services" }}
+                  sx={{
+                    color: "inherit",
+                    width: "100%",
+                    input: {
+                      color: theme.header.search.color,
+                      p: theme.spacing(2.5, 2.5, 2.5, 12),
+                      width: 160,
+                    },
+                  }}
+                />
+              </div>
+            </Grid>
+          )}
 
           {/* Spacer */}
           <Grid sx={{ flexGrow: 1 }} />

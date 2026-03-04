@@ -7,7 +7,6 @@ import {
   ListItemIcon,
   ListItemText,
   Popover,
-  Stack,
   Tooltip,
   Typography,
   useTheme,
@@ -43,9 +42,16 @@ function Notification({
   link?: { href: string; label?: string };
   onNavigate?: () => void;
 }) {
+  const theme = useTheme();
   const primaryText = description ? `${title} — ${description}` : title;
   const secondaryContent = (
-    <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: theme.spacing(1),
+      }}
+    >
       <Typography variant="caption" color="text.secondary">
         {timeLabel || ""}
       </Typography>
@@ -60,7 +66,7 @@ function Notification({
           {link.label || "Open"}
         </Button>
       ) : null}
-    </Stack>
+    </div>
   );
 
   return (
@@ -195,11 +201,11 @@ function NavbarNotificationsDropdown() {
           },
         }}
       >
-        <Stack
-          sx={{
+        <div
+          style={{
             textAlign: "center",
             borderBottom: `1px solid ${theme.palette.divider}`,
-            p: 2,
+            padding: theme.spacing(2),
           }}
         >
           <Typography variant="subtitle2" color="textPrimary">
@@ -209,7 +215,7 @@ function NavbarNotificationsDropdown() {
                   recentToastCount === 1 ? "" : "s"
                 }`}
           </Typography>
-        </Stack>
+        </div>
 
         <List disablePadding>
           {recentToastCount === 0 ? (
@@ -242,7 +248,14 @@ function NavbarNotificationsDropdown() {
           )}
         </List>
 
-        <Stack direction="row" sx={{ p: 1, justifyContent: "center", gap: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            gap: theme.spacing(1),
+            padding: theme.spacing(1),
+          }}
+        >
           <Button size="small" component={Link} to="#">
             Show all notifications
           </Button>
@@ -253,7 +266,7 @@ function NavbarNotificationsDropdown() {
           >
             Clear
           </Button>
-        </Stack>
+        </div>
       </Popover>
     </>
   );

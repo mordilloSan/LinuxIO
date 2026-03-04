@@ -1,4 +1,4 @@
-import { Box, Button, Dialog, Typography, useTheme } from "@mui/material";
+import { Button, Dialog, Typography, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import React from "react";
 
@@ -69,12 +69,12 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
         },
       }}
     >
-      <Box
-        sx={{
-          p: 4,
+      <div
+        style={{
+          padding: theme.spacing(4),
           display: "flex",
           flexDirection: "column",
-          gap: 3,
+          gap: theme.spacing(3),
           alignItems: "center",
           textAlign: "center",
         }}
@@ -93,8 +93,8 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
         {/* Message */}
         <Typography
           variant="body1"
-          sx={{
-            mt: 2,
+          style={{
+            marginTop: theme.spacing(2),
             color: theme.palette.text.secondary,
             whiteSpace: "pre-line",
           }}
@@ -103,13 +103,13 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
         </Typography>
 
         {/* Buttons */}
-        <Box
-          sx={{
+        <div
+          style={{
             display: "flex",
-            gap: 2,
+            gap: theme.spacing(2),
             justifyContent: "center",
             width: "100%",
-            mt: 2,
+            marginTop: theme.spacing(2),
           }}
         >
           <Button
@@ -160,8 +160,8 @@ const ComposePostSaveDialog: React.FC<ComposePostSaveDialogProps> = ({
           >
             {getActionLabel()}
           </Button>
-        </Box>
-      </Box>
+        </div>
+      </div>
     </Dialog>
   );
 };

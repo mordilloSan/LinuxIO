@@ -1,6 +1,5 @@
 import {
   IconButton,
-  Stack,
   Tooltip,
   Typography,
   useTheme,
@@ -30,6 +29,7 @@ interface ColorEntry {
 
 function ThemeColorsSection() {
   const theme = useTheme();
+  const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [themeColors, setThemeColors] = useConfigValue("themeColors");
 
   const entries: ColorEntry[] = [
@@ -162,8 +162,14 @@ function ThemeColorsSection() {
     themeColors != null && Object.values(themeColors).some((v) => v != null);
 
   return (
-    <Stack sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      <Stack direction="row" alignItems="center">
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: theme.spacing(1),
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center" }}>
         <Typography variant="body1" fontWeight={600} sx={{ flexGrow: 1 }}>
           Colors
         </Typography>
@@ -185,32 +191,38 @@ function ThemeColorsSection() {
             </IconButton>
           </span>
         </Tooltip>
-      </Stack>
+      </div>
 
       {entries.map(({ key, label, description, effectiveColor }) => {
         const isOverridden = themeColors?.[key] != null;
         return (
-          <Stack
+          <div
             key={key}
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{
-              p: 1.5,
-              borderRadius: 1.5,
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: theme.spacing(1.5),
+              borderRadius: `${baseBorderRadius * 1.5}px`,
               border: `1px solid ${isOverridden ? theme.palette.primary.main : theme.palette.divider}`,
             }}
           >
-            <Stack>
+            <div>
               <Typography variant="body2" fontWeight={600}>
                 {label}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {description}
               </Typography>
-            </Stack>
+            </div>
 
-            <Stack direction="row" alignItems="center" sx={{ gap: 0.5 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: theme.spacing(0.5),
+              }}
+            >
               {isOverridden && (
                 <Tooltip title="Reset to default">
                   <IconButton
@@ -227,11 +239,11 @@ function ThemeColorsSection() {
                 onChange={(val) => handleChange(key, val)}
                 label={label}
               />
-            </Stack>
-          </Stack>
+            </div>
+          </div>
         );
       })}
-    </Stack>
+    </div>
   );
 }
 
@@ -247,21 +259,31 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
   const normalized = toInputColor(color);
 
   return (
-    <Stack sx={{ position: "relative", flexShrink: 0 }}>
-      <Stack
-        component="button"
+    <div
+      style={{
+        position: "relative",
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+      }}
+    >
+      <button
         type="button"
         onClick={() => inputRef.current?.click()}
         aria-label={`Pick color for ${label}`}
-        sx={{
+        style={{
+          display: "block",
           width: 28,
           height: 28,
-          borderRadius: 1,
-          bgcolor: normalized,
+          borderRadius: theme.shape.borderRadius,
+          backgroundColor: normalized,
           cursor: "pointer",
-          p: 0,
+          padding: 0,
+          margin: 0,
+          lineHeight: 0,
           border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
           appearance: "none",
+          boxSizing: "border-box",
         }}
       />
       <input
@@ -278,7 +300,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
         }}
         aria-hidden="true"
       />
-    </Stack>
+    </div>
   );
 }
 

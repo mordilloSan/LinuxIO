@@ -2,7 +2,6 @@ import CloseIcon from "@mui/icons-material/Close";
 import {
   DialogTitle,
   DialogContent,
-  Box,
   IconButton,
   Typography,
   Alert,
@@ -61,9 +60,9 @@ const LogDialog: React.FC<LogDialogProps> = ({
       slotProps={{ transition: { onExited } }}
     >
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <Box sx={{ flex: 1, display: "flex", alignItems: "center" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
           {titleContent ?? <Typography variant="h6">{title}</Typography>}
-        </Box>
+        </div>
         {extraActions}
         <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
           <FormControlLabel
@@ -89,14 +88,14 @@ const LogDialog: React.FC<LogDialogProps> = ({
             {error}
           </Alert>
         ) : (
-          <Box
+          <div
             ref={logsBoxRef}
             className="custom-scrollbar"
-            sx={{
+            style={{
               position: "relative",
-              bgcolor: theme.codeBlock.background,
+              backgroundColor: theme.codeBlock.background,
               color: theme.codeBlock.color,
-              p: 2,
+              padding: theme.spacing(2),
               overflow: "auto",
               fontFamily: "Fira Mono, monospace",
               fontSize: "0.85rem",
@@ -107,8 +106,8 @@ const LogDialog: React.FC<LogDialogProps> = ({
             }}
           >
             {isLoading && (
-              <Box
-                sx={{
+              <div
+                style={{
                   position: "absolute",
                   inset: 0,
                   background: alpha(theme.codeBlock.background, 0.85),
@@ -116,7 +115,7 @@ const LogDialog: React.FC<LogDialogProps> = ({
                 }}
               >
                 <ComponentLoader />
-              </Box>
+              </div>
             )}
             {!isLoading &&
               (logs || (
@@ -124,7 +123,7 @@ const LogDialog: React.FC<LogDialogProps> = ({
                   No logs available.
                 </Typography>
               ))}
-          </Box>
+          </div>
         )}
       </DialogContent>
     </GeneralDialog>
