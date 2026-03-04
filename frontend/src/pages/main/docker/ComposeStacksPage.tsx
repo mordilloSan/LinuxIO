@@ -1,11 +1,11 @@
 import {
-  Box,
   Button,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Stack,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useEffect, useState } from "react";
@@ -471,7 +471,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
   return (
     <Suspense fallback={<ComponentLoader />}>
-      <Box>
+      <Stack>
         {isPending ? (
           <ComponentLoader />
         ) : (
@@ -567,7 +567,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             </Button>
           </DialogActions>
         </Dialog>
-      </Box>
+      </Stack>
     </Suspense>
   );
 };

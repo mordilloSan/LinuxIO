@@ -10,9 +10,9 @@ import {
 import {
   Alert,
   AlertTitle,
-  Box,
   Button,
   IconButton,
+  Stack,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -129,21 +129,21 @@ const DockerPage: React.FC = () => {
 
   if (dockerAvailable === null) {
     return (
-      <Box sx={{ p: 3 }}>
+      <Stack sx={{ p: 3 }}>
         <Alert severity="info">
           <AlertTitle>Checking Docker</AlertTitle>
           <Typography variant="body2">
             Verifying Docker daemon access...
           </Typography>
         </Alert>
-      </Box>
+      </Stack>
     );
   }
 
   // Show error if Docker is not available
   if (dockerAvailable === false) {
     return (
-      <Box sx={{ p: 3 }}>
+      <Stack sx={{ p: 3 }}>
         <Alert severity="warning">
           <AlertTitle>Docker Not Available</AlertTitle>
           <Typography variant="body2" sx={{ mb: 2 }}>
@@ -151,7 +151,7 @@ const DockerPage: React.FC = () => {
           </Typography>
           <Typography variant="body2" component="div">
             <strong>Common causes:</strong>
-            <Box component="ul" sx={{ mt: 1, mb: 0 }}>
+            <Stack component="ul" sx={{ mt: 1, mb: 0, display: "block" }}>
               <li>Docker is not installed on this system</li>
               <li>
                 Docker service is not running (try: sudo systemctl start docker)
@@ -165,10 +165,10 @@ const DockerPage: React.FC = () => {
                 Docker socket path is not set correctly (check DOCKER_HOST
                 environment variable)
               </li>
-            </Box>
+            </Stack>
           </Typography>
         </Alert>
-      </Box>
+      </Stack>
     );
   }
 

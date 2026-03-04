@@ -1,6 +1,5 @@
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
-  Box,
   Grid,
   Table,
   TableBody,
@@ -22,6 +21,7 @@ import {
   Select,
   MenuItem,
   FormControlLabel,
+  Stack,
   Switch,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -95,7 +95,7 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xs">
       <DialogTitle>Create Network</DialogTitle>
       <DialogContent>
-        <Box mt={2}>
+        <Stack sx={{ mt: 2 }}>
           <TextField
             label="Network Name"
             value={networkName}
@@ -140,7 +140,7 @@ const CreateNetworkDialog: React.FC<CreateNetworkDialogProps> = ({
             label="Internal network (no external connectivity)"
             sx={{ mt: 1 }}
           />
-        </Box>
+        </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} color="secondary" disabled={isCreating}>
@@ -215,11 +215,11 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
           Are you sure you want to delete the following network
           {networkNames.length > 1 ? "s" : ""}?
         </DialogContentText>
-        <Box sx={{ mt: 2, mb: 1 }}>
+        <Stack direction="row" sx={{ mt: 2, mb: 1, flexWrap: "wrap" }}>
           {networkNames.map((name) => (
             <Chip key={name} label={name} size="small" sx={{ mr: 1, mb: 1 }} />
           ))}
-        </Box>
+        </Stack>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
           This action cannot be undone. Networks with connected containers
           cannot be deleted.
@@ -354,8 +354,8 @@ const NetworkList: React.FC<NetworkListProps> = ({
   ];
 
   return (
-    <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+    <Stack>
+      <Stack direction="row" alignItems="center" sx={{ mb: 2, gap: 2, flexWrap: "wrap" }}>
         <TextField
           variant="outlined"
           size="small"
@@ -369,7 +369,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
             },
           }}
         />
-        <Box fontWeight="bold">{filtered.length} shown</Box>
+        <Typography fontWeight="bold">{filtered.length} shown</Typography>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -381,23 +381,23 @@ const NetworkList: React.FC<NetworkListProps> = ({
             Delete ({effectiveSelected.size})
           </Button>
         )}
-      </Box>
+      </Stack>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <Grid container spacing={2}>
             {filtered.map((network) => (
               <Grid key={network.Id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <FrostedCard style={{ padding: 8 }}>
-                  <Box
+                  <Stack
+                    direction="row"
+                    alignItems="center"
                     sx={{
-                      display: "flex",
-                      alignItems: "center",
                       justifyContent: "space-between",
                       gap: 1,
                       mb: 1,
                     }}
                   >
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
                       <Checkbox
                         size="small"
                         checked={effectiveSelected.has(network.Id)}
@@ -408,15 +408,15 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       <Typography variant="body2" fontWeight="bold" noWrap>
                         {network.Name}
                       </Typography>
-                    </Box>
+                    </Stack>
                     <Chip
                       label={network.Driver}
                       size="small"
                       sx={{ fontSize: "0.75rem" }}
                     />
-                  </Box>
+                  </Stack>
 
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                  <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
                     <Chip label={`Scope: ${network.Scope}`} size="small" />
                     <Chip
                       label={`Internal: ${network.Internal ? "Yes" : "No"}`}
@@ -430,7 +430,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       label={`IPv6: ${network.EnableIPv6 ? "Yes" : "No"}`}
                       size="small"
                     />
-                  </Box>
+                  </Stack>
 
                   <Typography
                     variant="body2"
@@ -445,7 +445,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     ID: {network.Id}
                   </Typography>
 
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                  <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
                     {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
                       network.IPAM.Config.slice(0, 2).map((ipam, i) => (
                         <Chip
@@ -460,17 +460,17 @@ const NetworkList: React.FC<NetworkListProps> = ({
                         No IPAM config
                       </Typography>
                     )}
-                  </Box>
+                  </Stack>
                 </FrostedCard>
               </Grid>
             ))}
           </Grid>
         ) : (
-          <Box textAlign="center" py={4}>
+          <Stack sx={{ textAlign: "center", py: 4 }}>
             <Typography variant="body2" color="text.secondary">
               No networks found.
             </Typography>
-          </Box>
+          </Stack>
         )
       ) : (
         <UnifiedCollapsibleTable
@@ -571,7 +571,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
               <Typography variant="subtitle2" gutterBottom>
                 <b>Subnet(s):</b>
               </Typography>
-              <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
+              <Stack direction="row" sx={{ mb: 2, flexWrap: "wrap" }}>
                 {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
                   network.IPAM.Config.map((ipam, i) => (
                     <Chip
@@ -586,12 +586,12 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     (no IPAM config)
                   </Typography>
                 )}
-              </Box>
+              </Stack>
 
               <Typography variant="subtitle2" gutterBottom>
                 <b>Options:</b>
               </Typography>
-              <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
+              <Stack direction="row" sx={{ mb: 2, flexWrap: "wrap" }}>
                 {network.Options && Object.keys(network.Options).length > 0 ? (
                   Object.entries(network.Options).map(([key, val]) => (
                     <Chip
@@ -606,12 +606,12 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     (no options)
                   </Typography>
                 )}
-              </Box>
+              </Stack>
 
               <Typography variant="subtitle2" gutterBottom>
                 <b>Labels:</b>
               </Typography>
-              <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
+              <Stack direction="row" sx={{ mb: 2, flexWrap: "wrap" }}>
                 {network.Labels && Object.keys(network.Labels).length > 0 ? (
                   Object.entries(network.Labels).map(([key, val]) => (
                     <Chip
@@ -626,12 +626,12 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     (no labels)
                   </Typography>
                 )}
-              </Box>
+              </Stack>
 
               <Typography variant="subtitle2" gutterBottom>
                 <b>Connected Containers:</b>
               </Typography>
-              <Box>
+              <Stack>
                 {network.Containers &&
                 Object.keys(network.Containers).length > 0 ? (
                   <Table
@@ -729,7 +729,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     (no containers)
                   </Typography>
                 )}
-              </Box>
+              </Stack>
             </>
           )}
           emptyMessage="No networks found."
@@ -749,7 +749,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
         networkIds={selectedNetworks.map((n) => n.Id)}
         onSuccess={handleDeleteSuccess}
       />
-    </Box>
+    </Stack>
   );
 };
 

@@ -5,17 +5,17 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import {
-  Box,
+  Chip,
   Grid,
+  IconButton,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  IconButton,
   TextField,
   Tooltip,
-  Chip,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -130,8 +130,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
       return (
         <>
           <TableCell sx={{ px: { xs: 1, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
-            <Box sx={{ display: "flex", alignItems: "center" }}>
-              <Box
+            <Stack direction="row" alignItems="center">
+              <Stack
                 component="span"
                 sx={{
                   display: { xs: "inline-block", sm: "none" },
@@ -158,10 +158,10 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   },
                 }}
               />
-            </Box>
+            </Stack>
           </TableCell>
           <TableCell>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Stack direction="row" alignItems="center" sx={{ gap: 1.5 }}>
               <DockerIcon
                 identifier={project.icon}
                 size={28}
@@ -170,12 +170,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
               <Typography variant="body2" fontWeight="bold">
                 {project.name}
               </Typography>
-            </Box>
+            </Stack>
           </TableCell>
           <TableCell align="center">{getTotalContainers(project)}</TableCell>
           <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
             <Tooltip title={project.config_files.join(", ") || "Unknown"}>
-              <Box sx={{ display: "flex", alignItems: "center" }}>
+              <Stack direction="row" alignItems="center">
                 <FolderOpenIcon
                   fontSize="small"
                   sx={{ mr: 0.5, opacity: 0.7 }}
@@ -184,7 +184,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   {project.config_files[0]?.split("/").pop() ||
                     "docker-compose.yml"}
                 </Typography>
-              </Box>
+              </Stack>
             </Tooltip>
           </TableCell>
           <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
@@ -203,9 +203,9 @@ const ComposeList: React.FC<ComposeListProps> = ({
             </Tooltip>
           </TableCell>
           <TableCell align="right">
-            <Box
+            <Stack
+              direction="row"
               sx={{
-                display: "flex",
                 justifyContent: "flex-end",
                 gap: { xs: 0, sm: 0.5 },
               }}
@@ -308,7 +308,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   )}
                 </>
               )}
-            </Box>
+            </Stack>
           </TableCell>
         </>
       );
@@ -340,14 +340,14 @@ const ComposeList: React.FC<ComposeListProps> = ({
             {Object.values(project.services).map((service) => (
               <TableRow key={service.name}>
                 <TableCell>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
                     <DockerIcon
                       identifier={service.icon}
                       size={20}
                       alt={service.name}
                     />
                     {service.name}
-                  </Box>
+                  </Stack>
                 </TableCell>
                 <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
                   <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
@@ -372,7 +372,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
             ))}
           </TableBody>
         </Table>
-        <Box mt={2}>
+        <Stack sx={{ mt: 2 }}>
           <Typography
             variant="body2"
             color="text.secondary"
@@ -387,13 +387,13 @@ const ComposeList: React.FC<ComposeListProps> = ({
           >
             <b>Config Files:</b> {project.config_files.join(", ") || "-"}
           </Typography>
-        </Box>
+        </Stack>
       </>
     );
   }, []);
 
   const searchBar = (
-    <Box mb={2} display="flex" alignItems="center" gap={2}>
+    <Stack direction="row" alignItems="center" sx={{ mb: 2, gap: 2 }}>
       <TextField
         variant="outlined"
         size="small"
@@ -402,21 +402,21 @@ const ComposeList: React.FC<ComposeListProps> = ({
         onChange={(e) => setSearch(e.target.value)}
         sx={{ width: 320 }}
       />
-      <Box fontWeight="bold">{filtered.length} shown</Box>
-    </Box>
+      <Typography fontWeight="bold">{filtered.length} shown</Typography>
+    </Stack>
   );
 
   if (viewMode === "card") {
     return (
-      <Box>
+      <Stack>
         {searchBar}
         {filtered.length === 0 ? (
-          <Box textAlign="center" py={4}>
+          <Stack sx={{ textAlign: "center", py: 4 }}>
             <Typography variant="body2" color="text.secondary">
               No compose stacks found. Start containers with docker compose to
               see them here.
             </Typography>
-          </Box>
+          </Stack>
         ) : (
           <Grid container spacing={2}>
             {filtered.map((project) => (
@@ -435,12 +435,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
             ))}
           </Grid>
         )}
-      </Box>
+      </Stack>
     );
   }
 
   return (
-    <Box>
+    <Stack>
       {searchBar}
       <UnifiedCollapsibleTable
         data={filtered}
@@ -450,7 +450,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
         renderExpandedContent={renderExpandedContent}
         emptyMessage="No compose stacks found. Start containers with docker compose to see them here."
       />
-    </Box>
+    </Stack>
   );
 };
 

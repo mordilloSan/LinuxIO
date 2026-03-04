@@ -1,10 +1,10 @@
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
-  Box,
   CardContent,
-  IconButton,
   Collapse,
+  IconButton,
+  Stack,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -36,7 +36,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
   );
 
   return (
-    <Box
+    <Stack
       onClick={onToggleSelected}
       sx={{
         mb: 2,
@@ -57,7 +57,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
       }}
     >
       {/* frosted bg (not the text) */}
-      <Box
+      <Stack
         sx={{
           position: "absolute",
           inset: 0,
@@ -74,7 +74,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
       />
 
       {/* content */}
-      <Box sx={{ position: "relative", zIndex: 1 }}>
+      <Stack sx={{ position: "relative", zIndex: 1 }}>
         <CardContent
           sx={{
             display: "flex",
@@ -85,14 +85,14 @@ export default function CollapsibleCard<T extends Record<string, any>>({
           }}
         >
           {columns.map((col) => (
-            <Box key={col.field} sx={{ flex: 1, minWidth: 0 }}>
+            <Stack key={col.field} sx={{ flex: 1, minWidth: 0 }}>
               <Typography
                 variant={col.field === "repo" ? "subtitle1" : "body2"}
                 color="text.primary"
               >
                 {(row as any)[col.field]}
               </Typography>
-            </Box>
+            </Stack>
           ))}
 
           {/* ONLY chevron expands */}
@@ -108,11 +108,11 @@ export default function CollapsibleCard<T extends Record<string, any>>({
         </CardContent>
 
         <Collapse in={open} unmountOnExit>
-          <Box sx={{ px: { xs: 1, sm: 2 }, pb: 2 }}>
+          <Stack sx={{ px: { xs: 1, sm: 2 }, pb: 2 }}>
             {renderCollapseContent(row)}
-          </Box>
+          </Stack>
         </Collapse>
-      </Box>
-    </Box>
+      </Stack>
+    </Stack>
   );
 }

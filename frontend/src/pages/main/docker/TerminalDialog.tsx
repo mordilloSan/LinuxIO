@@ -1,15 +1,15 @@
 import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Button,
-  Box,
-  MenuItem,
-  Select,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
-  SelectChangeEvent,
   Menu,
+  MenuItem,
+  Select,
+  SelectChangeEvent,
+  Stack,
   Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -315,8 +315,8 @@ const TerminalDialog: React.FC<Props> = ({
       }}
     >
       <DialogTitle>
-        {containerName ? `Shell for ${containerName}` : "Container Shell"}
-        <Box sx={{ float: "right" }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <span>{containerName ? `Shell for ${containerName}` : "Container Shell"}</span>
           <FormControl size="small" variant="standard">
             <InputLabel id="shell-label">Shell</InputLabel>
             <Select
@@ -333,7 +333,7 @@ const TerminalDialog: React.FC<Props> = ({
               ))}
             </Select>
           </FormControl>
-        </Box>
+        </Stack>
       </DialogTitle>
       <DialogContent
         dividers
@@ -346,17 +346,17 @@ const TerminalDialog: React.FC<Props> = ({
         }}
       >
         {loadingShells ? (
-          <Box sx={{ p: 3, textAlign: "center" }}>
+          <Stack sx={{ p: 3, textAlign: "center" }}>
             <ComponentLoader />
-          </Box>
+          </Stack>
         ) : hasFetchedShells && availableShells.length === 0 ? (
-          <Box sx={{ p: 3, color: "error.main", textAlign: "center" }}>
+          <Stack sx={{ p: 3, color: "error.main", textAlign: "center" }}>
             No shell available in this container.
             <br />
             (Try installing <b>bash</b> or <b>sh</b> in your container.)
-          </Box>
+          </Stack>
         ) : availableShells.length > 0 ? (
-          <Box
+          <Stack
             key={terminalKey}
             ref={termRef}
             onContextMenu={handleContextMenu}
@@ -396,9 +396,9 @@ const TerminalDialog: React.FC<Props> = ({
           }}
         >
           <MenuItem onClick={handleCopy} sx={{ py: 1 }}>
-            <Box
+            <Stack
+              direction="row"
               sx={{
-                display: "flex",
                 justifyContent: "space-between",
                 width: "100%",
               }}
@@ -410,12 +410,12 @@ const TerminalDialog: React.FC<Props> = ({
               >
                 Shift+C
               </Typography>
-            </Box>
+            </Stack>
           </MenuItem>
           <MenuItem onClick={handlePaste} sx={{ py: 1 }}>
-            <Box
+            <Stack
+              direction="row"
               sx={{
-                display: "flex",
                 justifyContent: "space-between",
                 width: "100%",
                 gap: 4,
@@ -428,7 +428,7 @@ const TerminalDialog: React.FC<Props> = ({
               >
                 Shift+V
               </Typography>
-            </Box>
+            </Stack>
           </MenuItem>
         </Menu>
       </DialogContent>
