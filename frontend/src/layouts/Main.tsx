@@ -1,4 +1,4 @@
-import { CssBaseline } from "@mui/material";
+import { CssBaseline, useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { Suspense, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
@@ -17,6 +17,7 @@ import { useSidebarItems } from "@/routes";
 const Dashboard: React.FC = () => {
   const location = useLocation();
   const theme = useTheme();
+  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
   const isLoaded = useConfigReady();
   const { toggleMobileOpen, setMobileOpen, sidebarWidth, isDesktop } =
     useSidebar();
@@ -32,19 +33,19 @@ const Dashboard: React.FC = () => {
   const contentSpacing =
     location.pathname === "/"
       ? {
-          paddingLeft: theme.spacing(5),
-          paddingRight: theme.spacing(7),
-          paddingTop: 0,
-          paddingBottom: 0,
-        }
+        paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+        paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
+        paddingTop: 0,
+        paddingBottom: 0,
+      }
       : location.pathname.includes("/filebrowser")
         ? { padding: 0 }
         : {
-            paddingLeft: theme.spacing(5),
-            paddingRight: theme.spacing(7),
-            paddingTop: theme.spacing(5),
-            paddingBottom: theme.spacing(5),
-          };
+          paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(2),
+          paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
+          paddingTop: theme.spacing(5),
+          paddingBottom: theme.spacing(5),
+        };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
