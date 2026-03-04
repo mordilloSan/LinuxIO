@@ -1,7 +1,7 @@
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import {
-  Box,
+  Grid,
   TableCell,
   TextField,
   Chip,
@@ -18,6 +18,7 @@ import DeleteGroupDialog from "./components/DeleteGroupDialog";
 import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
 import { linuxio, type AccountGroup } from "@/api";
+import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -25,9 +26,13 @@ import { responsiveTextStyles } from "@/theme/tableStyles";
 
 interface GroupsTabProps {
   onMountCreateHandler?: (handler: () => void) => void;
+  viewMode?: "table" | "card";
 }
 
-const GroupsTab: React.FC<GroupsTabProps> = ({ onMountCreateHandler }) => {
+const GroupsTab: React.FC<GroupsTabProps> = ({
+  onMountCreateHandler,
+  viewMode = "table",
+}) => {
   const { data: groups = [] } = linuxio.accounts.list_groups.useQuery({
     refetchInterval: 10000,
   });
@@ -133,8 +138,16 @@ const GroupsTab: React.FC<GroupsTabProps> = ({ onMountCreateHandler }) => {
   ];
 
   return (
-    <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+    <div>
+      <div
+        style={{
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
         <TextField
           variant="outlined"
           size="small"
@@ -148,7 +161,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({ onMountCreateHandler }) => {
             },
           }}
         />
-        <Box fontWeight="bold">{filtered.length} shown</Box>
+        <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -160,125 +173,227 @@ const GroupsTab: React.FC<GroupsTabProps> = ({ onMountCreateHandler }) => {
             Delete ({effectiveSelected.size})
           </Button>
         )}
-      </Box>
-      <UnifiedCollapsibleTable
-        data={filtered}
-        columns={columns}
-        getRowKey={(group) => group.name}
-        renderFirstCell={(group) => (
-          <Checkbox
-            size="small"
-            checked={effectiveSelected.has(group.name)}
-            onChange={(e) => handleSelectOne(group.name, e.target.checked)}
-            onClick={(e) => e.stopPropagation()}
-            disabled={group.name === "root"}
-          />
-        )}
-        renderHeaderFirstCell={() => (
-          <Checkbox
-            size="small"
-            checked={allSelected}
-            indeterminate={someSelected}
-            onChange={(e) => handleSelectAll(e.target.checked)}
-          />
-        )}
-        renderMainRow={(group) => (
-          <>
-            <TableCell>
-              <Box display="flex" alignItems="center" gap={1}>
-                <Typography
-                  variant="body2"
-                  fontWeight="medium"
-                  sx={responsiveTextStyles}
-                >
-                  {group.name}
-                </Typography>
-                {group.isSystem && (
-                  <Chip
-                    label="system"
-                    size="small"
-                    variant="outlined"
-                    sx={{ fontSize: "0.65rem", height: 20 }}
-                  />
-                )}
-              </Box>
-            </TableCell>
-            <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-              <Typography variant="body2" sx={responsiveTextStyles}>
-                {group.gid}
-              </Typography>
-            </TableCell>
-            <TableCell>
-              <Box display="flex" flexWrap="wrap" gap={0.5}>
-                {group.members.length > 0 ? (
-                  group.members
-                    .slice(0, 3)
-                    .map((member) => (
-                      <Chip
-                        key={member}
-                        label={member}
+      </div>
+      {viewMode === "card" ? (
+        filtered.length > 0 ? (
+          <Grid container spacing={2}>
+            {filtered.map((group) => (
+              <Grid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+                <FrostedCard style={{ padding: 8 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 4,
+                      marginBottom: 4,
+                    }}
+                  >
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 4 }}
+                    >
+                      <Checkbox
                         size="small"
-                        sx={{ fontSize: "0.7rem" }}
+                        checked={effectiveSelected.has(group.name)}
+                        onChange={(e) =>
+                          handleSelectOne(group.name, e.target.checked)
+                        }
+                        disabled={group.name === "root"}
                       />
-                    ))
+                      <Typography variant="body2" fontWeight="bold" noWrap>
+                        {group.name}
+                      </Typography>
+                    </div>
+                    <Tooltip title="Edit Members">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleEditMembers(group)}
+                        disabled={group.name === "root"}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 3,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {group.isSystem && (
+                      <Chip label="System" size="small" variant="outlined" />
+                    )}
+                    <Chip label={`GID: ${group.gid}`} size="small" />
+                  </div>
+
+                  <Typography variant="caption" color="text.secondary">
+                    Members ({group.members.length})
+                  </Typography>
+                  <div
+                    style={{
+                      marginTop: 2,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 2,
+                    }}
+                  >
+                    {group.members.length > 0 ? (
+                      group.members.map((member) => (
+                        <Chip
+                          key={`${group.name}-${member}`}
+                          label={member}
+                          size="small"
+                          sx={{ fontSize: "0.7rem" }}
+                        />
+                      ))
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        (no members)
+                      </Typography>
+                    )}
+                  </div>
+                </FrostedCard>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <div style={{ textAlign: "center", paddingBlock: 16 }}>
+            <Typography variant="body2" color="text.secondary">
+              No groups found.
+            </Typography>
+          </div>
+        )
+      ) : (
+        <UnifiedCollapsibleTable
+          data={filtered}
+          columns={columns}
+          getRowKey={(group) => group.name}
+          renderFirstCell={(group) => (
+            <Checkbox
+              size="small"
+              checked={effectiveSelected.has(group.name)}
+              onChange={(e) => handleSelectOne(group.name, e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+              disabled={group.name === "root"}
+            />
+          )}
+          renderHeaderFirstCell={() => (
+            <Checkbox
+              size="small"
+              checked={allSelected}
+              indeterminate={someSelected}
+              onChange={(e) => handleSelectAll(e.target.checked)}
+            />
+          )}
+          renderMainRow={(group) => (
+            <>
+              <TableCell>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <Typography
+                    variant="body2"
+                    fontWeight="medium"
+                    sx={responsiveTextStyles}
+                  >
+                    {group.name}
+                  </Typography>
+                  {group.isSystem && (
+                    <Chip
+                      label="system"
+                      size="small"
+                      variant="outlined"
+                      sx={{ fontSize: "0.65rem", height: 20 }}
+                    />
+                  )}
+                </div>
+              </TableCell>
+              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                <Typography variant="body2" sx={responsiveTextStyles}>
+                  {group.gid}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+                  {group.members.length > 0 ? (
+                    group.members
+                      .slice(0, 3)
+                      .map((member) => (
+                        <Chip
+                          key={member}
+                          label={member}
+                          size="small"
+                          sx={{ fontSize: "0.7rem" }}
+                        />
+                      ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      (no members)
+                    </Typography>
+                  )}
+                  {group.members.length > 3 && (
+                    <Chip
+                      label={`+${group.members.length - 3}`}
+                      size="small"
+                      variant="outlined"
+                      sx={{ fontSize: "0.7rem" }}
+                    />
+                  )}
+                </div>
+              </TableCell>
+              <TableCell align="right">
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 2,
+                  }}
+                >
+                  <Tooltip title="Edit Members">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditMembers(group);
+                      }}
+                      disabled={group.name === "root"}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </div>
+              </TableCell>
+            </>
+          )}
+          renderExpandedContent={(group) => (
+            <>
+              <Typography variant="subtitle2" gutterBottom>
+                <b>All Members ({group.members.length}):</b>
+              </Typography>
+              <div
+                style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
+              >
+                {group.members.length > 0 ? (
+                  group.members.map((member) => (
+                    <Chip
+                      key={member}
+                      label={member}
+                      size="small"
+                      sx={{ mr: 1, mb: 1 }}
+                    />
+                  ))
                 ) : (
                   <Typography variant="body2" color="text.secondary">
                     (no members)
                   </Typography>
                 )}
-                {group.members.length > 3 && (
-                  <Chip
-                    label={`+${group.members.length - 3}`}
-                    size="small"
-                    variant="outlined"
-                    sx={{ fontSize: "0.7rem" }}
-                  />
-                )}
-              </Box>
-            </TableCell>
-            <TableCell align="right">
-              <Box display="flex" justifyContent="flex-end" gap={0.5}>
-                <Tooltip title="Edit Members">
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditMembers(group);
-                    }}
-                    disabled={group.name === "root"}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            </TableCell>
-          </>
-        )}
-        renderExpandedContent={(group) => (
-          <>
-            <Typography variant="subtitle2" gutterBottom>
-              <b>All Members ({group.members.length}):</b>
-            </Typography>
-            <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
-              {group.members.length > 0 ? (
-                group.members.map((member) => (
-                  <Chip
-                    key={member}
-                    label={member}
-                    size="small"
-                    sx={{ mr: 1, mb: 1 }}
-                  />
-                ))
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  (no members)
-                </Typography>
-              )}
-            </Box>
-          </>
-        )}
-        emptyMessage="No groups found."
-      />
+              </div>
+            </>
+          )}
+          emptyMessage="No groups found."
+        />
+      )}
 
       <CreateGroupDialog
         open={createDialogOpen}
@@ -302,7 +417,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({ onMountCreateHandler }) => {
           group={selectedGroup}
         />
       )}
-    </Box>
+    </div>
   );
 };
 

@@ -10,19 +10,13 @@ import (
 func newTestManager(t *testing.T) *Manager {
 	t.Helper()
 	st := NewWithCleanupInterval(0)
-	cfg := SessionConfig{
-		IdleTimeout:     20 * time.Millisecond,
-		AbsoluteTimeout: 500 * time.Millisecond,
-		RefreshThrottle: 0,
-		GCInterval:      0,
-		Cookie: CookieConfig{
-			Name:     "session_id",
-			Path:     "/",
-			SameSite: 0,
-			Secure:   false,
-			HTTPOnly: true,
-		},
-	}
+	cfg := DefaultConfig
+	cfg.IdleTimeout = 20 * time.Millisecond
+	cfg.AbsoluteTimeout = 500 * time.Millisecond
+	cfg.RefreshThrottle = 0
+	cfg.GCInterval = 0
+	cfg.Cookie.SameSite = 0
+	cfg.Cookie.Secure = false
 	return NewManager(st, cfg)
 }
 
@@ -83,9 +77,8 @@ func TestManager_RefreshUpdatesIdle(t *testing.T) {
 		t.Fatalf("Refresh error: %v", err)
 	}
 	s2, _ := m.GetSession(s.SessionID)
-	if !s2.Timing.IdleUntil.After(before) && !s2.Timing.IdleUntil.Equal(before) {
-		// Equal can happen if AbsoluteUntil already capped the idle window
-		t.Fatalf("IdleUntil did not move forward or equal cap")
+	if !s2.Timing.IdleUntil.After(before) {
+		t.Fatalf("IdleUntil did not move forward")
 	}
 }
 
@@ -111,8 +104,94 @@ func TestManager_WriteAndValidateCookie(t *testing.T) {
 	cookieVal := firstCookieValue(rr.Header().Get("Set-Cookie"))
 	req.AddCookie(&http.Cookie{Name: m.CookieName(), Value: cookieVal})
 
-	if _, err := m.ValidateFromRequest(req); err != nil {
+	before := s.Timing.IdleUntil
+	time.Sleep(5 * time.Millisecond)
+	got, err := m.ValidateFromRequest(req)
+	if err != nil {
 		t.Fatalf("ValidateFromRequest unexpected error: %v", err)
+	}
+	if !got.Timing.IdleUntil.After(before) {
+		t.Fatalf("ValidateFromRequest should return refreshed timing")
+	}
+}
+
+func TestManager_UsesExplicitCookieConfig(t *testing.T) {
+	st := NewWithCleanupInterval(0)
+	cfg := DefaultConfig
+	cfg.GCInterval = 0
+	cfg.Cookie.Domain = "example.com"
+	cfg.Cookie.Path = "/custom"
+	cfg.Cookie.SameSite = http.SameSiteLaxMode
+	cfg.Cookie.Secure = false
+	cfg.Cookie.HTTPOnly = false
+	m := NewManager(st, cfg)
+	defer m.Close()
+
+	rr := httptest.NewRecorder()
+	m.WriteCookie(rr, "abc")
+
+	cookies := rr.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("expected one cookie, got %d", len(cookies))
+	}
+
+	ck := cookies[0]
+	if ck.Name != DefaultConfig.Cookie.Name {
+		t.Fatalf("cookie name = %q, want %q", ck.Name, DefaultConfig.Cookie.Name)
+	}
+	if ck.Domain != "example.com" {
+		t.Fatalf("cookie domain = %q, want example.com", ck.Domain)
+	}
+	if ck.Path != "/custom" {
+		t.Fatalf("cookie path = %q, want /custom", ck.Path)
+	}
+	if ck.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("cookie sameSite = %v, want %v", ck.SameSite, http.SameSiteLaxMode)
+	}
+	if ck.Secure {
+		t.Fatal("cookie secure = true, want false")
+	}
+	if ck.HttpOnly {
+		t.Fatal("cookie HttpOnly = true, want false")
+	}
+}
+
+func TestManager_GCLoopDeletesAbsoluteExpiredSessions(t *testing.T) {
+	st := NewWithCleanupInterval(0)
+	cfg := DefaultConfig
+	cfg.IdleTimeout = 100 * time.Millisecond
+	cfg.AbsoluteTimeout = 20 * time.Millisecond
+	cfg.RefreshThrottle = 0
+	cfg.GCInterval = 5 * time.Millisecond
+	cfg.Cookie.SameSite = 0
+	cfg.Cookie.Secure = false
+	m := NewManager(st, cfg)
+	defer m.Close()
+
+	done := make(chan DeleteReason, 1)
+	m.RegisterOnDelete(func(_ *Session, reason DeleteReason) {
+		select {
+		case done <- reason:
+		default:
+		}
+	})
+
+	s, err := m.CreateSession(User{Username: "dana", UID: 1003, GID: 1003}, false)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	select {
+	case reason := <-done:
+		if reason != ReasonGCAbsolute {
+			t.Fatalf("delete reason = %q, want %q", reason, ReasonGCAbsolute)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("timed out waiting for absolute-expiry GC")
+	}
+
+	if _, err := m.GetSession(s.SessionID); err == nil {
+		t.Fatalf("expected session deleted after absolute-expiry GC")
 	}
 }
 

@@ -2,7 +2,6 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloseIcon from "@mui/icons-material/Close";
 import ErrorIcon from "@mui/icons-material/Error";
 import {
-  Box,
   DialogContent,
   DialogTitle,
   IconButton,
@@ -56,8 +55,7 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
   summaryStats = [],
 }) => {
   const theme = useTheme();
-  const sectionBackground =
-    theme.palette.mode === "dark" ? "#1e1e1e" : "#f5f5f5";
+  const sectionBackground = theme.codeBlock.background;
   const hasProgressStats = showProgressStats && progressStats.length > 0;
   const hasSummary = Boolean(summaryTitle) && summaryStats.length > 0;
 
@@ -82,35 +80,35 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
           justifyContent: "space-between",
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           {isRunning && <LinearProgress sx={{ width: 100 }} />}
           {!isRunning && success && <CheckCircleIcon color="success" />}
           {!isRunning && error && <ErrorIcon color="error" />}
           <Typography variant="h6">{title}</Typography>
-        </Box>
+        </div>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>
       </DialogTitle>
 
       <DialogContent sx={{ p: 3 }}>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Typography variant="body2" color="text.secondary">
             {phaseLabel}
           </Typography>
 
           {hasProgressStats && (
-            <Box
-              sx={{
+            <div
+              style={{
                 display: "flex",
-                gap: 3,
-                p: 2,
+                gap: 12,
+                padding: 8,
                 backgroundColor: sectionBackground,
-                borderRadius: 1,
+                borderRadius: 4,
               }}
             >
               {progressStats.map((stat) => (
-                <Box key={stat.label}>
+                <div key={stat.label}>
                   <Typography
                     variant={stat.valueVariant ?? "h4"}
                     sx={
@@ -122,13 +120,13 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
                   <Typography variant="caption" color="text.secondary">
                     {stat.label}
                   </Typography>
-                </Box>
+                </div>
               ))}
-            </Box>
+            </div>
           )}
 
           {success && (
-            <Box sx={{ mt: 2 }}>
+            <div style={{ marginTop: 8 }}>
               <Typography variant="body2" color="success.main" gutterBottom>
                 ✓ {successMessage}
               </Typography>
@@ -143,12 +141,12 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
               )}
 
               {hasSummary && (
-                <Box
-                  sx={{
-                    mt: 2,
-                    p: 2,
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: 8,
                     backgroundColor: sectionBackground,
-                    borderRadius: 1,
+                    borderRadius: 4,
                   }}
                 >
                   <Typography
@@ -158,9 +156,9 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
                   >
                     {summaryTitle}
                   </Typography>
-                  <Box sx={{ display: "flex", gap: 3, mt: 1 }}>
+                  <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
                     {summaryStats.map((stat) => (
-                      <Box key={stat.label}>
+                      <div key={stat.label}>
                         <Typography
                           variant={stat.valueVariant ?? "h5"}
                           sx={
@@ -174,12 +172,12 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
                         <Typography variant="caption" color="text.secondary">
                           {stat.label}
                         </Typography>
-                      </Box>
+                      </div>
                     ))}
-                  </Box>
-                </Box>
+                  </div>
+                </div>
               )}
-            </Box>
+            </div>
           )}
 
           {error && (
@@ -187,7 +185,7 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
               Error: {error}
             </Typography>
           )}
-        </Box>
+        </div>
       </DialogContent>
     </GeneralDialog>
   );

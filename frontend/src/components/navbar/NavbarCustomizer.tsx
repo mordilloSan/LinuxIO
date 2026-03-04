@@ -5,8 +5,8 @@ import {
   Popover,
   Typography,
   useTheme as useMuiTheme,
-  Box,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import Paintbrush from "lucide-react/dist/esm/icons/paintbrush";
 import { useMemo, useState } from "react";
 
@@ -60,34 +60,48 @@ function NavbarColorCustomizer() {
         </Typography>
 
         {/* Token swatches */}
-        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: muiTheme.spacing(1),
+            flexWrap: "wrap",
+            marginBottom: muiTheme.spacing(1),
+          }}
+        >
           {tokenSwatches.map(({ name, hex }) => (
-            <Box
+            <button
               key={name}
               onClick={() => setPrimaryColor(name)}
-              role="button"
+              type="button"
               aria-label={`Set color ${name}`}
               title={`${name} (${hex})`}
-              sx={{
+              style={{
                 width: 28,
                 height: 28,
-                borderRadius: 1,
-                bgcolor: hex,
+                borderRadius: muiTheme.shape.borderRadius,
+                backgroundColor: hex,
                 border:
                   muiTheme.palette.mode === "dark"
-                    ? "1px solid rgba(255,255,255,0.3)"
-                    : "1px solid rgba(0,0,0,0.1)",
+                    ? `1px solid ${alpha(muiTheme.palette.common.white, 0.3)}`
+                    : `1px solid ${alpha(muiTheme.palette.common.black, 0.1)}`,
                 cursor: "pointer",
                 outline:
                   primaryColor?.toLowerCase() === name.toLowerCase()
                     ? "2px solid currentColor"
                     : "none",
+                padding: 0,
               }}
             />
           ))}
-        </Box>
+        </div>
 
-        <Box sx={{ display: "flex", gap: 1, mt: 2 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: muiTheme.spacing(1),
+            marginTop: muiTheme.spacing(2),
+          }}
+        >
           <Button
             variant="outlined"
             fullWidth
@@ -105,7 +119,7 @@ function NavbarColorCustomizer() {
           >
             Reset to Default
           </Button>
-        </Box>
+        </div>
       </Popover>
     </>
   );

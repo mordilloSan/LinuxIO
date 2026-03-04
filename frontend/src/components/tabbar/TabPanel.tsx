@@ -1,4 +1,4 @@
-import { Box, Fade } from "@mui/material";
+import { Fade } from "@mui/material";
 import React from "react";
 
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
@@ -37,8 +37,8 @@ const TabPanel: React.FC<TabPanelProps> = ({
 
   return (
     <Fade in={isActive} timeout={timeout} unmountOnExit={true}>
-      <Box
-        sx={{
+      <div
+        style={{
           position: "absolute",
           width: "100%",
           top: 0,
@@ -46,7 +46,7 @@ const TabPanel: React.FC<TabPanelProps> = ({
         }}
       >
         <ErrorBoundary fallback={errorFallback}>{children}</ErrorBoundary>
-      </Box>
+      </div>
     </Fade>
   );
 };

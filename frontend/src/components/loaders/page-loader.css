@@ -1,0 +1,12 @@
+@keyframes page-loader-slide {
+  0% {
+    transform: translateX(-150px);
+  }
+  100% {
+    transform: translateX(300px);
+  }
+}
+
+.page-loader-bar {
+  animation: page-loader-slide 1s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+}

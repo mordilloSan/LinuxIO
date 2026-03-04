@@ -6,7 +6,6 @@ import {
   DialogTitle,
   DialogContent,
   IconButton,
-  Box,
   Typography,
   LinearProgress,
   useTheme,
@@ -180,31 +179,36 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           justifyContent: "space-between",
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.spacing(1),
+          }}
+        >
           {isRunning && <LinearProgress sx={{ width: 100 }} />}
           {success && <CheckCircleIcon color="success" />}
           {error && <ErrorIcon color="error" />}
           <Typography variant="h6">
             {getActionLabel()} Stack: {projectName}
           </Typography>
-        </Box>
+        </div>
         <IconButton onClick={handleClose} size="small">
           <CloseIcon />
         </IconButton>
       </DialogTitle>
 
       <DialogContent sx={{ p: 0 }}>
-        <Box
+        <div
           ref={outputBoxRef}
-          sx={{
+          style={{
             fontFamily: "monospace",
             fontSize: "0.875rem",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
-            backgroundColor:
-              theme.palette.mode === "dark" ? "#1e1e1e" : "#f5f5f5",
-            color: theme.palette.mode === "dark" ? "#d4d4d4" : "#333",
-            p: 2,
+            backgroundColor: theme.codeBlock.background,
+            color: theme.codeBlock.color,
+            padding: theme.spacing(2),
             minHeight: "400px",
             maxHeight: "600px",
             overflowY: "auto",
@@ -223,7 +227,7 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
               Error: {error}
             </Typography>
           )}
-        </Box>
+        </div>
       </DialogContent>
     </Dialog>
   );

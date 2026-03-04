@@ -5,7 +5,6 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Box,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
@@ -65,7 +64,14 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create Group</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginTop: 4,
+          }}
+        >
           <TextField
             label="Group Name"
             value={name}
@@ -82,7 +88,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
             placeholder="Auto-assigned if empty"
             type="number"
           />
-        </Box>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={isPending}>

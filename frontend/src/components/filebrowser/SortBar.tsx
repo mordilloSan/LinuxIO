@@ -1,7 +1,9 @@
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import { Box, Typography, useTheme } from "@mui/material";
+import { Typography, useTheme } from "@mui/material";
 import React from "react";
+
+import { getSubtleDividerColor } from "@/theme/surfaces";
 
 export type SortField = "name" | "size" | "modTime";
 export type SortOrder = "asc" | "desc";
@@ -41,28 +43,28 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
     );
   };
 
-  const columnStyle = {
+  const columnStyle: React.CSSProperties = {
     display: "flex",
     alignItems: "center",
     cursor: "pointer",
-    userSelect: "none" as const,
-    py: 3,
-    px: 2,
+    userSelect: "none",
+    paddingBlock: 12,
+    paddingInline: 8,
     transition: "background-color 0.2s ease",
   };
 
   return (
-    <Box
-      sx={{
+    <div
+      style={{
         display: "grid",
         gridTemplateColumns: columnTemplate,
-        backgroundColor: theme.palette.mode === "dark" ? "#20292f" : "#ffffff",
-        border: `0.1px solid ${theme.palette.mode === "dark" ? "color-mix(in srgb, var(--mui-palette-divider), transparent 85%)" : "color-mix(in srgb, var(--mui-palette-divider), transparent 90%)"}`,
-        borderRadius: 2,
+        backgroundColor: theme.fileBrowser.surface,
+        border: `1px solid ${getSubtleDividerColor(theme)}`,
+        borderRadius: 8,
       }}
     >
-      <Box
-        sx={columnStyle}
+      <div
+        style={columnStyle}
         onClick={() => onSortChange("name")}
         role="button"
         tabIndex={0}
@@ -81,9 +83,9 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
           Name
           {renderSortIcon("name")}
         </Typography>
-      </Box>
-      <Box
-        sx={columnStyle}
+      </div>
+      <div
+        style={columnStyle}
         onClick={() => onSortChange("size")}
         role="button"
         tabIndex={0}
@@ -102,8 +104,8 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
           Size
           {renderSortIcon("size")}
         </Typography>
-      </Box>
-      <Box
+      </div>
+      <div
         onClick={() => onSortChange("modTime")}
         role="button"
         tabIndex={0}
@@ -114,7 +116,11 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
         }}
         onMouseEnter={() => setHoveredField("modTime")}
         onMouseLeave={() => setHoveredField(null)}
-        sx={{ ...columnStyle, justifyContent: "center", textAlign: "center" }}
+        style={{
+          ...columnStyle,
+          justifyContent: "center",
+          textAlign: "center",
+        }}
       >
         <Typography
           variant="h6"
@@ -129,8 +135,8 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
           Last modified
           {renderSortIcon("modTime")}
         </Typography>
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

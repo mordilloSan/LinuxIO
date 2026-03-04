@@ -14,7 +14,7 @@ type Client struct {
 }
 
 func New() (*Client, error) {
-	c, err := dbus.SystemBus()
+	c, err := dbus.ConnectSystemBus()
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func (c *Client) Close() {
 
 func (c *Client) Enable(ctx context.Context, names ...string) error {
 	var carries_install_info bool
-	var changes [][]any // Fixed: was [][]string
+	var changes [][]any
 	return c.obj.CallWithContext(ctx,
 		"org.freedesktop.systemd1.Manager.EnableUnitFiles", 0,
 		names, false, true,
@@ -41,7 +41,7 @@ func (c *Client) Enable(ctx context.Context, names ...string) error {
 }
 
 func (c *Client) Disable(ctx context.Context, names ...string) error {
-	var changes [][]any // Fixed: was [][]string
+	var changes [][]any
 	return c.obj.CallWithContext(ctx,
 		"org.freedesktop.systemd1.Manager.DisableUnitFiles", 0,
 		names, false,

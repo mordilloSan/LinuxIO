@@ -8,7 +8,6 @@ import WarningIcon from "@mui/icons-material/Warning";
 import {
   Alert,
   Autocomplete,
-  Box,
   Chip,
   FormControl,
   FormControlLabel,
@@ -24,6 +23,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
   useEffect,
@@ -36,6 +36,7 @@ import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
+import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
 const DEFAULT_TAIL = "200";
@@ -124,6 +125,7 @@ const getPriorityIcon = (priority: LogPriority) => {
 };
 
 const GeneralLogsPage: React.FC = () => {
+  const theme = useTheme();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [search, setSearch] = useState("");
@@ -419,24 +421,15 @@ const GeneralLogsPage: React.FC = () => {
   // Render icon for first cell
   const renderIcon = useCallback((log: LogEntry) => {
     return (
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           alignItems: "center",
-          color:
-            getPriorityColor(log.priority) === "error"
-              ? "#ff5252"
-              : getPriorityColor(log.priority) === "warning"
-                ? "#ff9800"
-                : getPriorityColor(log.priority) === "info"
-                  ? "#2196f3"
-                  : getPriorityColor(log.priority) === "success"
-                    ? "#00e676"
-                    : "#9e9e9e",
+          color: getLogPriorityAccent(getPriorityColor(log.priority)),
         }}
       >
         {getPriorityIcon(log.priority)}
-      </Box>
+      </div>
     );
   }, []);
 
@@ -505,10 +498,10 @@ const GeneralLogsPage: React.FC = () => {
           sx={(theme) => ({
             p: 2,
             mb: 2,
-            bgcolor:
-              theme.palette.mode === "dark"
-                ? "rgba(0,0,0,0.3)"
-                : "rgba(0,0,0,0.02)",
+            bgcolor: alpha(
+              theme.palette.common.black,
+              theme.palette.mode === "dark" ? 0.3 : 0.02,
+            ),
             fontFamily: "monospace",
             fontSize: "0.85rem",
             whiteSpace: "pre-wrap",
@@ -529,10 +522,10 @@ const GeneralLogsPage: React.FC = () => {
               className="custom-scrollbar"
               sx={(theme) => ({
                 p: 2,
-                bgcolor:
-                  theme.palette.mode === "dark"
-                    ? "rgba(0,0,0,0.3)"
-                    : "rgba(0,0,0,0.02)",
+                bgcolor: alpha(
+                  theme.palette.common.black,
+                  theme.palette.mode === "dark" ? 0.3 : 0.02,
+                ),
                 fontFamily: "monospace",
                 fontSize: "0.75rem",
                 maxHeight: 300,
@@ -559,15 +552,15 @@ const GeneralLogsPage: React.FC = () => {
   }, []);
 
   return (
-    <Box>
+    <div>
       {/* Filters */}
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
-          gap: 2,
+          gap: theme.spacing(2),
           flexWrap: "wrap",
           alignItems: "center",
-          mb: 2,
+          marginBottom: theme.spacing(2),
         }}
       >
         <FormControl size="small" sx={{ minWidth: 150 }}>
@@ -678,23 +671,21 @@ const GeneralLogsPage: React.FC = () => {
               <Switch
                 checked={liveMode}
                 onChange={handleLiveModeChange}
-                color="success"
                 size="small"
               />
             }
             label="Live"
-            sx={{ ml: 1 }}
           />
         </Tooltip>
-        <Box fontWeight="bold">{filteredLogs.length} shown</Box>
-      </Box>
+        <Typography fontWeight="bold">{filteredLogs.length} shown</Typography>
+      </div>
 
       {isLoading && <ComponentLoader />}
 
       {error && <Alert severity="error">{error}</Alert>}
 
       {!isLoading && !error && (
-        <Box ref={logsBoxRef}>
+        <div ref={logsBoxRef}>
           <UnifiedCollapsibleTable
             data={filteredLogs}
             columns={columns}
@@ -706,9 +697,9 @@ const GeneralLogsPage: React.FC = () => {
               logs.length === 0 ? "No logs available." : "No matching logs."
             }
           />
-        </Box>
+        </div>
       )}
-    </Box>
+    </div>
   );
 };
 

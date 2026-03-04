@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Box } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 interface ActionButtonProps {
@@ -8,26 +8,29 @@ interface ActionButtonProps {
 }
 
 const ActionButton: React.FC<ActionButtonProps> = ({ icon, onClick }) => {
+  const theme = useTheme();
+
   return (
-    <Box
+    <div
       onClick={onClick}
-      sx={{
-        width: 18,
-        height: 22,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        mx: 0.1,
-        color: "text.secondary",
-        transition: "color 0.2s",
-        "&:hover": {
-          color: "text.primary",
-        },
-      }}
+      className="action-btn"
+      style={
+        {
+          width: 18,
+          height: 22,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          marginInline: 0.4,
+          transition: "color 0.2s",
+          "--ab-color": theme.palette.text.secondary,
+          "--ab-hover-color": theme.palette.text.primary,
+        } as React.CSSProperties
+      }
     >
       <Icon icon={icon} width={16} height={16} />
-    </Box>
+    </div>
   );
 };
 

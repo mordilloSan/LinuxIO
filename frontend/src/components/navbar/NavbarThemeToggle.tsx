@@ -23,4 +23,4 @@ function NavbarThemeToggle() {
   );
 }
 
-export default NavbarThemeToggle;
+export default React.memo(NavbarThemeToggle);

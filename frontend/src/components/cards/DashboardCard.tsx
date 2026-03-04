@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Box,
   CardContent,
   Typography,
   FormControl,
@@ -12,11 +11,15 @@ import {
 import type { SxProps } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import type { Theme } from "@mui/material/styles";
-import React from "react";
+import React, { useState } from "react";
 
 import FrostedCard from "./RootCard";
 
 import { cardHeight } from "@/constants";
+import {
+  getAccentCardHoverStyles,
+  getAccentCardStyles,
+} from "@/theme/surfaces";
 
 /** A single option rendered inside the card's dropdown selector. */
 export interface SelectOption {
@@ -114,6 +117,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
 }) => {
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
+  const [hovered, setHovered] = useState(false);
 
   const [statsFlex, stats2Flex]: [number | string, number | string] = (() => {
     if (contentLayout === "equal") return [1, 1];
@@ -130,14 +134,16 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
       title={connectionStatus === "online" ? "Connected" : "Disconnected"}
       arrow
     >
-      <Box
-        sx={{
+      <div
+        style={{
           width: 10,
           height: 10,
-          mb: 0.5,
+          marginBottom: 2,
           borderRadius: "50%",
-          bgcolor:
-            connectionStatus === "online" ? "success.main" : "error.main",
+          backgroundColor:
+            connectionStatus === "online"
+              ? theme.palette.success.main
+              : theme.palette.error.main,
           flexShrink: 0,
         }}
       />
@@ -194,37 +200,30 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
 
   return (
     <FrostedCard
-      elevation={2}
-      sx={{
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
         minHeight: cardHeight,
-        m: 1,
         display: "flex",
         flexDirection: "column",
         transition:
-          "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out",
-        borderBottomWidth: "2px",
-        borderBottomStyle: "solid",
-        borderBottomColor: `color-mix(in srgb, ${primaryColor}, transparent 70%)`,
-        "&:hover": {
-          borderBottomWidth: "3px",
-          borderBottomColor: primaryColor,
-          boxShadow: theme.shadows[10],
-          marginBlockEnd: "-1px",
-        },
+          "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
+        ...getAccentCardStyles(primaryColor),
+        ...(hovered && getAccentCardHoverStyles(theme, primaryColor)),
       }}
     >
       <CardContent>
         {/* Header */}
-        <Box
-          sx={{
+        <div
+          style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            mb: 1,
+            marginBottom: 4,
           }}
         >
           {/* Title and optional extras */}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <Typography
               variant="h5"
               sx={{
@@ -240,21 +239,21 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
             {renderSelect}
 
             {IconComponent && icon_text && (
-              <Box
-                sx={{
+              <div
+                style={{
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 0,
                   lineHeight: 1,
-                  ml: -1,
-                  mb: 1,
+                  marginLeft: -4,
+                  marginBottom: 4,
                 }}
               >
-                <Box
-                  sx={{
+                <div
+                  style={{
                     display: "inline-flex",
                     alignItems: "center",
-                    mr: "-4px",
+                    marginRight: -4,
                   }}
                 >
                   <IconComponent
@@ -265,16 +264,16 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                       ...iconProps?.sx,
                     }}
                   />
-                </Box>
+                </div>
                 <Typography
                   variant="body2"
-                  sx={{ color: "grey", ml: 0, lineHeight: 1 }}
+                  sx={{ color: "text.secondary", ml: 0, lineHeight: 1 }}
                 >
                   {icon_text}
                 </Typography>
-              </Box>
+              </div>
             )}
-          </Box>
+          </div>
 
           {/* Avatar/Icon */}
           <Icon
@@ -283,41 +282,33 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
             height="38px"
             color={primaryColor}
           />
-        </Box>
+        </div>
 
         {/* Content */}
         {stats2 ? (
-          <Box
-            sx={{
-              mt: 3,
+          <div
+            style={{
+              marginTop: 12,
               display: "flex",
-              flexDirection: { xs: "row", sm: "row", xl: "row" },
-              gap: 2,
+              flexDirection: "row",
+              gap: 8,
             }}
           >
-            <Box
-              sx={{
+            <div
+              className="dc-stats-col dc-stats-truncate"
+              style={{
                 flex: statsFlex,
                 minWidth: 0,
                 overflow: "hidden",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "left",
-                "& > *": {
-                  minWidth: 0,
-                  mt: 4,
-                },
-                "& .MuiTypography-root": {
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                },
               }}
             >
               {stats}
-            </Box>
-            <Box
-              sx={{
+            </div>
+            <div
+              style={{
                 flex: stats2Flex,
                 minWidth: 0,
                 overflow: "hidden",
@@ -328,21 +319,12 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
               }}
             >
               {stats2}
-            </Box>
-          </Box>
+            </div>
+          </div>
         ) : (
-          <Box
-            sx={{
-              mt: 7,
-              "& .MuiTypography-root": {
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              },
-            }}
-          >
+          <div className="dc-stats-truncate" style={{ marginTop: 28 }}>
             {stats}
-          </Box>
+          </div>
         )}
       </CardContent>
     </FrostedCard>

@@ -1,4 +1,5 @@
-import { Backdrop, Box, Typography } from "@mui/material";
+import { Backdrop, Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, {
   createContext,
   useState,
@@ -24,6 +25,7 @@ export const PowerActionContext = createContext<
 export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const theme = useTheme();
   const navigate = useNavigate();
   const [powerAction, setPowerAction] = useState<PowerActionState>(null);
 
@@ -74,7 +76,7 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
       {children}
       <Backdrop
         sx={{
-          color: "#fff",
+          color: "common.white",
           zIndex: (theme) => theme.zIndex.modal + 1,
           flexDirection: "column",
           gap: 3,
@@ -82,7 +84,13 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
         }}
         open={powerAction !== null}
       >
-        <Box textAlign="center" px={3}>
+        <div
+          style={{
+            textAlign: "center",
+            paddingLeft: theme.spacing(3),
+            paddingRight: theme.spacing(3),
+          }}
+        >
           <Typography variant="h5" component="div" gutterBottom>
             {powerAction === "rebooting" ? "Rebooting..." : "Shutting Down..."}
           </Typography>
@@ -92,7 +100,7 @@ export const PowerActionProvider: React.FC<{ children: React.ReactNode }> = ({
               : "The system is shutting down. You may close this window."}
           </Typography>
           {powerAction === "rebooting" && <ComponentLoader />}
-        </Box>
+        </div>
       </Backdrop>
     </PowerActionContext.Provider>
   );

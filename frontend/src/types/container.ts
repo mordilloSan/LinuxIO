@@ -38,6 +38,7 @@ export interface ContainerInfo {
   };
   icon?: string;
   url?: string;
+  proxyPort?: string;
   metrics?: {
     cpu_percent: number;
     mem_usage: number;

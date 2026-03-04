@@ -1,4 +1,5 @@
 import { IconButton, Tooltip, useTheme } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import React, { ReactNode } from "react";
 
 interface QuickActionButtonProps {
@@ -36,8 +37,8 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: isDark
-              ? "rgba(37, 49, 55, 0.33)"
-              : "rgba(37, 49, 55, 0.12)",
+              ? alpha(theme.fileBrowser.chrome, 0.33)
+              : alpha(theme.fileBrowser.chrome, 0.12),
             color: theme.palette.text.primary,
             boxShadow: "none !important",
             "& .MuiSvgIcon-root": {
@@ -45,7 +46,7 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
             },
             "&:hover": {
               backgroundColor: theme.palette.primary.main,
-              color: "#fff",
+              color: theme.palette.primary.contrastText,
               boxShadow: "none",
             },
           }}

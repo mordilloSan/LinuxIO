@@ -9,7 +9,6 @@ import {
   LocalOffer as TagIcon,
 } from "@mui/icons-material";
 import {
-  Box,
   Button,
   Chip,
   Collapse,
@@ -23,6 +22,8 @@ import {
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
+
+import "./docker-dashboard.css";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
@@ -84,41 +85,36 @@ const StateChip: React.FC<{ state: string; status: string }> = ({
 const InfoRow: React.FC<{ label: string; value: React.ReactNode }> = ({
   label,
   value,
-}) => (
-  <Box
-    sx={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "baseline",
-      py: 0.6,
-      borderBottom: "1px solid",
-      borderColor: "divider",
-      "&:last-child": { borderBottom: "none" },
-      gap: 1,
-    }}
-  >
-    <Typography
-      variant="caption"
-      color="text.secondary"
-      sx={{
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        fontSize: "0.62rem",
-        flexShrink: 0,
-      }}
+}) => {
+  const theme = useTheme();
+  return (
+    <div
+      className="dd-info-row"
+      style={{ "--dd-divider": theme.palette.divider } as React.CSSProperties}
     >
-      {label}
-    </Typography>
-    <Typography
-      variant="body2"
-      fontWeight={500}
-      noWrap
-      sx={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}
-    >
-      {value || "—"}
-    </Typography>
-  </Box>
-);
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          fontSize: "0.62rem",
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </Typography>
+      <Typography
+        variant="body2"
+        fontWeight={500}
+        noWrap
+        sx={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+      >
+        {value || "—"}
+      </Typography>
+    </div>
+  );
+};
 
 const DaemonSection: React.FC<{
   title: string;
@@ -126,13 +122,15 @@ const DaemonSection: React.FC<{
   icon: React.ReactNode;
   children: React.ReactNode;
 }> = ({ title, subtitle, icon, children }) => (
-  <Box>
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
-      <Box
-        sx={{
+  <div>
+    <div
+      style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}
+    >
+      <div
+        style={{
           width: 40,
           height: 40,
-          borderRadius: 2,
+          borderRadius: 8,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -140,18 +138,18 @@ const DaemonSection: React.FC<{
         }}
       >
         {icon}
-      </Box>
-      <Box>
+      </div>
+      <div>
         <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>
           {title}
         </Typography>
         <Typography variant="caption" color="text.secondary">
           {subtitle}
         </Typography>
-      </Box>
-    </Box>
-    <Box>{children}</Box>
-  </Box>
+      </div>
+    </div>
+    <div>{children}</div>
+  </div>
 );
 
 const ResourceCardHeader: React.FC<{
@@ -160,21 +158,21 @@ const ResourceCardHeader: React.FC<{
   subtitle: React.ReactNode;
   onViewAll: () => void;
 }> = ({ icon, title, subtitle, onViewAll }) => (
-  <Box
-    sx={{
+  <div
+    style={{
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      p: 2,
-      pb: 1.5,
+      padding: 8,
+      paddingBottom: 6,
     }}
   >
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-      <Box
-        sx={{
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div
+        style={{
           width: 40,
           height: 40,
-          borderRadius: 2,
+          borderRadius: 8,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -182,16 +180,16 @@ const ResourceCardHeader: React.FC<{
         }}
       >
         {icon}
-      </Box>
-      <Box>
+      </div>
+      <div>
         <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>
           {title}
         </Typography>
         <Typography variant="caption" color="text.secondary">
           {subtitle}
         </Typography>
-      </Box>
-    </Box>
+      </div>
+    </div>
     <Button
       size="small"
       endIcon={<ChevronRightIcon />}
@@ -200,7 +198,7 @@ const ResourceCardHeader: React.FC<{
     >
       View All
     </Button>
-  </Box>
+  </div>
 );
 
 // ─── main component ───────────────────────────────────────────────────────────
@@ -344,18 +342,18 @@ const DockerDashboard: React.FC = () => {
   const SCROLL_HEIGHT = 165;
 
   return (
-    <Box>
+    <div>
       {/* ── Stat Cards ─────────────────────────────────────────────────────── */}
-      <Box
+      <div
+        className="dd-section-header"
         onClick={() => setSection("overview")}
-        sx={{
+        style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          mb: 1.5,
+          marginBottom: 6,
           cursor: "pointer",
           userSelect: "none",
-          "&:hover .section-toggle": { opacity: 1 },
         }}
       >
         <Typography variant="subtitle1" fontWeight={700}>
@@ -378,7 +376,7 @@ const DockerDashboard: React.FC = () => {
             }}
           />
         </IconButton>
-      </Box>
+      </div>
       <Collapse in={sections.overview}>
         <Grid container spacing={2} sx={{ mb: 2 }}>
           {(
@@ -424,12 +422,12 @@ const DockerDashboard: React.FC = () => {
             <Grid key={label} size={{ xs: 6, md: 3 }}>
               <FrostedCard
                 onClick={() => navigateToTab(tab)}
-                sx={{
-                  px: 2.5,
-                  py: 2,
+                className="fc-opacity-hover"
+                style={{
+                  paddingInline: 10,
+                  paddingBlock: 8,
                   cursor: "pointer",
                   transition: "opacity 0.15s",
-                  "&:hover": { opacity: 0.8 },
                 }}
               >
                 <Typography
@@ -439,12 +437,12 @@ const DockerDashboard: React.FC = () => {
                 >
                   {label}
                 </Typography>
-                <Box
-                  sx={{
+                <div
+                  style={{
                     display: "flex",
                     alignItems: "baseline",
                     justifyContent: "space-between",
-                    mt: 0.25,
+                    marginTop: 1,
                   }}
                 >
                   <Typography
@@ -462,23 +460,23 @@ const DockerDashboard: React.FC = () => {
                   >
                     {detail}
                   </Typography>
-                </Box>
+                </div>
               </FrostedCard>
             </Grid>
           ))}
         </Grid>
       </Collapse>
 
-      <Box
+      <div
+        className="dd-section-header"
         onClick={() => setSection("daemon")}
-        sx={{
+        style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          mb: 1.5,
+          marginBottom: 6,
           cursor: "pointer",
           userSelect: "none",
-          "&:hover .section-toggle": { opacity: 1 },
         }}
       >
         <Typography variant="subtitle1" fontWeight={700}>
@@ -501,7 +499,7 @@ const DockerDashboard: React.FC = () => {
             }}
           />
         </IconButton>
-      </Box>
+      </div>
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
       <Collapse in={sections.daemon}>
         <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -511,20 +509,20 @@ const DockerDashboard: React.FC = () => {
               {runningContainers.length > 0 && (
                 <>
                   <Grid size={{ xs: 12, sm: 4 }}>
-                    <FrostedCard sx={{ p: 2 }}>
-                      <Box
-                        sx={{
+                    <FrostedCard style={{ padding: 8 }}>
+                      <div
+                        style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: 1.5,
-                          mb: 1.5,
+                          gap: 6,
+                          marginBottom: 6,
                         }}
                       >
-                        <Box
-                          sx={{
+                        <div
+                          style={{
                             width: 40,
                             height: 40,
-                            borderRadius: 2,
+                            borderRadius: 8,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -537,8 +535,8 @@ const DockerDashboard: React.FC = () => {
                             height={28}
                             color={theme.palette.primary.main}
                           />
-                        </Box>
-                        <Box>
+                        </div>
+                        <div>
                           <Typography
                             variant="subtitle1"
                             fontWeight={700}
@@ -549,8 +547,8 @@ const DockerDashboard: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">
                             Processor utilization
                           </Typography>
-                        </Box>
-                      </Box>
+                        </div>
+                      </div>
                       <MetricBar
                         label="CPU"
                         percent={Math.min(totalCpu, 100)}
@@ -561,20 +559,20 @@ const DockerDashboard: React.FC = () => {
                     </FrostedCard>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 4 }}>
-                    <FrostedCard sx={{ p: 2 }}>
-                      <Box
-                        sx={{
+                    <FrostedCard style={{ padding: 8 }}>
+                      <div
+                        style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: 1.5,
-                          mb: 1.5,
+                          gap: 6,
+                          marginBottom: 6,
                         }}
                       >
-                        <Box
-                          sx={{
+                        <div
+                          style={{
                             width: 40,
                             height: 40,
-                            borderRadius: 2,
+                            borderRadius: 8,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -587,8 +585,8 @@ const DockerDashboard: React.FC = () => {
                             height={28}
                             color={theme.palette.primary.main}
                           />
-                        </Box>
-                        <Box>
+                        </div>
+                        <div>
                           <Typography
                             variant="subtitle1"
                             fontWeight={700}
@@ -599,8 +597,8 @@ const DockerDashboard: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">
                             RAM utilization
                           </Typography>
-                        </Box>
-                      </Box>
+                        </div>
+                      </div>
                       <MetricBar
                         label="Memory"
                         percent={totalMemPercent}
@@ -612,20 +610,20 @@ const DockerDashboard: React.FC = () => {
                   </Grid>
                   {dockerInfo.disk_total > 0 && (
                     <Grid size={{ xs: 12, sm: 4 }}>
-                      <FrostedCard sx={{ p: 2 }}>
-                        <Box
-                          sx={{
+                      <FrostedCard style={{ padding: 8 }}>
+                        <div
+                          style={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 1.5,
-                            mb: 1.5,
+                            gap: 6,
+                            marginBottom: 6,
                           }}
                         >
-                          <Box
-                            sx={{
+                          <div
+                            style={{
                               width: 40,
                               height: 40,
-                              borderRadius: 2,
+                              borderRadius: 8,
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -638,8 +636,8 @@ const DockerDashboard: React.FC = () => {
                               height={28}
                               color={theme.palette.primary.main}
                             />
-                          </Box>
-                          <Box>
+                          </div>
+                          <div>
                             <Typography
                               variant="subtitle1"
                               fontWeight={700}
@@ -653,8 +651,8 @@ const DockerDashboard: React.FC = () => {
                             >
                               Storage utilization
                             </Typography>
-                          </Box>
-                        </Box>
+                          </div>
+                        </div>
                         <MetricBar
                           label="Disk (Docker)"
                           percent={Math.min(
@@ -672,7 +670,7 @@ const DockerDashboard: React.FC = () => {
                 </>
               )}
               <Grid size={{ xs: 12, sm: 4 }}>
-                <FrostedCard sx={{ p: 2, height: "100%" }}>
+                <FrostedCard style={{ padding: 8, height: "100%" }}>
                   <DaemonSection
                     title="Version"
                     subtitle="Engine & runtime versions"
@@ -688,7 +686,7 @@ const DockerDashboard: React.FC = () => {
                 </FrostedCard>
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
-                <FrostedCard sx={{ p: 2, height: "100%" }}>
+                <FrostedCard style={{ padding: 8, height: "100%" }}>
                   <DaemonSection
                     title="System"
                     subtitle="Host machine information"
@@ -712,7 +710,7 @@ const DockerDashboard: React.FC = () => {
                 </FrostedCard>
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
-                <FrostedCard sx={{ p: 2, height: "100%" }}>
+                <FrostedCard style={{ padding: 8, height: "100%" }}>
                   <DaemonSection
                     title="Configuration"
                     subtitle="Storage & runtime settings"
@@ -745,16 +743,16 @@ const DockerDashboard: React.FC = () => {
       </Collapse>
 
       {/* ── Resources ──────────────────────────────────────────────────────── */}
-      <Box
+      <div
+        className="dd-section-header"
         onClick={() => setSection("resources")}
-        sx={{
+        style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          mb: 1.5,
+          marginBottom: 6,
           cursor: "pointer",
           userSelect: "none",
-          "&:hover .section-toggle": { opacity: 1 },
         }}
       >
         <Typography variant="subtitle1" fontWeight={700}>
@@ -777,7 +775,7 @@ const DockerDashboard: React.FC = () => {
             }}
           />
         </IconButton>
-      </Box>
+      </div>
       <Collapse in={sections.resources}>
         <Grid container spacing={2}>
           {/* Containers table */}
@@ -817,16 +815,9 @@ const DockerDashboard: React.FC = () => {
                 onViewAll={() => navigateToTab("containers")}
               />
 
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: {
-                    xs: "1fr 80px",
-                    sm: "1fr 220px 80px 80px",
-                  },
-                  px: 2,
-                  py: 0.75,
-                }}
+              <div
+                className="dd-containers-grid"
+                style={{ paddingInline: 8, paddingBlock: 3 }}
               >
                 {(
                   [
@@ -848,42 +839,44 @@ const DockerDashboard: React.FC = () => {
                     {label}
                   </Typography>
                 ))}
-              </Box>
+              </div>
               <Divider />
 
-              <Box
+              <div
                 className="custom-scrollbar"
-                sx={{ maxHeight: SCROLL_HEIGHT, overflowY: "auto" }}
+                style={{ maxHeight: SCROLL_HEIGHT, overflowY: "auto" }}
               >
                 {previewContainers.length === 0 ? (
-                  <Box sx={{ px: 2, py: 3, textAlign: "center" }}>
+                  <div
+                    style={{
+                      paddingInline: 8,
+                      paddingBlock: 12,
+                      textAlign: "center",
+                    }}
+                  >
                     <Typography variant="body2" color="text.secondary">
                       No containers found
                     </Typography>
-                  </Box>
+                  </div>
                 ) : (
                   previewContainers.map((container, i) => {
                     const name =
                       container.Names?.[0]?.replace("/", "") || "Unnamed";
                     return (
                       <React.Fragment key={container.Id}>
-                        <Box
-                          sx={{
-                            display: "grid",
-                            gridTemplateColumns: {
-                              xs: "1fr 80px",
-                              sm: "1fr 220px 80px 80px",
-                            },
+                        <div
+                          className="dd-containers-grid"
+                          style={{
                             alignItems: "center",
-                            px: 2,
-                            py: 1.25,
+                            paddingInline: 8,
+                            paddingBlock: 5,
                           }}
                         >
-                          <Box
-                            sx={{
+                          <div
+                            style={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 1,
+                              gap: 4,
                               minWidth: 0,
                             }}
                           >
@@ -895,7 +888,7 @@ const DockerDashboard: React.FC = () => {
                             <Typography variant="body2" fontWeight={500} noWrap>
                               {name}
                             </Typography>
-                          </Box>
+                          </div>
                           <Typography
                             variant="caption"
                             color="text.secondary"
@@ -904,12 +897,12 @@ const DockerDashboard: React.FC = () => {
                           >
                             {container.Image}
                           </Typography>
-                          <Box>
+                          <div>
                             <StateChip
                               state={container.State}
                               status={container.Status}
                             />
-                          </Box>
+                          </div>
                           <Typography
                             variant="caption"
                             color="text.secondary"
@@ -918,20 +911,20 @@ const DockerDashboard: React.FC = () => {
                           >
                             {container.Status.replace(/\s*\(.*?\)\s*$/, "")}
                           </Typography>
-                        </Box>
+                        </div>
                         {i < previewContainers.length - 1 && <Divider />}
                       </React.Fragment>
                     );
                   })
                 )}
-              </Box>
+              </div>
 
               <Divider />
-              <Box sx={{ px: 2, py: 1 }}>
+              <div style={{ paddingInline: 8, paddingBlock: 4 }}>
                 <Typography variant="caption" color="text.secondary">
                   {containers.length} containers
                 </Typography>
-              </Box>
+              </div>
             </FrostedCard>
           </Grid>
 
@@ -971,16 +964,9 @@ const DockerDashboard: React.FC = () => {
                 onViewAll={() => navigateToTab("images")}
               />
 
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: {
-                    xs: "1fr 80px",
-                    sm: "1fr 80px 80px 80px",
-                  },
-                  px: 2,
-                  py: 0.75,
-                }}
+              <div
+                className="dd-images-grid"
+                style={{ paddingInline: 8, paddingBlock: 3 }}
               >
                 {(
                   [
@@ -1002,19 +988,25 @@ const DockerDashboard: React.FC = () => {
                     {label}
                   </Typography>
                 ))}
-              </Box>
+              </div>
               <Divider />
 
-              <Box
+              <div
                 className="custom-scrollbar"
-                sx={{ maxHeight: SCROLL_HEIGHT, overflowY: "auto" }}
+                style={{ maxHeight: SCROLL_HEIGHT, overflowY: "auto" }}
               >
                 {previewImages.length === 0 ? (
-                  <Box sx={{ px: 2, py: 3, textAlign: "center" }}>
+                  <div
+                    style={{
+                      paddingInline: 8,
+                      paddingBlock: 12,
+                      textAlign: "center",
+                    }}
+                  >
                     <Typography variant="body2" color="text.secondary">
                       No images found
                     </Typography>
-                  </Box>
+                  </div>
                 ) : (
                   previewImages.map((image, i) => {
                     const fullTag = image.RepoTags?.[0] ?? "<none>:<none>";
@@ -1027,16 +1019,12 @@ const DockerDashboard: React.FC = () => {
 
                     return (
                       <React.Fragment key={image.Id}>
-                        <Box
-                          sx={{
-                            display: "grid",
-                            gridTemplateColumns: {
-                              xs: "1fr 80px",
-                              sm: "1fr 80px 80px 80px",
-                            },
+                        <div
+                          className="dd-images-grid"
+                          style={{
                             alignItems: "center",
-                            px: 2,
-                            py: 1.25,
+                            paddingInline: 8,
+                            paddingBlock: 5,
                           }}
                         >
                           <Typography variant="body2" fontWeight={500} noWrap>
@@ -1050,7 +1038,7 @@ const DockerDashboard: React.FC = () => {
                           >
                             {tag}
                           </Typography>
-                          <Box>
+                          <div>
                             {inUse && (
                               <Chip
                                 size="small"
@@ -1058,7 +1046,7 @@ const DockerDashboard: React.FC = () => {
                                 sx={stateChipSx(theme.palette.success.main)}
                               />
                             )}
-                          </Box>
+                          </div>
                           <Typography
                             variant="caption"
                             color="text.secondary"
@@ -1067,25 +1055,25 @@ const DockerDashboard: React.FC = () => {
                           >
                             {formatFileSize(image.Size)}
                           </Typography>
-                        </Box>
+                        </div>
                         {i < previewImages.length - 1 && <Divider />}
                       </React.Fragment>
                     );
                   })
                 )}
-              </Box>
+              </div>
 
               <Divider />
-              <Box sx={{ px: 2, py: 1 }}>
+              <div style={{ paddingInline: 8, paddingBlock: 4 }}>
                 <Typography variant="caption" color="text.secondary">
                   {images.length} images
                 </Typography>
-              </Box>
+              </div>
             </FrostedCard>
           </Grid>
         </Grid>
       </Collapse>
-    </Box>
+    </div>
   );
 };
 

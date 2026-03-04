@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -10,6 +9,7 @@ import {
   useTheme,
   CircularProgress,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -157,7 +157,13 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
       </DialogTitle>
 
       <DialogContent sx={{ pt: 3 }}>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: theme.spacing(3),
+          }}
+        >
           <TextField
             label="Stack Name"
             value={stackName}
@@ -185,14 +191,14 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
             error={!!errors.workingDir}
           />
 
-          <Box
-            sx={{
-              backgroundColor:
-                theme.palette.mode === "dark"
-                  ? "rgba(255,255,255,0.05)"
-                  : "rgba(0,0,0,0.02)",
-              borderRadius: 1,
-              p: 2,
+          <div
+            style={{
+              backgroundColor: alpha(
+                theme.palette.text.primary,
+                theme.palette.mode === "dark" ? 0.05 : 0.02,
+              ),
+              borderRadius: theme.shape.borderRadius,
+              padding: theme.spacing(2),
             }}
           >
             <Typography variant="caption" color="text.secondary">
@@ -202,8 +208,8 @@ const StackSetupDialog: React.FC<StackSetupDialogProps> = ({
                 ? `${workingDir}/docker-compose.yml`
                 : "Enter stack name and directory"}
             </Typography>
-          </Box>
-        </Box>
+          </div>
+        </div>
       </DialogContent>
 
       <DialogActions

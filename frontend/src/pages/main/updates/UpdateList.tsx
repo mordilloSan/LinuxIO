@@ -1,12 +1,12 @@
 import {
-  Box,
   CardContent,
-  Typography,
   Chip,
-  Grid,
-  Collapse,
   CircularProgress,
+  Collapse,
+  Grid,
+  Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -32,6 +32,7 @@ const UpdateList: React.FC<Props> = ({
   currentPackage,
   isLoading,
 }) => {
+  const theme = useTheme();
   const queryClient = useQueryClient();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [changelogs, setChangelogs] = useState<Record<string, string>>({});
@@ -94,9 +95,9 @@ const UpdateList: React.FC<Props> = ({
 
   if (!updates.length && !isUpdating) {
     return (
-      <Box sx={{ textAlign: "left" }}>
+      <div style={{ textAlign: "left" }}>
         <Typography variant="h6">Your system is up to date </Typography>
-      </Box>
+      </div>
     );
   }
 
@@ -108,22 +109,13 @@ const UpdateList: React.FC<Props> = ({
     <Grid container spacing={2} sx={{ px: 2, pb: 2 }} ref={containerRef}>
       {updates.map((update, idx) => (
         <Grid key={idx} size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}>
-          <FrostedCard
-            variant="outlined"
-            sx={{
-              transition: "transform 0.2s, box-shadow 0.2s",
-              "&:hover": {
-                transform: "translateY(-4px)",
-                boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-              },
-            }}
-          >
+          <FrostedCard hoverLift>
             <CardContent>
-              <Box
-                sx={{
+              <div
+                style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  mb: 3,
+                  marginBottom: theme.spacing(3),
                 }}
               >
                 <Typography
@@ -137,7 +129,7 @@ const UpdateList: React.FC<Props> = ({
                 >
                   {update.summary}
                 </Typography>
-              </Box>
+              </div>
 
               <Typography
                 variant="body2"
@@ -167,13 +159,13 @@ const UpdateList: React.FC<Props> = ({
                 Version: {update.version}
               </Typography>
 
-              <Box
-                sx={{
+              <div
+                style={{
                   display: "flex",
                   flexWrap: "wrap",
-                  gap: 3,
-                  mt: 4,
-                  mb: -2,
+                  gap: theme.spacing(3),
+                  marginTop: theme.spacing(4),
+                  marginBottom: `-${theme.spacing(2)}`,
                 }}
               >
                 <Chip
@@ -199,22 +191,33 @@ const UpdateList: React.FC<Props> = ({
                   }}
                   sx={{ cursor: "pointer" }}
                 />
-              </Box>
+              </div>
 
               <Collapse in={expandedIdx === idx} timeout="auto" unmountOnExit>
-                <Box sx={{ whiteSpace: "pre-wrap", fontSize: 14, mt: 4 }}>
+                <div
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    fontSize: 14,
+                    marginTop: theme.spacing(4),
+                  }}
+                >
                   {loadingChangelog === update.package_id ? (
-                    <Box
-                      sx={{ display: "flex", justifyContent: "center", py: 2 }}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        paddingTop: theme.spacing(2),
+                        paddingBottom: theme.spacing(2),
+                      }}
                     >
                       <CircularProgress size={20} />
-                    </Box>
+                    </div>
                   ) : (
                     <Typography variant="body2" color="text.secondary">
                       {changelogs[update.package_id] || "Loading..."}
                     </Typography>
                   )}
-                </Box>
+                </div>
               </Collapse>
             </CardContent>
           </FrostedCard>

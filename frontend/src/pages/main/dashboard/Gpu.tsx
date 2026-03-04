@@ -1,11 +1,13 @@
 import ThermostatIcon from "@mui/icons-material/Thermostat";
-import { Typography, Box } from "@mui/material";
+import { Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 
 const GpuInfo: React.FC = () => {
+  const theme = useTheme();
   const {
     data: gpus,
     isPending: isLoading,
@@ -24,8 +26,12 @@ const GpuInfo: React.FC = () => {
     );
   } else {
     content = (
-      <Box
-        sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          width: "fit-content",
+        }}
       >
         {gpus.flatMap((gpu, idx) =>
           [
@@ -36,18 +42,20 @@ const GpuInfo: React.FC = () => {
             },
             { label: "Driver", value: gpu.driver, key: `driver-${idx}` },
             { label: "Address", value: gpu.address, key: `address-${idx}` },
-          ].map(({ label, value, key }) => (
-            <Box
+          ].map(({ label, value, key }, index, rows) => (
+            <div
               key={key}
-              sx={{
+              style={{
                 display: "flex",
-                justifyContent: "flex-start",
                 alignItems: "baseline",
-                py: 0.5,
-                borderBottom: "1px solid",
-                borderColor: "divider",
-                "&:last-child": { borderBottom: "none" },
-                gap: 1,
+                justifyContent: "flex-start",
+                paddingTop: theme.spacing(0.5),
+                paddingBottom: theme.spacing(0.5),
+                borderBottom:
+                  index === rows.length - 1
+                    ? "none"
+                    : "1px solid var(--mui-palette-divider)",
+                gap: theme.spacing(1),
               }}
             >
               <Typography
@@ -65,10 +73,10 @@ const GpuInfo: React.FC = () => {
               <Typography variant="body2" fontWeight={500} noWrap>
                 {value}
               </Typography>
-            </Box>
+            </div>
           )),
         )}
-      </Box>
+      </div>
     );
   }
 
@@ -77,7 +85,7 @@ const GpuInfo: React.FC = () => {
       title="GPU"
       stats={content}
       icon={ThermostatIcon}
-      iconProps={{ sx: { color: "grey" } }}
+      iconProps={{ sx: { color: "text.secondary" } }}
       avatarIcon="bi:gpu-card"
     />
   );

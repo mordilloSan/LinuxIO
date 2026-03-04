@@ -1,5 +1,6 @@
 import TemperatureIcon from "@mui/icons-material/Thermostat";
-import { Box, Typography } from "@mui/material";
+import { Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import ProcessorGraph from "./ProcessorGraph";
@@ -10,6 +11,7 @@ import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const Processor: React.FC = () => {
+  const theme = useTheme();
   const {
     data: CPUInfo,
     isPending,
@@ -43,13 +45,13 @@ const Processor: React.FC = () => {
     ) : isPending ? (
       <ComponentLoader />
     ) : (
-      <Box sx={{ height: "90px", width: "100%", minWidth: 0 }}>
+      <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
         <ProcessorGraph usage={averageCpuUsage} />
-      </Box>
+      </div>
     ),
     stats: (
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           flexDirection: "column",
           alignSelf: "flex-start",
@@ -66,18 +68,20 @@ const Processor: React.FC = () => {
             label: "Max Usage",
             value: `${Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%`,
           },
-        ].map(({ label, value }) => (
-          <Box
+        ].map(({ label, value }, index, rows) => (
+          <div
             key={label}
-            sx={{
+            style={{
               display: "flex",
-              justifyContent: "flex-start",
               alignItems: "baseline",
-              py: 0.5,
-              borderBottom: "1px solid",
-              borderColor: "divider",
-              "&:last-child": { borderBottom: "none" },
-              gap: 1,
+              justifyContent: "flex-start",
+              paddingTop: theme.spacing(0.5),
+              paddingBottom: theme.spacing(0.5),
+              borderBottom:
+                index === rows.length - 1
+                  ? "none"
+                  : "1px solid var(--mui-palette-divider)",
+              gap: theme.spacing(1),
             }}
           >
             <Typography
@@ -95,13 +99,13 @@ const Processor: React.FC = () => {
             <Typography variant="body2" fontWeight={500} noWrap>
               {value}
             </Typography>
-          </Box>
+          </div>
         ))}
-      </Box>
+      </div>
     ),
     icon_text: IconText,
     icon: TemperatureIcon,
-    iconProps: { sx: { color: "grey" } },
+    iconProps: { sx: { color: "text.secondary" } },
   };
 
   return <DashboardCard {...data} />;

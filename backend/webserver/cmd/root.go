@@ -48,11 +48,9 @@ func RunServer(cfg ServerConfig) {
 	// Sessions + cleanup hooks
 	// -------------------------------------------------------------------------
 	ms := session.New()
-	sm := session.NewManager(ms, session.SessionConfig{
-		Cookie: session.CookieConfig{
-			Secure: true,
-		},
-	})
+	sessionCfg := session.DefaultConfig
+	sessionCfg.SingleSessionPerUser = false
+	sm := session.NewManager(ms, sessionCfg)
 	sm.RegisterOnDelete(func(sess *session.Session, reason session.DeleteReason) {
 		if sess.User.Username == "" {
 			return

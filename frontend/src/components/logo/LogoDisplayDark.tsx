@@ -1,11 +1,6 @@
-import { Box, Typography } from "@mui/material";
+import { Typography } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
-
-// same colors as your local dark theme
-const PALETTE = {
-  primary: "#1976d2",
-  text: "rgba(255,255,255,0.87)",
-};
 
 interface LogoDisplayDarkProps {
   showText?: boolean;
@@ -14,6 +9,8 @@ interface LogoDisplayDarkProps {
 const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
   showText = false,
 }) => {
+  const theme = useTheme();
+
   return (
     <Typography
       variant="h6"
@@ -23,42 +20,41 @@ const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
         fontSize: "1.75rem",
         display: "inline-flex",
         alignItems: "center",
-        color: PALETTE.text,
+        color: alpha(theme.palette.common.white, 0.87),
         fontFamily:
           '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"',
       }}
     >
       {showText && (
-        <Box
-          component="span"
-          sx={{
+        <span
+          style={{
             display: "inline-block",
             whiteSpace: "nowrap",
-            mr: 1, // space before the badge
+            marginRight: 4,
           }}
         >
           Linux
-        </Box>
+        </span>
       )}
 
-      <Box
-        sx={{
+      <span
+        style={{
           width: 36,
           height: 36,
           borderRadius: "50%",
-          border: `3px solid ${PALETTE.primary}`,
-          display: "flex",
+          border: `3px solid ${theme.palette.primary.main}`,
+          display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
           fontWeight: 900,
-          color: PALETTE.primary,
+          color: theme.palette.primary.main,
           fontSize: "0.95rem",
           whiteSpace: "nowrap",
           boxSizing: "border-box",
         }}
       >
         i/O
-      </Box>
+      </span>
     </Typography>
   );
 };

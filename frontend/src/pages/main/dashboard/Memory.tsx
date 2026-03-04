@@ -1,4 +1,5 @@
-import { Typography, Box } from "@mui/material";
+import { Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
@@ -7,12 +8,11 @@ import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
 
-// Utility functions
-
 const calculatePercentage = (used: number, total: number) =>
   ((used / total) * 100).toFixed(2);
 
 const MemoryUsage = () => {
+  const theme = useTheme();
   const {
     data: memoryData,
     isPending,
@@ -36,15 +36,19 @@ const MemoryUsage = () => {
     ) : (
       <GradientCircularGauge
         value={ramUsagePercentage}
-        gradientColors={["#82ca9d", "#eab308", "#ef4444"]}
+        gradientColors={[
+          theme.chart.tx,
+          theme.palette.warning.main,
+          theme.palette.error.main,
+        ]}
         size={108}
         thickness={9.8}
         showPercentage={true}
       />
     ),
     stats: (
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           flexDirection: "column",
           alignSelf: "flex-start",
@@ -68,18 +72,20 @@ const MemoryUsage = () => {
             label: "Swap",
             value: `${formatFileSize((memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0), 2)}/${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}`,
           },
-        ].map(({ label, value }) => (
-          <Box
+        ].map(({ label, value }, index, rows) => (
+          <div
             key={label}
-            sx={{
+            style={{
               display: "flex",
-              justifyContent: "flex-start",
               alignItems: "baseline",
-              py: 0.5,
-              borderBottom: "1px solid",
-              borderColor: "divider",
-              "&:last-child": { borderBottom: "none" },
-              gap: 1,
+              justifyContent: "flex-start",
+              paddingTop: theme.spacing(0.5),
+              paddingBottom: theme.spacing(0.5),
+              borderBottom:
+                index === rows.length - 1
+                  ? "none"
+                  : "1px solid var(--mui-palette-divider)",
+              gap: theme.spacing(1),
             }}
           >
             <Typography
@@ -97,9 +103,9 @@ const MemoryUsage = () => {
             <Typography variant="body2" fontWeight={500} noWrap>
               {value}
             </Typography>
-          </Box>
+          </div>
         ))}
-      </Box>
+      </div>
     ),
     avatarIcon: "la:memory",
   };

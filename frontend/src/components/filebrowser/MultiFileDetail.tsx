@@ -1,5 +1,5 @@
 import DownloadIcon from "@mui/icons-material/Download";
-import { Box, Button, Divider, Paper, Stack, Typography } from "@mui/material";
+import { Button, Divider, Paper, Typography, useTheme } from "@mui/material";
 import React from "react";
 
 import { MultiStatsItem } from "../../types/filebrowser";
@@ -45,8 +45,15 @@ const DetailRow: React.FC<{
   value: React.ReactNode;
   isLoading?: boolean;
 }> = ({ label, value, isLoading = false }) => {
+  const theme = useTheme();
+
   return (
-    <Box sx={{ display: "flex", gap: 2 }}>
+    <div
+      style={{
+        display: "flex",
+        gap: theme.spacing(2),
+      }}
+    >
       <Typography
         variant="body2"
         fontWeight={600}
@@ -67,11 +74,15 @@ const DetailRow: React.FC<{
           —
         </Typography>
       ) : (
-        <Typography variant="body2" sx={{ flex: 1, wordBreak: "break-all" }}>
+        <Typography
+          component="div"
+          variant="body2"
+          sx={{ flex: 1, wordBreak: "break-all" }}
+        >
           {value}
         </Typography>
       )}
-    </Box>
+    </div>
   );
 };
 
@@ -79,6 +90,11 @@ const MultiFileItemRow: React.FC<{
   item: MultiFileDetailItem;
   onDownload: (path: string) => void;
 }> = ({ item, onDownload }) => {
+  const theme = useTheme();
+  const baseBorderRadius =
+    typeof theme.shape.borderRadius === "number"
+      ? theme.shape.borderRadius
+      : Number.parseFloat(theme.shape.borderRadius);
   const isDir = item.type === "directory";
   const isLoading = item.isLoading ?? false;
   const [hovered, setHovered] = React.useState(false);
@@ -97,20 +113,19 @@ const MultiFileItemRow: React.FC<{
   };
 
   return (
-    <Box
-      key={item.path}
+    <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      sx={{
+      style={{
         border: "1px solid",
         borderColor: hovered
           ? "color-mix(in srgb, var(--mui-palette-primary-main), transparent 60%)"
-          : "divider",
-        borderRadius: 1.5,
-        p: 1.5,
+          : theme.palette.divider,
+        borderRadius: baseBorderRadius * 1.5,
+        padding: theme.spacing(1.5),
         display: "flex",
         flexDirection: "column",
-        gap: 0.5,
+        gap: theme.spacing(0.5),
         backgroundColor: hovered
           ? "color-mix(in srgb, var(--mui-palette-primary-main), transparent 95%)"
           : "transparent",
@@ -118,22 +133,22 @@ const MultiFileItemRow: React.FC<{
         transform: hovered ? "translateY(-1px)" : "none",
       }}
     >
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          gap: 2,
+          gap: theme.spacing(2),
         }}
       >
-        <Box>
+        <div>
           <Typography variant="subtitle1" fontWeight={600}>
             {item.name}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {isDir ? "Directory" : "File"}
           </Typography>
-        </Box>
+        </div>
         {!isDir && (
           <Button
             size="small"
@@ -143,11 +158,11 @@ const MultiFileItemRow: React.FC<{
             Download
           </Button>
         )}
-      </Box>
+      </div>
       <Typography variant="body2" color="text.secondary">
         Size: {renderSize()}
       </Typography>
-    </Box>
+    </div>
   );
 };
 
@@ -157,6 +172,8 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
   totalSize,
   isLoadingDetails,
 }) => {
+  const theme = useTheme();
+
   if (!multiItems?.length) {
     return null;
   }
@@ -172,15 +189,15 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
         gap: 2,
       }}
     >
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          gap: 2,
+          gap: theme.spacing(2),
         }}
       >
-        <Box>
+        <div>
           <Typography variant="h6" fontWeight={600}>
             {multiItems.length} Selected Item
             {multiItems.length === 1 ? "" : "s"}
@@ -188,12 +205,18 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
           <Typography variant="body2" color="text.secondary">
             Combined statistics for the selected files and folders
           </Typography>
-        </Box>
-      </Box>
+        </div>
+      </div>
 
       <Divider />
 
-      <Stack spacing={1.5}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: theme.spacing(1.5),
+        }}
+      >
         <DetailRow
           label="Selected Items"
           value={multiItems.length.toLocaleString()}
@@ -203,19 +226,25 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
           value={formatFileSize(totalSize)}
           isLoading={isLoadingDetails}
         />
-      </Stack>
+      </div>
 
       <Divider />
 
-      <Box
+      <div
         className="custom-scrollbar"
-        sx={{
+        style={{
           maxHeight: 360,
           overflowY: "auto",
-          pr: 1,
+          paddingRight: theme.spacing(1),
         }}
       >
-        <Stack spacing={1}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: theme.spacing(1),
+          }}
+        >
           {multiItems.map((item) => {
             return (
               <MultiFileItemRow
@@ -225,8 +254,8 @@ const MultiFileDetail: React.FC<MultiFileDetailProps> = ({
               />
             );
           })}
-        </Stack>
-      </Box>
+        </div>
+      </div>
     </Paper>
   );
 };

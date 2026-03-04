@@ -83,11 +83,4 @@
 #define PROTO_MAX_SESSION_ID         64
 #define PROTO_MAX_ERROR              256
 
-/* ==========================================================================
- * Legacy string constants (for mode_str in response - used internally)
- * ========================================================================== */
-
-#define MODE_PRIVILEGED              "privileged"
-#define MODE_UNPRIVILEGED            "unprivileged"
-
 #endif /* LINUXIO_PROTOCOL_H */

@@ -57,6 +57,12 @@ GIT_COMMIT_SHORT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unk
 BRANCH_VERSION    := $(patsubst dev/%,%,$(GIT_BRANCH))
 BUILD_TIME        := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+# For code counting (cloc)
+CLOC_INCLUDE_EXT := js,jsx,ts,tsx,css,scss,html,go
+CLOC_EXCLUDE_DIR := node_modules
+CLOC_EXCLUDE_BUILD_REGEX := '(^|/)backend/webserver/web/frontend($|/)'
+CLOC_EXCLUDE_GEN_REGEX := '(routeTree\.gen\.ts|\.min\.js$$)'
+
 # Determine version: prioritize dev branch, then tag, then commit
 ifneq ($(findstring dev/,$(GIT_BRANCH)),)
   # On dev/vX.Y.Z branch - always use dev prefix
@@ -850,10 +856,59 @@ list-modules:
 	@echo "To create a new module:"
 	@echo "  make create-module my-module"
 
+cloc:
+	@echo "==> Total LOC (excluding node_modules and embedded frontend build)"
+	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
+		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
+		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
+		.
+
+cloc-clean:
+	@echo "==> Handwritten LOC (also excluding generated/minified files)"
+	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
+		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
+		--fullpath \
+		--not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
+		--not-match-f=$(CLOC_EXCLUDE_GEN_REGEX) \
+		.
+
+cloc-breakdown:
+	@echo "============================================================"
+	@echo " LinuxIO LOC breakdown (excluding node_modules + embedded build)"
+	@echo "============================================================"
+	@echo
+	@echo "==> Frontend (Vite/React source)"
+	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
+		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
+		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
+		frontend/src || true
+	@echo
+	@echo "==> Go backend (entire backend tree, excluding embedded frontend build)"
+	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
+		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
+		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
+		backend || true
+	@echo
+	@echo "==> Embedded frontend build inside backend (for visibility)"
+	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
+		backend/webserver/web/frontend 2>/dev/null || true
+	@echo
+	@echo "==> Packaging / helper C code (if present)"
+	@cloc --include-ext=c,h \
+		packaging 2>/dev/null || true
+	@echo
+	@echo "==> TOTAL (same as make cloc)"
+	@cloc --include-ext=$(CLOC_INCLUDE_EXT) \
+		--exclude-dir=$(CLOC_EXCLUDE_DIR) \
+		--fullpath --not-match-d=$(CLOC_EXCLUDE_BUILD_REGEX) \
+		.
+
 .PHONY: \
   default help clean run \
   build fastbuild _build-binaries build-vite build-backend build-bridge build-auth build-cli \
   dev dev-prep setup test test-backend analyze-auth lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
-  create-module build-module link-module unlink-module deploy-module install-module uninstall-module clean-module list-modules
+  create-module build-module link-module unlink-module deploy-module install-module uninstall-module clean-module list-modules \
+  cloc cloc-clean cloc-breakdown
+

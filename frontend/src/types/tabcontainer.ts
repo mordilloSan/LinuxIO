@@ -1,4 +1,3 @@
-import { SxProps } from "@mui/material";
 import React from "react";
 
 /**
@@ -28,7 +27,7 @@ export interface TabContainerProps {
   /** Duration of the fade animation in milliseconds (default: 300) */
   fadeTimeout?: number;
   /** Custom styles for the outer container */
-  containerSx?: SxProps;
+  containerStyle?: React.CSSProperties;
   /** Custom fallback UI to show when a tab component errors */
   errorFallback?: React.ReactNode;
 }

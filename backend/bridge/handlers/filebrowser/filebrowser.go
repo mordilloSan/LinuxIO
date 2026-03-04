@@ -610,7 +610,7 @@ func deleteFromIndexer(path string) error {
 // CheckIndexerAvailability checks if the indexer daemon is running via systemd.
 // Returns true if the service is active.
 func CheckIndexerAvailability() (bool, error) {
-	info, err := dbus.GetServiceInfo(indexerServiceName)
+	info, err := dbus.GetUnitInfo(indexerServiceName)
 	if err != nil {
 		setIndexerAvailability(false)
 		return false, err

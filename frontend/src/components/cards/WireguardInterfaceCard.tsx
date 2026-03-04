@@ -2,18 +2,16 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import {
-  CardContent,
-  Typography,
-  Box,
-  IconButton,
-  Tooltip,
-} from "@mui/material";
+import { CardContent, Typography, IconButton, Tooltip } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
-import React, { RefObject } from "react";
+import React, { RefObject, useState } from "react";
 
 import FrostedCard from "@/components/cards/RootCard";
+import {
+  getAccentCardHoverStyles,
+  getAccentCardStyles,
+} from "@/theme/surfaces";
 import { WireGuardInterface } from "@/types/wireguard";
 
 // Props type
@@ -41,13 +39,14 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
 }) => {
   const theme = useTheme();
   const color = "primary";
+  const activeAccentColor =
+    theme.palette[color]?.main || theme.palette.primary.main;
+  const idleAccentColor =
+    theme.palette[color]?.dark || theme.palette.primary.dark;
 
-  const hoverStyles = {
-    borderBottomWidth: "3px",
-    borderBottomColor: theme.palette[color]?.main || theme.palette.primary.main,
-    boxShadow: theme.shadows[10],
-    marginBlockEnd: "-1px",
-  };
+  const hoverStyles = getAccentCardHoverStyles(theme, activeAccentColor);
+  const isSelected = iface.name === selectedInterface;
+  const [hovered, setHovered] = useState(false);
 
   return (
     <motion.div
@@ -58,30 +57,30 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
       layout
     >
       <FrostedCard
-        ref={iface.name === selectedInterface ? selectedCardRef : null}
-        sx={{
+        ref={isSelected ? selectedCardRef : null}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
           cursor: "pointer",
-          borderBottomWidth: "2px",
-          borderBottomStyle: "solid",
-          borderBottomColor:
-            theme.palette[color]?.dark || theme.palette.primary.dark,
+          ...getAccentCardStyles(idleAccentColor),
           transition:
-            "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out",
-          "&:hover": hoverStyles,
-          ...(iface.name === selectedInterface && hoverStyles),
+            "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
+          ...((isSelected || hovered) && hoverStyles),
         }}
         onClick={() => handleSelectInterface(iface)}
       >
         <CardContent>
-          <Box
-            display="flex"
-            justifyContent="space-between"
-            alignItems="center"
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
           >
             <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
               {iface.name}
             </Typography>
-            <Box>
+            <div>
               <Tooltip
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
               >
@@ -90,7 +89,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     color:
                       iface.isConnected === "Active"
                         ? theme.palette.primary.light
-                        : "gray",
+                        : theme.palette.text.disabled,
                   }}
                   aria-label="Power"
                   onClick={(e) => {
@@ -115,7 +114,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   sx={{
                     color: iface.isEnabled
                       ? theme.palette.success.main
-                      : "gray",
+                      : theme.palette.text.disabled,
                   }}
                   aria-label="Boot Persistence"
                   onClick={(e) => {
@@ -142,20 +141,20 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     e.stopPropagation();
                     handleDelete(iface.name);
                   }}
-                  sx={{ color: "red" }}
+                  sx={{ color: theme.palette.error.main }}
                 >
                   <DeleteIcon />
                 </IconButton>
               </Tooltip>
-            </Box>
-          </Box>
-          <Typography variant="body2" color="textSecondary">
+            </div>
+          </div>
+          <Typography variant="body2" color="text.secondary">
             Address: {iface.address}
           </Typography>
-          <Typography variant="body2" color="textSecondary">
+          <Typography variant="body2" color="text.secondary">
             Port: {iface.port}
           </Typography>
-          <Typography variant="body2" color="textSecondary">
+          <Typography variant="body2" color="text.secondary">
             Peers: {iface.peerCount}
           </Typography>
         </CardContent>

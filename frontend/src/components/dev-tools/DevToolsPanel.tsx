@@ -1,4 +1,5 @@
 import { Button } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { useState, useRef, useEffect, useEffectEvent } from "react";
 
@@ -12,6 +13,7 @@ interface DevToolsPanelProps {
  * Only rendered when import.meta.env.DEV is true.
  */
 export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
+  const theme = useTheme();
   // Check if update notification is currently shown
   const shown = !!sessionStorage.getItem("dev_update_forced");
   const [isDevtoolsOpen, setIsDevtoolsOpen] = useState(false);
@@ -110,10 +112,11 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
           bottom: 60,
           right: 20,
           zIndex: 9999,
-          color: "white",
+          color: theme.palette.common.white,
           padding: "12px 16px",
           borderRadius: 8,
-          boxShadow: "0 4px 6px rgba(0,0,0,0.3)",
+          boxShadow: `0 4px 6px ${alpha(theme.palette.common.black, 0.3)}`,
+          backgroundColor: alpha(theme.palette.background.paper, 0.92),
           fontSize: 14,
           display: "flex",
           flexDirection: "column",
@@ -136,7 +139,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             style={{
               background: "transparent",
               border: "none",
-              color: "white",
+              color: theme.palette.common.white,
               cursor: "pointer",
               fontSize: 18,
               padding: 0,
@@ -189,7 +192,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
               left: 0,
               width: "100%",
               height: "100%",
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backgroundColor: alpha(theme.palette.common.black, 0.5),
               zIndex: 9997,
             }}
             onClick={() => setIsDevtoolsOpen(false)}
@@ -206,7 +209,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
               zIndex: 9998,
               borderRadius: 12,
               overflow: "hidden",
-              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+              boxShadow: `0 25px 50px -12px ${alpha(theme.palette.common.black, 0.5)}`,
               display: "flex",
               flexDirection: "column",
               cursor: isDragging ? "grabbing" : "default",
@@ -216,9 +219,9 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             <div
               className="drag-handle"
               style={{
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
                 padding: "8px 12px",
-                color: "white",
+                color: theme.palette.common.white,
                 fontWeight: "bold",
                 cursor: "grab",
                 userSelect: "none",
@@ -231,10 +234,10 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
               <button
                 onClick={() => setIsDevtoolsOpen(false)}
                 style={{
-                  background: "rgba(255, 255, 255, 0.2)",
+                  background: alpha(theme.palette.common.white, 0.2),
                   border: "none",
                   borderRadius: "4px",
-                  color: "white",
+                  color: theme.palette.common.white,
                   cursor: "pointer",
                   fontSize: 16,
                   padding: "2px 8px",

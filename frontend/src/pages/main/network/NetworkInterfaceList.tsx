@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Box, Typography, Grid, Tooltip, Fade } from "@mui/material";
+import { Typography, Grid, Tooltip, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -15,15 +15,6 @@ export type { NetworkInterface };
 
 // NetworkManager device states
 // 10=unmanaged, 20=unavailable, 30=disconnected, 40-90=connecting stages, 100=activated, 110=deactivating, 120=failed
-const getStatusColor = (state: number) => {
-  if (state === 100) return "success.main"; // Activated/Connected
-  if (state >= 40 && state <= 90) return "warning.main"; // Connecting (prepare/config/ip-config/etc)
-  if (state === 30) return "error.main"; // Disconnected
-  if (state === 20) return "grey.500"; // Unavailable (no carrier)
-  if (state === 120) return "error.main"; // Failed
-  return "grey.500";
-};
-
 const getStatusTooltip = (state: number) => {
   if (state === 100) return "Connected";
   if (state === 110) return "Deactivating";
@@ -152,7 +143,7 @@ const NetworkInterfaceList = () => {
   const selectedIface = interfaces.find((i) => i.name === expanded);
 
   return (
-    <Box>
+    <div>
       <Grid container spacing={4}>
         <AnimatePresence>
           {interfaces.map((iface) =>
@@ -172,17 +163,11 @@ const NetworkInterfaceList = () => {
                 transition={{ duration: 0.2 }}
               >
                 <FrostedCard
-                  sx={{
-                    p: 2,
+                  hoverLift={expanded !== iface.name}
+                  style={{
+                    padding: 8,
                     position: "relative",
-                    transition: "transform 0.2s, box-shadow 0.2s",
                     cursor: "pointer",
-                    ...(expanded !== iface.name && {
-                      "&:hover": {
-                        transform: "translateY(-4px)",
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-                      },
-                    }),
                   }}
                 >
                   <Tooltip
@@ -192,32 +177,39 @@ const NetworkInterfaceList = () => {
                     slots={{ transition: Fade }}
                     slotProps={{ transition: { timeout: 300 } }}
                   >
-                    <Box
-                      sx={{
+                    <span
+                      style={{
                         position: "absolute",
                         top: 16,
                         right: 8,
                         width: 10,
                         height: 10,
                         borderRadius: "50%",
-                        backgroundColor: getStatusColor(iface.state),
+                        display: "inline-block",
+                        backgroundColor:
+                          iface.state === 100
+                            ? theme.palette.success.main
+                            : iface.state >= 40 && iface.state <= 90
+                              ? theme.palette.warning.main
+                              : iface.state === 30 || iface.state === 120
+                                ? theme.palette.error.main
+                                : theme.palette.grey[500],
                       }}
                     />
                   </Tooltip>
 
-                  <Box
-                    display="flex"
-                    alignItems="flex-start"
+                  <div
+                    style={{ display: "flex", alignItems: "flex-start" }}
                     onClick={() => handleToggle(iface)}
                   >
-                    <Box
-                      sx={{
+                    <div
+                      style={{
                         width: 44,
                         height: 44,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        mr: 1.5,
+                        marginRight: 6,
                       }}
                     >
                       <Icon
@@ -226,8 +218,8 @@ const NetworkInterfaceList = () => {
                         height={36}
                         color={primaryColor}
                       />
-                    </Box>
-                    <Box flexGrow={1}>
+                    </div>
+                    <div style={{ flexGrow: 1 }}>
                       <Typography variant="subtitle1" fontWeight={600} noWrap>
                         {iface.name}
                       </Typography>
@@ -252,8 +244,8 @@ const NetworkInterfaceList = () => {
                         RX/s: {formatBps(iface.rx_speed)} | TX/s:{" "}
                         {formatBps(iface.tx_speed)}
                       </Typography>
-                    </Box>
-                  </Box>
+                    </div>
+                  </div>
                   <NetworkInterfaceEditor
                     iface={iface}
                     expanded={expanded === iface.name}
@@ -278,85 +270,83 @@ const NetworkInterfaceList = () => {
               exit={{ opacity: 0, x: 40 }}
               transition={{ duration: 0.3, delay: 0.05 }}
             >
-              <Box
+              <div
                 onMouseMove={handleGraphMouseMove}
                 onMouseLeave={handleGraphMouseLeave}
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 2,
-                }}
+                style={{ display: "flex", flexDirection: "column", gap: 8 }}
               >
-                <Box>
-                  <Box sx={{ height: 120, width: "100%", minWidth: 0 }}>
+                <div>
+                  <div style={{ height: 120, width: "100%", minWidth: 0 }}>
                     <NetworkTrafficGraph
                       ref={rxCanvasRef}
                       key={`rx-${selectedIface.name}`}
                       value={selectedIface.rx_speed}
-                      color="#8884d8"
+                      color={theme.chart.rx}
                       label="RX"
                     />
-                  </Box>
-                  <Box
-                    sx={{
+                  </div>
+                  <div
+                    style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 0.5,
-                      ml: 1,
-                      mt: 0.5,
+                      gap: 2,
+                      marginLeft: 4,
+                      marginTop: 2,
                     }}
                   >
-                    <Box
-                      sx={{
+                    <span
+                      style={{
                         width: 7,
                         height: 7,
-                        backgroundColor: "#8884d8",
+                        backgroundColor: theme.chart.rx,
                         borderRadius: "50%",
+                        display: "inline-block",
                       }}
                     />
                     <Typography variant="caption" sx={{ opacity: 0.7 }}>
                       RX: {(selectedIface.rx_speed / 1024).toFixed(1)} kB/s
                     </Typography>
-                  </Box>
-                </Box>
-                <Box>
-                  <Box sx={{ height: 120, width: "100%", minWidth: 0 }}>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ height: 120, width: "100%", minWidth: 0 }}>
                     <NetworkTrafficGraph
                       ref={txCanvasRef}
                       key={`tx-${selectedIface.name}`}
                       value={selectedIface.tx_speed}
-                      color="#82ca9d"
+                      color={theme.chart.tx}
                       label="TX"
                     />
-                  </Box>
-                  <Box
-                    sx={{
+                  </div>
+                  <div
+                    style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 0.5,
-                      ml: 1,
-                      mt: 0.5,
+                      gap: 2,
+                      marginLeft: 4,
+                      marginTop: 2,
                     }}
                   >
-                    <Box
-                      sx={{
+                    <span
+                      style={{
                         width: 7,
                         height: 7,
-                        backgroundColor: "#82ca9d",
+                        backgroundColor: theme.chart.tx,
                         borderRadius: "50%",
+                        display: "inline-block",
                       }}
                     />
                     <Typography variant="caption" sx={{ opacity: 0.7 }}>
                       TX: {(selectedIface.tx_speed / 1024).toFixed(1)} kB/s
                     </Typography>
-                  </Box>
-                </Box>
-              </Box>
+                  </div>
+                </div>
+              </div>
             </Grid>
           )}
         </AnimatePresence>
       </Grid>
-    </Box>
+    </div>
   );
 };
 

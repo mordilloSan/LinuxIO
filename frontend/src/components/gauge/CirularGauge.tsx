@@ -33,7 +33,7 @@ function interpolateColor(
 
 // Get color based on percentage value
 function getColorForPercentage(pct: number, colors: string[]): string {
-  if (colors.length === 0) return "#000000";
+  if (colors.length === 0) return "currentColor";
   if (colors.length === 1) return colors[0];
 
   const segmentSize = 100 / (colors.length - 1);
@@ -191,7 +191,7 @@ interface GradientGaugeProps {
 
 export const GradientCircularGauge: React.FC<GradientGaugeProps> = ({
   value,
-  gradientColors = ["#82ca9d", "#f39c12", "#e74c3c"],
+  gradientColors,
   size = 120,
   thickness = 12,
   showPercentage = true,
@@ -204,22 +204,33 @@ export const GradientCircularGauge: React.FC<GradientGaugeProps> = ({
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const backgroundColor = isDark ? grey[700] : grey[300];
-
   // Create multiple segments for smooth gradient effect
   const segments = useMemo(() => {
+    const resolvedGradientColors = gradientColors ?? [
+      theme.chart.tx,
+      theme.palette.warning.main,
+      theme.palette.error.main,
+    ];
     const numSegments = 100;
     const segmentAngle = 360 / numSegments;
     const filledSegments = Math.ceil((pct / 100) * numSegments);
 
     return Array.from({ length: filledSegments }, (_, i) => {
       const segmentPct = ((i + 1) / numSegments) * 100;
-      const color = getColorForPercentage(segmentPct, gradientColors);
+      const color = getColorForPercentage(segmentPct, resolvedGradientColors);
       const rotation = i * segmentAngle - 90;
       const strokeDasharray = `${(segmentAngle / 360) * circumference * 0.99} ${circumference}`;
 
       return { color, rotation, strokeDasharray };
     });
-  }, [pct, gradientColors, circumference]);
+  }, [
+    circumference,
+    pct,
+    gradientColors,
+    theme.chart.tx,
+    theme.palette.warning.main,
+    theme.palette.error.main,
+  ]);
 
   return (
     <div

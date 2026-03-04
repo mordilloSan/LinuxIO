@@ -141,6 +141,9 @@ export type {
   AutoUpdateOptions,
   AutoUpdateState,
   Service,
+  UnitInfo,
+  Timer,
+  Socket,
   UpgradeItem,
   UpdateHistoryRow,
   ApiResource,
@@ -172,6 +175,5 @@ export type {
   DeleteStackResult,
   ConfigSettings,
   ConfigSetResult,
-  DockerConfigSetResult,
   DirectoryValidationResult,
 } from "./linuxio-types";

@@ -5,8 +5,8 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Box,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
   onClose,
   username,
 }) => {
+  const theme = useTheme();
   const queryClient = useQueryClient();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -68,7 +69,14 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Change Password: {username}</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: theme.spacing(2),
+            marginTop: theme.spacing(1),
+          }}
+        >
           <TextField
             label="New Password"
             type="password"
@@ -92,7 +100,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
                 : ""
             }
           />
-        </Box>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={isPending}>

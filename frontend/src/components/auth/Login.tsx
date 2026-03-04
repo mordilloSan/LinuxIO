@@ -2,34 +2,17 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   Alert,
-  Box,
   Button,
   IconButton,
   InputAdornment,
   TextField,
 } from "@mui/material";
-import { keyframes } from "@mui/system";
+import { alpha } from "@mui/material/styles";
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import "./login.css";
 import useAuth from "@/hooks/useAuth";
-
-const reveal = keyframes`
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
-
-const revealSx = (delayMs: number) => ({
-  opacity: 0,
-  transform: "translateY(10px)",
-  animation: `${reveal} 0.45s ease forwards`,
-  animationDelay: `${delayMs}ms`,
-  "@media (prefers-reduced-motion: reduce)": {
-    animation: "none",
-    opacity: 1,
-    transform: "none",
-  },
-});
 
 const fieldSx = (theme: any) => ({
   my: 1,
@@ -41,13 +24,15 @@ const fieldSx = (theme: any) => ({
 
   "& .MuiOutlinedInput-root": {
     borderRadius: 3,
-    backgroundColor: "rgba(15,23,42,0.65)",
+    backgroundColor: alpha(theme.palette.background.default, 0.65),
     transition: "box-shadow 0.2s ease, border-color 0.2s ease",
-    "& fieldset": { borderColor: "rgba(148,163,184,0.3)" },
-    "&:hover fieldset": { borderColor: "rgba(148,163,184,0.55)" },
+    "& fieldset": { borderColor: alpha(theme.palette.text.secondary, 0.3) },
+    "&:hover fieldset": {
+      borderColor: alpha(theme.palette.text.secondary, 0.55),
+    },
     "&.Mui-focused fieldset": { borderColor: theme.palette.primary.main },
     "&.Mui-focused": {
-      boxShadow: "0 0 0 3px rgba(64,122,214,0.35)",
+      boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.35)}`,
     },
   },
 
@@ -97,19 +82,24 @@ function LogIn() {
       {error && (
         <Alert
           severity="warning"
+          className="login-reveal"
+          style={{ "--login-reveal-delay": "60ms" } as React.CSSProperties}
           sx={{
             mb: 2,
             borderRadius: 2,
-            border: "1px solid rgba(249,115,22,0.35)",
-            backgroundColor: "rgba(249,115,22,0.18)",
+            border: (theme) =>
+              `1px solid ${alpha(theme.palette.warning.main, 0.35)}`,
+            backgroundColor: (theme) => alpha(theme.palette.warning.main, 0.18),
             color: "text.primary",
-            ...revealSx(60),
           }}
         >
           {error}
         </Alert>
       )}
-      <Box sx={revealSx(140)}>
+      <div
+        className="login-reveal"
+        style={{ "--login-reveal-delay": "140ms" } as React.CSSProperties}
+      >
         <TextField
           label="Username"
           fullWidth
@@ -119,9 +109,12 @@ function LogIn() {
           sx={fieldSx}
           slotProps={{ inputLabel: { shrink: true } }}
         />
-      </Box>
+      </div>
 
-      <Box sx={revealSx(220)}>
+      <div
+        className="login-reveal"
+        style={{ "--login-reveal-delay": "220ms" } as React.CSSProperties}
+      >
         <TextField
           label="Password"
           type={showPassword ? "text" : "password"}
@@ -150,9 +143,12 @@ function LogIn() {
             },
           }}
         />
-      </Box>
+      </div>
 
-      <Box sx={revealSx(300)}>
+      <div
+        className="login-reveal"
+        style={{ "--login-reveal-delay": "300ms" } as React.CSSProperties}
+      >
         <Button
           type="submit"
           variant="contained"
@@ -167,11 +163,11 @@ function LogIn() {
             letterSpacing: "0.02em",
             backgroundImage:
               "linear-gradient(135deg, var(--accent), var(--accent-soft))",
-            boxShadow: "0 18px 40px -26px rgba(64,122,214,0.75)",
+            boxShadow: `0 18px 40px -26px ${alpha(theme.palette.primary.main, 0.75)}`,
             "&:hover": {
               backgroundImage:
                 "linear-gradient(135deg, var(--accent-strong), var(--accent))",
-              boxShadow: "0 22px 46px -28px rgba(64,122,214,0.9)",
+              boxShadow: `0 22px 46px -28px ${alpha(theme.palette.primary.main, 0.9)}`,
             },
             "&:active": { transform: "translateY(1px)" },
             [theme.breakpoints.down("md")]: {
@@ -184,7 +180,7 @@ function LogIn() {
         >
           Sign in
         </Button>
-      </Box>
+      </div>
     </form>
   );
 }

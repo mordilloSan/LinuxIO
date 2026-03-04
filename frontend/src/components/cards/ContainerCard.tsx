@@ -1,5 +1,4 @@
 import {
-  Box,
   Chip,
   Collapse,
   Divider,
@@ -53,6 +52,12 @@ const getStatusTooltip = (container: ContainerInfo) => {
   if (container.State === "exited") return "Stopped";
   if (container.State === "dead") return "Dead";
   return "Unhealthy / Starting";
+};
+
+/** Resolve a MUI palette path like "success.main" to an actual color string. */
+const resolveColor = (palette: any, path: string): string => {
+  const [group, key] = path.split(".") as [string, string];
+  return palette[group]?.[key];
 };
 
 interface ContainerCardProps {
@@ -252,18 +257,14 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     <FrostedCard
       onClick={hasPorts ? () => setExpanded((v) => !v) : undefined}
       onMouseDown={hasPorts ? (e) => e.preventDefault() : undefined}
-      sx={{
-        p: 2,
+      hoverLift={hasPorts}
+      style={{
+        padding: 8,
         display: "flex",
         flexDirection: "column",
         height: "100%",
         position: "relative",
         cursor: hasPorts ? "pointer" : "default",
-        transition: "transform 0.2s, box-shadow 0.2s",
-        "&:hover": {
-          transform: "translateY(-4px)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-        },
       }}
     >
       {/* Status dot */}
@@ -274,43 +275,46 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         slots={{ transition: Fade }}
         slotProps={{ transition: { timeout: 300 } }}
       >
-        <Box
-          sx={{
+        <div
+          style={{
             position: "absolute",
             top: 18,
             right: 8,
             width: 10,
             height: 10,
             borderRadius: "50%",
-            backgroundColor: getStatusColor(container),
+            backgroundColor: resolveColor(
+              theme.palette,
+              getStatusColor(container),
+            ),
             cursor: "default",
           }}
         />
       </Tooltip>
 
       {/* Top row: Icon + Name + Buttons */}
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           flexDirection: "row",
           alignItems: "center",
           width: "100%",
         }}
       >
-        <Box
-          sx={{
+        <div
+          style={{
             width: 48,
             height: 48,
             minWidth: 48,
             minHeight: 48,
             flexShrink: 0,
-            mr: 1.5,
+            marginRight: 6,
             alignSelf: "flex-start",
           }}
         >
           <DockerIcon identifier={container.icon} size={48} alt={name} />
-        </Box>
-        <Box sx={{ flex: 0.95, minWidth: 0 }}>
+        </div>
+        <div style={{ flex: 0.95, minWidth: 0 }}>
           <Typography
             variant="subtitle1"
             fontWeight="600"
@@ -319,7 +323,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           >
             {name}
           </Typography>
-          <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
             {container.Labels?.["com.docker.compose.project"] ===
             "linuxio-watchtower" ? (
               <Tooltip title="View Logs" arrow>
@@ -398,9 +402,21 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 </span>
               </Tooltip>
             )}
-          </Box>
-        </Box>
-      </Box>
+            {container.url && (
+              <Tooltip title="Open App" arrow>
+                <span onClick={(e) => e.stopPropagation()}>
+                  <ActionButton
+                    icon="mdi:open-in-new"
+                    onClick={() =>
+                      window.open(container.url, "_blank", "noopener")
+                    }
+                  />
+                </span>
+              </Tooltip>
+            )}
+          </div>
+        </div>
+      </div>
 
       <Suspense fallback={null}>
         {hasLoadedLogsDialog && (
@@ -423,7 +439,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       </Suspense>
 
       {/* Metrics area: full width */}
-      <Box sx={{ mt: 2, width: "100%" }}>
+      <div style={{ marginTop: 8, width: "100%" }}>
         {isActionPending ? (
           <ComponentLoader />
         ) : (
@@ -444,15 +460,15 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             />
           </>
         )}
-      </Box>
+      </div>
 
       {/* Auto-update toggle */}
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          mt: 1.5,
+          marginTop: 6,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -463,7 +479,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           Auto Update
         </Typography>
         <Tooltip title={autoUpdateTooltip}>
-          <Box component="span" sx={{ display: "inline-flex" }}>
+          <span style={{ display: "inline-flex" }}>
             <Switch
               size="small"
               checked={autoUpdateChecked}
@@ -484,14 +500,14 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                   : undefined
               }
             />
-          </Box>
+          </span>
         </Tooltip>
-      </Box>
+      </div>
 
       {/* Ports section */}
       <Collapse in={expanded} timeout={250} unmountOnExit>
         <Divider sx={{ mt: 1, mb: 1.5 }} />
-        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
           {ports.map((p, i) => {
             const label = p.PublicPort
               ? `${p.PublicPort}:${p.PrivatePort}/${p.Type}`
@@ -505,7 +521,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               />
             );
           })}
-        </Box>
+        </div>
       </Collapse>
     </FrostedCard>
   );

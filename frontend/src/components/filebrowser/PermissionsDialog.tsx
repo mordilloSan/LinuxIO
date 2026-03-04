@@ -1,6 +1,5 @@
 import {
   Autocomplete,
-  Box,
   Button,
   Checkbox,
   DialogActions,
@@ -14,6 +13,7 @@ import {
   TableRow,
   TextField,
   Typography,
+  useMediaQuery,
   useTheme,
 } from "@mui/material";
 import React, { useState, useCallback } from "react";
@@ -161,6 +161,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
   }, [permissions, recursive, ownerInput, groupInput, onConfirm, onClose]);
 
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   return (
     <FileBrowserDialog
@@ -191,13 +192,13 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         </Typography>
       </DialogTitle>
       <DialogContent sx={{ overflow: "visible" }}>
-        <Box
-          sx={{
+        <div
+          style={{
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-            gap: 2,
-            mb: 3,
-            mt: 1,
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gap: theme.spacing(2),
+            marginBottom: theme.spacing(3),
+            marginTop: theme.spacing(1),
           }}
         >
           <Autocomplete
@@ -246,7 +247,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
               <TextField {...params} label="Group" size="small" />
             )}
           />
-        </Box>
+        </div>
 
         <Table size="small">
           <TableHead>
@@ -337,7 +338,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
         </Table>
 
         {isDirectory && (
-          <Box sx={{ mt: 2 }}>
+          <div style={{ marginTop: theme.spacing(2) }}>
             <FormControlLabel
               control={
                 <Checkbox
@@ -347,7 +348,7 @@ const PermissionsDialog: React.FC<PermissionsDialogProps> = ({
               }
               label="Apply recursively to all files and subdirectories"
             />
-          </Box>
+          </div>
         )}
       </DialogContent>
       <DialogActions>

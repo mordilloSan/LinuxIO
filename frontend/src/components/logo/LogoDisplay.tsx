@@ -1,4 +1,4 @@
-import { Box, Typography, useTheme } from "@mui/material";
+import { Typography, useTheme } from "@mui/material";
 import React from "react";
 
 interface LogoDisplayProps {
@@ -33,13 +33,13 @@ const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
         Linux
       </span>
 
-      <Box
-        sx={{
+      <span
+        style={{
           width: 36,
           height: 36,
           borderRadius: "50%",
           border: `3px solid ${theme.palette.primary.main}`,
-          display: "flex",
+          display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
           fontWeight: 900,
@@ -50,7 +50,7 @@ const LogoDisplay: React.FC<LogoDisplayProps> = ({ showText = false }) => {
         }}
       >
         i/O
-      </Box>
+      </span>
     </Typography>
   );
 };

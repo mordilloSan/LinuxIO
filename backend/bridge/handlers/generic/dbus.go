@@ -15,21 +15,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
-var systemBus *godbus.Conn
-var sessionBus *godbus.Conn
-
-func init() {
-	var err error
-	systemBus, err = godbus.ConnectSystemBus()
-	if err != nil {
-		systemBus = nil
-	}
-	sessionBus, err = godbus.ConnectSessionBus()
-	if err != nil {
-		sessionBus = nil
-	}
-}
-
 func DbusHandlers() map[string]func([]string) (any, error) {
 	return map[string]func([]string) (any, error){
 		// NOTE: Direct DBus calls are DISABLED for security
@@ -58,17 +43,18 @@ func CallDbusMethodDirect(args []string) (any, error) {
 	method := args[4]
 	methodArgs := args[5:]
 
-	// Select bus
+	// Open a per-call connection
 	var conn *godbus.Conn
+	var err error
 	if busType == "session" {
-		conn = sessionBus
+		conn, err = godbus.ConnectSessionBus()
 	} else {
-		conn = systemBus
+		conn, err = godbus.ConnectSystemBus()
 	}
-
-	if conn == nil {
-		return nil, fmt.Errorf("failed to connect to %s bus", busType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to %s bus: %w", busType, err)
 	}
+	defer conn.Close()
 
 	// Get object
 	obj := conn.Object(destination, godbus.ObjectPath(path))
@@ -179,9 +165,15 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 	defer conn.RemoveSignal(sigCh)
 
 	// Add match for the object path
-	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(godbus.ObjectPath(path))); err != nil {
+	matchOpt := godbus.WithMatchObjectPath(godbus.ObjectPath(path))
+	if err := conn.AddMatchSignal(matchOpt); err != nil {
 		logger.Warnf("[DbusStream] Failed to add D-Bus match signal: %v", err)
 	}
+	defer func() {
+		if err := conn.RemoveMatchSignal(matchOpt); err != nil {
+			logger.Debugf("[DbusStream] Failed to remove D-Bus match signal: %v", err)
+		}
+	}()
 
 	// Convert method args to interface{}
 	dbusArgs := make([]any, len(methodArgs))

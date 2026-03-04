@@ -1,6 +1,6 @@
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
-  Box,
+  Grid,
   TableCell,
   TextField,
   Chip,
@@ -12,12 +12,14 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
+  useTheme,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
+import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -29,6 +31,7 @@ import {
 
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
+  viewMode?: "table" | "card";
 }
 
 interface DeleteImageDialogProps {
@@ -47,6 +50,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const theme = useTheme();
 
   const { mutateAsync: deleteImage, isPending: isDeleting } =
     linuxio.docker.delete_image.useMutation({
@@ -106,7 +110,14 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
           Are you sure you want to delete the following image
           {imageIds.length > 1 ? "s" : ""}?
         </DialogContentText>
-        <Box sx={{ mt: 2, mb: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            marginTop: theme.spacing(2),
+            marginBottom: theme.spacing(1),
+          }}
+        >
           {imageTags.map((tag, idx) => (
             <Chip
               key={`${tag}-${idx}`}
@@ -115,7 +126,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
               sx={{ mr: 1, mb: 1 }}
             />
           ))}
-        </Box>
+        </div>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
           This action cannot be undone. Images in use by containers cannot be
           deleted.
@@ -138,7 +149,11 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
   );
 };
 
-const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
+const ImageList: React.FC<ImageListProps> = ({
+  onMountCreateHandler,
+  viewMode = "table",
+}) => {
+  const theme = useTheme();
   const { data: images = [] } = linuxio.docker.list_images.useQuery({
     refetchInterval: 10000,
   });
@@ -250,8 +265,16 @@ const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
   ];
 
   return (
-    <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+    <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: theme.spacing(2),
+          flexWrap: "wrap",
+          marginBottom: theme.spacing(2),
+        }}
+      >
         <TextField
           variant="outlined"
           size="small"
@@ -265,7 +288,7 @@ const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
             },
           }}
         />
-        <Box fontWeight="bold">{filtered.length} shown</Box>
+        <Typography fontWeight="bold">{filtered.length} shown</Typography>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -277,146 +300,267 @@ const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
             Delete ({effectiveSelected.size})
           </Button>
         )}
-      </Box>
-      <UnifiedCollapsibleTable
-        data={filtered}
-        columns={columns}
-        getRowKey={(image) => `${image.id}-${image.tag}`}
-        renderFirstCell={(image) => (
-          <Checkbox
-            size="small"
-            checked={effectiveSelected.has(image.id)}
-            onChange={(e) => handleSelectOne(image.id, e.target.checked)}
-            onClick={(e) => e.stopPropagation()}
-          />
-        )}
-        renderHeaderFirstCell={() => (
-          <Checkbox
-            size="small"
-            checked={allSelected}
-            indeterminate={someSelected}
-            onChange={(e) => handleSelectAll(e.target.checked)}
-          />
-        )}
-        renderMainRow={(image) => (
-          <>
-            <TableCell>
-              <Typography
-                variant="body2"
-                fontWeight="medium"
-                sx={responsiveTextStyles}
+      </div>
+      {viewMode === "card" ? (
+        filtered.length > 0 ? (
+          <Grid container spacing={2}>
+            {filtered.map((image) => (
+              <Grid
+                key={`${image.id}-${image.tag}`}
+                size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
               >
-                {image.repo}
+                <FrostedCard style={{ padding: 8 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: theme.spacing(1),
+                      marginBottom: theme.spacing(1),
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: theme.spacing(1),
+                      }}
+                    >
+                      <Checkbox
+                        size="small"
+                        checked={effectiveSelected.has(image.id)}
+                        onChange={(e) =>
+                          handleSelectOne(image.id, e.target.checked)
+                        }
+                      />
+                      <Typography variant="body2" fontWeight="bold" noWrap>
+                        {image.repo}
+                      </Typography>
+                    </div>
+                    <Chip
+                      label={image.tag}
+                      size="small"
+                      sx={{ fontSize: "0.75rem" }}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: theme.spacing(0.5),
+                      marginBottom: theme.spacing(1.5),
+                    }}
+                  >
+                    <Typography variant="body2" sx={responsiveTextStyles}>
+                      Size: {image.size} MB
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontFamily: "monospace", ...responsiveTextStyles }}
+                    >
+                      ID: {image.shortId}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontSize: "0.82rem", ...responsiveTextStyles }}
+                    >
+                      Created: {image.created}
+                    </Typography>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: theme.spacing(1),
+                      marginBottom: theme.spacing(1.5),
+                    }}
+                  >
+                    <Chip
+                      label={`Used by ${image.containers}`}
+                      size="small"
+                      color={image.containers > 0 ? "success" : "default"}
+                    />
+                  </div>
+
+                  <Typography variant="caption" color="text.secondary">
+                    Full ID
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontFamily: "monospace",
+                      fontSize: "0.75rem",
+                      mb: 1,
+                      ...longTextStyles,
+                    }}
+                  >
+                    {image.id}
+                  </Typography>
+                </FrostedCard>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <div
+            style={{
+              textAlign: "center",
+              paddingTop: theme.spacing(4),
+              paddingBottom: theme.spacing(4),
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              No images found.
+            </Typography>
+          </div>
+        )
+      ) : (
+        <UnifiedCollapsibleTable
+          data={filtered}
+          columns={columns}
+          getRowKey={(image) => `${image.id}-${image.tag}`}
+          renderFirstCell={(image) => (
+            <Checkbox
+              size="small"
+              checked={effectiveSelected.has(image.id)}
+              onChange={(e) => handleSelectOne(image.id, e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+          renderHeaderFirstCell={() => (
+            <Checkbox
+              size="small"
+              checked={allSelected}
+              indeterminate={someSelected}
+              onChange={(e) => handleSelectAll(e.target.checked)}
+            />
+          )}
+          renderMainRow={(image) => (
+            <>
+              <TableCell>
+                <Typography
+                  variant="body2"
+                  fontWeight="medium"
+                  sx={responsiveTextStyles}
+                >
+                  {image.repo}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Chip
+                  label={image.tag}
+                  size="small"
+                  sx={{ fontSize: "0.75rem" }}
+                />
+              </TableCell>
+              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontFamily: "monospace",
+                    fontSize: "0.85rem",
+                    ...responsiveTextStyles,
+                  }}
+                >
+                  {image.shortId}
+                </Typography>
+              </TableCell>
+              <TableCell align="right">
+                <Typography variant="body2" sx={responsiveTextStyles}>
+                  {image.size} MB
+                </Typography>
+              </TableCell>
+              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                <Typography
+                  variant="body2"
+                  sx={{ fontSize: "0.85rem", ...responsiveTextStyles }}
+                >
+                  {image.created}
+                </Typography>
+              </TableCell>
+              <TableCell align="center">
+                <Chip
+                  label={image.containers}
+                  size="small"
+                  color={image.containers > 0 ? "success" : "default"}
+                  sx={{ minWidth: 40 }}
+                />
+              </TableCell>
+            </>
+          )}
+          renderExpandedContent={(image) => (
+            <>
+              <Typography variant="subtitle2" gutterBottom>
+                <b>Full Image ID:</b>
               </Typography>
-            </TableCell>
-            <TableCell>
-              <Chip
-                label={image.tag}
-                size="small"
-                sx={{ fontSize: "0.75rem" }}
-              />
-            </TableCell>
-            <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
               <Typography
                 variant="body2"
                 sx={{
                   fontFamily: "monospace",
                   fontSize: "0.85rem",
-                  ...responsiveTextStyles,
+                  mb: 2,
+                  ...longTextStyles,
                 }}
               >
-                {image.shortId}
+                {image.id}
               </Typography>
-            </TableCell>
-            <TableCell align="right">
-              <Typography variant="body2" sx={responsiveTextStyles}>
-                {image.size} MB
+
+              <Typography variant="subtitle2" gutterBottom>
+                <b>Labels:</b>
               </Typography>
-            </TableCell>
-            <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-              <Typography
-                variant="body2"
-                sx={{ fontSize: "0.85rem", ...responsiveTextStyles }}
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  marginBottom: theme.spacing(2),
+                }}
               >
-                {image.created}
-              </Typography>
-            </TableCell>
-            <TableCell align="center">
-              <Chip
-                label={image.containers}
-                size="small"
-                color={image.containers > 0 ? "success" : "default"}
-                sx={{ minWidth: 40 }}
-              />
-            </TableCell>
-          </>
-        )}
-        renderExpandedContent={(image) => (
-          <>
-            <Typography variant="subtitle2" gutterBottom>
-              <b>Full Image ID:</b>
-            </Typography>
-            <Typography
-              variant="body2"
-              sx={{
-                fontFamily: "monospace",
-                fontSize: "0.85rem",
-                mb: 2,
-                ...longTextStyles,
-              }}
-            >
-              {image.id}
-            </Typography>
-
-            <Typography variant="subtitle2" gutterBottom>
-              <b>Labels:</b>
-            </Typography>
-            <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
-              {image.raw.Labels && Object.keys(image.raw.Labels).length > 0 ? (
-                Object.entries(image.raw.Labels).map(([key, val]) => (
-                  <Chip
-                    key={key}
-                    label={`${key}: ${val}`}
-                    size="small"
-                    sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
-                  />
-                ))
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  (no labels)
-                </Typography>
-              )}
-            </Box>
-
-            <Typography variant="subtitle2" gutterBottom>
-              <b>Image Digests:</b>
-            </Typography>
-            <Box>
-              {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
-                image.raw.RepoDigests.map((digest) => (
-                  <Typography
-                    key={digest}
-                    variant="body2"
-                    sx={{
-                      fontFamily: "monospace",
-                      fontSize: "0.8rem",
-                      mb: 0.5,
-                      ...longTextStyles,
-                    }}
-                  >
-                    {digest}
+                {image.raw.Labels &&
+                Object.keys(image.raw.Labels).length > 0 ? (
+                  Object.entries(image.raw.Labels).map(([key, val]) => (
+                    <Chip
+                      key={key}
+                      label={`${key}: ${val}`}
+                      size="small"
+                      sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
+                    />
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    (no labels)
                   </Typography>
-                ))
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  (no digests)
-                </Typography>
-              )}
-            </Box>
-          </>
-        )}
-        emptyMessage="No images found."
-      />
+                )}
+              </div>
+
+              <Typography variant="subtitle2" gutterBottom>
+                <b>Image Digests:</b>
+              </Typography>
+              <div>
+                {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
+                  image.raw.RepoDigests.map((digest) => (
+                    <Typography
+                      key={digest}
+                      variant="body2"
+                      sx={{
+                        fontFamily: "monospace",
+                        fontSize: "0.8rem",
+                        mb: 0.5,
+                        ...longTextStyles,
+                      }}
+                    >
+                      {digest}
+                    </Typography>
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    (no digests)
+                  </Typography>
+                )}
+              </div>
+            </>
+          )}
+          emptyMessage="No images found."
+        />
+      )}
 
       <DeleteImageDialog
         open={deleteDialogOpen}
@@ -425,7 +569,7 @@ const ImageList: React.FC<ImageListProps> = ({ onMountCreateHandler }) => {
         imageTags={selectedImages.map((img) => `${img.repo}:${img.tag}`)}
         onSuccess={handleDeleteSuccess}
       />
-    </Box>
+    </div>
   );
 };
 

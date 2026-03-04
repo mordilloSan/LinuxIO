@@ -1,4 +1,4 @@
-import { Box, Chip, Typography } from "@mui/material";
+import { Chip, Typography } from "@mui/material";
 import React from "react";
 
 import type { DriveInfo } from "../types";
@@ -30,49 +30,49 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
   const pendingSectors = findAtaAttr(197);
 
   return (
-    <Box>
-      <Box
-        sx={{
+    <div>
+      <div
+        style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
-          gap: 1,
-          mt: 1,
-          mb: 2,
+          gap: 4,
+          marginTop: 4,
+          marginBottom: 8,
         }}
       >
-        <Box>
+        <div>
           <Typography variant="body2" color="text.secondary">
             Serial
           </Typography>
           <Typography variant="body2" fontWeight={500} noWrap>
             {drive.serial || "N/A"}
           </Typography>
-        </Box>
-        <Box>
+        </div>
+        <div>
           <Typography variant="body2" color="text.secondary">
             Vendor
           </Typography>
           <Typography variant="body2" fontWeight={500}>
             {drive.vendor || "N/A"}
           </Typography>
-        </Box>
-        <Box>
+        </div>
+        <div>
           <Typography variant="body2" color="text.secondary">
             Read Only
           </Typography>
           <Typography variant="body2" fontWeight={500}>
             {drive.ro ? "Yes" : "No"}
           </Typography>
-        </Box>
-        <Box>
+        </div>
+        <div>
           <Typography variant="body2" color="text.secondary">
             Transport
           </Typography>
           <Typography variant="body2" fontWeight={500}>
             {drive.transport.toUpperCase()}
           </Typography>
-        </Box>
-      </Box>
+        </div>
+      </div>
 
       {smart && (
         <>
@@ -83,17 +83,17 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
           >
             Health & Statistics
           </Typography>
-          <Box
-            sx={{
+          <div
+            style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
-              gap: 1,
-              mt: 1,
-              mb: 2,
+              gap: 4,
+              marginTop: 4,
+              marginBottom: 8,
             }}
           >
             {temperature !== null && (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary">
                   Temperature
                 </Typography>
@@ -110,30 +110,30 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 >
                   {temperature}°C
                 </Typography>
-              </Box>
+              </div>
             )}
             {powerOnHours !== null && (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary">
                   Power On Time
                 </Typography>
                 <Typography variant="body2" fontWeight={500}>
                   {formatPowerOnTime(powerOnHours)}
                 </Typography>
-              </Box>
+              </div>
             )}
             {powerCycles !== null && (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary">
                   Power Cycles
                 </Typography>
                 <Typography variant="body2" fontWeight={500}>
                   {powerCycles.toLocaleString()}
                 </Typography>
-              </Box>
+              </div>
             )}
             {isNvme && percentageUsed !== undefined && (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary">
                   Life Used
                 </Typography>
@@ -150,30 +150,30 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 >
                   {percentageUsed}%
                 </Typography>
-              </Box>
+              </div>
             )}
             {isNvme && dataRead !== undefined && (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary">
                   Data Read
                 </Typography>
                 <Typography variant="body2" fontWeight={500}>
                   {formatDataUnits(dataRead)}
                 </Typography>
-              </Box>
+              </div>
             )}
             {isNvme && dataWritten !== undefined && (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary">
                   Data Written
                 </Typography>
                 <Typography variant="body2" fontWeight={500}>
                   {formatDataUnits(dataWritten)}
                 </Typography>
-              </Box>
+              </div>
             )}
             {!isNvme && reallocatedSectors && (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary">
                   Reallocated Sectors
                 </Typography>
@@ -188,10 +188,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 >
                   {reallocatedSectors.raw.value}
                 </Typography>
-              </Box>
+              </div>
             )}
             {!isNvme && pendingSectors && (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary">
                   Pending Sectors
                 </Typography>
@@ -206,9 +206,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 >
                   {pendingSectors.raw.value}
                 </Typography>
-              </Box>
+              </div>
             )}
-          </Box>
+          </div>
         </>
       )}
 
@@ -221,8 +221,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
           >
             Power
           </Typography>
-          <Box sx={{ mt: 1 }}>
-            <Box display="flex" gap={1} alignItems="center" mb={1}>
+          <div style={{ marginTop: 4 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 4,
+                alignItems: "center",
+                marginBottom: 4,
+              }}
+            >
               <Chip
                 label={`State ${power.currentState}`}
                 size="small"
@@ -232,8 +239,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
               <Typography variant="body2" color="text.secondary">
                 ~{power.estimatedW.toFixed(2)}W
               </Typography>
-            </Box>
-          </Box>
+            </div>
+          </div>
         </>
       )}
 
@@ -242,6 +249,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
           No detailed information available for this drive.
         </Typography>
       )}
-    </Box>
+    </div>
   );
 };

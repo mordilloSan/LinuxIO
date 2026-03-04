@@ -10,11 +10,11 @@ import {
 import {
   Alert,
   AlertTitle,
-  Box,
   Button,
   IconButton,
   Tooltip,
   Typography,
+  useTheme,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
@@ -31,10 +31,11 @@ import { linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
 import useAuth from "@/hooks/useAuth";
-import { useConfigValue } from "@/hooks/useConfig";
+import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const DockerPage: React.FC = () => {
+  const theme = useTheme();
   const { dockerAvailable, indexerAvailable } = useAuth();
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
@@ -98,14 +99,17 @@ const DockerPage: React.FC = () => {
         toast.error(getMutationErrorMessage(err, "Prune failed")),
     });
 
-  const [dockerContainersView, setDockerContainersView] = useConfigValue(
-    "dockerContainersView",
+  const [containerView, setContainerView] = useViewMode(
+    "docker.containers",
+    "card",
   );
-  const [dockerStacksView, setDockerStacksView] =
-    useConfigValue("dockerStacksView");
-
-  const containerView = dockerContainersView ?? "card";
-  const stacksView = dockerStacksView ?? "table";
+  const [stacksView, setStacksView] = useViewMode("docker.stacks", "table");
+  const [networksView, setNetworksView] = useViewMode(
+    "docker.networks",
+    "table",
+  );
+  const [volumesView, setVolumesView] = useViewMode("docker.volumes", "table");
+  const [imagesView, setImagesView] = useViewMode("docker.images", "table");
 
   const [createStackHandler, setCreateStackHandler] = useState<
     (() => void) | null
@@ -126,21 +130,21 @@ const DockerPage: React.FC = () => {
 
   if (dockerAvailable === null) {
     return (
-      <Box sx={{ p: 3 }}>
+      <div style={{ padding: theme.spacing(3) }}>
         <Alert severity="info">
           <AlertTitle>Checking Docker</AlertTitle>
           <Typography variant="body2">
             Verifying Docker daemon access...
           </Typography>
         </Alert>
-      </Box>
+      </div>
     );
   }
 
   // Show error if Docker is not available
   if (dockerAvailable === false) {
     return (
-      <Box sx={{ p: 3 }}>
+      <div style={{ padding: theme.spacing(3) }}>
         <Alert severity="warning">
           <AlertTitle>Docker Not Available</AlertTitle>
           <Typography variant="body2" sx={{ mb: 2 }}>
@@ -148,7 +152,12 @@ const DockerPage: React.FC = () => {
           </Typography>
           <Typography variant="body2" component="div">
             <strong>Common causes:</strong>
-            <Box component="ul" sx={{ mt: 1, mb: 0 }}>
+            <ul
+              style={{
+                marginTop: theme.spacing(1),
+                marginBottom: 0,
+              }}
+            >
               <li>Docker is not installed on this system</li>
               <li>
                 Docker service is not running (try: sudo systemctl start docker)
@@ -162,10 +171,10 @@ const DockerPage: React.FC = () => {
                 Docker socket path is not set correctly (check DOCKER_HOST
                 environment variable)
               </li>
-            </Box>
+            </ul>
           </Typography>
         </Alert>
-      </Box>
+      </div>
     );
   }
 
@@ -232,7 +241,7 @@ const DockerPage: React.FC = () => {
                   <IconButton
                     size="small"
                     onClick={() =>
-                      setDockerContainersView(
+                      setContainerView(
                         containerView === "card" ? "table" : "card",
                       )
                     }
@@ -284,9 +293,7 @@ const DockerPage: React.FC = () => {
                   <IconButton
                     size="small"
                     onClick={() =>
-                      setDockerStacksView(
-                        stacksView === "table" ? "card" : "table",
-                      )
+                      setStacksView(stacksView === "table" ? "card" : "table")
                     }
                   >
                     {stacksView === "table" ? (
@@ -339,18 +346,45 @@ const DockerPage: React.FC = () => {
                 onMountCreateHandler={(handler) =>
                   setCreateNetworkHandler(() => handler)
                 }
+                viewMode={networksView}
               />
             ),
-            rightContent: createNetworkHandler ? (
-              <Button
-                variant="contained"
-                size="small"
-                onClick={createNetworkHandler}
-                startIcon={<AddIcon />}
-              >
-                Add Network
-              </Button>
-            ) : undefined,
+            rightContent: (
+              <>
+                <Tooltip
+                  title={
+                    networksView === "table"
+                      ? "Switch to card view"
+                      : "Switch to table view"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      setNetworksView(
+                        networksView === "table" ? "card" : "table",
+                      )
+                    }
+                  >
+                    {networksView === "table" ? (
+                      <GridViewIcon fontSize="small" />
+                    ) : (
+                      <TableRowsIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                {createNetworkHandler && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={createNetworkHandler}
+                    startIcon={<AddIcon />}
+                  >
+                    Add Network
+                  </Button>
+                )}
+              </>
+            ),
           },
           {
             value: "volumes",
@@ -360,18 +394,43 @@ const DockerPage: React.FC = () => {
                 onMountCreateHandler={(handler) =>
                   setCreateVolumeHandler(() => handler)
                 }
+                viewMode={volumesView}
               />
             ),
-            rightContent: createVolumeHandler ? (
-              <Button
-                variant="contained"
-                size="small"
-                onClick={createVolumeHandler}
-                startIcon={<AddIcon />}
-              >
-                Add Volume
-              </Button>
-            ) : undefined,
+            rightContent: (
+              <>
+                <Tooltip
+                  title={
+                    volumesView === "table"
+                      ? "Switch to card view"
+                      : "Switch to table view"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      setVolumesView(volumesView === "table" ? "card" : "table")
+                    }
+                  >
+                    {volumesView === "table" ? (
+                      <GridViewIcon fontSize="small" />
+                    ) : (
+                      <TableRowsIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                {createVolumeHandler && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={createVolumeHandler}
+                    startIcon={<AddIcon />}
+                  >
+                    Add Volume
+                  </Button>
+                )}
+              </>
+            ),
           },
           {
             value: "images",
@@ -381,18 +440,43 @@ const DockerPage: React.FC = () => {
                 onMountCreateHandler={(handler) =>
                   setCreateImageHandler(() => handler)
                 }
+                viewMode={imagesView}
               />
             ),
-            rightContent: createImageHandler ? (
-              <Button
-                variant="contained"
-                size="small"
-                onClick={createImageHandler}
-                startIcon={<AddIcon />}
-              >
-                Add Image
-              </Button>
-            ) : undefined,
+            rightContent: (
+              <>
+                <Tooltip
+                  title={
+                    imagesView === "table"
+                      ? "Switch to card view"
+                      : "Switch to table view"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      setImagesView(imagesView === "table" ? "card" : "table")
+                    }
+                  >
+                    {imagesView === "table" ? (
+                      <GridViewIcon fontSize="small" />
+                    ) : (
+                      <TableRowsIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                {createImageHandler && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={createImageHandler}
+                    startIcon={<AddIcon />}
+                  >
+                    Add Image
+                  </Button>
+                )}
+              </>
+            ),
           },
         ]}
         defaultTab="dashboard"

@@ -195,7 +195,7 @@ function AuthProvider({ children }: AuthProviderProps) {
           console.log(
             "[AuthContext] WebSocket closed (network issue or tab closed)",
           );
-          // Don't logout - user can refresh to reconnect
+          // Don't logout - StreamMultiplexer will auto-reconnect
         }
       });
       return () => unsubscribe();

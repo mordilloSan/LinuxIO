@@ -1,4 +1,4 @@
-import { Box, IconButton, Typography, Menu, MenuItem } from "@mui/material";
+import { IconButton, Menu, MenuItem, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -315,8 +315,8 @@ const TerminalXTerm: React.FC = () => {
   };
 
   return (
-    <Box
-      sx={{
+    <div
+      style={{
         height: "100%",
         width: "100%",
         background: theme.palette.background.default,
@@ -325,66 +325,65 @@ const TerminalXTerm: React.FC = () => {
       }}
     >
       {/* HEADER BAR */}
-      <Box
-        sx={(theme) => ({
+      <div
+        style={{
           display: "flex",
           alignItems: "center",
-          px: 3,
-          py: 1,
+          padding: `${theme.spacing(1)} ${theme.spacing(3)}`,
           minHeight: 64,
           backgroundColor:
             theme.palette.mode === "light"
               ? theme.darken(theme.sidebar.background, 0.13)
               : theme.lighten(theme.sidebar.background, 0.06),
           boxShadow: theme.shadows[2],
-        })}
+        }}
       >
         {/* Font Size Controls */}
         <Typography
           variant="body2"
-          sx={{ color: "#82909e", fontWeight: 500, mr: 2 }}
+          sx={{ color: "text.secondary", fontWeight: 500, mr: 2 }}
         >
           Font
         </Typography>
         <IconButton
           size="small"
-          sx={{ color: "#82909e" }}
+          sx={{ color: "text.secondary" }}
           onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
         >
           <Minus size={18} />
         </IconButton>
         <Typography
           variant="body2"
-          sx={{ minWidth: 28, textAlign: "center", color: "#82909e" }}
+          sx={{ minWidth: 28, textAlign: "center", color: "text.secondary" }}
         >
           {fontSize}
         </Typography>
         <IconButton
           size="small"
-          sx={{ color: "#82909e" }}
+          sx={{ color: "text.secondary" }}
           onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
         >
           <Plus size={18} />
         </IconButton>
 
-        <Box sx={{ flex: 1 }} />
+        <div style={{ flex: 1 }} />
 
         {/* Reset Button */}
         <IconButton
           size="small"
-          sx={{ color: "#82909e", ml: 1 }}
+          sx={{ color: "text.secondary", ml: 1 }}
           onClick={handleReset}
           title="Reset Terminal"
         >
           <RotateCcw size={18} />
         </IconButton>
-      </Box>
+      </div>
       {/* TERMINAL */}
-      <Box
+      <div
         ref={termRef}
         className="my-terminal-root"
         onContextMenu={handleContextMenu}
-        sx={{
+        style={{
           flex: 1,
           overflow: "hidden",
           borderRadius: "0 0 16px 16px",
@@ -418,8 +417,8 @@ const TerminalXTerm: React.FC = () => {
         }}
       >
         <MenuItem onClick={handleCopy} sx={{ py: 1 }}>
-          <Box
-            sx={{
+          <div
+            style={{
               display: "flex",
               justifyContent: "space-between",
               width: "100%",
@@ -429,25 +428,25 @@ const TerminalXTerm: React.FC = () => {
             <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
               Shift+C
             </Typography>
-          </Box>
+          </div>
         </MenuItem>
         <MenuItem onClick={handlePaste} sx={{ py: 1 }}>
-          <Box
-            sx={{
+          <div
+            style={{
               display: "flex",
               justifyContent: "space-between",
               width: "100%",
-              gap: 4,
+              gap: theme.spacing(4),
             }}
           >
             <span>Paste</span>
             <Typography variant="body2" sx={{ color: "text.secondary", ml: 2 }}>
               Shift+V
             </Typography>
-          </Box>
+          </div>
         </MenuItem>
       </Menu>
-    </Box>
+    </div>
   );
 };
 

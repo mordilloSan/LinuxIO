@@ -129,4 +129,4 @@ function NavbarUserDropdown() {
   );
 }
 
-export default NavbarUserDropdown;
+export default React.memo(NavbarUserDropdown);

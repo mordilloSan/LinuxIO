@@ -11,7 +11,6 @@ import {
   FormControlLabel,
   Radio,
   RadioGroup,
-  Box,
   Alert,
   useTheme,
 } from "@mui/material";
@@ -92,13 +91,13 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
             value="containers"
             control={<Radio />}
             label={
-              <Box>
+              <div>
                 <Typography variant="body1">Remove containers only</Typography>
                 <Typography variant="caption" color="text.secondary">
                   Runs `docker compose down` - removes containers and networks,
                   keeps compose file
                 </Typography>
-              </Box>
+              </div>
             }
             sx={{ alignItems: "flex-start", mb: 1 }}
           />
@@ -107,14 +106,14 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
             value="file"
             control={<Radio />}
             label={
-              <Box>
+              <div>
                 <Typography variant="body1">
                   Remove containers + delete compose file
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {configFiles.length > 0 && `Will delete: ${configFiles[0]}`}
                 </Typography>
-              </Box>
+              </div>
             }
             sx={{ alignItems: "flex-start", mb: 1 }}
           />
@@ -123,14 +122,14 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
             value="directory"
             control={<Radio color="error" />}
             label={
-              <Box>
+              <div>
                 <Typography variant="body1" color="error">
                   Remove containers + delete entire directory
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {workingDir && `Will delete: ${workingDir}`}
                 </Typography>
-              </Box>
+              </div>
             }
             sx={{ alignItems: "flex-start" }}
           />

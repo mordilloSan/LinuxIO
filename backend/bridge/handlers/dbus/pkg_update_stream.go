@@ -171,7 +171,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 	systemDBusMu.Lock()
 	defer systemDBusMu.Unlock()
 
-	conn, err := godbus.SystemBus()
+	conn, err := godbus.ConnectSystemBus()
 	if err != nil {
 		return fmt.Errorf("failed to connect to system bus: %w", err)
 	}
@@ -199,6 +199,11 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 	sigCh := make(chan *godbus.Signal, 100)
 	conn.Signal(sigCh)
 	defer conn.RemoveSignal(sigCh)
+	defer func() {
+		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+			logger.Debugf("failed to remove D-Bus match signal: %v", err)
+		}
+	}()
 
 	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
 		logger.Warnf("failed to add D-Bus match signal: %v", err)

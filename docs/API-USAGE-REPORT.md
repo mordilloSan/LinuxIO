@@ -805,7 +805,7 @@ Counts below are concrete code call sites (API doc-comment examples excluded).
 `list_containers`, `list_networks`, `list_volumes`, `list_images`, `list_compose_projects`, `get_icon_uri`, `start_container`, `stop_container`, `restart_container`, `remove_container`, `create_network`, `delete_network`, `delete_volume`, `delete_image`, `delete_stack`, `validate_stack_directory`, `validate_compose`, `get_compose_file_path`
 
 ### dbus
-`reboot`, `power_off`, `get_updates`, `get_updates_basic`, `get_update_detail`, `install_package`, `get_auto_updates`, `set_auto_updates`, `apply_offline_updates`, `get_update_history`, `list_services`, `get_service_info`, `get_service_logs`, `start_service`, `stop_service`, `restart_service`, `reload_service`, `enable_service`, `disable_service`, `mask_service`, `unmask_service`, `get_network_info`, `set_ipv4_manual`, `set_ipv4`, `set_ipv6`, `set_mtu`, `enable_connection`, `disable_connection`
+`reboot`, `power_off`, `get_updates`, `get_updates_basic`, `get_update_detail`, `install_package`, `get_auto_updates`, `set_auto_updates`, `apply_offline_updates`, `get_update_history`, `list_services`, `get_unit_info`, `get_service_logs`, `start_service`, `stop_service`, `restart_service`, `reload_service`, `enable_service`, `disable_service`, `mask_service`, `unmask_service`, `get_network_info`, `set_ipv4_manual`, `set_ipv4`, `set_ipv6`, `set_mtu`, `enable_connection`, `disable_connection`
 
 ### filebrowser
 `resource_get`, `resource_stat`, `resource_post`, `resource_delete`, `resource_patch`, `chmod`, `search`, `subfolders`, `dir_size`, `users_groups`

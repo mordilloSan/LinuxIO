@@ -1,15 +1,15 @@
 import {
-  Box,
   Button,
   Collapse,
+  Chip,
+  FormControlLabel,
+  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
-  Chip,
-  Switch,
-  FormControlLabel,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -98,6 +98,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
   onClose,
   onSave,
 }) => {
+  const theme = useTheme();
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [dirty, setDirty] = useState(false);
   const [prevIpv4Method, setPrevIpv4Method] = useState(iface.ipv4_method);
@@ -336,12 +337,20 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   return (
     <Collapse in={expanded} timeout="auto" unmountOnExit>
-      <Box mt={2} p={2} borderRadius={1}>
-        <Box
-          display="flex"
-          alignItems="center"
-          justifyContent="space-between"
-          sx={{ mb: 2 }}
+      <div
+        style={{
+          marginTop: theme.spacing(2),
+          padding: theme.spacing(2),
+          borderRadius: String(theme.shape.borderRadius),
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: theme.spacing(2),
+          }}
         >
           <FormControlLabel
             control={
@@ -374,7 +383,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
                     : "IPv4: unknown"
             }
           />
-        </Box>
+        </div>
 
         <ToggleButtonGroup
           value={mode}
@@ -388,14 +397,14 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         </ToggleButtonGroup>
 
         {mode === "auto" ? (
-          <Box>
+          <div>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               The interface will automatically obtain IP address, gateway, and
               DNS from a DHCP server.
             </Typography>
-          </Box>
+          </div>
         ) : (
-          <Box>
+          <div>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Configure static network settings. All fields are required.
             </Typography>
@@ -432,18 +441,25 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
               helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
               sx={{ mb: 2 }}
             />
-          </Box>
+          </div>
         )}
 
-        <Box display="flex" justifyContent="flex-end" gap={1} mt={2}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: theme.spacing(1),
+            marginTop: theme.spacing(2),
+          }}
+        >
           <Button onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Apply Configuration"}
           </Button>
-        </Box>
-      </Box>
+        </div>
+      </div>
     </Collapse>
   );
 };

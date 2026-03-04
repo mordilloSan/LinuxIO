@@ -1,102 +1,81 @@
-import { Box, CssBaseline } from "@mui/material";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
-import React, { useMemo } from "react";
+import { CssBaseline } from "@mui/material";
+import { useMediaQuery } from "@mui/material";
+import { alpha, ThemeProvider } from "@mui/material/styles";
+import React from "react";
 import { Outlet } from "react-router-dom";
 
+import authTheme from "@/theme/authTheme";
+
 const Auth: React.FC = () => {
-  const theme = useMemo(
-    () =>
-      createTheme({
-        palette: {
-          mode: "dark",
-          primary: {
-            main: "#407ad6",
-            light: "#6395e0",
-            dark: "#2f65cb",
-            contrastText: "#FFF",
-          },
-          secondary: { main: "#6395e0", contrastText: "#FFF" },
-          background: {
-            default: "#1B2635",
-            paper: "#233044",
-          },
-          text: {
-            primary: "rgba(255, 255, 255, 0.95)",
-            secondary: "rgba(255, 255, 255, 0.6)",
-          },
-        },
-        shape: { borderRadius: 16 },
-        typography: {
-          fontFamily: '"Space Grotesk", "Sora", sans-serif',
-          button: { textTransform: "none", fontWeight: 600 },
-          h4: { fontWeight: 600, letterSpacing: "-0.02em" },
-        },
-      }),
-    [],
+  return (
+    <ThemeProvider theme={authTheme}>
+      <CssBaseline />
+      <AuthContent />
+    </ThemeProvider>
   );
+};
+
+const AuthContent: React.FC = () => {
+  const isSmallUp = useMediaQuery(authTheme.breakpoints.up("sm"));
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Box
-        sx={(theme) => ({
-          "--accent": theme.palette.primary.main,
-          "--accent-strong": theme.palette.primary.dark,
-          "--accent-soft": theme.palette.primary.light,
-          minHeight: "100vh",
-          width: "100%",
-          display: "grid",
-          placeItems: "center",
+    <div
+      style={{
+        ["--accent" as string]: authTheme.palette.primary.main,
+        ["--accent-strong" as string]: authTheme.palette.primary.dark,
+        ["--accent-soft" as string]: authTheme.palette.primary.light,
+        minHeight: "100vh",
+        width: "100%",
+        display: "grid",
+        placeItems: "center",
+        position: "relative",
+        overflowX: "hidden",
+        overflowY: "auto",
+        paddingLeft: isSmallUp ? authTheme.spacing(4) : authTheme.spacing(2),
+        paddingRight: isSmallUp ? authTheme.spacing(4) : authTheme.spacing(2),
+        paddingTop: isSmallUp ? authTheme.spacing(8) : authTheme.spacing(6),
+        paddingBottom: isSmallUp ? authTheme.spacing(8) : authTheme.spacing(6),
+        backgroundImage: `radial-gradient(900px 420px at 12% 8%, ${alpha(authTheme.palette.primary.main, 0.25)}, ${alpha(authTheme.palette.background.default, 0)} 60%), radial-gradient(800px 360px at 90% 0%, ${alpha(authTheme.palette.primary.light, 0.2)}, ${alpha(authTheme.palette.background.default, 0)} 60%), linear-gradient(160deg, ${alpha(authTheme.palette.background.default, 0.92)} 0%, ${authTheme.palette.background.default} 45%, ${alpha(authTheme.palette.background.default, 0.72)} 100%)`,
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: -140,
+          right: -180,
+          width: 420,
+          height: 420,
+          borderRadius: "50%",
+          background: `radial-gradient(circle at 30% 30%, ${alpha(authTheme.palette.primary.main, 0.35)}, ${alpha(authTheme.palette.primary.main, 0)} 70%)`,
+          opacity: 0.9,
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          bottom: -180,
+          left: -160,
+          width: 460,
+          height: 460,
+          borderRadius: "50%",
+          background: `radial-gradient(circle at 70% 40%, ${alpha(authTheme.palette.primary.dark, 0.3)}, ${alpha(authTheme.palette.primary.dark, 0)} 70%)`,
+          opacity: 0.8,
+        }}
+      />
+      <div
+        style={{
           position: "relative",
-          overflowX: "hidden",
-          overflowY: "auto",
-          px: { xs: 2, sm: 4 },
-          py: { xs: 6, sm: 8 },
-          backgroundImage:
-            "radial-gradient(900px 420px at 12% 8%, rgba(64,122,214,0.25), rgba(27,38,53,0) 60%), radial-gradient(800px 360px at 90% 0%, rgba(99,149,224,0.2), rgba(27,38,53,0) 60%), linear-gradient(160deg, #0f172a 0%, #1B2635 45%, #0b1324 100%)",
-        })}
+          zIndex: 1,
+          width: "100%",
+          display: "flex",
+          justifyContent: "center",
+        }}
       >
-        <Box
-          aria-hidden
-          sx={{
-            position: "absolute",
-            top: -140,
-            right: -180,
-            width: 420,
-            height: 420,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle at 30% 30%, rgba(64,122,214,0.35), rgba(64,122,214,0) 70%)",
-            opacity: 0.9,
-          }}
-        />
-        <Box
-          aria-hidden
-          sx={{
-            position: "absolute",
-            bottom: -180,
-            left: -160,
-            width: 460,
-            height: 460,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle at 70% 40%, rgba(47,101,203,0.3), rgba(47,101,203,0) 70%)",
-            opacity: 0.8,
-          }}
-        />
-        <Box
-          sx={{
-            position: "relative",
-            zIndex: 1,
-            width: "100%",
-            display: "flex",
-            justifyContent: "center",
-          }}
-        >
-          <Outlet />
-        </Box>
-      </Box>
-    </ThemeProvider>
+        <Outlet />
+      </div>
+    </div>
   );
 };
 
