@@ -28,7 +28,7 @@ function extractIcons(data, names) {
     if (icon) {
       result[name] = icon;
     } else {
-      console.warn(`  ⚠️  Icon not found: ${data.prefix}:${name}`);
+      console.warn(`    Icon not found: ${data.prefix}:${name}`);
     }
   }
   return result;
@@ -87,4 +87,4 @@ addCollection({
 mkdirSync(resolve(frontendDir, "src/lib"), { recursive: true });
 const outPath = resolve(frontendDir, "src/lib/icons.ts");
 writeFileSync(outPath, output);
-console.log(`✅ Icon bundle written to src/lib/icons.ts`);
+console.log(` Icon bundle written to src/lib/icons.ts`);

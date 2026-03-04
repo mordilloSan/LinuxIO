@@ -47,7 +47,7 @@ const devModules = isDevMode
 // Debug: Log discovered modules in development
 if (isDevMode) {
   console.log(
-    "🔍 Vite discovered modules:",
+    " Vite discovered modules:",
     Object.keys(devModules).map((path) =>
       path.replace("../../../modules/", "").replace("/src/index.tsx", ""),
     ),
@@ -84,7 +84,7 @@ async function loadModuleFromSource(
       );
     }
 
-    console.log(`✅ Loaded module ${moduleName} from source (HMR enabled)`);
+    console.log(` Loaded module ${moduleName} from source (HMR enabled)`);
     return module.default;
   } catch (error) {
     console.error(`Failed to load module ${moduleName} from source:`, error);
@@ -156,7 +156,7 @@ function loadModuleFromBundle(
             return;
           }
 
-          console.log(`✅ Loaded module ${moduleName} from bundle`);
+          console.log(` Loaded module ${moduleName} from bundle`);
           resolve(mod.default);
         };
 

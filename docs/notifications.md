@@ -23,9 +23,9 @@ Storage (per-user)
 Push Stream (notifications)
         ↓
 Frontend Store
-   ↙           ↘
+              
 Dropdown      Notifications Page
-        ↘
+        
        Toasts (user policy)
 ```
 

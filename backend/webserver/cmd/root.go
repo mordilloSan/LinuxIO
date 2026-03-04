@@ -190,7 +190,7 @@ func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
 	select {
 	case <-quit:
-		logger.Infof("🛑 Shutdown signal received")
+		logger.Infof(" Shutdown signal received")
 	case <-done:
 		logger.Infof("HTTP server stopped, beginning shutdown...")
 	}

@@ -2,7 +2,7 @@
 # =============================================================================
 # LinuxIO Local Build and Install Script
 # Builds and installs LinuxIO from local source code
-# © 2025 Miguel Mariz (mordilloSan)
+#  2025 Miguel Mariz (mordilloSan)
 # =============================================================================
 
 set -euo pipefail
@@ -65,7 +65,7 @@ if [[ $MISSING_BINARIES -eq 1 ]]; then
     exit 1
 fi
 
-echo -e "${GREEN}✅ All binaries verified!${NC}"
+echo -e "${GREEN} All binaries verified!${NC}"
 
 # ========== INSTALL ==========
 echo ""
@@ -75,7 +75,7 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 
 # Install binaries
-echo -e "${YELLOW}📦 Installing binaries to /usr/local/bin...${NC}"
+echo -e "${YELLOW} Installing binaries to /usr/local/bin...${NC}"
 install -o root -g root -m 0755 "$REPO_ROOT/linuxio" /usr/local/bin/linuxio
 install -o root -g root -m 0755 "$REPO_ROOT/linuxio-webserver" /usr/local/bin/linuxio-webserver
 install -o root -g root -m 0755 "$REPO_ROOT/linuxio-bridge" /usr/local/bin/linuxio-bridge
@@ -83,7 +83,7 @@ install -o root -g root -m 0755 "$REPO_ROOT/linuxio-auth" /usr/local/bin/linuxio
 echo -e "${GREEN}✓ Binaries installed${NC}"
 
 # Install systemd files
-echo -e "${YELLOW}📦 Installing systemd service files...${NC}"
+echo -e "${YELLOW} Installing systemd service files...${NC}"
 for file in linuxio.target linuxio-webserver.service linuxio-webserver.socket \
             linuxio-auth.socket linuxio-auth@.service \
             linuxio-bridge-socket-user.service \
@@ -92,13 +92,13 @@ for file in linuxio.target linuxio-webserver.service linuxio-webserver.socket \
         install -m 0644 "$REPO_ROOT/packaging/systemd/$file" /etc/systemd/system/
         echo "  • Installed $file"
     else
-        echo -e "${YELLOW}  ⚠  Warning: $file not found in packaging/systemd/${NC}"
+        echo -e "${YELLOW}    Warning: $file not found in packaging/systemd/${NC}"
     fi
 done
 echo -e "${GREEN}✓ Systemd files installed${NC}"
 
 # Install tmpfiles.d configuration
-echo -e "${YELLOW}📦 Installing tmpfiles.d configuration...${NC}"
+echo -e "${YELLOW} Installing tmpfiles.d configuration...${NC}"
 mkdir -p /usr/lib/tmpfiles.d
 if [[ -f "$REPO_ROOT/packaging/systemd/linuxio-tmpfiles.conf" ]]; then
     install -m 0644 "$REPO_ROOT/packaging/systemd/linuxio-tmpfiles.conf" /usr/lib/tmpfiles.d/linuxio.conf
@@ -107,18 +107,18 @@ if [[ -f "$REPO_ROOT/packaging/systemd/linuxio-tmpfiles.conf" ]]; then
     systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf 2>/dev/null || true
     echo -e "${GREEN}✓ Tmpfiles.d configuration installed${NC}"
 else
-    echo -e "${YELLOW}  ⚠  Warning: linuxio-tmpfiles.conf not found${NC}"
+    echo -e "${YELLOW}    Warning: linuxio-tmpfiles.conf not found${NC}"
 fi
 
 # Install configuration files
-echo -e "${YELLOW}📦 Installing configuration files...${NC}"
+echo -e "${YELLOW} Installing configuration files...${NC}"
 mkdir -p /etc/linuxio
 
 if [[ -f "$REPO_ROOT/packaging/etc/linuxio/disallowed-users" ]]; then
     install -m 0644 "$REPO_ROOT/packaging/etc/linuxio/disallowed-users" /etc/linuxio/
     echo "  • Installed /etc/linuxio/disallowed-users"
 else
-    echo -e "${YELLOW}  ⚠  Warning: disallowed-users file not found${NC}"
+    echo -e "${YELLOW}    Warning: disallowed-users file not found${NC}"
 fi
 
 # Install any other config files in packaging/etc/linuxio/
@@ -134,7 +134,7 @@ fi
 echo -e "${GREEN}✓ Configuration files installed${NC}"
 
 # Install PAM configuration
-echo -e "${YELLOW}📦 Installing PAM configuration...${NC}"
+echo -e "${YELLOW} Installing PAM configuration...${NC}"
 if [[ -f "$REPO_ROOT/packaging/etc/pam.d/linuxio" ]]; then
     install -m 0644 "$REPO_ROOT/packaging/etc/pam.d/linuxio" /etc/pam.d/
     echo "  • Installed /etc/pam.d/linuxio"
@@ -145,14 +145,14 @@ else
 fi
 
 # Install issue updater script
-echo -e "${YELLOW}📦 Installing issue updater...${NC}"
+echo -e "${YELLOW} Installing issue updater...${NC}"
 mkdir -p /usr/share/linuxio/issue
 if [[ -f "$REPO_ROOT/packaging/scripts/update-issue" ]]; then
     install -m 0755 "$REPO_ROOT/packaging/scripts/update-issue" /usr/share/linuxio/issue/
     echo "  • Installed /usr/share/linuxio/issue/update-issue"
     echo -e "${GREEN}✓ Issue updater installed${NC}"
 else
-    echo -e "${YELLOW}⚠  Warning: update-issue script not found${NC}"
+    echo -e "${YELLOW}  Warning: update-issue script not found${NC}"
 fi
 
 # Create symlink for SSH login banner
@@ -162,7 +162,7 @@ if [[ -d /etc/motd.d ]]; then
 fi
 
 # Create global Watchtower data directory
-echo -e "${YELLOW}📦 Creating Watchtower data directory...${NC}"
+echo -e "${YELLOW} Creating Watchtower data directory...${NC}"
 mkdir -p /var/lib/linuxIO/watchtower
 if getent group docker &>/dev/null; then
     chown root:docker /var/lib/linuxIO/watchtower
@@ -170,7 +170,7 @@ if getent group docker &>/dev/null; then
     echo -e "${GREEN}✓ Watchtower directory created (/var/lib/linuxIO/watchtower, group: docker)${NC}"
 else
     chmod 755 /var/lib/linuxIO/watchtower
-    echo -e "${YELLOW}⚠  docker group not found — Watchtower directory created with mode 755${NC}"
+    echo -e "${YELLOW}  docker group not found — Watchtower directory created with mode 755${NC}"
 fi
 
 # ========== ENABLE AND RESTART ==========
@@ -180,15 +180,15 @@ echo -e "${CYAN}  Enabling and restarting services${NC}"
 echo -e "${CYAN}════════════════════════════════════════════${NC}"
 echo ""
 
-echo -e "${YELLOW}🔄 Reloading systemd...${NC}"
+echo -e "${YELLOW} Reloading systemd...${NC}"
 systemctl daemon-reload
 echo -e "${GREEN}✓ Systemd reloaded${NC}"
 
-echo -e "${YELLOW}✅ Enabling services...${NC}"
+echo -e "${YELLOW} Enabling services...${NC}"
 systemctl enable linuxio.target
 echo -e "${GREEN}✓ Services enabled${NC}"
 
-echo -e "${YELLOW}🔄 Restarting LinuxIO...${NC}"
+echo -e "${YELLOW} Restarting LinuxIO...${NC}"
 linuxio restart
 
 # Wait a moment for services to settle
@@ -198,13 +198,13 @@ sleep 2
 if systemctl is-active --quiet linuxio.target; then
     echo -e "${GREEN}✓ LinuxIO restarted successfully${NC}"
 else
-    echo -e "${YELLOW}⚠  Warning: LinuxIO may not have restarted properly${NC}"
+    echo -e "${YELLOW}  Warning: LinuxIO may not have restarted properly${NC}"
 fi
 
 # ========== SUMMARY ==========
 echo ""
 echo -e "${GREEN}════════════════════════════════════════════${NC}"
-echo -e "${GREEN}✅ Installation Complete!${NC}"
+echo -e "${GREEN} Installation Complete!${NC}"
 echo -e "${GREEN}════════════════════════════════════════════${NC}"
 echo ""
 echo "Installed components:"
@@ -214,5 +214,5 @@ echo "  • Configuration:   /etc/linuxio/"
 echo "  • PAM config:      /etc/pam.d/linuxio"
 echo "  • Issue updater:   /usr/share/linuxio/issue/"
 echo ""
-echo -e "${CYAN}🌐 Access LinuxIO at: https://localhost:${PORT}${NC}"
+echo -e "${CYAN} Access LinuxIO at: https://localhost:${PORT}${NC}"
 echo ""

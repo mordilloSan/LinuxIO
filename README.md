@@ -242,12 +242,12 @@ See [SECURITY.md](SECURITY.md) for details.
 
 ```
 LinuxIO/
-├── backend/          # Go backend (Gin + WebSocket)
-├── frontend/         # React frontend (Vite + TypeScript)
-├── packaging/        # Installation scripts & helpers
-├── .github/          # CI/CD workflows
-├── Makefile          # Build automation
-└── README.md         # This file
+|- backend/          # Go backend (HTTP + WebSocket)
+|- frontend/         # React frontend (Vite + TypeScript)
+|- packaging/        # Installation scripts and helpers
+|- .github/          # CI/CD workflows
+|- Makefile          # Build automation
+`- README.md         # This file
 ```
 
 ---

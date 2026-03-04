@@ -17,7 +17,7 @@ function ExampleModule() {
   } = linuxio.system.get_cpu_info.useQuery({ enabled: false });
 
   const handleClick = () => {
-    setMessage('Hello from Example Module! 👋');
+    setMessage('Hello from Example Module! ');
   };
 
   const getCpuInfo = async () => {
@@ -93,7 +93,7 @@ function ExampleModule() {
   return (
     <Box sx={{ p: 4 }}>
       <Typography variant="h3" gutterBottom>
-        🧩 Example Module
+         Example Module
       </Typography>
 
       <Typography variant="body1" sx={{ mb: 3, color: 'text.secondary' }}>
@@ -129,7 +129,7 @@ function ExampleModule() {
 
             {message && (
               <Typography sx={{ mt: 2, color: 'success.main' }}>
-                ✅ {message}
+                 {message}
               </Typography>
             )}
           </RootCard>
@@ -218,7 +218,7 @@ function ExampleModule() {
             </Typography>
 
             <Typography variant="body2" sx={{ mt: 2, fontFamily: 'monospace', fontSize: '0.75rem' }}>
-              💡 Edit this module in:<br />
+               Edit this module in:<br />
               modules/example-module/src/component.jsx
             </Typography>
           </RootCard>

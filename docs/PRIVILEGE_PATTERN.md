@@ -61,10 +61,10 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 ```
 
 **Pros:**
-- ✅ Handler package remains simple - no session dependency
-- ✅ Clear intent: entire package is privileged
-- ✅ Single point of enforcement in register.go
-- ✅ No import of middleware in handler package
+-  Handler package remains simple - no session dependency
+-  Clear intent: entire package is privileged
+-  Single point of enforcement in register.go
+-  No import of middleware in handler package
 
 #### Pattern B: Fine-Grained Privilege (Recommended for mixed packages)
 
@@ -104,9 +104,9 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 ```
 
 **Pros:**
-- ✅ Explicit per-handler control
-- ✅ Clear distinction between public and privileged operations
-- ✅ Flexible for packages with mixed access requirements
+-  Explicit per-handler control
+-  Clear distinction between public and privileged operations
+-  Flexible for packages with mixed access requirements
 
 ## Example: WireGuard (Package-Wide Pattern)
 
@@ -147,10 +147,10 @@ Result: **All WireGuard operations require administrator privileges**
 
 ### Attack Surface
 
-- ❌ **Cannot bypass**: Client never controls `sess.Privileged`
-- ❌ **Cannot forge**: Bootstrap comes from root auth daemon via stdin pipe
-- ❌ **Cannot replay**: Session ID is UUID, tied to bridge process lifecycle
-- ✅ **Auditable**: `grep RequirePrivileged` shows all protected operations
+-  **Cannot bypass**: Client never controls `sess.Privileged`
+-  **Cannot forge**: Bootstrap comes from root auth daemon via stdin pipe
+-  **Cannot replay**: Session ID is UUID, tied to bridge process lifecycle
+-  **Auditable**: `grep RequirePrivileged` shows all protected operations
 
 ### Privilege Determination
 

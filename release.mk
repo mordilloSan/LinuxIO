@@ -8,13 +8,13 @@ current_rel_branch = $(shell git branch --show-current)
 
 define _require_clean
 	@if ! git diff --quiet || ! git diff --cached --quiet; then \
-		echo "❌ Working tree not clean. Commit/stash changes first."; exit 1; \
+		echo " Working tree not clean. Commit/stash changes first."; exit 1; \
 	fi
 endef
 
 define _require_gh
 	@if ! command -v gh >/dev/null 2>&1; then \
-		echo "❌ GitHub CLI (gh) not found. Install: https://cli.github.com/"; exit 1; \
+		echo " GitHub CLI (gh) not found. Install: https://cli.github.com/"; exit 1; \
 	fi
 endef
 
@@ -27,7 +27,7 @@ define _read_and_validate_version
 	VERSION="$${VERSION_INPUT:-}"; \
 	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
 	if ! echo "$$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$'; then \
-	  echo "❌ VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
+	  echo " VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
 	  exit 1; \
 	fi; \
 	REL_BRANCH="dev/$$VERSION"
@@ -48,14 +48,14 @@ start-dev:
 	  git checkout $(DEFAULT_BASE_BRANCH); \
 	  git pull --ff-only; \
 	  if git show-ref --verify --quiet "refs/heads/$$REL_BRANCH"; then \
-	    echo "ℹ️  Branch $$REL_BRANCH already exists, checking it out…"; \
+	    echo "  Branch $$REL_BRANCH already exists, checking it out…"; \
 	    git checkout "$$REL_BRANCH"; \
 	  else \
 	    echo "Creating branch $$REL_BRANCH from $(DEFAULT_BASE_BRANCH)…"; \
 	    git checkout -b "$$REL_BRANCH" "$(DEFAULT_BASE_BRANCH)"; \
 	    git push -u origin "$$REL_BRANCH"; \
 	  fi; \
-	  echo "✅ Ready on branch $$REL_BRANCH"; \
+	  echo " Ready on branch $$REL_BRANCH"; \
 	}
 
 changelog:
@@ -64,22 +64,22 @@ changelog:
 	  set -euo pipefail; \
 	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
 	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; \
-	    echo "💡 Run 'make start-dev VERSION=v1.2.3' first."; \
+	    echo " Not on a dev/v* release branch (got '$$BRANCH')."; \
+	    echo " Run 'make start-dev VERSION=v1.2.3' first."; \
 	    exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  DATE="$$(date -u +%Y-%m-%d)"; \
 	  REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
-	  echo "📝 Generating changelog for $$VERSION ($$DATE)..."; \
-	  echo "📦 Repository: $$REPO"; \
+	  echo " Generating changelog for $$VERSION ($$DATE)..."; \
+	  echo " Repository: $$REPO"; \
 	  echo ""; \
 	  PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -v "^$$VERSION$$" | head -n1 || echo "")"; \
 	  if [ -n "$$PREV_TAG" ]; then \
-	    echo "📍 Changes since $$PREV_TAG"; \
+	    echo " Changes since $$PREV_TAG"; \
 	    COMMIT_RANGE="$${PREV_TAG}..HEAD"; \
 	  else \
-	    echo "📍 All commits (no previous tag found)"; \
+	    echo " All commits (no previous tag found)"; \
 	    COMMIT_RANGE=""; \
 	  fi; \
 	  BODY_FILE="$$(mktemp)"; \
@@ -93,7 +93,7 @@ changelog:
 	  } > new_entry.md; \
 	  if [ -f CHANGELOG.md ]; then \
 	    if grep -q "^## $$VERSION —" CHANGELOG.md; then \
-	      echo "⚠️  Version $$VERSION already exists in CHANGELOG.md, updating..."; \
+	      echo "  Version $$VERSION already exists in CHANGELOG.md, updating..."; \
 	      awk -v ver="$$VERSION" ' \
 	        /^## / { \
 	          if ($$2 == ver) { in_section=1; next } \
@@ -114,34 +114,34 @@ changelog:
 	  fi; \
 	  rm -f new_entry.md "$$BODY_FILE"; \
 	  echo ""; \
-	  echo "✅ CHANGELOG.md updated for $$VERSION"; \
+	  echo " CHANGELOG.md updated for $$VERSION"; \
 	  echo ""; \
-	  echo "📄 Preview:"; \
+	  echo " Preview:"; \
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  head -n 30 CHANGELOG.md; \
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  echo ""; \
-	  echo "📦 Committing changes..."; \
+	  echo " Committing changes..."; \
 	  git add CHANGELOG.md; \
 	  git commit -m "changelog"; \
 	  git push; \
-	  echo "✅ Changes committed"; \
+	  echo " Changes committed"; \
 	  echo ""; \
 	}
 
 rebuild-changelog:
-	@echo "⚠️  WARNING: This will OVERWRITE your entire CHANGELOG.md file!"
+	@echo "  WARNING: This will OVERWRITE your entire CHANGELOG.md file!"
 	@echo "   Press Ctrl+C to cancel, or Enter to continue..."
 	@read -r _
 	@{ \
 	  set -euo pipefail; \
 	  REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
-	  echo "📝 Rebuilding entire changelog history..."; \
-	  echo "📦 Repository: $$REPO"; \
+	  echo " Rebuilding entire changelog history..."; \
+	  echo " Repository: $$REPO"; \
 	  echo ""; \
 	  TAGS="$$(git tag --list 'v*' --sort=-v:refname)"; \
 	  if [ -z "$$TAGS" ]; then \
-	    echo "❌ No version tags found."; exit 1; \
+	    echo " No version tags found."; exit 1; \
 	  fi; \
 	  echo "# Changelog" > CHANGELOG.md; \
 	  echo "" >> CHANGELOG.md; \
@@ -162,9 +162,9 @@ rebuild-changelog:
 	    ./packaging/scripts/changelog-entry.sh "$$VERSION" "$$PREV_TAG" "$$COMMIT_RANGE" "$$REPO" >> CHANGELOG.md; \
 	  done; \
 	  echo ""; \
-	  echo "✅ Changelog rebuilt for all versions!"; \
+	  echo " Changelog rebuilt for all versions!"; \
 	  echo ""; \
-	  echo "📄 Preview:"; \
+	  echo " Preview:"; \
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	  head -n 50 CHANGELOG.md; \
 	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
@@ -178,16 +178,16 @@ open-pr:
 	  set -euo pipefail; \
 	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
 	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo "❌ Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
+	    echo " Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
 	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
 	  CREATED=0; \
 	  if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
-	    echo "ℹ️  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
+	    echo "  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
 	  else \
-	    echo "🔁 Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
+	    echo " Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
 	    PR_BODY_FILE="$$(mktemp)"; \
 	    awk -v ver="$$VERSION" ' \
 	      /^## / { \
@@ -206,7 +206,7 @@ open-pr:
 	    CREATED=1; \
 	  fi; \
 	  echo ""; \
-	  echo "🔍 Waiting for CI checks to register..."; \
+	  echo " Waiting for CI checks to register..."; \
 	  sleep 3; \
 	  for i in 1 2 3 4 5; do \
 	    CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
@@ -219,10 +219,10 @@ open-pr:
 	    fi; \
 	  done; \
 	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
-	    echo "⚠️  No CI checks detected after 15s. Skipping check wait."; \
-	    echo "💡 Checks might start later - monitor the PR manually."; \
+	    echo "  No CI checks detected after 15s. Skipping check wait."; \
+	    echo " Checks might start later - monitor the PR manually."; \
 	  else \
-	    echo "⏳ Waiting for checks to complete on PR #$$PRNUM…"; \
+	    echo " Waiting for checks to complete on PR #$$PRNUM…"; \
 	    echo "   (Press Ctrl+C to cancel)"; \
 	    echo ""; \
 	    START_TIME=$$(date +%s); \
@@ -231,13 +231,13 @@ open-pr:
 	    TOTAL_TIME=$$(( $$(date +%s) - $$START_TIME )); \
 	    echo ""; \
 	    if [ $$CHECK_STATUS -eq 0 ]; then \
-	      echo "✅ All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
+	      echo " All checks passed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
 	    else \
-	      echo "⚠️  gh pr checks exited with code $$CHECK_STATUS"; \
+	      echo "  gh pr checks exited with code $$CHECK_STATUS"; \
 	      echo "   Re-checking final status..."; \
 	      gh pr checks $(call _repo_flag) "$$PRNUM" || true; \
 	      echo ""; \
-	      echo "❌ Checks failed or monitoring was interrupted"; \
+	      echo " Checks failed or monitoring was interrupted"; \
 	    fi; \
 	  fi; \
 	  echo ""; \
@@ -250,34 +250,34 @@ merge-release:
 	  set -euo pipefail; \
 	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
 	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo "❌ Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
+	    echo " Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
 	  PRNUM="$${PR:-$$(gh pr list $(call _repo_flag) --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
-	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo "❌ No open PR from $$BRANCH to main."; exit 1; fi; \
-	  echo "🔍 Checking status of PR #$$PRNUM…"; \
+	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo " No open PR from $$BRANCH to main."; exit 1; fi; \
+	  echo " Checking status of PR #$$PRNUM…"; \
 	  CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
 	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
-	    echo "⚠️  No CI checks configured. Proceeding with merge."; \
-	    echo "💡 Consider setting up GitHub Actions for automated testing."; \
+	    echo "  No CI checks configured. Proceeding with merge."; \
+	    echo " Consider setting up GitHub Actions for automated testing."; \
 	  elif ! gh pr checks $(call _repo_flag) "$$PRNUM" > /dev/null 2>&1; then \
-	    echo "❌ Checks have not passed. Run 'make open-pr' to wait for checks."; \
+	    echo " Checks have not passed. Run 'make open-pr' to wait for checks."; \
 	    exit 1; \
 	  else \
-	    echo "✅ All checks passed."; \
+	    echo " All checks passed."; \
 	  fi; \
 	  TRIGGER_MARK=$$(( $$(date -u +%s) - 30 )); \
 	  echo ""; \
-	  echo "🔀 Merging PR #$$PRNUM…"; \
+	  echo " Merging PR #$$PRNUM…"; \
 	  MERGE_SUCCESS=0; \
 	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge && MERGE_SUCCESS=1; \
 	  if [ $$MERGE_SUCCESS -eq 0 ]; then \
-	    echo "❌ Merge failed! Branch NOT deleted."; \
+	    echo " Merge failed! Branch NOT deleted."; \
 	    exit 1; \
 	  fi; \
-	  echo "🔖 Tag to be released: $$VERSION"; \
+	  echo " Tag to be released: $$VERSION"; \
 	  echo ""; \
-	  echo "🔍 Checking for release workflow..."; \
+	  echo " Checking for release workflow..."; \
 	  sleep 2; \
 	  WORKFLOW_RUN=""; \
 	  for i in $$(seq 1 10); do \
@@ -307,7 +307,7 @@ merge-release:
 	    TITLE="$$(echo "$$WORKFLOW_RUN" | jq -r '.displayTitle // .name')"; \
 	    HBRANCH="$$(echo "$$WORKFLOW_RUN" | jq -r '.headBranch // "n/a"')"; \
 	    EVENT="$$(echo "$$WORKFLOW_RUN" | jq -r '.event // "n/a"')"; \
-	    echo "📊 Release workflow found"; \
+	    echo " Release workflow found"; \
 	    echo "   Run ID: #$$RUN_ID"; \
 	    echo "   Title: $$TITLE"; \
 	    echo "   Event: $$EVENT"; \
@@ -316,7 +316,7 @@ merge-release:
 	    echo "   Started: $$CREATED"; \
 	    if [ "$$STATUS" = "in_progress" ] || [ "$$STATUS" = "queued" ] || [ "$$STATUS" = "waiting" ]; then \
 	      echo ""; \
-	      echo "⏳ Watching release workflow..."; \
+	      echo " Watching release workflow..."; \
 	      echo "   (Press Ctrl+C to cancel)"; \
 	      echo ""; \
 	      if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echo -icanon min 0 time 0; fi; \
@@ -337,9 +337,9 @@ merge-release:
 	          RUN_INFO="$$(gh run view $(call _repo_flag) "$$RUN_ID" --json status,conclusion 2>/dev/null || echo '')"; \
 	          if [ -n "$$RUN_INFO" ]; then \
 	            CURRENT_STATUS="$$(echo "$$RUN_INFO" | jq -r '.status // "unknown"')"; \
-	            printf "\r⏱️  Elapsed: %02d:%02d | Status: %-15s" $$((ELAPSED/60)) $$((ELAPSED%60)) "$$CURRENT_STATUS"; \
+	            printf "\r  Elapsed: %02d:%02d | Status: %-15s" $$((ELAPSED/60)) $$((ELAPSED%60)) "$$CURRENT_STATUS"; \
 	          else \
-	            printf "\r⏱️  Elapsed: %02d:%02d | Status: checking...      " $$((ELAPSED/60)) $$((ELAPSED%60)); \
+	            printf "\r  Elapsed: %02d:%02d | Status: checking...      " $$((ELAPSED/60)) $$((ELAPSED%60)); \
 	          fi; \
 	          sleep 2; \
 	        done \
@@ -353,11 +353,11 @@ merge-release:
 	      trap - INT TERM; \
 	      TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
 	      if [ $$WATCH_STATUS -eq 0 ]; then \
-	        echo "✅ Release workflow completed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
+	        echo " Release workflow completed! (took $$(printf "%02d:%02d" $$((TOTAL_TIME/60)) $$((TOTAL_TIME%60))))"; \
 	        FINAL_CONCLUSION="$$(gh run view $(call _repo_flag) "$$RUN_ID" --json conclusion --jq '.conclusion // ""')"; \
 	        WORKFLOW_SUCCESS=$$( [ "$$FINAL_CONCLUSION" = "success" ] && echo 1 || echo 0 ); \
 	      else \
-	        echo "❌ Release workflow failed or was cancelled"; \
+	        echo " Release workflow failed or was cancelled"; \
 	        WORKFLOW_SUCCESS=0; \
 	      fi; \
 	      echo ""; \
@@ -368,24 +368,24 @@ merge-release:
 	      gh run view $(call _repo_flag) "$$RUN_ID"; \
 	    fi; \
 	  else \
-	    echo "⚠️  No release workflow found. The workflow may:"; \
+	    echo "  No release workflow found. The workflow may:"; \
 	    echo "   • Not exist (no .github/workflows/release.yml)"; \
 	    echo "   • Not be triggered by this merge"; \
 	    echo "   • Take longer to start than expected"; \
-	    echo "💡 Check manually: gh run list --workflow=release.yml"; \
+	    echo " Check manually: gh run list --workflow=release.yml"; \
 	    WORKFLOW_SUCCESS=0; \
 	  fi; \
 	  echo ""; \
 	  if [ "$${WORKFLOW_SUCCESS:-0}" -eq 1 ]; then \
-	    echo "🗑️  Cleaning up: deleting branch $$BRANCH..."; \
+	    echo "  Cleaning up: deleting branch $$BRANCH..."; \
 	    git checkout $(DEFAULT_BASE_BRANCH) 2>/dev/null || git checkout main; \
 	    git pull --ff-only; \
 	    git branch -d "$$BRANCH" 2>/dev/null || true; \
 	    git push origin --delete "$$BRANCH" 2>/dev/null || echo "   (remote branch already deleted)"; \
-	    echo "✅ Branch cleanup complete"; \
+	    echo " Branch cleanup complete"; \
 	  else \
-	    echo "⚠️  Workflow did not succeed - keeping branch $$BRANCH for debugging"; \
-	    echo "💡 After fixing issues, you can manually delete with:"; \
+	    echo "  Workflow did not succeed - keeping branch $$BRANCH for debugging"; \
+	    echo " After fixing issues, you can manually delete with:"; \
 	    echo "   git branch -d $$BRANCH"; \
 	    echo "   git push origin --delete $$BRANCH"; \
 	    exit 1; \

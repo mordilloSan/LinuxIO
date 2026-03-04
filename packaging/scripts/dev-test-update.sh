@@ -2,7 +2,7 @@
 # =============================================================================
 # LinuxIO Dev Mode Test Update Script
 # Simulates update by copying current binaries onto themselves and restarting
-# © 2025 Miguel Mariz (mordilloSan)
+#  2025 Miguel Mariz (mordilloSan)
 # =============================================================================
 
 set -euo pipefail
@@ -63,7 +63,7 @@ for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth; do
         rm -f "/tmp/${binary}.tmp"
         echo "✓ Installed $binary (mode: 0755)"
     else
-        echo "⚠ Binary $binary not found, skipping"
+        echo " Binary $binary not found, skipping"
     fi
     sleep 0.1
 done
@@ -77,7 +77,7 @@ echo "▸ Installing configuration files..."
 if [[ -f "/etc/linuxio/disallowed-users" ]]; then
     echo "✓ /etc/linuxio/disallowed-users already exists (not overwriting)"
 else
-    echo "⚠ Configuration directory exists"
+    echo " Configuration directory exists"
 fi
 echo "▸ Installing PAM configuration..."
 if [[ -f "/etc/pam.d/linuxio" ]]; then
@@ -124,7 +124,7 @@ printf '{"id":"%s","status":"ok","exit_code":0,"started_at":%s,"finished_at":%s}
     "$RUN_ID" "$started" "$finished" > "$UPDATE_STATUS_FILE"
 
 echo ""
-echo "✅ Installation complete!"
+echo " Installation complete!"
 echo ""
 echo "Note: Services NOT restarted in dev mode (server stays up for testing)"
 echo "      In production, services restart automatically."

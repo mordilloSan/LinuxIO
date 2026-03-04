@@ -2,7 +2,7 @@
 # =============================================================================
 # LinuxIO Complete Uninstall Script
 # Removes all LinuxIO files, services, and configurations
-# © 2025 Miguel Mariz (mordilloSan)
+#  2025 Miguel Mariz (mordilloSan)
 # =============================================================================
 
 set -euo pipefail
@@ -27,7 +27,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # ========== STOP AND DISABLE SERVICES ==========
-echo -e "${YELLOW}🛑 Stopping and disabling LinuxIO services...${NC}"
+echo -e "${YELLOW} Stopping and disabling LinuxIO services...${NC}"
 systemctl stop linuxio.target 2>/dev/null || true
 # Stop all linuxio units
 systemctl stop 'linuxio*' 2>/dev/null || true
@@ -36,7 +36,7 @@ systemctl disable 'linuxio*' 2>/dev/null || true
 echo -e "${GREEN}✓ Services stopped and disabled${NC}"
 
 # ========== REMOVE SYSTEMD FILES ==========
-echo -e "${YELLOW}🗑️  Removing systemd files...${NC}"
+echo -e "${YELLOW}  Removing systemd files...${NC}"
 rm -f /etc/systemd/system/linuxio*
 rm -f /lib/systemd/system/linuxio*
 # Remove any symlinks in target.wants directories
@@ -44,24 +44,24 @@ rm -f /etc/systemd/system/*.wants/linuxio*
 echo -e "${GREEN}✓ Systemd files removed${NC}"
 
 # ========== RELOAD SYSTEMD ==========
-echo -e "${YELLOW}🔄 Reloading systemd...${NC}"
+echo -e "${YELLOW} Reloading systemd...${NC}"
 systemctl daemon-reload
 systemctl reset-failed 2>/dev/null || true
 echo -e "${GREEN}✓ Systemd reloaded${NC}"
 
 # ========== REMOVE BINARIES ==========
-echo -e "${YELLOW}🗑️  Removing binaries...${NC}"
+echo -e "${YELLOW}  Removing binaries...${NC}"
 rm -f /usr/local/bin/linuxio*
 echo -e "${GREEN}✓ Binaries removed${NC}"
 
 # ========== REMOVE CONFIGURATION FILES ==========
-echo -e "${YELLOW}🗑️  Removing configuration files...${NC}"
+echo -e "${YELLOW}  Removing configuration files...${NC}"
 rm -rf /etc/linuxio
 rm -f /etc/pam.d/linuxio
 echo -e "${GREEN}✓ Configuration files removed${NC}"
 
 # ========== REMOVE RUNTIME FILES ==========
-echo -e "${YELLOW}🗑️  Removing runtime and data files...${NC}"
+echo -e "${YELLOW}  Removing runtime and data files...${NC}"
 rm -rf /run/linuxio
 rm -rf /usr/share/linuxio
 rm -rf /var/lib/linuxIO
@@ -72,7 +72,7 @@ rm -f /etc/motd.d/linuxio 2>/dev/null || true
 echo -e "${GREEN}✓ Runtime files removed${NC}"
 
 # ========== REMOVE OLD STATIC GROUP/USER (IF EXISTS) ==========
-echo -e "${YELLOW}🗑️  Removing old static accounts (if they exist)...${NC}"
+echo -e "${YELLOW}  Removing old static accounts (if they exist)...${NC}"
 
 # Remove static linuxio user if it exists
 if getent passwd linuxio >/dev/null 2>&1; then
@@ -95,13 +95,13 @@ if [[ -n "${SUDO_USER:-}" ]]; then
 fi
 
 # ========== REMOVE DEV FILES ==========
-echo -e "${YELLOW}🗑️  Removing development files...${NC}"
+echo -e "${YELLOW}  Removing development files...${NC}"
 rm -rf /tmp/linuxio
 rm -f /etc/sudoers.d/linuxio-dev
 echo -e "${GREEN}✓ Development files removed${NC}"
 
 # ========== CLEAN BUILD ARTIFACTS ==========
-echo -e "${YELLOW}🗑️  Cleaning build artifacts from repo...${NC}"
+echo -e "${YELLOW}  Cleaning build artifacts from repo...${NC}"
 # This script is in packaging/scripts/, so go up two levels to repo root
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -f "$REPO_ROOT/makefile" || -f "$REPO_ROOT/Makefile" ]]; then
@@ -109,13 +109,13 @@ if [[ -f "$REPO_ROOT/makefile" || -f "$REPO_ROOT/Makefile" ]]; then
     rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth 2>/dev/null || true
     echo -e "${GREEN}✓ Build artifacts cleaned${NC}"
 else
-    echo -e "${YELLOW}⚠  Cannot find repo directory, skipping build artifact cleanup${NC}"
+    echo -e "${YELLOW}  Cannot find repo directory, skipping build artifact cleanup${NC}"
 fi
 
 # ========== SUMMARY ==========
 echo ""
 echo -e "${GREEN}════════════════════════════════════════════${NC}"
-echo -e "${GREEN}✅ LinuxIO completely uninstalled!${NC}"
+echo -e "${GREEN} LinuxIO completely uninstalled!${NC}"
 echo -e "${GREEN}════════════════════════════════════════════${NC}"
 echo ""
 echo "Removed:"

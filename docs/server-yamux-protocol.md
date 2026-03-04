@@ -7,7 +7,7 @@
 ```
 Server's job:
   1. Accept WebSocket connections
-  2. Route frames between WebSocket ↔ Yamux based on streamID
+  2. Route frames between WebSocket  Yamux based on streamID
   3. Nothing else
 ```
 
@@ -75,7 +75,7 @@ Browser sends/receives binary WebSocket messages:
 └─ Stream ID: 1
 ```
 
-### Layer 2: Yamux Protocol (WebSocket ↔ Bridge)
+### Layer 2: Yamux Protocol (WebSocket  Bridge)
 
 Standard yamux multiplexing over Unix socket or TCP. The server uses `github.com/hashicorp/yamux`:
 
