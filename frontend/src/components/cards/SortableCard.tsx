@@ -8,9 +8,6 @@ import "./frosted-card.css";
 
 import { cardBorderRadius } from "@/theme/constants";
 
-// MUI sx multiplies borderRadius by theme.shape.borderRadius (default 4).
-const BORDER_RADIUS_PX = cardBorderRadius * 4;
-
 interface SortableCardProps {
   id: string;
   editMode: boolean;
@@ -58,7 +55,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              borderRadius: BORDER_RADIUS_PX,
+              borderRadius: cardBorderRadius,
               "--sc-hover-bg": theme.palette.action.hover,
             } as React.CSSProperties
           }

@@ -33,19 +33,19 @@ const Dashboard: React.FC = () => {
   const contentSpacing =
     location.pathname === "/"
       ? {
-        paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-        paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
-        paddingTop: 0,
-        paddingBottom: 0,
-      }
+          paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+          paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
+          paddingTop: 0,
+          paddingBottom: 0,
+        }
       : location.pathname.includes("/filebrowser")
         ? { padding: 0 }
         : {
-          paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(2),
-          paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
-          paddingTop: theme.spacing(5),
-          paddingBottom: theme.spacing(5),
-        };
+            paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(2),
+            paddingRight: isSmallUp ? theme.spacing(7) : theme.spacing(2),
+            paddingTop: theme.spacing(5),
+            paddingBottom: theme.spacing(5),
+          };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>

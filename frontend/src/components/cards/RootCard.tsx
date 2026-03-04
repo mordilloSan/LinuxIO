@@ -9,10 +9,6 @@ import {
   getFrostedCardStyles,
 } from "@/theme/surfaces";
 
-// MUI sx multiplies borderRadius by theme.shape.borderRadius (default 4).
-// cardBorderRadius = 4, so the effective CSS value is 4 * 4 = 16px.
-const BORDER_RADIUS_PX = cardBorderRadius * 4;
-
 type FrostedCardProps = React.HTMLAttributes<HTMLDivElement> & {
   /** When true, card lifts on hover (translateY + stronger shadow). */
   hoverLift?: boolean;
@@ -24,7 +20,7 @@ const FrostedCard = React.forwardRef<HTMLDivElement, FrostedCardProps>(
 
     const frostedStyles = {
       overflow: "hidden",
-      borderRadius: BORDER_RADIUS_PX,
+      borderRadius: cardBorderRadius,
       ...getFrostedCardStyles(theme),
       ...(hoverLift && {
         transition: "transform 0.2s, box-shadow 0.2s",

@@ -1,6 +1,6 @@
-import React from "react";
 import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import React from "react";
 
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";

@@ -32,10 +32,6 @@ export default function CollapsibleCard<T extends Record<string, any>>({
   const [open, setOpen] = useState(false);
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
-  const baseBorderRadius =
-    typeof theme.shape.borderRadius === "number"
-      ? theme.shape.borderRadius
-      : Number.parseFloat(theme.shape.borderRadius);
 
   const leftColor = useMemo(
     () => (selected || open ? theme.palette.primary.main : "transparent"),
@@ -49,7 +45,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
         marginBottom: theme.spacing(2),
         position: "relative",
         borderLeft: `4px solid ${leftColor}`,
-        borderRadius: baseBorderRadius * cardBorderRadius,
+        borderRadius: cardBorderRadius,
         cursor: "pointer",
         overflow: "visible",
         transition:
@@ -71,7 +67,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
         style={{
           position: "absolute",
           inset: 0,
-          borderRadius: baseBorderRadius * cardBorderRadius,
+          borderRadius: cardBorderRadius,
           backgroundColor: alpha(
             theme.palette.text.primary,
             theme.palette.mode === "dark" ? 0.08 : 0.05,
