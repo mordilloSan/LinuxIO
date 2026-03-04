@@ -1,13 +1,13 @@
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import {
-  Box,
   Button,
   IconButton,
   LinearProgress,
   Tooltip,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { useFileTransfers } from "@/hooks/useFileTransfers";
@@ -37,6 +37,7 @@ const FileNotifications: React.FC = () => {
     cancelMove,
     openIndexerDialog,
   } = useFileTransfers();
+  const theme = useTheme();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [completedTransfers, setCompletedTransfers] = React.useState<
     CompletedTransfer[]
@@ -194,22 +195,21 @@ const FileNotifications: React.FC = () => {
   };
 
   return (
-    <Box sx={{ position: "relative", display: "inline-flex" }}>
-      <Box
+    <div style={{ position: "relative", display: "inline-flex" }}>
+      <div
         role="button"
         tabIndex={0}
         onKeyDown={handleOperationsKeyToggle}
         onClick={handleOperationsToggle}
-        sx={{
+        style={{
           cursor: "pointer",
           display: "flex",
           flexDirection: "column",
-          gap: 0.5,
-          border: "1px solid",
-          borderColor: "transparent",
-          borderRadius: 1,
-          p: 1,
-          boxShadow: isExpanded ? 4 : "none",
+          gap: 2,
+          border: "1px solid transparent",
+          borderRadius: 4,
+          padding: 4,
+          boxShadow: isExpanded ? theme.shadows[4] : "none",
           whiteSpace: "nowrap",
           minWidth: 90,
         }}
@@ -229,30 +229,27 @@ const FileNotifications: React.FC = () => {
             sx={{ height: 6, borderRadius: 1 }}
           />
         ) : null}
-      </Box>
+      </div>
       {isExpanded && (
-        <Box
-          sx={{
+        <div
+          style={{
             position: "absolute",
             bottom: "calc(100% + 12px)",
             right: 0,
             zIndex: 1400,
             minWidth: 250,
             maxWidth: 380,
-            boxShadow: 6,
-            borderRadius: 2,
-            border: "1px solid",
-            borderColor: "divider",
+            boxShadow: theme.shadows[6],
+            borderRadius: 8,
+            border: `1px solid ${theme.palette.divider}`,
             overflow: "hidden",
-            backgroundColor: "background.paper",
+            backgroundColor: theme.palette.background.paper,
           }}
         >
-          <Box
-            sx={{
-              p: 2,
-              pb: 1.5,
-              borderBottom: "1px solid",
-              borderColor: "divider",
+          <div
+            style={{
+              padding: "8px 8px 6px",
+              borderBottom: `1px solid ${theme.palette.divider}`,
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
@@ -269,13 +266,13 @@ const FileNotifications: React.FC = () => {
                 sx={{ minWidth: "auto" }}
               ></Button>
             )}
-          </Box>
-          <Box
-            sx={{
-              p: 1.5,
+          </div>
+          <div
+            style={{
+              padding: 6,
               display: "flex",
               flexDirection: "column",
-              gap: 2,
+              gap: 8,
               maxHeight: 400,
               overflow: "auto",
             }}
@@ -285,7 +282,7 @@ const FileNotifications: React.FC = () => {
                 const isIndexerTransfer = transfer.type === "indexer";
 
                 return (
-                  <Box
+                  <div
                     key={transfer.id}
                     role={isIndexerTransfer ? "button" : undefined}
                     tabIndex={isIndexerTransfer ? 0 : undefined}
@@ -293,14 +290,16 @@ const FileNotifications: React.FC = () => {
                     onKeyDown={
                       isIndexerTransfer ? handleIndexerRowKeyDown : undefined
                     }
-                    sx={isIndexerTransfer ? { cursor: "pointer" } : undefined}
+                    style={
+                      isIndexerTransfer ? { cursor: "pointer" } : undefined
+                    }
                   >
-                    <Box
-                      sx={{
+                    <div
+                      style={{
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        mb: 0.5,
+                        marginBottom: 2,
                       }}
                     >
                       <Typography
@@ -334,7 +333,7 @@ const FileNotifications: React.FC = () => {
                           <CloseIcon fontSize="small" />
                         </IconButton>
                       )}
-                    </Box>
+                    </div>
                     {(() => {
                       const percentText = `${Math.round(transfer.progress)}%`;
                       const speedText =
@@ -392,7 +391,7 @@ const FileNotifications: React.FC = () => {
                         </Tooltip>
                       );
                     })()}
-                  </Box>
+                  </div>
                 );
               })}
 
@@ -401,7 +400,7 @@ const FileNotifications: React.FC = () => {
                 const isIndexerTransfer = transfer.type === "indexer";
 
                 return (
-                  <Box
+                  <div
                     key={transfer.id}
                     role={isIndexerTransfer ? "button" : undefined}
                     tabIndex={isIndexerTransfer ? 0 : undefined}
@@ -409,10 +408,12 @@ const FileNotifications: React.FC = () => {
                     onKeyDown={
                       isIndexerTransfer ? handleIndexerRowKeyDown : undefined
                     }
-                    sx={isIndexerTransfer ? { cursor: "pointer" } : undefined}
+                    style={
+                      isIndexerTransfer ? { cursor: "pointer" } : undefined
+                    }
                   >
-                    <Box
-                      sx={{
+                    <div
+                      style={{
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
@@ -447,8 +448,8 @@ const FileNotifications: React.FC = () => {
                       >
                         ✓
                       </Typography>
-                    </Box>
-                  </Box>
+                    </div>
+                  </div>
                 );
               })}
 
@@ -461,10 +462,10 @@ const FileNotifications: React.FC = () => {
                 No active operations
               </Typography>
             )}
-          </Box>
-        </Box>
+          </div>
+        </div>
       )}
-    </Box>
+    </div>
   );
 };
 

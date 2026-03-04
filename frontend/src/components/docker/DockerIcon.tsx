@@ -1,4 +1,5 @@
-import { Box, Skeleton } from "@mui/material";
+import { Skeleton } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { useDockerIcon } from "@/hooks/useDockerIcon";
@@ -18,6 +19,7 @@ const DockerIcon: React.FC<DockerIconProps> = ({
   size = 24,
   alt = "icon",
 }) => {
+  const theme = useTheme();
   const { iconUri, isLoading, isError } = useDockerIcon(identifier);
 
   // No identifier provided
@@ -40,12 +42,12 @@ const DockerIcon: React.FC<DockerIconProps> = ({
   // Error state or no icon found - show placeholder
   if (isError || !iconUri) {
     return (
-      <Box
-        sx={{
+      <div
+        style={{
           width: size,
           height: size,
           borderRadius: "50%",
-          bgcolor: "action.hover",
+          backgroundColor: theme.palette.action.hover,
           flexShrink: 0,
         }}
       />
@@ -54,11 +56,10 @@ const DockerIcon: React.FC<DockerIconProps> = ({
 
   // Success - show the icon
   return (
-    <Box
-      component="img"
+    <img
       src={iconUri}
       alt={alt}
-      sx={{
+      style={{
         width: size,
         height: size,
         objectFit: "contain",

@@ -1,4 +1,4 @@
-import { Box, IconButton, Tooltip, Typography, useTheme } from "@mui/material";
+import { IconButton, Tooltip, Typography, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import { useRef } from "react";
@@ -24,6 +24,7 @@ interface ColorEntry {
 
 function ThemeColorsSection() {
   const theme = useTheme();
+  const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [themeColors, setThemeColors] = useConfigValue("themeColors");
 
   const entries: ColorEntry[] = [
@@ -156,8 +157,14 @@ function ThemeColorsSection() {
     themeColors != null && Object.values(themeColors).some((v) => v != null);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      <Box sx={{ display: "flex", alignItems: "center" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: theme.spacing(1),
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center" }}>
         <Typography variant="body1" fontWeight={600} sx={{ flexGrow: 1 }}>
           Colors
         </Typography>
@@ -179,32 +186,38 @@ function ThemeColorsSection() {
             </IconButton>
           </span>
         </Tooltip>
-      </Box>
+      </div>
 
       {entries.map(({ key, label, description, effectiveColor }) => {
         const isOverridden = themeColors?.[key] != null;
         return (
-          <Box
+          <div
             key={key}
-            sx={{
+            style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              p: 1.5,
-              borderRadius: 1.5,
+              padding: theme.spacing(1.5),
+              borderRadius: `${baseBorderRadius * 1.5}px`,
               border: `1px solid ${isOverridden ? theme.palette.primary.main : theme.palette.divider}`,
             }}
           >
-            <Box>
+            <div>
               <Typography variant="body2" fontWeight={600}>
                 {label}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {description}
               </Typography>
-            </Box>
+            </div>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: theme.spacing(0.5),
+              }}
+            >
               {isOverridden && (
                 <Tooltip title="Reset to default">
                   <IconButton
@@ -221,11 +234,11 @@ function ThemeColorsSection() {
                 onChange={(val) => handleChange(key, val)}
                 label={label}
               />
-            </Box>
-          </Box>
+            </div>
+          </div>
         );
       })}
-    </Box>
+    </div>
   );
 }
 
@@ -241,22 +254,31 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
   const normalized = toInputColor(color);
 
   return (
-    <Box sx={{ position: "relative", flexShrink: 0 }}>
-      <Box
+    <div
+      style={{
+        position: "relative",
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+      }}
+    >
+      <button
+        type="button"
         onClick={() => inputRef.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
-        }}
         aria-label={`Pick color for ${label}`}
-        sx={{
+        style={{
+          display: "block",
           width: 28,
           height: 28,
-          borderRadius: 1,
-          bgcolor: normalized,
+          borderRadius: theme.shape.borderRadius,
+          backgroundColor: normalized,
           cursor: "pointer",
+          padding: 0,
+          margin: 0,
+          lineHeight: 0,
           border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
+          appearance: "none",
+          boxSizing: "border-box",
         }}
       />
       <input
@@ -273,7 +295,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
         }}
         aria-hidden="true"
       />
-    </Box>
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Alert, Box } from "@mui/material";
+import { Alert } from "@mui/material";
 import React, { PropsWithChildren } from "react";
 import { Navigate } from "react-router-dom";
 
@@ -21,11 +21,11 @@ export const PrivilegedGuard: React.FC<PropsWithChildren> = ({ children }) => {
   // Authenticated but not privileged - show error
   if (!privileged) {
     return (
-      <Box sx={{ p: 4 }}>
+      <div style={{ padding: 16 }}>
         <Alert severity="error">
           Access Denied: This page requires administrator privileges.
         </Alert>
-      </Box>
+      </div>
     );
   }
 

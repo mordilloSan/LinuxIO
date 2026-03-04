@@ -1,0 +1,39 @@
+@keyframes login-float {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, -8px); }
+}
+
+.login-badge {
+  position: absolute;
+  top: -80px;
+  left: 50%;
+  padding-inline: 8px;
+  padding-block: 4.2px;
+  animation: login-float 4.5s ease-in-out infinite;
+}
+
+@media (min-width: 600px) {
+  .login-badge {
+    top: -96px;
+    padding-inline: 20px;
+    padding-block: 11px;
+  }
+}
+
+.login-badge-icon {
+  width: 30px;
+  height: 30px;
+}
+
+@media (min-width: 600px) {
+  .login-badge-icon {
+    width: 34px;
+    height: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-badge {
+    animation: none;
+  }
+}

@@ -4,7 +4,6 @@ import LockIcon from "@mui/icons-material/Lock";
 import LockOpenIcon from "@mui/icons-material/LockOpen";
 import PasswordIcon from "@mui/icons-material/Password";
 import {
-  Box,
   Grid,
   TableCell,
   TextField,
@@ -238,8 +237,16 @@ const UsersTab: React.FC<UsersTabProps> = ({
   ];
 
   return (
-    <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+    <div>
+      <div
+        style={{
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
         <TextField
           variant="outlined"
           size="small"
@@ -253,7 +260,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
             },
           }}
         />
-        <Box fontWeight="bold">{filtered.length} shown</Box>
+        <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -265,23 +272,25 @@ const UsersTab: React.FC<UsersTabProps> = ({
             Delete ({effectiveSelected.size})
           </Button>
         )}
-      </Box>
+      </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <Grid container spacing={2}>
             {filtered.map((user) => (
               <Grid key={user.username} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard sx={{ p: 2 }}>
-                  <Box
-                    sx={{
+                <FrostedCard style={{ padding: 8 }}>
+                  <div
+                    style={{
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      gap: 1,
-                      mb: 1,
+                      gap: 4,
+                      marginBottom: 4,
                     }}
                   >
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 4 }}
+                    >
                       <Checkbox
                         size="small"
                         checked={effectiveSelected.has(user.username)}
@@ -296,8 +305,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       <Typography variant="body2" fontWeight="bold" noWrap>
                         {user.username}
                       </Typography>
-                    </Box>
-                    <Box display="flex" gap={0.5}>
+                    </div>
+                    <div style={{ display: "flex", gap: 2 }}>
                       <Tooltip title="Edit">
                         <IconButton
                           size="small"
@@ -333,11 +342,16 @@ const UsersTab: React.FC<UsersTabProps> = ({
                           )}
                         </IconButton>
                       </Tooltip>
-                    </Box>
-                  </Box>
+                    </div>
+                  </div>
 
-                  <Box
-                    sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mb: 1 }}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 3,
+                      marginBottom: 4,
+                    }}
                   >
                     {user.username === currentUser?.name && (
                       <Chip label="Your account" size="small" color="primary" />
@@ -345,7 +359,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     {user.isLocked && (
                       <Chip label="Locked" size="small" color="warning" />
                     )}
-                  </Box>
+                  </div>
 
                   <Typography variant="body2" sx={responsiveTextStyles}>
                     Full name: {user.gecos || "-"}
@@ -367,8 +381,13 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     Home: {user.homeDir}
                   </Typography>
 
-                  <Box
-                    sx={{ mt: 1, display: "flex", flexWrap: "wrap", gap: 0.5 }}
+                  <div
+                    style={{
+                      marginTop: 4,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 2,
+                    }}
                   >
                     {getAllGroups(user).map((group, idx) => (
                       <Chip
@@ -379,17 +398,17 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         sx={{ fontSize: "0.7rem" }}
                       />
                     ))}
-                  </Box>
+                  </div>
                 </FrostedCard>
               </Grid>
             ))}
           </Grid>
         ) : (
-          <Box textAlign="center" py={4}>
+          <div style={{ textAlign: "center", paddingBlock: 16 }}>
             <Typography variant="body2" color="text.secondary">
               No users found.
             </Typography>
-          </Box>
+          </div>
         )
       ) : (
         <UnifiedCollapsibleTable
@@ -418,7 +437,14 @@ const UsersTab: React.FC<UsersTabProps> = ({
           renderMainRow={(user) => (
             <>
               <TableCell>
-                <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <Typography
                     variant="body2"
                     fontWeight="medium"
@@ -442,7 +468,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       sx={{ fontSize: "0.65rem", height: 20 }}
                     />
                   )}
-                </Box>
+                </div>
               </TableCell>
               <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
                 <Typography variant="body2" sx={responsiveTextStyles}>
@@ -468,7 +494,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                 </Typography>
               </TableCell>
               <TableCell sx={{ display: { xs: "none", xl: "table-cell" } }}>
-                <Box display="flex" flexWrap="wrap" gap={0.5}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
                   {getAllGroups(user)
                     .slice(0, 3)
                     .map((group, idx) => (
@@ -495,10 +521,16 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       sx={{ fontSize: "0.65rem", height: 20 }}
                     />
                   )}
-                </Box>
+                </div>
               </TableCell>
               <TableCell align="right">
-                <Box display="flex" justifyContent="flex-end" gap={0.5}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 2,
+                  }}
+                >
                   <Tooltip title="Edit">
                     <IconButton
                       size="small"
@@ -543,7 +575,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       )}
                     </IconButton>
                   </Tooltip>
-                </Box>
+                </div>
               </TableCell>
             </>
           )}
@@ -573,7 +605,9 @@ const UsersTab: React.FC<UsersTabProps> = ({
               <Typography variant="subtitle2" gutterBottom>
                 <b>All Groups:</b>
               </Typography>
-              <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
+              <div
+                style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
+              >
                 {getAllGroups(user).map((group, idx) => (
                   <Chip
                     key={group}
@@ -583,7 +617,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     sx={{ mr: 1, mb: 1 }}
                   />
                 ))}
-              </Box>
+              </div>
             </>
           )}
           emptyMessage="No users found."
@@ -622,7 +656,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
           />
         </>
       )}
-    </Box>
+    </div>
   );
 };
 

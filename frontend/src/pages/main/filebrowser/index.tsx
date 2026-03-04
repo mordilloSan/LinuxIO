@@ -4,7 +4,6 @@ import ViewListIcon from "@mui/icons-material/ViewList";
 import {
   Alert,
   AlertTitle,
-  Box,
   Button,
   DialogActions,
   DialogContent,
@@ -15,6 +14,7 @@ import {
   ListItemText,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   ReactNode,
@@ -88,6 +88,7 @@ const FileEditor = React.lazy(
 );
 
 const FileBrowser: React.FC = () => {
+  const theme = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -1030,9 +1031,9 @@ const FileBrowser: React.FC = () => {
 
   return (
     <>
-      <Box
+      <div
         data-allow-context-menu="true"
-        sx={{
+        style={{
           height: "100%",
           width: "100%",
           display: "flex",
@@ -1075,9 +1076,10 @@ const FileBrowser: React.FC = () => {
           </Alert>
         )}
 
-        <Box
-          sx={{
-            px: editingPath ? 0 : 2,
+        <div
+          style={{
+            paddingLeft: editingPath ? 0 : theme.spacing(2),
+            paddingRight: editingPath ? 0 : theme.spacing(2),
             flex: 1,
             minHeight: 0,
             display: "flex",
@@ -1102,9 +1104,10 @@ const FileBrowser: React.FC = () => {
                 )}
             </>
           )}
-          <Box
-            sx={{
-              px: editingPath ? 0 : 2,
+          <div
+            style={{
+              paddingLeft: editingPath ? 0 : theme.spacing(2),
+              paddingRight: editingPath ? 0 : theme.spacing(2),
               flex: 1,
               minHeight: 0,
               display: "flex",
@@ -1177,33 +1180,33 @@ const FileBrowser: React.FC = () => {
                   onEdit={handleEditFile}
                 />
               )}
-          </Box>
-        </Box>
+          </div>
+        </div>
 
         {isDragOver && !editingPath && resource?.type === "directory" && (
-          <Box
-            sx={{
+          <div
+            style={{
               position: "absolute",
               inset: 0,
-              border: "2px dashed",
-              borderColor: "primary.main",
-              bgcolor: "rgba(var(--mui-palette-primary-mainChannel) / 0.08)",
+              border: `2px dashed ${theme.palette.primary.main}`,
+              backgroundColor:
+                "rgba(var(--mui-palette-primary-mainChannel) / 0.08)",
               zIndex: 5,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
               pointerEvents: "none",
-              gap: 1,
+              gap: theme.spacing(1),
             }}
           >
             <Typography variant="h6">Drop to upload</Typography>
             <Typography variant="body2" color="text.secondary">
               Files and folders will be copied to {normalizedPath}
             </Typography>
-          </Box>
+          </div>
         )}
-      </Box>
+      </div>
 
       <ContextMenu
         anchorPosition={contextMenuPosition}
@@ -1334,14 +1337,21 @@ const FileBrowser: React.FC = () => {
           <Typography variant="body2" color="text.secondary">
             Items will be uploaded to {normalizedPath}
           </Typography>
-          <Box sx={{ display: "flex", gap: 1.5, mt: 2, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: theme.spacing(1.5),
+              marginTop: theme.spacing(2),
+              flexWrap: "wrap",
+            }}
+          >
             <Button variant="outlined" onClick={handlePickFiles}>
               Select files
             </Button>
             <Button variant="outlined" onClick={handlePickFolder}>
               Select folders
             </Button>
-          </Box>
+          </div>
           <input
             ref={fileInputRef}
             type="file"

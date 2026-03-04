@@ -1,6 +1,5 @@
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
-  Box,
   Grid,
   TableCell,
   TextField,
@@ -13,6 +12,7 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
+  useTheme,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -49,6 +49,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const theme = useTheme();
 
   const { mutateAsync: deleteVolume, isPending: isDeleting } =
     linuxio.docker.delete_volume.useMutation({
@@ -90,11 +91,18 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
           Are you sure you want to delete the following volume
           {volumeNames.length > 1 ? "s" : ""}?
         </DialogContentText>
-        <Box sx={{ mt: 2, mb: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            marginTop: theme.spacing(2),
+            marginBottom: theme.spacing(1),
+          }}
+        >
           {volumeNames.map((name) => (
             <Chip key={name} label={name} size="small" sx={{ mr: 1, mb: 1 }} />
           ))}
-        </Box>
+        </div>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
           This action cannot be undone. Volumes in use by containers cannot be
           deleted.
@@ -121,6 +129,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
+  const theme = useTheme();
   const { data: volumes = [] } = linuxio.docker.list_volumes.useQuery({
     refetchInterval: 10000,
   });
@@ -219,8 +228,16 @@ const VolumeList: React.FC<VolumeListProps> = ({
   ];
 
   return (
-    <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+    <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: theme.spacing(2),
+          flexWrap: "wrap",
+          marginBottom: theme.spacing(2),
+        }}
+      >
         <TextField
           variant="outlined"
           size="small"
@@ -234,7 +251,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
             },
           }}
         />
-        <Box fontWeight="bold">{filtered.length} shown</Box>
+        <Typography fontWeight="bold">{filtered.length} shown</Typography>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -246,23 +263,29 @@ const VolumeList: React.FC<VolumeListProps> = ({
             Delete ({effectiveSelected.size})
           </Button>
         )}
-      </Box>
+      </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <Grid container spacing={2}>
             {filtered.map((volume) => (
               <Grid key={volume.Name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard sx={{ p: 2 }}>
-                  <Box
-                    sx={{
+                <FrostedCard style={{ padding: 8 }}>
+                  <div
+                    style={{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      gap: 1,
-                      mb: 1,
+                      gap: theme.spacing(1),
+                      marginBottom: theme.spacing(1),
                     }}
                   >
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: theme.spacing(1),
+                      }}
+                    >
                       <Checkbox
                         size="small"
                         checked={effectiveSelected.has(volume.Name)}
@@ -273,13 +296,13 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       <Typography variant="body2" fontWeight="bold" noWrap>
                         {volume.Name}
                       </Typography>
-                    </Box>
+                    </div>
                     <Chip
                       label={volume.Driver}
                       size="small"
                       sx={{ fontSize: "0.75rem" }}
                     />
-                  </Box>
+                  </div>
 
                   <Typography
                     variant="body2"
@@ -293,7 +316,13 @@ const VolumeList: React.FC<VolumeListProps> = ({
                     {volume.Mountpoint || "-"}
                   </Typography>
 
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: theme.spacing(0.75),
+                    }}
+                  >
                     <Chip
                       label={`Scope: ${volume.Scope || "local"}`}
                       size="small"
@@ -304,17 +333,23 @@ const VolumeList: React.FC<VolumeListProps> = ({
                         size="small"
                       />
                     )}
-                  </Box>
+                  </div>
                 </FrostedCard>
               </Grid>
             ))}
           </Grid>
         ) : (
-          <Box textAlign="center" py={4}>
+          <div
+            style={{
+              textAlign: "center",
+              paddingTop: theme.spacing(4),
+              paddingBottom: theme.spacing(4),
+            }}
+          >
             <Typography variant="body2" color="text.secondary">
               No volumes found.
             </Typography>
-          </Box>
+          </div>
         )
       ) : (
         <UnifiedCollapsibleTable
@@ -408,7 +443,13 @@ const VolumeList: React.FC<VolumeListProps> = ({
               <Typography variant="subtitle2" gutterBottom>
                 <b>Labels:</b>
               </Typography>
-              <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  marginBottom: theme.spacing(2),
+                }}
+              >
                 {volume.Labels && Object.keys(volume.Labels).length > 0 ? (
                   Object.entries(volume.Labels).map(([key, val]) => (
                     <Chip
@@ -423,12 +464,12 @@ const VolumeList: React.FC<VolumeListProps> = ({
                     (no labels)
                   </Typography>
                 )}
-              </Box>
+              </div>
 
               <Typography variant="subtitle2" gutterBottom>
                 <b>Options:</b>
               </Typography>
-              <Box>
+              <div>
                 {volume.Options && Object.keys(volume.Options).length > 0 ? (
                   Object.entries(volume.Options).map(([key, val]) => (
                     <Chip
@@ -443,7 +484,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
                     (no options)
                   </Typography>
                 )}
-              </Box>
+              </div>
             </>
           )}
           emptyMessage="No volumes found."
@@ -456,7 +497,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
         volumeNames={selectedVolumes.map((v) => v.Name)}
         onSuccess={handleDeleteSuccess}
       />
-    </Box>
+    </div>
   );
 };
 

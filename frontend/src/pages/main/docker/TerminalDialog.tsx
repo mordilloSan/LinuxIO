@@ -1,15 +1,14 @@
 import {
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Button,
-  Box,
-  MenuItem,
-  Select,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
-  SelectChangeEvent,
   Menu,
+  MenuItem,
+  Select,
+  SelectChangeEvent,
   Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -315,8 +314,17 @@ const TerminalDialog: React.FC<Props> = ({
       }}
     >
       <DialogTitle>
-        {containerName ? `Shell for ${containerName}` : "Container Shell"}
-        <Box sx={{ float: "right" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: theme.spacing(2),
+          }}
+        >
+          <span>
+            {containerName ? `Shell for ${containerName}` : "Container Shell"}
+          </span>
           <FormControl size="small" variant="standard">
             <InputLabel id="shell-label">Shell</InputLabel>
             <Select
@@ -333,7 +341,7 @@ const TerminalDialog: React.FC<Props> = ({
               ))}
             </Select>
           </FormControl>
-        </Box>
+        </div>
       </DialogTitle>
       <DialogContent
         dividers
@@ -346,21 +354,27 @@ const TerminalDialog: React.FC<Props> = ({
         }}
       >
         {loadingShells ? (
-          <Box sx={{ p: 3, textAlign: "center" }}>
+          <div style={{ padding: theme.spacing(3), textAlign: "center" }}>
             <ComponentLoader />
-          </Box>
+          </div>
         ) : hasFetchedShells && availableShells.length === 0 ? (
-          <Box sx={{ p: 3, color: "error.main", textAlign: "center" }}>
+          <div
+            style={{
+              padding: theme.spacing(3),
+              color: theme.palette.error.main,
+              textAlign: "center",
+            }}
+          >
             No shell available in this container.
             <br />
             (Try installing <b>bash</b> or <b>sh</b> in your container.)
-          </Box>
+          </div>
         ) : availableShells.length > 0 ? (
-          <Box
+          <div
             key={terminalKey}
             ref={termRef}
             onContextMenu={handleContextMenu}
-            sx={{
+            style={{
               width: "100%",
               minHeight: 350,
               height: 420,
@@ -396,8 +410,8 @@ const TerminalDialog: React.FC<Props> = ({
           }}
         >
           <MenuItem onClick={handleCopy} sx={{ py: 1 }}>
-            <Box
-              sx={{
+            <div
+              style={{
                 display: "flex",
                 justifyContent: "space-between",
                 width: "100%",
@@ -410,15 +424,15 @@ const TerminalDialog: React.FC<Props> = ({
               >
                 Shift+C
               </Typography>
-            </Box>
+            </div>
           </MenuItem>
           <MenuItem onClick={handlePaste} sx={{ py: 1 }}>
-            <Box
-              sx={{
+            <div
+              style={{
                 display: "flex",
                 justifyContent: "space-between",
                 width: "100%",
-                gap: 4,
+                gap: theme.spacing(4),
               }}
             >
               <span>Paste</span>
@@ -428,7 +442,7 @@ const TerminalDialog: React.FC<Props> = ({
               >
                 Shift+V
               </Typography>
-            </Box>
+            </div>
           </MenuItem>
         </Menu>
       </DialogContent>

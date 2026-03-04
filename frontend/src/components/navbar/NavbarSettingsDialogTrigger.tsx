@@ -33,4 +33,4 @@ const NavbarSettingsDialogTrigger: React.FC = () => {
   );
 };
 
-export default NavbarSettingsDialogTrigger;
+export default React.memo(NavbarSettingsDialogTrigger);

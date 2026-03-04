@@ -1,4 +1,5 @@
-import { Box, Button, Typography } from "@mui/material";
+import { Button, Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "../dialog/GeneralDialog";
@@ -22,6 +23,8 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onClose,
   onConfirm,
 }) => {
+  const theme = useTheme();
+
   const handleConfirm: React.SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
     onConfirm();
@@ -30,14 +33,13 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <Box
-        component="form"
+      <form
         onSubmit={handleConfirm}
-        sx={{
-          p: 4,
+        style={{
+          padding: theme.spacing(4),
           display: "flex",
           flexDirection: "column",
-          gap: 3,
+          gap: theme.spacing(3),
           alignItems: "center",
           textAlign: "center",
         }}
@@ -46,17 +48,21 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           {title}
         </Typography>
 
-        <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
+        <Typography
+          variant="body1"
+          color="text.secondary"
+          style={{ marginTop: theme.spacing(2) }}
+        >
           {message}
         </Typography>
 
-        <Box
-          sx={{
+        <div
+          style={{
             display: "flex",
-            gap: 2,
+            gap: theme.spacing(2),
             justifyContent: "center",
             width: "100%",
-            mt: 2,
+            marginTop: theme.spacing(2),
           }}
         >
           <Button
@@ -100,8 +106,8 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           >
             {confirmText}
           </Button>
-        </Box>
-      </Box>
+        </div>
+      </form>
     </GeneralDialog>
   );
 };

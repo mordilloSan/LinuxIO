@@ -2,16 +2,16 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import GetAppIcon from "@mui/icons-material/GetApp";
 import QrCodeIcon from "@mui/icons-material/QrCode";
 import {
-  Grid,
   CardContent,
-  Typography,
-  Box,
-  IconButton,
+  Chip,
   Dialog,
   DialogContent,
-  Chip,
+  Grid,
+  IconButton,
   Tooltip,
+  Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
@@ -74,6 +74,7 @@ const formatAgo = (unix?: number) => {
 };
 
 const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
+  const theme = useTheme();
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now() / 1000);
@@ -213,12 +214,20 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
               >
                 <FrostedCard>
                   <CardContent>
-                    <Box
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
                     >
-                      <Box display="flex" alignItems="center" gap={1}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: theme.spacing(1),
+                        }}
+                      >
                         <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
                           {peer.name || "Peer"}
                         </Typography>
@@ -236,8 +245,8 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                             variant={isOnline ? "filled" : "outlined"}
                           />
                         </Tooltip>
-                      </Box>
-                      <Box>
+                      </div>
+                      <div style={{ display: "flex" }}>
                         <IconButton
                           aria-label="Delete"
                           onClick={() => handleDeletePeer(peer.name)}
@@ -257,8 +266,8 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                         >
                           <QrCodeIcon />
                         </IconButton>
-                      </Box>
-                    </Box>
+                      </div>
+                    </div>
 
                     <Typography variant="body2" sx={{ mt: 0.5 }}>
                       Handshake: {formatAgo(peer.last_handshake_unix)}

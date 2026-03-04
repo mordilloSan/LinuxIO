@@ -2,7 +2,6 @@ import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import {
   Alert,
-  Box,
   Button,
   Checkbox,
   DialogActions,
@@ -79,7 +78,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           Select which unused Docker resources to remove:
         </Typography>
 
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <FormControlLabel
             control={
               <Checkbox
@@ -133,7 +132,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
               />
             }
             label={
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <span>Unused Volumes</span>
                 <Typography
                   component="span"
@@ -143,10 +142,10 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
                 >
                   (Potentially Destructive!)
                 </Typography>
-              </Box>
+              </div>
             }
           />
-        </Box>
+        </div>
 
         {opts.volumes && (
           <Alert severity="warning" icon={<WarningAmberIcon />} sx={{ mt: 2 }}>

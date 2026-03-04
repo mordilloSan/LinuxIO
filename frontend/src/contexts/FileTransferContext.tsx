@@ -1,4 +1,10 @@
-import React, { createContext, useState, useCallback, useRef } from "react";
+import React, {
+  createContext,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { toast } from "sonner";
 
 import {
@@ -369,15 +375,18 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  const transfers: Transfer[] = [
-    ...downloads,
-    ...uploads,
-    ...compressions,
-    ...extractions,
-    ...indexers,
-    ...copies,
-    ...moves,
-  ];
+  const transfers = useMemo<Transfer[]>(
+    () => [
+      ...downloads,
+      ...uploads,
+      ...compressions,
+      ...extractions,
+      ...indexers,
+      ...copies,
+      ...moves,
+    ],
+    [downloads, uploads, compressions, extractions, indexers, copies, moves],
+  );
 
   const isIndexing = indexers.length > 0;
 
@@ -1877,38 +1886,69 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     [moves, removeMove],
   );
 
+  const contextValue = useMemo(
+    () => ({
+      downloads,
+      uploads,
+      compressions,
+      extractions,
+      indexers,
+      copies,
+      moves,
+      transfers,
+      startDownload,
+      cancelDownload,
+      startCompression,
+      cancelCompression,
+      startExtraction,
+      cancelExtraction,
+      startIndexer,
+      isIndexing,
+      isIndexerDialogOpen,
+      openIndexerDialog,
+      closeIndexerDialog,
+      lastIndexerResult,
+      lastIndexerError,
+      startCopy,
+      cancelCopy,
+      startMove,
+      cancelMove,
+      startUpload,
+      cancelUpload,
+    }),
+    [
+      downloads,
+      uploads,
+      compressions,
+      extractions,
+      indexers,
+      copies,
+      moves,
+      transfers,
+      startDownload,
+      cancelDownload,
+      startCompression,
+      cancelCompression,
+      startExtraction,
+      cancelExtraction,
+      startIndexer,
+      isIndexing,
+      isIndexerDialogOpen,
+      openIndexerDialog,
+      closeIndexerDialog,
+      lastIndexerResult,
+      lastIndexerError,
+      startCopy,
+      cancelCopy,
+      startMove,
+      cancelMove,
+      startUpload,
+      cancelUpload,
+    ],
+  );
+
   return (
-    <FileTransferContext.Provider
-      value={{
-        downloads,
-        uploads,
-        compressions,
-        extractions,
-        indexers,
-        copies,
-        moves,
-        transfers,
-        startDownload,
-        cancelDownload,
-        startCompression,
-        cancelCompression,
-        startExtraction,
-        cancelExtraction,
-        startIndexer,
-        isIndexing,
-        isIndexerDialogOpen,
-        openIndexerDialog,
-        closeIndexerDialog,
-        lastIndexerResult,
-        lastIndexerError,
-        startCopy,
-        cancelCopy,
-        startMove,
-        cancelMove,
-        startUpload,
-        cancelUpload,
-      }}
-    >
+    <FileTransferContext.Provider value={contextValue}>
       {children}
     </FileTransferContext.Provider>
   );

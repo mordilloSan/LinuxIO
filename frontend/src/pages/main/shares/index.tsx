@@ -1,6 +1,5 @@
-import { Box } from "@mui/material";
 import React from "react";
 
-const SharesPage: React.FC = () => <Box />;
+const SharesPage: React.FC = () => <div />;
 
 export default SharesPage;

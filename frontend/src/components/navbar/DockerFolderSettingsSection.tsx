@@ -1,11 +1,5 @@
-import {
-  Box,
-  Button,
-  Divider,
-  TextField,
-  Typography,
-  Alert,
-} from "@mui/material";
+import { Button, Divider, TextField, Typography, Alert } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
   useEffect,
@@ -32,6 +26,7 @@ const ensureTrailingSlash = (path: string): string =>
   path.endsWith("/") ? path : `${path}/`;
 
 const DockerFolderSettingsSection: React.FC = () => {
+  const theme = useTheme();
   const [dockerFolder, setDockerFolder] = useConfigValue("dockerFolder");
   const { indexerAvailable } = useAuth();
 
@@ -188,7 +183,13 @@ const DockerFolderSettingsSection: React.FC = () => {
 
   return (
     <>
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: theme.spacing(2),
+        }}
+      >
         <Typography variant="body1" fontWeight={600}>
           Docker Folder
         </Typography>
@@ -221,7 +222,13 @@ const DockerFolderSettingsSection: React.FC = () => {
 
         <Divider />
 
-        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1.5 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: theme.spacing(1.5),
+          }}
+        >
           <Button onClick={handleReset} disabled={!isDirty || isSaving}>
             Reset
           </Button>
@@ -232,8 +239,8 @@ const DockerFolderSettingsSection: React.FC = () => {
           >
             {isSaving ? "Saving..." : "Save"}
           </Button>
-        </Box>
-      </Box>
+        </div>
+      </div>
 
       <ConfirmDialog
         open={createPromptOpen}

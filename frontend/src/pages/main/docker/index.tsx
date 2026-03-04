@@ -10,11 +10,11 @@ import {
 import {
   Alert,
   AlertTitle,
-  Box,
   Button,
   IconButton,
   Tooltip,
   Typography,
+  useTheme,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
@@ -35,6 +35,7 @@ import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const DockerPage: React.FC = () => {
+  const theme = useTheme();
   const { dockerAvailable, indexerAvailable } = useAuth();
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
@@ -129,21 +130,21 @@ const DockerPage: React.FC = () => {
 
   if (dockerAvailable === null) {
     return (
-      <Box sx={{ p: 3 }}>
+      <div style={{ padding: theme.spacing(3) }}>
         <Alert severity="info">
           <AlertTitle>Checking Docker</AlertTitle>
           <Typography variant="body2">
             Verifying Docker daemon access...
           </Typography>
         </Alert>
-      </Box>
+      </div>
     );
   }
 
   // Show error if Docker is not available
   if (dockerAvailable === false) {
     return (
-      <Box sx={{ p: 3 }}>
+      <div style={{ padding: theme.spacing(3) }}>
         <Alert severity="warning">
           <AlertTitle>Docker Not Available</AlertTitle>
           <Typography variant="body2" sx={{ mb: 2 }}>
@@ -151,7 +152,12 @@ const DockerPage: React.FC = () => {
           </Typography>
           <Typography variant="body2" component="div">
             <strong>Common causes:</strong>
-            <Box component="ul" sx={{ mt: 1, mb: 0 }}>
+            <ul
+              style={{
+                marginTop: theme.spacing(1),
+                marginBottom: 0,
+              }}
+            >
               <li>Docker is not installed on this system</li>
               <li>
                 Docker service is not running (try: sudo systemctl start docker)
@@ -165,10 +171,10 @@ const DockerPage: React.FC = () => {
                 Docker socket path is not set correctly (check DOCKER_HOST
                 environment variable)
               </li>
-            </Box>
+            </ul>
           </Typography>
         </Alert>
-      </Box>
+      </div>
     );
   }
 

@@ -1,4 +1,5 @@
-import { Alert, AlertTitle, Box, Collapse, Typography } from "@mui/material";
+import { Alert, AlertTitle, Collapse, Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useState } from "react";
 
 export interface ValidationError {
@@ -24,6 +25,8 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
   validation,
   isValidating = false,
 }) => {
+  const theme = useTheme();
+
   // Track which validation result has been dismissed. When a new validation
   // arrives (different object reference), visible resets automatically without
   // any synchronous setState in the effect body.
@@ -70,7 +73,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
   const warnings = validation.errors.filter((e) => e.type === "warning");
 
   return (
-    <Box sx={{ mb: 2 }}>
+    <div style={{ marginBottom: theme.spacing(2) }}>
       {errors.length > 0 && (
         <Collapse in={visible}>
           <Alert
@@ -80,7 +83,12 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
           >
             <AlertTitle>Validation Errors ({errors.length})</AlertTitle>
             {errors.map((error, index) => (
-              <Box key={index} sx={{ mt: index > 0 ? 1 : 0 }}>
+              <div
+                key={index}
+                style={{
+                  marginTop: index > 0 ? theme.spacing(1) : 0,
+                }}
+              >
                 <Typography variant="body2">
                   {error.field && (
                     <strong style={{ marginRight: "8px" }}>
@@ -94,7 +102,7 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                     </span>
                   )}
                 </Typography>
-              </Box>
+              </div>
             ))}
           </Alert>
         </Collapse>
@@ -105,7 +113,12 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
           <Alert severity="warning" onClose={dismiss}>
             <AlertTitle>Warnings ({warnings.length})</AlertTitle>
             {warnings.map((warning, index) => (
-              <Box key={index} sx={{ mt: index > 0 ? 1 : 0 }}>
+              <div
+                key={index}
+                style={{
+                  marginTop: index > 0 ? theme.spacing(1) : 0,
+                }}
+              >
                 <Typography variant="body2">
                   {warning.field && (
                     <strong style={{ marginRight: "8px" }}>
@@ -119,12 +132,12 @@ const ComposeValidationFeedback: React.FC<ComposeValidationFeedbackProps> = ({
                     </span>
                   )}
                 </Typography>
-              </Box>
+              </div>
             ))}
           </Alert>
         </Collapse>
       )}
-    </Box>
+    </div>
   );
 };
 

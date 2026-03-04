@@ -1,26 +1,24 @@
 import {
-  Box,
-  Typography,
-  Switch,
-  FormControlLabel,
-  Select,
-  MenuItem,
-  SelectChangeEvent,
-  TextField,
   Button,
-  Chip,
-  Stack,
+  FormControlLabel,
+  MenuItem,
+  Select,
+  type SelectChangeEvent,
+  Switch,
+  TextField,
+  Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
   linuxio,
-  type AutoUpdateOptions,
-  type AutoUpdateState,
   type AutoUpdateFrequency,
-  type AutoUpdateScope,
+  type AutoUpdateOptions,
   type AutoUpdateRebootPolicy,
+  type AutoUpdateScope,
+  type AutoUpdateState,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -37,8 +35,7 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   },
 });
 
-const UpdateSettings: React.FC = () => {
-  // -------- Load auto update settings --------
+export const useUpdateSettingsState = () => {
   const {
     data: rawServerState,
     isPending: loading,
@@ -50,16 +47,15 @@ const UpdateSettings: React.FC = () => {
     [rawServerState],
   );
 
-  // Local draft state - null means "use server value"
   const [draftOverrides, setDraftOverrides] =
     useState<Partial<AutoUpdateOptions> | null>(null);
   const [excludeInputOverride, setExcludeInputOverride] = useState<
     string | null
   >(null);
 
-  // Derived current values (draft overrides server)
-  const currentOptions: AutoUpdateOptions | null = useMemo(() => {
+  const currentOptions = useMemo(() => {
     if (!serverState) return null;
+
     return {
       ...serverState.options,
       ...draftOverrides,
@@ -71,14 +67,15 @@ const UpdateSettings: React.FC = () => {
     return serverState?.options.exclude_packages.join(", ") ?? "";
   }, [serverState, excludeInputOverride]);
 
-  // -------- Mutations --------
+  const reset = () => {
+    setDraftOverrides(null);
+    setExcludeInputOverride(null);
+  };
+
   const { mutate: setAutoUpdates, isPending: isSettingAutoUpdates } =
     linuxio.dbus.set_auto_updates.useMutation({
       onSuccess: () => {
-        // Clear overrides - server now has the saved values
-        setDraftOverrides(null);
-        setExcludeInputOverride(null);
-        // Invalidate to update UI with server state
+        reset();
         refetch();
         toast.success("Automatic Updates Settings saved", updatesToastMeta);
       },
@@ -94,16 +91,15 @@ const UpdateSettings: React.FC = () => {
       onSuccess: (result) => {
         if (result?.status && result.status !== "ok") {
           const errMsg = result.error || "Failed to schedule offline update";
-          // Show friendly info message for "no updates" case
           if (
             errMsg.includes("no updates available") ||
             errMsg.includes("Prepared update not found")
           ) {
             toast.info("No updates available to schedule", updatesToastMeta);
           }
-          // Other errors handled by global QueryClient config
           return;
         }
+
         toast.success(
           "Offline update scheduled for next reboot",
           updatesToastMeta,
@@ -111,7 +107,7 @@ const UpdateSettings: React.FC = () => {
       },
       onError: (error: Error) => {
         const errMsg = error?.message || String(error);
-        // Show friendly info message for "no updates" case
+
         if (
           errMsg.includes("no updates available") ||
           errMsg.includes("Prepared update not found")
@@ -127,10 +123,9 @@ const UpdateSettings: React.FC = () => {
 
   const saving = isSettingAutoUpdates || isApplyingOffline;
 
-  // dirty check for enabling Save/Cancel
   const dirty = useMemo(() => {
     if (!serverState || !currentOptions) return false;
-    // compare with excludeInput normalized into list, so the button reflects pending text edits
+
     const draftWithExcludes: AutoUpdateOptions = {
       ...currentOptions,
       exclude_packages: currentExcludeInput
@@ -138,12 +133,12 @@ const UpdateSettings: React.FC = () => {
         .map((s) => s.trim())
         .filter(Boolean),
     };
+
     return (
       JSON.stringify(serverState.options) !== JSON.stringify(draftWithExcludes)
     );
-  }, [serverState, currentOptions, currentExcludeInput]);
+  }, [serverState, currentExcludeInput, currentOptions]);
 
-  // -------- Save (explicit) --------
   const save = () => {
     if (!currentOptions) return;
 
@@ -158,33 +153,64 @@ const UpdateSettings: React.FC = () => {
     setAutoUpdates([payload]);
   };
 
-  // -------- Apply at next reboot --------
-  const handleApplyOffline = () => {
+  const applyOffline = () => {
     applyOfflineUpdates([]);
   };
+
+  return {
+    loading,
+    serverState,
+    currentOptions,
+    currentExcludeInput,
+    saving,
+    dirty,
+    setDraftOverrides,
+    setExcludeInputOverride,
+    reset,
+    save,
+    applyOffline,
+  };
+};
+
+interface UpdateSettingsProps {
+  disablePadding?: boolean;
+  state: ReturnType<typeof useUpdateSettingsState>;
+}
+
+const UpdateSettings: React.FC<UpdateSettingsProps> = ({
+  disablePadding = false,
+  state,
+}) => {
+  const theme = useTheme();
+  const {
+    loading,
+    serverState,
+    currentOptions,
+    currentExcludeInput,
+    saving,
+    dirty,
+    setDraftOverrides,
+    setExcludeInputOverride,
+    reset,
+    save,
+    applyOffline,
+  } = state;
 
   if (loading || !serverState || !currentOptions) {
     return <ComponentLoader />;
   }
 
   return (
-    <Box sx={{ p: 3, display: "grid", gap: 2 }}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <Typography variant="h6" sx={{ flexGrow: 1 }}>
-          Automatic Updates
-        </Typography>
-        <Chip size="small" label={serverState.backend} variant="outlined" />
-      </Box>
-
+    <div style={{ padding: disablePadding ? 0 : 12, display: "grid", gap: 8 }}>
       <FormControlLabel
         control={
           <Switch
             checked={currentOptions.enabled}
             onChange={(e) =>
-              setDraftOverrides({
-                ...(draftOverrides ?? {}),
+              setDraftOverrides((prev) => ({
+                ...(prev ?? {}),
                 enabled: e.target.checked,
-              })
+              }))
             }
             disabled={saving}
           />
@@ -192,12 +218,15 @@ const UpdateSettings: React.FC = () => {
         label="Enable automatic updates"
       />
 
-      <Stack
-        direction="row"
-        spacing={3}
-        sx={{ alignItems: "center", flexWrap: "wrap" }}
+      <div
+        style={{
+          display: "flex",
+          gap: theme.spacing(3),
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
       >
-        <Box>
+        <div>
           <Typography variant="subtitle2" gutterBottom>
             Frequency
           </Typography>
@@ -205,10 +234,10 @@ const UpdateSettings: React.FC = () => {
             size="small"
             value={currentOptions.frequency}
             onChange={(e: SelectChangeEvent<AutoUpdateFrequency>) =>
-              setDraftOverrides({
-                ...(draftOverrides ?? {}),
+              setDraftOverrides((prev) => ({
+                ...(prev ?? {}),
                 frequency: e.target.value as AutoUpdateFrequency,
-              })
+              }))
             }
             disabled={saving}
           >
@@ -216,9 +245,9 @@ const UpdateSettings: React.FC = () => {
             <MenuItem value="daily">Daily</MenuItem>
             <MenuItem value="weekly">Weekly</MenuItem>
           </Select>
-        </Box>
+        </div>
 
-        <Box>
+        <div>
           <Typography variant="subtitle2" gutterBottom>
             Scope
           </Typography>
@@ -226,10 +255,10 @@ const UpdateSettings: React.FC = () => {
             size="small"
             value={currentOptions.scope}
             onChange={(e: SelectChangeEvent<AutoUpdateScope>) =>
-              setDraftOverrides({
-                ...(draftOverrides ?? {}),
+              setDraftOverrides((prev) => ({
+                ...(prev ?? {}),
                 scope: e.target.value as AutoUpdateScope,
-              })
+              }))
             }
             disabled={saving}
           >
@@ -237,9 +266,9 @@ const UpdateSettings: React.FC = () => {
             <MenuItem value="updates">Security + updates</MenuItem>
             <MenuItem value="all">All (incl. extras)</MenuItem>
           </Select>
-        </Box>
+        </div>
 
-        <Box>
+        <div>
           <Typography variant="subtitle2" gutterBottom>
             Reboot policy
           </Typography>
@@ -247,10 +276,10 @@ const UpdateSettings: React.FC = () => {
             size="small"
             value={currentOptions.reboot_policy}
             onChange={(e: SelectChangeEvent<AutoUpdateRebootPolicy>) =>
-              setDraftOverrides({
-                ...(draftOverrides ?? {}),
+              setDraftOverrides((prev) => ({
+                ...(prev ?? {}),
                 reboot_policy: e.target.value as AutoUpdateRebootPolicy,
-              })
+              }))
             }
             disabled={saving}
           >
@@ -258,71 +287,77 @@ const UpdateSettings: React.FC = () => {
             <MenuItem value="if_needed">If needed</MenuItem>
             <MenuItem value="always">Always</MenuItem>
           </Select>
-        </Box>
+        </div>
 
         <FormControlLabel
           control={
             <Switch
               checked={currentOptions.download_only}
               onChange={(e) =>
-                setDraftOverrides({
-                  ...(draftOverrides ?? {}),
+                setDraftOverrides((prev) => ({
+                  ...(prev ?? {}),
                   download_only: e.target.checked,
-                })
+                }))
               }
               disabled={saving}
             />
           }
           label="Download only (no auto-install)"
         />
-      </Stack>
+      </div>
 
-      <Box>
+      <div>
         <Typography variant="subtitle2" gutterBottom>
           Exclude packages (comma-separated)
         </Typography>
-        <Stack direction="row" spacing={1} alignItems="center">
+        <div
+          style={{
+            display: "flex",
+            gap: theme.spacing(1),
+            alignItems: "center",
+          }}
+        >
           <TextField
             size="small"
             placeholder="e.g. linux-headers-*, docker-ce"
             value={currentExcludeInput}
             onChange={(e) => setExcludeInputOverride(e.target.value)}
             disabled={saving}
-            sx={{ minWidth: 420, maxWidth: 600 }}
+            sx={{ width: "100%", minWidth: { xs: 0, sm: 420 }, maxWidth: 600 }}
           />
-        </Stack>
-      </Box>
+        </div>
+      </div>
 
-      <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 1 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginTop: 4,
+        }}
+      >
         <Button variant="contained" onClick={save} disabled={saving || !dirty}>
           Save
         </Button>
-        <Button
-          variant="text"
-          onClick={() => {
-            // Revert to server values by clearing overrides
-            setDraftOverrides(null);
-            setExcludeInputOverride(null);
-          }}
-          disabled={saving || !dirty}
-        >
+        <Button variant="text" onClick={reset} disabled={saving || !dirty}>
           Cancel
         </Button>
-        <Box sx={{ flexGrow: 1 }} />
-        <Button
-          variant="contained"
-          onClick={handleApplyOffline}
-          disabled={saving}
-        >
+        <div style={{ flexGrow: 1 }} />
+        <Button variant="contained" onClick={applyOffline} disabled={saving}>
           Apply at next reboot (offline)
         </Button>
         {serverState.notes?.length ? (
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ width: "100%" }}
+          >
             {serverState.notes.join(" • ")}
           </Typography>
         ) : null}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

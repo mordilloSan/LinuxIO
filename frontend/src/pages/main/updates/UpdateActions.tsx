@@ -1,13 +1,13 @@
 import CancelIcon from "@mui/icons-material/Cancel";
 import CloseIcon from "@mui/icons-material/Close";
 import {
-  Box,
-  LinearProgress,
-  Typography,
   Alert,
   IconButton,
+  LinearProgress,
   Tooltip,
+  Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 interface UpdateActionsProps {
@@ -31,6 +31,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
   onClearError,
   onCancel,
 }) => {
+  const theme = useTheme();
   // Build the status text: "Status: packageName" or just "Status" or "Preparing..."
   const getStatusText = () => {
     if (!currentPackage) {
@@ -53,7 +54,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
   };
 
   return (
-    <Box sx={{ mb: 3 }}>
+    <div style={{ marginBottom: theme.spacing(3) }}>
       {/* Error Alert */}
       {error && (
         <Alert
@@ -78,19 +79,25 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
 
       {/* Progress Indicator */}
       {isUpdating && (
-        <Box sx={{ mt: 2 }}>
-          <Box
-            sx={{
+        <div style={{ marginTop: theme.spacing(2) }}>
+          <div
+            style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              mb: 1,
+              marginBottom: theme.spacing(1),
             }}
           >
             <Typography variant="body2" color="text.secondary">
               {getStatusText()}
             </Typography>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: theme.spacing(1),
+              }}
+            >
               <Typography variant="body2" color="text.secondary">
                 {Math.round(progress)}%
               </Typography>
@@ -101,15 +108,15 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                   </IconButton>
                 </Tooltip>
               )}
-            </Box>
-          </Box>
+            </div>
+          </div>
           <LinearProgress
             variant="determinate"
             value={progress}
             sx={{ height: 8, borderRadius: 1 }}
           />
           {eventLog && eventLog.length > 0 && (
-            <Box sx={{ mt: 1 }}>
+            <div style={{ marginTop: theme.spacing(1) }}>
               {eventLog.map((line, index) => (
                 <Typography
                   key={`${index}-${line}`}
@@ -120,11 +127,11 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                   {line}
                 </Typography>
               ))}
-            </Box>
+            </div>
           )}
-        </Box>
+        </div>
       )}
-    </Box>
+    </div>
   );
 };
 

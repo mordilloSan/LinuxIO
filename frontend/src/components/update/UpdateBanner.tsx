@@ -1,6 +1,7 @@
 import CloseIcon from "@mui/icons-material/Close";
 import DownloadIcon from "@mui/icons-material/Download";
-import { Alert, Button, IconButton, Link, Stack } from "@mui/material";
+import { Alert, Button, IconButton, Link, useMediaQuery } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 import UpdateDialog from "./UpdateDialog";
 
@@ -22,6 +23,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
   updateInfo,
   onDismiss,
 }) => {
+  const theme = useTheme();
+  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
   const {
     startUpdate,
     resetUpdate,
@@ -93,21 +96,30 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
           </IconButton>
         }
       >
-        <Stack
-          direction="row"
-          alignItems="center"
-          spacing={2}
-          sx={{ width: "100%", flexWrap: { xs: "wrap", sm: "nowrap" } }}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.spacing(2),
+            width: "100%",
+            flexWrap: isSmallUp ? "nowrap" : "wrap",
+          }}
         >
-          <Stack sx={{ minWidth: 0, flexGrow: 1 }}>
+          <div style={{ minWidth: 0, flexGrow: 1 }}>
             <strong>Update Available</strong>
             <span>
               LinuxIO {updateInfo.latest_version} is available. You are on{" "}
               {updateInfo.current_version}.
             </span>
-          </Stack>
+          </div>
 
-          <Stack direction="row" spacing={1} alignItems="center">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(1),
+            }}
+          >
             <Button
               variant="contained"
               size="small"
@@ -133,8 +145,8 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
                 Release Notes
               </Button>
             )}
-          </Stack>
-        </Stack>
+          </div>
+        </div>
       </Alert>
     </>
   );

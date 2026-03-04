@@ -1,6 +1,5 @@
 import CloseIcon from "@mui/icons-material/Close";
 import {
-  Box,
   DialogContent,
   DialogTitle,
   IconButton,
@@ -26,6 +25,7 @@ interface SettingsDialogProps {
 
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
   const theme = useTheme();
+  const baseBorderRadius = parseFloat(String(theme.shape.borderRadius)) || 0;
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
   const handleClose = () => {
@@ -43,7 +43,13 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           px: 2,
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.spacing(1),
+          }}
+        >
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Settings
           </Typography>
@@ -54,7 +60,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
           >
             <CloseIcon fontSize="small" />
           </IconButton>
-        </Box>
+        </div>
       </DialogTitle>
 
       <Tabs
@@ -72,34 +78,42 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
 
       <DialogContent sx={{ px: 3, py: 3 }}>
         {activeTab === "general" ? (
-          <Box sx={{ py: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+          <div
+            style={{
+              paddingTop: theme.spacing(1),
+              paddingBottom: theme.spacing(1),
+              display: "flex",
+              flexDirection: "column",
+              gap: theme.spacing(2),
+            }}
+          >
             <Typography variant="body1" fontWeight={600}>
               Appearance
             </Typography>
 
-            <Box
-              sx={{
+            <div
+              style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                p: 1.5,
-                borderRadius: 1.5,
+                padding: theme.spacing(1.5),
+                borderRadius: `${baseBorderRadius * 1.5}px`,
                 border: `1px solid ${theme.palette.divider}`,
               }}
             >
-              <Box>
+              <div>
                 <Typography variant="body2" fontWeight={600}>
                   Primary color
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Change the app accent color.
                 </Typography>
-              </Box>
+              </div>
               <NavbarCustomizer />
-            </Box>
+            </div>
 
             <ThemeColorsSection />
-          </Box>
+          </div>
         ) : (
           <DockerFolderSettingsSection />
         )}

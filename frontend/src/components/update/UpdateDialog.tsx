@@ -1,7 +1,6 @@
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
 import {
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -9,9 +8,9 @@ import {
   DialogTitle,
   LinearProgress,
   Paper,
-  Stack,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useEffect, useRef } from "react";
 
 interface UpdateDialogProps {
@@ -39,6 +38,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
   onContinue,
   targetVersion,
 }) => {
+  const theme = useTheme();
   const outputEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new output arrives
@@ -62,18 +62,25 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
           : "Updating LinuxIO"}
       </DialogTitle>
       <DialogContent>
-        <Stack spacing={2}>
+        <div
+          style={{
+            display: "grid",
+            gap: theme.spacing(2),
+          }}
+        >
           {/* Success/Fail banner when complete */}
           {updateComplete && (
-            <Box
-              sx={{
+            <div
+              style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 2,
-                p: 2,
-                borderRadius: 1,
-                bgcolor: updateSuccess ? "success.main" : "error.main",
-                color: "common.white",
+                gap: theme.spacing(2),
+                padding: theme.spacing(2),
+                borderRadius: String(theme.shape.borderRadius),
+                backgroundColor: updateSuccess
+                  ? theme.palette.success.main
+                  : theme.palette.error.main,
+                color: theme.palette.common.white,
               }}
             >
               {updateSuccess ? (
@@ -81,7 +88,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
               ) : (
                 <ErrorIcon fontSize="large" />
               )}
-              <Box>
+              <div>
                 <Typography variant="h6" fontWeight="bold">
                   {updateSuccess ? "Update Successful!" : "Update Failed"}
                 </Typography>
@@ -99,14 +106,14 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                     "The update could not be completed. Please check the output below for details."
                   )}
                 </Typography>
-              </Box>
-            </Box>
+              </div>
+            </div>
           )}
 
           {/* Status - show during update and when failed */}
           {(!updateComplete || (updateComplete && !updateSuccess)) &&
             status && (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
                   {updateComplete && !updateSuccess
                     ? "Error Details"
@@ -115,12 +122,12 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                 <Typography variant="body1" fontWeight="medium">
                   {status || "Preparing..."}
                 </Typography>
-              </Box>
+              </div>
             )}
 
           {/* Progress bar - hide when complete */}
           {!updateComplete && progress < 100 && (
-            <Box>
+            <div>
               <Typography variant="body2" color="text.secondary" mb={1}>
                 Progress
               </Typography>
@@ -129,12 +136,12 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                 value={progress}
                 sx={{ height: 8, borderRadius: 1 }}
               />
-            </Box>
+            </div>
           )}
 
           {/* Output console */}
           {output.length > 0 && (
-            <Box>
+            <div>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Installation Output
               </Typography>
@@ -151,15 +158,21 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
                 }}
               >
                 {output.map((line, index) => (
-                  <Box key={index} sx={{ whiteSpace: "pre-wrap", mb: 0.5 }}>
+                  <div
+                    key={index}
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      marginBottom: theme.spacing(0.5),
+                    }}
+                  >
                     {line}
-                  </Box>
+                  </div>
                 ))}
                 <div ref={outputEndRef} />
               </Paper>
-            </Box>
+            </div>
           )}
-        </Stack>
+        </div>
       </DialogContent>
       <DialogActions>
         {updateComplete && updateSuccess && onContinue && (

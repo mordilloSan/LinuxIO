@@ -1,12 +1,13 @@
 import { Icon } from "@iconify/react";
 import {
-  Box,
   Divider,
   ListItemIcon,
   Menu,
   MenuItem,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
@@ -24,15 +25,6 @@ const TerminalDialog = React.lazy(
   () => import("@/pages/main/docker/TerminalDialog"),
 );
 
-const stateColor: Record<string, string> = {
-  running: "success.main",
-  healthy: "success.main",
-  exited: "error.main",
-  unhealthy: "error.main",
-  paused: "warning.main",
-  restarting: "info.main",
-};
-
 const cleanName = (name: string) => name.replace(/^\//, "");
 
 const getStatusLabel = (status: string, state: string): string => {
@@ -44,6 +36,8 @@ const getStatusLabel = (status: string, state: string): string => {
 const getCollectionCount = <T,>(items: T[]) => items.length;
 
 const DockerInfo: React.FC = () => {
+  const theme = useTheme();
+  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
   const queryClient = useQueryClient();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuContainer, setMenuContainer] = useState<{
@@ -59,6 +53,26 @@ const DockerInfo: React.FC = () => {
     id: string;
     name: string;
   } | null>(null);
+
+  const resolveStateColor = useCallback(
+    (state: string) => {
+      switch (state) {
+        case "running":
+        case "healthy":
+          return theme.palette.success.main;
+        case "exited":
+        case "unhealthy":
+          return theme.palette.error.main;
+        case "paused":
+          return theme.palette.warning.main;
+        case "restarting":
+          return theme.palette.info.main;
+        default:
+          return theme.palette.grey[500];
+      }
+    },
+    [theme],
+  );
 
   const invalidateContainers = useCallback(
     () =>
@@ -175,8 +189,8 @@ const DockerInfo: React.FC = () => {
   );
 
   const stats = (
-    <Box
-      sx={{
+    <div
+      style={{
         display: "flex",
         flexDirection: "column",
         alignSelf: "flex-start",
@@ -188,18 +202,20 @@ const DockerInfo: React.FC = () => {
         { label: "Images", value: imagesCount },
         { label: "Networks", value: networksCount },
         { label: "Volumes", value: volumesCount },
-      ].map(({ label, value }) => (
-        <Box
+      ].map(({ label, value }, index, rows) => (
+        <div
           key={label}
-          sx={{
+          style={{
             display: "flex",
-            justifyContent: "flex-start",
             alignItems: "baseline",
-            py: 0.5,
-            borderBottom: "1px solid",
-            borderColor: "divider",
-            "&:last-child": { borderBottom: "none" },
-            gap: 1,
+            justifyContent: "flex-start",
+            paddingTop: theme.spacing(0.5),
+            paddingBottom: theme.spacing(0.5),
+            borderBottom:
+              index === rows.length - 1
+                ? "none"
+                : "1px solid var(--mui-palette-divider)",
+            gap: theme.spacing(1),
           }}
         >
           <Typography
@@ -217,9 +233,9 @@ const DockerInfo: React.FC = () => {
           <Typography variant="body2" fontWeight={500} noWrap>
             {value}
           </Typography>
-        </Box>
+        </div>
       ))}
-    </Box>
+    </div>
   );
 
   const stats2 = isContainersError ? (
@@ -227,60 +243,46 @@ const DockerInfo: React.FC = () => {
   ) : isContainersLoading ? (
     <ComponentLoader />
   ) : (
-    <Box
+    <div
       className="custom-scrollbar"
-      sx={{
+      style={{
         display: "grid",
-        gridTemplateColumns: {
-          xs: "repeat(3, 36px)",
-          sm: "repeat(4, 36px)",
-        },
-        columnGap: 4.5,
-        rowGap: 5,
+        gridTemplateColumns: isSmallUp ? "repeat(4, 36px)" : "repeat(3, 36px)",
+        columnGap: theme.spacing(4.5),
+        rowGap: theme.spacing(5),
         justifyContent: "center",
         width: "fit-content",
         maxHeight: 110,
         overflowX: "hidden",
         overflowY: "auto",
-        pr: 0.5,
-        "&::-webkit-scrollbar-thumb": {
-          backgroundColor: "transparent !important",
-        },
-        "&:hover::-webkit-scrollbar-thumb": {
-          backgroundColor:
-            "rgba(var(--mui-palette-text-secondaryChannel) / 0.2) !important",
-        },
+        paddingRight: theme.spacing(0.5),
       }}
     >
       {sorted.map((c) => {
         const name = cleanName(c.Names[0] ?? c.Id.slice(0, 12));
+        const statusColor = resolveStateColor(
+          getStatusLabel(c.Status, c.State),
+        );
+
         return (
           <Tooltip
             key={c.Id}
             title={
-              <Box sx={{ textAlign: "center" }}>
-                <Box component="span" sx={{ fontSize: "0.8rem" }}>
+              <div style={{ textAlign: "center" }}>
+                <Typography component="span" sx={{ fontSize: "0.8rem" }}>
                   {name}
-                </Box>
-                <br />
-                <Box
-                  component="span"
-                  sx={{
-                    color:
-                      stateColor[getStatusLabel(c.Status, c.State)] ??
-                      "grey.500",
-                  }}
-                >
+                </Typography>
+                <Typography component="span" sx={{ color: statusColor }}>
                   {getStatusLabel(c.Status, c.State)}
-                </Box>
-              </Box>
+                </Typography>
+              </div>
             }
             arrow
             placement="top"
           >
-            <Box
+            <div
               onContextMenu={(e) => handleContextMenu(e, c.Id, name, c.State)}
-              sx={{
+              style={{
                 position: "relative",
                 width: 36,
                 height: 36,
@@ -288,20 +290,19 @@ const DockerInfo: React.FC = () => {
               }}
             >
               <DockerIcon identifier={c.icon} size={36} alt={name} />
-              <Box
-                sx={{
+              <div
+                style={{
                   position: "absolute",
                   bottom: 0,
                   right: 0,
                   width: 8,
                   height: 8,
                   borderRadius: "50%",
-                  bgcolor: stateColor[c.State] ?? "grey.500",
-                  border: "1.5px solid",
-                  borderColor: "background.paper",
+                  backgroundColor: resolveStateColor(c.State),
+                  border: `1.5px solid ${theme.palette.background.paper}`,
                 }}
               />
-            </Box>
+            </div>
           </Tooltip>
         );
       })}
@@ -380,7 +381,7 @@ const DockerInfo: React.FC = () => {
           Terminal
         </MenuItem>
       </Menu>
-    </Box>
+    </div>
   );
 
   return (

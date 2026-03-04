@@ -7,8 +7,8 @@ import {
   TextField,
   Autocomplete,
   Chip,
-  Box,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   onClose,
   user,
 }) => {
+  const theme = useTheme();
   const queryClient = useQueryClient();
   const [fullName, setFullName] = useState(user.gecos);
   const [homeDir, setHomeDir] = useState(user.homeDir);
@@ -97,7 +98,14 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Edit User: {user.username}</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: theme.spacing(2),
+            marginTop: theme.spacing(1),
+          }}
+        >
           <TextField
             label="Username"
             value={user.username}
@@ -143,7 +151,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
               })
             }
           />
-        </Box>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={isPending}>

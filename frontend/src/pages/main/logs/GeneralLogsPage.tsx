@@ -8,7 +8,6 @@ import WarningIcon from "@mui/icons-material/Warning";
 import {
   Alert,
   Autocomplete,
-  Box,
   Chip,
   FormControl,
   FormControlLabel,
@@ -24,7 +23,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
   useEffect,
@@ -126,6 +125,7 @@ const getPriorityIcon = (priority: LogPriority) => {
 };
 
 const GeneralLogsPage: React.FC = () => {
+  const theme = useTheme();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [search, setSearch] = useState("");
@@ -421,15 +421,15 @@ const GeneralLogsPage: React.FC = () => {
   // Render icon for first cell
   const renderIcon = useCallback((log: LogEntry) => {
     return (
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           alignItems: "center",
           color: getLogPriorityAccent(getPriorityColor(log.priority)),
         }}
       >
         {getPriorityIcon(log.priority)}
-      </Box>
+      </div>
     );
   }, []);
 
@@ -552,15 +552,15 @@ const GeneralLogsPage: React.FC = () => {
   }, []);
 
   return (
-    <Box>
+    <div>
       {/* Filters */}
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
-          gap: 2,
+          gap: theme.spacing(2),
           flexWrap: "wrap",
           alignItems: "center",
-          mb: 2,
+          marginBottom: theme.spacing(2),
         }}
       >
         <FormControl size="small" sx={{ minWidth: 150 }}>
@@ -677,15 +677,15 @@ const GeneralLogsPage: React.FC = () => {
             label="Live"
           />
         </Tooltip>
-        <Box fontWeight="bold">{filteredLogs.length} shown</Box>
-      </Box>
+        <Typography fontWeight="bold">{filteredLogs.length} shown</Typography>
+      </div>
 
       {isLoading && <ComponentLoader />}
 
       {error && <Alert severity="error">{error}</Alert>}
 
       {!isLoading && !error && (
-        <Box ref={logsBoxRef}>
+        <div ref={logsBoxRef}>
           <UnifiedCollapsibleTable
             data={filteredLogs}
             columns={columns}
@@ -697,9 +697,9 @@ const GeneralLogsPage: React.FC = () => {
               logs.length === 0 ? "No logs available." : "No matching logs."
             }
           />
-        </Box>
+        </div>
       )}
-    </Box>
+    </div>
   );
 };
 

@@ -6,7 +6,6 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
-  Box,
   Button,
   Chip,
   Dialog,
@@ -30,6 +29,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -75,6 +75,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
   volumeGroups,
   onSuccess,
 }) => {
+  const theme = useTheme();
   const queryClient = useQueryClient();
   const [vgName, setVgName] = useState("");
   const [lvName, setLvName] = useState("");
@@ -125,7 +126,14 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create Logical Volume</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: theme.spacing(2),
+            marginTop: theme.spacing(1),
+          }}
+        >
           <FormControl fullWidth>
             <InputLabel>Volume Group</InputLabel>
             <Select
@@ -161,7 +169,7 @@ const CreateLVDialog: React.FC<CreateLVDialogProps> = ({
             fullWidth
           />
           {validationError && <Alert severity="error">{validationError}</Alert>}
-        </Box>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={isCreating}>
@@ -185,6 +193,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
   lv,
   onSuccess,
 }) => {
+  const theme = useTheme();
   const queryClient = useQueryClient();
   // Pre-fill with current size in GB
   const [newSize, setNewSize] = useState(() => {
@@ -242,7 +251,14 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
     >
       <DialogTitle>Resize Logical Volume</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: theme.spacing(2),
+            marginTop: theme.spacing(1),
+          }}
+        >
           {lv && (
             <>
               <Typography variant="body2">
@@ -262,7 +278,7 @@ const ResizeLVDialog: React.FC<ResizeLVDialogProps> = ({
             fullWidth
           />
           {validationError && <Alert severity="error">{validationError}</Alert>}
-        </Box>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={isResizing}>
@@ -492,7 +508,7 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
               </TableCell>
               <TableCell>
                 {lv.mountpoint ? (
-                  <Box sx={{ width: 100 }}>
+                  <div style={{ width: 100 }}>
                     <LinearProgress
                       variant="determinate"
                       value={lv.usedPct}
@@ -508,7 +524,7 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                     <Typography variant="caption">
                       {lv.usedPct.toFixed(1)}%
                     </Typography>
-                  </Box>
+                  </div>
                 ) : (
                   "-"
                 )}
@@ -604,7 +620,7 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
   const lvsList = Array.isArray(lvs) ? lvs : [];
 
   return (
-    <Box>
+    <>
       <Accordion
         expanded={expanded === "lvs"}
         onChange={handleAccordionChange("lvs")}
@@ -671,7 +687,7 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         lv={selectedLV}
         onSuccess={handleRefreshAll}
       />
-    </Box>
+    </>
   );
 };
 

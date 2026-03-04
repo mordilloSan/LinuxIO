@@ -1,5 +1,4 @@
 import {
-  Box,
   Chip,
   Table,
   TableBody,
@@ -9,6 +8,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import type { PowerData } from "../types";
@@ -18,19 +18,27 @@ interface PowerStatesTabProps {
 }
 
 export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
+  const theme = useTheme();
+
   return (
     <>
-      <Box sx={{ mb: 3 }}>
+      <div style={{ marginBottom: theme.spacing(3) }}>
         <Typography variant="subtitle2" gutterBottom>
           Current State
         </Typography>
-        <Box display="flex" gap={2} alignItems="center">
+        <div
+          style={{
+            display: "flex",
+            gap: theme.spacing(2),
+            alignItems: "center",
+          }}
+        >
           <Chip label={`Power State ${power.currentState}`} color="primary" />
           <Typography variant="body2" color="text.secondary">
             Estimated Power: ~{power.estimatedW.toFixed(2)}W
           </Typography>
-        </Box>
-      </Box>
+        </div>
+      </div>
 
       <Typography variant="subtitle2" gutterBottom>
         Supported Power States

@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Box,
   Chip,
   Collapse,
   Divider,
@@ -41,7 +40,6 @@ import { linuxio, openSmartTestStream, type Stream, type ApiDisk } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useStreamResult } from "@/hooks/useStreamResult";
-import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -211,10 +209,10 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
 
   return (
     <Collapse in={expanded} timeout="auto" unmountOnExit>
-      <Box onClick={(e) => e.stopPropagation()}>
+      <div onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <Divider sx={{ my: 2 }} />
 
-        <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+        <div style={{ borderBottom: `1px solid ${theme.palette.divider}` }}>
           <Tabs
             value={tabIndex}
             onChange={handleTabChange}
@@ -247,7 +245,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             {isNvme && power && <Tab label="Power States" />}
             <Tab label="Self-Tests" />
           </Tabs>
-        </Box>
+        </div>
 
         <TabPanel value={tabIndex} index={0}>
           <OverviewTab drive={drive} />
@@ -285,7 +283,7 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             nvmeSelfTestLog={nvmeSelfTestLog}
           />
         </TabPanel>
-      </Box>
+      </div>
     </Collapse>
   );
 };
@@ -354,7 +352,7 @@ const DiskOverview: React.FC = () => {
   }
 
   return (
-    <Box>
+    <div>
       <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
         Physical Drives
       </Typography>
@@ -383,14 +381,11 @@ const DiskOverview: React.FC = () => {
                   transition={{ duration: 0.2 }}
                 >
                   <FrostedCard
-                    sx={{
-                      p: 2,
+                    hoverLift={expanded !== drive.name}
+                    style={{
+                      padding: 8,
                       position: "relative",
-                      transition: "transform 0.2s, box-shadow 0.2s",
                       cursor: "pointer",
-                      ...(expanded !== drive.name && {
-                        "&:hover": getFrostedCardLiftStyles(theme),
-                      }),
                     }}
                     onClick={() => handleToggle(drive.name)}
                   >
@@ -402,15 +397,13 @@ const DiskOverview: React.FC = () => {
                         slots={{ transition: Fade }}
                         slotProps={{ transition: { timeout: 300 } }}
                       >
-                        <Box
-                          sx={{
+                        <div
+                          className="fc-opacity-hover"
+                          style={{
                             position: "absolute",
                             top: 8,
                             right: 8,
                             cursor: "pointer",
-                            "&:hover": {
-                              opacity: 0.7,
-                            },
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -422,7 +415,7 @@ const DiskOverview: React.FC = () => {
                             width={20}
                             color={theme.palette.text.secondary}
                           />
-                        </Box>
+                        </div>
                       </Tooltip>
                     ) : getTemperature(drive.smart) !== null ? (
                       <Tooltip
@@ -432,14 +425,14 @@ const DiskOverview: React.FC = () => {
                         slots={{ transition: Fade }}
                         slotProps={{ transition: { timeout: 300 } }}
                       >
-                        <Box
-                          sx={{
+                        <div
+                          style={{
                             position: "absolute",
                             top: 12,
                             right: 12,
                             display: "flex",
                             alignItems: "center",
-                            gap: 0.5,
+                            gap: 2,
                           }}
                         >
                           <Typography
@@ -451,10 +444,16 @@ const DiskOverview: React.FC = () => {
                           >
                             {getTemperature(drive.smart)}°C
                           </Typography>
-                        </Box>
+                        </div>
                       </Tooltip>
                     ) : null}
-                    <Box display="flex" alignItems="center" mb={1.5}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        marginBottom: 6,
+                      }}
+                    >
                       <Icon
                         icon={
                           drive.transport === "nvme"
@@ -464,7 +463,7 @@ const DiskOverview: React.FC = () => {
                         width={32}
                         color={theme.palette.primary.main}
                       />
-                      <Box ml={1.5} flexGrow={1} minWidth={0}>
+                      <div style={{ marginLeft: 6, flexGrow: 1, minWidth: 0 }}>
                         <Typography variant="subtitle1" fontWeight={600} noWrap>
                           /dev/{drive.name}
                         </Typography>
@@ -476,9 +475,9 @@ const DiskOverview: React.FC = () => {
                         >
                           {drive.model || "Unknown Model"}
                         </Typography>
-                      </Box>
-                    </Box>
-                    <Box display="flex" gap={1} flexWrap="wrap">
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       <Chip
                         label={formatFileSize(drive.sizeBytes)}
                         size="small"
@@ -504,7 +503,7 @@ const DiskOverview: React.FC = () => {
                           variant="filled"
                         />
                       )}
-                    </Box>
+                    </div>
                     <DriveDetails
                       drive={drive}
                       expanded={expanded === drive.name}
@@ -536,7 +535,7 @@ const DiskOverview: React.FC = () => {
             ) : (
               relevantFS.map((fs) => (
                 <Grid key={fs.mountpoint} size={{ xs: 12, sm: 6, md: 4 }}>
-                  <FrostedCard sx={{ p: 2 }}>
+                  <FrostedCard style={{ padding: 8 }}>
                     <Typography
                       variant="subtitle2"
                       fontWeight={600}
@@ -577,7 +576,7 @@ const DiskOverview: React.FC = () => {
           </Grid>
         </>
       )}
-    </Box>
+    </div>
   );
 };
 

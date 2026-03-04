@@ -1,9 +1,11 @@
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { Button } from "@mui/material";
-import React, { useMemo } from "react";
+import SettingsIcon from "@mui/icons-material/Settings";
+import { Button, IconButton, Tooltip } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import React, { useMemo, useState } from "react";
 
 import UpdateHistory from "./UpdateHistory";
-import UpdateSettings from "./UpdateSettings";
+import UpdateSettingsDialog from "./UpdateSettingsDialog";
 import UpdateStatus from "./UpdateStatus";
 
 import { linuxio } from "@/api";
@@ -11,6 +13,9 @@ import { TabContainer } from "@/components/tabbar";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 
 const Updates: React.FC = () => {
+  const theme = useTheme();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   // Query updates - use GetUpdatesBasic for fast initial load
   // This skips the slow GetUpdateDetail D-Bus call
   const {
@@ -35,52 +40,72 @@ const Updates: React.FC = () => {
   } = usePackageUpdater(refetch);
 
   return (
-    <TabContainer
-      tabs={[
-        {
-          value: "updates",
-          label: "Updates",
-          component: (
-            <UpdateStatus
-              updates={updates}
-              isLoading={isLoading}
-              onUpdateOne={updateOne}
-              updatingPackage={updatingPackage}
-              progress={progress}
-              status={status}
-              eventLog={eventLog}
-              error={error}
-              onClearError={clearError}
-              onCancel={cancelUpdate}
-            />
-          ),
-          rightContent:
-            updates.length > 0 ? (
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<RefreshIcon />}
-                disabled={!!updatingPackage || isLoading}
-                onClick={() => updateAll(updates.map((u) => u.package_id))}
+    <>
+      <TabContainer
+        tabs={[
+          {
+            value: "updates",
+            label: "Updates",
+            component: (
+              <UpdateStatus
+                updates={updates}
+                isLoading={isLoading}
+                onUpdateOne={updateOne}
+                updatingPackage={updatingPackage}
+                progress={progress}
+                status={status}
+                eventLog={eventLog}
+                error={error}
+                onClearError={clearError}
+                onCancel={cancelUpdate}
+              />
+            ),
+            rightContent: (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: theme.spacing(1),
+                }}
               >
-                Update All ({updates.length})
-              </Button>
-            ) : null,
-        },
-        {
-          value: "history",
-          label: "History",
-          component: <UpdateHistory />,
-        },
-        {
-          value: "settings",
-          label: "Settings",
-          component: <UpdateSettings />,
-        },
-      ]}
-      defaultTab="updates"
-      urlParam="updateTab"
-    />
+                <Tooltip title="Update settings">
+                  <IconButton
+                    size="small"
+                    aria-label="Open update settings"
+                    onClick={() => setSettingsOpen(true)}
+                  >
+                    <SettingsIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                {updates.length > 0 ? (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<RefreshIcon />}
+                    disabled={!!updatingPackage || isLoading}
+                    onClick={() => updateAll(updates.map((u) => u.package_id))}
+                  >
+                    Update All ({updates.length})
+                  </Button>
+                ) : null}
+              </div>
+            ),
+          },
+          {
+            value: "history",
+            label: "History",
+            component: <UpdateHistory />,
+          },
+        ]}
+        defaultTab="updates"
+        urlParam="updateTab"
+      />
+
+      <UpdateSettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+    </>
   );
 };
 

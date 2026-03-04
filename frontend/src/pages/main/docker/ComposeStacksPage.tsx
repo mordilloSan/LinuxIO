@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -471,7 +470,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 
   return (
     <Suspense fallback={<ComponentLoader />}>
-      <Box>
+      <div>
         {isPending ? (
           <ComponentLoader />
         ) : (
@@ -567,7 +566,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
             </Button>
           </DialogActions>
         </Dialog>
-      </Box>
+      </div>
     </Suspense>
   );
 };

@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -226,7 +225,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <Typography variant="h6">
               {readOnly
                 ? "View Docker Compose Stack"
@@ -247,16 +246,16 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
                 disabled={isSaving}
               />
             ) : (
-              <Box>
+              <div>
                 <Typography variant="body2" color="text.secondary">
                   Stack: <strong>{stackName}</strong>
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   File: {filePath}
                 </Typography>
-              </Box>
+              </div>
             )}
-          </Box>
+          </div>
         </DialogTitle>
 
         <DialogContent sx={{ p: 0, display: "flex", flexDirection: "column" }}>
@@ -265,11 +264,11 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
             isValidating={isValidating}
           />
 
-          <Box sx={{ flex: 1, overflow: "hidden" }}>
+          <div style={{ flex: 1, overflow: "hidden" }}>
             <Suspense
               fallback={
-                <Box
-                  sx={{
+                <div
+                  style={{
                     width: "100%",
                     height: "100%",
                     display: "flex",
@@ -278,7 +277,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
                   }}
                 >
                   <ComponentLoader />
-                </Box>
+                </div>
               }
             >
               <FileEditor
@@ -291,7 +290,7 @@ const ComposeEditorDialog: React.FC<ComposeEditorDialogProps> = ({
                 onDirtyChange={readOnly ? undefined : setIsEditorDirty}
               />
             </Suspense>
-          </Box>
+          </div>
         </DialogContent>
 
         <DialogActions
