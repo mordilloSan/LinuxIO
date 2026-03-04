@@ -1,12 +1,12 @@
 import CancelIcon from "@mui/icons-material/Cancel";
 import CloseIcon from "@mui/icons-material/Close";
 import {
-  Box,
-  LinearProgress,
-  Typography,
   Alert,
   IconButton,
+  LinearProgress,
+  Stack,
   Tooltip,
+  Typography,
 } from "@mui/material";
 import React from "react";
 
@@ -53,7 +53,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
   };
 
   return (
-    <Box sx={{ mb: 3 }}>
+    <Stack sx={{ mb: 3 }}>
       {/* Error Alert */}
       {error && (
         <Alert
@@ -78,10 +78,10 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
 
       {/* Progress Indicator */}
       {isUpdating && (
-        <Box sx={{ mt: 2 }}>
-          <Box
+        <Stack sx={{ mt: 2 }}>
+          <Stack
+            direction="row"
             sx={{
-              display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
               mb: 1,
@@ -90,7 +90,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
             <Typography variant="body2" color="text.secondary">
               {getStatusText()}
             </Typography>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 {Math.round(progress)}%
               </Typography>
@@ -101,15 +101,15 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                   </IconButton>
                 </Tooltip>
               )}
-            </Box>
-          </Box>
+            </Stack>
+          </Stack>
           <LinearProgress
             variant="determinate"
             value={progress}
             sx={{ height: 8, borderRadius: 1 }}
           />
           {eventLog && eventLog.length > 0 && (
-            <Box sx={{ mt: 1 }}>
+            <Stack sx={{ mt: 1 }}>
               {eventLog.map((line, index) => (
                 <Typography
                   key={`${index}-${line}`}
@@ -120,11 +120,11 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                   {line}
                 </Typography>
               ))}
-            </Box>
+            </Stack>
           )}
-        </Box>
+        </Stack>
       )}
-    </Box>
+    </Stack>
   );
 };
 

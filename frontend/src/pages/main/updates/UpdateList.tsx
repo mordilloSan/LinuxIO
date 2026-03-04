@@ -1,11 +1,11 @@
 import {
-  Box,
   CardContent,
-  Typography,
   Chip,
-  Grid,
-  Collapse,
   CircularProgress,
+  Collapse,
+  Grid,
+  Stack,
+  Typography,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -94,9 +94,9 @@ const UpdateList: React.FC<Props> = ({
 
   if (!updates.length && !isUpdating) {
     return (
-      <Box sx={{ textAlign: "left" }}>
+      <Stack sx={{ textAlign: "left" }}>
         <Typography variant="h6">Your system is up to date </Typography>
-      </Box>
+      </Stack>
     );
   }
 
@@ -110,7 +110,7 @@ const UpdateList: React.FC<Props> = ({
         <Grid key={idx} size={{ xs: 12, sm: 4, md: 4, lg: 3, xl: 2 }}>
           <FrostedCard hoverLift>
             <CardContent>
-              <Box
+              <Stack
                 sx={{
                   display: "flex",
                   justifyContent: "space-between",
@@ -128,7 +128,7 @@ const UpdateList: React.FC<Props> = ({
                 >
                   {update.summary}
                 </Typography>
-              </Box>
+              </Stack>
 
               <Typography
                 variant="body2"
@@ -158,9 +158,9 @@ const UpdateList: React.FC<Props> = ({
                 Version: {update.version}
               </Typography>
 
-              <Box
+              <Stack
+                direction="row"
                 sx={{
-                  display: "flex",
                   flexWrap: "wrap",
                   gap: 3,
                   mt: 4,
@@ -190,22 +190,22 @@ const UpdateList: React.FC<Props> = ({
                   }}
                   sx={{ cursor: "pointer" }}
                 />
-              </Box>
+              </Stack>
 
               <Collapse in={expandedIdx === idx} timeout="auto" unmountOnExit>
-                <Box sx={{ whiteSpace: "pre-wrap", fontSize: 14, mt: 4 }}>
+                <Stack sx={{ whiteSpace: "pre-wrap", fontSize: 14, mt: 4 }}>
                   {loadingChangelog === update.package_id ? (
-                    <Box
+                    <Stack
                       sx={{ display: "flex", justifyContent: "center", py: 2 }}
                     >
                       <CircularProgress size={20} />
-                    </Box>
+                    </Stack>
                   ) : (
                     <Typography variant="body2" color="text.secondary">
                       {changelogs[update.package_id] || "Loading..."}
                     </Typography>
                   )}
-                </Box>
+                </Stack>
               </Collapse>
             </CardContent>
           </FrostedCard>

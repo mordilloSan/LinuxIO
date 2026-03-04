@@ -1,4 +1,3 @@
-import { Box } from "@mui/material";
 import React from "react";
 
 import UpdateActions from "./UpdateActions";
@@ -32,7 +31,7 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({
   onCancel,
 }) => {
   return (
-    <Box>
+    <div>
       <UpdateActions
         isUpdating={!!updatingPackage}
         currentPackage={updatingPackage}
@@ -51,7 +50,7 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({
         currentPackage={updatingPackage}
         isLoading={isLoading}
       />
-    </Box>
+    </div>
   );
 };
 

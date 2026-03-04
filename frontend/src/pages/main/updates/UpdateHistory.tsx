@@ -1,12 +1,12 @@
 import HistoryIcon from "@mui/icons-material/History";
 import {
-  Typography,
-  Box,
+  Chip,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableRow,
-  Chip,
+  Typography,
 } from "@mui/material";
 import React from "react";
 
@@ -38,7 +38,7 @@ const UpdateHistory: React.FC = () => {
       columns={columns}
       getRowKey={(row, index) => index}
       renderFirstCell={() => (
-        <Box
+        <Stack
           sx={{
             display: "flex",
             alignItems: "center",
@@ -46,7 +46,7 @@ const UpdateHistory: React.FC = () => {
           }}
         >
           <HistoryIcon fontSize="small" />
-        </Box>
+        </Stack>
       )}
       renderMainRow={(row) => (
         <>

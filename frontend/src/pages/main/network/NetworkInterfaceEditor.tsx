@@ -1,14 +1,14 @@
 import {
-  Box,
   Button,
   Collapse,
+  Chip,
+  FormControlLabel,
+  Stack,
+  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
-  Chip,
-  Switch,
-  FormControlLabel,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
@@ -336,9 +336,9 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
 
   return (
     <Collapse in={expanded} timeout="auto" unmountOnExit>
-      <Box mt={2} p={2} borderRadius={1}>
-        <Box
-          display="flex"
+      <Stack sx={{ mt: 2, p: 2, borderRadius: 1 }}>
+        <Stack
+          direction="row"
           alignItems="center"
           justifyContent="space-between"
           sx={{ mb: 2 }}
@@ -374,7 +374,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
                     : "IPv4: unknown"
             }
           />
-        </Box>
+        </Stack>
 
         <ToggleButtonGroup
           value={mode}
@@ -388,14 +388,14 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
         </ToggleButtonGroup>
 
         {mode === "auto" ? (
-          <Box>
+          <Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               The interface will automatically obtain IP address, gateway, and
               DNS from a DHCP server.
             </Typography>
-          </Box>
+          </Stack>
         ) : (
-          <Box>
+          <Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Configure static network settings. All fields are required.
             </Typography>
@@ -432,18 +432,21 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
               helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
               sx={{ mb: 2 }}
             />
-          </Box>
+          </Stack>
         )}
 
-        <Box display="flex" justifyContent="flex-end" gap={1} mt={2}>
+        <Stack
+          direction="row"
+          sx={{ justifyContent: "flex-end", gap: 1, mt: 2 }}
+        >
           <Button onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Apply Configuration"}
           </Button>
-        </Box>
-      </Box>
+        </Stack>
+      </Stack>
     </Collapse>
   );
 };

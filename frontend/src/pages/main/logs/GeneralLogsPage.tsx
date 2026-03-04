@@ -8,7 +8,6 @@ import WarningIcon from "@mui/icons-material/Warning";
 import {
   Alert,
   Autocomplete,
-  Box,
   Chip,
   FormControl,
   FormControlLabel,
@@ -19,6 +18,7 @@ import {
   Paper,
   Select,
   Switch,
+  Stack,
   TableCell,
   TextField,
   Tooltip,
@@ -421,7 +421,7 @@ const GeneralLogsPage: React.FC = () => {
   // Render icon for first cell
   const renderIcon = useCallback((log: LogEntry) => {
     return (
-      <Box
+      <Stack
         sx={{
           display: "flex",
           alignItems: "center",
@@ -429,7 +429,7 @@ const GeneralLogsPage: React.FC = () => {
         }}
       >
         {getPriorityIcon(log.priority)}
-      </Box>
+      </Stack>
     );
   }, []);
 
@@ -552,11 +552,11 @@ const GeneralLogsPage: React.FC = () => {
   }, []);
 
   return (
-    <Box>
+    <Stack>
       {/* Filters */}
-      <Box
+      <Stack
+        direction="row"
         sx={{
-          display: "flex",
           gap: 2,
           flexWrap: "wrap",
           alignItems: "center",
@@ -677,15 +677,15 @@ const GeneralLogsPage: React.FC = () => {
             label="Live"
           />
         </Tooltip>
-        <Box fontWeight="bold">{filteredLogs.length} shown</Box>
-      </Box>
+        <Typography fontWeight="bold">{filteredLogs.length} shown</Typography>
+      </Stack>
 
       {isLoading && <ComponentLoader />}
 
       {error && <Alert severity="error">{error}</Alert>}
 
       {!isLoading && !error && (
-        <Box ref={logsBoxRef}>
+        <Stack ref={logsBoxRef}>
           <UnifiedCollapsibleTable
             data={filteredLogs}
             columns={columns}
@@ -697,9 +697,9 @@ const GeneralLogsPage: React.FC = () => {
               logs.length === 0 ? "No logs available." : "No matching logs."
             }
           />
-        </Box>
+        </Stack>
       )}
-    </Box>
+    </Stack>
   );
 };
 

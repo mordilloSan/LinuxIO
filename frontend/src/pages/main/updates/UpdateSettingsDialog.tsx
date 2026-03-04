@@ -1,10 +1,10 @@
 import CloseIcon from "@mui/icons-material/Close";
 import {
-  Box,
   Chip,
   DialogContent,
   DialogTitle,
   IconButton,
+  Stack,
   Typography,
   useTheme,
 } from "@mui/material";
@@ -36,7 +36,7 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
           px: 2,
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Automatic Updates
           </Typography>
@@ -54,7 +54,7 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
           >
             <CloseIcon fontSize="small" />
           </IconButton>
-        </Box>
+        </Stack>
       </DialogTitle>
 
       <DialogContent sx={{ px: 3, py: 3 }}>

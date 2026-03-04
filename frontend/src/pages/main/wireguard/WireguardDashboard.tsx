@@ -1,4 +1,4 @@
-import { Grid, Typography, Box } from "@mui/material";
+import { Grid, Stack, Typography } from "@mui/material";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -247,11 +247,11 @@ const WireGuardDashboard: React.FC = () => {
                   transition={{ duration: 0.5 }}
                   layout
                 >
-                  <Box mt={4} mb={2}>
+                  <Stack sx={{ mt: 4, mb: 2 }}>
                     <Typography variant="h5" gutterBottom>
                       Clients for {selectedInterface}
                     </Typography>
-                  </Box>
+                  </Stack>
                   <div ref={interfaceDetailsRef}>
                     <InterfaceDetails params={{ id: selectedInterface }} />
                   </div>

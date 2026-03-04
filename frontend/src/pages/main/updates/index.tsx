@@ -1,6 +1,6 @@
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SettingsIcon from "@mui/icons-material/Settings";
-import { Box, Button, IconButton, Tooltip } from "@mui/material";
+import { Button, IconButton, Stack, Tooltip } from "@mui/material";
 import React, { useMemo, useState } from "react";
 
 import UpdateHistory from "./UpdateHistory";
@@ -59,7 +59,7 @@ const Updates: React.FC = () => {
               />
             ),
             rightContent: (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
                 <Tooltip title="Update settings">
                   <IconButton
                     size="small"
@@ -80,7 +80,7 @@ const Updates: React.FC = () => {
                     Update All ({updates.length})
                   </Button>
                 ) : null}
-              </Box>
+              </Stack>
             ),
           },
           {

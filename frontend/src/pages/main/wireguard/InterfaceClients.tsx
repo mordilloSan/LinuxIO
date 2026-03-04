@@ -2,15 +2,15 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import GetAppIcon from "@mui/icons-material/GetApp";
 import QrCodeIcon from "@mui/icons-material/QrCode";
 import {
-  Grid,
   CardContent,
-  Typography,
-  Box,
-  IconButton,
+  Chip,
   Dialog,
   DialogContent,
-  Chip,
+  Grid,
+  IconButton,
+  Stack,
   Tooltip,
+  Typography,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
@@ -213,12 +213,12 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
               >
                 <FrostedCard>
                   <CardContent>
-                    <Box
-                      display="flex"
+                    <Stack
+                      direction="row"
                       justifyContent="space-between"
                       alignItems="center"
                     >
-                      <Box display="flex" alignItems="center" gap={1}>
+                      <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
                         <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
                           {peer.name || "Peer"}
                         </Typography>
@@ -236,8 +236,8 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                             variant={isOnline ? "filled" : "outlined"}
                           />
                         </Tooltip>
-                      </Box>
-                      <Box>
+                      </Stack>
+                      <Stack direction="row">
                         <IconButton
                           aria-label="Delete"
                           onClick={() => handleDeletePeer(peer.name)}
@@ -257,8 +257,8 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                         >
                           <QrCodeIcon />
                         </IconButton>
-                      </Box>
-                    </Box>
+                      </Stack>
+                    </Stack>
 
                     <Typography variant="body2" sx={{ mt: 0.5 }}>
                       Handshake: {formatAgo(peer.last_handshake_unix)}

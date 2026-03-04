@@ -1,19 +1,20 @@
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  Box,
   Alert,
+  Button,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   FormHelperText,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  TextField,
 } from "@mui/material";
 import React from "react";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 
 interface CreateInterfaceDialogProps {
   open: boolean;
@@ -72,10 +73,10 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
     );
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+    <GeneralDialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>Create New Interface</DialogTitle>
       <DialogContent>
-        <Box mt={2}>
+        <Stack sx={{ mt: 2 }}>
           <TextField
             label="Interface Name"
             value={serverName}
@@ -152,7 +153,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
               {error}
             </Alert>
           )}
-        </Box>
+        </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} color="secondary" disabled={loading}>
@@ -174,7 +175,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
           {loading ? "Creating..." : "Create Interface"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

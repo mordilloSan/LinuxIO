@@ -1,4 +1,4 @@
-import { Typography, Box } from "@mui/material";
+import { Stack, Typography } from "@mui/material";
 import { FC } from "react";
 
 import CreateInterfaceButton from "./CreateInterfaceButton";
@@ -7,17 +7,17 @@ import WireGuardDashboard from "./WireguardDashboard";
 const Page: FC = () => {
   return (
     <>
-      <Box
-        display="flex"
+      <Stack
+        direction="row"
         alignItems="center"
         justifyContent="space-between"
-        mb={2}
+        sx={{ mb: 2 }}
       >
         <Typography variant="h4" component="h1">
           Interface Dashboard
         </Typography>
         <CreateInterfaceButton />
-      </Box>
+      </Stack>
       <WireGuardDashboard />
     </>
   );
