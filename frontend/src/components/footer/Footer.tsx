@@ -1,4 +1,5 @@
-import { Box, useTheme, Typography } from "@mui/material";
+import { Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
@@ -14,24 +15,24 @@ function Footer() {
   });
 
   return (
-    <Box
-      sx={{
+    <div
+      style={{
         width: "100%",
         background: theme.footer?.background || theme.palette.background.paper,
         position: "relative",
         zIndex: 1300,
       }}
     >
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           flexWrap: "wrap",
           alignItems: "center",
-          px: 1,
+          paddingInline: 4,
         }}
       >
-        <Box
-          sx={{
+        <div
+          style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-start",
@@ -51,13 +52,13 @@ function Footer() {
               </Typography>
             )}
           </ErrorBoundary>
-        </Box>
-        <Box
-          sx={{
+        </div>
+        <div
+          style={{
             display: "flex",
             alignItems: "center",
-            gap: 1,
-            ml: "auto",
+            gap: 4,
+            marginLeft: "auto",
           }}
         >
           <ErrorBoundary>
@@ -66,9 +67,9 @@ function Footer() {
           <ErrorBoundary>
             <FileNotifications />
           </ErrorBoundary>
-        </Box>
-      </Box>
-    </Box>
+        </div>
+      </div>
+    </div>
   );
 }
 

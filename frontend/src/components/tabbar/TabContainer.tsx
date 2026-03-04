@@ -1,4 +1,3 @@
-import { Box } from "@mui/material";
 import React, { useMemo } from "react";
 
 import TabPanel from "./TabPanel";
@@ -43,7 +42,7 @@ const TabContainer: React.FC<TabContainerProps> = ({
   defaultTab,
   urlParam = "tab",
   fadeTimeout = 300,
-  containerSx = { px: 2 },
+  containerStyle = { paddingInline: 8 },
   errorFallback,
 }) => {
   // Sync tab state with URL query parameter
@@ -68,7 +67,7 @@ const TabContainer: React.FC<TabContainerProps> = ({
   );
 
   return (
-    <Box sx={containerSx}>
+    <div style={containerStyle}>
       {/* Tab selector with optional rightContent from active tab */}
       <TabSelector
         value={validTab}
@@ -78,7 +77,7 @@ const TabContainer: React.FC<TabContainerProps> = ({
       />
 
       {/* Container for tab panels with relative positioning for absolute children */}
-      <Box sx={{ position: "relative", minHeight: 400 }}>
+      <div style={{ position: "relative", minHeight: 400 }}>
         {tabs.map((tab) => (
           <TabPanel
             key={tab.value}
@@ -90,8 +89,8 @@ const TabContainer: React.FC<TabContainerProps> = ({
             {tab.component}
           </TabPanel>
         ))}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

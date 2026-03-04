@@ -3,7 +3,6 @@ import {
   Paper,
   ToggleButton,
   ToggleButtonGroup,
-  Box,
   IconButton,
   Popover,
   useMediaQuery,
@@ -38,13 +37,13 @@ const TabSelector: React.FC<TabSelectorProps> = ({
   const contrast = theme.palette.getContrastText(primaryHex);
 
   return (
-    <Box
-      sx={{
+    <div
+      style={{
         display: "flex",
         alignItems: "flex-start",
         justifyContent: "space-between",
-        gap: 2,
-        mb: 2,
+        gap: 8,
+        marginBottom: 8,
         width: "100%",
         minWidth: 0,
       }}
@@ -115,35 +114,35 @@ const TabSelector: React.FC<TabSelectorProps> = ({
                 anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
                 transformOrigin={{ vertical: "top", horizontal: "right" }}
               >
-                <Box
-                  sx={{
-                    p: 1.5,
+                <div
+                  style={{
+                    padding: 6,
                     display: "flex",
                     flexDirection: "column",
-                    gap: 1,
+                    gap: 4,
                   }}
                 >
                   {rightContent}
-                </Box>
+                </div>
               </Popover>
             </>
           ) : (
-            <Box
-              sx={{
+            <div
+              style={{
                 display: "flex",
                 alignItems: "center",
                 alignSelf: "flex-start",
-                mt: 0.5,
-                gap: 1,
+                marginTop: 2,
+                gap: 4,
                 flexShrink: 0,
               }}
             >
               {rightContent}
-            </Box>
+            </div>
           )}
         </>
       )}
-    </Box>
+    </div>
   );
 };
 

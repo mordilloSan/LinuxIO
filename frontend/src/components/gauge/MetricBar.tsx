@@ -1,4 +1,4 @@
-import { Box, Tooltip, Typography, LinearProgress } from "@mui/material";
+import { Tooltip, Typography, LinearProgress } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -23,26 +23,26 @@ const MetricBar: React.FC<MetricBarProps> = ({
 
   return (
     <Tooltip title={tooltip ?? ""}>
-      <Box sx={{ width: "100%", mb: 1 }}>
-        <Box
-          sx={{
+      <div style={{ width: "100%", marginBottom: 4 }}>
+        <div
+          style={{
             display: "flex",
             justifyContent: "space-between",
-            mb: 0.5,
-            px: 0.5,
+            marginBottom: 2,
+            paddingInline: 2,
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
             {icon}
             <Typography variant="caption">{label}</Typography>
-          </Box>
+          </div>
           <Typography
             variant="caption"
             sx={{ fontVariantNumeric: "tabular-nums" }}
           >
             {rightLabel}
           </Typography>
-        </Box>
+        </div>
         <LinearProgress
           variant="determinate"
           value={percent}
@@ -61,7 +61,7 @@ const MetricBar: React.FC<MetricBarProps> = ({
             },
           }}
         />
-      </Box>
+      </div>
     </Tooltip>
   );
 };

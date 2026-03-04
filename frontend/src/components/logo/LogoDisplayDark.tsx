@@ -1,4 +1,4 @@
-import { Box, Typography } from "@mui/material";
+import { Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -26,25 +26,24 @@ const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
       }}
     >
       {showText && (
-        <Box
-          component="span"
-          sx={{
+        <span
+          style={{
             display: "inline-block",
             whiteSpace: "nowrap",
-            mr: 1, // space before the badge
+            marginRight: 4,
           }}
         >
           Linux
-        </Box>
+        </span>
       )}
 
-      <Box
-        sx={{
+      <span
+        style={{
           width: 36,
           height: 36,
           borderRadius: "50%",
           border: `3px solid ${theme.palette.primary.main}`,
-          display: "flex",
+          display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
           fontWeight: 900,
@@ -55,7 +54,7 @@ const LogoDisplayDark: React.FC<LogoDisplayDarkProps> = ({
         }}
       >
         i/O
-      </Box>
+      </span>
     </Typography>
   );
 };

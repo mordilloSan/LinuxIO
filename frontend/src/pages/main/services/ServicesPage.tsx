@@ -33,7 +33,7 @@ const ServicesPage: React.FC = () => (
     tabs={TABS}
     defaultTab="services"
     urlParam="section"
-    containerSx={{ px: 0 }}
+    containerStyle={{ paddingInline: 0 }}
   />
 );
 

@@ -25,6 +25,12 @@
   color: var(--ab-hover-color);
 }
 
+/* DevToolsButton: hover border and shadow */
+.devtools-btn:hover {
+  border-color: var(--devtools-hover-border) !important;
+  box-shadow: var(--devtools-hover-shadow);
+}
+
 /* DashboardCard: truncate typography in stats columns */
 .dc-stats-col > * {
   min-width: 0;

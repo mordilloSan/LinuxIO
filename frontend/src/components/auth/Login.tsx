@@ -2,35 +2,17 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   Alert,
-  Box,
   Button,
   IconButton,
   InputAdornment,
   TextField,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { keyframes } from "@mui/system";
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import "./login.css";
 import useAuth from "@/hooks/useAuth";
-
-const reveal = keyframes`
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
-
-const revealSx = (delayMs: number) => ({
-  opacity: 0,
-  transform: "translateY(10px)",
-  animation: `${reveal} 0.45s ease forwards`,
-  animationDelay: `${delayMs}ms`,
-  "@media (prefers-reduced-motion: reduce)": {
-    animation: "none",
-    opacity: 1,
-    transform: "none",
-  },
-});
 
 const fieldSx = (theme: any) => ({
   my: 1,
@@ -100,6 +82,8 @@ function LogIn() {
       {error && (
         <Alert
           severity="warning"
+          className="login-reveal"
+          style={{ "--login-reveal-delay": "60ms" } as React.CSSProperties}
           sx={{
             mb: 2,
             borderRadius: 2,
@@ -107,13 +91,15 @@ function LogIn() {
               `1px solid ${alpha(theme.palette.warning.main, 0.35)}`,
             backgroundColor: (theme) => alpha(theme.palette.warning.main, 0.18),
             color: "text.primary",
-            ...revealSx(60),
           }}
         >
           {error}
         </Alert>
       )}
-      <Box sx={revealSx(140)}>
+      <div
+        className="login-reveal"
+        style={{ "--login-reveal-delay": "140ms" } as React.CSSProperties}
+      >
         <TextField
           label="Username"
           fullWidth
@@ -123,9 +109,12 @@ function LogIn() {
           sx={fieldSx}
           slotProps={{ inputLabel: { shrink: true } }}
         />
-      </Box>
+      </div>
 
-      <Box sx={revealSx(220)}>
+      <div
+        className="login-reveal"
+        style={{ "--login-reveal-delay": "220ms" } as React.CSSProperties}
+      >
         <TextField
           label="Password"
           type={showPassword ? "text" : "password"}
@@ -154,9 +143,12 @@ function LogIn() {
             },
           }}
         />
-      </Box>
+      </div>
 
-      <Box sx={revealSx(300)}>
+      <div
+        className="login-reveal"
+        style={{ "--login-reveal-delay": "300ms" } as React.CSSProperties}
+      >
         <Button
           type="submit"
           variant="contained"
@@ -188,7 +180,7 @@ function LogIn() {
         >
           Sign in
         </Button>
-      </Box>
+      </div>
     </form>
   );
 }
