@@ -1,5 +1,5 @@
 import ThermostatIcon from "@mui/icons-material/Thermostat";
-import { Typography, Box } from "@mui/material";
+import { Stack, Typography } from "@mui/material";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -24,7 +24,7 @@ const GpuInfo: React.FC = () => {
     );
   } else {
     content = (
-      <Box
+      <Stack
         sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
       >
         {gpus.flatMap((gpu, idx) =>
@@ -37,12 +37,12 @@ const GpuInfo: React.FC = () => {
             { label: "Driver", value: gpu.driver, key: `driver-${idx}` },
             { label: "Address", value: gpu.address, key: `address-${idx}` },
           ].map(({ label, value, key }) => (
-            <Box
+            <Stack
               key={key}
+              direction="row"
+              alignItems="baseline"
               sx={{
-                display: "flex",
                 justifyContent: "flex-start",
-                alignItems: "baseline",
                 py: 0.5,
                 borderBottom: "1px solid",
                 borderColor: "divider",
@@ -65,10 +65,10 @@ const GpuInfo: React.FC = () => {
               <Typography variant="body2" fontWeight={500} noWrap>
                 {value}
               </Typography>
-            </Box>
+            </Stack>
           )),
         )}
-      </Box>
+      </Stack>
     );
   }
 

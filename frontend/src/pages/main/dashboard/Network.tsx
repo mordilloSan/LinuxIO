@@ -1,4 +1,4 @@
-import { Box, Typography } from "@mui/material";
+import { Stack, Typography } from "@mui/material";
 import React, { useMemo, useState } from "react";
 
 import NetworkGraph from "./NetworkGraph";
@@ -71,7 +71,7 @@ const NetworkInterfacesCard: React.FC = () => {
       <ComponentLoader />
     ) : (
       // Variant D: uppercase overline grey label + right-aligned white value
-      <Box
+      <Stack
         sx={{
           display: "flex",
           flexDirection: "column",
@@ -89,12 +89,12 @@ const NetworkInterfacesCard: React.FC = () => {
           { label: "MAC", value: selectedInterface.mac },
           { label: "Speed", value: selectedInterface.speed },
         ].map(({ label, value }) => (
-          <Box
+          <Stack
             key={label}
+            direction="row"
+            alignItems="baseline"
             sx={{
-              display: "flex",
               justifyContent: "flex-start",
-              alignItems: "baseline",
               py: 0.5,
               borderBottom: "1px solid",
               borderColor: "divider",
@@ -117,9 +117,9 @@ const NetworkInterfacesCard: React.FC = () => {
             <Typography variant="body2" fontWeight={500} noWrap>
               {value}
             </Typography>
-          </Box>
+          </Stack>
         ))}
-      </Box>
+      </Stack>
     )
   ) : (
     <Typography variant="body2">No interface selected.</Typography>
@@ -129,13 +129,13 @@ const NetworkInterfacesCard: React.FC = () => {
     isLoading ? (
       <ComponentLoader />
     ) : (
-      <Box sx={{ height: "90px", width: "100%", minWidth: 0 }}>
+      <Stack sx={{ height: "90px", width: "100%", minWidth: 0 }}>
         <NetworkGraph
           key={effectiveSelected}
           rx={selectedInterface.rx_speed}
           tx={selectedInterface.tx_speed}
         />
-      </Box>
+      </Stack>
     )
   ) : (
     <Typography variant="body2">No graph data.</Typography>

@@ -1,5 +1,5 @@
 import TemperatureIcon from "@mui/icons-material/Thermostat";
-import { Box, Typography } from "@mui/material";
+import { Stack, Typography } from "@mui/material";
 import React from "react";
 
 import ProcessorGraph from "./ProcessorGraph";
@@ -43,12 +43,12 @@ const Processor: React.FC = () => {
     ) : isPending ? (
       <ComponentLoader />
     ) : (
-      <Box sx={{ height: "90px", width: "100%", minWidth: 0 }}>
+      <Stack sx={{ height: "90px", width: "100%", minWidth: 0 }}>
         <ProcessorGraph usage={averageCpuUsage} />
-      </Box>
+      </Stack>
     ),
     stats: (
-      <Box
+      <Stack
         sx={{
           display: "flex",
           flexDirection: "column",
@@ -67,12 +67,12 @@ const Processor: React.FC = () => {
             value: `${Math.max(...(CPUInfo?.perCoreUsage || [0])).toFixed(0)}%`,
           },
         ].map(({ label, value }) => (
-          <Box
+          <Stack
             key={label}
+            direction="row"
+            alignItems="baseline"
             sx={{
-              display: "flex",
               justifyContent: "flex-start",
-              alignItems: "baseline",
               py: 0.5,
               borderBottom: "1px solid",
               borderColor: "divider",
@@ -95,9 +95,9 @@ const Processor: React.FC = () => {
             <Typography variant="body2" fontWeight={500} noWrap>
               {value}
             </Typography>
-          </Box>
+          </Stack>
         ))}
-      </Box>
+      </Stack>
     ),
     icon_text: IconText,
     icon: TemperatureIcon,

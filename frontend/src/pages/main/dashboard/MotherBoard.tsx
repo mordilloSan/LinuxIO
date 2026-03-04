@@ -1,5 +1,5 @@
 import TemperatureIcon from "@mui/icons-material/Thermostat";
-import { Typography, Box } from "@mui/material";
+import { Stack, Typography } from "@mui/material";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -12,7 +12,7 @@ const MotherBoardInfo: React.FC = () => {
     });
 
   const visibleDetails = motherboardInfo ? (
-    <Box
+    <Stack
       sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
     >
       {[
@@ -25,12 +25,12 @@ const MotherBoardInfo: React.FC = () => {
           value: `${motherboardInfo.bios.vendor}, V.${motherboardInfo.bios.version}`,
         },
       ].map(({ label, value }) => (
-        <Box
+        <Stack
           key={label}
+          direction="row"
+          alignItems="baseline"
           sx={{
-            display: "flex",
             justifyContent: "flex-start",
-            alignItems: "baseline",
             py: 0.5,
             borderBottom: "1px solid",
             borderColor: "divider",
@@ -53,9 +53,9 @@ const MotherBoardInfo: React.FC = () => {
           <Typography variant="body2" fontWeight={500} noWrap>
             {value}
           </Typography>
-        </Box>
+        </Stack>
       ))}
-    </Box>
+    </Stack>
   ) : (
     <Typography variant="body2">No system information available.</Typography>
   );

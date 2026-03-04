@@ -14,12 +14,12 @@ import {
 } from "@dnd-kit/sortable";
 import { DragIndicator, Settings } from "@mui/icons-material";
 import {
-  Box,
   Checkbox,
   FormControlLabel,
   Grid,
   IconButton,
   Popover,
+  Stack,
   Tooltip,
 } from "@mui/material";
 import React, { useCallback, useMemo, useState } from "react";
@@ -130,8 +130,8 @@ const Dashboard: React.FC = () => {
   );
 
   return (
-    <Box>
-      <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 1 }}>
+    <Stack>
+      <Stack direction="row" sx={{ justifyContent: "flex-end", mb: 1 }}>
         <Tooltip title="Card visibility">
           <IconButton
             onClick={(e) => setAnchorEl(e.currentTarget)}
@@ -149,7 +149,7 @@ const Dashboard: React.FC = () => {
             <DragIndicator />
           </IconButton>
         </Tooltip>
-      </Box>
+      </Stack>
 
       <Popover
         open={Boolean(anchorEl)}
@@ -158,7 +158,7 @@ const Dashboard: React.FC = () => {
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <Box sx={{ p: 2, display: "flex", flexDirection: "column" }}>
+        <Stack sx={{ p: 2, display: "flex", flexDirection: "column" }}>
           {availableCards.map((card) => (
             <FormControlLabel
               key={card.id}
@@ -172,7 +172,7 @@ const Dashboard: React.FC = () => {
               label={card.label}
             />
           ))}
-        </Box>
+        </Stack>
       </Popover>
 
       <DndContext
@@ -194,7 +194,7 @@ const Dashboard: React.FC = () => {
           </Grid>
         </SortableContext>
       </DndContext>
-    </Box>
+    </Stack>
   );
 };
 

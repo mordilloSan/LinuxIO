@@ -1,4 +1,4 @@
-import { Box, Typography } from "@mui/material";
+import { Stack, Typography } from "@mui/material";
 import React, { useState, useMemo } from "react";
 
 import { linuxio } from "@/api";
@@ -110,7 +110,7 @@ const Drive: React.FC = () => {
     (drive) => drive.name === selectedDriveName,
   );
   const content = selectedDrive ? (
-    <Box
+    <Stack
       sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
     >
       {[
@@ -124,12 +124,12 @@ const Drive: React.FC = () => {
           ? [{ label: "Vendor", value: selectedDrive.vendor }]
           : []),
       ].map(({ label, value }) => (
-        <Box
+        <Stack
           key={label}
+          direction="row"
+          alignItems="baseline"
           sx={{
-            display: "flex",
             justifyContent: "flex-start",
-            alignItems: "baseline",
             py: 0.5,
             borderBottom: "1px solid",
             borderColor: "divider",
@@ -152,9 +152,9 @@ const Drive: React.FC = () => {
           <Typography variant="body2" fontWeight={500} noWrap>
             {value}
           </Typography>
-        </Box>
+        </Stack>
       ))}
-    </Box>
+    </Stack>
   ) : (
     <Typography variant="body2">No drive selected.</Typography>
   );

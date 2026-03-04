@@ -1,4 +1,4 @@
-import { Box } from "@mui/material";
+import { Stack } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -40,7 +40,7 @@ const FsInfoCard: React.FC = () => {
         const usedPercent = fs.usedPercent ?? 0;
 
         return (
-          <Box key={index}>
+          <Stack key={index}>
             <MetricBar
               label={fs.mountpoint}
               percent={usedPercent}
@@ -53,7 +53,7 @@ const FsInfoCard: React.FC = () => {
                 </>
               }
             />
-          </Box>
+          </Stack>
         );
       });
   };
@@ -61,9 +61,9 @@ const FsInfoCard: React.FC = () => {
   const data = {
     title: "FileSystems",
     stats: (
-      <Box sx={{ width: "100%" }}>
+      <Stack sx={{ width: "100%" }}>
         {isPending ? <ComponentLoader /> : renderFsProgressBars()}
-      </Box>
+      </Stack>
     ),
     avatarIcon: "eos-icons:file-system",
   };

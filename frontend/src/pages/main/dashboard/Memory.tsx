@@ -1,4 +1,4 @@
-import { Typography, Box } from "@mui/material";
+import { Stack, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
 import { linuxio } from "@/api";
@@ -49,7 +49,7 @@ const MemoryUsage = () => {
       />
     ),
     stats: (
-      <Box
+      <Stack
         sx={{
           display: "flex",
           flexDirection: "column",
@@ -75,12 +75,12 @@ const MemoryUsage = () => {
             value: `${formatFileSize((memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0), 2)}/${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}`,
           },
         ].map(({ label, value }) => (
-          <Box
+          <Stack
             key={label}
+            direction="row"
+            alignItems="baseline"
             sx={{
-              display: "flex",
               justifyContent: "flex-start",
-              alignItems: "baseline",
               py: 0.5,
               borderBottom: "1px solid",
               borderColor: "divider",
@@ -103,9 +103,9 @@ const MemoryUsage = () => {
             <Typography variant="body2" fontWeight={500} noWrap>
               {value}
             </Typography>
-          </Box>
+          </Stack>
         ))}
-      </Box>
+      </Stack>
     ),
     avatarIcon: "la:memory",
   };

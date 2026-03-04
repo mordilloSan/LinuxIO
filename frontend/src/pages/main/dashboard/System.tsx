@@ -1,7 +1,6 @@
 import GppGoodOutlinedIcon from "@mui/icons-material/GppGoodOutlined";
 import SecurityUpdateWarningIcon from "@mui/icons-material/SecurityUpdateWarning";
-import { Typography, Box, useTheme } from "@mui/material";
-import { Link } from "@mui/material";
+import { Link, Stack, Typography, useTheme } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
@@ -73,7 +72,7 @@ const SystemHealth = () => {
 
   // --- Stats UI ---
   const stats2 = (
-    <Box>
+    <Stack>
       {!systemHealth && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
       ) : (
@@ -86,11 +85,11 @@ const SystemHealth = () => {
           <IconComponent sx={{ fontSize: 100, color: statusColor }} />
         </Link>
       )}
-    </Box>
+    </Stack>
   );
 
   const stats = (
-    <Box
+    <Stack
       sx={{
         display: "flex",
         flexDirection: "column",
@@ -131,12 +130,12 @@ const SystemHealth = () => {
           ),
         },
       ].map(({ label, value }) => (
-        <Box
+        <Stack
           key={label}
+          direction="row"
+          alignItems="baseline"
           sx={{
-            display: "flex",
             justifyContent: "flex-start",
-            alignItems: "baseline",
             py: 0.5,
             borderBottom: "1px solid",
             borderColor: "divider",
@@ -159,9 +158,9 @@ const SystemHealth = () => {
           <Typography variant="body2" fontWeight={500} noWrap>
             {value}
           </Typography>
-        </Box>
+        </Stack>
       ))}
-    </Box>
+    </Stack>
   );
 
   return (
