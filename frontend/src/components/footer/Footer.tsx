@@ -1,3 +1,4 @@
+import React from "react";
 import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
@@ -73,4 +74,4 @@ function Footer() {
   );
 }
 
-export default Footer;
+export default React.memo(Footer);

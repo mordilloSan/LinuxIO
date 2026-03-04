@@ -272,4 +272,4 @@ function NavbarNotificationsDropdown() {
   );
 }
 
-export default NavbarNotificationsDropdown;
+export default React.memo(NavbarNotificationsDropdown);

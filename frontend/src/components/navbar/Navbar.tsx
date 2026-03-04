@@ -114,4 +114,4 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
   );
 };
 
-export default Navbar;
+export default React.memo(Navbar);

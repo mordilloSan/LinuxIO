@@ -59,4 +59,4 @@ const DevToolsButton: React.FC = () => {
   );
 };
 
-export default DevToolsButton;
+export default React.memo(DevToolsButton);
