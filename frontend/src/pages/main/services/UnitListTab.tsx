@@ -1,4 +1,5 @@
-import { Alert, Box, Grid, TextField } from "@mui/material";
+import { Alert, Grid, TextField } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, { useEffect, useMemo, useState } from "react";
 
 import type { UnitListItem } from "./UnitViews";
@@ -53,6 +54,7 @@ function UnitListTab<T extends UnitListItem>({
   renderCardsView,
   renderDetailPanel,
 }: UnitListTabProps<T>) {
+  const theme = useTheme();
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [returnToTable, setReturnToTable] = useState(false);
@@ -101,7 +103,7 @@ function UnitListTab<T extends UnitListItem>({
     : null;
 
   return (
-    <Box>
+    <>
       {isPending && <ComponentLoader />}
       {isError && (
         <Alert severity="error">
@@ -110,7 +112,14 @@ function UnitListTab<T extends UnitListItem>({
       )}
       {data !== undefined && (
         <>
-          <Box mb={2} display="flex" alignItems="center" gap={2}>
+          <div
+            style={{
+              marginBottom: theme.spacing(2),
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(2),
+            }}
+          >
             <TextField
               variant="outlined"
               size="small"
@@ -119,8 +128,8 @@ function UnitListTab<T extends UnitListItem>({
               onChange={(event) => setSearch(event.target.value)}
               sx={{ width: 320 }}
             />
-            <Box fontWeight="bold">{filtered.length} shown</Box>
-          </Box>
+            <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
+          </div>
 
           {viewMode === "card" ? (
             renderCardsView({
@@ -149,7 +158,7 @@ function UnitListTab<T extends UnitListItem>({
           )}
         </>
       )}
-    </Box>
+    </>
   );
 }
 

@@ -8,7 +8,6 @@ import StopCircleIcon from "@mui/icons-material/StopCircle";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
-  Box,
   Button,
   Grid,
   Tooltip,
@@ -143,15 +142,14 @@ export const DetailRow: React.FC<{
 
 export function statusDot(activeState: string) {
   return (
-    <Box
-      component="span"
-      sx={{
+    <span
+      style={{
         display: "inline-block",
         width: 10,
         height: 10,
         borderRadius: "50%",
-        bgcolor: getServiceStatusColor(activeState),
-        mr: 1,
+        backgroundColor: getServiceStatusColor(activeState),
+        marginRight: 8,
         flexShrink: 0,
       }}
     />
@@ -777,16 +775,24 @@ export function UnitCardsView<T extends UnitListItem>({
   }
 
   return (
-    <Box display="flex" flexDirection="column" gap={3}>
-      <Box
-        display="flex"
-        flexDirection={{ xs: "column", md: "row" }}
-        alignItems="stretch"
-        gap={2.5}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: theme.spacing(3),
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: isCompactLayout ? "column" : "row",
+          alignItems: "stretch",
+          gap: theme.spacing(2.5),
+        }}
       >
-        <Box
-          sx={{
-            width: { xs: "100%", md: "33.33%" },
+        <div
+          style={{
+            width: isCompactLayout ? "100%" : "33.33%",
             flexShrink: 0,
             display: "flex",
           }}
@@ -799,7 +805,7 @@ export function UnitCardsView<T extends UnitListItem>({
             renderSelectedRows={renderSelectedRows}
             renderActions={renderActions}
           />
-        </Box>
+        </div>
         <motion.div
           style={{ flex: 1, display: "flex", width: "100%" }}
           initial={{
@@ -812,7 +818,7 @@ export function UnitCardsView<T extends UnitListItem>({
         >
           {renderDetailPanel(expandedItem)}
         </motion.div>
-      </Box>
+      </div>
       {renderBottomPanel && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -822,6 +828,6 @@ export function UnitCardsView<T extends UnitListItem>({
           {renderBottomPanel(expandedItem)}
         </motion.div>
       )}
-    </Box>
+    </div>
   );
 }

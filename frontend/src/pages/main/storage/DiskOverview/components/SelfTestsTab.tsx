@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   CircularProgress,
   Table,
@@ -10,6 +9,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 interface SelfTestsTabProps {
@@ -25,13 +25,21 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   selfTestLog,
   nvmeSelfTestLog,
 }) => {
+  const theme = useTheme();
+
   return (
     <>
-      <Box sx={{ mb: 3 }}>
+      <div style={{ marginBottom: theme.spacing(3) }}>
         <Typography variant="subtitle2" gutterBottom>
           Run SMART Self-Test
         </Typography>
-        <Box display="flex" gap={2} alignItems="center">
+        <div
+          style={{
+            display: "flex",
+            gap: theme.spacing(2),
+            alignItems: "center",
+          }}
+        >
           <Button
             variant="outlined"
             size="small"
@@ -64,7 +72,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
           >
             {startPending === "long" ? "Starting..." : "Extended Test"}
           </Button>
-        </Box>
+        </div>
         <Typography
           variant="caption"
           color="text.secondary"
@@ -73,7 +81,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
           Short test takes ~2 minutes. Extended test can take hours depending on
           drive size.
         </Typography>
-      </Box>
+      </div>
 
       <Typography variant="subtitle2" gutterBottom>
         Self-Test History
