@@ -424,12 +424,12 @@ const DockerDashboard: React.FC = () => {
             <Grid key={label} size={{ xs: 6, md: 3 }}>
               <FrostedCard
                 onClick={() => navigateToTab(tab)}
-                sx={{
-                  px: 2.5,
-                  py: 2,
+                className="fc-opacity-hover"
+                style={{
+                  paddingInline: 10,
+                  paddingBlock: 8,
                   cursor: "pointer",
                   transition: "opacity 0.15s",
-                  "&:hover": { opacity: 0.8 },
                 }}
               >
                 <Typography
@@ -511,7 +511,7 @@ const DockerDashboard: React.FC = () => {
               {runningContainers.length > 0 && (
                 <>
                   <Grid size={{ xs: 12, sm: 4 }}>
-                    <FrostedCard sx={{ p: 2 }}>
+                    <FrostedCard style={{ padding: 8 }}>
                       <Box
                         sx={{
                           display: "flex",
@@ -561,7 +561,7 @@ const DockerDashboard: React.FC = () => {
                     </FrostedCard>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 4 }}>
-                    <FrostedCard sx={{ p: 2 }}>
+                    <FrostedCard style={{ padding: 8 }}>
                       <Box
                         sx={{
                           display: "flex",
@@ -612,7 +612,7 @@ const DockerDashboard: React.FC = () => {
                   </Grid>
                   {dockerInfo.disk_total > 0 && (
                     <Grid size={{ xs: 12, sm: 4 }}>
-                      <FrostedCard sx={{ p: 2 }}>
+                      <FrostedCard style={{ padding: 8 }}>
                         <Box
                           sx={{
                             display: "flex",
@@ -672,7 +672,7 @@ const DockerDashboard: React.FC = () => {
                 </>
               )}
               <Grid size={{ xs: 12, sm: 4 }}>
-                <FrostedCard sx={{ p: 2, height: "100%" }}>
+                <FrostedCard style={{ padding: 8, height: "100%" }}>
                   <DaemonSection
                     title="Version"
                     subtitle="Engine & runtime versions"
@@ -688,7 +688,7 @@ const DockerDashboard: React.FC = () => {
                 </FrostedCard>
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
-                <FrostedCard sx={{ p: 2, height: "100%" }}>
+                <FrostedCard style={{ padding: 8, height: "100%" }}>
                   <DaemonSection
                     title="System"
                     subtitle="Host machine information"
@@ -712,7 +712,7 @@ const DockerDashboard: React.FC = () => {
                 </FrostedCard>
               </Grid>
               <Grid size={{ xs: 12, sm: 4 }}>
-                <FrostedCard sx={{ p: 2, height: "100%" }}>
+                <FrostedCard style={{ padding: 8, height: "100%" }}>
                   <DaemonSection
                     title="Configuration"
                     subtitle="Storage & runtime settings"

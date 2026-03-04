@@ -10,7 +10,6 @@ import NetworkTrafficGraph from "./NetworkTrafficGraph";
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 
 export type { NetworkInterface };
 
@@ -173,14 +172,11 @@ const NetworkInterfaceList = () => {
                 transition={{ duration: 0.2 }}
               >
                 <FrostedCard
-                  sx={{
-                    p: 2,
+                  hoverLift={expanded !== iface.name}
+                  style={{
+                    padding: 8,
                     position: "relative",
-                    transition: "transform 0.2s, box-shadow 0.2s",
                     cursor: "pointer",
-                    ...(expanded !== iface.name && {
-                      "&:hover": getFrostedCardLiftStyles(theme),
-                    }),
                   }}
                 >
                   <Tooltip

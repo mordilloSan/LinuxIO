@@ -1,0 +1,13 @@
+.fc-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--fc-lift-shadow) !important;
+}
+
+.fc-opacity-hover:hover {
+  opacity: 0.8;
+}
+
+/* UnitViews: hide bottom border on last detail row inside a card */
+.fc-svc-card .svc-rows-wrapper > .svc-detail-row:last-of-type {
+  border-bottom: none;
+}

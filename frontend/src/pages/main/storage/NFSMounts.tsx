@@ -639,7 +639,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                 key={mount.mountpoint}
                 size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
               >
-                <FrostedCard sx={{ p: 2 }}>
+                <FrostedCard style={{ padding: 8 }}>
                   <Typography
                     variant="body2"
                     fontWeight="bold"

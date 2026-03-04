@@ -252,7 +252,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
           <Grid container spacing={2}>
             {filtered.map((volume) => (
               <Grid key={volume.Name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard sx={{ p: 2 }}>
+                <FrostedCard style={{ padding: 8 }}>
                   <Box
                     sx={{
                       display: "flex",

@@ -26,7 +26,6 @@ import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
-import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -253,15 +252,14 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
     <FrostedCard
       onClick={hasPorts ? () => setExpanded((v) => !v) : undefined}
       onMouseDown={hasPorts ? (e) => e.preventDefault() : undefined}
-      sx={{
-        p: 2,
+      hoverLift={hasPorts}
+      style={{
+        padding: 8,
         display: "flex",
         flexDirection: "column",
         height: "100%",
         position: "relative",
         cursor: hasPorts ? "pointer" : "default",
-        transition: "transform 0.2s, box-shadow 0.2s",
-        "&:hover": hasPorts ? getFrostedCardLiftStyles(theme) : undefined,
       }}
     >
       {/* Status dot */}

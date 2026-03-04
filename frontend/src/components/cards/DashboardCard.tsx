@@ -12,7 +12,7 @@ import {
 import type { SxProps } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import type { Theme } from "@mui/material/styles";
-import React from "react";
+import React, { useState } from "react";
 
 import FrostedCard from "./RootCard";
 
@@ -118,6 +118,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
 }) => {
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
+  const [hovered, setHovered] = useState(false);
 
   const [statsFlex, stats2Flex]: [number | string, number | string] = (() => {
     if (contentLayout === "equal") return [1, 1];
@@ -198,18 +199,17 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
 
   return (
     <FrostedCard
-      elevation={2}
-      sx={(theme) => ({
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
         minHeight: cardHeight,
         display: "flex",
         flexDirection: "column",
         transition:
           "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
         ...getAccentCardStyles(primaryColor),
-        "&:hover": {
-          ...getAccentCardHoverStyles(theme, primaryColor),
-        },
-      })}
+        ...(hovered && getAccentCardHoverStyles(theme, primaryColor)),
+      }}
     >
       <CardContent>
         {/* Header */}

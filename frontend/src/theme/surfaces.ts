@@ -32,7 +32,7 @@ export const getFrostedCardStyles = (theme: Theme) => ({
 
 export const getAccentCardStyles = (accentColor: string) => ({
   borderBottomWidth: "2px",
-  borderBottomStyle: "solid",
+  borderBottomStyle: "solid" as const,
   borderBottomColor: mixWithTransparency(accentColor, 0.3),
 });
 

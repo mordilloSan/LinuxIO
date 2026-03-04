@@ -292,7 +292,7 @@ const ImageList: React.FC<ImageListProps> = ({
                 key={`${image.id}-${image.tag}`}
                 size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
               >
-                <FrostedCard sx={{ p: 2 }}>
+                <FrostedCard style={{ padding: 8 }}>
                   <Box
                     sx={{
                       display: "flex",

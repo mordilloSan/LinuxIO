@@ -61,16 +61,12 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
     <>
       <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
         <FrostedCard
-          sx={{
-            p: 2,
+          hoverLift
+          style={{
+            padding: 8,
             display: "flex",
             flexDirection: "column",
             height: "100%",
-            transition: "transform 0.2s, box-shadow 0.2s",
-            "&:hover": {
-              transform: "translateY(-4px)",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-            },
           }}
         >
           {/* Icon and Title */}

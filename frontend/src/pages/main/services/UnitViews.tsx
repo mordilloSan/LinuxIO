@@ -15,7 +15,6 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { type Theme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React from "react";
 
@@ -26,7 +25,6 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import { getServiceStatusColor } from "@/constants/statusColors";
-import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 
 export interface UnitListItem {
   name: string;
@@ -89,42 +87,29 @@ const labelStyle: React.CSSProperties = {
   paddingTop: 3,
 };
 
-const cardSx = (theme: Theme) => ({
-  p: 3,
+const baseCardStyle: React.CSSProperties = {
+  padding: 12,
   display: "flex",
   flexDirection: "column",
   height: "100%",
   cursor: "pointer",
   transition:
     "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
-  borderBottomWidth: "2px",
+  borderBottomWidth: 2,
   borderBottomStyle: "solid",
+};
+
+const cardStyle: React.CSSProperties = {
+  ...baseCardStyle,
   borderBottomColor:
     "color-mix(in srgb, var(--svc-status-color), transparent 70%)",
-  "&:hover": {
-    ...getFrostedCardLiftStyles(theme),
-  },
-  "& .svc-rows-wrapper > .svc-detail-row:last-of-type": {
-    borderBottom: "none",
-  },
-});
+};
 
-const selectedCardSx = {
-  p: 3,
-  display: "flex",
-  flexDirection: "column",
-  height: "100%",
+const selectedCardStyle: React.CSSProperties = {
+  ...baseCardStyle,
   width: "100%",
-  cursor: "pointer",
-  transition:
-    "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
-  borderBottomWidth: "2px",
-  borderBottomStyle: "solid",
   borderBottomColor: "var(--svc-status-color)",
-  "& .svc-rows-wrapper > .svc-detail-row:last-of-type": {
-    borderBottom: "none",
-  },
-} as const;
+};
 
 const depFields: Array<{ label: string; key: keyof UnitInfo }> = [
   { label: "Requires", key: "Requires" },
@@ -493,8 +478,8 @@ export function UnitInfoPanel({
 
   return (
     <FrostedCard
-      sx={{
-        p: 3,
+      style={{
+        padding: 12,
         height: "100%",
         flex: 1,
         display: "flex",
@@ -670,8 +655,12 @@ function UnitCard<T extends UnitListItem>({
   return (
     <FrostedCard
       onClick={() => onExpand(isSelected ? null : item.name)}
-      style={{ "--svc-status-color": statusColor } as React.CSSProperties}
-      sx={isSelected ? selectedCardSx : cardSx}
+      hoverLift={!isSelected}
+      className="fc-svc-card"
+      style={{
+        "--svc-status-color": statusColor,
+        ...(isSelected ? selectedCardStyle : cardStyle),
+      } as React.CSSProperties}
     >
       <div
         style={{

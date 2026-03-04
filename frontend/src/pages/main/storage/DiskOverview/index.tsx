@@ -41,7 +41,6 @@ import { linuxio, openSmartTestStream, type Stream, type ApiDisk } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useStreamResult } from "@/hooks/useStreamResult";
-import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -383,14 +382,11 @@ const DiskOverview: React.FC = () => {
                   transition={{ duration: 0.2 }}
                 >
                   <FrostedCard
-                    sx={{
-                      p: 2,
+                    hoverLift={expanded !== drive.name}
+                    style={{
+                      padding: 8,
                       position: "relative",
-                      transition: "transform 0.2s, box-shadow 0.2s",
                       cursor: "pointer",
-                      ...(expanded !== drive.name && {
-                        "&:hover": getFrostedCardLiftStyles(theme),
-                      }),
                     }}
                     onClick={() => handleToggle(drive.name)}
                   >
@@ -536,7 +532,7 @@ const DiskOverview: React.FC = () => {
             ) : (
               relevantFS.map((fs) => (
                 <Grid key={fs.mountpoint} size={{ xs: 12, sm: 6, md: 4 }}>
-                  <FrostedCard sx={{ p: 2 }}>
+                  <FrostedCard style={{ padding: 8 }}>
                     <Typography
                       variant="subtitle2"
                       fontWeight={600}

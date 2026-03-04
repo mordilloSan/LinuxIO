@@ -22,7 +22,7 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
     });
 
   return (
-    <FrostedCard sx={{ p: 3 }}>
+    <FrostedCard style={{ padding: 12 }}>
       <div
         style={{
           display: "flex",

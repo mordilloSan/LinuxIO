@@ -172,7 +172,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           <Grid container spacing={2}>
             {filtered.map((group) => (
               <Grid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <FrostedCard sx={{ p: 2 }}>
+                <FrostedCard style={{ padding: 8 }}>
                   <Box
                     sx={{
                       display: "flex",

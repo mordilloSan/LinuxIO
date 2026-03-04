@@ -19,7 +19,6 @@ import type { ComposeProject } from "./ComposeList";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import { getComposeStatusColor } from "@/constants/statusColors";
-import { getFrostedCardLiftStyles } from "@/theme/surfaces";
 
 const getStatusColor = (status: string) => {
   return getComposeStatusColor(status);
@@ -63,17 +62,14 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
 
   return (
     <FrostedCard
-      sx={(theme) => ({
-        p: 2,
+      hoverLift
+      style={{
+        padding: 8,
         display: "flex",
         flexDirection: "column",
         height: "100%",
         position: "relative",
-        transition: "transform 0.2s, box-shadow 0.2s",
-        "&:hover": {
-          ...getFrostedCardLiftStyles(theme),
-        },
-      })}
+      }}
     >
       {/* Status chip top-right */}
       <Box sx={{ position: "absolute", top: 12, right: 12 }}>
