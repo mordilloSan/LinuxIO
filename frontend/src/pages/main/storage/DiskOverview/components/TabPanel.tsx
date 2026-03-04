@@ -1,4 +1,4 @@
-import { Box } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 interface TabPanelProps {
@@ -12,13 +12,19 @@ export const TabPanel: React.FC<TabPanelProps> = ({
   value,
   index,
 }) => {
+  const theme = useTheme();
+
   return (
-    <Box
+    <div
       role="tabpanel"
       hidden={value !== index}
-      sx={{ py: 2, display: value === index ? "block" : "none" }}
+      style={{
+        paddingTop: theme.spacing(2),
+        paddingBottom: theme.spacing(2),
+        display: value === index ? "block" : "none",
+      }}
     >
       {children}
-    </Box>
+    </div>
   );
 };

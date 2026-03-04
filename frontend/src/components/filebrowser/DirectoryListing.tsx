@@ -1,4 +1,4 @@
-import { Box } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, {
   useState,
   useRef,
@@ -61,6 +61,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   onConfirmRename,
   onCancelRename,
 }) => {
+  const theme = useTheme();
   const [focusState, setFocusState] = useState<{
     path: string;
     index: number;
@@ -282,15 +283,15 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
   }
 
   return (
-    <Box
+    <div
       ref={containerRef}
       onMouseDownCapture={handleContainerMouseDown}
       onMouseDown={handleMouseDown}
       className="custom-scrollbar"
-      sx={{
+      style={{
         display: "flex",
         flexDirection: "column",
-        gap: 2,
+        gap: theme.spacing(2),
         overflowY: "auto",
         overflowX: "hidden",
         height: "100%",
@@ -335,7 +336,7 @@ const DirectoryListing: React.FC<DirectoryListingProps> = ({
           height={selectionBox.height}
         />
       )}
-    </Box>
+    </div>
   );
 };
 
