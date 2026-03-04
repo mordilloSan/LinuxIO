@@ -1,19 +1,21 @@
 import TemperatureIcon from "@mui/icons-material/Thermostat";
-import { Stack, Typography } from "@mui/material";
+import { Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 
 const MotherBoardInfo: React.FC = () => {
+  const theme = useTheme();
   const { data: motherboardInfo } =
     linuxio.system.get_motherboard_info.useQuery({
       refetchInterval: 50000,
     });
 
   const visibleDetails = motherboardInfo ? (
-    <Stack
-      sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
+    <div
+      style={{ display: "flex", flexDirection: "column", width: "fit-content" }}
     >
       {[
         {
@@ -24,18 +26,20 @@ const MotherBoardInfo: React.FC = () => {
           label: "BIOS",
           value: `${motherboardInfo.bios.vendor}, V.${motherboardInfo.bios.version}`,
         },
-      ].map(({ label, value }) => (
-        <Stack
+      ].map(({ label, value }, index, rows) => (
+        <div
           key={label}
-          direction="row"
-          alignItems="baseline"
-          sx={{
+          style={{
+            display: "flex",
+            alignItems: "baseline",
             justifyContent: "flex-start",
-            py: 0.5,
-            borderBottom: "1px solid",
-            borderColor: "divider",
-            "&:last-child": { borderBottom: "none" },
-            gap: 1,
+            paddingTop: theme.spacing(0.5),
+            paddingBottom: theme.spacing(0.5),
+            borderBottom:
+              index === rows.length - 1
+                ? "none"
+                : "1px solid var(--mui-palette-divider)",
+            gap: theme.spacing(1),
           }}
         >
           <Typography
@@ -53,9 +57,9 @@ const MotherBoardInfo: React.FC = () => {
           <Typography variant="body2" fontWeight={500} noWrap>
             {value}
           </Typography>
-        </Stack>
+        </div>
       ))}
-    </Stack>
+    </div>
   ) : (
     <Typography variant="body2">No system information available.</Typography>
   );

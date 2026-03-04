@@ -1,6 +1,5 @@
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
-  Box,
   Table,
   TableBody,
   TableCell,
@@ -53,7 +52,7 @@ function UnifiedCollapsibleTable<T>({
   const [expanded, setExpanded] = useState<string | number | null>(null);
 
   return (
-    <Box>
+    <div>
       <TableContainer
         className="custom-scrollbar"
         sx={{
@@ -183,27 +182,21 @@ function UnifiedCollapsibleTable<T>({
                         colSpan={columns.length + (renderFirstCell ? 2 : 1)}
                       >
                         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                          <Box
-                            component={motion.div}
+                          <motion.div
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            sx={{
-                              margin: 2,
-                              borderRadius: 2,
-                              p: 2,
-                              bgcolor: (theme) =>
-                                alpha(
-                                  theme.palette.text.primary,
-                                  theme.palette.mode === "dark" ? 0.05 : 0.03,
-                                ),
-                              overflowX: "auto",
-                              "@media (max-width: 600px)": {
-                                fontSize: "0.85rem",
-                              },
-                            }}
                           >
-                            {renderExpandedContent(row, index)}
-                          </Box>
+                            <div
+                              style={{
+                                margin: 16,
+                                borderRadius: 16,
+                                padding: 16,
+                                overflowX: "auto",
+                              }}
+                            >
+                              {renderExpandedContent(row, index)}
+                            </div>
+                          </motion.div>
                         </Collapse>
                       </TableCell>
                     </TableRow>
@@ -215,13 +208,19 @@ function UnifiedCollapsibleTable<T>({
         </Table>
       </TableContainer>
       {data.length === 0 && (
-        <Box textAlign="center" py={4}>
+        <div
+          style={{
+            textAlign: "center",
+            paddingTop: 32,
+            paddingBottom: 32,
+          }}
+        >
           <Typography variant="body2" color="text.secondary">
             {emptyMessage}
           </Typography>
-        </Box>
+        </div>
       )}
-    </Box>
+    </div>
   );
 }
 

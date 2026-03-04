@@ -1,9 +1,4 @@
-import {
-  IconButton,
-  Tooltip,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { IconButton, Tooltip, Typography, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import { useRef } from "react";

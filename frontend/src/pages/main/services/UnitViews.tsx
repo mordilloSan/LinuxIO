@@ -7,13 +7,7 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
-import {
-  Button,
-  Grid,
-  Tooltip,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
+import { Button, Grid, Tooltip, useMediaQuery, useTheme } from "@mui/material";
 import { motion } from "framer-motion";
 import React from "react";
 

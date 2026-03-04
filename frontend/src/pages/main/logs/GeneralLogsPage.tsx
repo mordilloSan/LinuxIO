@@ -18,13 +18,12 @@ import {
   Paper,
   Select,
   Switch,
-  Stack,
   TableCell,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import React, {
   useCallback,
   useEffect,
@@ -126,6 +125,7 @@ const getPriorityIcon = (priority: LogPriority) => {
 };
 
 const GeneralLogsPage: React.FC = () => {
+  const theme = useTheme();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [search, setSearch] = useState("");
@@ -421,15 +421,15 @@ const GeneralLogsPage: React.FC = () => {
   // Render icon for first cell
   const renderIcon = useCallback((log: LogEntry) => {
     return (
-      <Stack
-        sx={{
+      <div
+        style={{
           display: "flex",
           alignItems: "center",
           color: getLogPriorityAccent(getPriorityColor(log.priority)),
         }}
       >
         {getPriorityIcon(log.priority)}
-      </Stack>
+      </div>
     );
   }, []);
 
@@ -552,15 +552,15 @@ const GeneralLogsPage: React.FC = () => {
   }, []);
 
   return (
-    <Stack>
+    <div>
       {/* Filters */}
-      <Stack
-        direction="row"
-        sx={{
-          gap: 2,
+      <div
+        style={{
+          display: "flex",
+          gap: theme.spacing(2),
           flexWrap: "wrap",
           alignItems: "center",
-          mb: 2,
+          marginBottom: theme.spacing(2),
         }}
       >
         <FormControl size="small" sx={{ minWidth: 150 }}>
@@ -678,14 +678,14 @@ const GeneralLogsPage: React.FC = () => {
           />
         </Tooltip>
         <Typography fontWeight="bold">{filteredLogs.length} shown</Typography>
-      </Stack>
+      </div>
 
       {isLoading && <ComponentLoader />}
 
       {error && <Alert severity="error">{error}</Alert>}
 
       {!isLoading && !error && (
-        <Stack ref={logsBoxRef}>
+        <div ref={logsBoxRef}>
           <UnifiedCollapsibleTable
             data={filteredLogs}
             columns={columns}
@@ -697,9 +697,9 @@ const GeneralLogsPage: React.FC = () => {
               logs.length === 0 ? "No logs available." : "No matching logs."
             }
           />
-        </Stack>
+        </div>
       )}
-    </Stack>
+    </div>
   );
 };
 

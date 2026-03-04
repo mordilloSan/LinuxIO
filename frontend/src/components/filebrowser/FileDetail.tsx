@@ -9,8 +9,8 @@ import {
   CircularProgress,
   Divider,
   Paper,
-  Stack,
   Typography,
+  useTheme,
 } from "@mui/material";
 import React from "react";
 
@@ -31,25 +31,34 @@ interface FileDetailProps {
 const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({
   label,
   value,
-}) => (
-  <Stack direction="row" sx={{ gap: 2 }}>
-    <Typography
-      variant="body2"
-      fontWeight={600}
-      color="text.secondary"
-      sx={{ minWidth: 100 }}
+}) => {
+  const theme = useTheme();
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: theme.spacing(2),
+      }}
     >
-      {label}:
-    </Typography>
-    <Typography
-      component="div"
-      variant="body2"
-      sx={{ flex: 1, wordBreak: "break-all" }}
-    >
-      {value}
-    </Typography>
-  </Stack>
-);
+      <Typography
+        variant="body2"
+        fontWeight={600}
+        color="text.secondary"
+        sx={{ minWidth: 100 }}
+      >
+        {label}:
+      </Typography>
+      <Typography
+        component="div"
+        variant="body2"
+        sx={{ flex: 1, wordBreak: "break-all" }}
+      >
+        {value}
+      </Typography>
+    </div>
+  );
+};
 
 const FileDetail: React.FC<FileDetailProps> = ({
   resource,
@@ -58,6 +67,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
   statData,
   isLoadingStat,
 }) => {
+  const theme = useTheme();
   // Fetch directory details only for directories
   const isDirectory = resource?.type === "directory";
 
@@ -120,13 +130,28 @@ const FileDetail: React.FC<FileDetailProps> = ({
       }}
     >
       {/* Header with icon and name */}
-      <Stack direction="row" alignItems="center" sx={{ gap: 2 }}>
-        <Stack sx={{ color: "primary.main" }}>{getTypeIcon()}</Stack>
-        <Stack sx={{ flex: 1 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: theme.spacing(2),
+        }}
+      >
+        <div style={{ color: theme.palette.primary.main, display: "flex" }}>
+          {getTypeIcon()}
+        </div>
+        <div style={{ flex: 1 }}>
           <Typography variant="h6" fontWeight={600}>
             {resource.name}
           </Typography>
-          <Stack direction="row" alignItems="center" sx={{ gap: 1, mt: 0.5 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(1),
+              marginTop: theme.spacing(0.5),
+            }}
+          >
             <Typography variant="body2" color="text.secondary">
               {getTypeLabel()}
             </Typography>
@@ -135,22 +160,34 @@ const FileDetail: React.FC<FileDetailProps> = ({
                 <Typography variant="body2" color="text.secondary">
                   •
                 </Typography>
-                <Stack direction="row" alignItems="center" sx={{ gap: 0.5 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: theme.spacing(0.5),
+                  }}
+                >
                   <VisibilityOffIcon sx={{ fontSize: 16 }} />
                   <Typography variant="body2" color="text.secondary">
                     Hidden
                   </Typography>
-                </Stack>
+                </div>
               </>
             )}
-          </Stack>
-        </Stack>
-      </Stack>
+          </div>
+        </div>
+      </div>
 
       <Divider />
 
       {/* Details section */}
-      <Stack spacing={1.5}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: theme.spacing(1.5),
+        }}
+      >
         <DetailRow label="Path" value={resource.path} />
         <DetailRow
           label="Size"
@@ -158,10 +195,16 @@ const FileDetail: React.FC<FileDetailProps> = ({
             !isDirectory ? (
               formatFileSize(resource.size)
             ) : isLoadingDirectoryDetails ? (
-              <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: theme.spacing(1),
+                }}
+              >
                 <CircularProgress size={16} />
                 <Typography variant="body2">Calculating...</Typography>
-              </Stack>
+              </div>
             ) : size !== undefined && size !== null && size !== 0 ? (
               formatFileSize(size)
             ) : (
@@ -173,7 +216,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
           label="Modified"
           value={formatDate(resource.modified || resource.modTime)}
         />
-      </Stack>
+      </div>
 
       {/* Permissions and Ownership Section */}
       {statData && (
@@ -182,21 +225,33 @@ const FileDetail: React.FC<FileDetailProps> = ({
           <Typography variant="subtitle2" fontWeight={600}>
             Permissions & Ownership
           </Typography>
-          <Stack spacing={1.5}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: theme.spacing(1.5),
+            }}
+          >
             <DetailRow label="Mode" value={statData.mode} />
             <DetailRow label="Owner" value={statData.owner} />
             <DetailRow label="Group" value={statData.group} />
             <DetailRow label="Permissions" value={statData.permissions} />
-          </Stack>
+          </div>
         </>
       )}
       {isLoadingStat && (
         <>
           <Divider />
-          <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(1),
+            }}
+          >
             <CircularProgress size={16} />
             <Typography variant="body2">Loading permissions...</Typography>
-          </Stack>
+          </div>
         </>
       )}
 
@@ -204,7 +259,12 @@ const FileDetail: React.FC<FileDetailProps> = ({
       {!isDirectory && (
         <>
           <Divider />
-          <Stack direction="row" spacing={1}>
+          <div
+            style={{
+              display: "flex",
+              gap: theme.spacing(1),
+            }}
+          >
             <Button
               variant="contained"
               startIcon={<DownloadIcon />}
@@ -221,7 +281,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
                 Edit
               </Button>
             )}
-          </Stack>
+          </div>
         </>
       )}
     </Paper>

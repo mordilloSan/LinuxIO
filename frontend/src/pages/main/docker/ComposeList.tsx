@@ -8,7 +8,6 @@ import {
   Chip,
   Grid,
   IconButton,
-  Stack,
   Table,
   TableBody,
   TableCell,
@@ -17,6 +16,8 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import React, { useCallback, useState } from "react";
@@ -74,6 +75,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
   viewMode = "table",
 }) => {
   const [search, setSearch] = useState("");
+  const theme = useTheme();
+  const isSmallUp = useMediaQuery(theme.breakpoints.up("sm"));
 
   const filtered = projects.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()),
@@ -130,15 +133,14 @@ const ComposeList: React.FC<ComposeListProps> = ({
       return (
         <>
           <TableCell sx={{ px: { xs: 1, sm: 2 }, py: { xs: 1.5, sm: 2 } }}>
-            <Stack direction="row" alignItems="center">
-              <Stack
-                component="span"
-                sx={{
-                  display: { xs: "inline-block", sm: "none" },
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <span
+                style={{
+                  display: isSmallUp ? "none" : "inline-block",
                   width: 10,
                   height: 10,
                   borderRadius: "50%",
-                  bgcolor: statusColor,
+                  backgroundColor: statusColor,
                 }}
               />
               <Chip
@@ -158,10 +160,16 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   },
                 }}
               />
-            </Stack>
+            </div>
           </TableCell>
           <TableCell>
-            <Stack direction="row" alignItems="center" sx={{ gap: 1.5 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: theme.spacing(1.5),
+              }}
+            >
               <DockerIcon
                 identifier={project.icon}
                 size={28}
@@ -170,12 +178,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
               <Typography variant="body2" fontWeight="bold">
                 {project.name}
               </Typography>
-            </Stack>
+            </div>
           </TableCell>
           <TableCell align="center">{getTotalContainers(project)}</TableCell>
           <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
             <Tooltip title={project.config_files.join(", ") || "Unknown"}>
-              <Stack direction="row" alignItems="center">
+              <div style={{ display: "flex", alignItems: "center" }}>
                 <FolderOpenIcon
                   fontSize="small"
                   sx={{ mr: 0.5, opacity: 0.7 }}
@@ -184,7 +192,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   {project.config_files[0]?.split("/").pop() ||
                     "docker-compose.yml"}
                 </Typography>
-              </Stack>
+              </div>
             </Tooltip>
           </TableCell>
           <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
@@ -203,11 +211,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
             </Tooltip>
           </TableCell>
           <TableCell align="right">
-            <Stack
-              direction="row"
-              sx={{
+            <div
+              style={{
+                display: "flex",
                 justifyContent: "flex-end",
-                gap: { xs: 0, sm: 0.5 },
+                gap: isSmallUp ? theme.spacing(0.5) : 0,
               }}
             >
               {project.name === "linuxio-watchtower" ? (
@@ -308,92 +316,120 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   )}
                 </>
               )}
-            </Stack>
+            </div>
           </TableCell>
         </>
       );
     },
-    [onEdit, onPreview, isLoading, onRestart, onStop, onDelete, onStart],
+    [
+      isLoading,
+      isSmallUp,
+      onDelete,
+      onEdit,
+      onPreview,
+      onRestart,
+      onStart,
+      onStop,
+      theme,
+    ],
   );
 
   // Render expanded content
-  const renderExpandedContent = useCallback((project: ComposeProject) => {
-    return (
-      <>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Service Name</TableCell>
-              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                Image
-              </TableCell>
-              <TableCell>State</TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                Containers
-              </TableCell>
-              <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                Ports
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {Object.values(project.services).map((service) => (
-              <TableRow key={service.name}>
-                <TableCell>
-                  <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
-                    <DockerIcon
-                      identifier={service.icon}
-                      size={20}
-                      alt={service.name}
-                    />
-                    {service.name}
-                  </Stack>
-                </TableCell>
+  const renderExpandedContent = useCallback(
+    (project: ComposeProject) => {
+      return (
+        <>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Service Name</TableCell>
                 <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                  <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
-                    {service.image}
-                  </Typography>
+                  Image
                 </TableCell>
-                <TableCell>
-                  <Chip
-                    label={service.state}
-                    size="small"
-                    color={service.state === "running" ? "success" : "default"}
-                    sx={{ textTransform: "capitalize" }}
-                  />
+                <TableCell>State</TableCell>
+                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                  Containers
                 </TableCell>
                 <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                  {service.container_count}
-                </TableCell>
-                <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
-                  {service.ports.length > 0 ? service.ports.join(", ") : "-"}
+                  Ports
                 </TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        <Stack sx={{ mt: 2 }}>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
-          >
-            <b>Working Directory:</b> {project.working_dir || "-"}
-          </Typography>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
-          >
-            <b>Config Files:</b> {project.config_files.join(", ") || "-"}
-          </Typography>
-        </Stack>
-      </>
-    );
-  }, []);
+            </TableHead>
+            <TableBody>
+              {Object.values(project.services).map((service) => (
+                <TableRow key={service.name}>
+                  <TableCell>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: theme.spacing(1),
+                      }}
+                    >
+                      <DockerIcon
+                        identifier={service.icon}
+                        size={20}
+                        alt={service.name}
+                      />
+                      {service.name}
+                    </div>
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                    <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                      {service.image}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={service.state}
+                      size="small"
+                      color={
+                        service.state === "running" ? "success" : "default"
+                      }
+                      sx={{ textTransform: "capitalize" }}
+                    />
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                    {service.container_count}
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                    {service.ports.length > 0 ? service.ports.join(", ") : "-"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <div style={{ marginTop: theme.spacing(2) }}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+            >
+              <b>Working Directory:</b> {project.working_dir || "-"}
+            </Typography>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+            >
+              <b>Config Files:</b> {project.config_files.join(", ") || "-"}
+            </Typography>
+          </div>
+        </>
+      );
+    },
+    [theme],
+  );
 
   const searchBar = (
-    <Stack direction="row" alignItems="center" sx={{ mb: 2, gap: 2 }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: theme.spacing(2),
+        marginBottom: theme.spacing(2),
+      }}
+    >
       <TextField
         variant="outlined"
         size="small"
@@ -403,20 +439,26 @@ const ComposeList: React.FC<ComposeListProps> = ({
         sx={{ width: 320 }}
       />
       <Typography fontWeight="bold">{filtered.length} shown</Typography>
-    </Stack>
+    </div>
   );
 
   if (viewMode === "card") {
     return (
-      <Stack>
+      <div>
         {searchBar}
         {filtered.length === 0 ? (
-          <Stack sx={{ textAlign: "center", py: 4 }}>
+          <div
+            style={{
+              textAlign: "center",
+              paddingTop: theme.spacing(4),
+              paddingBottom: theme.spacing(4),
+            }}
+          >
             <Typography variant="body2" color="text.secondary">
               No compose stacks found. Start containers with docker compose to
               see them here.
             </Typography>
-          </Stack>
+          </div>
         ) : (
           <Grid container spacing={2}>
             {filtered.map((project) => (
@@ -435,12 +477,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
             ))}
           </Grid>
         )}
-      </Stack>
+      </div>
     );
   }
 
   return (
-    <Stack>
+    <div>
       {searchBar}
       <UnifiedCollapsibleTable
         data={filtered}
@@ -450,7 +492,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
         renderExpandedContent={renderExpandedContent}
         emptyMessage="No compose stacks found. Start containers with docker compose to see them here."
       />
-    </Stack>
+    </div>
   );
 };
 

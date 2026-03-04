@@ -9,9 +9,9 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Stack,
   TextField,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -63,6 +63,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
   dns,
   setDns,
 }) => {
+  const theme = useTheme();
   const nameTaken = serverName && existingNames.some((n) => n === serverName);
   const portTaken =
     port && existingPorts.some((p) => Number(port) === Number(p));
@@ -76,7 +77,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
     <GeneralDialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>Create New Interface</DialogTitle>
       <DialogContent>
-        <Stack sx={{ mt: 2 }}>
+        <div style={{ marginTop: theme.spacing(2) }}>
           <TextField
             label="Interface Name"
             value={serverName}
@@ -153,7 +154,7 @@ const CreateInterfaceDialog: React.FC<CreateInterfaceDialogProps> = ({
               {error}
             </Alert>
           )}
-        </Stack>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} color="secondary" disabled={loading}>

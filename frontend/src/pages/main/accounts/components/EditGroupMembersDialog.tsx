@@ -7,8 +7,8 @@ import {
   TextField,
   Autocomplete,
   Chip,
-  Box,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   onClose,
   group,
 }) => {
+  const theme = useTheme();
   const queryClient = useQueryClient();
   const [selectedMembers, setSelectedMembers] = useState<string[]>(
     group.members,
@@ -89,7 +90,14 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Edit Group Members: {group.name}</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: theme.spacing(2),
+            marginTop: theme.spacing(1),
+          }}
+        >
           <Autocomplete
             multiple
             options={usersList.map((u) => u.username)}
@@ -108,7 +116,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
               })
             }
           />
-        </Box>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={isPending}>

@@ -1,6 +1,7 @@
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SettingsIcon from "@mui/icons-material/Settings";
-import { Button, IconButton, Stack, Tooltip } from "@mui/material";
+import { Button, IconButton, Tooltip } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 
 import UpdateHistory from "./UpdateHistory";
@@ -12,6 +13,7 @@ import { TabContainer } from "@/components/tabbar";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 
 const Updates: React.FC = () => {
+  const theme = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Query updates - use GetUpdatesBasic for fast initial load
@@ -59,7 +61,13 @@ const Updates: React.FC = () => {
               />
             ),
             rightContent: (
-              <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: theme.spacing(1),
+                }}
+              >
                 <Tooltip title="Update settings">
                   <IconButton
                     size="small"
@@ -80,7 +88,7 @@ const Updates: React.FC = () => {
                     Update All ({updates.length})
                   </Button>
                 ) : null}
-              </Stack>
+              </div>
             ),
           },
           {

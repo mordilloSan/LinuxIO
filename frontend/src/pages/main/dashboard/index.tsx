@@ -19,8 +19,8 @@ import {
   Grid,
   IconButton,
   Popover,
-  Stack,
   Tooltip,
+  useTheme,
 } from "@mui/material";
 import React, { useCallback, useMemo, useState } from "react";
 
@@ -62,6 +62,7 @@ const allCards = [
 ];
 
 const Dashboard: React.FC = () => {
+  const theme = useTheme();
   const { dockerAvailable } = useAuth();
   const [editMode, setEditMode] = useState(false);
   const [dashboardOrder, setDashboardOrder] = useConfigValue("dashboardOrder");
@@ -75,13 +76,11 @@ const Dashboard: React.FC = () => {
     }),
   );
 
-  // Cards available (docker filtered by availability)
   const availableCards = useMemo(
     () => allCards.filter((card) => card.id !== "docker" || dockerAvailable),
     [dockerAvailable],
   );
 
-  // Cards sorted by order and filtered by visibility
   const cards = useMemo(() => {
     const hiddenSet = new Set(hiddenCards ?? []);
     const visible = availableCards.filter((c) => !hiddenSet.has(c.id));
@@ -130,8 +129,14 @@ const Dashboard: React.FC = () => {
   );
 
   return (
-    <Stack>
-      <Stack direction="row" sx={{ justifyContent: "flex-end", mb: 1 }}>
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          marginBottom: theme.spacing(1),
+        }}
+      >
         <Tooltip title="Card visibility">
           <IconButton
             onClick={(e) => setAnchorEl(e.currentTarget)}
@@ -149,7 +154,7 @@ const Dashboard: React.FC = () => {
             <DragIndicator />
           </IconButton>
         </Tooltip>
-      </Stack>
+      </div>
 
       <Popover
         open={Boolean(anchorEl)}
@@ -158,7 +163,13 @@ const Dashboard: React.FC = () => {
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <Stack sx={{ p: 2, display: "flex", flexDirection: "column" }}>
+        <div
+          style={{
+            padding: theme.spacing(2),
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           {availableCards.map((card) => (
             <FormControlLabel
               key={card.id}
@@ -172,7 +183,7 @@ const Dashboard: React.FC = () => {
               label={card.label}
             />
           ))}
-        </Stack>
+        </div>
       </Popover>
 
       <DndContext
@@ -194,7 +205,7 @@ const Dashboard: React.FC = () => {
           </Grid>
         </SortableContext>
       </DndContext>
-    </Stack>
+    </div>
   );
 };
 

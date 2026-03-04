@@ -1,4 +1,4 @@
-import { Box, CssBaseline } from "@mui/material";
+import { CssBaseline } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { Suspense, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
@@ -23,20 +23,36 @@ const Dashboard: React.FC = () => {
   const { updateInfo, dismissUpdate } = useUpdateInfo();
   const sidebarItems = useSidebarItems();
 
-  // Auto-close mobile drawer on route change (mobile only)
   useEffect(() => {
     if (!isDesktop) setMobileOpen(false);
   }, [location.key, isDesktop, setMobileOpen]);
 
   if (!isLoaded) return null;
 
+  const contentSpacing =
+    location.pathname === "/"
+      ? {
+          paddingLeft: theme.spacing(5),
+          paddingRight: theme.spacing(7),
+          paddingTop: 0,
+          paddingBottom: 0,
+        }
+      : location.pathname.includes("/filebrowser")
+        ? { padding: 0 }
+        : {
+            paddingLeft: theme.spacing(5),
+            paddingRight: theme.spacing(7),
+            paddingTop: theme.spacing(5),
+            paddingBottom: theme.spacing(5),
+          };
+
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <CssBaseline />
-      <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar items={sidebarItems} />
-        <Box
-          sx={{
+        <div
+          style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
@@ -44,29 +60,24 @@ const Dashboard: React.FC = () => {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.leavingScreen,
             }),
-            ml: { md: `${sidebarWidth}px` },
-            width: { xs: "100%", md: `calc(100% - ${sidebarWidth}px)` },
+            marginLeft: isDesktop ? `${sidebarWidth}px` : undefined,
+            width: isDesktop ? `calc(100% - ${sidebarWidth}px)` : "100%",
           }}
         >
           <Navbar onDrawerToggle={toggleMobileOpen} />
 
-          {/* Update Banner - shows on all pages */}
           {updateInfo?.available && (
             <UpdateBanner updateInfo={updateInfo} onDismiss={dismissUpdate} />
           )}
 
-          <Box
+          <div
             className="custom-scrollbar"
-            sx={{
+            style={{
               flex: 1,
               overflow: "auto",
               background: theme.palette.background.default,
-              ...(location.pathname === "/"
-                ? { px: { xs: 5, lg: 7 }, py: 0 }
-                : location.pathname.includes("/filebrowser")
-                  ? { p: 0 }
-                  : { p: { xs: 5, lg: 7 } }),
               position: "relative",
+              ...contentSpacing,
             }}
           >
             <ErrorBoundary>
@@ -74,13 +85,13 @@ const Dashboard: React.FC = () => {
                 <Outlet />
               </Suspense>
             </ErrorBoundary>
-          </Box>
-        </Box>
-      </Box>
-      <Box sx={{ flexShrink: 0, width: "100%" }}>
+          </div>
+        </div>
+      </div>
+      <div style={{ flexShrink: 0, width: "100%" }}>
         <Footer />
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

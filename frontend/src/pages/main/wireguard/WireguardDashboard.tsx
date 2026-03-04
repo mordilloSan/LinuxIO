@@ -1,4 +1,5 @@
-import { Grid, Stack, Typography } from "@mui/material";
+import { Grid, Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useRef, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ const wireguardToastMeta = {
 };
 
 const WireGuardDashboard: React.FC = () => {
+  const theme = useTheme();
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
     null,
   );
@@ -247,11 +249,16 @@ const WireGuardDashboard: React.FC = () => {
                   transition={{ duration: 0.5 }}
                   layout
                 >
-                  <Stack sx={{ mt: 4, mb: 2 }}>
+                  <div
+                    style={{
+                      marginTop: theme.spacing(4),
+                      marginBottom: theme.spacing(2),
+                    }}
+                  >
                     <Typography variant="h5" gutterBottom>
                       Clients for {selectedInterface}
                     </Typography>
-                  </Stack>
+                  </div>
                   <div ref={interfaceDetailsRef}>
                     <InterfaceDetails params={{ id: selectedInterface }} />
                   </div>

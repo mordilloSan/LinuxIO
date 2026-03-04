@@ -4,7 +4,6 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
-  Stack,
   Typography,
   useTheme,
 } from "@mui/material";
@@ -36,7 +35,13 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
           px: 2,
         }}
       >
-        <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.spacing(1),
+          }}
+        >
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Automatic Updates
           </Typography>
@@ -54,7 +59,7 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
           >
             <CloseIcon fontSize="small" />
           </IconButton>
-        </Stack>
+        </div>
       </DialogTitle>
 
       <DialogContent sx={{ px: 3, py: 3 }}>

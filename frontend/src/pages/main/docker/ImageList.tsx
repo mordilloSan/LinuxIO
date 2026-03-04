@@ -12,7 +12,7 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
-  Stack,
+  useTheme,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -50,6 +50,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
   onSuccess,
 }) => {
   const queryClient = useQueryClient();
+  const theme = useTheme();
 
   const { mutateAsync: deleteImage, isPending: isDeleting } =
     linuxio.docker.delete_image.useMutation({
@@ -109,7 +110,14 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
           Are you sure you want to delete the following image
           {imageIds.length > 1 ? "s" : ""}?
         </DialogContentText>
-        <Stack direction="row" sx={{ mt: 2, mb: 1, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            marginTop: theme.spacing(2),
+            marginBottom: theme.spacing(1),
+          }}
+        >
           {imageTags.map((tag, idx) => (
             <Chip
               key={`${tag}-${idx}`}
@@ -118,7 +126,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
               sx={{ mr: 1, mb: 1 }}
             />
           ))}
-        </Stack>
+        </div>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
           This action cannot be undone. Images in use by containers cannot be
           deleted.
@@ -145,6 +153,7 @@ const ImageList: React.FC<ImageListProps> = ({
   onMountCreateHandler,
   viewMode = "table",
 }) => {
+  const theme = useTheme();
   const { data: images = [] } = linuxio.docker.list_images.useQuery({
     refetchInterval: 10000,
   });
@@ -256,8 +265,16 @@ const ImageList: React.FC<ImageListProps> = ({
   ];
 
   return (
-    <Stack>
-      <Stack direction="row" alignItems="center" sx={{ mb: 2, gap: 2, flexWrap: "wrap" }}>
+    <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: theme.spacing(2),
+          flexWrap: "wrap",
+          marginBottom: theme.spacing(2),
+        }}
+      >
         <TextField
           variant="outlined"
           size="small"
@@ -283,7 +300,7 @@ const ImageList: React.FC<ImageListProps> = ({
             Delete ({effectiveSelected.size})
           </Button>
         )}
-      </Stack>
+      </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <Grid container spacing={2}>
@@ -293,16 +310,22 @@ const ImageList: React.FC<ImageListProps> = ({
                 size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
               >
                 <FrostedCard style={{ padding: 8 }}>
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    sx={{
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
                       justifyContent: "space-between",
-                      gap: 1,
-                      mb: 1,
+                      gap: theme.spacing(1),
+                      marginBottom: theme.spacing(1),
                     }}
                   >
-                    <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: theme.spacing(1),
+                      }}
+                    >
                       <Checkbox
                         size="small"
                         checked={effectiveSelected.has(image.id)}
@@ -313,15 +336,21 @@ const ImageList: React.FC<ImageListProps> = ({
                       <Typography variant="body2" fontWeight="bold" noWrap>
                         {image.repo}
                       </Typography>
-                    </Stack>
+                    </div>
                     <Chip
                       label={image.tag}
                       size="small"
                       sx={{ fontSize: "0.75rem" }}
                     />
-                  </Stack>
+                  </div>
 
-                  <Stack sx={{ display: "grid", gap: 0.5, mb: 1.5 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: theme.spacing(0.5),
+                      marginBottom: theme.spacing(1.5),
+                    }}
+                  >
                     <Typography variant="body2" sx={responsiveTextStyles}>
                       Size: {image.size} MB
                     </Typography>
@@ -337,15 +366,21 @@ const ImageList: React.FC<ImageListProps> = ({
                     >
                       Created: {image.created}
                     </Typography>
-                  </Stack>
+                  </div>
 
-                  <Stack direction="row" sx={{ gap: 1, mb: 1.5 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: theme.spacing(1),
+                      marginBottom: theme.spacing(1.5),
+                    }}
+                  >
                     <Chip
                       label={`Used by ${image.containers}`}
                       size="small"
                       color={image.containers > 0 ? "success" : "default"}
                     />
-                  </Stack>
+                  </div>
 
                   <Typography variant="caption" color="text.secondary">
                     Full ID
@@ -366,11 +401,17 @@ const ImageList: React.FC<ImageListProps> = ({
             ))}
           </Grid>
         ) : (
-          <Stack sx={{ textAlign: "center", py: 4 }}>
+          <div
+            style={{
+              textAlign: "center",
+              paddingTop: theme.spacing(4),
+              paddingBottom: theme.spacing(4),
+            }}
+          >
             <Typography variant="body2" color="text.secondary">
               No images found.
             </Typography>
-          </Stack>
+          </div>
         )
       ) : (
         <UnifiedCollapsibleTable
@@ -466,7 +507,13 @@ const ImageList: React.FC<ImageListProps> = ({
               <Typography variant="subtitle2" gutterBottom>
                 <b>Labels:</b>
               </Typography>
-              <Stack direction="row" sx={{ mb: 2, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  marginBottom: theme.spacing(2),
+                }}
+              >
                 {image.raw.Labels &&
                 Object.keys(image.raw.Labels).length > 0 ? (
                   Object.entries(image.raw.Labels).map(([key, val]) => (
@@ -482,12 +529,12 @@ const ImageList: React.FC<ImageListProps> = ({
                     (no labels)
                   </Typography>
                 )}
-              </Stack>
+              </div>
 
               <Typography variant="subtitle2" gutterBottom>
                 <b>Image Digests:</b>
               </Typography>
-              <Stack>
+              <div>
                 {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
                   image.raw.RepoDigests.map((digest) => (
                     <Typography
@@ -508,7 +555,7 @@ const ImageList: React.FC<ImageListProps> = ({
                     (no digests)
                   </Typography>
                 )}
-              </Stack>
+              </div>
             </>
           )}
           emptyMessage="No images found."
@@ -522,7 +569,7 @@ const ImageList: React.FC<ImageListProps> = ({
         imageTags={selectedImages.map((img) => `${img.repo}:${img.tag}`)}
         onSuccess={handleDeleteSuccess}
       />
-    </Stack>
+    </div>
   );
 };
 

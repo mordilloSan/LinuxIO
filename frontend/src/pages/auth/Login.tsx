@@ -1,5 +1,4 @@
-// src/pages/auth/Login.tsx
-import { Paper, Stack, Typography } from "@mui/material";
+import { Paper, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import React from "react";
@@ -78,12 +77,19 @@ const Login: React.FC = () => {
           },
         })}
       >
-        <Stack spacing={1} sx={{ textAlign: "center", mb: 2 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: theme.spacing(1),
+            textAlign: "center",
+            marginBottom: theme.spacing(2),
+          }}
+        >
           <Typography variant="h4">Welcome back</Typography>
           <Typography variant="body2" color="text.secondary">
             Sign in to manage your Linux i/O instance.
           </Typography>
-        </Stack>
+        </div>
         <LoginComponent />
       </Paper>
     </div>

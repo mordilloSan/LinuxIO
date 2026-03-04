@@ -1,4 +1,5 @@
-import { Stack, Typography } from "@mui/material";
+import { Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 
 import NetworkGraph from "./NetworkGraph";
@@ -8,12 +9,12 @@ import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
 const NetworkInterfacesCard: React.FC = () => {
+  const theme = useTheme();
   const { data: rawInterfaces = [], isPending: isLoading } =
     linuxio.system.get_network_info.useQuery({
       refetchInterval: 1000,
     });
 
-  // Transform data to add type field
   const interfaces = useMemo(
     () =>
       rawInterfaces.map((iface) => ({
@@ -42,13 +43,11 @@ const NetworkInterfacesCard: React.FC = () => {
 
   const [selected, setSelected] = useState<string>("");
 
-  // Adjust selection during render (no Effect needed)
   const firstName = filteredInterfaces[0]?.name ?? "";
   const selectedExists =
     selected && filteredInterfaces.some((i) => i.name === selected);
   const effectiveSelected = selectedExists ? selected : firstName;
   if (effectiveSelected !== selected) {
-    // guarded setState during render is fine; React will immediately re-render
     setSelected(effectiveSelected);
   }
 
@@ -70,9 +69,8 @@ const NetworkInterfacesCard: React.FC = () => {
     isLoading ? (
       <ComponentLoader />
     ) : (
-      // Variant D: uppercase overline grey label + right-aligned white value
-      <Stack
-        sx={{
+      <div
+        style={{
           display: "flex",
           flexDirection: "column",
           alignSelf: "flex-start",
@@ -88,18 +86,20 @@ const NetworkInterfacesCard: React.FC = () => {
           },
           { label: "MAC", value: selectedInterface.mac },
           { label: "Speed", value: selectedInterface.speed },
-        ].map(({ label, value }) => (
-          <Stack
+        ].map(({ label, value }, index, rows) => (
+          <div
             key={label}
-            direction="row"
-            alignItems="baseline"
-            sx={{
+            style={{
+              display: "flex",
+              alignItems: "baseline",
               justifyContent: "flex-start",
-              py: 0.5,
-              borderBottom: "1px solid",
-              borderColor: "divider",
-              "&:last-child": { borderBottom: "none" },
-              gap: 1,
+              paddingTop: theme.spacing(0.5),
+              paddingBottom: theme.spacing(0.5),
+              borderBottom:
+                index === rows.length - 1
+                  ? "none"
+                  : "1px solid var(--mui-palette-divider)",
+              gap: theme.spacing(1),
             }}
           >
             <Typography
@@ -117,9 +117,9 @@ const NetworkInterfacesCard: React.FC = () => {
             <Typography variant="body2" fontWeight={500} noWrap>
               {value}
             </Typography>
-          </Stack>
+          </div>
         ))}
-      </Stack>
+      </div>
     )
   ) : (
     <Typography variant="body2">No interface selected.</Typography>
@@ -129,13 +129,13 @@ const NetworkInterfacesCard: React.FC = () => {
     isLoading ? (
       <ComponentLoader />
     ) : (
-      <Stack sx={{ height: "90px", width: "100%", minWidth: 0 }}>
+      <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
         <NetworkGraph
           key={effectiveSelected}
           rx={selectedInterface.rx_speed}
           tx={selectedInterface.tx_speed}
         />
-      </Stack>
+      </div>
     )
   ) : (
     <Typography variant="body2">No graph data.</Typography>

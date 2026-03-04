@@ -1,13 +1,6 @@
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import {
-  Drawer,
-  Box,
-  useTheme,
-  List,
-  IconButton,
-  Tooltip,
-} from "@mui/material";
+import { Drawer, useTheme, List, IconButton, Tooltip } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
 import SidebarNavList from "./SidebarNavList";
@@ -28,7 +21,6 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
     useSidebar();
   const { canNavigate } = useLinuxIOUpdater();
 
-  // Local hover state - doesn't affect other components via context
   const [hovered, setHovered] = useState(false);
 
   const effectiveWidth = !isDesktop
@@ -37,7 +29,6 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
       ? collapsedDrawerWidth
       : drawerWidth;
 
-  // Only update hover state if sidebar is collapsed - no re-render needed when expanded
   const handleMouseEnter = useCallback(() => {
     if (collapsed) setHovered(true);
   }, [collapsed]);
@@ -52,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
       variant={isDesktop ? "permanent" : "temporary"}
       open={isDesktop ? true : mobileOpen}
       onClose={() => setMobileOpen(false)}
-      ModalProps={{ keepMounted: true }} // smoother mobile perf
+      ModalProps={{ keepMounted: true }}
       slotProps={{
         paper: {
           sx: {
@@ -71,15 +62,16 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
       onMouseEnter={isDesktop ? handleMouseEnter : undefined}
       onMouseLeave={isDesktop ? handleMouseLeave : undefined}
     >
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: theme.sidebar.header.background,
-          minHeight: { xs: 56, sm: 64 },
+          minHeight: isDesktop ? 64 : 56,
           position: "relative",
-          px: 1.5,
+          paddingLeft: theme.spacing(1.5),
+          paddingRight: theme.spacing(1.5),
         }}
       >
         <LogoDisplay showText={showText} />
@@ -105,7 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
             </IconButton>
           </Tooltip>
         )}
-      </Box>
+      </div>
 
       <List disablePadding>
         {items.map((page) => (

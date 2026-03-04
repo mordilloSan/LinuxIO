@@ -4,11 +4,11 @@ import {
   MenuItem,
   Select,
   type SelectChangeEvent,
-  Stack,
   Switch,
   TextField,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -181,6 +181,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
   disablePadding = false,
   state,
 }) => {
+  const theme = useTheme();
   const {
     loading,
     serverState,
@@ -217,10 +218,13 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         label="Enable automatic updates"
       />
 
-      <Stack
-        direction="row"
-        spacing={3}
-        sx={{ alignItems: "center", flexWrap: "wrap" }}
+      <div
+        style={{
+          display: "flex",
+          gap: theme.spacing(3),
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
       >
         <div>
           <Typography variant="subtitle2" gutterBottom>
@@ -300,13 +304,19 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
           }
           label="Download only (no auto-install)"
         />
-      </Stack>
+      </div>
 
       <div>
         <Typography variant="subtitle2" gutterBottom>
           Exclude packages (comma-separated)
         </Typography>
-        <Stack direction="row" spacing={1} alignItems="center">
+        <div
+          style={{
+            display: "flex",
+            gap: theme.spacing(1),
+            alignItems: "center",
+          }}
+        >
           <TextField
             size="small"
             placeholder="e.g. linux-headers-*, docker-ce"
@@ -315,7 +325,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             disabled={saving}
             sx={{ width: "100%", minWidth: { xs: 0, sm: 420 }, maxWidth: 600 }}
           />
-        </Stack>
+        </div>
       </div>
 
       <div

@@ -1,13 +1,13 @@
 import HistoryIcon from "@mui/icons-material/History";
 import {
   Chip,
-  Stack,
   Table,
   TableBody,
   TableCell,
   TableRow,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { linuxio } from "@/api";
@@ -25,6 +25,7 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
 };
 
 const UpdateHistory: React.FC = () => {
+  const theme = useTheme();
   const { data: rows = [] } = linuxio.dbus.get_update_history.useQuery();
 
   const columns: UnifiedTableColumn[] = [
@@ -38,15 +39,15 @@ const UpdateHistory: React.FC = () => {
       columns={columns}
       getRowKey={(row, index) => index}
       renderFirstCell={() => (
-        <Stack
-          sx={{
+        <div
+          style={{
             display: "flex",
             alignItems: "center",
-            color: "primary.main",
+            color: theme.palette.primary.main,
           }}
         >
           <HistoryIcon fontSize="small" />
-        </Stack>
+        </div>
       )}
       renderMainRow={(row) => (
         <>

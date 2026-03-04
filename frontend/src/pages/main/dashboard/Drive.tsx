@@ -1,12 +1,12 @@
-import { Stack, Typography } from "@mui/material";
-import React, { useState, useMemo } from "react";
+import { Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import React, { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
 
-// --- Component's normalized shape ---
 interface DriveInfo {
   name: string;
   model: string;
@@ -15,12 +15,10 @@ interface DriveInfo {
   vendor?: string;
 }
 
-// Parse "953.9G", "0B", "465.8G", "1024M", "1.8T" to bytes
 function parseSizeToBytes(input: string | undefined | null): number {
   if (!input) return 0;
   const s = String(input).trim().toUpperCase();
 
-  // Match number + optional unit (B/K/M/G/T/P), with optional trailing 'B'
   const m = s.match(/^([\d.]+)\s*([KMGTPE]?)(B)?$/);
   if (!m) return 0;
 
@@ -43,18 +41,17 @@ function parseSizeToBytes(input: string | undefined | null): number {
                 ? 5
                 : 0;
 
-  // Use binary multiples (KiB, MiB, …) which most tools report
   return Math.floor(value * Math.pow(1024, pow));
 }
 
 const Drive: React.FC = () => {
+  const theme = useTheme();
   const {
     data: rawDrives = [],
     isPending: isLoading,
     isError,
   } = linuxio.storage.get_drive_info.useQuery();
 
-  // Normalize API → component shape
   const drives = useMemo<DriveInfo[]>(
     () =>
       rawDrives.map((d) => ({
@@ -110,8 +107,8 @@ const Drive: React.FC = () => {
     (drive) => drive.name === selectedDriveName,
   );
   const content = selectedDrive ? (
-    <Stack
-      sx={{ display: "flex", flexDirection: "column", width: "fit-content" }}
+    <div
+      style={{ display: "flex", flexDirection: "column", width: "fit-content" }}
     >
       {[
         { label: "Model", value: selectedDrive.model || "Unknown" },
@@ -123,18 +120,20 @@ const Drive: React.FC = () => {
         ...(selectedDrive.vendor
           ? [{ label: "Vendor", value: selectedDrive.vendor }]
           : []),
-      ].map(({ label, value }) => (
-        <Stack
+      ].map(({ label, value }, index, rows) => (
+        <div
           key={label}
-          direction="row"
-          alignItems="baseline"
-          sx={{
+          style={{
+            display: "flex",
+            alignItems: "baseline",
             justifyContent: "flex-start",
-            py: 0.5,
-            borderBottom: "1px solid",
-            borderColor: "divider",
-            "&:last-child": { borderBottom: "none" },
-            gap: 1,
+            paddingTop: theme.spacing(0.5),
+            paddingBottom: theme.spacing(0.5),
+            borderBottom:
+              index === rows.length - 1
+                ? "none"
+                : "1px solid var(--mui-palette-divider)",
+            gap: theme.spacing(1),
           }}
         >
           <Typography
@@ -152,9 +151,9 @@ const Drive: React.FC = () => {
           <Typography variant="body2" fontWeight={500} noWrap>
             {value}
           </Typography>
-        </Stack>
+        </div>
       ))}
-    </Stack>
+    </div>
   ) : (
     <Typography variant="body2">No drive selected.</Typography>
   );

@@ -6,7 +6,6 @@ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   CircularProgress,
   IconButton,
-  Stack,
   Typography,
   useMediaQuery,
   useTheme,
@@ -138,11 +137,10 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
             marginLeft: "auto",
           }}
         >
-          <Stack
-            direction={"row"}
-            spacing={0.4}
+          <div
             className="quick-actions-group"
-            sx={{
+            style={{
+              display: "flex",
               alignItems: "center",
               gap: "0.4em",
             }}
@@ -233,7 +231,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                 </Tooltip>
               </>
             )}
-          </Stack>
+          </div>
         </div>
       </div>
       <IndexerDialog />

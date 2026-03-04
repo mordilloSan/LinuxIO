@@ -1,6 +1,6 @@
 import GppGoodOutlinedIcon from "@mui/icons-material/GppGoodOutlined";
 import SecurityUpdateWarningIcon from "@mui/icons-material/SecurityUpdateWarning";
-import { Link, Stack, Typography, useTheme } from "@mui/material";
+import { Link, Typography, useTheme } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 
@@ -8,7 +8,6 @@ import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
-// --- Types ---
 interface Update {
   package_id: string;
   summary: string;
@@ -24,35 +23,29 @@ interface SystemUpdatesResponse {
   updates: Update[];
 }
 
-// --- Component ---
 const SystemHealth = () => {
   const theme = useTheme();
 
-  // Updates
   const {
     data: updatesRaw,
     isPending: loadingHealth,
     isFetching: fetchingHealth,
   } = linuxio.system.get_updates_fast.useQuery({ refetchInterval: 50000 });
 
-  // Normalize updates response
   const systemHealth: SystemUpdatesResponse | undefined = updatesRaw
     ? Array.isArray(updatesRaw)
       ? { updates: updatesRaw }
       : updatesRaw
     : undefined;
 
-  // Services
   const { data: servicesRaw } = linuxio.system.get_processes.useQuery({
     refetchInterval: 50000,
   });
 
-  // Distro Info
   const { data: distroInfo } = linuxio.system.get_host_info.useQuery({
     refetchInterval: 50000,
   });
 
-  // --- Data extraction ---
   const services = Array.isArray(servicesRaw) ? servicesRaw : [];
   const units = services.length;
   const running = services.filter((svc) => svc.running === true).length;
@@ -61,7 +54,6 @@ const SystemHealth = () => {
   const totalPackages = updates.length;
   const distro = distroInfo?.platform || "Unknown";
 
-  // --- Icon and link selection ---
   let statusColor = theme.palette.success.dark;
   let IconComponent = GppGoodOutlinedIcon;
   let iconLink = "/updates";
@@ -70,9 +62,8 @@ const SystemHealth = () => {
     IconComponent = SecurityUpdateWarningIcon;
   }
 
-  // --- Stats UI ---
   const stats2 = (
-    <Stack>
+    <div>
       {!systemHealth && (loadingHealth || fetchingHealth) ? (
         <ComponentLoader />
       ) : (
@@ -85,12 +76,12 @@ const SystemHealth = () => {
           <IconComponent sx={{ fontSize: 100, color: statusColor }} />
         </Link>
       )}
-    </Stack>
+    </div>
   );
 
   const stats = (
-    <Stack
-      sx={{
+    <div
+      style={{
         display: "flex",
         flexDirection: "column",
         alignSelf: "flex-start",
@@ -129,18 +120,20 @@ const SystemHealth = () => {
             </Link>
           ),
         },
-      ].map(({ label, value }) => (
-        <Stack
+      ].map(({ label, value }, index, rows) => (
+        <div
           key={label}
-          direction="row"
-          alignItems="baseline"
-          sx={{
+          style={{
+            display: "flex",
+            alignItems: "baseline",
             justifyContent: "flex-start",
-            py: 0.5,
-            borderBottom: "1px solid",
-            borderColor: "divider",
-            "&:last-child": { borderBottom: "none" },
-            gap: 1,
+            paddingTop: theme.spacing(0.5),
+            paddingBottom: theme.spacing(0.5),
+            borderBottom:
+              index === rows.length - 1
+                ? "none"
+                : "1px solid var(--mui-palette-divider)",
+            gap: theme.spacing(1),
           }}
         >
           <Typography
@@ -158,9 +151,9 @@ const SystemHealth = () => {
           <Typography variant="body2" fontWeight={500} noWrap>
             {value}
           </Typography>
-        </Stack>
+        </div>
       ))}
-    </Stack>
+    </div>
   );
 
   return (
