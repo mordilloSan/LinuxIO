@@ -1,10 +1,10 @@
-import { Button, Typography, Box } from "@mui/material";
+import { Button, Typography } from "@mui/material";
 import React from "react";
 import { Link } from "react-router-dom";
 
 function Page404() {
   return (
-    <Box sx={{ textAlign: "center" }}>
+    <div style={{ textAlign: "center" }}>
       <Typography component="h1" variant="h1" align="center" gutterBottom>
         404
       </Typography>
@@ -29,7 +29,7 @@ function Page404() {
       >
         Return to website
       </Button>
-    </Box>
+    </div>
   );
 }
 

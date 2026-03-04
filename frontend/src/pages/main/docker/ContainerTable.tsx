@@ -3,7 +3,6 @@ import { CSS } from "@dnd-kit/utilities";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
-  Box,
   Chip,
   Collapse,
   IconButton,
@@ -24,6 +23,8 @@ import React, { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import ActionButton from "./ActionButton";
+
+import "@/components/cards/frosted-card.css";
 
 import { linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -258,33 +259,33 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Drag handle */}
         {editMode && (
           <TableCell width="28px" sx={{ p: "0 4px" }}>
-            <Box
-              component="span"
+            <span
               {...attributes}
               {...listeners}
-              sx={{
+              className="drag-handle"
+              style={{
                 display: "flex",
                 alignItems: "center",
-                color: "text.disabled",
+                color: theme.palette.text.disabled,
                 cursor: "grab",
-                "&:active": { cursor: "grabbing" },
               }}
             >
               <DragIndicatorIcon fontSize="small" />
-            </Box>
+            </span>
           </TableCell>
         )}
         {/* Name (with status dot) */}
         <TableCell>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <Tooltip title={displayState}>
-              <Box
-                sx={{
+              <span
+                style={{
                   width: 8,
                   height: 8,
                   borderRadius: "50%",
-                  bgcolor: getStatusDotColor(displayState),
+                  backgroundColor: getStatusDotColor(displayState),
                   flexShrink: 0,
+                  display: "inline-block",
                 }}
               />
             </Tooltip>
@@ -292,7 +293,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
             <Typography variant="body2" fontWeight="bold" noWrap>
               {name}
             </Typography>
-          </Box>
+          </div>
         </TableCell>
 
         {/* Version */}
@@ -342,12 +343,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               >
                 {networks[0][0]}
                 {networks.length > 1 && (
-                  <Box
-                    component="span"
-                    sx={{ ml: 0.5, color: "text.disabled" }}
-                  >
+                  <span style={{ marginLeft: 2, color: theme.palette.text.disabled }}>
                     +{networks.length - 1}
-                  </Box>
+                  </span>
                 )}
               </Typography>
             </Tooltip>
@@ -384,7 +382,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Ports (Container → Host) */}
         <TableCell sx={{ display: { xs: "none", xl: "table-cell" } }}>
           {ports.length > 0 ? (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {ports.slice(0, 2).map((p, i) => (
                 <Typography
                   key={i}
@@ -392,15 +390,15 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   noWrap
                   sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
                 >
-                  <Box component="span" color="text.primary">
+                  <span style={{ color: theme.palette.text.primary }}>
                     {p.PrivatePort}/{p.Type}
-                  </Box>
-                  <Box component="span" color="text.disabled" mx={0.5}>
+                  </span>
+                  <span style={{ color: theme.palette.text.disabled, marginInline: 2 }}>
                     →
-                  </Box>
-                  <Box component="span" color="text.secondary">
+                  </span>
+                  <span style={{ color: theme.palette.text.secondary }}>
                     {p.PublicPort ?? "—"}
-                  </Box>
+                  </span>
                 </Typography>
               ))}
               {ports.length > 2 && (
@@ -408,7 +406,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   +{ports.length - 2} more
                 </Typography>
               )}
-            </Box>
+            </div>
           ) : (
             <Typography variant="body2" color="text.disabled">
               —
@@ -421,7 +419,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
           sx={{ display: { xs: "none", xl: "table-cell" }, maxWidth: 280 }}
         >
           {mounts.length > 0 ? (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {mounts.slice(0, 2).map((m, i) => (
                 <Tooltip key={i} title={`${m.Destination} → ${m.Source}`}>
                   <Typography
@@ -429,15 +427,15 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     noWrap
                     sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
                   >
-                    <Box component="span" color="text.primary">
+                    <span style={{ color: theme.palette.text.primary }}>
                       {m.Destination}
-                    </Box>
-                    <Box component="span" color="text.disabled" mx={0.5}>
+                    </span>
+                    <span style={{ color: theme.palette.text.disabled, marginInline: 2 }}>
                       →
-                    </Box>
-                    <Box component="span" color="text.secondary">
+                    </span>
+                    <span style={{ color: theme.palette.text.secondary }}>
                       {m.Source}
-                    </Box>
+                    </span>
                   </Typography>
                 </Tooltip>
               ))}
@@ -446,7 +444,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   +{mounts.length - 2} more
                 </Typography>
               )}
-            </Box>
+            </div>
           ) : (
             <Typography variant="body2" color="text.disabled">
               —
@@ -486,12 +484,12 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
 
         {/* Actions + expand */}
         <TableCell align="right">
-          <Box
-            sx={{
+          <div
+            style={{
               display: "flex",
               justifyContent: "flex-end",
               alignItems: "center",
-              gap: { xs: 0, sm: 0.5 },
+              gap: 2,
             }}
           >
             {isWatchtower ? (
@@ -584,7 +582,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               </Tooltip>
             )}
             <Tooltip title={autoUpdateTooltip}>
-              <Box component="span" sx={{ display: "inline-flex" }}>
+              <span style={{ display: "inline-flex" }}>
                 <Switch
                   size="small"
                   checked={autoUpdateChecked}
@@ -605,7 +603,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                       : undefined
                   }
                 />
-              </Box>
+              </span>
             </Tooltip>
             <IconButton
               size="small"
@@ -624,7 +622,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 }}
               />
             </IconButton>
-          </Box>
+          </div>
         </TableCell>
       </TableRow>
 
@@ -641,27 +639,25 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
             colSpan={editMode ? 10 : 9}
           >
             <Collapse in={expanded} timeout="auto" unmountOnExit>
-              <Box
-                component={motion.div}
+              <motion.div
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
-                sx={{
-                  mx: 2,
-                  mb: 1,
-                  borderRadius: 2,
-                  p: 1.5,
+                style={{
+                  marginInline: 8,
+                  marginBottom: 4,
+                  borderRadius: 8,
+                  padding: 6,
                   display: "flex",
-                  gap: 4,
+                  gap: 16,
                   flexWrap: "wrap",
-                  bgcolor: (t) =>
-                    alpha(
-                      t.palette.text.primary,
-                      t.palette.mode === "dark" ? 0.04 : 0.03,
-                    ),
+                  backgroundColor: alpha(
+                    theme.palette.text.primary,
+                    theme.palette.mode === "dark" ? 0.04 : 0.03,
+                  ),
                 }}
               >
                 {ports.length > 2 && (
-                  <Box>
+                  <div>
                     <Typography
                       variant="caption"
                       color="text.secondary"
@@ -671,11 +667,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     >
                       ALL PORTS (Container → Host)
                     </Typography>
-                    <Box
-                      sx={{
+                    <div
+                      style={{
                         display: "flex",
                         flexDirection: "column",
-                        gap: 0.5,
+                        gap: 2,
                       }}
                     >
                       {ports.map((p, i) => (
@@ -684,24 +680,24 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                           variant="body2"
                           sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
                         >
-                          <Box component="span" color="text.primary">
+                          <span style={{ color: theme.palette.text.primary }}>
                             {p.PrivatePort}/{p.Type}
-                          </Box>
-                          <Box component="span" color="text.disabled" mx={0.75}>
+                          </span>
+                          <span style={{ color: theme.palette.text.disabled, marginInline: 3 }}>
                             →
-                          </Box>
-                          <Box component="span" color="text.secondary">
+                          </span>
+                          <span style={{ color: theme.palette.text.secondary }}>
                             {p.PublicPort
                               ? `${p.IP && p.IP !== "0.0.0.0" ? p.IP + ":" : ""}${p.PublicPort}`
                               : "—"}
-                          </Box>
+                          </span>
                         </Typography>
                       ))}
-                    </Box>
-                  </Box>
+                    </div>
+                  </div>
                 )}
                 {mounts.length > 2 && (
-                  <Box>
+                  <div>
                     <Typography
                       variant="caption"
                       color="text.secondary"
@@ -711,11 +707,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     >
                       ALL VOLUMES (App → Host)
                     </Typography>
-                    <Box
-                      sx={{
+                    <div
+                      style={{
                         display: "flex",
                         flexDirection: "column",
-                        gap: 0.5,
+                        gap: 2,
                       }}
                     >
                       {mounts.map((m, i) => (
@@ -724,21 +720,21 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                           variant="body2"
                           sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
                         >
-                          <Box component="span" color="text.primary">
+                          <span style={{ color: theme.palette.text.primary }}>
                             {m.Destination}
-                          </Box>
-                          <Box component="span" color="text.disabled" mx={0.75}>
+                          </span>
+                          <span style={{ color: theme.palette.text.disabled, marginInline: 3 }}>
                             →
-                          </Box>
-                          <Box component="span" color="text.secondary">
+                          </span>
+                          <span style={{ color: theme.palette.text.secondary }}>
                             {m.Source}
-                          </Box>
+                          </span>
                         </Typography>
                       ))}
-                    </Box>
-                  </Box>
+                    </div>
+                  </div>
                 )}
-              </Box>
+              </motion.div>
             </Collapse>
           </TableCell>
         </TableRow>
@@ -778,7 +774,7 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
   editMode = false,
 }) => {
   return (
-    <Box>
+    <div>
       <TableContainer className="custom-scrollbar" sx={{ overflowX: "auto" }}>
         <Table size="small" sx={{ borderRadius: 3, boxShadow: 2 }}>
           <TableHead>
@@ -836,13 +832,13 @@ const ContainerTable: React.FC<ContainerTableProps> = ({
         </Table>
       </TableContainer>
       {containers.length === 0 && (
-        <Box textAlign="center" py={4}>
+        <div style={{ textAlign: "center", paddingBlock: 16 }}>
           <Typography variant="body2" color="text.secondary">
             No containers found.
           </Typography>
-        </Box>
+        </div>
       )}
-    </Box>
+    </div>
   );
 };
 

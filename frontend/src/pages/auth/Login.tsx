@@ -1,15 +1,12 @@
 // src/pages/auth/Login.tsx
-import { Box, Paper, Stack, Typography } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Paper, Stack, Typography } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@mui/system";
 import React from "react";
 
 import LoginComponent from "@/components/auth/Login";
 
-const float = keyframes`
-  0%, 100% { transform: translate(-50%, 0); }
-  50% { transform: translate(-50%, -8px); }
-`;
+import "./login-page.css";
 
 const liftIn = keyframes`
   from { opacity: 0; transform: translateY(18px) scale(0.98); }
@@ -17,34 +14,22 @@ const liftIn = keyframes`
 `;
 
 const Login: React.FC = () => {
+  const theme = useTheme();
+
   return (
-    <Box
-      sx={{
-        width: "100%",
-        maxWidth: 520,
-        position: "relative",
-      }}
-    >
-      <Box
-        sx={(theme) => ({
-          position: "absolute",
-          top: { xs: -80, sm: -96 },
-          left: "50%",
-          px: { xs: 2, sm: 2.5 },
-          py: { xs: 1.05, sm: 1.25 },
-          borderRadius: 999,
+    <div style={{ width: "100%", maxWidth: 520, position: "relative" }}>
+      <div
+        className="login-badge"
+        style={{
+          borderRadius: "9999px",
           border: `1px solid ${alpha(theme.palette.text.secondary, 0.25)}`,
           background: `linear-gradient(160deg, ${alpha(theme.palette.background.paper, 0.95)} 0%, ${alpha(theme.palette.background.default, 0.92)} 100%)`,
           boxShadow: `0 24px 54px -36px ${alpha(theme.palette.common.black, 0.85)}`,
           display: "inline-flex",
           alignItems: "center",
-          gap: 1,
+          gap: 4,
           backdropFilter: "blur(10px)",
-          animation: `${float} 4.5s ease-in-out infinite`,
-          "@media (prefers-reduced-motion: reduce)": {
-            animation: "none",
-          },
-        })}
+        }}
       >
         <Typography
           sx={{
@@ -56,10 +41,9 @@ const Login: React.FC = () => {
         >
           Linux
         </Typography>
-        <Box
-          sx={(theme) => ({
-            width: { xs: 30, sm: 34 },
-            height: { xs: 30, sm: 34 },
+        <div
+          className="login-badge-icon"
+          style={{
             borderRadius: "50%",
             border: `2px solid ${theme.palette.primary.main}`,
             display: "flex",
@@ -69,11 +53,11 @@ const Login: React.FC = () => {
             color: theme.palette.primary.main,
             fontSize: "0.8rem",
             letterSpacing: "-0.02em",
-          })}
+          }}
         >
           i/O
-        </Box>
-      </Box>
+        </div>
+      </div>
 
       <Paper
         sx={(theme) => ({
@@ -102,7 +86,7 @@ const Login: React.FC = () => {
         </Stack>
         <LoginComponent />
       </Paper>
-    </Box>
+    </div>
   );
 };
 

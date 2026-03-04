@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   FormControlLabel,
   MenuItem,
@@ -201,7 +200,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
   }
 
   return (
-    <Box sx={{ p: disablePadding ? 0 : 3, display: "grid", gap: 2 }}>
+    <div style={{ padding: disablePadding ? 0 : 12, display: "grid", gap: 8 }}>
       <FormControlLabel
         control={
           <Switch
@@ -223,7 +222,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         spacing={3}
         sx={{ alignItems: "center", flexWrap: "wrap" }}
       >
-        <Box>
+        <div>
           <Typography variant="subtitle2" gutterBottom>
             Frequency
           </Typography>
@@ -242,9 +241,9 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             <MenuItem value="daily">Daily</MenuItem>
             <MenuItem value="weekly">Weekly</MenuItem>
           </Select>
-        </Box>
+        </div>
 
-        <Box>
+        <div>
           <Typography variant="subtitle2" gutterBottom>
             Scope
           </Typography>
@@ -263,9 +262,9 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             <MenuItem value="updates">Security + updates</MenuItem>
             <MenuItem value="all">All (incl. extras)</MenuItem>
           </Select>
-        </Box>
+        </div>
 
-        <Box>
+        <div>
           <Typography variant="subtitle2" gutterBottom>
             Reboot policy
           </Typography>
@@ -284,7 +283,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             <MenuItem value="if_needed">If needed</MenuItem>
             <MenuItem value="always">Always</MenuItem>
           </Select>
-        </Box>
+        </div>
 
         <FormControlLabel
           control={
@@ -303,7 +302,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         />
       </Stack>
 
-      <Box>
+      <div>
         <Typography variant="subtitle2" gutterBottom>
           Exclude packages (comma-separated)
         </Typography>
@@ -317,15 +316,15 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             sx={{ width: "100%", minWidth: { xs: 0, sm: 420 }, maxWidth: 600 }}
           />
         </Stack>
-      </Box>
+      </div>
 
-      <Box
-        sx={{
+      <div
+        style={{
           display: "flex",
-          gap: 1,
+          gap: 4,
           alignItems: "center",
           flexWrap: "wrap",
-          mt: 1,
+          marginTop: 4,
         }}
       >
         <Button variant="contained" onClick={save} disabled={saving || !dirty}>
@@ -334,7 +333,7 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
         <Button variant="text" onClick={reset} disabled={saving || !dirty}>
           Cancel
         </Button>
-        <Box sx={{ flexGrow: 1 }} />
+        <div style={{ flexGrow: 1 }} />
         <Button variant="contained" onClick={applyOffline} disabled={saving}>
           Apply at next reboot (offline)
         </Button>
@@ -347,8 +346,8 @@ const UpdateSettings: React.FC<UpdateSettingsProps> = ({
             {serverState.notes.join(" • ")}
           </Typography>
         ) : null}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

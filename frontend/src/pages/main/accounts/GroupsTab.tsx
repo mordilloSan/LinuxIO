@@ -1,7 +1,6 @@
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import {
-  Box,
   Grid,
   TableCell,
   TextField,
@@ -139,8 +138,16 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
   ];
 
   return (
-    <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+    <div>
+      <div
+        style={{
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
         <TextField
           variant="outlined"
           size="small"
@@ -154,7 +161,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
             },
           }}
         />
-        <Box fontWeight="bold">{filtered.length} shown</Box>
+        <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
         {effectiveSelected.size > 0 && (
           <Button
             variant="contained"
@@ -166,23 +173,25 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
             Delete ({effectiveSelected.size})
           </Button>
         )}
-      </Box>
+      </div>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <Grid container spacing={2}>
             {filtered.map((group) => (
               <Grid key={group.name} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <FrostedCard style={{ padding: 8 }}>
-                  <Box
-                    sx={{
+                  <div
+                    style={{
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      gap: 1,
-                      mb: 1,
+                      gap: 4,
+                      marginBottom: 4,
                     }}
                   >
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 4 }}
+                    >
                       <Checkbox
                         size="small"
                         checked={effectiveSelected.has(group.name)}
@@ -194,7 +203,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       <Typography variant="body2" fontWeight="bold" noWrap>
                         {group.name}
                       </Typography>
-                    </Box>
+                    </div>
                     <Tooltip title="Edit Members">
                       <IconButton
                         size="small"
@@ -204,26 +213,31 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                         <EditIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                  </Box>
+                  </div>
 
-                  <Box
-                    sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mb: 1 }}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 3,
+                      marginBottom: 4,
+                    }}
                   >
                     {group.isSystem && (
                       <Chip label="System" size="small" variant="outlined" />
                     )}
                     <Chip label={`GID: ${group.gid}`} size="small" />
-                  </Box>
+                  </div>
 
                   <Typography variant="caption" color="text.secondary">
                     Members ({group.members.length})
                   </Typography>
-                  <Box
-                    sx={{
-                      mt: 0.5,
+                  <div
+                    style={{
+                      marginTop: 2,
                       display: "flex",
                       flexWrap: "wrap",
-                      gap: 0.5,
+                      gap: 2,
                     }}
                   >
                     {group.members.length > 0 ? (
@@ -240,17 +254,17 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                         (no members)
                       </Typography>
                     )}
-                  </Box>
+                  </div>
                 </FrostedCard>
               </Grid>
             ))}
           </Grid>
         ) : (
-          <Box textAlign="center" py={4}>
+          <div style={{ textAlign: "center", paddingBlock: 16 }}>
             <Typography variant="body2" color="text.secondary">
               No groups found.
             </Typography>
-          </Box>
+          </div>
         )
       ) : (
         <UnifiedCollapsibleTable
@@ -277,7 +291,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           renderMainRow={(group) => (
             <>
               <TableCell>
-                <Box display="flex" alignItems="center" gap={1}>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: 4 }}
+                >
                   <Typography
                     variant="body2"
                     fontWeight="medium"
@@ -293,7 +309,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       sx={{ fontSize: "0.65rem", height: 20 }}
                     />
                   )}
-                </Box>
+                </div>
               </TableCell>
               <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
                 <Typography variant="body2" sx={responsiveTextStyles}>
@@ -301,7 +317,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                 </Typography>
               </TableCell>
               <TableCell>
-                <Box display="flex" flexWrap="wrap" gap={0.5}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
                   {group.members.length > 0 ? (
                     group.members
                       .slice(0, 3)
@@ -326,10 +342,12 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       sx={{ fontSize: "0.7rem" }}
                     />
                   )}
-                </Box>
+                </div>
               </TableCell>
               <TableCell align="right">
-                <Box display="flex" justifyContent="flex-end" gap={0.5}>
+                <div
+                  style={{ display: "flex", justifyContent: "flex-end", gap: 2 }}
+                >
                   <Tooltip title="Edit Members">
                     <IconButton
                       size="small"
@@ -342,7 +360,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                </Box>
+                </div>
               </TableCell>
             </>
           )}
@@ -351,7 +369,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
               <Typography variant="subtitle2" gutterBottom>
                 <b>All Members ({group.members.length}):</b>
               </Typography>
-              <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap" }}>
+              <div
+                style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }}
+              >
                 {group.members.length > 0 ? (
                   group.members.map((member) => (
                     <Chip
@@ -366,7 +386,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     (no members)
                   </Typography>
                 )}
-              </Box>
+              </div>
             </>
           )}
           emptyMessage="No groups found."
@@ -395,7 +415,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
           group={selectedGroup}
         />
       )}
-    </Box>
+    </div>
   );
 };
 

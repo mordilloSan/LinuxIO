@@ -25,6 +25,11 @@
   color: var(--ab-hover-color);
 }
 
+/* ContainerTable: drag handle active state */
+.drag-handle:active {
+  cursor: grabbing;
+}
+
 /* DevToolsButton: hover border and shadow */
 .devtools-btn:hover {
   border-color: var(--devtools-hover-border) !important;

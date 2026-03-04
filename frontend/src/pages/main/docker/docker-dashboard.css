@@ -1,0 +1,39 @@
+/* Section headers: reveal toggle icon on hover */
+.dd-section-header:hover .section-toggle {
+  opacity: 1 !important;
+}
+
+/* InfoRow: layout + themed divider via CSS custom property */
+.dd-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-block: 2.4px;
+  border-bottom: 1px solid var(--dd-divider, rgba(0, 0, 0, 0.12));
+  gap: 4px;
+}
+.dd-info-row:last-child {
+  border-bottom: none;
+}
+
+/* Responsive grid columns for containers list */
+.dd-containers-grid {
+  display: grid;
+  grid-template-columns: 1fr 80px;
+}
+@media (min-width: 600px) {
+  .dd-containers-grid {
+    grid-template-columns: 1fr 220px 80px 80px;
+  }
+}
+
+/* Responsive grid columns for images list */
+.dd-images-grid {
+  display: grid;
+  grid-template-columns: 1fr 80px;
+}
+@media (min-width: 600px) {
+  .dd-images-grid {
+    grid-template-columns: 1fr 80px 80px 80px;
+  }
+}

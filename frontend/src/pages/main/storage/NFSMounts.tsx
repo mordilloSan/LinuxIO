@@ -1,7 +1,6 @@
 import {
   Alert,
   Autocomplete,
-  Box,
   Button,
   Chip,
   CircularProgress,
@@ -187,7 +186,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Mount NFS Share</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
           <TextField
             label="NFS Server"
             value={server}
@@ -261,7 +260,7 @@ const MountNFSDialog: React.FC<MountNFSDialogProps> = ({
             size="small"
           />
           {validationError && <Alert severity="error">{validationError}</Alert>}
-        </Box>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={isMounting}>
@@ -321,14 +320,14 @@ const UnmountDialog: React.FC<UnmountDialogProps> = ({
           Are you sure you want to unmount the NFS share?
         </DialogContentText>
         {mount && (
-          <Box sx={{ mt: 2, mb: 2 }}>
+          <div style={{ marginTop: 8, marginBottom: 8 }}>
             <Typography variant="body2">
               <strong>Source:</strong> {mount.source}
             </Typography>
             <Typography variant="body2">
               <strong>Mountpoint:</strong> {mount.mountpoint}
             </Typography>
-          </Box>
+          </div>
         )}
         <FormControlLabel
           control={
@@ -479,7 +478,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
     >
       <DialogTitle>Edit NFS Mount Options</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
           <TextField
             label="Server Address"
             value={server}
@@ -533,7 +532,7 @@ const EditNFSDialog: React.FC<EditNFSDialogProps> = ({
             fullWidth
             size="small"
           />
-        </Box>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={isRemounting}>
@@ -613,8 +612,8 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
   ];
 
   return (
-    <Box>
-      <Box mb={2} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+    <div>
+      <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <TextField
           variant="outlined"
           size="small"
@@ -629,7 +628,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
           }}
         />
         <Typography fontWeight="bold">{filtered.length} mounts</Typography>
-      </Box>
+      </div>
 
       {viewMode === "card" ? (
         filtered.length > 0 ? (
@@ -654,7 +653,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     {mount.mountpoint}
                   </Typography>
 
-                  <Box sx={{ width: "100%", mb: 1 }}>
+                  <div style={{ width: "100%", marginBottom: 4 }}>
                     <LinearProgress
                       variant="determinate"
                       value={mount.usedPct}
@@ -671,11 +670,9 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                       {formatFileSize(mount.used)} /{" "}
                       {formatFileSize(mount.size)}
                     </Typography>
-                  </Box>
+                  </div>
 
-                  <Box
-                    sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mb: 1 }}
-                  >
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 4 }}>
                     <Chip label={mount.fsType} size="small" />
                     {mount.options?.slice(0, 2).map((opt, i) => (
                       <Chip
@@ -684,9 +681,9 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                         size="small"
                       />
                     ))}
-                  </Box>
+                  </div>
 
-                  <Box sx={{ display: "flex", gap: 1 }}>
+                  <div style={{ display: "flex", gap: 4 }}>
                     <Button
                       size="small"
                       variant="outlined"
@@ -701,17 +698,17 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     >
                       Unmount
                     </Button>
-                  </Box>
+                  </div>
                 </FrostedCard>
               </Grid>
             ))}
           </Grid>
         ) : (
-          <Box textAlign="center" py={4}>
+          <div style={{ textAlign: "center", paddingBlock: 16 }}>
             <Typography variant="body2" color="text.secondary">
               No NFS mounts found. Click Mount NFS to add one.
             </Typography>
-          </Box>
+          </div>
         )
       ) : (
         <UnifiedCollapsibleTable
@@ -731,7 +728,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                 </Typography>
               </TableCell>
               <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-                <Box sx={{ width: "100%" }}>
+                <div style={{ width: "100%" }}>
                   <LinearProgress
                     variant="determinate"
                     value={mount.usedPct}
@@ -747,10 +744,10 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                   <Typography variant="caption" color="text.secondary">
                     {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
                   </Typography>
-                </Box>
+                </div>
               </TableCell>
               <TableCell>
-                <Box sx={{ display: "flex", gap: 1 }}>
+                <div style={{ display: "flex", gap: 4 }}>
                   <Button
                     size="small"
                     variant="outlined"
@@ -771,16 +768,16 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                   >
                     Unmount
                   </Button>
-                </Box>
+                </div>
               </TableCell>
             </>
           )}
           renderExpandedContent={(mount) => (
-            <Box>
+            <div>
               <Typography variant="subtitle2" gutterBottom>
                 <strong>Options:</strong>
               </Typography>
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 2 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
                 {mount.options && mount.options.length > 0 ? (
                   mount.options.map((opt, i) => (
                     <Chip key={i} label={opt} size="small" />
@@ -790,7 +787,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                     (no options)
                   </Typography>
                 )}
-              </Box>
+              </div>
               <Typography variant="subtitle2" gutterBottom>
                 <strong>Filesystem Type:</strong> {mount.fsType}
               </Typography>
@@ -799,7 +796,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                 {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}% used,{" "}
                 {formatFileSize(mount.free)} free)
               </Typography>
-            </Box>
+            </div>
           )}
           emptyMessage="No NFS mounts found. Click 'Mount NFS' to add one."
         />
@@ -824,7 +821,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
         mount={selectedMount}
         onSuccess={() => refetch()}
       />
-    </Box>
+    </div>
   );
 };
 

@@ -9,7 +9,6 @@ import {
   Checkbox,
   Autocomplete,
   Chip,
-  Box,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect } from "react";
@@ -106,7 +105,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create User</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
           <TextField
             label="Username"
             value={username}
@@ -186,7 +185,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
             }
             label="Create home directory"
           />
-        </Box>
+        </div>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={isPending}>
