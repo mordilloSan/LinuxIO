@@ -35,12 +35,12 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
   },
 });
 
-export const useUpdateSettingsState = () => {
+export const useUpdateSettingsState = (enabled = true) => {
   const {
     data: rawServerState,
     isPending: loading,
     refetch,
-  } = linuxio.dbus.get_auto_updates.useQuery();
+  } = linuxio.dbus.get_auto_updates.useQuery({ enabled });
 
   const serverState = useMemo(
     () => (rawServerState ? normalizeState(rawServerState) : null),
