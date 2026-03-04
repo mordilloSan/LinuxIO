@@ -7,12 +7,12 @@
 
 <h1>Linux <img src="frontend/public/Logo.png" alt="i/O" height="32" align="center" /></h1>
 
-A modern web dashboard to manage your Linux system — Docker, WireGuard, updates, users, shares, sensors, and more — all from one unified interface.
+A modern web dashboard to manage your Linux system: Docker, WireGuard, updates, users, shares, sensors, and more, from one unified interface.
 
 </div>
 
 ---
-## 🧠 Philosophy
+## Philosophy
 
 Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes further by integrating:
 
@@ -24,27 +24,27 @@ Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes furthe
 
 ---
 
-## 🚀 Features
+## Features
 
-- 🔐 **PAM Authentication** - Login with your Linux credentials
-- 📊 **Live System Stats** - CPU, memory, disk, network monitoring
-- 🐳 **Docker Manager** - Container management
-- 🛡️ **WireGuard UI** - VPN configuration
-- 📁 **File Explorer** - Integrated File Explorer
-- 👤 **User Accounts** - User management
-- 📤 **Share Manager** - Samba/NFS shares
-- 🌐 **NetworkManager** - Network configuration
-- 🔄 **Software Updates** - PackageKit integration
-- 💡 **Hardware Sensors** - lm-sensors & SMART monitoring
-- 💻 **Terminal** - Web-based command execution
+- **PAM Authentication** - Login with your Linux credentials
+- **Live System Stats** - CPU, memory, disk, and network monitoring
+- **Docker Manager** - Container management
+- **WireGuard UI** - VPN configuration
+- **File Explorer** - Integrated file explorer
+- **User Accounts** - User management
+- **Share Manager** - Samba/NFS shares
+- **NetworkManager** - Network configuration
+- **Software Updates** - PackageKit integration
+- **Hardware Sensors** - `lm-sensors` and SMART monitoring
+- **Terminal** - Web-based command execution
 
 ---
 
-## 📦 Installation
+## Installation
 
 LinuxIO supports Linux kernels 5.9+.
 
-### Quick Install (Recommended)
+### Quick install (recommended)
 
 ```bash
 # Install dependencies (Docker, lm-sensors, PAM, PolicyKit, smartmontools)
@@ -54,9 +54,9 @@ curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/
 curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash
 ```
 
-Access the dashboard at: `http://localhost:8090`
+Access the dashboard at `https://localhost:8090`.
 
-### Manual Dependency Installation
+### Manual dependency installation
 
 If you prefer to install dependencies manually:
 
@@ -77,11 +77,11 @@ curl -fsSL https://get.docker.com | sudo sh
 
 ---
 
-## 🛠️ Development
+## Development
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - Node.js 24+
 - Make
 
@@ -112,7 +112,7 @@ cd LinuxIO
 make build
 
 # Install to system (installs binaries + systemd services)
-sudo make localinstall
+make localinstall
 ```
 
 ### Frontend Development
@@ -134,9 +134,8 @@ make dev
 If you modify Go code (backend, bridge, or auth), rebuild and reinstall:
 
 ```bash
-make build
-sudo make localinstall
-sudo systemctl restart linuxio
+make fastbuild
+make localinstall
 ```
 
 ### Build Components Individually
@@ -144,21 +143,17 @@ sudo systemctl restart linuxio
 ```bash
 make build-backend      # Go backend binary
 make build-bridge       # Go bridge binary
-make build-auth  # PAM authentication worker
+make build-auth         # PAM authentication worker
 make build-vite         # Frontend static assets
 ```
 
-### Upgrade
-
-See `docs/UPGRADE_CHECKLIST.md` for the socket-activated auth worker upgrade steps.
-
 ### Available Commands
 
-**Setup & Dependencies:**
+**Setup and dependencies:**
 
 ```bash
 make ensure-node       # Install/activate Node.js 24 via nvm
-make ensure-go         # Install Go 1.25 (user-local, no sudo)
+make ensure-go         # Install/activate Go from backend/go.mod (currently 1.26.0)
 make setup             # Install frontend dependencies (npm install)
 ```
 
@@ -186,7 +181,7 @@ make build             # Build everything (frontend + backend + bridge + auth wo
 make build-vite        # Build frontend only
 make build-backend     # Build backend only
 make build-bridge      # Build bridge only
-make build-auth # Build PAM worker only
+make build-auth        # Build PAM worker only
 ```
 
 **Installation:**
@@ -203,33 +198,24 @@ make uninstall         # Remove LinuxIO from system
 make clean             # Remove build artifacts
 ```
 
-> **Note:** The server runs via systemd. Use `sudo systemctl start/stop/restart linuxio` to manage it.
-
-**Release Workflow:**
-
-```bash
-make start-dev         # Create dev/vX.Y.Z branch
-make open-pr           # Open release PR
-make merge-release     # Merge PR and trigger release
-```
+> **Note:** The server runs via systemd. A helper CLI is included for management and logs. Run `linuxio --help` for options.
 
 **Complete reference:** Run `make help` for full command list with descriptions.
 
 ---
 
-## ⚙️ Tech Stack
+## Tech Stack
 
 ### Frontend
 
 - **React 19** with TypeScript
-- **Vite** for blazing fast builds
+- **Vite** for fast builds
 - **Material-UI** (Mira theme)
 - **TanStack Query** for data fetching
 
 ### Backend
 
-- **Go 1.25**
-- **Gin** HTTP framework
+- **Go 1.26**
 - **Gorilla WebSocket**
 - **PAM** authentication
 
@@ -237,11 +223,10 @@ make merge-release     # Merge PR and trigger release
 
 - **Main Server**: Handles HTTP/HTTPS and WebSocket connections
 - **Bridge Process**: Per-user privileged operations with security isolation
-- **Docker Integration**: Containerized file browser (no exposed ports)
 
 ---
 
-## 🔐 Security
+## Security
 
 - PAM-based authentication
 - Session-based auth with secure cookies
@@ -253,7 +238,7 @@ See [SECURITY.md](SECURITY.md) for details.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 LinuxIO/
@@ -261,13 +246,13 @@ LinuxIO/
 ├── frontend/         # React frontend (Vite + TypeScript)
 ├── packaging/        # Installation scripts & helpers
 ├── .github/          # CI/CD workflows
-├── makefile          # Build automation
+├── Makefile          # Build automation
 └── README.md         # This file
 ```
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions welcome! Please read our [Contributing Guide](CONTRIBUTING.md) first.
 
@@ -281,13 +266,13 @@ docs(readme): update installation instructions
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the [Apache License](LICENSE).
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Cockpit](https://cockpit-project.org/) - Inspiration
 - [FileBrowser Quantum](https://github.com/filebrowser/filebrowser) - File management
@@ -295,8 +280,8 @@ This project is licensed under the [Apache License](LICENSE).
 
 ---
 
-## 📞 Support
+## Support
 
-- 📖 [Wiki](https://github.com/mordilloSan/LinuxIO/wiki)
-- 🐛 [Issue Tracker](https://github.com/mordilloSan/LinuxIO/issues)
-- 💬 [Discussions](https://github.com/mordilloSan/LinuxIO/discussions)
+- [Wiki](https://github.com/mordilloSan/LinuxIO/wiki)
+- [Issue Tracker](https://github.com/mordilloSan/LinuxIO/issues)
+- [Discussions](https://github.com/mordilloSan/LinuxIO/discussions)

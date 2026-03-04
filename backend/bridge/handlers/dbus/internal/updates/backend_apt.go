@@ -31,11 +31,11 @@ func (b *aptBackend) Read() (AutoUpdateState, error) {
 		return AutoUpdateState{
 			Backend: b.Name(),
 			Options: AutoUpdateOptions{
-				Enabled:     false,
-				Frequency:   "daily",
-				Scope:       "security",
+				Enabled:      false,
+				Frequency:    "daily",
+				Scope:        "security",
 				RebootPolicy: "never",
-				ExcludePkgs: []string{},
+				ExcludePkgs:  []string{},
 			},
 			Notes: []string{"Install unattended-upgrades to enable: sudo apt install unattended-upgrades"},
 		}, nil

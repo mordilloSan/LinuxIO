@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { linuxio } from "@/api";
 import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
-import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
 
 const normalizePathInput = (value: string): string => {
@@ -28,7 +28,11 @@ const ensureTrailingSlash = (path: string): string =>
 const DockerFolderSettingsSection: React.FC = () => {
   const theme = useTheme();
   const [dockerFolder, setDockerFolder] = useConfigValue("dockerFolder");
-  const { indexerAvailable } = useAuth();
+  const {
+    isEnabled: indexerEnabled,
+    status: indexerStatus,
+    reason: indexerReason,
+  } = useCapability("indexerAvailable");
 
   const [draft, setDraft] = useState(dockerFolder ?? "");
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -154,10 +158,8 @@ const DockerFolderSettingsSection: React.FC = () => {
       setDraft(normalized);
       toast.success("Docker folder saved.");
 
-      if (indexerAvailable === false) {
-        toast.info(
-          "Indexer is unavailable. Start linuxio-indexer.service to reindex later.",
-        );
+      if (!indexerEnabled) {
+        toast.info(`${indexerReason} Reindex later from the Docker page.`);
         return;
       }
 
@@ -177,7 +179,8 @@ const DockerFolderSettingsSection: React.FC = () => {
     askCreatePrompt,
     askReindexPrompt,
     draft,
-    indexerAvailable,
+    indexerEnabled,
+    indexerReason,
     setDockerFolder,
   ]);
 
@@ -213,10 +216,11 @@ const DockerFolderSettingsSection: React.FC = () => {
           disabled={isSaving}
         />
 
-        {indexerAvailable === false && (
+        {!indexerEnabled && (
           <Alert severity="info">
-            Indexer service is unavailable. You can still save this path and
-            reindex later.
+            {indexerStatus === "unknown"
+              ? "Indexer availability is being checked. You can still save this path and reindex later."
+              : "Indexer service is unavailable. You can still save this path and reindex later."}
           </Alert>
         )}
 

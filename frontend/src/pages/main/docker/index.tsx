@@ -30,13 +30,15 @@ import VolumeList from "./VolumeList";
 import { linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
-import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const DockerPage: React.FC = () => {
   const theme = useTheme();
-  const { dockerAvailable, indexerAvailable } = useAuth();
+  const { status: dockerStatus } = useCapability("dockerAvailable");
+  const { isEnabled: indexerEnabled, reason: indexerReason } =
+    useCapability("indexerAvailable");
   const queryClient = useQueryClient();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
 
@@ -128,7 +130,7 @@ const DockerPage: React.FC = () => {
   >(null);
   const [containerEditMode, setContainerEditMode] = useState(false);
 
-  if (dockerAvailable === null) {
+  if (dockerStatus === "unknown") {
     return (
       <div style={{ padding: theme.spacing(3) }}>
         <Alert severity="info">
@@ -142,7 +144,7 @@ const DockerPage: React.FC = () => {
   }
 
   // Show error if Docker is not available
-  if (dockerAvailable === false) {
+  if (dockerStatus === "unavailable") {
     return (
       <div style={{ padding: theme.spacing(3) }}>
         <Alert severity="warning">
@@ -306,8 +308,8 @@ const DockerPage: React.FC = () => {
                 {reindexStackHandler && (
                   <Tooltip
                     title={
-                      indexerAvailable === false
-                        ? "Indexer service is not available. Start linuxio-indexer.service to enable scanning."
+                      !indexerEnabled
+                        ? indexerReason
                         : "Scan Docker folder for compose stacks"
                     }
                     arrow
@@ -317,7 +319,7 @@ const DockerPage: React.FC = () => {
                         variant="outlined"
                         size="small"
                         onClick={reindexStackHandler}
-                        disabled={indexerAvailable === false}
+                        disabled={!indexerEnabled}
                         sx={{ mr: 1 }}
                       >
                         Scan

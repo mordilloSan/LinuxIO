@@ -173,6 +173,13 @@ function AuthProvider({ children }: AuthProviderProps) {
           });
         } catch (err) {
           console.warn("[AuthContext] Failed to refresh capabilities:", err);
+          dispatch({
+            type: AUTH_ACTIONS.UPDATE_CAPABILITIES,
+            payload: {
+              dockerAvailable: false,
+              indexerAvailable: false,
+            },
+          });
         }
       };
 

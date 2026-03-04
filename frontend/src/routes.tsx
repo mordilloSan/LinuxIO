@@ -15,7 +15,12 @@ import React, { lazy, useMemo } from "react";
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { GuestGuard } from "@/components/guards/GuestGuard";
-import { PrivilegedGuard } from "@/components/guards/PrivilegedGuard";
+import {
+  type AccessContext,
+  type AccessPolicy,
+  hasAccessPolicy,
+  useAccessContext,
+} from "@/hooks/useCapabilities";
 import type { ModuleInfo } from "@/types/module";
 import { createModuleLazyComponent } from "@/utils/moduleLoader";
 
@@ -60,7 +65,7 @@ const Page404 = lazy(() => import("@/pages/auth/Page404"));
 // Unified Route Configuration with Sidebar
 // ============================================================================
 
-export interface RouteWithSidebar {
+export interface RouteWithSidebar extends AccessPolicy {
   path?: string;
   element?: React.ReactNode;
   children?: RouteWithSidebar[];
@@ -129,6 +134,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "docker",
     element: <Docker />,
+    requiredCapabilities: ["dockerAvailable"],
     sidebar: {
       title: "Docker",
       icon: DockerSvgIcon,
@@ -155,11 +161,8 @@ const coreRoutes: RouteWithSidebar[] = [
   },
   {
     path: "wireguard",
-    element: (
-      <PrivilegedGuard>
-        <Wireguard />
-      </PrivilegedGuard>
-    ),
+    element: <Wireguard />,
+    requiresPrivileged: true,
     sidebar: {
       title: "Wireguard",
       icon: WireguardSvgIcon,
@@ -195,11 +198,8 @@ const coreRoutes: RouteWithSidebar[] = [
   },
   {
     path: "modules",
-    element: (
-      <PrivilegedGuard>
-        <ModulesPage />
-      </PrivilegedGuard>
-    ),
+    element: <ModulesPage />,
+    requiresPrivileged: true,
     sidebar: {
       title: "Modules",
       icon: Puzzle,
@@ -245,25 +245,36 @@ function createModuleRoute(module: ModuleInfo): RouteWithSidebar {
   };
 }
 
+function buildProtectedRoutes(
+  modules: ModuleInfo[] | undefined,
+  access: AccessContext,
+) {
+  const allProtectedRoutes = coreRoutes.filter((route) =>
+    hasAccessPolicy(route, access),
+  );
+
+  if (modules && modules.length > 0) {
+    modules.forEach((module) => {
+      allProtectedRoutes.push(createModuleRoute(module));
+    });
+  }
+
+  return allProtectedRoutes;
+}
+
 // ============================================================================
 // Route Builder Hook
 // ============================================================================
 
 export function useAppRoutes() {
+  const access = useAccessContext();
   const { data: modules } = linuxio.modules.get_modules.useQuery({
     staleTime: CACHE_TTL_MS.ONE_MINUTE,
     refetchOnMount: false,
   });
 
   return useMemo(() => {
-    // Merge core routes with module routes
-    const allProtectedRoutes = [...coreRoutes];
-
-    if (modules && modules.length > 0) {
-      modules.forEach((module) => {
-        allProtectedRoutes.push(createModuleRoute(module));
-      });
-    }
+    const allProtectedRoutes = buildProtectedRoutes(modules, access);
 
     return [
       // Protected app
@@ -274,27 +285,26 @@ export function useAppRoutes() {
             <MainLayout />
           </AuthGuard>
         ),
-        children: allProtectedRoutes,
+        children: [...allProtectedRoutes, { path: "*", element: <Page404 /> }],
       },
 
-      // Auth (public)
+      // Sign-in (public)
       {
-        path: "*",
+        path: "/sign-in",
         element: <AuthLayout />,
         children: [
           {
-            path: "sign-in",
+            index: true,
             element: (
               <GuestGuard>
                 <SignIn />
               </GuestGuard>
             ),
           },
-          { path: "*", element: <Page404 /> },
         ],
       },
     ];
-  }, [modules]);
+  }, [access, modules]);
 }
 
 // ============================================================================
@@ -302,34 +312,29 @@ export function useAppRoutes() {
 // ============================================================================
 
 export function useSidebarItems() {
+  const access = useAccessContext();
   const { data: modules } = linuxio.modules.get_modules.useQuery({
     staleTime: CACHE_TTL_MS.ONE_MINUTE,
     refetchOnMount: false,
   });
 
   return useMemo(() => {
-    // Extract sidebar config from all routes
-    const allRoutes = [...coreRoutes];
-
-    if (modules && modules.length > 0) {
-      modules.forEach((module) => {
-        allRoutes.push(createModuleRoute(module));
-      });
-    }
+    const allRoutes = buildProtectedRoutes(modules, access);
 
     // Convert to sidebar format and sort by position
     return allRoutes
       .filter((route) => route.sidebar)
+      .sort(
+        (a, b) =>
+          (a.sidebar?.position ?? Number.MAX_SAFE_INTEGER) -
+          (b.sidebar?.position ?? Number.MAX_SAFE_INTEGER),
+      )
       .map((route) => ({
-        href: `/${route.path}`.replace("/*", ""), // Remove wildcard from path
+        href: `/${route.path ?? ""}`.replace("/*", ""), // Remove wildcard from path
         title: route.sidebar!.title,
         icon: route.sidebar!.icon,
-      }))
-      .sort(
-        (a: any, b: any) =>
-          (a.sidebar?.position || 0) - (b.sidebar?.position || 0),
-      );
-  }, [modules]);
+      }));
+  }, [access, modules]);
 }
 
 // Default export for backward compatibility
@@ -342,24 +347,26 @@ const routes = [
         <MainLayout />
       </AuthGuard>
     ),
-    children: coreRoutes.map((route) => ({
-      path: route.path,
-      element: route.element,
-    })),
+    children: [
+      ...coreRoutes.map((route) => ({
+        path: route.path,
+        element: route.element,
+      })),
+      { path: "*", element: <Page404 /> },
+    ],
   },
   {
-    path: "*",
+    path: "/sign-in",
     element: <AuthLayout />,
     children: [
       {
-        path: "sign-in",
+        index: true,
         element: (
           <GuestGuard>
             <SignIn />
           </GuestGuard>
         ),
       },
-      { path: "*", element: <Page404 /> },
     ],
   },
 ];

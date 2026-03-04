@@ -56,7 +56,7 @@ import {
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useConfig } from "@/hooks/useConfig";
 import { useFileDialogs } from "@/hooks/useFileDialogs";
 import { useFileDragAndDrop } from "@/hooks/useFileDragAndDrop";
@@ -162,7 +162,8 @@ const FileBrowser: React.FC = () => {
 
   const queryClient = useQueryClient();
   const { startDownload, startUpload } = useFileTransfers();
-  const { indexerAvailable } = useAuth();
+  const { isEnabled: indexerEnabled, status: indexerStatus } =
+    useCapability("indexerAvailable");
   const { runChunked: runChunkedStreamResult } = useStreamResult();
 
   // Extract path from URL: /filebrowser/path/to/dir -> /path/to/dir
@@ -1071,14 +1072,25 @@ const FileBrowser: React.FC = () => {
         />
 
         {/* Indexer unavailable warning */}
-        {indexerAvailable === false && !editingPath && (
+        {!indexerEnabled && !editingPath && (
           <Alert severity="info" sx={{ mx: 2, mt: 1 }}>
-            <AlertTitle>Indexer Service Unavailable</AlertTitle>
-            <Typography variant="body2">
-              Directory size calculations and file search are disabled. Start
-              the <strong>linuxio-indexer.service</strong> to enable these
-              features.
-            </Typography>
+            <AlertTitle>
+              {indexerStatus === "unknown"
+                ? "Checking Indexer Availability"
+                : "Indexer Service Unavailable"}
+            </AlertTitle>
+            {indexerStatus === "unknown" ? (
+              <Typography variant="body2">
+                Directory size calculations and file search stay disabled until
+                indexer availability is confirmed.
+              </Typography>
+            ) : (
+              <Typography variant="body2">
+                Directory size calculations and file search are disabled. Start
+                the <strong>linuxio-indexer.service</strong> to enable these
+                features.
+              </Typography>
+            )}
           </Alert>
         )}
 

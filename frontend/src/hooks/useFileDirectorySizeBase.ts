@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { LinuxIOError } from "@/api";
-import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 
 /**
  * Shared constants for directory size queries
@@ -101,6 +101,6 @@ export const shouldEnableDirectorySizeQuery = (
  * Get the current indexer availability status from AuthContext
  */
 export const useIndexerAvailability = () => {
-  const { indexerAvailable } = useAuth();
-  return indexerAvailable === false;
+  const { isEnabled } = useCapability("indexerAvailable");
+  return !isEnabled;
 };
