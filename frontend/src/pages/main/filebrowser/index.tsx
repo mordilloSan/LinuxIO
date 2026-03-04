@@ -57,6 +57,7 @@ import {
 } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import useAuth from "@/hooks/useAuth";
+import { useConfig } from "@/hooks/useConfig";
 import { useFileDialogs } from "@/hooks/useFileDialogs";
 import { useFileDragAndDrop } from "@/hooks/useFileDragAndDrop";
 import { useFileEditor } from "@/hooks/useFileEditor";
@@ -88,6 +89,11 @@ const FileEditor = React.lazy(
 );
 
 const FileBrowser: React.FC = () => {
+  const { config } = useConfig();
+  const chunkSize =
+    (config.chunkSizeMB ?? 0) > 0
+      ? (config.chunkSizeMB as number) * 1024 * 1024
+      : STREAM_CHUNK_SIZE;
   const theme = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -813,12 +819,12 @@ const FileBrowser: React.FC = () => {
         open: () => openFileUploadStream(path, contentBytes.length),
         openErrorMessage: "Failed to open save stream",
         data: contentBytes,
-        chunkSize: STREAM_CHUNK_SIZE,
+        chunkSize: chunkSize,
         yieldMs: 0,
         closeMessage: "Stream closed unexpectedly",
       });
     },
-    [runChunkedStreamResult],
+    [chunkSize, runChunkedStreamResult],
   );
 
   const handleSaveFile = useCallback(async () => {

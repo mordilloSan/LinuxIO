@@ -15,6 +15,7 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
@@ -36,14 +37,23 @@ const (
 )
 
 const (
-	// chunkSize is the size of data chunks for file transfers
-	chunkSize = 1 * 1024 * 1024
 	// progressIntervalDownload is how often to send progress updates for downloads (2MB)
 	progressIntervalDownload = 2 * 1024 * 1024
 	// progressIntervalUpload is how often to send progress updates for uploads (512KB)
 	// More frequent for flow control - acts as ACK for client-side window
 	progressIntervalUpload = 512 * 1024
 )
+
+// chunkSizeFromSess returns the configured file-transfer chunk size in bytes.
+// Falls back to 1 MiB when the config is unavailable or unset (ChunkSizeMB == 0).
+func chunkSizeFromSess(sess *session.Session) int {
+	const defaultChunkSize = 1 * 1024 * 1024
+	cfg, _, err := config.Load(sess.User.Username)
+	if err != nil || cfg.AppSettings.ChunkSizeMB <= 0 {
+		return defaultChunkSize
+	}
+	return cfg.AppSettings.ChunkSizeMB * 1024 * 1024
+}
 
 // FileProgress represents progress for file transfer operations.
 type FileProgress struct {
@@ -55,7 +65,7 @@ type FileProgress struct {
 
 // HandleDownloadStream handles a download stream for a single file.
 func HandleDownloadStream(sess *session.Session, stream net.Conn, args []string) error {
-	return handleDownload(stream, args)
+	return handleDownload(stream, args, chunkSizeFromSess(sess))
 }
 
 // HandleUploadStream handles an upload stream for a single file.
@@ -65,7 +75,7 @@ func HandleUploadStream(sess *session.Session, stream net.Conn, args []string) e
 
 // HandleArchiveStream handles an archive download stream (multi-file).
 func HandleArchiveStream(sess *session.Session, stream net.Conn, args []string) error {
-	return handleArchiveDownload(stream, args)
+	return handleArchiveDownload(stream, args, chunkSizeFromSess(sess))
 }
 
 // HandleCompressStream handles a compression stream.
@@ -119,7 +129,7 @@ func logWriteErr(action string, err error) {
 
 // handleDownload streams a single file to the client.
 // args: [path]
-func handleDownload(stream net.Conn, args []string) error {
+func handleDownload(stream net.Conn, args []string, chunkSize int) error {
 	if len(args) < 1 {
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "missing file path", 400))
 		return fmt.Errorf("missing file path")
@@ -393,7 +403,7 @@ readLoop:
 
 // handleArchiveDownload creates and streams an archive of multiple files.
 // args: [format, path1, path2, ...]
-func handleArchiveDownload(stream net.Conn, args []string) error {
+func handleArchiveDownload(stream net.Conn, args []string, chunkSize int) error {
 	if len(args) < 2 {
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, "missing format or paths", 400))
 		return fmt.Errorf("missing format or paths")

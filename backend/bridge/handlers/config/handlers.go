@@ -52,6 +52,7 @@ func RegisterHandlers(sess *session.Session) {
 				ContainerOrder          []string                 `json:"containerOrder"`
 				DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections"`
 				ViewModes               map[string]string        `json:"viewModes"`
+				ChunkSizeMB             *int                     `json:"chunkSizeMB"`
 			} `json:"appSettings"`
 			Docker *struct {
 				Folder           *string  `json:"folder"`
@@ -141,6 +142,13 @@ func RegisterHandlers(sess *session.Session) {
 					normalized[k] = m
 				}
 				cfg.AppSettings.ViewModes = normalized
+			}
+			if payload.AppSettings.ChunkSizeMB != nil {
+				v := *payload.AppSettings.ChunkSizeMB
+				if v != 0 && (v < 1 || v > 32) {
+					return fmt.Errorf("chunkSizeMB must be 0 (default) or between 1 and 32")
+				}
+				cfg.AppSettings.ChunkSizeMB = v
 			}
 		}
 

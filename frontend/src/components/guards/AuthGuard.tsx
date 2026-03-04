@@ -61,8 +61,8 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
   // Only now mount Config + Theme + Sidebar and the children (or nested routes)
   return (
     <ToastProvider>
-      <FileTransferProvider>
-        <ConfigProvider>
+      <ConfigProvider>
+        <FileTransferProvider>
           <AuthedThemeShell>
             <PowerActionProvider>
               <UpdateProvider>
@@ -70,8 +70,8 @@ export const AuthGuard: React.FC<PropsWithChildren> = ({ children }) => {
               </UpdateProvider>
             </PowerActionProvider>
           </AuthedThemeShell>
-        </ConfigProvider>
-      </FileTransferProvider>
+        </FileTransferProvider>
+      </ConfigProvider>
     </ToastProvider>
   );
 };

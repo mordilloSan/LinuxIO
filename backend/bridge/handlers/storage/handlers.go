@@ -172,6 +172,40 @@ func RegisterHandlers() {
 		return emit.Result(result)
 	})
 
+	ipc.RegisterFunc("storage", "unmount_filesystem", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 1 {
+			logger.Errorf("[Storage] unmount_filesystem: missing mountpoint argument")
+			return ipc.ErrInvalidArgs
+		}
+
+		logger.Infof("[Storage] Unmounting filesystem at %s", args[0])
+		result, err := UnmountFilesystem(args[0])
+		if err != nil {
+			logger.Errorf("[Storage] Failed to unmount filesystem %s: %v", args[0], err)
+			return err
+		}
+
+		logger.Infof("[Storage] Successfully unmounted filesystem at %s", args[0])
+		return emit.Result(result)
+	})
+
+	ipc.RegisterFunc("storage", "create_btrfs_subvolume", func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) < 2 {
+			logger.Errorf("[Storage] create_btrfs_subvolume: insufficient arguments (need mountpoint, name)")
+			return ipc.ErrInvalidArgs
+		}
+
+		logger.Infof("[Storage] Creating btrfs subvolume %s under %s", args[1], args[0])
+		result, err := CreateBtrfsSubvolume(args[0], args[1])
+		if err != nil {
+			logger.Errorf("[Storage] Failed to create btrfs subvolume %s under %s: %v", args[1], args[0], err)
+			return err
+		}
+
+		logger.Infof("[Storage] Successfully created btrfs subvolume %s under %s", args[1], args[0])
+		return emit.Result(result)
+	})
+
 	ipc.RegisterFunc("storage", "get_drive_info", func(ctx context.Context, args []string, emit ipc.Events) error {
 		driveInfo, err := FetchDriveInfo()
 		if err != nil {
