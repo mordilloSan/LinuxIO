@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+
+	"github.com/mordilloSan/go-logger/logger"
 )
 
 // tlsRedirectListener wraps a net.Listener and peeks at each connection's
@@ -71,7 +73,10 @@ func (l *tlsRedirectListener) redirectHTTP(conn net.Conn) {
 		"HTTP/1.1 301 Moved Permanently\r\nLocation: %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s",
 		target, len(body), body,
 	)
-	conn.Write([]byte(resp))
+	if _, err := conn.Write([]byte(resp)); err != nil {
+		logger.Debugf("failed to write HTTP-to-HTTPS redirect to %v: %v", conn.RemoteAddr(), err)
+		return
+	}
 }
 
 // peekedConn wraps a net.Conn so that already-buffered bytes from the
