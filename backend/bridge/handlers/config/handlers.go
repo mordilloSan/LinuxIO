@@ -23,7 +23,7 @@ func RegisterHandlers(sess *session.Session) {
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
-		logger.Debugf("[config.get] user=%q path=%s", username, cfgPath)
+		logger.Debugf("user=%q path=%s", username, cfgPath)
 		return emit.Result(cfg)
 	})
 
@@ -31,6 +31,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("user=%q update requested", username)
 
 		// Payload with optional nested fields
 		var payload struct {
@@ -178,7 +179,7 @@ func RegisterHandlers(sess *session.Session) {
 			return fmt.Errorf("save config: %w", err)
 		}
 
-		logger.Debugf("[config.set] user=%q updated config: path=%s", username, cfgPath)
+		logger.Infof("user=%q updated config: path=%s", username, cfgPath)
 
 		return emit.Result(map[string]any{
 			"message": "config updated",

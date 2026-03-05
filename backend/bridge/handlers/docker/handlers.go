@@ -20,7 +20,7 @@ func RegisterHandlers(sess *session.Session) {
 	// Initialize icon cache at startup to catch permission issues early
 	if err := initIconCache(); err != nil {
 		// Cache will be created lazily if this fails.
-		logger.Warnf("[Docker] failed to initialize icon cache: %v", err)
+		logger.Warnf("failed to initialize icon cache: %v", err)
 	}
 
 	ipc.RegisterFunc("docker", "list_containers", func(ctx context.Context, args []string, emit ipc.Events) error {
@@ -35,6 +35,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("start_container requested: id=%s", args[0])
 		result, err := StartContainer(args[0])
 		if err != nil {
 			return err
@@ -46,6 +47,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("stop_container requested: id=%s", args[0])
 		result, err := StopContainer(args[0])
 		if err != nil {
 			return err
@@ -57,6 +59,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("remove_container requested: id=%s", args[0])
 		result, err := RemoveContainer(args[0])
 		if err != nil {
 			return err
@@ -68,6 +71,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("restart_container requested: id=%s", args[0])
 		result, err := RestartContainer(args[0])
 		if err != nil {
 			return err
@@ -87,6 +91,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("delete_image requested: id=%s", args[0])
 		result, err := DeleteImage(args[0])
 		if err != nil {
 			return err
@@ -106,6 +111,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("create_network requested: name=%s", args[0])
 		result, err := CreateDockerNetwork(args[0])
 		if err != nil {
 			return err
@@ -117,6 +123,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("delete_network requested: name=%s", args[0])
 		result, err := DeleteDockerNetwork(args[0])
 		if err != nil {
 			return err
@@ -136,6 +143,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("create_volume requested: name=%s", args[0])
 		result, err := CreateVolume(args[0])
 		if err != nil {
 			return err
@@ -147,6 +155,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("delete_volume requested: name=%s", args[0])
 		result, err := DeleteVolume(args[0])
 		if err != nil {
 			return err
@@ -306,6 +315,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("docker", "reindex_docker_folder", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("reindex_docker_folder requested")
 		result, err := IndexDockerFolder(username)
 		if err != nil {
 			return err
@@ -370,6 +380,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("docker", "clear_icon_cache", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("clear_icon_cache requested")
 		err := ClearIconCache()
 		if err != nil {
 			return err
@@ -378,6 +389,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("docker", "start_all_stopped", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("start_all_stopped requested")
 		result, err := StartAllStopped()
 		if err != nil {
 			return err
@@ -386,6 +398,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("docker", "stop_all_running", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("stop_all_running requested")
 		result, err := StopAllRunning()
 		if err != nil {
 			return err
@@ -420,6 +433,7 @@ func RegisterHandlers(sess *session.Session) {
 		if payload.Container == "" {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("set_auto_update requested: container=%s enabled=%v", payload.Container, payload.Enabled)
 
 		cfg, _, err := config.Load(username)
 		if err != nil {
@@ -455,6 +469,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("docker", "enable_caddy", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("enable_caddy requested")
 		result, err := EnableCaddy(username)
 		if err != nil {
 			return err
@@ -463,6 +478,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("docker", "disable_caddy", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("disable_caddy requested")
 		result, err := DisableCaddy(username)
 		if err != nil {
 			return err
@@ -471,6 +487,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("docker", "reload_caddy", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("reload_caddy requested")
 		result, err := ReloadCaddy(username)
 		if err != nil {
 			return err
@@ -482,6 +499,7 @@ func RegisterHandlers(sess *session.Session) {
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("connect_to_proxy requested: id=%s", args[0])
 		result, err := ConnectToProxy(args[0])
 		if err != nil {
 			return err
@@ -497,6 +515,8 @@ func RegisterHandlers(sess *session.Session) {
 		if err := json.Unmarshal([]byte(args[0]), &opts); err != nil {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("system_prune requested: containers=%v images=%v buildCache=%v networks=%v volumes=%v",
+			opts.Containers, opts.Images, opts.BuildCache, opts.Networks, opts.Volumes)
 		result, err := SystemPrune(opts)
 		if err != nil {
 			return err

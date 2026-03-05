@@ -230,6 +230,7 @@ func GetComposeProject(username, projectName string) (any, error) {
 
 // ComposeUp starts a compose project
 func ComposeUp(username, projectName, composePath string) (any, error) {
+	logger.Infof("compose up requested: user=%s project=%s compose_path=%s", username, projectName, composePath)
 	var configFile string
 	var workingDir string
 
@@ -271,6 +272,7 @@ func ComposeUp(username, projectName, composePath string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to start project: %w\nOutput: %s", err, collector.String())
 	}
+	logger.Infof("compose up complete: project=%s config=%s", projectName, configFile)
 
 	return map[string]string{"message": "Project started successfully", "output": collector.String()}, nil
 }
@@ -318,6 +320,7 @@ func findComposeFile(username, projectName string) (string, string, error) {
 
 // ComposeDown stops and removes a compose project
 func ComposeDown(username, projectName string) (any, error) {
+	logger.Infof("compose down requested: user=%s project=%s", username, projectName)
 	project, err := GetComposeProject(username, projectName)
 	if err != nil {
 		return nil, err
@@ -343,6 +346,7 @@ func ComposeDown(username, projectName string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
+	logger.Infof("compose down complete: project=%s config=%s", projectName, configFile)
 
 	return map[string]string{"message": "Project stopped successfully", "output": collector.String()}, nil
 }
@@ -355,6 +359,8 @@ type DeleteStackOptions struct {
 
 // DeleteStack removes a compose stack with options to delete files
 func DeleteStack(username, projectName string, options DeleteStackOptions) (any, error) {
+	logger.Infof("delete stack requested: user=%s project=%s delete_file=%v delete_directory=%v",
+		username, projectName, options.DeleteFile, options.DeleteDirectory)
 	// Get project info first
 	project, err := GetComposeProject(username, projectName)
 	if err != nil {
@@ -366,7 +372,12 @@ func DeleteStack(username, projectName string, options DeleteStackOptions) (any,
 		}
 
 		// No containers, just handle file deletion
-		return deleteStackFiles(projectName, configFile, workingDir, options)
+		result, delErr := deleteStackFiles(projectName, configFile, workingDir, options)
+		if delErr != nil {
+			return nil, delErr
+		}
+		logger.Infof("delete stack complete: project=%s", projectName)
+		return result, nil
 	}
 
 	composeProject, ok := project.(*ComposeProject)
@@ -396,7 +407,12 @@ func DeleteStack(username, projectName string, options DeleteStackOptions) (any,
 	}
 
 	// Handle file deletion
-	return deleteStackFiles(projectName, configFile, workingDir, options)
+	result, delErr := deleteStackFiles(projectName, configFile, workingDir, options)
+	if delErr != nil {
+		return nil, delErr
+	}
+	logger.Infof("delete stack complete: project=%s", projectName)
+	return result, nil
 }
 
 // deleteStackFiles handles the file/directory deletion part of stack removal
@@ -446,6 +462,7 @@ func deleteStackFiles(projectName, configFile, workingDir string, options Delete
 
 // ComposeRestart restarts a compose project
 func ComposeRestart(username, projectName string) (any, error) {
+	logger.Infof("compose restart requested: user=%s project=%s", username, projectName)
 	var configFile string
 	var workingDir string
 
@@ -564,12 +581,14 @@ func ComposeRestart(username, projectName string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, collector.String())
 	}
+	logger.Infof("compose restart complete: project=%s config=%s", projectName, configFile)
 
 	return map[string]string{"message": "Project restarted successfully", "output": collector.String()}, nil
 }
 
 // ComposeStop stops a compose project without removing containers
 func ComposeStop(username, projectName string) (any, error) {
+	logger.Infof("compose stop requested: user=%s project=%s", username, projectName)
 	project, err := GetComposeProject(username, projectName)
 	if err != nil {
 		return nil, err
@@ -595,6 +614,7 @@ func ComposeStop(username, projectName string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
 	}
+	logger.Infof("compose stop complete: project=%s config=%s", projectName, configFile)
 
 	return map[string]string{"message": "Project stopped successfully", "output": collector.String()}, nil
 }
@@ -1528,6 +1548,7 @@ func discoverOfflineStacks(username string, projects map[string]*ComposeProject)
 
 // DeleteComposeStack runs docker compose down and deletes the compose file(s)
 func DeleteComposeStack(username, projectName string) error {
+	logger.Infof("delete compose stack requested: user=%s project=%s", username, projectName)
 	// Get project details to find config files
 	projects, err := ListComposeProjects(username)
 	if err != nil {

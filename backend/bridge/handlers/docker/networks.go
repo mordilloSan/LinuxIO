@@ -18,12 +18,12 @@ const linuxIONetworkName = "linuxio-docker"
 func EnsureLinuxIONetwork() {
 	cli, err := getClient()
 	if err != nil {
-		logger.Debugf("[docker] cannot ensure %s network: %v", linuxIONetworkName, err)
+		logger.Debugf("cannot ensure %s network: %v", linuxIONetworkName, err)
 		return
 	}
 	defer func() {
 		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("[docker] failed to close Docker client: %v", cerr)
+			logger.Warnf("failed to close Docker client: %v", cerr)
 		}
 	}()
 
@@ -33,14 +33,14 @@ func EnsureLinuxIONetwork() {
 		Filters: filters.NewArgs(filters.Arg("name", linuxIONetworkName)),
 	})
 	if err != nil {
-		logger.Warnf("[docker] failed to list networks while checking %s: %v", linuxIONetworkName, err)
+		logger.Warnf("failed to list networks while checking %s: %v", linuxIONetworkName, err)
 		return
 	}
 
 	// NetworkList filter is a substring match — verify exact name.
 	for _, nw := range networks {
 		if nw.Name == linuxIONetworkName {
-			logger.Debugf("[docker] %s network already exists", linuxIONetworkName)
+			logger.Debugf("%s network already exists", linuxIONetworkName)
 			return
 		}
 	}
@@ -52,11 +52,11 @@ func EnsureLinuxIONetwork() {
 		},
 	})
 	if err != nil {
-		logger.Warnf("[docker] failed to create %s network: %v", linuxIONetworkName, err)
+		logger.Warnf("failed to create %s network: %v", linuxIONetworkName, err)
 		return
 	}
 
-	logger.Infof("[docker] created %s bridge network", linuxIONetworkName)
+	logger.Infof("created %s bridge network", linuxIONetworkName)
 }
 
 // ConnectToProxyNetwork attaches a container to the linuxio-docker bridge so the
@@ -65,19 +65,19 @@ func EnsureLinuxIONetwork() {
 func ConnectToProxyNetwork(containerID string) {
 	cli, err := getClient()
 	if err != nil {
-		logger.Debugf("[docker] ConnectToProxyNetwork: client error: %v", err)
+		logger.Debugf("ConnectToProxyNetwork: client error: %v", err)
 		return
 	}
 	defer func() {
 		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("[docker] ConnectToProxyNetwork: failed to close client: %v", cerr)
+			logger.Warnf("ConnectToProxyNetwork: failed to close client: %v", cerr)
 		}
 	}()
 
 	err = cli.NetworkConnect(context.Background(), linuxIONetworkName, containerID, nil)
 	if err != nil {
 		// "already connected" is expected and harmless
-		logger.Debugf("[docker] ConnectToProxyNetwork %s: %v", containerID[:12], err)
+		logger.Debugf("ConnectToProxyNetwork %s: %v", containerID[:12], err)
 	}
 }
 

@@ -100,7 +100,7 @@ func DisableCaddy(username string) (any, error) {
 	}
 
 	if err := removeCaddyContainer(); err != nil {
-		logger.Warnf("[caddy] remove error: %v", err)
+		logger.Warnf("remove error: %v", err)
 	}
 
 	cfg.Docker.Proxy.CaddyEnabled = false
@@ -155,7 +155,7 @@ func deployCaddyContainer() error {
 	// Pull image
 	rc, pullErr := cli.ImagePull(ctx, caddyImage, image.PullOptions{})
 	if pullErr != nil {
-		logger.Warnf("[caddy] pull warning: %v", pullErr)
+		logger.Warnf("pull warning: %v", pullErr)
 	} else {
 		_ = rc.Close()
 	}
@@ -205,7 +205,7 @@ func deployCaddyContainer() error {
 		return fmt.Errorf("start container: %w", err)
 	}
 
-	logger.Infof("[caddy] container started: %s", resp.ID[:12])
+	logger.Infof("container started: %s", resp.ID[:12])
 	return nil
 }
 
@@ -337,7 +337,7 @@ func reloadCaddyfile(proxyCfg config.DockerProxy) error {
 		return fmt.Errorf("caddy reload returned %s", resp.Status)
 	}
 
-	logger.Infof("[caddy] Caddyfile reloaded (%d routes)", len(routes))
+	logger.Infof("Caddyfile reloaded (%d routes)", len(routes))
 	return nil
 }
 

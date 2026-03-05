@@ -3,6 +3,8 @@ package control
 import (
 	"context"
 
+	"github.com/mordilloSan/go-logger/logger"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -21,6 +23,7 @@ func RegisterHandlers(shutdownChan chan string) {
 		if len(args) > 0 {
 			targetVersion = args[0]
 		}
+		logger.Infof("update requested: target_version=%s", targetVersion)
 		result, err := performUpdate(targetVersion)
 		if err != nil {
 			return err
@@ -33,6 +36,7 @@ func RegisterHandlers(shutdownChan chan string) {
 		if len(args) > 0 {
 			reason = args[0]
 		}
+		logger.Infof("shutdown requested: reason=%s", reason)
 		select {
 		case shutdownChan <- reason:
 		default:

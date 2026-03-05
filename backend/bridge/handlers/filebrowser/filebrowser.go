@@ -110,6 +110,7 @@ func resourceDelete(args []string) (any, error) {
 	}
 
 	path := args[0]
+	logger.Infof("Delete requested: path=%s", path)
 
 	if path == "/" {
 		return nil, fmt.Errorf("bad_request:cannot delete root")
@@ -135,6 +136,7 @@ func resourceDelete(args []string) (any, error) {
 		logger.Debugf("failed to update indexer after delete: %v", err)
 		// Don't fail the operation if indexer update fails
 	}
+	logger.Infof("Delete complete: path=%s", path)
 
 	return map[string]any{"message": "deleted"}, nil
 }
@@ -160,6 +162,11 @@ func resourcePost(args []string) (any, error) {
 		return nil, fmt.Errorf("bad_request:cannot create root")
 	}
 	relPath := strings.TrimPrefix(cleanPath, "/")
+	if isDir {
+		logger.Infof("Create directory requested: path=%s override=%v", cleanPath, override)
+	} else {
+		logger.Infof("Create file requested: path=%s override=%v", cleanPath, override)
+	}
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -206,6 +213,7 @@ func resourcePost(args []string) (any, error) {
 				logger.Debugf("failed to update indexer after directory create: %v", indexErr)
 			}
 		}
+		logger.Infof("Directory created: path=%s", cleanPath)
 
 		return map[string]any{"message": "created"}, nil
 	}
@@ -243,6 +251,7 @@ func resourcePost(args []string) (any, error) {
 			logger.Debugf("failed to update indexer after file create: %v", err)
 		}
 	}
+	logger.Infof("File created: path=%s", cleanPath)
 
 	return map[string]any{"message": "created"}, nil
 }
@@ -336,7 +345,7 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 	}
 
 	// Send initial progress
-	logger.Infof("[FBHandler] Starting %s operation: %s -> %s (size=%d)", action, realSrc, realDest, totalSize)
+	logger.Infof("Starting %s operation: %s -> %s (size=%d)", action, realSrc, realDest, totalSize)
 	if err := emit.Progress(FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
@@ -358,14 +367,14 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 				if action == "move" || action == "rename" {
 					phase = "moving"
 				}
-				logger.Debugf("[FBHandler] Progress: %d/%d bytes (%d%%) - %s", bytesProcessed, totalSize, pct, phase)
+				logger.Debugf("Progress: %d/%d bytes (%d%%) - %s", bytesProcessed, totalSize, pct, phase)
 				if err := emit.Progress(FileProgress{
 					Bytes: bytesProcessed,
 					Total: totalSize,
 					Pct:   pct,
 					Phase: phase,
 				}); err != nil {
-					logger.Debugf("[FBHandler] failed to write progress update: %v", err)
+					logger.Debugf("failed to write progress update: %v", err)
 					return
 				}
 				lastProgress = bytesProcessed
@@ -389,7 +398,7 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 			logger.Debugf("error copying resource: %v", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
-		logger.Infof("[FBHandler] Copy complete: %s -> %s (bytes=%d)", realSrc, realDest, bytesProcessed)
+		logger.Infof("Copy complete: %s -> %s (bytes=%d)", realSrc, realDest, bytesProcessed)
 		// Notify indexer about the copied file/directory
 		if info, err := root.Root.Stat(fsroot.ToRel(realDest)); err == nil {
 			if err := addToIndexer(dst, info); err != nil {
@@ -402,7 +411,7 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 			logger.Debugf("error moving/renaming resource: %v", err)
 			return nil, fmt.Errorf("bad_request:%v", err)
 		}
-		logger.Infof("[FBHandler] Move complete: %s -> %s (bytes=%d)", realSrc, realDest, bytesProcessed)
+		logger.Infof("Move complete: %s -> %s (bytes=%d)", realSrc, realDest, bytesProcessed)
 		// Notify indexer about the move: delete source, add destination
 		if err := deleteFromIndexer(src); err != nil {
 			logger.Debugf("failed to update indexer after move (delete source): %v", err)
@@ -1243,6 +1252,7 @@ func fileUpdateFromTemp(args []string) (any, error) {
 
 	tempFilePath := args[0]
 	destPath := args[1]
+	logger.Infof("File update requested: temp=%s destination=%s", tempFilePath, destPath)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -1295,6 +1305,7 @@ func fileUpdateFromTemp(args []string) (any, error) {
 			// Don't fail the operation if indexer update fails
 		}
 	}
+	logger.Infof("File update complete: destination=%s", destPath)
 
 	return map[string]any{"message": "file updated", "path": destPath}, nil
 }

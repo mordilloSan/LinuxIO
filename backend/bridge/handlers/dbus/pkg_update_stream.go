@@ -132,11 +132,11 @@ func isRealWorkStatus(status uint32) bool {
 // HandlePackageUpdateStream handles streaming package updates with real-time progress.
 // args: package IDs to update (null-byte separated in payload)
 func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []string) error {
-	logger.Debugf("[PkgUpdate] Starting with %d packages", len(args))
+	logger.Infof("Starting update stream with %d packages", len(args))
 
 	if len(args) == 0 {
 		if err := ipc.WriteResultErrorAndClose(stream, 0, "no packages specified", 400); err != nil {
-			logger.Debugf("[PkgUpdate] failed to write error+close frame: %v", err)
+			logger.Debugf("failed to write error+close frame: %v", err)
 		}
 		return fmt.Errorf("no packages specified")
 	}
@@ -147,14 +147,14 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 		Status:     "Initializing",
 		Percentage: new(uint32(0)),
 	}); err != nil {
-		logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+		logger.Debugf("failed to write progress frame: %v", err)
 	}
 
 	err := updatePackagesWithProgress(stream, args)
 	if err != nil {
-		logger.Errorf("[PkgUpdate] Error: %v", err)
+		logger.Errorf("Error: %v", err)
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 500); writeErr != nil {
-			logger.Debugf("[PkgUpdate] failed to write error+close frame: %v", writeErr)
+			logger.Debugf("failed to write error+close frame: %v", writeErr)
 		}
 		return err
 	}
@@ -162,8 +162,9 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 	if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"updated": len(args),
 	}); err != nil {
-		logger.Debugf("[PkgUpdate] failed to write ok+close frame: %v", err)
+		logger.Debugf("failed to write ok+close frame: %v", err)
 	}
+	logger.Infof("Completed update stream for %d packages", len(args))
 	return nil
 }
 
@@ -211,7 +212,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 
 	// Call UpdatePackages with all package IDs at once
 	// Flag 0 = no special flags (install normally)
-	logger.Debugf("[PkgUpdate] Calling UpdatePackages with %d packages", len(packageIDs))
+	logger.Infof("Calling UpdatePackages with %d packages", len(packageIDs))
 	call := trans.Call(transactionIfc+".UpdatePackages", 0, uint64(0), packageIDs)
 	if call.Err != nil {
 		return fmt.Errorf("UpdatePackages failed: %w", call.Err)
@@ -255,7 +256,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 						StatusCode: new(status),
 						ItemPct:    new(pct),
 					}); err != nil {
-						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+						logger.Debugf("failed to write progress frame: %v", err)
 					}
 				}
 
@@ -273,7 +274,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 						Status:         packageInfoName(info),
 						InfoCode:       new(info),
 					}); err != nil {
-						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+						logger.Debugf("failed to write progress frame: %v", err)
 					}
 				}
 
@@ -288,7 +289,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 						Status:  fmt.Sprintf("Message %d", msgType),
 						Message: details,
 					}); err != nil {
-						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+						logger.Debugf("failed to write progress frame: %v", err)
 					}
 				}
 
@@ -308,13 +309,13 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 
 			case transactionIfc + ".Finished":
 				// Finished(u exit, u runtime)
-				logger.Debugf("[PkgUpdate] Finished signal received")
+				logger.Infof("Finished signal received")
 				if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
 					Type:       "status",
 					Status:     "Finished",
 					Percentage: new(uint32(100)),
 				}); err != nil {
-					logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+					logger.Debugf("failed to write progress frame: %v", err)
 				}
 				return nil
 
@@ -350,7 +351,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 										Type:       "percentage",
 										Percentage: new(pct),
 									}); err != nil {
-										logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+										logger.Debugf("failed to write progress frame: %v", err)
 									}
 								}
 							}
@@ -366,7 +367,7 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 									Status:     statusName,
 									StatusCode: new(currentStatus),
 								}); err != nil {
-									logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+									logger.Debugf("failed to write progress frame: %v", err)
 								}
 							}
 						}

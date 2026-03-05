@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/mordilloSan/go-logger/logger"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -66,6 +68,7 @@ func RegisterHandlers(
 			targetName = args[1]
 		}
 		createSymlink := len(args) > 2 && args[2] == "true"
+		logger.Infof("install_module requested: source=%s target=%s create_symlink=%v", args[0], targetName, createSymlink)
 		result, err := InstallModuleOperation(args[0], targetName, createSymlink, streamHandlers)
 		if err != nil {
 			return err
@@ -81,6 +84,7 @@ func RegisterHandlers(
 		if len(args) < 1 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("uninstall_module requested: name=%s", args[0])
 		result, err := UninstallModuleOperation(args[0], streamHandlers)
 		if err != nil {
 			return err

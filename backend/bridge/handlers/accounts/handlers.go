@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/mordilloSan/go-logger/logger"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
@@ -37,6 +39,7 @@ func RegisterHandlers() {
 		if err := json.Unmarshal([]byte(args[0]), &req); err != nil {
 			return err
 		}
+		logger.Infof("create_user requested: username=%s", req.Username)
 		if err := CreateUser(req); err != nil {
 			return err
 		}
@@ -47,6 +50,7 @@ func RegisterHandlers() {
 		if len(args) == 0 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("delete_user requested: username=%s", args[0])
 		if err := DeleteUser(args[0]); err != nil {
 			return err
 		}
@@ -61,6 +65,7 @@ func RegisterHandlers() {
 		if err := json.Unmarshal([]byte(args[0]), &req); err != nil {
 			return err
 		}
+		logger.Infof("modify_user requested: username=%s", req.Username)
 		if err := ModifyUser(req); err != nil {
 			return err
 		}
@@ -71,6 +76,7 @@ func RegisterHandlers() {
 		if len(args) < 2 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("change_password requested: username=%s", args[0])
 		if err := ChangePassword(args[0], args[1]); err != nil {
 			return err
 		}
@@ -81,6 +87,7 @@ func RegisterHandlers() {
 		if len(args) == 0 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("lock_user requested: username=%s", args[0])
 		if err := LockUser(args[0]); err != nil {
 			return err
 		}
@@ -91,6 +98,7 @@ func RegisterHandlers() {
 		if len(args) == 0 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("unlock_user requested: username=%s", args[0])
 		if err := UnlockUser(args[0]); err != nil {
 			return err
 		}
@@ -125,6 +133,7 @@ func RegisterHandlers() {
 		if err := json.Unmarshal([]byte(args[0]), &req); err != nil {
 			return err
 		}
+		logger.Infof("create_group requested: group=%s", req.Name)
 		if err := CreateGroup(req); err != nil {
 			return err
 		}
@@ -135,6 +144,7 @@ func RegisterHandlers() {
 		if len(args) == 0 {
 			return ipc.ErrInvalidArgs
 		}
+		logger.Infof("delete_group requested: group=%s", args[0])
 		if err := DeleteGroup(args[0]); err != nil {
 			return err
 		}
@@ -149,6 +159,7 @@ func RegisterHandlers() {
 		if err := json.Unmarshal([]byte(args[0]), &req); err != nil {
 			return err
 		}
+		logger.Infof("modify_group_members requested: group=%s", req.GroupName)
 		if err := ModifyGroupMembers(req); err != nil {
 			return err
 		}

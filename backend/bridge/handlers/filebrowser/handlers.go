@@ -37,6 +37,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("filebrowser", "resource_delete", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("resource_delete requested")
 		result, err := resourceDelete(args)
 		if err != nil {
 			return err
@@ -45,6 +46,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("filebrowser", "resource_post", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("resource_post requested")
 		result, err := resourcePost(args)
 		if err != nil {
 			return err
@@ -53,6 +55,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("filebrowser", "resource_patch", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("resource_patch requested")
 		result, err := resourcePatchWithProgress(ctx, args, emit)
 		if err != nil {
 			return err
@@ -93,6 +96,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("filebrowser", "chmod", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("chmod requested")
 		result, err := resourceChmod(args)
 		if err != nil {
 			return err
@@ -109,6 +113,7 @@ func RegisterHandlers(sess *session.Session) {
 	})
 
 	ipc.RegisterFunc("filebrowser", "file_update_from_temp", func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("file_update_from_temp requested")
 		result, err := fileUpdateFromTemp(args)
 		if err != nil {
 			return err
@@ -207,7 +212,7 @@ func RegisterHandlers(sess *session.Session) {
 		}
 
 		// Send result
-		logger.Infof("[FBHandler] Download complete: path=%s size=%d", path, totalSize)
+		logger.Infof("Download complete: path=%s size=%d", path, totalSize)
 		return emit.Result(map[string]any{
 			"path":     path,
 			"size":     totalSize,
@@ -251,6 +256,7 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 
 	path := args[0]
 	sizeStr := args[1]
+	logger.Infof("upload requested: path=%s size=%s", path, sizeStr)
 	expectedSize, err := strconv.ParseInt(sizeStr, 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid size: %w", err)
@@ -296,10 +302,10 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			logger.Debugf("[FBHandler] failed to close temp upload file: %v", closeErr)
+			logger.Debugf("failed to close temp upload file: %v", closeErr)
 		}
 		if removeErr := root.Root.Remove(tempRel); removeErr != nil && !os.IsNotExist(removeErr) {
-			logger.Debugf("[FBHandler] failed to remove temp upload file %s: %v", tempPath, removeErr)
+			logger.Debugf("failed to remove temp upload file %s: %v", tempPath, removeErr)
 		}
 	}()
 
@@ -365,14 +371,14 @@ func (h *uploadHandler) ExecuteWithInput(ctx context.Context, args []string, emi
 	// Restore permissions if file existed
 	if existsErr == nil {
 		if err := root.Root.Chmod(realRel, preserveMode); err != nil {
-			logger.Debugf("[FBHandler] failed to restore mode on %s: %v", realPath, err)
+			logger.Debugf("failed to restore mode on %s: %v", realPath, err)
 		}
 		if err := root.Root.Chown(realRel, preserveUID, preserveGID); err != nil {
-			logger.Debugf("[FBHandler] failed to restore ownership on %s: %v", realPath, err)
+			logger.Debugf("failed to restore ownership on %s: %v", realPath, err)
 		}
 	}
 
-	logger.Infof("[FBHandler] Upload complete: path=%s size=%d", path, bytesWritten)
+	logger.Infof("Upload complete: path=%s size=%d", path, bytesWritten)
 	return emit.Result(map[string]any{
 		"path": path,
 		"size": bytesWritten,
