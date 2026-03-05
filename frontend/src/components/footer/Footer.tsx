@@ -4,7 +4,6 @@ import React from "react";
 
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
-import FileNotifications from "@/components/filebrowser/FileNotifications";
 import DevToolsButton from "@/components/footer/DevToolsButton";
 
 function Footer() {
@@ -64,9 +63,6 @@ function Footer() {
         >
           <ErrorBoundary>
             <DevToolsButton />
-          </ErrorBoundary>
-          <ErrorBoundary>
-            <FileNotifications />
           </ErrorBoundary>
         </div>
       </div>
