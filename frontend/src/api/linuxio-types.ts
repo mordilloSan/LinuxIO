@@ -987,6 +987,14 @@ export interface LinuxIOSchema {
       args: [mountpoint: string, options: string, updateFstab: string];
       result: { success: boolean; mountpoint?: string; warning?: string };
     };
+    unmount_filesystem: {
+      args: [mountpoint: string];
+      result: { success: boolean; mountpoint?: string; warning?: string };
+    };
+    create_btrfs_subvolume: {
+      args: [mountpoint: string, name: string];
+      result: { success: boolean; mountpoint?: string; path?: string };
+    };
   };
 }
 

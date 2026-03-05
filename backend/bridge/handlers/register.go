@@ -40,7 +40,7 @@ func RegisterAllHandlers(shutdownChan chan string, sess *session.Session) {
 	system.RegisterHandlers()
 	accounts.RegisterHandlers()
 	docker.RegisterHandlers(sess)
-	filebrowser.RegisterHandlers()
+	filebrowser.RegisterHandlers(sess)
 	config.RegisterHandlers(sess)
 	control.RegisterHandlers(shutdownChan)
 	dbus.RegisterHandlers()

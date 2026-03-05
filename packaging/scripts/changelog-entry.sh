@@ -43,20 +43,20 @@ while IFS='|' read -r message hash author; do
 done <<< "$COMMITS"
 
 # Output sections
-[ -n "$FEATURES" ] && printf "### 🚀 Features\n\n%b\n" "$FEATURES"
-[ -n "$FIXES" ] && printf "### 🐛 Bug Fixes\n\n%b\n" "$FIXES"
-[ -n "$PERF" ] && printf "### ⚡ Performance\n\n%b\n" "$PERF"
-[ -n "$REFACTOR" ] && printf "### ♻️ Refactoring\n\n%b\n" "$REFACTOR"
-[ -n "$DOCS" ] && printf "### 📚 Documentation\n\n%b\n" "$DOCS"
-[ -n "$STYLE" ] && printf "### 💄 Style\n\n%b\n" "$STYLE"
-[ -n "$TEST" ] && printf "### 🧪 Tests\n\n%b\n" "$TEST"
-[ -n "$BUILD" ] && printf "### 🏗️ Build\n\n%b\n" "$BUILD"
-[ -n "$CI" ] && printf "### 🤖 CI/CD\n\n%b\n" "$CI"
-[ -n "$CHORE" ] && printf "### 🔧 Chores\n\n%b\n" "$CHORE"
-[ -n "$OTHER" ] && printf "### 🔄 Other Changes\n\n%b\n" "$OTHER"
+[ -n "$FEATURES" ] && printf "###  Features\n\n%b\n" "$FEATURES"
+[ -n "$FIXES" ] && printf "###  Bug Fixes\n\n%b\n" "$FIXES"
+[ -n "$PERF" ] && printf "###  Performance\n\n%b\n" "$PERF"
+[ -n "$REFACTOR" ] && printf "###  Refactoring\n\n%b\n" "$REFACTOR"
+[ -n "$DOCS" ] && printf "###  Documentation\n\n%b\n" "$DOCS"
+[ -n "$STYLE" ] && printf "###  Style\n\n%b\n" "$STYLE"
+[ -n "$TEST" ] && printf "###  Tests\n\n%b\n" "$TEST"
+[ -n "$BUILD" ] && printf "###  Build\n\n%b\n" "$BUILD"
+[ -n "$CI" ] && printf "###  CI/CD\n\n%b\n" "$CI"
+[ -n "$CHORE" ] && printf "###  Chores\n\n%b\n" "$CHORE"
+[ -n "$OTHER" ] && printf "###  Other Changes\n\n%b\n" "$OTHER"
 
 # Contributors
-printf "### 👥 Contributors\n\n"
+printf "###  Contributors\n\n"
 if [ -n "$COMMIT_RANGE" ]; then
   git log $COMMIT_RANGE --pretty=format:'* @%an' | sort -u
 else

@@ -39,6 +39,7 @@ export interface BackendSettings {
       resources: boolean;
     };
     viewModes?: AppViewModes;
+    chunkSizeMB?: number;
   };
   docker: {
     folder: string;
@@ -62,6 +63,7 @@ export interface AppConfig {
     resources: boolean;
   };
   viewModes?: AppViewModes;
+  chunkSizeMB?: number;
 }
 
 export interface ConfigContextType {

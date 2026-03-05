@@ -3,7 +3,7 @@
 
 ## v0.7.0 — 2026-01-20
 
-### 🚀 Features
+###  Features
 
 * feat: docker and logs mobile UI, and compose editing ([15fee04](https://github.com/mordilloSan/LinuxIO/commit/15fee04)) by @MordilloSan
 * feat: dev tools pannel improvements on footer ([763d7b5](https://github.com/mordilloSan/LinuxIO/commit/763d7b5)) by @MordilloSan
@@ -23,33 +23,33 @@
 * feat: docker compose lot of improvements and icon definition with caching ([7eb1cfc](https://github.com/mordilloSan/LinuxIO/commit/7eb1cfc)) by @MordilloSan
 * feat: docker compose now supports editing portainer stacks ([6e1344d](https://github.com/mordilloSan/LinuxIO/commit/6e1344d)) by @MordilloSan
 
-### 🐛 Bug Fixes
+###  Bug Fixes
 
 * fix: docker compose files discovery for portainer stacks ([eb64c3d](https://github.com/mordilloSan/LinuxIO/commit/eb64c3d)) by @MordilloSan
 * fix: removed motd feat: improved card look ([4518778](https://github.com/mordilloSan/LinuxIO/commit/4518778)) by @MordilloSan
 * fix: auth login bug ([c91da71](https://github.com/mordilloSan/LinuxIO/commit/c91da71)) by @MordilloSan
 
-### ♻️ Refactoring
+###  Refactoring
 
 * refactor: linting ([6746088](https://github.com/mordilloSan/LinuxIO/commit/6746088)) by @MordilloSan
 * refactor: unified table in updateHistory ([375394b](https://github.com/mordilloSan/LinuxIO/commit/375394b)) by @MordilloSan
 * refactor: linting ([f5ea26a](https://github.com/mordilloSan/LinuxIO/commit/f5ea26a)) by @MordilloSan
 
-### 📚 Documentation
+###  Documentation
 
 * docs: updated ToDo ([5e073b8](https://github.com/mordilloSan/LinuxIO/commit/5e073b8)) by @MordilloSan
 
-### 💄 Style
+###  Style
 
 * style: root card experiment ([4530f86](https://github.com/mordilloSan/LinuxIO/commit/4530f86)) by @MordilloSan
 * style: updated Cards to use default Frosted Card ([69df128](https://github.com/mordilloSan/LinuxIO/commit/69df128)) by @MordilloSan
 * style: UI expirementation ([dd0a1de](https://github.com/mordilloSan/LinuxIO/commit/dd0a1de)) by @MordilloSan
 
-### 🔄 Other Changes
+###  Other Changes
 
 * linting ([fd5f651](https://github.com/mordilloSan/LinuxIO/commit/fd5f651)) by @MordilloSan
 
-### 👥 Contributors
+###  Contributors
 
 * @MordilloSan
 

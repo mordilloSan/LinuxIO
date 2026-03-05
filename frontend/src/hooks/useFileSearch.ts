@@ -1,5 +1,5 @@
 import { linuxio, CACHE_TTL_MS } from "@/api";
-import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 
 export interface SearchResult {
   path: string;
@@ -37,8 +37,12 @@ export const useFileSearch = ({
   basePath = "/",
   enabled = true,
 }: UseFileSearchOptions): UseFileSearchResult => {
-  const { indexerAvailable } = useAuth();
-  const indexerDisabled = indexerAvailable === false;
+  const {
+    isEnabled: indexerEnabled,
+    reason: indexerReason,
+    status: indexerStatus,
+  } = useCapability("indexerAvailable");
+  const indexerDisabled = !indexerEnabled;
   const shouldSearch = query.trim().length >= 2; // Minimum 2 characters
   const queryEnabled = enabled && shouldSearch && !indexerDisabled;
 
@@ -58,7 +62,11 @@ export const useFileSearch = ({
 
   const derivedError =
     indexerDisabled && shouldSearch
-      ? new Error("Search is unavailable (indexer offline)")
+      ? new Error(
+          indexerStatus === "unknown"
+            ? indexerReason
+            : "Search is unavailable (indexer offline)",
+        )
       : error instanceof Error
         ? error
         : null;

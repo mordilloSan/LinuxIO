@@ -1,5 +1,6 @@
 import React, {
   createContext,
+  useContext,
   useState,
   useCallback,
   useMemo,
@@ -21,10 +22,10 @@ import {
   openFileCopyStream,
   openFileMoveStream,
   STREAM_CHUNK_SIZE,
-  UPLOAD_WINDOW_SIZE,
   type Stream,
   type ProgressFrame,
 } from "@/api";
+import { ConfigContext } from "@/contexts/ConfigContext";
 import { useStreamResult } from "@/hooks/useStreamResult";
 
 const REMOTE_INDEXER_ID = "remote-indexer";
@@ -265,6 +266,13 @@ export const FileTransferContext =
 export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const configCtx = useContext(ConfigContext);
+  const chunkSize =
+    (configCtx?.config.chunkSizeMB ?? 0) > 0
+      ? (configCtx!.config.chunkSizeMB as number) * 1024 * 1024
+      : STREAM_CHUNK_SIZE;
+  const uploadWindowSize = chunkSize * 4;
+
   const [downloads, setDownloads] = useState<Download[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [compressions, setCompressions] = useState<Compression[]>([]);
@@ -1284,12 +1292,12 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           }
 
           // Flow control: wait if window is full (max ~2 chunks in flight)
-          if (bytesSent - bytesAcked >= UPLOAD_WINDOW_SIZE) {
+          if (bytesSent - bytesAcked >= uploadWindowSize) {
             pendingSend = true;
             return; // Will resume when onProgress fires
           }
 
-          const slice = file.slice(offset, offset + STREAM_CHUNK_SIZE);
+          const slice = file.slice(offset, offset + chunkSize);
           reader.readAsArrayBuffer(slice);
         };
 
@@ -1299,7 +1307,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
             onProgress(progress.bytes, progress.total);
 
             // Window opened - resume sending if we were waiting
-            if (pendingSend && bytesSent - bytesAcked < UPLOAD_WINDOW_SIZE) {
+            if (pendingSend && bytesSent - bytesAcked < uploadWindowSize) {
               pendingSend = false;
               sendNextChunk();
             }
@@ -1361,7 +1369,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         sendNextChunk();
       });
     },
-    [],
+    [chunkSize, uploadWindowSize],
   );
 
   const startUpload = useCallback(

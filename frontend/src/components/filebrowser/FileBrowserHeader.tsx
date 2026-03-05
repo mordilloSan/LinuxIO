@@ -17,7 +17,7 @@ import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
 
-import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 
 interface FileBrowserHeaderProps {
@@ -54,7 +54,8 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const { indexerAvailable } = useAuth();
+  const { isEnabled: indexerEnabled, reason: indexerReason } =
+    useCapability("indexerAvailable");
   const { startIndexer, isIndexing, openIndexerDialog } = useFileTransfers();
 
   const handleIndexer = useCallback(() => {
@@ -200,15 +201,15 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                   title={
                     isIndexing
                       ? "Indexing..."
-                      : indexerAvailable === false
-                        ? "Indexer unavailable"
+                      : !indexerEnabled
+                        ? indexerReason
                         : "Index filesystem"
                   }
                 >
                   <span>
                     <IconButton
                       onClick={handleIndexer}
-                      disabled={isIndexing || indexerAvailable === false}
+                      disabled={isIndexing || !indexerEnabled}
                       aria-label="Index filesystem"
                       sx={{
                         position: "relative",
@@ -219,10 +220,9 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                       ) : (
                         <SyncIcon
                           sx={{
-                            color:
-                              indexerAvailable === false
-                                ? "text.disabled"
-                                : "inherit",
+                            color: !indexerEnabled
+                              ? "text.disabled"
+                              : "inherit",
                           }}
                         />
                       )}

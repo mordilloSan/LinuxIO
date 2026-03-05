@@ -47,11 +47,11 @@ jobs:
         run: |
           go fmt ./...
           if [ -n "$(git status --porcelain)" ]; then
-            echo "❌ Go files are not formatted. Run 'make golint' locally."
+            echo " Go files are not formatted. Run 'make golint' locally."
             git diff
             exit 1
           fi
-          echo "✅ All Go files are properly formatted"
+          echo " All Go files are properly formatted"
 
   lint-frontend:
     runs-on: ubuntu-latest

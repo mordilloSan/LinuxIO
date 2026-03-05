@@ -133,7 +133,7 @@ export const DevToolsPanel = ({ isOpen, onClose }: DevToolsPanelProps) => {
             alignItems: "center",
           }}
         >
-          <span>🛠️ Dev Tools</span>
+          <span> Dev Tools</span>
           <button
             onClick={onClose}
             style={{

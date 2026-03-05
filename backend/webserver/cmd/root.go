@@ -131,14 +131,14 @@ func RunServer(cfg ServerConfig) {
 			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 
 			for _, l := range listeners {
-				tlsLis := tls.NewListener(l, srv.TLSConfig)
+				lis := web.NewTLSRedirectListener(l, srv.TLSConfig, cfg.Port)
 				go func(lis net.Listener) {
 					if e := srv.Serve(lis); e != nil && e != http.ErrServerClosed {
 						logger.Errorf("server error (TLS): %v", e)
 						os.Exit(1)
 					}
 					stop()
-				}(tlsLis)
+				}(lis)
 			}
 			logger.Infof("Socket-activated HTTPS server listening on inherited sockets")
 
@@ -168,8 +168,15 @@ func RunServer(cfg ServerConfig) {
 		}
 		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 
+		ln, lErr := net.Listen("tcp", addr)
+		if lErr != nil {
+			logger.Errorf("listen error: %v", lErr)
+			os.Exit(1)
+		}
+		lis := web.NewTLSRedirectListener(ln, srv.TLSConfig, cfg.Port)
+
 		logger.Infof("HTTPS server (self-bound) at https://localhost:%d", cfg.Port)
-		err = srv.ListenAndServeTLS("", "")
+		err = srv.Serve(lis)
 
 		if err != nil && err != http.ErrServerClosed {
 			logger.Errorf("server error: %v", err)
@@ -183,7 +190,7 @@ func RunServer(cfg ServerConfig) {
 	// -------------------------------------------------------------------------
 	select {
 	case <-quit:
-		logger.Infof("🛑 Shutdown signal received")
+		logger.Infof(" Shutdown signal received")
 	case <-done:
 		logger.Infof("HTTP server stopped, beginning shutdown...")
 	}

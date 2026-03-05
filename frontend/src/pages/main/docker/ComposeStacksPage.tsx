@@ -45,6 +45,10 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const { config } = useConfig();
+  const chunkSize =
+    (config.chunkSizeMB ?? 0) > 0
+      ? (config.chunkSizeMB as number) * 1024 * 1024
+      : STREAM_CHUNK_SIZE;
   const { runChunked: runChunkedStreamResult } = useStreamResult();
 
   // Setup dialog state
@@ -353,7 +357,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
         open: () => openFileUploadStream(filePath, contentSize, override),
         openErrorMessage: "Failed to open save stream",
         data: contentBytes,
-        chunkSize: STREAM_CHUNK_SIZE,
+        chunkSize: chunkSize,
         yieldMs: 0,
         closeMessage: "Stream closed unexpectedly",
       });
@@ -383,7 +387,7 @@ const ComposeStacksPage: React.FC<ComposeStacksPageProps> = ({
       setPostSaveStackState(state);
       setPostSaveDialogOpen(true);
     },
-    [projects, refetch, runChunkedStreamResult],
+    [chunkSize, projects, refetch, runChunkedStreamResult],
   );
 
   // Save compose file with overwrite protection

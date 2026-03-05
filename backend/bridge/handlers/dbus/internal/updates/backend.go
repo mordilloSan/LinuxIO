@@ -29,7 +29,6 @@ func SelectBackend() Backend {
 	backs := []Backend{
 		newAptBackend(), // Debian/Ubuntu
 		newDnfBackend(), // Fedora/RHEL
-		// (We don't return pkgkit here; it's auxiliary for offline apply)
 	}
 	for _, b := range backs {
 		if b.Detect() {

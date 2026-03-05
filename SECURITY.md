@@ -4,7 +4,7 @@
 
 | Version | Supported |
 | ------- | --------- |
-| Latest  | ✅        |
+| Latest  |         |
 
 ## Reporting a Vulnerability
 
@@ -12,7 +12,7 @@ If you discover a security vulnerability in **Linuxi/O**, please follow these st
 
 1. **Do not open a public GitHub issue.**
 2. **Privately contact the maintainer** by email:  
-   📧 miguelgalizamariz@gmail.com
+    miguelgalizamariz@gmail.com
 3. Include:
    - Detailed description of the vulnerability
    - Steps to reproduce
@@ -32,4 +32,4 @@ Once confirmed, we will work with you to release a fix **before** disclosing the
 
 ---
 
-Thank you for helping us keep **LinuxIO** secure! 🙏
+Thank you for helping us keep **LinuxIO** secure! 

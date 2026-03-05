@@ -3,10 +3,15 @@ export interface FilesystemInfo {
   device: string;
   fstype: string;
   mountpoint: string;
+  readOnly?: boolean;
   total: number;
   used: number;
   free: number;
   usedPercent: number;
+  inodesTotal?: number;
+  inodesUsed?: number;
+  inodesFree?: number;
+  inodesUsedPercent?: number;
 }
 
 export interface ResourceStatData {

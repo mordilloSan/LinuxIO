@@ -19,10 +19,28 @@ type aptBackend struct{}
 func newAptBackend() Backend     { return &aptBackend{} }
 func (*aptBackend) Name() string { return "apt-unattended" }
 func (*aptBackend) Detect() bool {
-	return fileExists("/usr/bin/apt") && (fileExists("/usr/bin/unattended-upgrades") || fileExists("/usr/bin/unattended-upgrade"))
+	return fileExists("/usr/bin/apt")
+}
+
+func unattendedUpgradesInstalled() bool {
+	return fileExists("/usr/bin/unattended-upgrades") || fileExists("/usr/bin/unattended-upgrade")
 }
 
 func (b *aptBackend) Read() (AutoUpdateState, error) {
+	if !unattendedUpgradesInstalled() {
+		return AutoUpdateState{
+			Backend: b.Name(),
+			Options: AutoUpdateOptions{
+				Enabled:      false,
+				Frequency:    "daily",
+				Scope:        "security",
+				RebootPolicy: "never",
+				ExcludePkgs:  []string{},
+			},
+			Notes: []string{"Install unattended-upgrades to enable: sudo apt install unattended-upgrades"},
+		}, nil
+	}
+
 	st := AutoUpdateState{
 		Backend: b.Name(),
 		Options: AutoUpdateOptions{
@@ -38,6 +56,10 @@ func (b *aptBackend) Read() (AutoUpdateState, error) {
 }
 
 func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
+	if !unattendedUpgradesInstalled() {
+		return fmt.Errorf("unattended-upgrades is not installed; run: sudo apt install unattended-upgrades")
+	}
+
 	sd, err := systemd.New()
 	if err != nil {
 		return err

@@ -2,7 +2,7 @@
 # =============================================================================
 # LinuxIO Full Installer
 # Downloads and installs LinuxIO binaries, systemd services, PAM, and config
-# © 2025 Miguel Mariz (mordilloSan)
+#  2025 Miguel Mariz (mordilloSan)
 # =============================================================================
 set -euo pipefail
 
@@ -20,7 +20,7 @@ readonly RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/
 log_info()  { printf "▸ %s\n" "$*"; }
 log_ok()    { printf "✓ %s\n" "$*"; }
 log_error() { printf "✗ %s\n" "$*" >&2; }
-log_warn()  { printf "⚠ %s\n" "$*"; }
+log_warn()  { printf " %s\n" "$*"; }
 
 # Track if services were stopped (to ensure they're restarted on exit)
 SERVICES_STOPPED=0

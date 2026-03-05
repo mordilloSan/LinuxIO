@@ -33,7 +33,7 @@ if [ ! -f "$MODULE_DIR/src/index.tsx" ]; then
   exit 1
 fi
 
-echo "🔨 Building module: $MODULE_NAME"
+echo " Building module: $MODULE_NAME"
 echo "   Mode: $BUILD_MODE"
 echo "   Module dir: $MODULE_DIR"
 echo "   LinuxIO root: $LINUXIO_ROOT"
@@ -146,7 +146,7 @@ fi
 # Cleanup
 rm "$TEMP_CONFIG"
 echo ""
-echo "✅ Build complete: $MODULE_DIR/dist/component.js"
+echo " Build complete: $MODULE_DIR/dist/component.js"
 
 # Show file size comparison
 if [ -f "$MODULE_DIR/dist/component.js" ]; then

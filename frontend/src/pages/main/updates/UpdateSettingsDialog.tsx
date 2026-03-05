@@ -23,7 +23,7 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
   onClose,
 }) => {
   const theme = useTheme();
-  const settingsState = useUpdateSettingsState();
+  const settingsState = useUpdateSettingsState(open);
 
   return (
     <GeneralDialog open={open} onClose={onClose} maxWidth="md" fullWidth>

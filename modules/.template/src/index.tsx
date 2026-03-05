@@ -19,6 +19,6 @@ if (typeof window !== 'undefined') {
   }
   if (!window.LinuxIOModules['example-module']) {
     window.LinuxIOModules['example-module'] = { default: ExampleModule };
-    console.log('✅ Example Module loaded (bundle mode)');
+    console.log(' Example Module loaded (bundle mode)');
   }
 }

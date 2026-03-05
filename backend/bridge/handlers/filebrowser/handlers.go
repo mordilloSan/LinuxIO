@@ -14,10 +14,11 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
-func RegisterHandlers() {
+func RegisterHandlers(sess *session.Session) {
 	// Simple JSON handlers
 	ipc.RegisterFunc("filebrowser", "resource_get", func(ctx context.Context, args []string, emit ipc.Events) error {
 		result, err := resourceGet(args)
@@ -159,7 +160,7 @@ func RegisterHandlers() {
 		defer file.Close()
 
 		// Stream chunks
-		buf := make([]byte, chunkSize)
+		buf := make([]byte, chunkSizeFromSess(sess))
 		var bytesRead int64
 		var lastProgress int64
 

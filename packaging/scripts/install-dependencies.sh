@@ -2,7 +2,7 @@
 # =============================================================================
 # LinuxIO Dependencies Installer
 # Installs all runtime dependencies required by LinuxIO
-# © 2025 Miguel Mariz (mordilloSan)
+#  2025 Miguel Mariz (mordilloSan)
 # =============================================================================
 set -euo pipefail
 
@@ -10,7 +10,7 @@ set -euo pipefail
 log_info()  { printf "▸ %s\n" "$*"; }
 log_ok()    { printf "✓ %s\n" "$*"; }
 log_error() { printf "✗ %s\n" "$*" >&2; }
-log_warn()  { printf "⚠ %s\n" "$*"; }
+log_warn()  { printf " %s\n" "$*"; }
 
 # ---------- Distro Detection ----------
 detect_distro() {

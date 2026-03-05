@@ -43,6 +43,8 @@ type AppSettings struct {
 	ContainerOrder          []string                 `json:"containerOrder,omitempty" yaml:"containerOrder,omitempty"`
 	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections,omitempty" yaml:"dockerDashboardSections,omitempty"`
 	ViewModes               map[string]string        `json:"viewModes,omitempty" yaml:"viewModes,omitempty"`
+	// ChunkSizeMB is the file-transfer chunk size in MiB (1–32). 0 = use default (1 MiB).
+	ChunkSizeMB int `json:"chunkSizeMB,omitempty" yaml:"chunkSizeMB,omitempty"`
 }
 
 // DockerProxy holds Caddy reverse proxy configuration
