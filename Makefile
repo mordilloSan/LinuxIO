@@ -415,7 +415,7 @@ build-auth:
 	  LIBS="$$LIBS -lsystemd"; \
 	  echo " Linking with libsystemd for journald support"; \
 	else \
-	  echo "  libsystemd-dev not found - bridge logs will go to /dev/null"; \
+	  echo "  libsystemd-dev not found - auth helper logs will fall back to syslog"; \
 	  echo "   Install with: sudo apt-get install libsystemd-dev"; \
 	fi; \
 	$(CC) $(CFLAGS) -DLINUXIO_VERSION=\"$(GIT_VERSION)\" -o linuxio-auth backend/auth/linuxio-auth.c $(LDFLAGS) $$LIBS; \
@@ -911,4 +911,3 @@ cloc-breakdown:
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \
   create-module build-module link-module unlink-module deploy-module install-module uninstall-module clean-module list-modules \
   cloc cloc-clean cloc-breakdown
-

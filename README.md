@@ -14,13 +14,22 @@ A modern web dashboard to manage your Linux system: Docker, WireGuard, updates, 
 ---
 ## Philosophy
 
-Linux I/O is inspired by [Cockpit](https://cockpit-project.org/) but goes further by integrating:
+Linux I/O is built around a simple idea: your homelab should have a single control plane.
 
-- **Docker management** (like Portainer)
-- **WireGuard VPN** configuration
-- **File management** (FileBrowser Quantum inspired)
+Its primary inspiration is [Cockpit](https://cockpit-project.org/): one place to operate Linux systems end to end.
 
-**Goal:** One tool to manage your homelab without juggling multiple UIs.
+This project also draws inspiration from many projects across the homelab ecosystem, including [FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser), [Portainer](https://www.portainer.io/), [Homepage](https://gethomepage.dev/), [Unraid](https://unraid.net/), and many others.
+
+The file-management experience and visual style are intentionally very closely inspired by FileBrowser Quantum, and that influence is explicitly acknowledged.
+
+Linux I/O combines workflows usually split across multiple tools:
+
+- **System administration** (users, networking, updates, sensors)
+- **Container operations** (Portainer-style Docker management)
+- **Secure remote access** (WireGuard configuration)
+- **File operations** (FileBrowser Quantum-style management)
+
+**Goal:** One tool to rule them all: one login, one dashboard, one workflow for your Linux stack.
 
 ---
 
@@ -46,11 +55,14 @@ LinuxIO supports Linux kernels 5.9+.
 
 ### Quick install (recommended)
 
-```bash
-# Install dependencies (Docker, lm-sensors, PAM, PolicyKit, smartmontools)
-curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-dependencies.sh | sudo bash
 
-# Install LinuxIO binaries
+Install dependencies (Docker, lm-sensors, PAM, PolicyKit, smartmontools)
+```bash
+curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-dependencies.sh | sudo bash
+```
+
+Install LinuxIO binaries
+```bash
 curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash
 ```
 
@@ -65,14 +77,14 @@ If you prefer to install dependencies manually:
 ```bash
 sudo apt update
 sudo apt install -y lm-sensors libpam0g policykit-1 smartmontools
-curl -fsSL https://get.docker.com | sudo sh
+curl -fsSL https://get.docker.com | sudo bash
 ```
 
 **Fedora/RHEL/CentOS:**
 
 ```bash
 sudo dnf install -y lm_sensors pam polkit smartmontools
-curl -fsSL https://get.docker.com | sudo sh
+curl -fsSL https://get.docker.com | sudo bash
 ```
 
 ---
@@ -90,16 +102,16 @@ curl -fsSL https://get.docker.com | sudo sh
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt install -y libpam0g-dev libsystemd-dev cppcheck clang-tools bear
+sudo apt install -y libpam0g-dev cppcheck clang-tools bear
 ```
 
 **Fedora/RHEL/CentOS:**
 
 ```bash
-sudo dnf install -y pam-devel systemd-devel cppcheck clang-tools-extra bear
+sudo dnf install -y pam-devel cppcheck clang-tools-extra bear
 ```
 
-> Note: `libsystemd-dev` is optional but recommended - without it, auth worker logs fall back to syslog instead of journald. `scan-build` ships with `clang-tools`/`clang-tools-extra` and is optional for `make analyze-auth`.
+> Optional: install `libsystemd-dev` (Debian/Ubuntu) or `systemd-devel` (Fedora/RHEL/CentOS) for journald integration in the auth worker. Without it, logs fall back to syslog. `scan-build` ships with `clang-tools`/`clang-tools-extra` and is optional for `make analyze-auth`.
 
 ### Initial Setup
 
@@ -274,9 +286,12 @@ This project is licensed under the [Apache License](LICENSE).
 
 ## Acknowledgments
 
-- [Cockpit](https://cockpit-project.org/) - Inspiration
-- [FileBrowser Quantum](https://github.com/filebrowser/filebrowser) - File management
+- [Cockpit](https://cockpit-project.org/) - Primary product inspiration and unified Linux operations model
+- [Arcane](https://github.com/getarcaneapp/arcane) - UI and interaction inspiration
+- [FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser) - Strong inspiration for file-management UX and visual style
+- [Unraid](https://unraid.net/) - Product and homelab management inspiration
 - [Mira Theme](https://mira.bootlab.io) - UI design
+- Many other open source and self-hosted projects that shaped LinuxIO's direction
 
 ---
 
