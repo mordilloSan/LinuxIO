@@ -49,6 +49,7 @@ import {
 } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { FilesystemInfo } from "@/types/fs";
 import { formatFileSize } from "@/utils/formaters";
@@ -59,6 +60,8 @@ interface DriveDetailsProps {
   expanded: boolean;
   rawDrive: ApiDisk | null;
   refetchDrives: () => void;
+  smartmontoolsAvailable: boolean;
+  smartmontoolsReason: string;
 }
 
 interface FilesystemCardDetailsProps {
@@ -335,6 +338,8 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
   expanded,
   rawDrive,
   refetchDrives,
+  smartmontoolsAvailable,
+  smartmontoolsReason,
 }) => {
   const theme = useTheme();
   const [tabIndex, setTabIndex] = useState(0);
@@ -365,6 +370,10 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
 
   const handleRunTest = (testType: "short" | "long") => {
     if (!rawDrive) return;
+    if (!smartmontoolsAvailable) {
+      toast.error(smartmontoolsReason);
+      return;
+    }
 
     setStartPending(testType);
     setTestProgress({
@@ -561,6 +570,8 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             onRunTest={handleRunTest}
             selfTestLog={selfTestLog}
             nvmeSelfTestLog={nvmeSelfTestLog}
+            smartmontoolsAvailable={smartmontoolsAvailable}
+            smartmontoolsReason={smartmontoolsReason}
           />
         </TabPanel>
       </div>
@@ -580,6 +591,8 @@ const DiskOverview: React.FC = () => {
   const [subvolumeDrafts, setSubvolumeDrafts] = useState<
     Record<string, string>
   >({});
+  const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
+    useCapability("smartmontoolsAvailable");
 
   const {
     data: rawDrives = [],
@@ -943,6 +956,8 @@ const DiskOverview: React.FC = () => {
                             rawDrives.find((d) => d.name === drive.name) || null
                           }
                           refetchDrives={refetchDrives}
+                          smartmontoolsAvailable={smartmontoolsAvailable}
+                          smartmontoolsReason={smartmontoolsReason}
                         />
                       </FrostedCard>
                     </Grid>

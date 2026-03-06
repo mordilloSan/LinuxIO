@@ -9,9 +9,11 @@ import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import { useCapability } from "@/hooks/useCapabilities";
 
 const Processor: React.FC = () => {
   const theme = useTheme();
+  const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const {
     data: CPUInfo,
     isPending,
@@ -35,7 +37,7 @@ const Processor: React.FC = () => {
       ).toFixed(1)
     : "--";
 
-  const IconText = `${avgTemp}°C`;
+  const IconText = lmSensorsAvailable ? `${avgTemp}°C` : "N/A";
 
   const data = {
     title: "Processor",

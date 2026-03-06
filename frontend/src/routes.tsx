@@ -172,6 +172,7 @@ const coreRoutes: RouteWithSidebar[] = [
   {
     path: "hardware",
     element: <Hardware />,
+    requiredCapabilities: ["lmSensorsAvailable"],
     sidebar: {
       title: "Hardware",
       icon: Cpu,
@@ -336,39 +337,3 @@ export function useSidebarItems() {
       }));
   }, [access, modules]);
 }
-
-// Default export for backward compatibility
-// This will be replaced when App.tsx is updated to use useAppRoutes()
-const routes = [
-  {
-    path: "/",
-    element: (
-      <AuthGuard>
-        <MainLayout />
-      </AuthGuard>
-    ),
-    children: [
-      ...coreRoutes.map((route) => ({
-        path: route.path,
-        element: route.element,
-      })),
-      { path: "*", element: <Page404 /> },
-    ],
-  },
-  {
-    path: "/sign-in",
-    element: <AuthLayout />,
-    children: [
-      {
-        index: true,
-        element: (
-          <GuestGuard>
-            <SignIn />
-          </GuestGuard>
-        ),
-      },
-    ],
-  },
-];
-
-export default routes;

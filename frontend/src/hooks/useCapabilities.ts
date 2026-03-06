@@ -2,13 +2,19 @@ import { useMemo } from "react";
 
 import useAuth from "@/hooks/useAuth";
 
-export type CapabilityKey = "dockerAvailable" | "indexerAvailable";
+export type CapabilityKey =
+  | "dockerAvailable"
+  | "indexerAvailable"
+  | "lmSensorsAvailable"
+  | "smartmontoolsAvailable";
 export type CapabilityStatus = "unknown" | "available" | "unavailable";
 
 export interface AccessContext {
   privileged: boolean;
   dockerAvailable: boolean | null;
   indexerAvailable: boolean | null;
+  lmSensorsAvailable: boolean | null;
+  smartmontoolsAvailable: boolean | null;
 }
 
 export interface AccessPolicy {
@@ -40,6 +46,18 @@ export const getCapabilityReason = (
       : "Indexer service is unavailable.";
   }
 
+  if (capability === "lmSensorsAvailable") {
+    return status === "unknown"
+      ? "lm-sensors dependency check is still running."
+      : "lm-sensors dependency is unavailable.";
+  }
+
+  if (capability === "smartmontoolsAvailable") {
+    return status === "unknown"
+      ? "smartmontools dependency check is still running."
+      : "smartmontools dependency is unavailable.";
+  }
+
   return status === "unknown"
     ? "Docker availability is still being checked."
     : "Docker service is unavailable.";
@@ -62,15 +80,29 @@ export const hasAccessPolicy = (
 };
 
 export const useAccessContext = (): AccessContext => {
-  const { privileged, dockerAvailable, indexerAvailable } = useAuth();
+  const {
+    privileged,
+    dockerAvailable,
+    indexerAvailable,
+    lmSensorsAvailable,
+    smartmontoolsAvailable,
+  } = useAuth();
 
   return useMemo(
     () => ({
       privileged,
       dockerAvailable,
       indexerAvailable,
+      lmSensorsAvailable,
+      smartmontoolsAvailable,
     }),
-    [privileged, dockerAvailable, indexerAvailable],
+    [
+      privileged,
+      dockerAvailable,
+      indexerAvailable,
+      lmSensorsAvailable,
+      smartmontoolsAvailable,
+    ],
   );
 };
 

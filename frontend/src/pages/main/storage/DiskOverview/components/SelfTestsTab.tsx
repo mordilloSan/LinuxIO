@@ -17,6 +17,8 @@ interface SelfTestsTabProps {
   onRunTest: (testType: "short" | "long") => void;
   selfTestLog?: { standard?: { table?: unknown[] } };
   nvmeSelfTestLog?: { table?: unknown[] };
+  smartmontoolsAvailable: boolean;
+  smartmontoolsReason?: string;
 }
 
 export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
@@ -24,8 +26,11 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
   onRunTest,
   selfTestLog,
   nvmeSelfTestLog,
+  smartmontoolsAvailable,
+  smartmontoolsReason,
 }) => {
   const theme = useTheme();
+  const testActionsDisabled = startPending !== null || !smartmontoolsAvailable;
 
   return (
     <>
@@ -43,7 +48,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
           <Button
             variant="outlined"
             size="small"
-            disabled={startPending !== null}
+            disabled={testActionsDisabled}
             onClick={(e) => {
               e.stopPropagation();
               onRunTest("short");
@@ -59,7 +64,7 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
           <Button
             variant="outlined"
             size="small"
-            disabled={startPending !== null}
+            disabled={testActionsDisabled}
             onClick={(e) => {
               e.stopPropagation();
               onRunTest("long");
@@ -78,8 +83,10 @@ export const SelfTestsTab: React.FC<SelfTestsTabProps> = ({
           color="text.secondary"
           sx={{ mt: 1, display: "block" }}
         >
-          Short test takes ~2 minutes. Extended test can take hours depending on
-          drive size.
+          {smartmontoolsAvailable
+            ? "Short test takes ~2 minutes. Extended test can take hours depending on drive size."
+            : smartmontoolsReason ||
+              "SMART self-tests are disabled because smartmontools is unavailable."}
         </Typography>
       </div>
 

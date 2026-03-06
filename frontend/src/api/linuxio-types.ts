@@ -104,8 +104,12 @@ export interface HostInfo {
 export interface CapabilitiesResponse {
   docker_available: boolean;
   indexer_available: boolean;
+  lm_sensors_available: boolean;
+  smartmontools_available: boolean;
   docker_error?: string;
   indexer_error?: string;
+  lm_sensors_error?: string;
+  smartmontools_error?: string;
 }
 
 export interface DistroInfo {

@@ -13,11 +13,10 @@ func getClient() (*client.Client, error) {
 	return client.NewClientWithOpts(client.FromEnv)
 }
 
-// CheckDockerAvailability verifies that Docker is installed and accessible
-func CheckDockerAvailability() (bool, error) {
+// dockerAvailable verifies that Docker client initialization and daemon ping both work.
+func dockerAvailable() (bool, error) {
 	cli, err := getClient()
 	if err != nil {
-		logger.Infof("docker service not available")
 		return false, fmt.Errorf("docker client error: %w", err)
 	}
 	defer func() {
@@ -26,12 +25,21 @@ func CheckDockerAvailability() (bool, error) {
 		}
 	}()
 
-	_, err = cli.Ping(context.Background())
-	if err != nil {
-		logger.Infof("docker service not available")
+	if _, err := cli.Ping(context.Background()); err != nil {
 		return false, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
 
-	logger.Infof("docker service available")
 	return true, nil
+}
+
+// CheckDockerAvailability verifies that Docker is installed and accessible
+func CheckDockerAvailability() (bool, error) {
+	ok, err := dockerAvailable()
+	if err != nil {
+		logger.Infof("docker service not available")
+		return false, err
+	}
+
+	logger.Infof("docker service available")
+	return ok, nil
 }

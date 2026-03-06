@@ -5,9 +5,11 @@ import React from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
+import { useCapability } from "@/hooks/useCapabilities";
 
 const MotherBoardInfo: React.FC = () => {
   const theme = useTheme();
+  const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
   const { data: motherboardInfo } =
     linuxio.system.get_motherboard_info.useQuery({
       refetchInterval: 50000,
@@ -64,9 +66,11 @@ const MotherBoardInfo: React.FC = () => {
     <Typography variant="body2">No system information available.</Typography>
   );
 
-  const IconText = motherboardInfo?.temperatures?.socket?.[0]
-    ? `${motherboardInfo.temperatures.socket[0]}°C`
-    : "--°C";
+  const IconText = lmSensorsAvailable
+    ? motherboardInfo?.temperatures?.socket?.[0]
+      ? `${motherboardInfo.temperatures.socket[0]}°C`
+      : "--°C"
+    : "N/A";
 
   return (
     <DashboardCard
