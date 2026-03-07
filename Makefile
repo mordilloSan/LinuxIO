@@ -355,7 +355,12 @@ analyze-auth:
 build-vite:
 	@echo ""
 	@echo "🏗️  Building frontend..."
-	@bash -c 'cd frontend && npx vite build && echo "✅ Frontend built successfully!"'
+	@bash -c 'cd frontend && npm run build && echo "✅ Frontend built successfully!"'
+
+analyze: ensure-node setup
+	@echo ""
+	@echo "🔬 Building frontend bundle analysis..."
+	@bash -c 'cd frontend && npm run analyze && echo "✅ Frontend analysis built successfully!"'
 
 build-backend: $(GO_BUILD_PREREQ)
 	@echo ""
@@ -578,6 +583,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint + backend tests (optimized)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
+	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
@@ -905,7 +911,7 @@ cloc-breakdown:
 
 .PHONY: \
   default help clean run \
-  build fastbuild _build-binaries build-vite build-backend build-bridge build-auth build-cli \
+  build fastbuild _build-binaries build-vite analyze build-backend build-bridge build-auth build-cli \
   dev dev-prep setup test test-backend analyze-auth lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \

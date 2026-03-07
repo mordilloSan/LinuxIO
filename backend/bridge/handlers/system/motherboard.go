@@ -23,7 +23,7 @@ type BIOS struct {
 }
 
 type MotherboardTemperatures struct {
-	Socket []float64 `json:"socket"`
+	Sensors map[string]float64 `json:"sensors"`
 }
 
 type MotherboardInfo struct {
@@ -59,17 +59,17 @@ func FetchBaseboardInfo() (MotherboardInfo, error) {
 		},
 	}
 
-	// Include motherboard temperatures (keep your existing source)
+	// Include all temperature sensors except CPU-specific ones
 	tempMap := getTemperatureMap()
-	var socketTemps []float64
+	mbTemps := make(map[string]float64)
 	for key, value := range tempMap {
-		if strings.HasPrefix(key, "mb") {
-			socketTemps = append(socketTemps, value)
+		if !strings.HasPrefix(key, "core") && key != "package" {
+			mbTemps[key] = value
 		}
 	}
-	info.Temperatures = MotherboardTemperatures{Socket: socketTemps}
+	info.Temperatures = MotherboardTemperatures{Sensors: mbTemps}
 
-	// If everything is empty, signal an error (like your original)
+	// If everything is empty, signal an error
 	if info.Baseboard.Manufacturer == "" &&
 		info.Baseboard.Model == "" &&
 		info.Baseboard.Version == "" &&
@@ -77,7 +77,7 @@ func FetchBaseboardInfo() (MotherboardInfo, error) {
 		info.BIOS.Vendor == "" &&
 		info.BIOS.Version == "" &&
 		info.BIOS.Date == "" &&
-		len(info.Temperatures.Socket) == 0 {
+		len(info.Temperatures.Sensors) == 0 {
 		return MotherboardInfo{}, fmt.Errorf("unable to read motherboard info")
 	}
 

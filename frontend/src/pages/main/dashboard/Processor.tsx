@@ -1,12 +1,14 @@
 import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import React from "react";
+import React, { useState } from "react";
 
 import ProcessorGraph from "./ProcessorGraph";
 
 import { linuxio } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
+import DashboardCard, {
+  type SelectOption,
+} from "@/components/cards/DashboardCard";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -22,22 +24,43 @@ const Processor: React.FC = () => {
     refetchInterval: 2000,
   });
 
+  const [selectedSensor, setSelectedSensor] = useState<string | undefined>(
+    undefined,
+  );
+
   const averageCpuUsage = CPUInfo?.perCoreUsage?.length
     ? CPUInfo.perCoreUsage.reduce((sum, cpu) => sum + cpu, 0) /
       CPUInfo.perCoreUsage.length
     : 0;
 
-  const temperatures = CPUInfo?.temperature
-    ? Object.values(CPUInfo.temperature)
-    : [];
+  const temperatures = CPUInfo?.temperature ?? {};
+  const temperatureKeys = Object.keys(temperatures);
 
-  const avgTemp = temperatures.length
-    ? (
-        temperatures.reduce((sum, t) => sum + t, 0) / temperatures.length
-      ).toFixed(1)
-    : "--";
+  const formatSensorLabel = (key: string): string => {
+    const match = key.match(/^([a-zA-Z]+)(\d+)$/);
+    if (match)
+      return `${match[1].charAt(0).toUpperCase() + match[1].slice(1)} ${match[2]}`;
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  };
 
-  const IconText = lmSensorsAvailable ? `${avgTemp}°C` : "N/A";
+  const defaultSensor =
+    temperatures["package"] !== undefined ? "package" : temperatureKeys[0];
+  const effectiveSensor =
+    selectedSensor && temperatures[selectedSensor] !== undefined
+      ? selectedSensor
+      : defaultSensor;
+
+  const displayTemp =
+    effectiveSensor !== undefined && temperatures[effectiveSensor] !== undefined
+      ? `${temperatures[effectiveSensor].toFixed(1)}°C`
+      : "--°C";
+
+  const sensorOptions: SelectOption[] = temperatureKeys.map((key) => ({
+    value: key,
+    label: formatSensorLabel(key),
+  }));
+
+  const IconText = lmSensorsAvailable ? displayTemp : "N/A";
 
   const data = {
     title: "Processor",
@@ -108,6 +131,12 @@ const Processor: React.FC = () => {
     icon_text: IconText,
     icon: TemperatureIcon,
     iconProps: { sx: { color: "text.secondary" } },
+    ...(lmSensorsAvailable &&
+      sensorOptions.length >= 1 && {
+        iconTextSelectOptions: sensorOptions,
+        selectedIconTextOption: effectiveSensor,
+        onIconTextSelect: setSelectedSensor,
+      }),
   };
 
   return <DashboardCard {...data} />;

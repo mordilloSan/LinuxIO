@@ -88,7 +88,7 @@ export interface MotherboardInfo {
     version: string;
   };
   temperatures?: {
-    socket: number[];
+    sensors: Record<string, number>;
   };
 }
 

@@ -1,10 +1,12 @@
 import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import React from "react";
+import React, { useState } from "react";
 
 import { linuxio } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
+import DashboardCard, {
+  type SelectOption,
+} from "@/components/cards/DashboardCard";
 import { useCapability } from "@/hooks/useCapabilities";
 
 const MotherBoardInfo: React.FC = () => {
@@ -66,11 +68,36 @@ const MotherBoardInfo: React.FC = () => {
     <Typography variant="body2">No system information available.</Typography>
   );
 
+  const sensors = motherboardInfo?.temperatures?.sensors ?? {};
+  const sensorKeys = Object.keys(sensors);
+  const [selectedSensor, setSelectedSensor] = useState<string | undefined>(
+    undefined,
+  );
+
+  const formatSensorLabel = (key: string): string => {
+    const match = key.match(/^([a-zA-Z]+)(\d+)$/);
+    if (match)
+      return `${match[1].charAt(0).toUpperCase() + match[1].slice(1)} ${match[2]}`;
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  };
+
+  const defaultMbSensor =
+    sensorKeys.find((k) => k.startsWith("mb")) ?? sensorKeys[0];
+  const effectiveSensor =
+    selectedSensor && sensors[selectedSensor] !== undefined
+      ? selectedSensor
+      : defaultMbSensor;
+
   const IconText = lmSensorsAvailable
-    ? motherboardInfo?.temperatures?.socket?.[0]
-      ? `${motherboardInfo.temperatures.socket[0]}°C`
+    ? effectiveSensor !== undefined && sensors[effectiveSensor] !== undefined
+      ? `${sensors[effectiveSensor]}°C`
       : "--°C"
     : "N/A";
+
+  const sensorOptions: SelectOption[] = sensorKeys.map((key) => ({
+    value: key,
+    label: formatSensorLabel(key),
+  }));
 
   return (
     <DashboardCard
@@ -80,6 +107,12 @@ const MotherBoardInfo: React.FC = () => {
       icon={TemperatureIcon}
       iconProps={{ sx: { color: "text.secondary" } }}
       avatarIcon="bi:motherboard"
+      {...(lmSensorsAvailable &&
+        sensorOptions.length >= 1 && {
+          iconTextSelectOptions: sensorOptions,
+          selectedIconTextOption: effectiveSensor,
+          onIconTextSelect: setSelectedSensor,
+        })}
     />
   );
 };
