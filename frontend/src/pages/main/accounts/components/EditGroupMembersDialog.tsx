@@ -1,6 +1,5 @@
 import {
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -9,6 +8,8 @@ import {
   Chip,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -87,7 +88,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Edit Group Members: {group.name}</DialogTitle>
       <DialogContent>
         <div
@@ -126,7 +127,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
           {isPending ? "Saving..." : "Save"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

@@ -1,6 +1,5 @@
 import {
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -9,6 +8,8 @@ import {
   Chip,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -95,7 +96,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Edit User: {user.username}</DialogTitle>
       <DialogContent>
         <div
@@ -161,7 +162,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
           {isPending ? "Saving..." : "Save"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

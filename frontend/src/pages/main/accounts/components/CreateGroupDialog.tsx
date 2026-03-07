@@ -1,11 +1,12 @@
 import {
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
 } from "@mui/material";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -61,7 +62,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create Group</DialogTitle>
       <DialogContent>
         <div
@@ -102,7 +103,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
           {isPending ? "Creating..." : "Create"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

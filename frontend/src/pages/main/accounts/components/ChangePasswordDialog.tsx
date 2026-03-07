@@ -1,12 +1,13 @@
 import {
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -66,7 +67,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Change Password: {username}</DialogTitle>
       <DialogContent>
         <div
@@ -114,7 +115,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
           {isPending ? "Changing..." : "Change Password"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

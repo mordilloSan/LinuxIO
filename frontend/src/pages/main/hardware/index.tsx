@@ -9,7 +9,6 @@ import FrostedCard from "@/components/cards/RootCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import MetricBar from "@/components/gauge/MetricBar";
 import { useConfigValue } from "@/hooks/useConfig";
-import DriveInfo from "@/pages/main/dashboard/Drive";
 import GpuInfo from "@/pages/main/dashboard/Gpu";
 import MemoryUsage from "@/pages/main/dashboard/Memory";
 import MotherBoardInfo from "@/pages/main/dashboard/MotherBoard";
@@ -295,7 +294,6 @@ const MemoProcessor = React.memo(Processor);
 const MemoMotherBoardInfo = React.memo(MotherBoardInfo);
 const MemoMemory = React.memo(MemoryUsage);
 const MemoGpuInfo = React.memo(GpuInfo);
-const MemoDriveInfo = React.memo(DriveInfo);
 
 const HardwarePage: React.FC = () => {
   const theme = useTheme();
@@ -466,7 +464,6 @@ const HardwarePage: React.FC = () => {
             { id: "mb", component: MemoMotherBoardInfo },
             { id: "memory", component: MemoMemory },
             { id: "gpu", component: MemoGpuInfo },
-            { id: "drive", component: MemoDriveInfo },
           ].map(({ id, component: CardComponent }) => (
             <Grid key={id} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
               <ErrorBoundary>

@@ -3,6 +3,7 @@ import { Typography, Grid, Tooltip, Fade } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 import NetworkTrafficGraph from "./NetworkTrafficGraph";
@@ -37,7 +38,8 @@ const formatBps = (bps?: number) =>
   typeof bps === "number" ? `${(bps / 1024).toFixed(1)} kB/s` : "N/A";
 
 const NetworkInterfaceList = () => {
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const expanded = searchParams.get("iface");
   const [editForm, setEditForm] = useState<Record<string, any>>({});
 
   const { data: rawInterfaces = [], isPending: isLoading } =
@@ -63,15 +65,23 @@ const NetworkInterfaceList = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setExpanded(null);
+      if (e.key === "Escape") {
+        setSearchParams((prev) => {
+          prev.delete("iface");
+          return prev;
+        });
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [setSearchParams]);
 
   const handleToggle = (iface: NetworkInterface) => {
     if (expanded === iface.name) {
-      setExpanded(null);
+      setSearchParams((prev) => {
+        prev.delete("iface");
+        return prev;
+      });
     } else {
       setEditForm({
         ipv4: Array.isArray(iface.ipv4) ? iface.ipv4.join(", ") : "",
@@ -80,13 +90,19 @@ const NetworkInterfaceList = () => {
         gateway: iface.gateway ? iface.gateway : "",
         mtu: iface.mtu.toString(),
       });
-      setExpanded(iface.name);
+      setSearchParams((prev) => {
+        prev.set("iface", iface.name);
+        return prev;
+      });
     }
   };
 
   const handleSave = (iface: NetworkInterface) => {
     console.log("Save", iface.name, editForm);
-    setExpanded(null);
+    setSearchParams((prev) => {
+      prev.delete("iface");
+      return prev;
+    });
   };
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
@@ -251,7 +267,12 @@ const NetworkInterfaceList = () => {
                     expanded={expanded === iface.name}
                     editForm={editForm}
                     setEditForm={setEditForm}
-                    onClose={() => setExpanded(null)}
+                    onClose={() =>
+                      setSearchParams((prev) => {
+                        prev.delete("iface");
+                        return prev;
+                      })
+                    }
                     onSave={handleSave}
                   />
                 </FrostedCard>

@@ -1,6 +1,5 @@
 import {
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -10,6 +9,8 @@ import {
   Autocomplete,
   Chip,
 } from "@mui/material";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -102,7 +103,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create User</DialogTitle>
       <DialogContent>
         <div
@@ -208,7 +209,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
           {isPending ? "Creating..." : "Create"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

@@ -1,13 +1,14 @@
 import {
   Button,
   Chip,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   DialogContentText,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { toast } from "sonner";
@@ -57,7 +58,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Delete Group{groupNames.length > 1 ? "s" : ""}</DialogTitle>
       <DialogContent>
         <DialogContentText>
@@ -92,7 +93,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
           {isDeleting ? "Deleting..." : "Delete"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 
