@@ -5,13 +5,12 @@ import {
   DialogActions,
   TextField,
 } from "@mui/material";
-
-import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type CreateGroupRequest } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateGroupDialogProps {

@@ -7,13 +7,12 @@ import {
   DialogContentText,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-
-import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DeleteUserDialogProps {

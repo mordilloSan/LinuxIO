@@ -9,13 +9,12 @@ import {
   Autocomplete,
   Chip,
 } from "@mui/material";
-
-import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type CreateUserRequest } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateUserDialogProps {

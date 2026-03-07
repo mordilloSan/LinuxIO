@@ -8,8 +8,6 @@ import {
   Chip,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-
-import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
@@ -19,6 +17,7 @@ import {
   type AccountGroup,
   type ModifyGroupMembersRequest,
 } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
