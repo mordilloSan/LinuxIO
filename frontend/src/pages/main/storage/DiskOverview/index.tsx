@@ -508,6 +508,10 @@ const DriveDetails: React.FC<DriveDetailsProps> = ({
             variant="scrollable"
             scrollButtons="auto"
             sx={{
+              "& .MuiTab-root": {
+                minWidth: "auto",
+                px: 1.5,
+              },
               "& .MuiTabs-scroller": {
                 "&::-webkit-scrollbar": {
                   height: 8,
@@ -738,11 +742,6 @@ const DiskOverview: React.FC = () => {
 
   const handleBrowseFilesystem = (mountpoint: string) => {
     navigate(encodeFilebrowserPath(mountpoint));
-    setSearchParams((prev) => {
-      prev.delete("fs");
-      return prev;
-    });
-    setCreatingSubvolumeMountpoint(null);
   };
 
   const handleInspectDrive = (driveName: string) => {
@@ -807,8 +806,8 @@ const DiskOverview: React.FC = () => {
                       size={{
                         xs: 12,
                         sm: expanded === drive.name ? 12 : 6,
-                        md: expanded === drive.name ? 8 : 4,
-                        lg: expanded === drive.name ? 6 : 3,
+                        md: expanded === drive.name ? 6 : 4,
+                        lg: expanded === drive.name ? 4 : 3,
                       }}
                       component={motion.div}
                       layout

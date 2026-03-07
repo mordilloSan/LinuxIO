@@ -1,12 +1,557 @@
-// ContainerList.tsx
-import React from "react";
+import { Icon } from "@iconify/react";
+import { ExpandMore as ExpandMoreIcon } from "@mui/icons-material";
+import { Chip, Collapse, Grid, IconButton, Typography } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import React, { useCallback, useMemo } from "react";
 
-const ContainerList: React.FC = () => {
+import { linuxio } from "@/api";
+import FrostedCard from "@/components/cards/RootCard";
+import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import MetricBar from "@/components/gauge/MetricBar";
+import { useConfigValue } from "@/hooks/useConfig";
+import DriveInfo from "@/pages/main/dashboard/Drive";
+import GpuInfo from "@/pages/main/dashboard/Gpu";
+import MemoryUsage from "@/pages/main/dashboard/Memory";
+import MotherBoardInfo from "@/pages/main/dashboard/MotherBoard";
+import Processor from "@/pages/main/dashboard/Processor";
+
+// ─── types ───────────────────────────────────────────────────────────────────
+
+interface SensorReading {
+  label: string;
+  value: number;
+  unit: string;
+}
+
+interface SensorGroup {
+  adapter: string;
+  readings: SensorReading[];
+}
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+const formatUptime = (seconds: number): string => {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  return parts.join(" ") || "0m";
+};
+
+const getTempColor = (
+  value: number,
+  palette: { success: string; warning: string; error: string },
+): string => {
+  if (value < 50) return palette.success;
+  if (value < 75) return palette.warning;
+  return palette.error;
+};
+
+const unitChipColor = (
+  unit: string,
+): "success" | "warning" | "info" | "default" => {
+  const u = unit.toLowerCase();
+  if (u === "c" || u === "°c") return "warning";
+  if (u === "rpm") return "info";
+  if (u === "v") return "success";
+  return "default";
+};
+
+const SectionHeader: React.FC<{
+  title: string;
+  expanded: boolean;
+  onClick: () => void;
+}> = ({ title, expanded, onClick }) => (
+  <div
+    className="dd-section-header"
+    onClick={onClick}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 6,
+      cursor: "pointer",
+      userSelect: "none",
+    }}
+  >
+    <Typography variant="subtitle1" fontWeight={700}>
+      {title}
+    </Typography>
+    <IconButton
+      size="small"
+      className="section-toggle"
+      component="span"
+      sx={{
+        opacity: 0,
+        transition: "opacity 0.15s",
+        pointerEvents: "none",
+      }}
+    >
+      <ExpandMoreIcon
+        sx={{
+          transition: "transform 0.2s",
+          transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
+        }}
+      />
+    </IconButton>
+  </div>
+);
+
+// ─── sensor card ─────────────────────────────────────────────────────────────
+
+const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
+  const theme = useTheme();
+  const temps = group.readings.filter((r) => {
+    const u = r.unit.toLowerCase();
+    return u === "c" || u === "°c";
+  });
+  const fans = group.readings.filter((r) => r.unit.toLowerCase() === "rpm");
+  const voltages = group.readings.filter((r) => r.unit.toLowerCase() === "v");
+  const other = group.readings.filter((r) => {
+    const u = r.unit.toLowerCase();
+    return u !== "c" && u !== "°c" && u !== "rpm" && u !== "v";
+  });
+
   return (
-    <div>
-      <h2>Docker Containers </h2>
+    <FrostedCard style={{ padding: 10, height: "100%" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          marginBottom: 8,
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Icon
+            icon="mdi:chip"
+            width={24}
+            height={24}
+            color={theme.palette.primary.main}
+          />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <Typography
+            variant="subtitle2"
+            fontWeight={700}
+            lineHeight={1.2}
+            noWrap
+          >
+            {group.adapter}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {group.readings.length} reading
+            {group.readings.length !== 1 ? "s" : ""}
+          </Typography>
+        </div>
+      </div>
+
+      {/* Temperatures */}
+      {temps.length > 0 && (
+        <div
+          style={{
+            marginBottom:
+              temps.length > 0 && (fans.length > 0 || voltages.length > 0)
+                ? 8
+                : 0,
+          }}
+        >
+          {temps.map((r, i) => (
+            <MetricBar
+              key={`temp-${i}`}
+              label={r.label}
+              percent={Math.min((r.value / 105) * 100, 100)}
+              color={getTempColor(r.value, {
+                success: theme.palette.success.main,
+                warning: theme.palette.warning.main,
+                error: theme.palette.error.main,
+              })}
+              tooltip={`${r.label}: ${r.value}°C`}
+              rightLabel={`${r.value}°C`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Fan speeds */}
+      {fans.length > 0 && (
+        <div
+          style={{
+            marginBottom: voltages.length > 0 || other.length > 0 ? 8 : 0,
+          }}
+        >
+          {fans.map((r, i) => (
+            <div
+              key={`fan-${i}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingBlock: 2,
+                paddingInline: 2,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <Icon
+                  icon="mdi:fan"
+                  width={14}
+                  height={14}
+                  color={
+                    r.value > 0
+                      ? theme.palette.info.main
+                      : alpha(theme.palette.text.secondary, 0.4)
+                  }
+                />
+                <Typography variant="caption">{r.label}</Typography>
+              </div>
+              <Typography
+                variant="caption"
+                sx={{ fontVariantNumeric: "tabular-nums" }}
+              >
+                {r.value > 0 ? `${r.value} RPM` : "Off"}
+              </Typography>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Voltages */}
+      {voltages.length > 0 && (
+        <div style={{ marginBottom: other.length > 0 ? 8 : 0 }}>
+          {voltages.map((r, i) => (
+            <div
+              key={`volt-${i}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingBlock: 2,
+                paddingInline: 2,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <Icon
+                  icon="mdi:flash"
+                  width={14}
+                  height={14}
+                  color={theme.palette.success.main}
+                />
+                <Typography variant="caption">{r.label}</Typography>
+              </div>
+              <Typography
+                variant="caption"
+                sx={{ fontVariantNumeric: "tabular-nums" }}
+              >
+                {r.value.toFixed(2)} V
+              </Typography>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Other readings */}
+      {other.length > 0 &&
+        other.map((r, i) => (
+          <div
+            key={`other-${i}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingBlock: 2,
+              paddingInline: 2,
+            }}
+          >
+            <Typography variant="caption">{r.label}</Typography>
+            <Chip
+              size="small"
+              label={`${r.value} ${r.unit}`}
+              color={unitChipColor(r.unit)}
+              variant="outlined"
+              sx={{ height: 20, fontSize: "0.65rem" }}
+            />
+          </div>
+        ))}
+    </FrostedCard>
+  );
+};
+
+// ─── main component ──────────────────────────────────────────────────────────
+
+const MemoProcessor = React.memo(Processor);
+const MemoMotherBoardInfo = React.memo(MotherBoardInfo);
+const MemoMemory = React.memo(MemoryUsage);
+const MemoGpuInfo = React.memo(GpuInfo);
+const MemoDriveInfo = React.memo(DriveInfo);
+
+const HardwarePage: React.FC = () => {
+  const theme = useTheme();
+
+  // ── data ──
+  const { data: hostInfo } = linuxio.system.get_host_info.useQuery({
+    refetchInterval: 60000,
+  });
+  const { data: uptime } = linuxio.system.get_uptime.useQuery({
+    refetchInterval: 10000,
+  });
+  const { data: sensorGroups } = linuxio.system.get_sensor_info.useQuery({
+    refetchInterval: 5000,
+  }) as { data: SensorGroup[] | undefined };
+
+  // ── section collapse state ──
+  const [hwSections, setHwSections] = useConfigValue("hardwareSections");
+  const sections = hwSections ?? {
+    overview: true,
+    hardware: true,
+    sensors: true,
+  };
+  const toggleSection = useCallback(
+    (key: "overview" | "hardware" | "sensors") =>
+      setHwSections((prev) => {
+        const cur = prev ?? { overview: true, hardware: true, sensors: true };
+        return { ...cur, [key]: !cur[key] };
+      }),
+    [setHwSections],
+  );
+
+  // ── sensor summary ──
+  const sensorSummary = useMemo(() => {
+    if (!sensorGroups)
+      return { adapters: 0, readings: 0, maxTemp: null as number | null };
+    const readings = sensorGroups.reduce((s, g) => s + g.readings.length, 0);
+    let maxTemp: number | null = null;
+    for (const g of sensorGroups) {
+      for (const r of g.readings) {
+        const u = r.unit.toLowerCase();
+        if (
+          (u === "c" || u === "°c") &&
+          (maxTemp === null || r.value > maxTemp)
+        ) {
+          maxTemp = r.value;
+        }
+      }
+    }
+    return { adapters: sensorGroups.length, readings, maxTemp };
+  }, [sensorGroups]);
+
+  return (
+    <div style={{ padding: theme.spacing(1) }}>
+      {/* ── System Overview ─────────────────────────────────────────────── */}
+      <SectionHeader
+        title="System Overview"
+        expanded={sections.overview}
+        onClick={() => toggleSection("overview")}
+      />
+      <Collapse in={sections.overview}>
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          {(
+            [
+              {
+                label: "Hostname",
+                value: hostInfo?.hostname ?? "—",
+                detail: hostInfo?.os ?? "",
+                icon: "mdi:server",
+              },
+              {
+                label: "Platform",
+                value: hostInfo?.platform ?? "—",
+                detail: hostInfo?.platformVersion ?? "",
+                icon: "mdi:linux",
+              },
+              {
+                label: "Kernel",
+                value: hostInfo?.kernelVersion ?? "—",
+                detail: hostInfo?.kernelArch ?? "",
+                icon: "mdi:cog",
+              },
+              {
+                label: "Uptime",
+                value: uptime != null ? formatUptime(uptime) : "—",
+                detail:
+                  sensorSummary.maxTemp != null
+                    ? `Peak: ${sensorSummary.maxTemp}°C`
+                    : `${sensorSummary.adapters} sensor adapters`,
+                icon: "mdi:clock-outline",
+              },
+            ] as {
+              label: string;
+              value: string;
+              detail: string;
+              icon: string;
+            }[]
+          ).map(({ label, value, detail, icon }) => (
+            <Grid key={label} size={{ xs: 6, md: 3 }}>
+              <FrostedCard
+                style={{
+                  paddingInline: 10,
+                  paddingBlock: 8,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 4,
+                  }}
+                >
+                  <Icon
+                    icon={icon}
+                    width={18}
+                    height={18}
+                    color={theme.palette.primary.main}
+                  />
+                  <Typography
+                    variant="overline"
+                    color="text.secondary"
+                    sx={{ lineHeight: 1.6 }}
+                  >
+                    {label}
+                  </Typography>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    justifyContent: "space-between",
+                    marginTop: 1,
+                  }}
+                >
+                  <Typography
+                    variant="h6"
+                    fontWeight={700}
+                    noWrap
+                    sx={{ lineHeight: 1.2, fontSize: "0.95rem" }}
+                  >
+                    {value}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    noWrap
+                    sx={{ textAlign: "right" }}
+                  >
+                    {detail}
+                  </Typography>
+                </div>
+              </FrostedCard>
+            </Grid>
+          ))}
+        </Grid>
+      </Collapse>
+
+      {/* ── Hardware Cards ──────────────────────────────────────────────── */}
+      <SectionHeader
+        title="Hardware"
+        expanded={sections.hardware}
+        onClick={() => toggleSection("hardware")}
+      />
+      <Collapse in={sections.hardware}>
+        <Grid container spacing={4} sx={{ mb: 2 }}>
+          {[
+            { id: "cpu", component: MemoProcessor },
+            { id: "mb", component: MemoMotherBoardInfo },
+            { id: "memory", component: MemoMemory },
+            { id: "gpu", component: MemoGpuInfo },
+            { id: "drive", component: MemoDriveInfo },
+          ].map(({ id, component: CardComponent }) => (
+            <Grid key={id} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
+              <ErrorBoundary>
+                <CardComponent />
+              </ErrorBoundary>
+            </Grid>
+          ))}
+        </Grid>
+      </Collapse>
+
+      {/* ── Sensor Readings ────────────────────────────────────────────── */}
+      <SectionHeader
+        title="Sensors"
+        expanded={sections.sensors}
+        onClick={() => toggleSection("sensors")}
+      />
+      <Collapse in={sections.sensors}>
+        {!sensorGroups || sensorGroups.length === 0 ? (
+          <FrostedCard style={{ padding: 16, textAlign: "center" }}>
+            <Typography variant="body2" color="text.secondary">
+              No sensor data available. Ensure <code>lm-sensors</code> is
+              installed and configured.
+            </Typography>
+          </FrostedCard>
+        ) : (
+          <>
+            {/* Summary bar */}
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid size={{ xs: 12 }}>
+                <FrostedCard
+                  style={{
+                    paddingInline: 12,
+                    paddingBlock: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Chip
+                    size="small"
+                    label={`${sensorSummary.adapters} Adapter${sensorSummary.adapters !== 1 ? "s" : ""}`}
+                    color="primary"
+                    variant="outlined"
+                  />
+                  <Chip
+                    size="small"
+                    label={`${sensorSummary.readings} Reading${sensorSummary.readings !== 1 ? "s" : ""}`}
+                    color="default"
+                    variant="outlined"
+                  />
+                  {sensorSummary.maxTemp != null && (
+                    <Chip
+                      size="small"
+                      label={`Peak Temp: ${sensorSummary.maxTemp}°C`}
+                      color={
+                        sensorSummary.maxTemp >= 75
+                          ? "error"
+                          : sensorSummary.maxTemp >= 50
+                            ? "warning"
+                            : "success"
+                      }
+                      variant="outlined"
+                    />
+                  )}
+                </FrostedCard>
+              </Grid>
+            </Grid>
+
+            {/* Sensor group cards */}
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              {sensorGroups.map((group, idx) => (
+                <Grid
+                  key={`${group.adapter}-${idx}`}
+                  size={{ xs: 12, sm: 6, lg: 4 }}
+                >
+                  <SensorGroupCard group={group} />
+                </Grid>
+              ))}
+            </Grid>
+          </>
+        )}
+      </Collapse>
     </div>
   );
 };
 
-export default ContainerList;
+export default HardwarePage;
