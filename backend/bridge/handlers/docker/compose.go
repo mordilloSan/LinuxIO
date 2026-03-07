@@ -1279,7 +1279,7 @@ func searchIndexerForYAML(basePath string) ([]indexerSearchResult, error) {
 	seenPaths := make(map[string]struct{})
 	offset := 0
 
-	for page := 0; page < indexerEntriesMaxPages; page++ {
+	for range indexerEntriesMaxPages {
 		results, err := fetchIndexerEntriesPage(normPath, indexerEntriesPageSize, offset)
 		if err != nil {
 			logger.Debugf("indexer search request failed (indexer may be offline): %v", err)

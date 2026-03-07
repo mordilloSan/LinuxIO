@@ -58,7 +58,7 @@ type DockerProxy struct {
 type Docker struct {
 	Folder           AbsolutePath `json:"folder" yaml:"folder"`
 	AutoUpdateStacks []string     `json:"autoUpdateStacks,omitempty" yaml:"autoUpdateStacks,omitempty"`
-	Proxy            DockerProxy  `json:"proxy,omitempty" yaml:"proxy,omitempty"`
+	Proxy            DockerProxy  `json:"proxy" yaml:"proxy,omitempty"`
 }
 
 // Theme represents a validated theme value (LIGHT or DARK)

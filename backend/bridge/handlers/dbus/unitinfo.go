@@ -161,7 +161,7 @@ func enrichSocketUnitInfo(unit godbus.BusObject, info map[string]any) {
 }
 
 func parseSocketListen(value any) []string {
-	pairs, ok := value.([][]interface{})
+	pairs, ok := value.([][]any)
 	if !ok {
 		return nil
 	}
