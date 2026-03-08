@@ -61,8 +61,9 @@ func ListContainers() (any, error) {
 					SystemCPUUsage uint64 `json:"system_cpu_usage"`
 				} `json:"cpu_stats"`
 				MemoryStats struct {
-					Usage uint64 `json:"usage"`
-					Limit uint64 `json:"limit"`
+					Usage uint64            `json:"usage"`
+					Limit uint64            `json:"limit"`
+					Stats map[string]uint64 `json:"stats"`
 				} `json:"memory_stats"`
 				Networks map[string]struct {
 					RxBytes uint64 `json:"rx_bytes"`
@@ -84,7 +85,11 @@ func ListContainers() (any, error) {
 					metrics.CPUPercent = (cpuDelta / systemDelta) * float64(len(stats.CPUStats.CPUUsage.PercpuUsage)) * 100.0
 				}
 
-				metrics.MemUsage = stats.MemoryStats.Usage
+				memUsage := stats.MemoryStats.Usage
+				if inact, ok := stats.MemoryStats.Stats["inactive_file"]; ok && inact < memUsage {
+					memUsage -= inact
+				}
+				metrics.MemUsage = memUsage
 				metrics.MemLimit = stats.MemoryStats.Limit
 
 				// net & block as before...
