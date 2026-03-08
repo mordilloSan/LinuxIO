@@ -42,6 +42,9 @@ export interface BackendSettings {
       overview: boolean;
       hardware: boolean;
       sensors: boolean;
+      systemInfo: boolean;
+      pciDevices: boolean;
+      memoryModules: boolean;
     };
     viewModes?: AppViewModes;
     chunkSizeMB?: number;
@@ -71,6 +74,9 @@ export interface AppConfig {
     overview: boolean;
     hardware: boolean;
     sensors: boolean;
+    systemInfo: boolean;
+    pciDevices: boolean;
+    memoryModules: boolean;
   };
   viewModes?: AppViewModes;
   chunkSizeMB?: number;

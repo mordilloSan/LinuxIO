@@ -1,6 +1,13 @@
 import { Icon } from "@iconify/react";
 import { ExpandMore as ExpandMoreIcon } from "@mui/icons-material";
-import { Chip, Collapse, Grid, IconButton, Typography } from "@mui/material";
+import {
+  Chip,
+  Collapse,
+  Grid,
+  IconButton,
+  TableCell,
+  Typography,
+} from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import React, { useCallback, useMemo } from "react";
 
@@ -8,7 +15,11 @@ import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import MetricBar from "@/components/gauge/MetricBar";
+import UnifiedCollapsibleTable, {
+  UnifiedTableColumn,
+} from "@/components/tables/UnifiedCollapsibleTable";
 import { useConfigValue } from "@/hooks/useConfig";
+import "@/theme/section.css";
 import GpuInfo from "@/pages/main/dashboard/Gpu";
 import MemoryUsage from "@/pages/main/dashboard/Memory";
 import MotherBoardInfo from "@/pages/main/dashboard/MotherBoard";
@@ -288,6 +299,34 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
   );
 };
 
+// ─── constants ──────────────────────────────────────────────────────────────
+
+const defaultHwSections = {
+  overview: true,
+  hardware: true,
+  sensors: true,
+  systemInfo: true,
+  pciDevices: true,
+  memoryModules: true,
+};
+
+const memoryColumns: UnifiedTableColumn[] = [
+  { field: "id", headerName: "ID" },
+  { field: "technology", headerName: "Technology" },
+  { field: "type", headerName: "Type" },
+  { field: "size", headerName: "Size" },
+  { field: "state", headerName: "State" },
+  { field: "rank", headerName: "Rank" },
+  { field: "speed", headerName: "Speed" },
+];
+
+const pciColumns: UnifiedTableColumn[] = [
+  { field: "class", headerName: "Class" },
+  { field: "model", headerName: "Model" },
+  { field: "vendor", headerName: "Vendor" },
+  { field: "slot", headerName: "Slot" },
+];
+
 // ─── main component ──────────────────────────────────────────────────────────
 
 const MemoProcessor = React.memo(Processor);
@@ -308,18 +347,31 @@ const HardwarePage: React.FC = () => {
   const { data: sensorGroups } = linuxio.system.get_sensor_info.useQuery({
     refetchInterval: 5000,
   }) as { data: SensorGroup[] | undefined };
+  const { data: systemInfo } = linuxio.system.get_system_info.useQuery({
+    staleTime: 300000,
+  });
+  const { data: pciDevices } = linuxio.system.get_pci_devices.useQuery({
+    staleTime: 300000,
+  });
+  const { data: memoryModules } = linuxio.system.get_memory_modules.useQuery({
+    staleTime: 300000,
+  });
 
   // ── section collapse state ──
   const [hwSections, setHwSections] = useConfigValue("hardwareSections");
-  const sections = hwSections ?? {
-    overview: true,
-    hardware: true,
-    sensors: true,
-  };
+  const sections = hwSections ?? defaultHwSections;
   const toggleSection = useCallback(
-    (key: "overview" | "hardware" | "sensors") =>
+    (
+      key:
+        | "overview"
+        | "hardware"
+        | "sensors"
+        | "systemInfo"
+        | "pciDevices"
+        | "memoryModules",
+    ) =>
       setHwSections((prev) => {
-        const cur = prev ?? { overview: true, hardware: true, sensors: true };
+        const cur = prev ?? defaultHwSections;
         return { ...cur, [key]: !cur[key] };
       }),
     [setHwSections],
@@ -451,6 +503,87 @@ const HardwarePage: React.FC = () => {
         </Grid>
       </Collapse>
 
+      {/* ── System Information ──────────────────────────────────────────── */}
+      <SectionHeader
+        title="System Information"
+        expanded={sections.systemInfo}
+        onClick={() => toggleSection("systemInfo")}
+      />
+      <Collapse in={sections.systemInfo}>
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          {(
+            [
+              { label: "Type", value: systemInfo?.chassisType },
+              { label: "Name", value: systemInfo?.productName },
+              { label: "Version", value: systemInfo?.productVersion },
+              { label: "Vendor", value: systemInfo?.productVendor },
+              { label: "BIOS", value: systemInfo?.biosVendor },
+              { label: "BIOS Version", value: systemInfo?.biosVersion },
+              { label: "BIOS Date", value: systemInfo?.biosDate },
+              { label: "CPU", value: systemInfo?.cpuSummary },
+            ] as { label: string; value: string | undefined }[]
+          ).map(({ label, value }) => (
+            <Grid key={label} size={{ xs: 6, md: 3 }}>
+              <FrostedCard style={{ paddingInline: 10, paddingBlock: 8 }}>
+                <Typography
+                  variant="overline"
+                  color="text.secondary"
+                  sx={{ lineHeight: 1.6 }}
+                >
+                  {label}
+                </Typography>
+                <Typography
+                  variant="body2"
+                  fontWeight={600}
+                  noWrap
+                  sx={{ lineHeight: 1.3 }}
+                >
+                  {value || "—"}
+                </Typography>
+              </FrostedCard>
+            </Grid>
+          ))}
+        </Grid>
+      </Collapse>
+
+      {/* ── Memory Modules ───────────────────────────────────────────────── */}
+      <SectionHeader
+        title="Memory"
+        expanded={sections.memoryModules}
+        onClick={() => toggleSection("memoryModules")}
+      />
+      <Collapse in={sections.memoryModules}>
+        <FrostedCard
+          style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}
+        >
+          <UnifiedCollapsibleTable
+            data={memoryModules ?? []}
+            columns={memoryColumns}
+            getRowKey={(mod, idx) => `${mod.id}-${idx}`}
+            renderMainRow={(mod) => (
+              <>
+                <TableCell>{mod.id || "—"}</TableCell>
+                <TableCell>{mod.technology}</TableCell>
+                <TableCell>{mod.type}</TableCell>
+                <TableCell>{mod.size}</TableCell>
+                <TableCell>
+                  <Chip
+                    size="small"
+                    label={mod.state}
+                    color={mod.state === "Present" ? "success" : "default"}
+                    variant="outlined"
+                    sx={{ height: 22, fontSize: "0.75rem" }}
+                  />
+                </TableCell>
+                <TableCell>{mod.rank}</TableCell>
+                <TableCell>{mod.speed}</TableCell>
+              </>
+            )}
+            emptyMessage="No memory module data available. Ensure dmidecode is installed."
+          />
+        </FrostedCard>
+      </Collapse>
+
       {/* ── Hardware Cards ──────────────────────────────────────────────── */}
       <SectionHeader
         title="Hardware"
@@ -546,6 +679,35 @@ const HardwarePage: React.FC = () => {
             </Grid>
           </>
         )}
+      </Collapse>
+
+      {/* ── PCI Devices ──────────────────────────────────────────────────── */}
+      <SectionHeader
+        title="PCI Devices"
+        expanded={sections.pciDevices}
+        onClick={() => toggleSection("pciDevices")}
+      />
+      <Collapse in={sections.pciDevices}>
+        <FrostedCard
+          style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}
+        >
+          <UnifiedCollapsibleTable
+            data={pciDevices ?? []}
+            columns={pciColumns}
+            getRowKey={(dev, idx) => `${dev.slot}-${idx}`}
+            renderMainRow={(dev) => (
+              <>
+                <TableCell>{dev.class || "—"}</TableCell>
+                <TableCell>{dev.model || "—"}</TableCell>
+                <TableCell>{dev.vendor || "—"}</TableCell>
+                <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                  {dev.slot || "—"}
+                </TableCell>
+              </>
+            )}
+            emptyMessage="No PCI devices found"
+          />
+        </FrostedCard>
       </Collapse>
     </div>
   );

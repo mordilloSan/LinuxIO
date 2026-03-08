@@ -101,6 +101,34 @@ export interface HostInfo {
   kernelArch: string;
 }
 
+export interface SystemInfo {
+  chassisType: string;
+  productName: string;
+  productVersion: string;
+  productVendor: string;
+  biosVendor: string;
+  biosVersion: string;
+  biosDate: string;
+  cpuSummary: string;
+}
+
+export interface PCIDevice {
+  class: string;
+  model: string;
+  vendor: string;
+  slot: string;
+}
+
+export interface MemoryModule {
+  id: string;
+  technology: string;
+  type: string;
+  size: string;
+  state: string;
+  rank: string;
+  speed: string;
+}
+
 export interface CapabilitiesResponse {
   docker_available: boolean;
   indexer_available: boolean;
@@ -658,6 +686,9 @@ export interface LinuxIOSchema {
     get_gpu_info: { args: []; result: GpuDevice[] };
     get_updates_fast: { args: []; result: Update[] };
     get_network_info: { args: []; result: InterfaceStats[] };
+    get_system_info: { args: []; result: SystemInfo };
+    get_pci_devices: { args: []; result: PCIDevice[] };
+    get_memory_modules: { args: []; result: MemoryModule[] };
   };
 
   docker: {

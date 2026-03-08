@@ -23,6 +23,7 @@ import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import "@/theme/section.css";
 import "./docker-dashboard.css";
 
 import { linuxio } from "@/api";
