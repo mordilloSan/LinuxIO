@@ -79,6 +79,8 @@ GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(s
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
+MODERNIZE_MODULE      := golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize
+MODERNIZE_VERSION     ?= latest
 SKIP_ENSURE_GO ?= 0
 GO_BUILD_PREREQ := ensure-go
 ifeq ($(SKIP_ENSURE_GO),1)
@@ -293,6 +295,8 @@ else
 endif
 	@echo "   Ensuring go.mod is tidy..."
 	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
+	@echo "   Running modernize..."
+	@( cd "$(BACKEND_DIR)" && GOFLAGS="-buildvcs=false" GOTOOLCHAIN=local "$(GO_BIN)" run "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)" -fix ./... )
 	@echo "   Running golangci-lint..."
 	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"

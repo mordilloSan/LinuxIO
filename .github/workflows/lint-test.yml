@@ -29,6 +29,15 @@ jobs:
       - name: Create Frontend Files
         run: |
           make dev-prep
+      - name: Run modernize
+        working-directory: backend
+        run: |
+          go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest -fix ./...
+          if [ -n "$(git status --porcelain -- .)" ]; then
+            echo " Go modernize produced changes. Run 'make golint' locally."
+            git diff -- .
+            exit 1
+          fi
       - uses: golangci/golangci-lint-action@v7
         with:
           version: "v2.1.6"
