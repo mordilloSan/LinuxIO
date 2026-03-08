@@ -530,77 +530,92 @@ func addFile(root *fsroot.FSRoot, path string, tarWriter *tar.Writer, zipWriter 
 	baseName := filepath.Base(realPath)
 
 	if info.IsDir() {
-		rootWalkRel := relPath(resolvedPath)
-		return root.WalkDir(resolvedPath, func(walkRel string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-
-			if opts.IsCancelled() {
-				return ipc.ErrAborted
-			}
-
-			filePath := cleanAbsPath("/" + strings.TrimPrefix(walkRel, "/"))
-			if skipPath != "" && filepath.Clean(filePath) == filepath.Clean(skipPath) {
-				if entry.IsDir() {
-					return fs.SkipDir
-				}
-				return nil
-			}
-
-			// Skip adding the root directory itself.
-			if walkRel == rootWalkRel {
-				return nil
-			}
-
-			// Calculate the relative path
-			relArchivePath, err := filepath.Rel(resolvedPath, filePath)
-			if err != nil {
-				return err
-			}
-
-			// Normalize for tar: convert \ to /
-			relArchivePath = filepath.ToSlash(relArchivePath)
-
-			// Skip adding `.` (current directory)
-			if relArchivePath == "." {
-				return nil
-			}
-
-			// Prepend base folder name unless flatten is true
-			if !flatten {
-				relArchivePath = filepath.Join(baseName, relArchivePath)
-				relArchivePath = filepath.ToSlash(relArchivePath) // Ensure normalized separators
-			}
-
-			if entry.IsDir() {
-				entryInfo, err := entry.Info()
-				if err != nil {
-					return err
-				}
-
-				if tarWriter != nil {
-					header := &tar.Header{
-						Name:     relArchivePath + "/",
-						Mode:     int64(PermDir),
-						Typeflag: tar.TypeDir,
-						ModTime:  entryInfo.ModTime(),
-					}
-					return tarWriter.WriteHeader(header)
-				}
-				if zipWriter != nil {
-					_, err := zipWriter.Create(relArchivePath + "/")
-					return err
-				}
-				return nil
-			}
-
-			return addSingleFile(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
-		})
+		return addDirectory(root, resolvedPath, baseName, tarWriter, zipWriter, flatten, opts, skipPath)
 	}
 
 	// For a single file, use the base name as the archive path
 	return addSingleFile(root, realPath, baseName, zipWriter, tarWriter, opts)
+}
+
+func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *ipc.OperationCallbacks, skipPath string) error {
+	rootWalkRel := relPath(resolvedPath)
+	return root.WalkDir(resolvedPath, func(walkRel string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if opts.IsCancelled() {
+			return ipc.ErrAborted
+		}
+
+		filePath := cleanAbsPath("/" + strings.TrimPrefix(walkRel, "/"))
+		if shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath, entry) {
+			if entry.IsDir() && skipPath != "" && filepath.Clean(filePath) == filepath.Clean(skipPath) {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		relArchivePath, err := relativeArchivePath(resolvedPath, filePath, baseName, flatten)
+		if err != nil {
+			return err
+		}
+		if relArchivePath == "" {
+			return nil
+		}
+
+		if entry.IsDir() {
+			return addArchiveDirectoryEntry(entry, relArchivePath, tarWriter, zipWriter)
+		}
+		return addSingleFile(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
+	})
+}
+
+func shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath string, entry fs.DirEntry) bool {
+	if walkRel == rootWalkRel {
+		return true
+	}
+	if skipPath == "" || filepath.Clean(filePath) != filepath.Clean(skipPath) {
+		return false
+	}
+	return true
+}
+
+func relativeArchivePath(resolvedPath, filePath, baseName string, flatten bool) (string, error) {
+	relArchivePath, err := filepath.Rel(resolvedPath, filePath)
+	if err != nil {
+		return "", err
+	}
+
+	relArchivePath = filepath.ToSlash(relArchivePath)
+	if relArchivePath == "." {
+		return "", nil
+	}
+	if flatten {
+		return relArchivePath, nil
+	}
+	return filepath.ToSlash(filepath.Join(baseName, relArchivePath)), nil
+}
+
+func addArchiveDirectoryEntry(entry fs.DirEntry, relArchivePath string, tarWriter *tar.Writer, zipWriter *zip.Writer) error {
+	entryInfo, err := entry.Info()
+	if err != nil {
+		return err
+	}
+
+	if tarWriter != nil {
+		header := &tar.Header{
+			Name:     relArchivePath + "/",
+			Mode:     int64(PermDir),
+			Typeflag: tar.TypeDir,
+			ModTime:  entryInfo.ModTime(),
+		}
+		return tarWriter.WriteHeader(header)
+	}
+	if zipWriter != nil {
+		_, err := zipWriter.Create(relArchivePath + "/")
+		return err
+	}
+	return nil
 }
 
 // addSingleFile adds a single file to an archive

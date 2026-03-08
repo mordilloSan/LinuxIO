@@ -3,6 +3,7 @@ package docker
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -265,86 +266,11 @@ func GetIcon(identifier string) ([]byte, error) {
 	iconType, value := parseIconIdentifier(identifier)
 
 	// Check cache first
-	if cachePath, found := getCachedIcon(iconType, value); found {
-		data, err := os.ReadFile(cachePath)
-		if err == nil {
-			logger.DebugKV("serving cached icon", "type", iconType, "identifier", identifier)
-			return data, nil
-		}
-		logger.Warnf("failed to read cached icon: %v", err)
+	if data, found := readCachedIcon(iconType, value, identifier); found {
+		return data, nil
 	}
 
-	// Fetch icon based on type
-	var data []byte
-	var err error
-
-	switch iconType {
-	case IconTypeDashboardIcon:
-		// Explicit dashboard icon request
-		data, err = fetchDashboardIcon(value)
-		if err != nil {
-			// Fall back to Docker icon
-			logger.DebugKV("dashboard icon not found, falling back to docker icon", "identifier", value)
-			data, err = fetchDashboardIcon("docker")
-			if err == nil {
-				value = "docker"
-			}
-		}
-
-	case IconTypeSimpleIcon:
-		// Explicit simple icon request
-		data, err = fetchSimpleIcon(value)
-		if err != nil {
-			// Fall back to Docker icon from dashboard-icons
-			logger.DebugKV("simple icon not found, falling back to docker icon", "identifier", value)
-			data, err = fetchDashboardIcon("docker")
-			if err == nil {
-				iconType = IconTypeDashboardIcon
-				value = "docker"
-			}
-		}
-
-	case IconTypeURL:
-		data, err = fetchURLIcon(value)
-		if err != nil {
-			// Fall back to Docker icon
-			logger.DebugKV("url icon fetch failed, falling back to docker icon", "url", value, "error", err)
-			data, err = fetchDashboardIcon("docker")
-			if err == nil {
-				iconType = IconTypeDashboardIcon
-				value = "docker"
-			}
-		}
-
-	case IconTypeFile:
-		// Read from user icons directory
-		filePath := filepath.Join(userIconsDir, value)
-		data, err = os.ReadFile(filePath)
-
-	case IconTypeDerived:
-		// Try Dashboard Icons first (best for container names)
-		data, err = fetchDashboardIcon(value)
-		if err != nil {
-			logger.DebugKV("dashboard icon not found, trying simple icons", "identifier", value)
-			// Try Simple Icons as fallback
-			data, err = fetchSimpleIcon(value)
-			if err != nil {
-				// Final fallback: Docker icon
-				logger.DebugKV("simple icon not found, falling back to docker icon", "identifier", value)
-				data, err = fetchDashboardIcon("docker")
-				if err == nil {
-					value = "docker"
-				}
-			} else {
-				// Found in Simple Icons - cache as simple icon
-				iconType = IconTypeSimpleIcon
-			}
-		}
-
-	default:
-		return nil, fmt.Errorf("unknown icon type: %s", iconType)
-	}
-
+	data, iconType, value, err := fetchIconData(iconType, value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch icon: %w", err)
 	}
@@ -355,6 +281,94 @@ func GetIcon(identifier string) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func readCachedIcon(iconType IconType, value, identifier string) ([]byte, bool) {
+	cachePath, found := getCachedIcon(iconType, value)
+	if !found {
+		return nil, false
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		logger.Warnf("failed to read cached icon: %v", err)
+		return nil, false
+	}
+
+	logger.DebugKV("serving cached icon", "type", iconType, "identifier", identifier)
+	return data, true
+}
+
+func fetchIconData(iconType IconType, value string) ([]byte, IconType, string, error) {
+	switch iconType {
+	case IconTypeDashboardIcon:
+		return fetchDashboardIconWithFallback(value)
+	case IconTypeSimpleIcon:
+		return fetchSimpleIconWithFallback(value)
+	case IconTypeURL:
+		return fetchURLIconWithFallback(value)
+	case IconTypeFile:
+		data, err := os.ReadFile(filepath.Join(userIconsDir, value))
+		return data, iconType, value, err
+	case IconTypeDerived:
+		return fetchDerivedIcon(value)
+	default:
+		return nil, iconType, value, fmt.Errorf("unknown icon type: %s", iconType)
+	}
+}
+
+func fetchDashboardIconWithFallback(value string) ([]byte, IconType, string, error) {
+	data, err := fetchDashboardIcon(value)
+	if err == nil {
+		return data, IconTypeDashboardIcon, value, nil
+	}
+
+	logger.DebugKV("dashboard icon not found, falling back to docker icon", "identifier", value)
+	return fetchDockerFallback(err)
+}
+
+func fetchSimpleIconWithFallback(value string) ([]byte, IconType, string, error) {
+	data, err := fetchSimpleIcon(value)
+	if err == nil {
+		return data, IconTypeSimpleIcon, value, nil
+	}
+
+	logger.DebugKV("simple icon not found, falling back to docker icon", "identifier", value)
+	return fetchDockerFallback(err)
+}
+
+func fetchURLIconWithFallback(value string) ([]byte, IconType, string, error) {
+	data, err := fetchURLIcon(value)
+	if err == nil {
+		return data, IconTypeURL, value, nil
+	}
+
+	logger.DebugKV("url icon fetch failed, falling back to docker icon", "url", value, "error", err)
+	return fetchDockerFallback(err)
+}
+
+func fetchDerivedIcon(value string) ([]byte, IconType, string, error) {
+	data, err := fetchDashboardIcon(value)
+	if err == nil {
+		return data, IconTypeDerived, value, nil
+	}
+
+	logger.DebugKV("dashboard icon not found, trying simple icons", "identifier", value)
+	data, err = fetchSimpleIcon(value)
+	if err == nil {
+		return data, IconTypeSimpleIcon, value, nil
+	}
+
+	logger.DebugKV("simple icon not found, falling back to docker icon", "identifier", value)
+	return fetchDockerFallback(err)
+}
+
+func fetchDockerFallback(sourceErr error) ([]byte, IconType, string, error) {
+	data, err := fetchDashboardIcon("docker")
+	if err != nil {
+		return nil, IconTypeDashboardIcon, "docker", errors.Join(sourceErr, err)
+	}
+	return data, IconTypeDashboardIcon, "docker", nil
 }
 
 // GetIconURI retrieves an icon and returns it as a base64 data URI

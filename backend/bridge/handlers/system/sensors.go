@@ -75,51 +75,68 @@ func FetchSensorsInfo() []SensorGroup {
 func getTemperatureMap() map[string]float64 {
 	groups := FetchSensorsInfo()
 	temps := make(map[string]float64)
-
-	coreIndex := 0
-	mbIndex := 0
-	driveIndex := 0
+	indices := temperatureIndexes{}
 
 	for _, group := range groups {
 		adapter := strings.ToLower(group.Adapter)
 		for _, r := range group.Readings {
-			unit := strings.ToLower(r.Unit)
-			label := strings.ToLower(r.Label)
-
-			if unit != "c" && unit != "°c" {
+			key, ok := classifyTemperatureReading(adapter, r, &indices)
+			if !ok {
 				continue
 			}
-
-			switch {
-			case strings.HasPrefix(label, "core "):
-				key := fmt.Sprintf("core%d", coreIndex)
-				temps[key] = r.Value
-				coreIndex++
-
-			case strings.Contains(label, "package id") || strings.Contains(label, "tctl"):
-				temps["package"] = r.Value
-
-			case strings.Contains(adapter, "nvme") ||
-				strings.Contains(adapter, "hdd") ||
-				strings.Contains(adapter, "ssd") ||
-				strings.Contains(adapter, "drive") ||
-				strings.Contains(label, "composite"):
-				key := fmt.Sprintf("drive%d", driveIndex)
-				temps[key] = r.Value
-				driveIndex++
-
-			case strings.Contains(adapter, "acpitz") ||
-				strings.Contains(label, "mb") ||
-				strings.Contains(label, "board") ||
-				strings.Contains(label, "system") ||
-				strings.Contains(label, "systin") ||
-				strings.Contains(label, "temp1"):
-				key := fmt.Sprintf("mb%d", mbIndex)
-				temps[key] = r.Value
-				mbIndex++
-			}
+			temps[key] = r.Value
 		}
 	}
 
 	return temps
+}
+
+type temperatureIndexes struct {
+	core  int
+	board int
+	drive int
+}
+
+func classifyTemperatureReading(adapter string, reading SensorReading, indices *temperatureIndexes) (string, bool) {
+	unit := strings.ToLower(reading.Unit)
+	if unit != "c" && unit != "°c" {
+		return "", false
+	}
+
+	label := strings.ToLower(reading.Label)
+	switch {
+	case strings.HasPrefix(label, "core "):
+		key := fmt.Sprintf("core%d", indices.core)
+		indices.core++
+		return key, true
+	case strings.Contains(label, "package id") || strings.Contains(label, "tctl"):
+		return "package", true
+	case isDriveTemperature(adapter, label):
+		key := fmt.Sprintf("drive%d", indices.drive)
+		indices.drive++
+		return key, true
+	case isBoardTemperature(adapter, label):
+		key := fmt.Sprintf("mb%d", indices.board)
+		indices.board++
+		return key, true
+	default:
+		return "", false
+	}
+}
+
+func isDriveTemperature(adapter, label string) bool {
+	return strings.Contains(adapter, "nvme") ||
+		strings.Contains(adapter, "hdd") ||
+		strings.Contains(adapter, "ssd") ||
+		strings.Contains(adapter, "drive") ||
+		strings.Contains(label, "composite")
+}
+
+func isBoardTemperature(adapter, label string) bool {
+	return strings.Contains(adapter, "acpitz") ||
+		strings.Contains(label, "mb") ||
+		strings.Contains(label, "board") ||
+		strings.Contains(label, "system") ||
+		strings.Contains(label, "systin") ||
+		strings.Contains(label, "temp1")
 }

@@ -39,6 +39,17 @@ type (
 	AutoUpdateState   = updates.AutoUpdateState
 )
 
+const (
+	packageKitBusName        = "org.freedesktop.PackageKit"
+	packageKitObjPath        = "/org/freedesktop/PackageKit"
+	packageKitTransactionIfc = "org.freedesktop.PackageKit.Transaction"
+)
+
+type packageUpdateMeta struct {
+	Summary  string
+	InfoEnum uint32
+}
+
 func getAutoUpdates() (AutoUpdateState, error) {
 	var out AutoUpdateState
 	err := RetryOnceIfClosed(nil, func() error {
@@ -173,6 +184,241 @@ func toStringSlice(iface any) []string {
 	return strs
 }
 
+func sanitizeInfoEnum(pkgID string, infoEnum uint32) uint32 {
+	if infoEnum <= 30 {
+		return infoEnum
+	}
+
+	logger.Debugf(" Package %s has invalid InfoEnum: %d (sanitizing to 0=Unknown)", pkgID, infoEnum)
+	return 0
+}
+
+func mergeUpdateCVEs(changelogRaw string, cves []string) []string {
+	cveSet := make(map[string]struct{}, len(cves))
+	for _, cve := range cves {
+		cveSet[cve] = struct{}{}
+	}
+	for _, cve := range extractCVEs(changelogRaw) {
+		cveSet[cve] = struct{}{}
+	}
+
+	combinedCVEs := make([]string, 0, len(cveSet))
+	for cve := range cveSet {
+		combinedCVEs = append(combinedCVEs, cve)
+	}
+	return combinedCVEs
+}
+
+func newPackageKitTransaction(conn *godbus.Conn) (godbus.BusObject, godbus.ObjectPath, error) {
+	obj := conn.Object(packageKitBusName, godbus.ObjectPath(packageKitObjPath))
+
+	var transPath godbus.ObjectPath
+	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+		return nil, "", fmt.Errorf("CreateTransaction failed: %w", err)
+	}
+
+	return conn.Object(packageKitBusName, transPath), transPath, nil
+}
+
+func watchTransactionSignals(conn *godbus.Conn, transPath godbus.ObjectPath, addMatchMessage string) (chan *godbus.Signal, func()) {
+	sigCh := make(chan *godbus.Signal, 20)
+	conn.Signal(sigCh)
+
+	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Warnf(addMatchMessage, err)
+	}
+
+	cleanup := func() {
+		conn.RemoveSignal(sigCh)
+		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+			logger.Debugf("failed to remove D-Bus match signal: %v", err)
+		}
+	}
+
+	return sigCh, cleanup
+}
+
+func callPackageKitTransaction(trans godbus.BusObject, method string, args ...any) error {
+	call := trans.Call(packageKitTransactionIfc+"."+method, 0, args...)
+	if call.Err != nil {
+		return fmt.Errorf("%s failed: %w", method, call.Err)
+	}
+	return nil
+}
+
+func isTransactionFinished(sig *godbus.Signal) bool {
+	return sig == nil || sig.Name == packageKitTransactionIfc+".Finished"
+}
+
+func readPackageSignal(sig *godbus.Signal) (string, packageUpdateMeta, bool) {
+	if sig.Name != packageKitTransactionIfc+".Package" || len(sig.Body) <= 2 {
+		return "", packageUpdateMeta{}, false
+	}
+
+	infoEnum, _ := sig.Body[0].(uint32)
+	pkgID, _ := sig.Body[1].(string)
+	summary, _ := sig.Body[2].(string)
+
+	return pkgID, packageUpdateMeta{
+		Summary:  summary,
+		InfoEnum: sanitizeInfoEnum(pkgID, infoEnum),
+	}, true
+}
+
+func collectUpdatePackages(ctx context.Context, sigCh <-chan *godbus.Signal) ([]string, map[string]packageUpdateMeta) {
+	var pkgIDs []string
+	metaByPkg := make(map[string]packageUpdateMeta)
+
+	for {
+		select {
+		case sig := <-sigCh:
+			if isTransactionFinished(sig) {
+				return pkgIDs, metaByPkg
+			}
+
+			pkgID, meta, ok := readPackageSignal(sig)
+			if !ok {
+				continue
+			}
+
+			pkgIDs = append(pkgIDs, pkgID)
+			metaByPkg[pkgID] = meta
+		case <-ctx.Done():
+			return pkgIDs, metaByPkg
+		}
+	}
+}
+
+func buildBasicUpdates(pkgIDs []string, metaByPkg map[string]packageUpdateMeta) []UpdateDetail {
+	updates := make([]UpdateDetail, 0, len(pkgIDs))
+	for _, pkgID := range pkgIDs {
+		_, version := extractNameVersion(pkgID)
+		meta := metaByPkg[pkgID]
+		updates = append(updates, UpdateDetail{
+			PackageID: pkgID,
+			Summary:   meta.Summary,
+			Version:   version,
+			InfoEnum:  meta.InfoEnum,
+		})
+	}
+	return updates
+}
+
+func buildUpdateDetail(body []any, summary string, infoEnum uint32) (UpdateDetail, error) {
+	pkgID, err := utils.AsString(body[0])
+	if err != nil {
+		return UpdateDetail{}, fmt.Errorf("invalid pkgID: %w", err)
+	}
+
+	version, err := utils.AsString(body[11])
+	if err != nil {
+		return UpdateDetail{}, fmt.Errorf("invalid version for %q: %w", pkgID, err)
+	}
+	if version == "" {
+		_, version = extractNameVersion(pkgID)
+	}
+
+	issued, err := utils.AsString(body[10])
+	if err != nil {
+		return UpdateDetail{}, fmt.Errorf("invalid issued date for %q: %w", pkgID, err)
+	}
+
+	changelogRaw, err := utils.AsString(body[8])
+	if err != nil {
+		return UpdateDetail{}, fmt.Errorf("invalid changelog for %q: %w", pkgID, err)
+	}
+
+	restart, err := utils.AsUint32(body[6])
+	if err != nil {
+		return UpdateDetail{}, fmt.Errorf("invalid restart flag for %q: %w", pkgID, err)
+	}
+
+	state, err := utils.AsUint32(body[9])
+	if err != nil {
+		return UpdateDetail{}, fmt.Errorf("invalid state for %q: %w", pkgID, err)
+	}
+
+	if issued == "" {
+		issued = extractIssued(changelogRaw)
+	}
+
+	return UpdateDetail{
+		PackageID: pkgID,
+		Summary:   summary,
+		Version:   version,
+		Issued:    issued,
+		Changelog: extractLatestChangelog(changelogRaw),
+		CVEs:      mergeUpdateCVEs(changelogRaw, toStringSlice(body[5])),
+		Restart:   restart,
+		State:     state,
+		InfoEnum:  infoEnum,
+	}, nil
+}
+
+func collectSingleUpdateDetail(ctx context.Context, sigCh <-chan *godbus.Signal, packageID string) (*UpdateDetail, error) {
+	var detail *UpdateDetail
+
+	for {
+		select {
+		case sig := <-sigCh:
+			if isTransactionFinished(sig) {
+				return finalizeSingleUpdateDetail(detail, packageID)
+			}
+			if sig.Name != packageKitTransactionIfc+".UpdateDetail" {
+				continue
+			}
+
+			current, err := buildUpdateDetail(sig.Body, "", 0)
+			if err != nil {
+				return nil, err
+			}
+			if current.PackageID == packageID {
+				detail = &current
+			}
+		case <-ctx.Done():
+			return finalizeSingleUpdateDetail(detail, packageID)
+		}
+	}
+}
+
+func finalizeSingleUpdateDetail(detail *UpdateDetail, packageID string) (*UpdateDetail, error) {
+	if detail == nil {
+		return nil, fmt.Errorf("no details found for package %s", packageID)
+	}
+	return detail, nil
+}
+
+func collectUpdateDetails(ctx context.Context, sigCh <-chan *godbus.Signal, metaByPkg map[string]packageUpdateMeta) ([]UpdateDetail, error) {
+	var details []UpdateDetail
+
+	for {
+		select {
+		case sig := <-sigCh:
+			if isTransactionFinished(sig) {
+				return details, nil
+			}
+			if sig.Name != packageKitTransactionIfc+".UpdateDetail" {
+				continue
+			}
+
+			pkgID, err := utils.AsString(sig.Body[0])
+			if err != nil {
+				return nil, fmt.Errorf("invalid pkgID: %w", err)
+			}
+
+			meta := metaByPkg[pkgID]
+			detail, err := buildUpdateDetail(sig.Body, meta.Summary, meta.InfoEnum)
+			if err != nil {
+				return nil, err
+			}
+
+			details = append(details, detail)
+		case <-ctx.Done():
+			return details, nil
+		}
+	}
+}
+
 // --- D-Bus Public Wrappers with Retry ---
 
 // GetUpdatesBasic returns package updates with basic info only (fast).
@@ -248,79 +494,22 @@ func getUpdatesBasic() ([]UpdateDetail, error) {
 		}
 	}()
 
-	const (
-		pkBusName      = "org.freedesktop.PackageKit"
-		pkObjPath      = "/org/freedesktop/PackageKit"
-		transactionIfc = "org.freedesktop.PackageKit.Transaction"
-	)
-
-	obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
-	var transPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
-		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
+	trans, transPath, err := newPackageKitTransaction(conn)
+	if err != nil {
+		return nil, err
 	}
-	trans := conn.Object(pkBusName, transPath)
+	sigCh, cleanup := watchTransactionSignals(conn, transPath, "Failed to add D-Bus match signal: %v")
+	defer cleanup()
 
-	sigCh := make(chan *godbus.Signal, 20)
-	conn.Signal(sigCh)
-	defer conn.RemoveSignal(sigCh)
-	defer func() {
-		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-			logger.Debugf("failed to remove D-Bus match signal: %v", err)
-		}
-	}()
-	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Errorf("Failed to add D-Bus match signal: %v", err)
+	if err := callPackageKitTransaction(trans, "GetUpdates", uint64(0)); err != nil {
+		return nil, err
 	}
 
-	getUpdatesCall := trans.Call(transactionIfc+".GetUpdates", 0, uint64(0))
-	if getUpdatesCall.Err != nil {
-		return nil, fmt.Errorf("GetUpdates failed: %w", getUpdatesCall.Err)
-	}
-
-	var updates []UpdateDetail
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-collectPackages:
-	for {
-		select {
-		case sig := <-sigCh:
-			if sig == nil {
-				break collectPackages
-			}
-			if sig.Name == transactionIfc+".Package" {
-				if len(sig.Body) > 2 {
-					// Body[0] is the PkInfoEnum (uint32)
-					infoEnum, _ := sig.Body[0].(uint32)
-					pkgID, _ := sig.Body[1].(string)
-					summary, _ := sig.Body[2].(string)
-					_, version := extractNameVersion(pkgID)
-
-					// Sanitize invalid InfoEnum values (e.g., Docker repos have 327685 instead of valid 0-30 range)
-					// PackageKit's valid severity range is 0-30. Values outside this are repository metadata bugs.
-					if infoEnum > 30 {
-						logger.Debugf(" Package %s has invalid InfoEnum: %d (sanitizing to 0=Unknown)", pkgID, infoEnum)
-						infoEnum = 0 // PK_INFO_ENUM_UNKNOWN
-					}
-
-					updates = append(updates, UpdateDetail{
-						PackageID: pkgID,
-						Summary:   summary,
-						Version:   version,
-						InfoEnum:  infoEnum,
-						// Other fields left empty - will be populated by GetUpdates (full) if needed
-					})
-				}
-			} else if sig.Name == transactionIfc+".Finished" {
-				break collectPackages
-			}
-		case <-ctx.Done():
-			break collectPackages
-		}
-	}
-
-	return updates, nil
+	pkgIDs, metaByPkg := collectUpdatePackages(ctx, sigCh)
+	return buildBasicUpdates(pkgIDs, metaByPkg), nil
 }
 
 // getSingleUpdateDetail fetches detailed info for a single package.
@@ -338,105 +527,21 @@ func getSingleUpdateDetail(packageID string) (*UpdateDetail, error) {
 		}
 	}()
 
-	const (
-		pkBusName      = "org.freedesktop.PackageKit"
-		pkObjPath      = "/org/freedesktop/PackageKit"
-		transactionIfc = "org.freedesktop.PackageKit.Transaction"
-	)
-
-	obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
-	var transPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
-		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
+	trans, transPath, err := newPackageKitTransaction(conn)
+	if err != nil {
+		return nil, err
 	}
-	trans := conn.Object(pkBusName, transPath)
+	sigCh, cleanup := watchTransactionSignals(conn, transPath, "failed to add D-Bus match signal: %v")
+	defer cleanup()
 
-	sigCh := make(chan *godbus.Signal, 20)
-	conn.Signal(sigCh)
-	defer conn.RemoveSignal(sigCh)
-	defer func() {
-		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-			logger.Debugf("failed to remove D-Bus match signal: %v", err)
-		}
-	}()
-	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Warnf("failed to add D-Bus match signal: %v", err)
-	}
-
-	// Call GetUpdateDetail for single package
-	detailCall := trans.Call(transactionIfc+".GetUpdateDetail", 0, []string{packageID})
-	if detailCall.Err != nil {
-		return nil, fmt.Errorf("GetUpdateDetail failed: %w", detailCall.Err)
+	if err := callPackageKitTransaction(trans, "GetUpdateDetail", []string{packageID}); err != nil {
+		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var detail *UpdateDetail
-
-collectDetail:
-	for {
-		select {
-		case sig := <-sigCh:
-			if sig == nil {
-				break collectDetail
-			}
-			if sig.Name == transactionIfc+".UpdateDetail" {
-				pkgID, _ := sig.Body[0].(string)
-				if pkgID != packageID {
-					continue
-				}
-
-				version, _ := sig.Body[11].(string)
-				if version == "" {
-					_, version = extractNameVersion(pkgID)
-				}
-
-				issued, _ := sig.Body[10].(string)
-				changelogRaw, _ := sig.Body[8].(string)
-				changelog := extractLatestChangelog(changelogRaw)
-				cves := toStringSlice(sig.Body[5])
-				restart, _ := sig.Body[6].(uint32)
-				state, _ := sig.Body[9].(uint32)
-
-				// Merge CVEs from changelog
-				cveSet := make(map[string]struct{})
-				for _, cve := range cves {
-					cveSet[cve] = struct{}{}
-				}
-				for _, cve := range extractCVEs(changelogRaw) {
-					cveSet[cve] = struct{}{}
-				}
-				combinedCVEs := make([]string, 0, len(cveSet))
-				for cve := range cveSet {
-					combinedCVEs = append(combinedCVEs, cve)
-				}
-
-				if issued == "" {
-					issued = extractIssued(changelogRaw)
-				}
-
-				detail = &UpdateDetail{
-					PackageID: pkgID,
-					Version:   version,
-					Issued:    issued,
-					Changelog: changelog,
-					CVEs:      combinedCVEs,
-					Restart:   restart,
-					State:     state,
-				}
-			} else if sig.Name == transactionIfc+".Finished" {
-				break collectDetail
-			}
-		case <-ctx.Done():
-			break collectDetail
-		}
-	}
-
-	if detail == nil {
-		return nil, fmt.Errorf("no details found for package %s", packageID)
-	}
-	return detail, nil
+	return collectSingleUpdateDetail(ctx, sigCh, packageID)
 }
 
 func getUpdatesWithDetails() ([]UpdateDetail, error) {
@@ -452,207 +557,43 @@ func getUpdatesWithDetails() ([]UpdateDetail, error) {
 		}
 	}()
 
-	const (
-		pkBusName      = "org.freedesktop.PackageKit"
-		pkObjPath      = "/org/freedesktop/PackageKit"
-		transactionIfc = "org.freedesktop.PackageKit.Transaction"
-	)
-
 	// 1. First transaction: GetUpdates
-	obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
-	var updatesTransPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&updatesTransPath); err != nil {
-		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
+	updatesTrans, updatesTransPath, err := newPackageKitTransaction(conn)
+	if err != nil {
+		return nil, err
 	}
-	updatesTrans := conn.Object(pkBusName, updatesTransPath)
+	updatesCh, cleanupUpdates := watchTransactionSignals(conn, updatesTransPath, "Failed to add D-Bus match signal: %v")
+	defer cleanupUpdates()
 
-	updatesCh := make(chan *godbus.Signal, 20)
-	conn.Signal(updatesCh)
-	defer conn.RemoveSignal(updatesCh)
-	defer func() {
-		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(updatesTransPath)); err != nil {
-			logger.Debugf("failed to remove D-Bus match signal: %v", err)
-		}
-	}()
-	if err := conn.AddMatchSignal(
-		godbus.WithMatchObjectPath(updatesTransPath),
-	); err != nil {
-		logger.Errorf("Failed to add D-Bus match signal: %v", err)
-		// Optionally: return, or handle as needed
+	if callErr := callPackageKitTransaction(updatesTrans, "GetUpdates", uint64(0)); callErr != nil {
+		return nil, callErr
 	}
 
-	getUpdatesCall := updatesTrans.Call(transactionIfc+".GetUpdates", 0, uint64(0))
-	if getUpdatesCall.Err != nil {
-		return nil, fmt.Errorf("GetUpdates failed: %w", getUpdatesCall.Err)
-	}
-
-	var pkgIDs []string
-	var summaries []string
-	var infoEnums []uint32
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-collectPackages:
-	for {
-		select {
-		case sig := <-updatesCh:
-			if sig == nil {
-				break collectPackages
-			}
-			if sig.Name == transactionIfc+".Package" {
-				if len(sig.Body) > 2 {
-					infoEnum, _ := sig.Body[0].(uint32)
-					pkgID, _ := sig.Body[1].(string)
-					summary, _ := sig.Body[2].(string)
-
-					// Sanitize invalid InfoEnum values
-					if infoEnum > 30 {
-						logger.Debugf(" Package %s has invalid InfoEnum: %d (sanitizing to 0=Unknown)", pkgID, infoEnum)
-						infoEnum = 0
-					}
-
-					pkgIDs = append(pkgIDs, pkgID)
-					summaries = append(summaries, summary)
-					infoEnums = append(infoEnums, infoEnum)
-				}
-			} else if sig.Name == transactionIfc+".Finished" {
-				break collectPackages
-			}
-		case <-ctx.Done():
-			break collectPackages
-		}
-	}
+	pkgIDs, metaByPkg := collectUpdatePackages(ctx, updatesCh)
 
 	if len(pkgIDs) == 0 {
 		return nil, nil
 	}
 
 	// 2. New transaction: GetUpdateDetail
-	var detailsTransPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&detailsTransPath); err != nil {
-		return nil, fmt.Errorf("CreateTransaction (for details) failed: %w", err)
+	detailsTrans, detailsTransPath, err := newPackageKitTransaction(conn)
+	if err != nil {
+		return nil, err
 	}
-	detailsTrans := conn.Object(pkBusName, detailsTransPath)
+	detailsCh, cleanupDetails := watchTransactionSignals(conn, detailsTransPath, "failed to add D-Bus match signal for details transaction: %v")
+	defer cleanupDetails()
 
-	detailsCh := make(chan *godbus.Signal, 20)
-	conn.Signal(detailsCh)
-	defer conn.RemoveSignal(detailsCh)
-	defer func() {
-		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(detailsTransPath)); err != nil {
-			logger.Debugf("failed to remove D-Bus match signal: %v", err)
-		}
-	}()
-	if err := conn.AddMatchSignal(
-		godbus.WithMatchObjectPath(detailsTransPath),
-	); err != nil {
-		logger.Warnf("failed to add D-Bus match signal for details transaction: %v", err)
+	if callErr := callPackageKitTransaction(detailsTrans, "GetUpdateDetail", pkgIDs); callErr != nil {
+		return nil, callErr
 	}
 
-	detailCall := detailsTrans.Call(transactionIfc+".GetUpdateDetail", 0, pkgIDs)
-	if detailCall.Err != nil {
-		return nil, fmt.Errorf("GetUpdateDetail failed: %w", detailCall.Err)
-	}
-
-	var details []UpdateDetail
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel2()
 
-	summaryByPkg := map[string]string{}
-	infoEnumByPkg := map[string]uint32{}
-	for i, id := range pkgIDs {
-		if i < len(summaries) {
-			summaryByPkg[id] = summaries[i]
-		}
-		if i < len(infoEnums) {
-			infoEnumByPkg[id] = infoEnums[i]
-		}
-	}
-
-collectDetails:
-	for {
-		select {
-		case sig := <-detailsCh:
-			if sig == nil {
-				break collectDetails
-			}
-			if sig.Name == transactionIfc+".UpdateDetail" {
-				pkgID, err := utils.AsString(sig.Body[0])
-				if err != nil {
-					return nil, fmt.Errorf("invalid pkgID: %w", err)
-				}
-				summary := summaryByPkg[pkgID]
-				infoEnum := infoEnumByPkg[pkgID]
-
-				version, err := utils.AsString(sig.Body[11])
-				if err != nil {
-					return nil, fmt.Errorf("invalid version for %q: %w", pkgID, err)
-				}
-				if version == "" {
-					_, version = extractNameVersion(pkgID)
-				}
-
-				issued, err := utils.AsString(sig.Body[10])
-				if err != nil {
-					return nil, fmt.Errorf("invalid issued date for %q: %w", pkgID, err)
-				}
-
-				changelogRaw, err := utils.AsString(sig.Body[8])
-				if err != nil {
-					return nil, fmt.Errorf("invalid changelog for %q: %w", pkgID, err)
-				}
-				changelog := extractLatestChangelog(changelogRaw)
-
-				cves := toStringSlice(sig.Body[5])
-
-				restart, err := utils.AsUint32(sig.Body[6])
-				if err != nil {
-					return nil, fmt.Errorf("invalid restart flag for %q: %w", pkgID, err)
-				}
-
-				state, err := utils.AsUint32(sig.Body[9])
-				if err != nil {
-					return nil, fmt.Errorf("invalid state for %q: %w", pkgID, err)
-				}
-
-				// Merge CVEs
-				cveSet := make(map[string]struct{})
-				for _, cve := range cves {
-					cveSet[cve] = struct{}{}
-				}
-				for _, cve := range extractCVEs(changelogRaw) {
-					cveSet[cve] = struct{}{}
-				}
-				combinedCVEs := make([]string, 0, len(cveSet))
-				for cve := range cveSet {
-					combinedCVEs = append(combinedCVEs, cve)
-				}
-
-				// Fix issued if needed
-				if issued == "" {
-					issued = extractIssued(changelogRaw)
-				}
-
-				detail := UpdateDetail{
-					PackageID: pkgID,
-					Summary:   summary,
-					Version:   version,
-					Issued:    issued,
-					Changelog: changelog,
-					CVEs:      combinedCVEs,
-					Restart:   restart,
-					State:     state,
-					InfoEnum:  infoEnum,
-				}
-				details = append(details, detail)
-			} else if sig.Name == transactionIfc+".Finished" {
-				break collectDetails
-			}
-		case <-ctx2.Done():
-			break collectDetails
-		}
-	}
-
-	return details, nil
+	return collectUpdateDetails(ctx2, detailsCh, metaByPkg)
 }
 
 // --- Update History (log parsing) ---

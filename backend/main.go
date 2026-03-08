@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -148,70 +149,11 @@ func runStatus() {
 }
 
 func runLogs(args []string) {
-	// Defaults
-	lines := 100
-	mode := "all"
-
-	// Parse args: can be [service] [lines] in any order
-	for _, arg := range args {
-		if n, err := strconv.Atoi(arg); err == nil && n > 0 {
-			lines = n
-		} else {
-			switch arg {
-			case "webserver", "web", "server":
-				mode = "webserver"
-			case "bridge":
-				mode = "bridge"
-			case "auth":
-				mode = "auth"
-			}
-		}
-	}
-
-	allUnits := []string{
-		"_SYSTEMD_UNIT=linuxio.target",
-		"_SYSTEMD_UNIT=linuxio-webserver.service",
-		"_SYSTEMD_UNIT=linuxio-webserver.socket",
-		"_SYSTEMD_UNIT=linuxio-bridge-socket-user.service",
-		"_SYSTEMD_UNIT=linuxio-auth.socket",
-		"_SYSTEMD_UNIT=linuxio-auth@.service",
-		"_SYSTEMD_UNIT=linuxio-issue.service",
-	}
-	webserverUnits := []string{
-		"_SYSTEMD_UNIT=linuxio-webserver.service",
-		"_SYSTEMD_UNIT=linuxio-webserver.socket",
-	}
-	bridgeUnits := []string{
-		"_SYSTEMD_UNIT=linuxio-bridge-socket-user.service",
-	}
-	authUnits := []string{
-		"_SYSTEMD_UNIT=linuxio-auth.socket",
-		"_SYSTEMD_UNIT=linuxio-auth@.service",
-	}
-
-	journalTerms := allUnits
-	includeAuthTag := true
-	switch mode {
-	case "webserver":
-		journalTerms = webserverUnits
-		includeAuthTag = false
-	case "bridge":
-		journalTerms = bridgeUnits
-		includeAuthTag = false
-	case "auth":
-		journalTerms = authUnits
-		includeAuthTag = true
-	}
-	if includeAuthTag {
-		// Include syslog-tagged auth logs (e.g., when linuxio-auth logs via syslog)
-		journalTerms = append(journalTerms, "SYSLOG_IDENTIFIER=linuxio-auth")
-	}
-
-	// Build journalctl arguments
+	mode, lines := parseLogsArgs(args)
+	journalTerms := journalTermsForMode(mode)
 	journalctlArgs := append(strings.Fields(strings.Join(journalTerms, " + ")), "-f", "-n", strconv.Itoa(lines), "--no-pager", "-o", "json")
 	cmd := exec.Command("journalctl", journalctlArgs...)
 
-	// Get stdout pipe to read JSON
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create pipe: %v\n", err)
@@ -226,18 +168,77 @@ func runLogs(args []string) {
 		os.Exit(1)
 	}
 
-	// Parse and format JSON lines
+	streamFormattedJournal(stdout)
+	waitForJournalctl(cmd)
+}
+
+func parseLogsArgs(args []string) (string, int) {
+	mode := "all"
+	lines := 100
+	for _, arg := range args {
+		if n, err := strconv.Atoi(arg); err == nil && n > 0 {
+			lines = n
+			continue
+		}
+		switch arg {
+		case "webserver", "web", "server":
+			mode = "webserver"
+		case "bridge":
+			mode = "bridge"
+		case "auth":
+			mode = "auth"
+		}
+	}
+	return mode, lines
+}
+
+func journalTermsForMode(mode string) []string {
+	journalTerms := []string{
+		"_SYSTEMD_UNIT=linuxio.target",
+		"_SYSTEMD_UNIT=linuxio-webserver.service",
+		"_SYSTEMD_UNIT=linuxio-webserver.socket",
+		"_SYSTEMD_UNIT=linuxio-bridge-socket-user.service",
+		"_SYSTEMD_UNIT=linuxio-auth.socket",
+		"_SYSTEMD_UNIT=linuxio-auth@.service",
+		"_SYSTEMD_UNIT=linuxio-issue.service",
+	}
+	includeAuthTag := true
+
+	switch mode {
+	case "webserver":
+		journalTerms = []string{
+			"_SYSTEMD_UNIT=linuxio-webserver.service",
+			"_SYSTEMD_UNIT=linuxio-webserver.socket",
+		}
+		includeAuthTag = false
+	case "bridge":
+		journalTerms = []string{"_SYSTEMD_UNIT=linuxio-bridge-socket-user.service"}
+		includeAuthTag = false
+	case "auth":
+		journalTerms = []string{
+			"_SYSTEMD_UNIT=linuxio-auth.socket",
+			"_SYSTEMD_UNIT=linuxio-auth@.service",
+		}
+	}
+
+	if includeAuthTag {
+		journalTerms = append(journalTerms, "SYSLOG_IDENTIFIER=linuxio-auth")
+	}
+	return journalTerms
+}
+
+func streamFormattedJournal(stdout io.Reader) {
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
-		line := scanner.Text()
-		formatted := formatJournalEntry(line)
+		formatted := formatJournalEntry(scanner.Text())
 		if formatted != "" {
 			fmt.Println(formatted)
 		}
 	}
+}
 
+func waitForJournalctl(cmd *exec.Cmd) {
 	if err := cmd.Wait(); err != nil {
-		// Don't exit with error for Ctrl+C
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 130 {
 			os.Exit(0)
 		}
@@ -253,67 +254,71 @@ func formatJournalEntry(jsonLine string) string {
 		return ""
 	}
 
-	// Extract timestamp
-	var timestamp string
+	timestamp := journalTimestamp(entry)
+	unit := journalUnit(entry)
+	pid := journalPID(entry)
+	level := journalPriorityLevel(entry)
+	message := journalMessage(entry)
+
+	if pid != "" {
+		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, message)
+	}
+	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, message)
+}
+
+func journalTimestamp(entry map[string]any) string {
 	if ts, ok := entry["__REALTIME_TIMESTAMP"].(string); ok {
 		if usec, err := strconv.ParseInt(ts, 10, 64); err == nil {
-			t := time.Unix(0, usec*1000)
-			timestamp = t.Format("Jan 02 15:04:05")
+			return time.Unix(0, usec*1000).Format("Jan 02 15:04:05")
 		}
 	}
-	if timestamp == "" {
-		timestamp = time.Now().Format("Jan 02 15:04:05")
-	}
+	return time.Now().Format("Jan 02 15:04:05")
+}
 
-	// Extract unit name
+func journalUnit(entry map[string]any) string {
 	unit := "unknown"
-	if u, ok := entry["_SYSTEMD_UNIT"].(string); ok {
-		unit = u
-	} else if u, ok := entry["SYSLOG_IDENTIFIER"].(string); ok {
-		unit = u
+	if value, ok := entry["_SYSTEMD_UNIT"].(string); ok {
+		unit = value
+	} else if value, ok := entry["SYSLOG_IDENTIFIER"].(string); ok {
+		unit = value
 	}
-
-	// Clean unit name (remove @.* suffix, .service, .socket)
 	if at := strings.Index(unit, "@"); at >= 0 {
 		unit = unit[:at]
 	}
 	unit = strings.TrimSuffix(unit, ".service")
 	unit = strings.TrimSuffix(unit, ".socket")
+	return unit
+}
 
-	// Extract PID
-	var pid string
-	if p, ok := entry["_PID"].(string); ok {
-		pid = p
-	} else if p, ok := entry["SYSLOG_PID"].(string); ok {
-		pid = p
+func journalPID(entry map[string]any) string {
+	if value, ok := entry["_PID"].(string); ok {
+		return value
 	}
+	if value, ok := entry["SYSLOG_PID"].(string); ok {
+		return value
+	}
+	return ""
+}
 
-	// Extract message
-	message := ""
-	if msg, ok := entry["MESSAGE"].(string); ok {
-		message = msg
+func journalPriorityLevel(entry map[string]any) string {
+	priority, _ := entry["PRIORITY"].(string)
+	switch priority {
+	case "7":
+		return "\033[36m[DEBUG]\033[0m"
+	case "6", "5":
+		return "\033[32m[INFO]\033[0m"
+	case "4":
+		return "\033[33m[WARNING]\033[0m"
+	case "3", "2", "1", "0":
+		return "\033[31m[ERROR]\033[0m"
+	default:
+		return ""
 	}
+}
 
-	// Map priority to colorized level
-	level := ""
-	if priority, ok := entry["PRIORITY"].(string); ok {
-		switch priority {
-		case "7":
-			level = "\033[36m[DEBUG]\033[0m"
-		case "6", "5":
-			level = "\033[32m[INFO]\033[0m"
-		case "4":
-			level = "\033[33m[WARNING]\033[0m"
-		case "3", "2", "1", "0":
-			level = "\033[31m[ERROR]\033[0m"
-		}
-	}
-
-	// Format output
-	if pid != "" {
-		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, message)
-	}
-	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, message)
+func journalMessage(entry map[string]any) string {
+	message, _ := entry["MESSAGE"].(string)
+	return message
 }
 
 type ModuleConfig struct {

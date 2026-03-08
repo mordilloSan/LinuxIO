@@ -25,28 +25,34 @@ import (
 )
 
 func RunServer(cfg ServerConfig) {
-	// -------------------------------------------------------------------------
-	// Logging (from flags)
-	// -------------------------------------------------------------------------
-	verbose := cfg.Verbose
+	initServerLogger(cfg.Verbose)
+	logger.InfoKV("server starting", "verbose", cfg.Verbose)
 
-	// Configure log levels based on verbose flag
+	sm := newSessionManager()
+	srv, inFlight, lastHit := newHTTPServer(cfg, sm)
+	quit, done := startHTTPServer(cfg, srv, sm, inFlight, lastHit)
+
+	waitForServerShutdown(quit, done)
+	shutdownHTTPServer(srv)
+	closeBridgeSessions(sm)
+	sm.Close()
+	logger.Infof("Server stopped.")
+}
+
+func initServerLogger(verbose bool) {
 	var levels []logger.Level
 	if verbose {
-		levels = logger.AllLevels() // Includes DEBUG
+		levels = logger.AllLevels()
 	} else {
 		levels = []logger.Level{logger.InfoLevel, logger.WarnLevel, logger.ErrorLevel}
 	}
-
 	logger.Init(logger.Config{
 		Levels:           levels,
 		IncludeCallerTag: true,
 	})
-	logger.InfoKV("server starting", "verbose", verbose)
+}
 
-	// -------------------------------------------------------------------------
-	// Sessions + cleanup hooks
-	// -------------------------------------------------------------------------
+func newSessionManager() *session.Manager {
 	ms := session.New()
 	sessionCfg := session.DefaultConfig
 	sessionCfg.SingleSessionPerUser = false
@@ -55,40 +61,31 @@ func RunServer(cfg ServerConfig) {
 		if sess.User.Username == "" {
 			return
 		}
-		// Close yamux session (bridge connection)
 		bridge.CloseYamuxSession(sess.SessionID)
-		// Close WebSocket connection (frontend connection)
 		web.CloseWebSocketForSession(sess.SessionID)
 	})
+	return sm
+}
 
-	// -------------------------------------------------------------------------
-	// Frontend assets
-	// -------------------------------------------------------------------------
+func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *atomic.Int64, *atomic.Int64) {
 	ui, err := web.UI()
 	if err != nil {
 		logger.Errorf("failed to mount embedded frontend: %v", err)
 		os.Exit(1)
 	}
 
-	// -------------------------------------------------------------------------
-	// Router
-	// -------------------------------------------------------------------------
 	router := web.BuildRouter(web.Config{
-		Verbose: verbose,
+		Verbose: cfg.Verbose,
 		UI:      ui,
 		RegisterRoutes: func(mux *http.ServeMux) {
-			auth.RegisterAuthRoutes(mux, sm, verbose)
+			auth.RegisterAuthRoutes(mux, sm, cfg.Verbose)
 		},
 	}, sm)
 
-	// -------------------------------------------------------------------------
-	// Request tracking for idle-exit
-	// -------------------------------------------------------------------------
 	var inFlight atomic.Int64
 	var lastHit atomic.Int64
 	lastHit.Store(time.Now().UnixNano())
 
-	// Wrap router with request tracking middleware
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lastHit.Store(time.Now().UnixNano())
 		inFlight.Add(1)
@@ -96,105 +93,117 @@ func RunServer(cfg ServerConfig) {
 		router.ServeHTTP(w, r)
 	})
 
-	// -------------------------------------------------------------------------
-	// HTTP(S) server
-	// -------------------------------------------------------------------------
-	srv := &http.Server{
+	return &http.Server{
+		Addr:     fmt.Sprintf(":%d", cfg.Port),
 		Handler:  handler,
 		ErrorLog: log.New(web.HTTPErrorLogAdapter{}, "", 0),
-	}
+	}, &inFlight, &lastHit
+}
 
+func startHTTPServer(
+	cfg ServerConfig,
+	srv *http.Server,
+	sm *session.Manager,
+	inFlight *atomic.Int64,
+	lastHit *atomic.Int64,
+) (chan os.Signal, chan struct{}) {
 	quit := make(chan os.Signal, 1)
 	done := make(chan struct{})
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// self-bind (dev and local prod)
-	addr := fmt.Sprintf(":%d", cfg.Port)
-	srv.Addr = addr
-
 	go func() {
-		var err error
-		// -------- systemd socket activation first ----------
-		listeners, actErr := activation.Listeners()
-		if actErr != nil {
-			logger.Warnf("activation.Listeners error: %v", actErr)
-		}
-		if len(listeners) > 0 {
-			var stopOnce sync.Once
-			servStopped := make(chan struct{})
-			stop := func() { stopOnce.Do(func() { close(servStopped) }) }
-
-			cert, cErr := web.GenerateSelfSignedCert()
-			if cErr != nil {
-				logger.Errorf("Failed to generate cert: %v", cErr)
-			}
-			srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-
-			for _, l := range listeners {
-				lis := web.NewTLSRedirectListener(l, srv.TLSConfig, cfg.Port)
-				go func(lis net.Listener) {
-					if e := srv.Serve(lis); e != nil && e != http.ErrServerClosed {
-						logger.Errorf("server error (TLS): %v", e)
-						os.Exit(1)
-					}
-					stop()
-				}(lis)
-			}
-			logger.Infof("Socket-activated HTTPS server listening on inherited sockets")
-
-			// Start idle-exit only in socket-activation mode
-			const idleGrace = 90 * time.Second
-			const checkEvery = 15 * time.Second
-			startSocketIdleExitWatcher(
-				srv, sm, &inFlight, &lastHit,
-				idleGrace, checkEvery,
-				func(msg string, args ...any) { logger.Infof(msg, args...) },
-			)
-
-			// Block until Serve() exits (due to Shutdown or error)
-			<-servStopped
-			close(done)
+		if serveWithSocketActivation(cfg, srv, sm, inFlight, lastHit, done) {
 			return
 		}
-
-		// -------- fallback: self-bind (manual runs) ----------
-		addr := fmt.Sprintf(":%d", cfg.Port)
-		srv.Addr = addr
-
-		cert, cErr := web.GenerateSelfSignedCert()
-		if cErr != nil {
-			logger.Errorf("Failed to generate cert: %v", cErr)
-			os.Exit(1)
-		}
-		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-
-		ln, lErr := net.Listen("tcp", addr)
-		if lErr != nil {
-			logger.Errorf("listen error: %v", lErr)
-			os.Exit(1)
-		}
-		lis := web.NewTLSRedirectListener(ln, srv.TLSConfig, cfg.Port)
-
-		logger.Infof("HTTPS server (self-bound) at https://localhost:%d", cfg.Port)
-		err = srv.Serve(lis)
-
-		if err != nil && err != http.ErrServerClosed {
-			logger.Errorf("server error: %v", err)
-			os.Exit(1)
-		}
-		close(done)
+		serveWithSelfBind(cfg, srv, done)
 	}()
 
-	// -------------------------------------------------------------------------
-	// Shutdown coordination
-	// -------------------------------------------------------------------------
+	return quit, done
+}
+
+func serveWithSocketActivation(
+	cfg ServerConfig,
+	srv *http.Server,
+	sm *session.Manager,
+	inFlight *atomic.Int64,
+	lastHit *atomic.Int64,
+	done chan struct{},
+) bool {
+	listeners, err := activation.Listeners()
+	if err != nil {
+		logger.Warnf("activation.Listeners error: %v", err)
+	}
+	if len(listeners) == 0 {
+		return false
+	}
+
+	configureServerTLS(srv)
+
+	var stopOnce sync.Once
+	servStopped := make(chan struct{})
+	stop := func() { stopOnce.Do(func() { close(servStopped) }) }
+
+	for _, listener := range listeners {
+		go serveTLSListener(srv, web.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port), stop, "server error (TLS)")
+	}
+
+	logger.Infof("Socket-activated HTTPS server listening on inherited sockets")
+	startSocketIdleExitWatcher(
+		srv, sm, inFlight, lastHit,
+		90*time.Second, 15*time.Second,
+		func(msg string, args ...any) { logger.Infof(msg, args...) },
+	)
+
+	<-servStopped
+	close(done)
+	return true
+}
+
+func serveWithSelfBind(cfg ServerConfig, srv *http.Server, done chan struct{}) {
+	configureServerTLS(srv)
+
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		logger.Errorf("listen error: %v", err)
+		os.Exit(1)
+	}
+	tlsListener := web.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port)
+
+	logger.Infof("HTTPS server (self-bound) at https://localhost:%d", cfg.Port)
+	if err := srv.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
+		logger.Errorf("server error: %v", err)
+		os.Exit(1)
+	}
+	close(done)
+}
+
+func configureServerTLS(srv *http.Server) {
+	cert, err := web.GenerateSelfSignedCert()
+	if err != nil {
+		logger.Errorf("Failed to generate cert: %v", err)
+		os.Exit(1)
+	}
+	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+}
+
+func serveTLSListener(srv *http.Server, listener net.Listener, stop func(), errorPrefix string) {
+	if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+		logger.Errorf("%s: %v", errorPrefix, err)
+		os.Exit(1)
+	}
+	stop()
+}
+
+func waitForServerShutdown(quit <-chan os.Signal, done <-chan struct{}) {
 	select {
 	case <-quit:
 		logger.Infof(" Shutdown signal received")
 	case <-done:
 		logger.Infof("HTTP server stopped, beginning shutdown...")
 	}
+}
 
+func shutdownHTTPServer(srv *http.Server) {
 	srv.SetKeepAlivesEnabled(false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -206,23 +215,22 @@ func RunServer(cfg ServerConfig) {
 			if cerr := srv.Close(); cerr != nil && !errors.Is(cerr, http.ErrServerClosed) {
 				logger.Warnf("HTTP server force-close error: %v", cerr)
 			}
-		} else {
-			logger.Warnf("HTTP server shutdown error: %v", err)
+			return
 		}
-	} else {
-		logger.Infof("HTTP server closed")
+		logger.Warnf("HTTP server shutdown error: %v", err)
+		return
 	}
+	logger.Infof("HTTP server closed")
+}
 
-	// Close yamux sessions to trigger bridge shutdown
-	if sessions, err := sm.ActiveSessions(); err == nil {
-		for _, sess := range sessions {
-			bridge.CloseYamuxSession(sess.SessionID)
-		}
+func closeBridgeSessions(sm *session.Manager) {
+	sessions, err := sm.ActiveSessions()
+	if err != nil {
+		return
 	}
-
-	// Close sessions
-	sm.Close()
-	logger.Infof("Server stopped.")
+	for _, sess := range sessions {
+		bridge.CloseYamuxSession(sess.SessionID)
+	}
 }
 
 func startSocketIdleExitWatcher(

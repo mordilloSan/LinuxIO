@@ -140,20 +140,32 @@ func TestManagerOperationsCallExpectedMethods(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			manager.ResetCalls()
-			tc.invoke(t)
-
-			calls := manager.Calls()
-			if len(calls) != 1 {
-				t.Fatalf("calls = %d, want 1", len(calls))
-			}
-			if calls[0].Method != tc.wantMethod {
-				t.Fatalf("method = %q, want %q", calls[0].Method, tc.wantMethod)
-			}
-			if !reflect.DeepEqual(calls[0].Args, tc.wantArgs) {
-				t.Fatalf("args = %#v, want %#v", calls[0].Args, tc.wantArgs)
-			}
+			runManagerOperationTest(t, manager, tc.invoke, tc.wantMethod, tc.wantArgs)
 		})
+	}
+}
+
+func runManagerOperationTest(t *testing.T, manager *testdbus.SystemdManager, invoke func(t *testing.T), wantMethod string, wantArgs []any) {
+	t.Helper()
+
+	manager.ResetCalls()
+	invoke(t)
+
+	calls := manager.Calls()
+	assertSingleManagerCall(t, calls, wantMethod, wantArgs)
+}
+
+func assertSingleManagerCall(t *testing.T, calls []testdbus.SystemdCall, wantMethod string, wantArgs []any) {
+	t.Helper()
+
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(calls))
+	}
+	if calls[0].Method != wantMethod {
+		t.Fatalf("method = %q, want %q", calls[0].Method, wantMethod)
+	}
+	if !reflect.DeepEqual(calls[0].Args, wantArgs) {
+		t.Fatalf("args = %#v, want %#v", calls[0].Args, wantArgs)
 	}
 }
 

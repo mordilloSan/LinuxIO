@@ -66,59 +66,14 @@ func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 	}
 	defer sd.Close()
 
-	/* 1) Write 20auto-upgrades - controls periodic update checks */
-	upd, dl, uu := "0", "0", "0"
-	if o.Enabled {
-		upd = "1"
-		if o.DownloadOnly {
-			dl, uu = "1", "0"
-		} else {
-			dl, uu = "1", "1"
-		}
-	}
-	content20 := fmt.Sprintf(`APT::Periodic::Update-Package-Lists "%s";
-APT::Periodic::Download-Upgradeable-Packages "%s";
-APT::Periodic::Unattended-Upgrade "%s";
-`, upd, dl, uu)
-	if err2 := fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/20auto-upgrades", []byte(content20), 0o644); err2 != nil {
-		return fmt.Errorf("failed to write 20auto-upgrades: %w", err2)
+	if writeErr := writeAptAutoUpgradeConfig(o); writeErr != nil {
+		return fmt.Errorf("failed to write 20auto-upgrades: %w", writeErr)
 	}
 
-	/* 2) Write 50unattended-upgrades - controls allowed origins, reboot, and excludes */
-	origins := []string{`${distro_id}:${distro_codename}-security`}
-	if o.Scope == "updates" || o.Scope == "all" {
-		origins = append(origins, `${distro_id}:${distro_codename}-updates`)
-	}
-	if o.Scope == "all" {
-		origins = append(origins, `${distro_id}:${distro_codename}-backports`)
+	if writeErr := writeAptUnattendedConfig(o); writeErr != nil {
+		return fmt.Errorf("failed to write 50unattended-upgrades: %w", writeErr)
 	}
 
-	var bl strings.Builder
-	for _, p := range o.ExcludePkgs {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		bl.WriteString(`        "` + p + `";` + "\n")
-	}
-
-	reboot := "false"
-	if o.RebootPolicy == "always" || o.RebootPolicy == "if_needed" {
-		reboot = "true"
-	}
-
-	content50 := fmt.Sprintf(`Unattended-Upgrade::Allowed-Origins {
-%s};
-Unattended-Upgrade::Package-Blacklist {
-%s};
-Unattended-Upgrade::Automatic-Reboot "%s";
-Unattended-Upgrade::Automatic-Reboot-Time "03:30";
-`, formatOrigins(origins), bl.String(), reboot)
-	if err3 := fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/50unattended-upgrades", []byte(content50), 0o644); err3 != nil {
-		return fmt.Errorf("failed to write 50unattended-upgrades: %w", err3)
-	}
-
-	/* 3) Write timer drop-ins - controls schedule frequency */
 	oncal, err := systemd.OnCalendarFor(o.Frequency)
 	if err != nil {
 		return fmt.Errorf("invalid frequency: %w", err)
@@ -130,68 +85,149 @@ Unattended-Upgrade::Automatic-Reboot-Time "03:30";
 		return fmt.Errorf("failed to write apt-daily-upgrade.timer drop-in: %w", err)
 	}
 
-	/* 4) Reload systemd daemon to pick up drop-in changes */
 	if err := sd.Reload(ctx); err != nil {
 		return fmt.Errorf("failed to reload systemd: %w", err)
 	}
 
-	/* 5) Enable/disable and start/stop timers based on settings */
-	if o.Enabled {
-		// Always enable and start apt-daily.timer (handles update checks and downloads)
-		if err := sd.Enable(ctx, "apt-daily.timer"); err != nil {
-			return fmt.Errorf("failed to enable apt-daily.timer: %w", err)
-		}
-		if err := sd.Start(ctx, "apt-daily.timer"); err != nil {
-			return fmt.Errorf("failed to start apt-daily.timer: %w", err)
-		}
-
-		// Only enable upgrade timer if not in download-only mode
-		if !o.DownloadOnly {
-			if err := sd.Enable(ctx, "apt-daily-upgrade.timer"); err != nil {
-				return fmt.Errorf("failed to enable apt-daily-upgrade.timer: %w", err)
-			}
-			if err := sd.Start(ctx, "apt-daily-upgrade.timer"); err != nil {
-				return fmt.Errorf("failed to start apt-daily-upgrade.timer: %w", err)
-			}
-		} else {
-			// Download-only mode: stop and disable upgrade timer
-			if err := sd.Stop(ctx, "apt-daily-upgrade.timer"); err != nil {
-				logger.Debugf("failed to stop apt-daily-upgrade.timer in download-only mode: %v", err)
-			}
-			if err := sd.Disable(ctx, "apt-daily-upgrade.timer"); err != nil {
-				logger.Debugf("failed to disable apt-daily-upgrade.timer in download-only mode: %v", err)
-			}
-		}
-	} else {
-		// Auto-updates disabled: stop and disable both timers
-		if err := sd.Stop(ctx, "apt-daily.timer"); err != nil {
-			logger.Debugf("failed to stop apt-daily.timer while disabling auto-updates: %v", err)
-		}
-		if err := sd.Stop(ctx, "apt-daily-upgrade.timer"); err != nil {
-			logger.Debugf("failed to stop apt-daily-upgrade.timer while disabling auto-updates: %v", err)
-		}
-		if err := sd.Disable(ctx, "apt-daily.timer"); err != nil {
-			logger.Debugf("failed to disable apt-daily.timer while disabling auto-updates: %v", err)
-		}
-		if err := sd.Disable(ctx, "apt-daily-upgrade.timer"); err != nil {
-			logger.Debugf("failed to disable apt-daily-upgrade.timer while disabling auto-updates: %v", err)
-		}
+	if err := applyAptTimerState(ctx, sd, o); err != nil {
+		return err
 	}
 
-	/* 6) Restart timers to apply new schedules immediately */
-	if o.Enabled {
-		if err := sd.Restart(ctx, "apt-daily.timer"); err != nil {
-			// Log but don't fail - timer will restart on next boot.
-			logger.Debugf("failed to restart apt-daily.timer: %v", err)
-		}
-		if !o.DownloadOnly {
-			if err := sd.Restart(ctx, "apt-daily-upgrade.timer"); err != nil {
-				logger.Debugf("failed to restart apt-daily-upgrade.timer: %v", err)
-			}
-		}
-	}
-
+	restartAptTimers(ctx, sd, o)
 	return nil
+}
+
+func writeAptAutoUpgradeConfig(o AutoUpdateOptions) error {
+	upd, dl, uu := aptPeriodicValues(o)
+	content := fmt.Sprintf(`APT::Periodic::Update-Package-Lists "%s";
+APT::Periodic::Download-Upgradeable-Packages "%s";
+APT::Periodic::Unattended-Upgrade "%s";
+`, upd, dl, uu)
+	return fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/20auto-upgrades", []byte(content), 0o644)
+}
+
+func aptPeriodicValues(o AutoUpdateOptions) (string, string, string) {
+	if !o.Enabled {
+		return "0", "0", "0"
+	}
+	if o.DownloadOnly {
+		return "1", "1", "0"
+	}
+	return "1", "1", "1"
+}
+
+func writeAptUnattendedConfig(o AutoUpdateOptions) error {
+	content := fmt.Sprintf(`Unattended-Upgrade::Allowed-Origins {
+%s};
+Unattended-Upgrade::Package-Blacklist {
+%s};
+Unattended-Upgrade::Automatic-Reboot "%s";
+Unattended-Upgrade::Automatic-Reboot-Time "03:30";
+`, formatOrigins(aptAllowedOrigins(o.Scope)), formatAptBlacklist(o.ExcludePkgs), aptRebootSetting(o.RebootPolicy))
+	return fsutil.WriteFileAtomic("/etc/apt/apt.conf.d/50unattended-upgrades", []byte(content), 0o644)
+}
+
+func aptAllowedOrigins(scope string) []string {
+	origins := []string{`${distro_id}:${distro_codename}-security`}
+	if scope == "updates" || scope == "all" {
+		origins = append(origins, `${distro_id}:${distro_codename}-updates`)
+	}
+	if scope == "all" {
+		origins = append(origins, `${distro_id}:${distro_codename}-backports`)
+	}
+	return origins
+}
+
+func formatAptBlacklist(packages []string) string {
+	var blacklist strings.Builder
+	for _, pkg := range packages {
+		pkg = strings.TrimSpace(pkg)
+		if pkg == "" {
+			continue
+		}
+		blacklist.WriteString(`        "` + pkg + `";` + "\n")
+	}
+	return blacklist.String()
+}
+
+func aptRebootSetting(policy string) string {
+	if policy == "always" || policy == "if_needed" {
+		return "true"
+	}
+	return "false"
+}
+
+func applyAptTimerState(ctx context.Context, sd *systemd.Client, o AutoUpdateOptions) error {
+	if o.Enabled {
+		if err := enableAptDailyTimer(ctx, sd); err != nil {
+			return err
+		}
+		if o.DownloadOnly {
+			disableAptUpgradeTimer(ctx, sd, "in download-only mode")
+			return nil
+		}
+		if err := enableAptUpgradeTimer(ctx, sd); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	disableAptDailyTimer(ctx, sd, "while disabling auto-updates")
+	disableAptUpgradeTimer(ctx, sd, "while disabling auto-updates")
+	return nil
+}
+
+func enableAptDailyTimer(ctx context.Context, sd *systemd.Client) error {
+	if err := sd.Enable(ctx, "apt-daily.timer"); err != nil {
+		return fmt.Errorf("failed to enable apt-daily.timer: %w", err)
+	}
+	if err := sd.Start(ctx, "apt-daily.timer"); err != nil {
+		return fmt.Errorf("failed to start apt-daily.timer: %w", err)
+	}
+	return nil
+}
+
+func enableAptUpgradeTimer(ctx context.Context, sd *systemd.Client) error {
+	if err := sd.Enable(ctx, "apt-daily-upgrade.timer"); err != nil {
+		return fmt.Errorf("failed to enable apt-daily-upgrade.timer: %w", err)
+	}
+	if err := sd.Start(ctx, "apt-daily-upgrade.timer"); err != nil {
+		return fmt.Errorf("failed to start apt-daily-upgrade.timer: %w", err)
+	}
+	return nil
+}
+
+func disableAptDailyTimer(ctx context.Context, sd *systemd.Client, reason string) {
+	if err := sd.Stop(ctx, "apt-daily.timer"); err != nil {
+		logger.Debugf("failed to stop apt-daily.timer %s: %v", reason, err)
+	}
+	if err := sd.Disable(ctx, "apt-daily.timer"); err != nil {
+		logger.Debugf("failed to disable apt-daily.timer %s: %v", reason, err)
+	}
+}
+
+func disableAptUpgradeTimer(ctx context.Context, sd *systemd.Client, reason string) {
+	if err := sd.Stop(ctx, "apt-daily-upgrade.timer"); err != nil {
+		logger.Debugf("failed to stop apt-daily-upgrade.timer %s: %v", reason, err)
+	}
+	if err := sd.Disable(ctx, "apt-daily-upgrade.timer"); err != nil {
+		logger.Debugf("failed to disable apt-daily-upgrade.timer %s: %v", reason, err)
+	}
+}
+
+func restartAptTimers(ctx context.Context, sd *systemd.Client, o AutoUpdateOptions) {
+	if !o.Enabled {
+		return
+	}
+	if err := sd.Restart(ctx, "apt-daily.timer"); err != nil {
+		logger.Debugf("failed to restart apt-daily.timer: %v", err)
+	}
+	if o.DownloadOnly {
+		return
+	}
+	if err := sd.Restart(ctx, "apt-daily-upgrade.timer"); err != nil {
+		logger.Debugf("failed to restart apt-daily-upgrade.timer: %v", err)
+	}
 }
 
 func (b *aptBackend) ApplyOfflineNow() error {

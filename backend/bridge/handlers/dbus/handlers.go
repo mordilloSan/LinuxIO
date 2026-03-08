@@ -10,54 +10,94 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
 )
 
+type dbusRegistration struct {
+	command string
+	handler ipc.HandlerFunc
+}
+
 // RegisterHandlers registers dbus handlers with the new handler system
 func RegisterHandlers() {
-	// System control
-	ipc.RegisterFunc("dbus", "reboot", func(ctx context.Context, args []string, emit ipc.Events) error {
-		logger.Infof("reboot requested")
-		if err := CallLogin1Action("Reboot"); err != nil {
-			return err
-		}
-		return emit.Result(nil)
+	registerDBusHandlers([]dbusRegistration{
+		{command: "reboot", handler: dbusNoArgActionHandler("reboot requested", func() error { return CallLogin1Action("Reboot") })},
+		{command: "power_off", handler: dbusNoArgActionHandler("power_off requested", func() error { return CallLogin1Action("PowerOff") })},
+		{command: "get_updates", handler: dbusNoArgResultHandler(GetUpdatesWithDetails)},
+		{command: "get_updates_basic", handler: dbusNoArgResultHandler(GetUpdatesBasic)},
+		{command: "get_update_detail", handler: dbusOneArgResultHandler(GetSingleUpdateDetail)},
+		{command: "install_package", handler: installPackageHandler()},
+		{command: "get_auto_updates", handler: dbusNoArgResultHandler(getAutoUpdates)},
+		{command: "set_auto_updates", handler: setAutoUpdatesHandler()},
+		{command: "apply_offline_updates", handler: applyOfflineUpdatesHandler()},
+		{command: "get_update_history", handler: dbusNoArgResultHandler(GetUpdateHistory)},
+		{command: "list_timers", handler: dbusNoArgResultHandler(ListTimers)},
+		{command: "list_sockets", handler: dbusNoArgResultHandler(ListSockets)},
+		{command: "list_services", handler: dbusNoArgResultHandler(ListServices)},
+		{command: "get_unit_info", handler: dbusOneArgResultHandler(GetUnitInfo)},
+		{command: "start_service", handler: serviceActionHandler("start_service requested: unit=%s", StartService)},
+		{command: "stop_service", handler: serviceActionHandler("stop_service requested: unit=%s", StopService)},
+		{command: "restart_service", handler: serviceActionHandler("restart_service requested: unit=%s", RestartService)},
+		{command: "reload_service", handler: serviceActionHandler("reload_service requested: unit=%s", ReloadService)},
+		{command: "enable_service", handler: serviceActionHandler("enable_service requested: unit=%s", EnableService)},
+		{command: "disable_service", handler: serviceActionHandler("disable_service requested: unit=%s", DisableService)},
+		{command: "mask_service", handler: serviceActionHandler("mask_service requested: unit=%s", MaskService)},
+		{command: "unmask_service", handler: serviceActionHandler("unmask_service requested: unit=%s", UnmaskService)},
+		{command: "get_network_info", handler: dbusNoArgResultHandler(GetNetworkInfo)},
+		{command: "set_ipv4_manual", handler: setIPv4ManualHandler()},
+		{command: "set_ipv4", handler: setIPv4Handler()},
+		{command: "set_ipv6", handler: setIPv6Handler()},
+		{command: "set_mtu", handler: setMTUHandler()},
+		{command: "enable_connection", handler: connectionActionHandler("enable_connection requested: connection=%s", EnableConnection)},
+		{command: "disable_connection", handler: connectionActionHandler("disable_connection requested: connection=%s", DisableConnection)},
 	})
+}
 
-	ipc.RegisterFunc("dbus", "power_off", func(ctx context.Context, args []string, emit ipc.Events) error {
-		logger.Infof("power_off requested")
-		if err := CallLogin1Action("PowerOff"); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
+func registerDBusHandlers(registrations []dbusRegistration) {
+	for _, registration := range registrations {
+		ipc.RegisterFunc("dbus", registration.command, registration.handler)
+	}
+}
 
-	// Updates management
-	ipc.RegisterFunc("dbus", "get_updates", func(ctx context.Context, args []string, emit ipc.Events) error {
-		updates, err := GetUpdatesWithDetails()
-		if err != nil {
-			return err
-		}
-		return emit.Result(updates)
-	})
+func dbusNoArgResultHandler[T any](fn func() (T, error)) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		result, err := fn()
+		return emitDBusResult(emit, result, err)
+	}
+}
 
-	ipc.RegisterFunc("dbus", "get_updates_basic", func(ctx context.Context, args []string, emit ipc.Events) error {
-		updates, err := GetUpdatesBasic()
-		if err != nil {
-			return err
-		}
-		return emit.Result(updates)
-	})
-
-	ipc.RegisterFunc("dbus", "get_update_detail", func(ctx context.Context, args []string, emit ipc.Events) error {
+func dbusOneArgResultHandler[T any](fn func(string) (T, error)) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
 			return ipc.ErrInvalidArgs
 		}
-		detail, err := GetSingleUpdateDetail(args[0])
-		if err != nil {
+		result, err := fn(args[0])
+		return emitDBusResult(emit, result, err)
+	}
+}
+
+func dbusNoArgActionHandler(message string, fn func() error) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		logger.Infof("%s", message)
+		if err := fn(); err != nil {
 			return err
 		}
-		return emit.Result(detail)
-	})
+		return emit.Result(nil)
+	}
+}
 
-	ipc.RegisterFunc("dbus", "install_package", func(ctx context.Context, args []string, emit ipc.Events) error {
+func serviceActionHandler(logPattern string, fn func(string) error) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		if len(args) == 0 {
+			return ipc.ErrInvalidArgs
+		}
+		logger.Infof(logPattern, args[0])
+		if err := fn(args[0]); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	}
+}
+
+func installPackageHandler() ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) == 0 {
 			return ipc.ErrInvalidArgs
 		}
@@ -66,182 +106,30 @@ func RegisterHandlers() {
 			return err
 		}
 		return emit.Result(nil)
-	})
+	}
+}
 
-	ipc.RegisterFunc("dbus", "get_auto_updates", func(ctx context.Context, args []string, emit ipc.Events) error {
-		state, err := getAutoUpdates()
-		if err != nil {
-			return err
-		}
-		return emit.Result(state)
-	})
-
-	ipc.RegisterFunc("dbus", "set_auto_updates", func(ctx context.Context, args []string, emit ipc.Events) error {
+func setAutoUpdatesHandler() ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) != 1 {
 			return ipc.ErrInvalidArgs
 		}
 		logger.Infof("set_auto_updates requested: mode=%s", args[0])
 		result, err := setAutoUpdates(args[0])
-		if err != nil {
-			return err
-		}
-		return emit.Result(result)
-	})
+		return emitDBusResult(emit, result, err)
+	}
+}
 
-	ipc.RegisterFunc("dbus", "apply_offline_updates", func(ctx context.Context, args []string, emit ipc.Events) error {
+func applyOfflineUpdatesHandler() ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		logger.Infof("apply_offline_updates requested")
 		result, err := applyOfflineUpdates()
-		if err != nil {
-			return err
-		}
-		return emit.Result(result)
-	})
+		return emitDBusResult(emit, result, err)
+	}
+}
 
-	ipc.RegisterFunc("dbus", "get_update_history", func(ctx context.Context, args []string, emit ipc.Events) error {
-		history, err := GetUpdateHistory()
-		if err != nil {
-			return err
-		}
-		return emit.Result(history)
-	})
-
-	// Timer management
-	ipc.RegisterFunc("dbus", "list_timers", func(ctx context.Context, args []string, emit ipc.Events) error {
-		timers, err := ListTimers()
-		if err != nil {
-			return err
-		}
-		return emit.Result(timers)
-	})
-
-	// Socket management
-	ipc.RegisterFunc("dbus", "list_sockets", func(ctx context.Context, args []string, emit ipc.Events) error {
-		sockets, err := ListSockets()
-		if err != nil {
-			return err
-		}
-		return emit.Result(sockets)
-	})
-
-	// Service management
-	ipc.RegisterFunc("dbus", "list_services", func(ctx context.Context, args []string, emit ipc.Events) error {
-		services, err := ListServices()
-		if err != nil {
-			return err
-		}
-		return emit.Result(services)
-	})
-
-	ipc.RegisterFunc("dbus", "get_unit_info", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) == 0 {
-			return ipc.ErrInvalidArgs
-		}
-		info, err := GetUnitInfo(args[0])
-		if err != nil {
-			return err
-		}
-		return emit.Result(info)
-	})
-
-	ipc.RegisterFunc("dbus", "start_service", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) == 0 {
-			return ipc.ErrInvalidArgs
-		}
-		logger.Infof("start_service requested: unit=%s", args[0])
-		if err := StartService(args[0]); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
-
-	ipc.RegisterFunc("dbus", "stop_service", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) == 0 {
-			return ipc.ErrInvalidArgs
-		}
-		logger.Infof("stop_service requested: unit=%s", args[0])
-		if err := StopService(args[0]); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
-
-	ipc.RegisterFunc("dbus", "restart_service", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) == 0 {
-			return ipc.ErrInvalidArgs
-		}
-		logger.Infof("restart_service requested: unit=%s", args[0])
-		if err := RestartService(args[0]); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
-
-	ipc.RegisterFunc("dbus", "reload_service", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) == 0 {
-			return ipc.ErrInvalidArgs
-		}
-		logger.Infof("reload_service requested: unit=%s", args[0])
-		if err := ReloadService(args[0]); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
-
-	ipc.RegisterFunc("dbus", "enable_service", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) == 0 {
-			return ipc.ErrInvalidArgs
-		}
-		logger.Infof("enable_service requested: unit=%s", args[0])
-		if err := EnableService(args[0]); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
-
-	ipc.RegisterFunc("dbus", "disable_service", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) == 0 {
-			return ipc.ErrInvalidArgs
-		}
-		logger.Infof("disable_service requested: unit=%s", args[0])
-		if err := DisableService(args[0]); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
-
-	ipc.RegisterFunc("dbus", "mask_service", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) == 0 {
-			return ipc.ErrInvalidArgs
-		}
-		logger.Infof("mask_service requested: unit=%s", args[0])
-		if err := MaskService(args[0]); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
-
-	ipc.RegisterFunc("dbus", "unmask_service", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) == 0 {
-			return ipc.ErrInvalidArgs
-		}
-		logger.Infof("unmask_service requested: unit=%s", args[0])
-		if err := UnmaskService(args[0]); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
-
-	// Network information
-	ipc.RegisterFunc("dbus", "get_network_info", func(ctx context.Context, args []string, emit ipc.Events) error {
-		info, err := GetNetworkInfo()
-		if err != nil {
-			return err
-		}
-		return emit.Result(info)
-	})
-
-	// Network configuration - IPv4
-	ipc.RegisterFunc("dbus", "set_ipv4_manual", func(ctx context.Context, args []string, emit ipc.Events) error {
+func setIPv4ManualHandler() ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 4 {
 			return ipc.ErrInvalidArgs
 		}
@@ -249,32 +137,36 @@ func RegisterHandlers() {
 		addressCIDR := args[1]
 		gateway := args[2]
 		dnsServers := args[3:]
-		logger.Infof("set_ipv4_manual requested: iface=%s address=%s gateway=%s dns_count=%d", iface, addressCIDR, gateway, len(dnsServers))
+		logger.Infof(
+			"set_ipv4_manual requested: iface=%s address=%s gateway=%s dns_count=%d",
+			iface, addressCIDR, gateway, len(dnsServers),
+		)
 		if err := SetIPv4Manual(iface, addressCIDR, gateway, dnsServers); err != nil {
 			return err
 		}
 		return emit.Result(nil)
-	})
+	}
+}
 
-	ipc.RegisterFunc("dbus", "set_ipv4", func(ctx context.Context, args []string, emit ipc.Events) error {
+func setIPv4Handler() ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 2 {
 			return ipc.ErrInvalidArgs
 		}
 		iface, method := args[0], strings.ToLower(args[1])
 		logger.Infof("set_ipv4 requested: iface=%s method=%s", iface, method)
-		switch method {
-		case "dhcp", "auto":
-			if err := SetIPv4DHCP(iface); err != nil {
-				return err
-			}
-			return emit.Result(nil)
-		default:
+		if method != "dhcp" && method != "auto" {
 			return fmt.Errorf("SetIPv4 method must be 'dhcp' or 'static'")
 		}
-	})
+		if err := SetIPv4DHCP(iface); err != nil {
+			return err
+		}
+		return emit.Result(nil)
+	}
+}
 
-	// Network configuration - IPv6
-	ipc.RegisterFunc("dbus", "set_ipv6", func(ctx context.Context, args []string, emit ipc.Events) error {
+func setIPv6Handler() ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) < 2 {
 			return ipc.ErrInvalidArgs
 		}
@@ -285,7 +177,6 @@ func RegisterHandlers() {
 			if err := SetIPv6DHCP(iface); err != nil {
 				return err
 			}
-			return emit.Result(nil)
 		case "static":
 			if len(args) != 3 {
 				return ipc.ErrInvalidArgs
@@ -293,14 +184,15 @@ func RegisterHandlers() {
 			if err := SetIPv6Static(iface, args[2]); err != nil {
 				return err
 			}
-			return emit.Result(nil)
 		default:
 			return fmt.Errorf("SetIPv6 method must be 'dhcp' or 'static'")
 		}
-	})
+		return emit.Result(nil)
+	}
+}
 
-	// Network configuration - Other
-	ipc.RegisterFunc("dbus", "set_mtu", func(ctx context.Context, args []string, emit ipc.Events) error {
+func setMTUHandler() ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) != 2 {
 			return ipc.ErrInvalidArgs
 		}
@@ -309,28 +201,25 @@ func RegisterHandlers() {
 			return err
 		}
 		return emit.Result(nil)
-	})
+	}
+}
 
-	// Network connection enable/disable
-	ipc.RegisterFunc("dbus", "enable_connection", func(ctx context.Context, args []string, emit ipc.Events) error {
+func connectionActionHandler(logPattern string, fn func(string) error) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		if len(args) != 1 {
 			return ipc.ErrInvalidArgs
 		}
-		logger.Infof("enable_connection requested: connection=%s", args[0])
-		if err := EnableConnection(args[0]); err != nil {
+		logger.Infof(logPattern, args[0])
+		if err := fn(args[0]); err != nil {
 			return err
 		}
 		return emit.Result(nil)
-	})
+	}
+}
 
-	ipc.RegisterFunc("dbus", "disable_connection", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) != 1 {
-			return ipc.ErrInvalidArgs
-		}
-		logger.Infof("disable_connection requested: connection=%s", args[0])
-		if err := DisableConnection(args[0]); err != nil {
-			return err
-		}
-		return emit.Result(nil)
-	})
+func emitDBusResult(emit ipc.Events, result any, err error) error {
+	if err != nil {
+		return err
+	}
+	return emit.Result(result)
 }

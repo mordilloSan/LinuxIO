@@ -21,56 +21,12 @@ func repairConfig(cfgPath, base string) error {
 
 	var cfg Settings
 	defaults := DefaultSettings(base)
-	changed := false
-
-	// Parse in strict mode first. If strict parsing fails because of unknown keys,
-	// fall back to permissive parsing to preserve known values and rewrite a clean file.
-	if err := yaml.UnmarshalWithOptions(raw, &cfg, yaml.Strict()); err != nil {
-		if permissiveErr := yaml.Unmarshal(raw, &cfg); permissiveErr != nil {
-			logYAMLError(err, cfgPath)
-			logger.Warnf("config validation failed, rewriting defaults")
-			return writeConfig(cfgPath, base)
-		}
-		logger.Warnf("config contained unsupported fields; rewriting sanitized config")
-		changed = true
+	changed, err := parseAndSanitizeConfig(raw, cfgPath, base, &cfg)
+	if err != nil {
+		return err
 	}
-
-	if errs := ValidateConfig(&cfg); len(errs) > 0 {
-		logger.Warnf("config validation issues: %s", strings.Join(errs, "; "))
-
-		if cfg.AppSettings.Theme != ThemeLight && cfg.AppSettings.Theme != ThemeDark {
-			cfg.AppSettings.Theme = defaults.AppSettings.Theme
-			changed = true
-		}
-		if !IsValidCSSColor(string(cfg.AppSettings.PrimaryColor)) {
-			cfg.AppSettings.PrimaryColor = defaults.AppSettings.PrimaryColor
-			changed = true
-		}
-		if tc := cfg.AppSettings.ThemeColors; tc != nil {
-			for _, ptr := range []*CSSColor{
-				tc.BackgroundDefault, tc.BackgroundPaper,
-				tc.HeaderBackground, tc.FooterBackground, tc.SidebarBackground,
-				tc.CardBackground,
-			} {
-				if ptr != nil && !IsValidCSSColor(string(*ptr)) {
-					cfg.AppSettings.ThemeColors = nil
-					changed = true
-					break
-				}
-			}
-		}
-		if strings.TrimSpace(string(cfg.Docker.Folder)) == "" {
-			cfg.Docker.Folder = defaults.Docker.Folder
-			changed = true
-		}
-	}
-
-	// Check if Docker.Folder exists but is a file (edge case)
-	if fi, statErr := os.Stat(string(cfg.Docker.Folder)); statErr == nil && !fi.IsDir() {
-		logger.Warnf("docker.folder %q exists as file, resetting to default", cfg.Docker.Folder)
-		cfg.Docker.Folder = defaults.Docker.Folder
-		changed = true
-	}
+	changed = repairInvalidConfigValues(&cfg, defaults) || changed
+	changed = repairDockerFolderPath(&cfg, defaults) || changed
 
 	if changed {
 		return writeConfigFrom(cfgPath, cfg)
@@ -78,6 +34,75 @@ func repairConfig(cfgPath, base string) error {
 
 	// Config is valid, nothing to repair
 	return nil
+}
+
+func parseAndSanitizeConfig(raw []byte, cfgPath, base string, cfg *Settings) (bool, error) {
+	if err := yaml.UnmarshalWithOptions(raw, cfg, yaml.Strict()); err != nil {
+		if permissiveErr := yaml.Unmarshal(raw, cfg); permissiveErr != nil {
+			logYAMLError(err, cfgPath)
+			logger.Warnf("config validation failed, rewriting defaults")
+			return false, writeConfig(cfgPath, base)
+		}
+		logger.Warnf("config contained unsupported fields; rewriting sanitized config")
+		return true, nil
+	}
+	return false, nil
+}
+
+func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
+	errs := ValidateConfig(cfg)
+	if len(errs) == 0 {
+		return false
+	}
+	logger.Warnf("config validation issues: %s", strings.Join(errs, "; "))
+
+	changed := false
+	if cfg.AppSettings.Theme != ThemeLight && cfg.AppSettings.Theme != ThemeDark {
+		cfg.AppSettings.Theme = defaults.AppSettings.Theme
+		changed = true
+	}
+	if !IsValidCSSColor(string(cfg.AppSettings.PrimaryColor)) {
+		cfg.AppSettings.PrimaryColor = defaults.AppSettings.PrimaryColor
+		changed = true
+	}
+	if themeColorsNeedReset(cfg.AppSettings.ThemeColors) {
+		cfg.AppSettings.ThemeColors = nil
+		changed = true
+	}
+	if strings.TrimSpace(string(cfg.Docker.Folder)) == "" {
+		cfg.Docker.Folder = defaults.Docker.Folder
+		changed = true
+	}
+	return changed
+}
+
+func themeColorsNeedReset(themeColors *ThemeColors) bool {
+	if themeColors == nil {
+		return false
+	}
+	for _, ptr := range []*CSSColor{
+		themeColors.BackgroundDefault,
+		themeColors.BackgroundPaper,
+		themeColors.HeaderBackground,
+		themeColors.FooterBackground,
+		themeColors.SidebarBackground,
+		themeColors.CardBackground,
+	} {
+		if ptr != nil && !IsValidCSSColor(string(*ptr)) {
+			return true
+		}
+	}
+	return false
+}
+
+func repairDockerFolderPath(cfg *Settings, defaults *Settings) bool {
+	fi, err := os.Stat(string(cfg.Docker.Folder))
+	if err != nil || fi.IsDir() {
+		return false
+	}
+	logger.Warnf("docker.folder %q exists as file, resetting to default", cfg.Docker.Folder)
+	cfg.Docker.Folder = defaults.Docker.Folder
+	return true
 }
 
 // logYAMLError extracts and logs detailed error information from goccy/go-yaml

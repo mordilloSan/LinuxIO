@@ -158,60 +158,22 @@ func consumeSSEEvents(ctx context.Context, resp *http.Response, cb IndexerCallba
 	events, errCh := ReadSSE(ctx, resp.Body)
 
 	for evt := range events {
-		switch evt.Type {
-		case "started":
-			if progressErr := callOnProgress(cb, IndexerProgress{Phase: "indexing"}); progressErr != nil {
-				return fmt.Errorf("on progress callback: %w", progressErr)
-			}
-
-		case "progress":
-			var progress IndexerProgress
-			if unmarshalErr := json.Unmarshal([]byte(evt.Data), &progress); unmarshalErr == nil {
-				progress.Phase = "indexing"
-				if callbackErr := callOnProgress(cb, progress); callbackErr != nil {
-					return fmt.Errorf("on progress callback: %w", callbackErr)
-				}
-			}
-
-		case "complete":
-			var result IndexerResult
-			if unmarshalErr := json.Unmarshal([]byte(evt.Data), &result); unmarshalErr == nil {
-				if cb.OnResult != nil {
-					if callbackErr := cb.OnResult(result); callbackErr != nil {
-						return fmt.Errorf("on result callback: %w", callbackErr)
-					}
-				}
-				return nil
-			}
-
-		case "error":
-			var errData struct {
-				Message string `json:"message"`
-			}
-			if unmarshalErr := json.Unmarshal([]byte(evt.Data), &errData); unmarshalErr == nil {
-				if callbackErr := callOnError(cb, errData.Message, 500); callbackErr != nil {
-					return fmt.Errorf("on error callback: %w", callbackErr)
-				}
-				return fmt.Errorf("indexer error: %s", errData.Message)
-			}
+		done, err := handleIndexerSSEEvent(cb, evt)
+		if err != nil {
+			return err
+		}
+		if done {
+			return nil
 		}
 	}
 
-	// Check for context cancellation first
 	if ctx.Err() != nil {
-		if callbackErr := callOnError(cb, "operation aborted", 499); callbackErr != nil {
-			return fmt.Errorf("on error callback: %w", callbackErr)
-		}
-		return ipc.ErrAborted
+		return reportIndexerAbort(cb)
 	}
 
-	// Check for SSE read error
 	if err := <-errCh; err != nil {
 		if ctx.Err() != nil {
-			if callbackErr := callOnError(cb, "operation aborted", 499); callbackErr != nil {
-				return fmt.Errorf("on error callback: %w", callbackErr)
-			}
-			return ipc.ErrAborted
+			return reportIndexerAbort(cb)
 		}
 		if callbackErr := callOnError(cb, fmt.Sprintf("read error: %v", err), 500); callbackErr != nil {
 			return fmt.Errorf("on error callback: %w", callbackErr)
@@ -219,11 +181,77 @@ func consumeSSEEvents(ctx context.Context, resp *http.Response, cb IndexerCallba
 		return fmt.Errorf("read SSE: %w", err)
 	}
 
-	// Stream ended without a "complete" event
 	if err := callOnError(cb, "indexer stream ended unexpectedly", 500); err != nil {
 		return fmt.Errorf("on error callback: %w", err)
 	}
 	return fmt.Errorf("indexer stream ended unexpectedly")
+}
+
+func handleIndexerSSEEvent(cb IndexerCallbacks, evt SSEEvent) (bool, error) {
+	switch evt.Type {
+	case "started":
+		return false, reportIndexerStart(cb)
+	case "progress":
+		return false, reportIndexerProgress(cb, evt.Data)
+	case "complete":
+		return reportIndexerComplete(cb, evt.Data)
+	case "error":
+		return false, reportIndexerError(cb, evt.Data)
+	default:
+		return false, nil
+	}
+}
+
+func reportIndexerStart(cb IndexerCallbacks) error {
+	if err := callOnProgress(cb, IndexerProgress{Phase: "indexing"}); err != nil {
+		return fmt.Errorf("on progress callback: %w", err)
+	}
+	return nil
+}
+
+func reportIndexerProgress(cb IndexerCallbacks, data string) error {
+	var progress IndexerProgress
+	if err := json.Unmarshal([]byte(data), &progress); err != nil {
+		return nil
+	}
+	progress.Phase = "indexing"
+	if err := callOnProgress(cb, progress); err != nil {
+		return fmt.Errorf("on progress callback: %w", err)
+	}
+	return nil
+}
+
+func reportIndexerComplete(cb IndexerCallbacks, data string) (bool, error) {
+	var result IndexerResult
+	if err := json.Unmarshal([]byte(data), &result); err != nil {
+		return false, nil
+	}
+	if cb.OnResult != nil {
+		if err := cb.OnResult(result); err != nil {
+			return false, fmt.Errorf("on result callback: %w", err)
+		}
+	}
+	return true, nil
+}
+
+func reportIndexerError(cb IndexerCallbacks, data string) error {
+	var errData struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(data), &errData); err != nil {
+		return nil
+	}
+	if callbackErr := callOnError(cb, errData.Message, 500); callbackErr != nil {
+		return fmt.Errorf("on error callback: %w", callbackErr)
+	}
+	return fmt.Errorf("indexer error: %s", errData.Message)
+}
+
+func reportIndexerAbort(cb IndexerCallbacks) error {
+	if callbackErr := callOnError(cb, "operation aborted", 499); callbackErr != nil {
+		return fmt.Errorf("on error callback: %w", callbackErr)
+	}
+	return ipc.ErrAborted
 }
 
 func callOnProgress(cb IndexerCallbacks, p IndexerProgress) error {

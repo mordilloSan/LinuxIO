@@ -141,31 +141,276 @@ func resourceDelete(args []string) (any, error) {
 	return map[string]any{"message": "deleted"}, nil
 }
 
+type resourcePostRequest struct {
+	cleanPath string
+	relPath   string
+	isDir     bool
+	override  bool
+}
+
+type resourcePatchRequest struct {
+	action    string
+	src       string
+	dst       string
+	realSrc   string
+	realDest  string
+	overwrite bool
+}
+
+func parseResourcePostArgs(args []string) (resourcePostRequest, error) {
+	if len(args) < 1 {
+		return resourcePostRequest{}, fmt.Errorf("bad_request:missing path")
+	}
+
+	path, err := url.QueryUnescape(args[0])
+	if err != nil {
+		return resourcePostRequest{}, fmt.Errorf("bad_request:invalid path encoding")
+	}
+
+	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
+	if cleanPath == "/" {
+		return resourcePostRequest{}, fmt.Errorf("bad_request:cannot create root")
+	}
+
+	return resourcePostRequest{
+		cleanPath: cleanPath,
+		relPath:   strings.TrimPrefix(cleanPath, "/"),
+		isDir:     strings.HasSuffix(path, "/"),
+		override:  len(args) > 1 && args[1] == "true",
+	}, nil
+}
+
+func ensureResourcePostType(root *fsroot.FSRoot, req resourcePostRequest) error {
+	stat, err := root.Root.Stat(req.relPath)
+	if err != nil {
+		return nil
+	}
+	if stat.IsDir() != req.isDir && !req.override {
+		return fmt.Errorf("bad_request:resource already exists with different type")
+	}
+	return nil
+}
+
+func createDirectoryResource(root *fsroot.FSRoot, req resourcePostRequest) (any, error) {
+	if stat, statErr := root.Root.Stat(req.relPath); statErr == nil && !stat.IsDir() && req.override {
+		if removeErr := root.Root.Remove(req.relPath); removeErr != nil {
+			logger.Debugf("error removing existing file for directory create: %v", removeErr)
+			return nil, fmt.Errorf("bad_request:%v", removeErr)
+		}
+	}
+
+	if mkdirErr := root.Root.MkdirAll(req.relPath, services.PermDir); mkdirErr != nil {
+		logger.Debugf("error writing directory: %v", mkdirErr)
+		return nil, fmt.Errorf("bad_request:%v", mkdirErr)
+	}
+	if chmodErr := root.Root.Chmod(req.relPath, services.PermDir); chmodErr != nil {
+		logger.Debugf("error setting directory permissions: %v", chmodErr)
+		return nil, fmt.Errorf("bad_request:%v", chmodErr)
+	}
+
+	notifyIndexerForCreatedResource(root, req.cleanPath, req.relPath, "directory")
+	logger.Infof("Directory created: path=%s", req.cleanPath)
+	return map[string]any{"message": "created"}, nil
+}
+
+func createFileResource(root *fsroot.FSRoot, req resourcePostRequest) (any, error) {
+	parentRel := filepath.Dir(req.relPath)
+	if parentRel != "." {
+		if mkdirErr := root.Root.MkdirAll(parentRel, services.PermDir); mkdirErr != nil {
+			logger.Debugf("error creating parent directory: %v", mkdirErr)
+			return nil, fmt.Errorf("bad_request:failed to create parent directory: %v", mkdirErr)
+		}
+	}
+
+	if _, statErr := root.Root.Stat(req.relPath); statErr == nil && !req.override {
+		return nil, fmt.Errorf("bad_request:file already exists")
+	}
+
+	f, err := root.Root.OpenFile(req.relPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, services.PermFile)
+	if err != nil {
+		logger.Debugf("error creating file: %v", err)
+		return nil, fmt.Errorf("bad_request:%v", err)
+	}
+	if cerr := f.Close(); cerr != nil {
+		logger.Warnf("failed to close created file: %v", cerr)
+	}
+
+	notifyIndexerForCreatedResource(root, req.cleanPath, req.relPath, "file")
+	logger.Infof("File created: path=%s", req.cleanPath)
+	return map[string]any{"message": "created"}, nil
+}
+
+func notifyIndexerForCreatedResource(root *fsroot.FSRoot, cleanPath, relPath, kind string) {
+	if info, err := root.Root.Stat(relPath); err == nil {
+		if err := addToIndexer(cleanPath, info); err != nil {
+			logger.Debugf("failed to update indexer after %s create: %v", kind, err)
+		}
+	}
+}
+
+func parseResourcePatchArgs(args []string) (resourcePatchRequest, error) {
+	if len(args) < 3 {
+		return resourcePatchRequest{}, fmt.Errorf("bad_request:missing action, from, or destination")
+	}
+
+	src, err := url.QueryUnescape(args[1])
+	if err != nil {
+		return resourcePatchRequest{}, fmt.Errorf("bad_request:invalid source path encoding")
+	}
+	dst, err := url.QueryUnescape(args[2])
+	if err != nil {
+		return resourcePatchRequest{}, fmt.Errorf("bad_request:invalid destination path encoding")
+	}
+	if dst == "/" || src == "/" {
+		return resourcePatchRequest{}, fmt.Errorf("bad_request:cannot modify root directory")
+	}
+
+	return resourcePatchRequest{
+		action:    args[0],
+		src:       src,
+		dst:       dst,
+		overwrite: len(args) > 3 && args[3] == "true",
+	}, nil
+}
+
+func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resourcePatchRequest, error) {
+	dstClean := strings.TrimRight(req.dst, "/")
+	parentDir := filepath.Dir(dstClean)
+	if _, err := root.Root.Stat(fsroot.ToRel(parentDir)); err != nil {
+		logger.Debugf("parent directory not found: %s (error: %v)", parentDir, err)
+		return req, fmt.Errorf("bad_request:parent directory not found")
+	}
+
+	req.realDest = filepath.Join(parentDir, filepath.Base(dstClean))
+	if strings.HasSuffix(req.dst, "/") && !strings.HasSuffix(req.realDest, "/") {
+		req.realDest += "/"
+	}
+	req.realSrc = filepath.Clean("/" + strings.TrimPrefix(req.src, "/"))
+
+	srcInfo, err := root.Root.Stat(fsroot.ToRel(req.realSrc))
+	if err != nil {
+		logger.Debugf("error getting source info: %v", err)
+		return req, fmt.Errorf("bad_request:source not found")
+	}
+	if req.realSrc == req.realDest && req.action == "copy" {
+		req.realDest = generateUniquePath(req.realDest, srcInfo.IsDir(), root)
+	}
+	return req, validatePatchDestination(root, req, srcInfo)
+}
+
+func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest, srcInfo os.FileInfo) error {
+	destInfo, err := root.Root.Stat(fsroot.ToRel(req.realDest))
+	destExists := err == nil
+	if err != nil && !os.IsNotExist(err) {
+		logger.Debugf("error stating destination: %v", err)
+		return fmt.Errorf("bad_request:could not stat destination")
+	}
+	if !destExists {
+		return nil
+	}
+	if req.realSrc == req.realDest {
+		return fmt.Errorf("bad_request:source and destination are the same")
+	}
+	if !req.overwrite {
+		return fmt.Errorf("bad_request:destination exists")
+	}
+	if srcInfo.IsDir() != destInfo.IsDir() {
+		return fmt.Errorf("bad_request:destination exists with different type")
+	}
+	return nil
+}
+
+func computePatchSize(realSrc string) int64 {
+	totalSize, err := services.ComputeCopySize(realSrc)
+	if err != nil {
+		logger.Debugf("failed to compute size: %v", err)
+		return 0
+	}
+	return totalSize
+}
+
+func newPatchCallbacks(ctx context.Context, emit ipc.Events, action string, totalSize int64) *ipc.OperationCallbacks {
+	var bytesProcessed int64
+	var lastProgress int64
+	const progressInterval = int64(2 * 1024 * 1024)
+
+	return &ipc.OperationCallbacks{
+		Progress: func(n int64) {
+			bytesProcessed += n
+			if totalSize <= 0 || (bytesProcessed-lastProgress < progressInterval && bytesProcessed < totalSize) {
+				return
+			}
+
+			phase := "copying"
+			if action == "move" || action == "rename" {
+				phase = "moving"
+			}
+			pct := min(int(bytesProcessed*100/totalSize), 100)
+			logger.Debugf("Progress: %d/%d bytes (%d%%) - %s", bytesProcessed, totalSize, pct, phase)
+			if err := emit.Progress(FileProgress{
+				Bytes: bytesProcessed,
+				Total: totalSize,
+				Pct:   pct,
+				Phase: phase,
+			}); err != nil {
+				logger.Debugf("failed to write progress update: %v", err)
+				return
+			}
+			lastProgress = bytesProcessed
+		},
+		Cancel: func() bool {
+			select {
+			case <-ctx.Done():
+				return true
+			default:
+				return false
+			}
+		},
+	}
+}
+
+func executeResourcePatch(req resourcePatchRequest, opts *ipc.OperationCallbacks) error {
+	switch req.action {
+	case "copy":
+		return services.CopyFileWithCallbacks(req.realSrc, req.realDest, req.overwrite, opts)
+	case "rename", "move":
+		return services.MoveFileWithCallbacks(req.realSrc, req.realDest, req.overwrite, opts)
+	default:
+		return fmt.Errorf("bad_request:unsupported action: %s", req.action)
+	}
+}
+
+func notifyIndexerAfterPatch(root *fsroot.FSRoot, req resourcePatchRequest) {
+	switch req.action {
+	case "copy":
+		if info, err := root.Root.Stat(fsroot.ToRel(req.realDest)); err == nil {
+			if err := addToIndexer(req.dst, info); err != nil {
+				logger.Debugf("failed to update indexer after copy: %v", err)
+			}
+		}
+	case "rename", "move":
+		if err := deleteFromIndexer(req.src); err != nil {
+			logger.Debugf("failed to update indexer after move (delete source): %v", err)
+		}
+		if info, err := root.Root.Stat(fsroot.ToRel(req.realDest)); err == nil {
+			if err := addToIndexer(req.dst, info); err != nil {
+				logger.Debugf("failed to update indexer after move (add destination): %v", err)
+			}
+		}
+	}
+}
+
 // resourcePost creates or uploads a new resource
 // Args: [path, override?, chunkOffset?, totalSize?, body]
 func resourcePost(args []string) (any, error) {
-	if len(args) < 1 {
-		return nil, fmt.Errorf("bad_request:missing path")
-	}
-
-	path := args[0]
-	path, err := url.QueryUnescape(path)
+	req, err := parseResourcePostArgs(args)
 	if err != nil {
-		return nil, fmt.Errorf("bad_request:invalid path encoding")
+		return nil, err
 	}
-
-	override := len(args) > 1 && args[1] == "true"
-
-	isDir := strings.HasSuffix(path, "/")
-	cleanPath := filepath.Clean("/" + strings.TrimPrefix(path, "/"))
-	if cleanPath == "/" {
-		return nil, fmt.Errorf("bad_request:cannot create root")
-	}
-	relPath := strings.TrimPrefix(cleanPath, "/")
-	if isDir {
-		logger.Infof("Create directory requested: path=%s override=%v", cleanPath, override)
+	if req.isDir {
+		logger.Infof("Create directory requested: path=%s override=%v", req.cleanPath, req.override)
 	} else {
-		logger.Infof("Create file requested: path=%s override=%v", cleanPath, override)
+		logger.Infof("Create file requested: path=%s override=%v", req.cleanPath, req.override)
 	}
 
 	root, err := fsroot.Open()
@@ -179,103 +424,22 @@ func resourcePost(args []string) (any, error) {
 		}
 	}()
 
-	// Check for file/folder conflicts before creation
-	if stat, statErr := root.Root.Stat(relPath); statErr == nil {
-		existingIsDir := stat.IsDir()
-		requestingDir := isDir
-
-		if existingIsDir != requestingDir && !override {
-			return nil, fmt.Errorf("bad_request:resource already exists with different type")
-		}
+	if err := ensureResourcePostType(root, req); err != nil {
+		return nil, err
 	}
 
-	// Handle directory creation
-	if isDir {
-		if stat, statErr := root.Root.Stat(relPath); statErr == nil && !stat.IsDir() && override {
-			if removeErr := root.Root.Remove(relPath); removeErr != nil {
-				logger.Debugf("error removing existing file for directory create: %v", removeErr)
-				return nil, fmt.Errorf("bad_request:%v", removeErr)
-			}
-		}
-
-		if mkdirErr := root.Root.MkdirAll(relPath, services.PermDir); mkdirErr != nil {
-			logger.Debugf("error writing directory: %v", mkdirErr)
-			return nil, fmt.Errorf("bad_request:%v", mkdirErr)
-		}
-		if chmodErr := root.Root.Chmod(relPath, services.PermDir); chmodErr != nil {
-			logger.Debugf("error setting directory permissions: %v", chmodErr)
-			return nil, fmt.Errorf("bad_request:%v", chmodErr)
-		}
-
-		// Notify indexer about the new directory
-		if info, statErr := root.Root.Stat(relPath); statErr == nil {
-			if indexErr := addToIndexer(cleanPath, info); indexErr != nil {
-				logger.Debugf("failed to update indexer after directory create: %v", indexErr)
-			}
-		}
-		logger.Infof("Directory created: path=%s", cleanPath)
-
-		return map[string]any{"message": "created"}, nil
+	if req.isDir {
+		return createDirectoryResource(root, req)
 	}
-
-	// Handle empty file creation
-	// File uploads with content use yamux streams (fb-upload), not this handler
-	parentRel := filepath.Dir(relPath)
-	if parentRel != "." {
-		if mkdirErr := root.Root.MkdirAll(parentRel, services.PermDir); mkdirErr != nil {
-			logger.Debugf("error creating parent directory: %v", mkdirErr)
-			return nil, fmt.Errorf("bad_request:failed to create parent directory: %v", mkdirErr)
-		}
-	}
-
-	// Check if file exists
-	if _, statErr := root.Root.Stat(relPath); statErr == nil {
-		if !override {
-			return nil, fmt.Errorf("bad_request:file already exists")
-		}
-	}
-
-	// Create empty file
-	f, err := root.Root.OpenFile(relPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, services.PermFile)
-	if err != nil {
-		logger.Debugf("error creating file: %v", err)
-		return nil, fmt.Errorf("bad_request:%v", err)
-	}
-	if cerr := f.Close(); cerr != nil {
-		logger.Warnf("failed to close created file: %v", cerr)
-	}
-
-	// Notify indexer about the new file
-	if info, err := root.Root.Stat(relPath); err == nil {
-		if err := addToIndexer(cleanPath, info); err != nil {
-			logger.Debugf("failed to update indexer after file create: %v", err)
-		}
-	}
-	logger.Infof("File created: path=%s", cleanPath)
-
-	return map[string]any{"message": "created"}, nil
+	return createFileResource(root, req)
 }
 
 // resourcePatchWithProgress performs patch operations with progress feedback
 // Args: [action, from, destination, overwrite?]
 func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Events) (any, error) {
-	if len(args) < 3 {
-		return nil, fmt.Errorf("bad_request:missing action, from, or destination")
-	}
-
-	action := args[0]
-	src, err := url.QueryUnescape(args[1])
+	req, err := parseResourcePatchArgs(args)
 	if err != nil {
-		return nil, fmt.Errorf("bad_request:invalid source path encoding")
-	}
-
-	dst, err := url.QueryUnescape(args[2])
-	if err != nil {
-		return nil, fmt.Errorf("bad_request:invalid destination path encoding")
-	}
-
-	if dst == "/" || src == "/" {
-		return nil, fmt.Errorf("bad_request:cannot modify root directory")
+		return nil, err
 	}
 
 	root, err := fsroot.Open()
@@ -284,68 +448,15 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 	}
 	defer root.Close()
 
-	// Strip trailing slashes from dst for proper parent directory calculation
-	// filepath.Dir("/a/b/c/") incorrectly returns "/a/b/c" instead of "/a/b"
-	dstClean := strings.TrimRight(dst, "/")
-
-	// Check parent dir exists
-	parentDir := filepath.Dir(dstClean)
-	_, statErr := root.Root.Stat(fsroot.ToRel(parentDir))
-	if statErr != nil {
-		logger.Debugf("parent directory not found: %s (error: %v)", parentDir, statErr)
-		return nil, fmt.Errorf("bad_request:parent directory not found")
-	}
-
-	overwrite := len(args) > 3 && args[3] == "true"
-
-	// Reconstruct destination path from parent and base name
-	// Preserve trailing slash for directories
-	baseName := filepath.Base(dstClean)
-	realDest := filepath.Join(parentDir, baseName)
-	if strings.HasSuffix(dst, "/") && !strings.HasSuffix(realDest, "/") {
-		realDest += "/"
-	}
-	realSrc := filepath.Clean("/" + strings.TrimPrefix(src, "/"))
-
-	srcInfo, err := root.Root.Stat(fsroot.ToRel(realSrc))
+	req, err = prepareResourcePatch(root, req)
 	if err != nil {
-		logger.Debugf("error getting source info: %v", err)
-		return nil, fmt.Errorf("bad_request:source not found")
+		return nil, err
 	}
 
-	// If copying to the same location, generate a unique name
-	if realSrc == realDest && action == "copy" {
-		realDest = generateUniquePath(realDest, srcInfo.IsDir(), root)
-	}
-
-	destInfo, destErr := root.Root.Stat(fsroot.ToRel(realDest))
-	destExists := destErr == nil
-	if destErr != nil && !os.IsNotExist(destErr) {
-		logger.Debugf("error stating destination: %v", destErr)
-		return nil, fmt.Errorf("bad_request:could not stat destination")
-	}
-
-	if destExists {
-		if realSrc == realDest {
-			return nil, fmt.Errorf("bad_request:source and destination are the same")
-		}
-		if !overwrite {
-			return nil, fmt.Errorf("bad_request:destination exists")
-		}
-		if srcInfo.IsDir() != destInfo.IsDir() {
-			return nil, fmt.Errorf("bad_request:destination exists with different type")
-		}
-	}
-
-	// Compute total size for progress
-	totalSize, err := services.ComputeCopySize(realSrc)
-	if err != nil {
-		logger.Debugf("failed to compute size: %v", err)
-		totalSize = 0
-	}
+	totalSize := computePatchSize(req.realSrc)
 
 	// Send initial progress
-	logger.Infof("Starting %s operation: %s -> %s (size=%d)", action, realSrc, realDest, totalSize)
+	logger.Infof("Starting %s operation: %s -> %s (size=%d)", req.action, req.realSrc, req.realDest, totalSize)
 	if err := emit.Progress(FileProgress{
 		Total: totalSize,
 		Phase: "preparing",
@@ -353,78 +464,13 @@ func resourcePatchWithProgress(ctx context.Context, args []string, emit ipc.Even
 		return nil, fmt.Errorf("write progress: %w", err)
 	}
 
-	// Create progress callbacks
-	var bytesProcessed int64
-	var lastProgress int64
-	progressInterval := int64(2 * 1024 * 1024) // 2MB
-
-	opts := &ipc.OperationCallbacks{
-		Progress: func(n int64) {
-			bytesProcessed += n
-			if totalSize > 0 && (bytesProcessed-lastProgress >= progressInterval || bytesProcessed >= totalSize) {
-				pct := min(int(bytesProcessed*100/totalSize), 100)
-				phase := "copying"
-				if action == "move" || action == "rename" {
-					phase = "moving"
-				}
-				logger.Debugf("Progress: %d/%d bytes (%d%%) - %s", bytesProcessed, totalSize, pct, phase)
-				if err := emit.Progress(FileProgress{
-					Bytes: bytesProcessed,
-					Total: totalSize,
-					Pct:   pct,
-					Phase: phase,
-				}); err != nil {
-					logger.Debugf("failed to write progress update: %v", err)
-					return
-				}
-				lastProgress = bytesProcessed
-			}
-		},
-		Cancel: func() bool {
-			// Check if context is cancelled
-			select {
-			case <-ctx.Done():
-				return true
-			default:
-				return false
-			}
-		},
+	opts := newPatchCallbacks(ctx, emit, req.action, totalSize)
+	if err := executeResourcePatch(req, opts); err != nil {
+		logger.Debugf("error patching resource: %v", err)
+		return nil, fmt.Errorf("bad_request:%v", err)
 	}
 
-	switch action {
-	case "copy":
-		err := services.CopyFileWithCallbacks(realSrc, realDest, overwrite, opts)
-		if err != nil {
-			logger.Debugf("error copying resource: %v", err)
-			return nil, fmt.Errorf("bad_request:%v", err)
-		}
-		logger.Infof("Copy complete: %s -> %s (bytes=%d)", realSrc, realDest, bytesProcessed)
-		// Notify indexer about the copied file/directory
-		if info, err := root.Root.Stat(fsroot.ToRel(realDest)); err == nil {
-			if err := addToIndexer(dst, info); err != nil {
-				logger.Debugf("failed to update indexer after copy: %v", err)
-			}
-		}
-	case "rename", "move":
-		err := services.MoveFileWithCallbacks(realSrc, realDest, overwrite, opts)
-		if err != nil {
-			logger.Debugf("error moving/renaming resource: %v", err)
-			return nil, fmt.Errorf("bad_request:%v", err)
-		}
-		logger.Infof("Move complete: %s -> %s (bytes=%d)", realSrc, realDest, bytesProcessed)
-		// Notify indexer about the move: delete source, add destination
-		if err := deleteFromIndexer(src); err != nil {
-			logger.Debugf("failed to update indexer after move (delete source): %v", err)
-		}
-		if info, err := root.Root.Stat(fsroot.ToRel(realDest)); err == nil {
-			if err := addToIndexer(dst, info); err != nil {
-				logger.Debugf("failed to update indexer after move (add destination): %v", err)
-			}
-		}
-	default:
-		return nil, fmt.Errorf("bad_request:unsupported action: %s", action)
-	}
-
+	notifyIndexerAfterPatch(root, req)
 	return map[string]any{"message": "operation completed"}, nil
 }
 
@@ -1314,20 +1360,33 @@ func replaceFileFromTemp(root *fsroot.FSRoot, tempPath, destPath string, mode os
 	tempRel := fsroot.ToRel(tempPath)
 	destRel := fsroot.ToRel(destPath)
 
-	// Attempt an atomic replace first.
-	if err := root.Root.Rename(tempRel, destRel); err == nil {
-		if err := root.Root.Chmod(destRel, mode); err != nil {
-			return fmt.Errorf("failed to set permissions: %v", err)
-		}
-		if restoreOwner {
-			if err := root.Root.Chown(destRel, uid, gid); err != nil {
-				logger.Debugf("failed to restore ownership for %s: %v", destPath, err)
-			}
-		}
-		return nil
+	if replaced, err := tryAtomicReplace(root, tempRel, destRel, destPath, mode, restoreOwner, uid, gid); replaced {
+		return err
 	}
 
-	// Cross-device fallback: copy into a temp file in the destination directory, then rename.
+	return replaceFileFromTempFallback(root, tempPath, destPath, destRel, mode, restoreOwner, uid, gid)
+}
+
+func tryAtomicReplace(root *fsroot.FSRoot, tempRel, destRel, destPath string, mode os.FileMode, restoreOwner bool, uid, gid int) (bool, error) {
+	if err := root.Root.Rename(tempRel, destRel); err != nil {
+		return false, nil
+	}
+	return true, applyReplacedFileMetadata(root, destRel, destPath, mode, restoreOwner, uid, gid)
+}
+
+func applyReplacedFileMetadata(root *fsroot.FSRoot, destRel, destPath string, mode os.FileMode, restoreOwner bool, uid, gid int) error {
+	if err := root.Root.Chmod(destRel, mode); err != nil {
+		return fmt.Errorf("failed to set permissions: %v", err)
+	}
+	if restoreOwner {
+		if err := root.Root.Chown(destRel, uid, gid); err != nil {
+			logger.Debugf("failed to restore ownership for %s: %v", destPath, err)
+		}
+	}
+	return nil
+}
+
+func replaceFileFromTempFallback(root *fsroot.FSRoot, tempPath, destPath, destRel string, mode os.FileMode, restoreOwner bool, uid, gid int) error {
 	tmpFile, tmpRel, err := root.CreateTemp(filepath.Dir(destPath), "linuxio-update-*.tmp")
 	if err != nil {
 		return fmt.Errorf("failed to prepare temporary file: %v", err)

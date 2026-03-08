@@ -1,4 +1,10 @@
-2 - Notifications!!!! See notifications.md
+1 - Implement power managment 
+
+2 - implement monitoring (pcp?)
+
+3 - Remove func StartSimpleNetInfoSampler()
+
+Optional - Notifications!!!! See notifications.md
 
 ChunkSize should be defined in user config file. affects stream.go and streammultiplexer.ts - DONE
 Different view modes on cards/tables with user config (migrate all tables to cards) - DONE

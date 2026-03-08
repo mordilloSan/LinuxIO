@@ -73,94 +73,39 @@ func InstallModuleOperation(
 	createSymlink bool,
 	streamHandlers map[string]func(*session.Session, net.Conn, []string) error,
 ) (*InstallResult, error) {
-	// Validate source path exists
 	sourcePath = filepath.Clean(sourcePath)
-	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("source path does not exist: %s", sourcePath)
+	if err := validateModuleSourcePath(sourcePath); err != nil {
+		return nil, err
 	}
 
-	// Parse and validate manifest
-	manifestPath := filepath.Join(sourcePath, "module.yaml")
-	manifest, err := parseManifest(manifestPath)
+	manifest, err := parseManifest(filepath.Join(sourcePath, "module.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("invalid module manifest: %w", err)
 	}
 
-	// Use manifest name if targetName not provided
-	if targetName == "" {
-		targetName = manifest.Name
-	}
-
-	// Sanitize target name (prevent path traversal)
-	targetName = filepath.Base(targetName)
+	targetName = resolveInstallModuleTargetName(targetName, manifest.Name)
 
 	logger.Infof("Installing module: %s (source=%s, symlink=%v)", targetName, sourcePath, createSymlink)
 
-	// Check for conflicts
 	if _, exists := GetModule(targetName); exists {
 		return nil, fmt.Errorf("module '%s' already exists", targetName)
 	}
 
-	// Determine target path (user modules directory)
-	userHome := os.Getenv("HOME")
-	if userHome == "" {
-		userHome = "/root"
+	targetDir, err := moduleInstallTargetDir(targetName)
+	if err != nil {
+		return nil, err
 	}
-	userModulesDir := filepath.Join(userHome, ".config/linuxio/modules")
-
-	// Ensure user modules directory exists
-	if err := os.MkdirAll(userModulesDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create user modules directory: %w", err)
+	if err := createInstalledModuleTarget(sourcePath, targetDir, createSymlink); err != nil {
+		return nil, err
 	}
 
-	targetDir := filepath.Join(userModulesDir, targetName)
-
-	// Create target (copy or symlink)
-	if createSymlink {
-		absSource, err := filepath.Abs(sourcePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve absolute path: %w", err)
-		}
-
-		// Validate symlink target is not pointing to sensitive system directories
-		// Resolve any symlinks in the source path to get the real target
-		realSource, err := filepath.EvalSymlinks(absSource)
-		if err != nil {
-			// If EvalSymlinks fails, use the absolute path but log warning
-			logger.Warnf("Could not resolve symlinks in source path: %v", err)
-			realSource = absSource
-		}
-
-		// Block symlinks to sensitive system directories
-		sensitivePrefix := []string{"/etc/", "/var/", "/usr/", "/bin/", "/sbin/", "/lib/", "/root/", "/boot/", "/sys/", "/proc/"}
-		for _, prefix := range sensitivePrefix {
-			if strings.HasPrefix(realSource, prefix) && !strings.HasPrefix(realSource, "/etc/linuxio/") && !strings.HasPrefix(realSource, "/var/lib/linuxio/") {
-				return nil, fmt.Errorf("symlink to sensitive system path not allowed: %s", realSource)
-			}
-		}
-
-		if err := os.Symlink(absSource, targetDir); err != nil {
-			return nil, fmt.Errorf("failed to create symlink: %w", err)
-		}
-		logger.Infof("Created symlink: %s -> %s", targetDir, absSource)
-	} else {
-		// Copy directory recursively
-		if err := copyDir(sourcePath, targetDir); err != nil {
-			return nil, fmt.Errorf("failed to copy module: %w", err)
-		}
-		logger.Infof("Copied module to: %s", targetDir)
-	}
-
-	// Load and register the module
 	module := &ModuleInfo{
 		Manifest: *manifest,
 		Path:     targetDir,
 		Enabled:  true,
 	}
 
-	// Register module handlers
 	if err := registerModule(module, streamHandlers); err != nil {
-		// Cleanup on failure
 		if removeErr := os.RemoveAll(targetDir); removeErr != nil {
 			logger.Warnf("failed to cleanup module directory after register error (%s): %v", targetDir, removeErr)
 		}
@@ -175,6 +120,75 @@ func InstallModuleOperation(
 		ModuleName: targetName,
 		Message:    fmt.Sprintf("Module '%s' v%s installed successfully", manifest.Title, manifest.Version),
 	}, nil
+}
+
+func validateModuleSourcePath(sourcePath string) error {
+	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+		return fmt.Errorf("source path does not exist: %s", sourcePath)
+	}
+	return nil
+}
+
+func resolveInstallModuleTargetName(targetName, manifestName string) string {
+	if targetName == "" {
+		targetName = manifestName
+	}
+	return filepath.Base(targetName)
+}
+
+func moduleInstallTargetDir(targetName string) (string, error) {
+	userHome := os.Getenv("HOME")
+	if userHome == "" {
+		userHome = "/root"
+	}
+	userModulesDir := filepath.Join(userHome, ".config/linuxio/modules")
+	if err := os.MkdirAll(userModulesDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create user modules directory: %w", err)
+	}
+	return filepath.Join(userModulesDir, targetName), nil
+}
+
+func createInstalledModuleTarget(sourcePath, targetDir string, createSymlink bool) error {
+	if createSymlink {
+		return createInstalledModuleSymlink(sourcePath, targetDir)
+	}
+	if err := copyDir(sourcePath, targetDir); err != nil {
+		return fmt.Errorf("failed to copy module: %w", err)
+	}
+	logger.Infof("Copied module to: %s", targetDir)
+	return nil
+}
+
+func createInstalledModuleSymlink(sourcePath, targetDir string) error {
+	absSource, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve absolute path: %w", err)
+	}
+	realSource, err := filepath.EvalSymlinks(absSource)
+	if err != nil {
+		logger.Warnf("Could not resolve symlinks in source path: %v", err)
+		realSource = absSource
+	}
+	if err := validateModuleSymlinkTarget(realSource); err != nil {
+		return err
+	}
+	if err := os.Symlink(absSource, targetDir); err != nil {
+		return fmt.Errorf("failed to create symlink: %w", err)
+	}
+	logger.Infof("Created symlink: %s -> %s", targetDir, absSource)
+	return nil
+}
+
+func validateModuleSymlinkTarget(realSource string) error {
+	sensitivePrefixes := []string{"/etc/", "/var/", "/usr/", "/bin/", "/sbin/", "/lib/", "/root/", "/boot/", "/sys/", "/proc/"}
+	for _, prefix := range sensitivePrefixes {
+		if strings.HasPrefix(realSource, prefix) &&
+			!strings.HasPrefix(realSource, "/etc/linuxio/") &&
+			!strings.HasPrefix(realSource, "/var/lib/linuxio/") {
+			return fmt.Errorf("symlink to sensitive system path not allowed: %s", realSource)
+		}
+	}
+	return nil
 }
 
 // ValidateModuleAtPath validates a module.yaml file without installing

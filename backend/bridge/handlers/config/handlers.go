@@ -13,165 +13,85 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
+type configRegistration struct {
+	command string
+	handler ipc.HandlerFunc
+}
+
+type configSetPayload struct {
+	AppSettings *configAppSettingsPayload `json:"appSettings"`
+	Docker      *configDockerPayload      `json:"docker"`
+}
+
+type configAppSettingsPayload struct {
+	Theme                   *string                   `json:"theme"`
+	PrimaryColor            *string                   `json:"primaryColor"`
+	ThemeColors             *configThemeColorsPayload `json:"themeColors"`
+	SidebarCollapsed        *bool                     `json:"sidebarCollapsed"`
+	ShowHiddenFiles         *bool                     `json:"showHiddenFiles"`
+	DashboardOrder          []string                  `json:"dashboardOrder"`
+	HiddenCards             []string                  `json:"hiddenCards"`
+	ContainerOrder          []string                  `json:"containerOrder"`
+	DockerDashboardSections *DockerDashboardSections  `json:"dockerDashboardSections"`
+	ViewModes               map[string]string         `json:"viewModes"`
+	ChunkSizeMB             *int                      `json:"chunkSizeMB"`
+}
+
+type configThemeColorsPayload struct {
+	BackgroundDefault *string `json:"backgroundDefault"`
+	BackgroundPaper   *string `json:"backgroundPaper"`
+	HeaderBackground  *string `json:"headerBackground"`
+	FooterBackground  *string `json:"footerBackground"`
+	SidebarBackground *string `json:"sidebarBackground"`
+	CardBackground    *string `json:"cardBackground"`
+}
+
+type configDockerPayload struct {
+	Folder           *string  `json:"folder"`
+	AutoUpdateStacks []string `json:"autoUpdateStacks"`
+}
+
 // RegisterHandlers registers config handlers with the new handler system
 func RegisterHandlers(sess *session.Session) {
 	username := sess.User.Username
+	registerConfigHandlers([]configRegistration{
+		{command: "get", handler: handleGetConfig(username)},
+		{command: "set", handler: handleSetConfig(username)},
+	})
+}
 
-	// Unified config endpoints
-	ipc.RegisterFunc("config", "get", func(ctx context.Context, args []string, emit ipc.Events) error {
+func registerConfigHandlers(registrations []configRegistration) {
+	for _, registration := range registrations {
+		ipc.RegisterFunc("config", registration.command, registration.handler)
+	}
+}
+
+func handleGetConfig(username string) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
 		cfg, cfgPath, err := Load(username)
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
 		logger.Debugf("user=%q path=%s", username, cfgPath)
 		return emit.Result(cfg)
-	})
+	}
+}
 
-	ipc.RegisterFunc("config", "set", func(ctx context.Context, args []string, emit ipc.Events) error {
-		if len(args) < 1 {
-			return ipc.ErrInvalidArgs
+func handleSetConfig(username string) ipc.HandlerFunc {
+	return func(ctx context.Context, args []string, emit ipc.Events) error {
+		payload, err := decodeConfigPayload(args)
+		if err != nil {
+			return err
 		}
 		logger.Infof("user=%q update requested", username)
-
-		// Payload with optional nested fields
-		var payload struct {
-			AppSettings *struct {
-				Theme        *string `json:"theme"`
-				PrimaryColor *string `json:"primaryColor"`
-				ThemeColors  *struct {
-					BackgroundDefault *string `json:"backgroundDefault"`
-					BackgroundPaper   *string `json:"backgroundPaper"`
-					HeaderBackground  *string `json:"headerBackground"`
-					FooterBackground  *string `json:"footerBackground"`
-					SidebarBackground *string `json:"sidebarBackground"`
-					CardBackground    *string `json:"cardBackground"`
-				} `json:"themeColors"`
-				SidebarCollapsed        *bool                    `json:"sidebarCollapsed"`
-				ShowHiddenFiles         *bool                    `json:"showHiddenFiles"`
-				DashboardOrder          []string                 `json:"dashboardOrder"`
-				HiddenCards             []string                 `json:"hiddenCards"`
-				ContainerOrder          []string                 `json:"containerOrder"`
-				DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections"`
-				ViewModes               map[string]string        `json:"viewModes"`
-				ChunkSizeMB             *int                     `json:"chunkSizeMB"`
-			} `json:"appSettings"`
-			Docker *struct {
-				Folder           *string  `json:"folder"`
-				AutoUpdateStacks []string `json:"autoUpdateStacks"`
-			} `json:"docker"`
-		}
-
-		if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
-			return ipc.ErrInvalidArgs
-		}
 
 		cfg, _, err := Load(username)
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
 
-		// Update AppSettings if provided
-		if payload.AppSettings != nil {
-			if payload.AppSettings.Theme != nil {
-				t := strings.ToUpper(strings.TrimSpace(*payload.AppSettings.Theme))
-				if t != string(ThemeLight) && t != string(ThemeDark) {
-					return fmt.Errorf("invalid theme value (LIGHT|DARK)")
-				}
-				cfg.AppSettings.Theme = Theme(t)
-			}
-			if payload.AppSettings.PrimaryColor != nil {
-				if !IsValidCSSColor(*payload.AppSettings.PrimaryColor) {
-					return fmt.Errorf("invalid primaryColor")
-				}
-				cfg.AppSettings.PrimaryColor = CSSColor(*payload.AppSettings.PrimaryColor)
-			}
-			if tc := payload.AppSettings.ThemeColors; tc != nil {
-				colors := &ThemeColors{}
-				fields := []struct {
-					src *string
-					dst **CSSColor
-					key string
-				}{
-					{tc.BackgroundDefault, &colors.BackgroundDefault, "backgroundDefault"},
-					{tc.BackgroundPaper, &colors.BackgroundPaper, "backgroundPaper"},
-					{tc.HeaderBackground, &colors.HeaderBackground, "headerBackground"},
-					{tc.FooterBackground, &colors.FooterBackground, "footerBackground"},
-					{tc.SidebarBackground, &colors.SidebarBackground, "sidebarBackground"},
-					{tc.CardBackground, &colors.CardBackground, "cardBackground"},
-				}
-				for _, f := range fields {
-					if f.src == nil {
-						continue
-					}
-					if !IsValidCSSColor(*f.src) {
-						return fmt.Errorf("invalid themeColors.%s", f.key)
-					}
-					v := CSSColor(*f.src)
-					*f.dst = &v
-				}
-				cfg.AppSettings.ThemeColors = colors
-			}
-			if payload.AppSettings.SidebarCollapsed != nil {
-				cfg.AppSettings.SidebarCollapsed = *payload.AppSettings.SidebarCollapsed
-			}
-			if payload.AppSettings.ShowHiddenFiles != nil {
-				cfg.AppSettings.ShowHiddenFiles = *payload.AppSettings.ShowHiddenFiles
-			}
-			if payload.AppSettings.DashboardOrder != nil {
-				cfg.AppSettings.DashboardOrder = payload.AppSettings.DashboardOrder
-			}
-			if payload.AppSettings.HiddenCards != nil {
-				cfg.AppSettings.HiddenCards = payload.AppSettings.HiddenCards
-			}
-			if payload.AppSettings.ContainerOrder != nil {
-				cfg.AppSettings.ContainerOrder = payload.AppSettings.ContainerOrder
-			}
-			if payload.AppSettings.DockerDashboardSections != nil {
-				cfg.AppSettings.DockerDashboardSections = payload.AppSettings.DockerDashboardSections
-			}
-			if payload.AppSettings.ViewModes != nil {
-				normalized := make(map[string]string, len(payload.AppSettings.ViewModes))
-				for key, mode := range payload.AppSettings.ViewModes {
-					k := strings.TrimSpace(key)
-					m := strings.ToLower(strings.TrimSpace(mode))
-					if k == "" {
-						continue
-					}
-					if m != "card" && m != "table" {
-						continue
-					}
-					normalized[k] = m
-				}
-				cfg.AppSettings.ViewModes = normalized
-			}
-			if payload.AppSettings.ChunkSizeMB != nil {
-				v := *payload.AppSettings.ChunkSizeMB
-				if v != 0 && (v < 1 || v > 32) {
-					return fmt.Errorf("chunkSizeMB must be 0 (default) or between 1 and 32")
-				}
-				cfg.AppSettings.ChunkSizeMB = v
-			}
-		}
-
-		// Update Docker settings if provided
-		if payload.Docker != nil {
-			if payload.Docker.Folder != nil {
-				folderInput := strings.TrimSpace(*payload.Docker.Folder)
-				if folderInput == "" {
-					return fmt.Errorf("docker folder cannot be empty")
-				}
-				folder := filepath.Clean(folderInput)
-				if !filepath.IsAbs(folder) {
-					return fmt.Errorf("docker folder must be an absolute path")
-				}
-				if folder == string(filepath.Separator) {
-					return fmt.Errorf("docker folder cannot be root")
-				}
-				cfg.Docker.Folder = AbsolutePath(folder)
-			}
-			if payload.Docker.AutoUpdateStacks != nil {
-				cfg.Docker.AutoUpdateStacks = payload.Docker.AutoUpdateStacks
-			}
+		if applyErr := applyConfigPayload(cfg, &payload); applyErr != nil {
+			return applyErr
 		}
 
 		cfgPath, err := Save(username, cfg)
@@ -180,11 +100,186 @@ func RegisterHandlers(sess *session.Session) {
 		}
 
 		logger.Infof("user=%q updated config: path=%s", username, cfgPath)
-
 		return emit.Result(map[string]any{
 			"message": "config updated",
 			"path":    cfgPath,
 		})
-	})
+	}
+}
 
+func decodeConfigPayload(args []string) (configSetPayload, error) {
+	var payload configSetPayload
+	if len(args) < 1 {
+		return payload, ipc.ErrInvalidArgs
+	}
+	if err := json.Unmarshal([]byte(args[0]), &payload); err != nil {
+		return payload, ipc.ErrInvalidArgs
+	}
+	return payload, nil
+}
+
+func applyConfigPayload(cfg *Settings, payload *configSetPayload) error {
+	if payload.AppSettings != nil {
+		if err := applyAppSettingsUpdate(&cfg.AppSettings, payload.AppSettings); err != nil {
+			return err
+		}
+	}
+	if payload.Docker != nil {
+		if err := applyDockerSettingsUpdate(&cfg.Docker, payload.Docker); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyAppSettingsUpdate(app *AppSettings, payload *configAppSettingsPayload) error {
+	if err := applyThemeSetting(app, payload.Theme); err != nil {
+		return err
+	}
+	if err := applyPrimaryColorSetting(app, payload.PrimaryColor); err != nil {
+		return err
+	}
+	if err := applyThemeColorOverrides(app, payload.ThemeColors); err != nil {
+		return err
+	}
+	applyOptionalBool(&app.SidebarCollapsed, payload.SidebarCollapsed)
+	applyOptionalBool(&app.ShowHiddenFiles, payload.ShowHiddenFiles)
+	applyOptionalStringSlice(&app.DashboardOrder, payload.DashboardOrder)
+	applyOptionalStringSlice(&app.HiddenCards, payload.HiddenCards)
+	applyOptionalStringSlice(&app.ContainerOrder, payload.ContainerOrder)
+	applyOptionalDockerDashboardSections(app, payload.DockerDashboardSections)
+	applyViewModes(app, payload.ViewModes)
+	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
+}
+
+func applyThemeSetting(app *AppSettings, theme *string) error {
+	if theme == nil {
+		return nil
+	}
+	normalized := strings.ToUpper(strings.TrimSpace(*theme))
+	if normalized != string(ThemeLight) && normalized != string(ThemeDark) {
+		return fmt.Errorf("invalid theme value (LIGHT|DARK)")
+	}
+	app.Theme = Theme(normalized)
+	return nil
+}
+
+func applyPrimaryColorSetting(app *AppSettings, primaryColor *string) error {
+	if primaryColor == nil {
+		return nil
+	}
+	if !IsValidCSSColor(*primaryColor) {
+		return fmt.Errorf("invalid primaryColor")
+	}
+	app.PrimaryColor = CSSColor(*primaryColor)
+	return nil
+}
+
+func applyThemeColorOverrides(app *AppSettings, payload *configThemeColorsPayload) error {
+	if payload == nil {
+		return nil
+	}
+	colors := &ThemeColors{}
+	fields := []struct {
+		src *string
+		dst **CSSColor
+		key string
+	}{
+		{src: payload.BackgroundDefault, dst: &colors.BackgroundDefault, key: "backgroundDefault"},
+		{src: payload.BackgroundPaper, dst: &colors.BackgroundPaper, key: "backgroundPaper"},
+		{src: payload.HeaderBackground, dst: &colors.HeaderBackground, key: "headerBackground"},
+		{src: payload.FooterBackground, dst: &colors.FooterBackground, key: "footerBackground"},
+		{src: payload.SidebarBackground, dst: &colors.SidebarBackground, key: "sidebarBackground"},
+		{src: payload.CardBackground, dst: &colors.CardBackground, key: "cardBackground"},
+	}
+	for _, field := range fields {
+		if field.src == nil {
+			continue
+		}
+		if !IsValidCSSColor(*field.src) {
+			return fmt.Errorf("invalid themeColors.%s", field.key)
+		}
+		value := CSSColor(*field.src)
+		*field.dst = &value
+	}
+	app.ThemeColors = colors
+	return nil
+}
+
+func applyOptionalBool(dst *bool, value *bool) {
+	if value != nil {
+		*dst = *value
+	}
+}
+
+func applyOptionalStringSlice(dst *[]string, value []string) {
+	if value != nil {
+		*dst = value
+	}
+}
+
+func applyOptionalDockerDashboardSections(app *AppSettings, sections *DockerDashboardSections) {
+	if sections != nil {
+		app.DockerDashboardSections = sections
+	}
+}
+
+func applyViewModes(app *AppSettings, viewModes map[string]string) {
+	if viewModes == nil {
+		return
+	}
+	normalized := make(map[string]string, len(viewModes))
+	for key, mode := range viewModes {
+		normalizedKey := strings.TrimSpace(key)
+		normalizedMode := strings.ToLower(strings.TrimSpace(mode))
+		if normalizedKey == "" {
+			continue
+		}
+		if normalizedMode != "card" && normalizedMode != "table" {
+			continue
+		}
+		normalized[normalizedKey] = normalizedMode
+	}
+	app.ViewModes = normalized
+}
+
+func applyChunkSizeSetting(app *AppSettings, chunkSize *int) error {
+	if chunkSize == nil {
+		return nil
+	}
+	value := *chunkSize
+	if value != 0 && (value < 1 || value > 32) {
+		return fmt.Errorf("chunkSizeMB must be 0 (default) or between 1 and 32")
+	}
+	app.ChunkSizeMB = value
+	return nil
+}
+
+func applyDockerSettingsUpdate(docker *Docker, payload *configDockerPayload) error {
+	if err := applyDockerFolderSetting(docker, payload.Folder); err != nil {
+		return err
+	}
+	if payload.AutoUpdateStacks != nil {
+		docker.AutoUpdateStacks = payload.AutoUpdateStacks
+	}
+	return nil
+}
+
+func applyDockerFolderSetting(docker *Docker, folderValue *string) error {
+	if folderValue == nil {
+		return nil
+	}
+	folderInput := strings.TrimSpace(*folderValue)
+	if folderInput == "" {
+		return fmt.Errorf("docker folder cannot be empty")
+	}
+	folder := filepath.Clean(folderInput)
+	if !filepath.IsAbs(folder) {
+		return fmt.Errorf("docker folder must be an absolute path")
+	}
+	if folder == string(filepath.Separator) {
+		return fmt.Errorf("docker folder cannot be root")
+	}
+	docker.Folder = AbsolutePath(folder)
+	return nil
 }

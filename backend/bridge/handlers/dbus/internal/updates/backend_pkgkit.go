@@ -153,110 +153,139 @@ func pkTransactionCall(conn *godbus.Conn, busName, objPath, transIfc, method str
 // pkTransactionCallWithUpdates gets available updates and downloads them
 func pkTransactionCallWithUpdates(conn *godbus.Conn, busName, objPath, transIfc string) error {
 	obj := conn.Object(busName, godbus.ObjectPath(objPath))
-
-	// First get list of updates
-	var transPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
-		return fmt.Errorf("CreateTransaction failed: %w", err)
-	}
-
-	trans := conn.Object(busName, transPath)
-	sigCh := make(chan *godbus.Signal, 100)
-	conn.Signal(sigCh)
-	defer conn.RemoveSignal(sigCh)
-	matchPath := transPath
-	defer func() {
-		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(matchPath)); err != nil {
-			logger.Debugf("failed to remove PackageKit signal match: %v", err)
-		}
-	}()
-
-	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to add PackageKit signal match: %v", err)
-	}
-
-	// GetUpdates with filter 0 (none)
-	if err := trans.Call(transIfc+".GetUpdates", 0, uint64(0)).Err; err != nil {
+	packageIDs, err := collectPackageKitUpdates(conn, obj, busName, transIfc)
+	if err != nil {
 		return err
 	}
-
-	var packageIDs []string
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Collect package IDs from Package signals
-collectLoop:
-	for {
-		select {
-		case sig := <-sigCh:
-			if sig == nil {
-				continue
-			}
-			switch sig.Name {
-			case transIfc + ".Package":
-				if len(sig.Body) >= 2 {
-					if pkgID, ok := sig.Body[1].(string); ok {
-						packageIDs = append(packageIDs, pkgID)
-					}
-				}
-			case transIfc + ".Finished":
-				break collectLoop
-			case transIfc + ".ErrorCode":
-				msg, _ := sig.Body[1].(string)
-				return fmt.Errorf("GetUpdates error: %s", msg)
-			}
-		case <-ctx.Done():
-			return fmt.Errorf("timeout getting updates")
-		}
-	}
-
 	if len(packageIDs) == 0 {
 		return fmt.Errorf("no updates available")
 	}
+	return downloadPackageKitUpdates(conn, obj, busName, transIfc, packageIDs)
+}
 
-	// Now download them with UpdatePackages (flag 2 = ONLY_DOWNLOAD)
+func collectPackageKitUpdates(
+	conn *godbus.Conn,
+	obj godbus.BusObject,
+	busName, transIfc string,
+) ([]string, error) {
+	var transPath godbus.ObjectPath
+	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+		return nil, fmt.Errorf("CreateTransaction failed: %w", err)
+	}
+
+	trans := conn.Object(busName, transPath)
+	sigCh := subscribePkgKitSignals(conn, transPath, 100)
+	defer conn.RemoveSignal(sigCh)
+	defer removePkgKitSignalMatch(conn, transPath)
+
+	if err := trans.Call(transIfc+".GetUpdates", 0, uint64(0)).Err; err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var packageIDs []string
+
+	for {
+		select {
+		case sig := <-sigCh:
+			done, err := collectPackageKitUpdateSignal(sig, transIfc, &packageIDs)
+			if err != nil {
+				return nil, err
+			}
+			if done {
+				return packageIDs, nil
+			}
+		case <-ctx.Done():
+			return nil, fmt.Errorf("timeout getting updates")
+		}
+	}
+}
+
+func downloadPackageKitUpdates(
+	conn *godbus.Conn,
+	obj godbus.BusObject,
+	busName, transIfc string,
+	packageIDs []string,
+) error {
+	var transPath godbus.ObjectPath
 	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
 		return err
 	}
 
-	trans = conn.Object(busName, transPath)
-	sigCh2 := make(chan *godbus.Signal, 20)
-	conn.Signal(sigCh2)
-	defer conn.RemoveSignal(sigCh2)
-	matchPath2 := transPath
-	defer func() {
-		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(matchPath2)); err != nil {
-			logger.Debugf("failed to remove PackageKit signal match: %v", err)
-		}
-	}()
+	trans := conn.Object(busName, transPath)
+	sigCh := subscribePkgKitSignals(conn, transPath, 20)
+	defer conn.RemoveSignal(sigCh)
+	defer removePkgKitSignalMatch(conn, transPath)
 
-	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Debugf("failed to add PackageKit signal match: %v", err)
-	}
-
-	// UpdatePackages with ONLY_DOWNLOAD flag (2)
 	if err := trans.Call(transIfc+".UpdatePackages", 0, uint64(2), packageIDs).Err; err != nil {
 		return err
 	}
 
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 300*time.Second)
-	defer cancel2()
-
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
 	for {
 		select {
-		case sig := <-sigCh2:
-			if sig == nil {
-				continue
+		case sig := <-sigCh:
+			done, err := waitForPkgKitCompletion(sig, transIfc, "UpdatePackages")
+			if err != nil {
+				return err
 			}
-			switch sig.Name {
-			case transIfc + ".ErrorCode":
-				msg, _ := sig.Body[1].(string)
-				return fmt.Errorf("UpdatePackages error: %s", msg)
-			case transIfc + ".Finished":
+			if done {
 				return nil
 			}
-		case <-ctx2.Done():
+		case <-ctx.Done():
 			return fmt.Errorf("timeout downloading updates")
 		}
+	}
+}
+
+func subscribePkgKitSignals(conn *godbus.Conn, transPath godbus.ObjectPath, buffer int) chan *godbus.Signal {
+	sigCh := make(chan *godbus.Signal, buffer)
+	conn.Signal(sigCh)
+	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Debugf("failed to add PackageKit signal match: %v", err)
+	}
+	return sigCh
+}
+
+func removePkgKitSignalMatch(conn *godbus.Conn, transPath godbus.ObjectPath) {
+	if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Debugf("failed to remove PackageKit signal match: %v", err)
+	}
+}
+
+func collectPackageKitUpdateSignal(sig *godbus.Signal, transIfc string, packageIDs *[]string) (bool, error) {
+	if sig == nil {
+		return false, nil
+	}
+	switch sig.Name {
+	case transIfc + ".Package":
+		if len(sig.Body) >= 2 {
+			if pkgID, ok := sig.Body[1].(string); ok {
+				*packageIDs = append(*packageIDs, pkgID)
+			}
+		}
+	case transIfc + ".Finished":
+		return true, nil
+	case transIfc + ".ErrorCode":
+		msg, _ := sig.Body[1].(string)
+		return false, fmt.Errorf("GetUpdates error: %s", msg)
+	}
+	return false, nil
+}
+
+func waitForPkgKitCompletion(sig *godbus.Signal, transIfc, action string) (bool, error) {
+	if sig == nil {
+		return false, nil
+	}
+	switch sig.Name {
+	case transIfc + ".ErrorCode":
+		msg, _ := sig.Body[1].(string)
+		return false, fmt.Errorf("%s error: %s", action, msg)
+	case transIfc + ".Finished":
+		return true, nil
+	default:
+		return false, nil
 	}
 }

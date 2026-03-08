@@ -69,112 +69,7 @@ func ListComposeProjects(username string) (any, error) {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	// Map to collect projects
-	projects := make(map[string]*ComposeProject)
-
-	for _, ctr := range containers {
-		// Check if this container is part of a compose project
-		projectName, ok := ctr.Labels["com.docker.compose.project"]
-		if !ok {
-			continue // Skip standalone containers
-		}
-
-		serviceName := ctr.Labels["com.docker.compose.service"]
-		configFiles := ctr.Labels["com.docker.compose.project.config_files"]
-		workingDir := ctr.Labels["com.docker.compose.project.working_dir"]
-		containerIcon := ctr.Labels["io.linuxio.container.icon"]
-		containerURL := ctr.Labels["io.linuxio.container.url"]
-
-		// Initialize project if not exists
-		if _, exists := projects[projectName]; !exists {
-			parsedConfigFiles := parseConfigFiles(configFiles)
-
-			// Translate container paths to host paths for config files
-			translatedConfigFiles := make([]string, 0, len(parsedConfigFiles))
-			for _, configFile := range parsedConfigFiles {
-				// Check if the config file path exists on the host as-is
-				if _, err := os.Stat(configFile); err == nil {
-					// Path exists on host, use it directly
-					translatedConfigFiles = append(translatedConfigFiles, configFile)
-				} else {
-					// Path doesn't exist, try to translate from container path to host path
-					translatedPath := translateContainerPathToHost(cli, configFile)
-					if translatedPath != configFile {
-						// Translation succeeded, use translated path
-						translatedConfigFiles = append(translatedConfigFiles, translatedPath)
-					}
-				}
-			}
-			parsedConfigFiles = translatedConfigFiles
-
-			// Fallback: if config_files label is empty, infer from working_dir
-			if len(parsedConfigFiles) == 0 && workingDir != "" {
-				// Try to translate container paths to host paths
-				translatedWorkingDir := translateContainerPathToHost(cli, workingDir)
-
-				// Check common compose file names in the working directory
-				composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
-				for _, fileName := range composeFileNames {
-					possiblePath := filepath.Join(translatedWorkingDir, fileName)
-					if _, err := os.Stat(possiblePath); err == nil {
-						parsedConfigFiles = []string{possiblePath}
-						break
-					}
-				}
-			}
-
-			projects[projectName] = &ComposeProject{
-				Name:        projectName,
-				Services:    make(map[string]*ComposeService),
-				ConfigFiles: parsedConfigFiles,
-				WorkingDir:  workingDir,
-			}
-
-			// Extract stack icon from compose file if available
-			if len(parsedConfigFiles) > 0 {
-				if icon, err := extractStackIcon(parsedConfigFiles[0]); err == nil && icon != "" {
-					projects[projectName].Icon = icon
-				}
-			}
-		}
-
-		project := projects[projectName]
-
-		// Initialize service if not exists
-		if _, exists := project.Services[serviceName]; !exists {
-			project.Services[serviceName] = &ComposeService{
-				Name:         serviceName,
-				ContainerIDs: []string{},
-				Ports:        []string{},
-			}
-		}
-
-		service := project.Services[serviceName]
-
-		// Add container to service
-		service.ContainerIDs = append(service.ContainerIDs, ctr.ID)
-		service.ContainerCount++
-		service.Image = ctr.Image
-		service.State = ctr.State
-		service.Status = ctr.Status
-
-		// Set icon and URL if not already set (use first container's values)
-		if service.Icon == "" {
-			// Resolve icon with fallback to service name, then image name
-			service.Icon = ResolveIconIdentifier(containerIcon, serviceName)
-		}
-		if service.URL == "" && containerURL != "" {
-			service.URL = containerURL
-		}
-
-		// Collect port mappings
-		for _, port := range ctr.Ports {
-			if port.PublicPort > 0 {
-				portStr := fmt.Sprintf("%d:%d/%s", port.PublicPort, port.PrivatePort, port.Type)
-				service.Ports = append(service.Ports, portStr)
-			}
-		}
-	}
+	projects := discoverComposeProjectsFromContainers(cli, containers)
 
 	// Query indexer for offline stacks (compose files without running containers)
 	if err := discoverOfflineStacks(username, projects); err != nil {
@@ -185,26 +80,148 @@ func ListComposeProjects(username string) (any, error) {
 	// Load config once to check auto-update preferences.
 	cfg, _, _ := config.Load(username)
 
-	// Calculate overall project status and auto-update flag.
+	return finalizeComposeProjects(projects, cfg), nil
+}
+
+func discoverComposeProjectsFromContainers(
+	cli *client.Client,
+	containers []container.Summary,
+) map[string]*ComposeProject {
+	projects := make(map[string]*ComposeProject)
+	for _, ctr := range containers {
+		projectName, ok := ctr.Labels["com.docker.compose.project"]
+		if !ok {
+			continue
+		}
+		project := ensureComposeProject(cli, projects, projectName, ctr)
+		updateComposeProjectService(project, ctr)
+	}
+	return projects
+}
+
+func ensureComposeProject(
+	cli *client.Client,
+	projects map[string]*ComposeProject,
+	projectName string,
+	ctr container.Summary,
+) *ComposeProject {
+	if project, exists := projects[projectName]; exists {
+		return project
+	}
+
+	configFiles := resolveComposeConfigFiles(
+		cli,
+		ctr.Labels["com.docker.compose.project.config_files"],
+		ctr.Labels["com.docker.compose.project.working_dir"],
+	)
+	project := &ComposeProject{
+		Name:        projectName,
+		Services:    make(map[string]*ComposeService),
+		ConfigFiles: configFiles,
+		WorkingDir:  ctr.Labels["com.docker.compose.project.working_dir"],
+	}
+	setComposeProjectIcon(project)
+	projects[projectName] = project
+	return project
+}
+
+func resolveComposeConfigFiles(cli *client.Client, configFilesLabel, workingDir string) []string {
+	configFiles := translateComposeConfigFiles(cli, parseConfigFiles(configFilesLabel))
+	if len(configFiles) > 0 || workingDir == "" {
+		return configFiles
+	}
+	return inferComposeFilesFromWorkingDir(cli, workingDir)
+}
+
+func translateComposeConfigFiles(cli *client.Client, configFiles []string) []string {
+	translated := make([]string, 0, len(configFiles))
+	for _, configFile := range configFiles {
+		if _, err := os.Stat(configFile); err == nil {
+			translated = append(translated, configFile)
+			continue
+		}
+		translatedPath := translateContainerPathToHost(cli, configFile)
+		if translatedPath != configFile {
+			translated = append(translated, translatedPath)
+		}
+	}
+	return translated
+}
+
+func inferComposeFilesFromWorkingDir(cli *client.Client, workingDir string) []string {
+	translatedWorkingDir := translateContainerPathToHost(cli, workingDir)
+	composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+	for _, fileName := range composeFileNames {
+		possiblePath := filepath.Join(translatedWorkingDir, fileName)
+		if _, err := os.Stat(possiblePath); err == nil {
+			return []string{possiblePath}
+		}
+	}
+	return nil
+}
+
+func setComposeProjectIcon(project *ComposeProject) {
+	if len(project.ConfigFiles) == 0 {
+		return
+	}
+	if icon, err := extractStackIcon(project.ConfigFiles[0]); err == nil && icon != "" {
+		project.Icon = icon
+	}
+}
+
+func updateComposeProjectService(project *ComposeProject, ctr container.Summary) {
+	serviceName := ctr.Labels["com.docker.compose.service"]
+	service := ensureComposeService(project, serviceName)
+	service.ContainerIDs = append(service.ContainerIDs, ctr.ID)
+	service.ContainerCount++
+	service.Image = ctr.Image
+	service.State = ctr.State
+	service.Status = ctr.Status
+	if service.Icon == "" {
+		service.Icon = ResolveIconIdentifier(ctr.Labels["io.linuxio.container.icon"], serviceName)
+	}
+	if service.URL == "" {
+		service.URL = ctr.Labels["io.linuxio.container.url"]
+	}
+	service.Ports = append(service.Ports, collectComposeServicePorts(ctr)...)
+}
+
+func ensureComposeService(project *ComposeProject, serviceName string) *ComposeService {
+	if service, exists := project.Services[serviceName]; exists {
+		return service
+	}
+	service := &ComposeService{
+		Name:         serviceName,
+		ContainerIDs: []string{},
+		Ports:        []string{},
+	}
+	project.Services[serviceName] = service
+	return service
+}
+
+func collectComposeServicePorts(ctr container.Summary) []string {
+	ports := make([]string, 0, len(ctr.Ports))
+	for _, port := range ctr.Ports {
+		if port.PublicPort > 0 {
+			ports = append(ports, fmt.Sprintf("%d:%d/%s", port.PublicPort, port.PrivatePort, port.Type))
+		}
+	}
+	return ports
+}
+
+func finalizeComposeProjects(projects map[string]*ComposeProject, cfg *config.Settings) []*ComposeProject {
+	result := make([]*ComposeProject, 0, len(projects))
 	for _, project := range projects {
 		project.Status = calculateProjectStatus(project)
 		if cfg != nil {
 			project.AutoUpdate = slices.Contains(cfg.Docker.AutoUpdateStacks, project.Name)
 		}
-	}
-
-	// Convert map to sorted slice for consistent output
-	var result []*ComposeProject
-	for _, project := range projects {
 		result = append(result, project)
 	}
-
-	// Sort by project name
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Name < result[j].Name
 	})
-
-	return result, nil
+	return result
 }
 
 // GetComposeProject returns detailed information about a specific compose project
@@ -463,116 +480,9 @@ func deleteStackFiles(projectName, configFile, workingDir string, options Delete
 // ComposeRestart restarts a compose project
 func ComposeRestart(username, projectName string) (any, error) {
 	logger.Infof("compose restart requested: user=%s project=%s", username, projectName)
-	var configFile string
-	var workingDir string
-
-	// Try to get the project from existing containers first
-	project, err := GetComposeProject(username, projectName)
-	if err == nil {
-		composeProject, ok := project.(*ComposeProject)
-		if ok {
-			// Get a Docker client for path translation
-			cli, cliErr := getClient()
-			if cliErr != nil {
-				logger.WarnKV("failed to get Docker client for path translation",
-					"project", projectName,
-					"error", cliErr.Error())
-			}
-
-			if len(composeProject.ConfigFiles) > 0 {
-				configFile = composeProject.ConfigFiles[0]
-				workingDir = composeProject.WorkingDir
-
-				// Check if the config file exists at the labeled path
-				if _, statErr := os.Stat(configFile); statErr != nil {
-					// Path doesn't exist on host - might be a container path (e.g., Portainer)
-					// Try to translate it to a host path
-					if cli != nil {
-						translatedConfigFile := translateContainerPathToHost(cli, configFile)
-						if translatedConfigFile != configFile {
-							// Translation succeeded, check if translated path exists
-							if _, translatedStatErr := os.Stat(translatedConfigFile); translatedStatErr == nil {
-								logger.InfoKV("translated container config path to host path",
-									"project", projectName,
-									"container_path", configFile,
-									"host_path", translatedConfigFile)
-								configFile = translatedConfigFile
-								// Also translate working dir if needed
-								if workingDir != "" {
-									translatedWorkingDir := translateContainerPathToHost(cli, workingDir)
-									if translatedWorkingDir != workingDir {
-										workingDir = translatedWorkingDir
-									}
-								}
-							} else {
-								logger.WarnKV("translated path does not exist",
-									"project", projectName,
-									"translated_path", translatedConfigFile)
-								configFile = ""
-							}
-						} else {
-							logger.WarnKV("compose file from container labels not found and translation failed",
-								"project", projectName,
-								"labeled_path", configFile,
-								"error", statErr.Error())
-							configFile = ""
-						}
-					} else {
-						logger.WarnKV("compose file from container labels not found",
-							"project", projectName,
-							"labeled_path", configFile,
-							"error", statErr.Error())
-						configFile = ""
-					}
-				}
-
-				if workingDir == "" && configFile != "" {
-					workingDir = filepath.Dir(configFile)
-				}
-			} else if composeProject.WorkingDir != "" {
-				// Config files list is empty but we have a working directory
-				// This can happen with Portainer where config_files label is empty
-				// Try to translate container path to host path and find compose file
-				if cli != nil {
-					translatedWorkingDir := translateContainerPathToHost(cli, composeProject.WorkingDir)
-
-					logger.DebugKV("translating working directory",
-						"project", projectName,
-						"container_path", composeProject.WorkingDir,
-						"host_path", translatedWorkingDir)
-
-					// Try common compose file names in the translated working directory
-					composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
-					for _, fileName := range composeFileNames {
-						possiblePath := filepath.Join(translatedWorkingDir, fileName)
-						if _, statErr := os.Stat(possiblePath); statErr == nil {
-							configFile = possiblePath
-							workingDir = translatedWorkingDir
-							logger.InfoKV("found compose file via working_dir translation",
-								"project", projectName,
-								"path", configFile)
-							break
-						}
-					}
-				}
-			}
-
-			if cli != nil {
-				cli.Close()
-			}
-		}
-	}
-
-	// If we couldn't get a valid config file from container labels, search for it
-	if configFile == "" {
-		var findErr error
-		configFile, workingDir, findErr = findComposeFile(username, projectName)
-		if findErr != nil {
-			return nil, fmt.Errorf("compose file not found: %w", findErr)
-		}
-		logger.InfoKV("found compose file via search",
-			"project", projectName,
-			"path", configFile)
+	configFile, workingDir, err := resolveComposeRestartTarget(username, projectName)
+	if err != nil {
+		return nil, err
 	}
 
 	// Use up+remove-orphans semantics for restart so compose file changes are applied.
@@ -584,6 +494,112 @@ func ComposeRestart(username, projectName string) (any, error) {
 	logger.Infof("compose restart complete: project=%s config=%s", projectName, configFile)
 
 	return map[string]string{"message": "Project restarted successfully", "output": collector.String()}, nil
+}
+
+func resolveComposeRestartTarget(username, projectName string) (string, string, error) {
+	project, err := GetComposeProject(username, projectName)
+	if err == nil {
+		if composeProject, ok := project.(*ComposeProject); ok {
+			if configFile, workingDir := resolveComposeRestartTargetFromProject(projectName, composeProject); configFile != "" {
+				return configFile, workingDir, nil
+			}
+		}
+	}
+
+	configFile, workingDir, err := findComposeFile(username, projectName)
+	if err != nil {
+		return "", "", fmt.Errorf("compose file not found: %w", err)
+	}
+	logger.InfoKV("found compose file via search", "project", projectName, "path", configFile)
+	return configFile, workingDir, nil
+}
+
+func resolveComposeRestartTargetFromProject(projectName string, composeProject *ComposeProject) (string, string) {
+	cli, err := getClient()
+	if err != nil {
+		logger.WarnKV("failed to get Docker client for path translation", "project", projectName, "error", err.Error())
+		return resolveComposeRestartWithoutClient(projectName, composeProject)
+	}
+	defer cli.Close()
+
+	if len(composeProject.ConfigFiles) > 0 {
+		return resolveComposeRestartFromConfigFiles(cli, projectName, composeProject)
+	}
+	if composeProject.WorkingDir == "" {
+		return "", ""
+	}
+	return resolveComposeRestartFromWorkingDir(cli, projectName, composeProject.WorkingDir)
+}
+
+func resolveComposeRestartWithoutClient(projectName string, composeProject *ComposeProject) (string, string) {
+	if len(composeProject.ConfigFiles) == 0 {
+		return "", ""
+	}
+	configFile := composeProject.ConfigFiles[0]
+	if _, err := os.Stat(configFile); err == nil {
+		return configFile, fallbackWorkingDir(composeProject.WorkingDir, configFile)
+	}
+	logger.WarnKV("compose file from container labels not found",
+		"project", projectName,
+		"labeled_path", configFile)
+	return "", ""
+}
+
+func resolveComposeRestartFromConfigFiles(
+	cli *client.Client,
+	projectName string,
+	composeProject *ComposeProject,
+) (string, string) {
+	configFile := composeProject.ConfigFiles[0]
+	workingDir := composeProject.WorkingDir
+	if _, err := os.Stat(configFile); err == nil {
+		return configFile, fallbackWorkingDir(workingDir, configFile)
+	}
+
+	translatedConfigFile := translateContainerPathToHost(cli, configFile)
+	if translatedConfigFile == configFile {
+		logger.WarnKV("compose file from container labels not found and translation failed",
+			"project", projectName,
+			"labeled_path", configFile)
+		return "", ""
+	}
+	if _, err := os.Stat(translatedConfigFile); err != nil {
+		logger.WarnKV("translated path does not exist", "project", projectName, "translated_path", translatedConfigFile)
+		return "", ""
+	}
+
+	logger.InfoKV("translated container config path to host path",
+		"project", projectName,
+		"container_path", configFile,
+		"host_path", translatedConfigFile)
+	if workingDir != "" {
+		workingDir = translateContainerPathToHost(cli, workingDir)
+	}
+	return translatedConfigFile, fallbackWorkingDir(workingDir, translatedConfigFile)
+}
+
+func resolveComposeRestartFromWorkingDir(cli *client.Client, projectName, workingDir string) (string, string) {
+	translatedWorkingDir := translateContainerPathToHost(cli, workingDir)
+	logger.DebugKV("translating working directory",
+		"project", projectName,
+		"container_path", workingDir,
+		"host_path", translatedWorkingDir)
+
+	for _, fileName := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {
+		possiblePath := filepath.Join(translatedWorkingDir, fileName)
+		if _, err := os.Stat(possiblePath); err == nil {
+			logger.InfoKV("found compose file via working_dir translation", "project", projectName, "path", possiblePath)
+			return possiblePath, translatedWorkingDir
+		}
+	}
+	return "", ""
+}
+
+func fallbackWorkingDir(workingDir, configFile string) string {
+	if workingDir != "" {
+		return workingDir
+	}
+	return filepath.Dir(configFile)
 }
 
 // ComposeStop stops a compose project without removing containers
@@ -829,18 +845,11 @@ func ValidateComposeFile(content string) (any, error) {
 		Errors: []ValidationError{},
 	}
 
-	// Parse YAML to verify syntax
-	var composeData map[string]any
-	if err := yaml.Unmarshal([]byte(content), &composeData); err != nil {
-		result.Valid = false
-		result.Errors = append(result.Errors, ValidationError{
-			Message: fmt.Sprintf("Invalid YAML syntax: %v", err),
-			Type:    "error",
-		})
+	composeData, err := parseComposeValidationContent(content, &result)
+	if err != nil {
 		return result, nil
 	}
 
-	// Use Compose SDK loader for authoritative compose schema/model validation.
 	if sdkErr := composeValidateContentWithSDK(context.Background(), content); sdkErr != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
@@ -850,134 +859,161 @@ func ValidateComposeFile(content string) (any, error) {
 		return result, nil
 	}
 
-	// Validate semantic fields not covered by the JSON schema.
-	if services, ok := composeData["services"].(map[string]any); ok {
-		containerNames := map[string]string{} // container_name -> first service
-		hostPorts := map[string]string{}      // host port key -> first service
-
-		for svcName, svcData := range services {
-			svc, ok := svcData.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			// network_mode value
-			if nm, ok := svc["network_mode"].(string); ok && !validNetworkMode.MatchString(nm) {
-				result.Valid = false
-				result.Errors = append(result.Errors, ValidationError{
-					Field:   fmt.Sprintf("services.%s.network_mode", svcName),
-					Message: fmt.Sprintf("invalid value %q: must be none, host, bridge, service:<name>, or container:<name>", nm),
-					Type:    "error",
-				})
-			}
-
-			// network_mode=host + ports is a no-op (warn)
-			if nm, _ := svc["network_mode"].(string); nm == "host" {
-				if portList, _ := svc["ports"].([]any); len(portList) > 0 {
-					result.Errors = append(result.Errors, ValidationError{
-						Field:   fmt.Sprintf("services.%s.ports", svcName),
-						Message: "port mappings are ignored when network_mode is 'host'",
-						Type:    "warning",
-					})
-				}
-			}
-
-			// restart policy
-			if restart, ok := svc["restart"].(string); ok && restart != "" {
-				if !validRestartPolicy.MatchString(restart) {
-					result.Valid = false
-					result.Errors = append(result.Errors, ValidationError{
-						Field:   fmt.Sprintf("services.%s.restart", svcName),
-						Message: fmt.Sprintf("invalid value %q: must be no, always, unless-stopped, or on-failure[:max-retries]", restart),
-						Type:    "error",
-					})
-				}
-			}
-
-			// ipc mode
-			if ipc, ok := svc["ipc"].(string); ok && ipc != "" {
-				if !validIPCMode.MatchString(ipc) {
-					result.Valid = false
-					result.Errors = append(result.Errors, ValidationError{
-						Field:   fmt.Sprintf("services.%s.ipc", svcName),
-						Message: fmt.Sprintf("invalid value %q: must be host, private, shareable, or service:<name>", ipc),
-						Type:    "error",
-					})
-				}
-			}
-
-			// pid mode
-			if pid, ok := svc["pid"].(string); ok && pid != "" {
-				if !validPIDMode.MatchString(pid) {
-					result.Valid = false
-					result.Errors = append(result.Errors, ValidationError{
-						Field:   fmt.Sprintf("services.%s.pid", svcName),
-						Message: fmt.Sprintf("invalid value %q: must be host or service:<name>", pid),
-						Type:    "error",
-					})
-				}
-			}
-
-			// container_name uniqueness
-			if cn, ok := svc["container_name"].(string); ok && cn != "" {
-				if first, seen := containerNames[cn]; seen {
-					result.Valid = false
-					result.Errors = append(result.Errors, ValidationError{
-						Field:   fmt.Sprintf("services.%s.container_name", svcName),
-						Message: fmt.Sprintf("duplicate container_name %q already used by service %q", cn, first),
-						Type:    "error",
-					})
-				} else {
-					containerNames[cn] = svcName
-				}
-			}
-
-			// port conflicts
-			for _, hp := range extractHostPorts(svc) {
-				if first, seen := hostPorts[hp]; seen {
-					result.Valid = false
-					result.Errors = append(result.Errors, ValidationError{
-						Field:   fmt.Sprintf("services.%s.ports", svcName),
-						Message: fmt.Sprintf("host port %q already bound by service %q", hp, first),
-						Type:    "error",
-					})
-				} else {
-					hostPorts[hp] = svcName
-				}
-			}
-		}
-	}
+	validateComposeServices(composeData, &result)
 
 	if !result.Valid {
 		return result, nil
 	}
 
-	// Optional: Check for version (deprecated in v3 but still common)
-	if version, hasVersion := composeData["version"]; hasVersion {
-		versionStr, ok := version.(string)
-		if !ok {
-			result.Errors = append(result.Errors, ValidationError{
-				Field:   "version",
-				Message: "Version should be a string",
-				Type:    "warning",
-			})
-		} else if versionStr != "" {
-			// Just a warning for information
-			logger.Debugf("Compose file version: %s", versionStr)
-		}
-	}
-
-	// Normalize the compose file (add container_name where missing)
-	if result.Valid {
-		if normalized, normErr := NormalizeComposeFile(content); normErr == nil {
-			result.NormalizedContent = normalized
-		} else {
-			// Normalization failed, but validation passed - just use original content
-			result.NormalizedContent = content
-		}
-	}
+	validateComposeVersionField(composeData, &result)
+	populateNormalizedComposeContent(content, &result)
 
 	return result, nil
+}
+
+func parseComposeValidationContent(content string, result *ValidationResult) (map[string]any, error) {
+	var composeData map[string]any
+	if err := yaml.Unmarshal([]byte(content), &composeData); err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Message: fmt.Sprintf("Invalid YAML syntax: %v", err),
+			Type:    "error",
+		})
+		return nil, err
+	}
+	return composeData, nil
+}
+
+func validateComposeServices(composeData map[string]any, result *ValidationResult) {
+	services, ok := composeData["services"].(map[string]any)
+	if !ok {
+		return
+	}
+	containerNames := map[string]string{}
+	hostPorts := map[string]string{}
+	for svcName, svcData := range services {
+		svc, ok := svcData.(map[string]any)
+		if !ok {
+			continue
+		}
+		validateComposeServiceModeFields(result, svcName, svc)
+		validateComposeServiceContainerName(result, svcName, svc, containerNames)
+		validateComposeServicePorts(result, svcName, svc, hostPorts)
+	}
+}
+
+func validateComposeServiceModeFields(result *ValidationResult, svcName string, svc map[string]any) {
+	validateComposePatternField(result, svcName, svc, "network_mode", validNetworkMode,
+		"must be none, host, bridge, service:<name>, or container:<name>")
+	validateHostNetworkPorts(result, svcName, svc)
+	validateComposePatternField(result, svcName, svc, "restart", validRestartPolicy,
+		"must be no, always, unless-stopped, or on-failure[:max-retries]")
+	validateComposePatternField(result, svcName, svc, "ipc", validIPCMode,
+		"must be host, private, shareable, or service:<name>")
+	validateComposePatternField(result, svcName, svc, "pid", validPIDMode,
+		"must be host or service:<name>")
+}
+
+func validateComposePatternField(
+	result *ValidationResult,
+	svcName string,
+	svc map[string]any,
+	field string,
+	pattern *regexp.Regexp,
+	message string,
+) {
+	value, ok := svc[field].(string)
+	if !ok || value == "" || pattern.MatchString(value) {
+		return
+	}
+	result.Valid = false
+	result.Errors = append(result.Errors, ValidationError{
+		Field:   fmt.Sprintf("services.%s.%s", svcName, field),
+		Message: fmt.Sprintf("invalid value %q: %s", value, message),
+		Type:    "error",
+	})
+}
+
+func validateHostNetworkPorts(result *ValidationResult, svcName string, svc map[string]any) {
+	if networkMode, _ := svc["network_mode"].(string); networkMode == "host" {
+		if portList, _ := svc["ports"].([]any); len(portList) > 0 {
+			result.Errors = append(result.Errors, ValidationError{
+				Field:   fmt.Sprintf("services.%s.ports", svcName),
+				Message: "port mappings are ignored when network_mode is 'host'",
+				Type:    "warning",
+			})
+		}
+	}
+}
+
+func validateComposeServiceContainerName(
+	result *ValidationResult,
+	svcName string,
+	svc map[string]any,
+	containerNames map[string]string,
+) {
+	containerName, ok := svc["container_name"].(string)
+	if !ok || containerName == "" {
+		return
+	}
+	if first, seen := containerNames[containerName]; seen {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Field:   fmt.Sprintf("services.%s.container_name", svcName),
+			Message: fmt.Sprintf("duplicate container_name %q already used by service %q", containerName, first),
+			Type:    "error",
+		})
+		return
+	}
+	containerNames[containerName] = svcName
+}
+
+func validateComposeServicePorts(
+	result *ValidationResult,
+	svcName string,
+	svc map[string]any,
+	hostPorts map[string]string,
+) {
+	for _, hostPort := range extractHostPorts(svc) {
+		if first, seen := hostPorts[hostPort]; seen {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Field:   fmt.Sprintf("services.%s.ports", svcName),
+				Message: fmt.Sprintf("host port %q already bound by service %q", hostPort, first),
+				Type:    "error",
+			})
+			continue
+		}
+		hostPorts[hostPort] = svcName
+	}
+}
+
+func validateComposeVersionField(composeData map[string]any, result *ValidationResult) {
+	version, hasVersion := composeData["version"]
+	if !hasVersion {
+		return
+	}
+	versionStr, ok := version.(string)
+	if !ok {
+		result.Errors = append(result.Errors, ValidationError{
+			Field:   "version",
+			Message: "Version should be a string",
+			Type:    "warning",
+		})
+		return
+	}
+	if versionStr != "" {
+		logger.Debugf("Compose file version: %s", versionStr)
+	}
+}
+
+func populateNormalizedComposeContent(content string, result *ValidationResult) {
+	normalized, err := NormalizeComposeFile(content)
+	if err != nil {
+		result.NormalizedContent = content
+		return
+	}
+	result.NormalizedContent = normalized
 }
 
 // GetDockerFolder returns the configured Docker folder path from user config
@@ -1444,106 +1480,87 @@ func extractStackIcon(composePath string) (string, error) {
 // discoverOfflineStacks searches the indexer for compose files and adds them as offline stacks
 // It merges with existing projects to handle duplicates
 func discoverOfflineStacks(username string, projects map[string]*ComposeProject) error {
-	// Get the user's docker folder from config
 	cfg, _, err := config.Load(username)
 	if err != nil {
 		return fmt.Errorf("failed to load user config: %w", err)
 	}
 
-	// If no docker folder is configured, skip indexer search
 	if cfg.Docker.Folder == "" {
 		logger.Debugf("no docker folder configured for user %s, skipping offline stack discovery", username)
 		return nil
 	}
 
-	dockerFolder := string(cfg.Docker.Folder)
-
-	// Search indexer for YAML files in the docker folder
-	yamlFiles, err := searchIndexerForYAML(dockerFolder)
+	yamlFiles, err := searchIndexerForYAML(string(cfg.Docker.Folder))
 	if err != nil {
 		return fmt.Errorf("failed to search indexer: %w", err)
 	}
-
 	logger.Debugf("found %d YAML files in docker folder via indexer", len(yamlFiles))
 
-	// Check each YAML file to see if it's a valid compose file
 	for _, yamlFile := range yamlFiles {
-		// Check if this is a valid docker compose file
 		if !isValidComposeFile(yamlFile.Path) {
 			continue
 		}
-
-		composeDir := filepath.Dir(yamlFile.Path)
-
-		// Check if this compose file is already associated with an existing project
-		// Match by: 1) config file path, or 2) working directory
-		var existingProject *ComposeProject
-		for _, project := range projects {
-			// Check if config file already listed
-			if slices.Contains(project.ConfigFiles, yamlFile.Path) {
-				existingProject = project
-			}
-			if existingProject != nil {
-				break
-			}
-
-			// Check if working directory matches
-			if project.WorkingDir != "" && project.WorkingDir == composeDir {
-				existingProject = project
-				break
-			}
-		}
-
+		existingProject := findOfflineComposeProjectMatch(projects, yamlFile.Path)
 		if existingProject != nil {
-			// Project exists with containers, just ensure config file is listed
-			configFileExists := slices.Contains(existingProject.ConfigFiles, yamlFile.Path)
-			if !configFileExists {
-				existingProject.ConfigFiles = append(existingProject.ConfigFiles, yamlFile.Path)
-			}
-			// Update working dir if not set
-			if existingProject.WorkingDir == "" {
-				existingProject.WorkingDir = composeDir
-			}
-			// Extract stack icon if not already set
-			if existingProject.Icon == "" {
-				if icon, err := extractStackIcon(yamlFile.Path); err == nil && icon != "" {
-					existingProject.Icon = icon
-				}
-			}
-			logger.DebugKV("matched compose file to existing project",
-				"compose_file", yamlFile.Path,
-				"project", existingProject.Name)
+			mergeOfflineComposeFile(existingProject, yamlFile.Path)
 			continue
 		}
-
-		// Extract project name from the file path for new offline projects
-		projectName := getProjectNameFromComposePath(yamlFile.Path)
-		if projectName == "" {
-			continue
-		}
-
-		// Create new offline project
-		logger.InfoKV("discovered offline stack via indexer",
-			"project", projectName,
-			"compose_file", yamlFile.Path)
-
-		// Extract stack icon from compose file
-		stackIcon := ""
-		if icon, err := extractStackIcon(yamlFile.Path); err == nil && icon != "" {
-			stackIcon = icon
-		}
-
-		projects[projectName] = &ComposeProject{
-			Name:        projectName,
-			Icon:        stackIcon,
-			Status:      "stopped", // No containers, so it's stopped
-			Services:    make(map[string]*ComposeService),
-			ConfigFiles: []string{yamlFile.Path},
-			WorkingDir:  composeDir,
-		}
+		addOfflineComposeProject(projects, yamlFile.Path)
 	}
 
 	return nil
+}
+
+func findOfflineComposeProjectMatch(projects map[string]*ComposeProject, composePath string) *ComposeProject {
+	composeDir := filepath.Dir(composePath)
+	for _, project := range projects {
+		if slices.Contains(project.ConfigFiles, composePath) {
+			return project
+		}
+		if project.WorkingDir != "" && project.WorkingDir == composeDir {
+			return project
+		}
+	}
+	return nil
+}
+
+func mergeOfflineComposeFile(project *ComposeProject, composePath string) {
+	if !slices.Contains(project.ConfigFiles, composePath) {
+		project.ConfigFiles = append(project.ConfigFiles, composePath)
+	}
+	if project.WorkingDir == "" {
+		project.WorkingDir = filepath.Dir(composePath)
+	}
+	if project.Icon == "" {
+		if icon, err := extractStackIcon(composePath); err == nil && icon != "" {
+			project.Icon = icon
+		}
+	}
+	logger.DebugKV("matched compose file to existing project", "compose_file", composePath, "project", project.Name)
+}
+
+func addOfflineComposeProject(projects map[string]*ComposeProject, composePath string) {
+	projectName := getProjectNameFromComposePath(composePath)
+	if projectName == "" {
+		return
+	}
+	logger.InfoKV("discovered offline stack via indexer", "project", projectName, "compose_file", composePath)
+	projects[projectName] = &ComposeProject{
+		Name:        projectName,
+		Icon:        extractComposeIcon(composePath),
+		Status:      "stopped",
+		Services:    make(map[string]*ComposeService),
+		ConfigFiles: []string{composePath},
+		WorkingDir:  filepath.Dir(composePath),
+	}
+}
+
+func extractComposeIcon(composePath string) string {
+	icon, err := extractStackIcon(composePath)
+	if err != nil {
+		return ""
+	}
+	return icon
 }
 
 // DeleteComposeStack runs docker compose down and deletes the compose file(s)
