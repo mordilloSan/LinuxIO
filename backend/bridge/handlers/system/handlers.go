@@ -64,7 +64,7 @@ func handleGetUptime(ctx context.Context, args []string, emit ipc.Events) error 
 	if err != nil {
 		return err
 	}
-	return emit.Result(map[string]any{"uptime_seconds": uptimeSeconds})
+	return emit.Result(uptimeSeconds)
 }
 
 func handleGetFilesystemInfo(ctx context.Context, args []string, emit ipc.Events) error {

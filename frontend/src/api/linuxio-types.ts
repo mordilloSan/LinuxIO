@@ -56,14 +56,54 @@ export interface MemoryInfoResponse {
 
 export interface GpuDevice {
   address: string;
+  actual_freq_mhz?: number;
+  boost_freq_mhz?: number;
+  boot_vga?: boolean;
+  class_name?: string;
+  connected_displays?: number;
+  current_freq_mhz?: number;
   device_id: string;
+  display_names?: string[];
+  driver_module?: string;
+  driver_version?: string;
+  drm_card?: string;
   driver: string;
+  fan_percent?: number;
+  fan_rpm?: number;
+  gtt_total_bytes?: number;
+  gtt_used_bytes?: number;
+  link_speed?: string;
+  link_width?: string;
+  max_freq_mhz?: number;
+  max_link_speed?: string;
+  max_link_width?: string;
+  min_freq_mhz?: number;
+  memory_free_bytes?: number;
+  memory_total_bytes?: number;
+  memory_used_bytes?: number;
   model: string;
+  numa_node?: number;
+  power_draw_watts?: number;
+  power_limit_watts?: number;
+  power_state?: string;
+  programming_interface?: string;
+  raw_class?: string;
+  requested_freq_mhz?: number;
   revision: string;
+  rp0_freq_mhz?: number;
+  rp1_freq_mhz?: number;
+  rpn_freq_mhz?: number;
+  rc6_residency_ms?: number;
+  runtime_status?: string;
   subsystem: string;
   subsystem_id: string;
+  subclass_name?: string;
+  temperature_c?: number;
+  utilization_percent?: number;
   vendor: string;
   vendor_id: string;
+  visible_memory_total_bytes?: number;
+  visible_memory_used_bytes?: number;
 }
 
 export interface ApiDisk {

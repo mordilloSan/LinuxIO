@@ -22,7 +22,6 @@ import { useConfigValue } from "@/hooks/useConfig";
 import "@/theme/section.css";
 import GpuInfo from "@/pages/main/dashboard/Gpu";
 import MemoryUsage from "@/pages/main/dashboard/Memory";
-import MotherBoardInfo from "@/pages/main/dashboard/MotherBoard";
 import Processor from "@/pages/main/dashboard/Processor";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -306,6 +305,7 @@ const defaultHwSections = {
   hardware: true,
   sensors: true,
   systemInfo: true,
+  gpu: true,
   pciDevices: true,
   memoryModules: true,
 };
@@ -330,7 +330,6 @@ const pciColumns: UnifiedTableColumn[] = [
 // ─── main component ──────────────────────────────────────────────────────────
 
 const MemoProcessor = React.memo(Processor);
-const MemoMotherBoardInfo = React.memo(MotherBoardInfo);
 const MemoMemory = React.memo(MemoryUsage);
 const MemoGpuInfo = React.memo(GpuInfo);
 
@@ -359,19 +358,20 @@ const HardwarePage: React.FC = () => {
 
   // ── section collapse state ──
   const [hwSections, setHwSections] = useConfigValue("hardwareSections");
-  const sections = hwSections ?? defaultHwSections;
+  const sections = { ...defaultHwSections, ...(hwSections ?? {}) };
   const toggleSection = useCallback(
     (
       key:
         | "overview"
         | "hardware"
+        | "gpu"
         | "sensors"
         | "systemInfo"
         | "pciDevices"
         | "memoryModules",
     ) =>
       setHwSections((prev) => {
-        const cur = prev ?? defaultHwSections;
+        const cur = { ...defaultHwSections, ...(prev ?? {}) };
         return { ...cur, [key]: !cur[key] };
       }),
     [setHwSections],
@@ -594,16 +594,30 @@ const HardwarePage: React.FC = () => {
         <Grid container spacing={4} sx={{ mb: 2 }}>
           {[
             { id: "cpu", component: MemoProcessor },
-            { id: "mb", component: MemoMotherBoardInfo },
             { id: "memory", component: MemoMemory },
-            { id: "gpu", component: MemoGpuInfo },
           ].map(({ id, component: CardComponent }) => (
-            <Grid key={id} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
+            <Grid key={id} size={{ xs: 12, lg: 6 }}>
               <ErrorBoundary>
                 <CardComponent />
               </ErrorBoundary>
             </Grid>
           ))}
+        </Grid>
+      </Collapse>
+
+      {/* ── GPU ─────────────────────────────────────────────────────────── */}
+      <SectionHeader
+        title="GPU"
+        expanded={sections.gpu}
+        onClick={() => toggleSection("gpu")}
+      />
+      <Collapse in={sections.gpu}>
+        <Grid container spacing={4} sx={{ mb: 2 }}>
+          <Grid size={{ xs: 12 }}>
+            <ErrorBoundary>
+              <MemoGpuInfo />
+            </ErrorBoundary>
+          </Grid>
         </Grid>
       </Collapse>
 

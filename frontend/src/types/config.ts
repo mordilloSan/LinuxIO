@@ -43,6 +43,7 @@ export interface BackendSettings {
       hardware: boolean;
       sensors: boolean;
       systemInfo: boolean;
+      gpu: boolean;
       pciDevices: boolean;
       memoryModules: boolean;
     };
@@ -75,6 +76,7 @@ export interface AppConfig {
     hardware: boolean;
     sensors: boolean;
     systemInfo: boolean;
+    gpu: boolean;
     pciDevices: boolean;
     memoryModules: boolean;
   };
