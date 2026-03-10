@@ -131,9 +131,6 @@ func main() {
 	// Ensure the shared linuxio-docker network exists (fails silently if Docker unavailable)
 	docker.EnsureLinuxIONetwork()
 
-	// Ensure Watchtower is running with current auto-update config (non-blocking)
-	go docker.SyncWatchtowerStack(Sess.User.Username)
-
 	ShutdownChan := make(chan string, 1)
 	handlers.RegisterAllHandlers(ShutdownChan, Sess)
 
@@ -241,6 +238,12 @@ func handleYamuxSession(conn net.Conn) {
 	// Track active streams for graceful shutdown
 	var streamWg sync.WaitGroup
 
+	// Sync Watchtower on first incoming request (after capabilities checks have run).
+	// SyncWatchtowerStack involves multiple docker API calls and takes longer than the
+	// initial capabilities check, so starting it here ensures its log appears after
+	// the capabilities logs rather than during early bridge startup.
+	var watchtowerOnce sync.Once
+
 	// Accept streams until session closes or bridge shuts down
 	for {
 		select {
@@ -259,6 +262,8 @@ func handleYamuxSession(conn net.Conn) {
 			}
 			break
 		}
+
+		watchtowerOnce.Do(func() { go docker.SyncWatchtowerStack(Sess.User.Username) })
 
 		var idBytes [16]byte
 		n, err := rand.Read(idBytes[:])

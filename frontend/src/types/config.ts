@@ -38,6 +38,15 @@ export interface BackendSettings {
       daemon: boolean;
       resources: boolean;
     };
+    hardwareSections?: {
+      overview: boolean;
+      hardware: boolean;
+      sensors: boolean;
+      systemInfo: boolean;
+      gpu: boolean;
+      pciDevices: boolean;
+      memoryModules: boolean;
+    };
     viewModes?: AppViewModes;
     chunkSizeMB?: number;
   };
@@ -61,6 +70,15 @@ export interface AppConfig {
     overview: boolean;
     daemon: boolean;
     resources: boolean;
+  };
+  hardwareSections?: {
+    overview: boolean;
+    hardware: boolean;
+    sensors: boolean;
+    systemInfo: boolean;
+    gpu: boolean;
+    pciDevices: boolean;
+    memoryModules: boolean;
   };
   viewModes?: AppViewModes;
   chunkSizeMB?: number;

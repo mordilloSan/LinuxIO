@@ -41,42 +41,10 @@ func (b *dnfBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
 	}
 	defer sd.Close()
 
-	// Determine apply_updates setting
-	apply := "True"
-	if o.DownloadOnly || !o.Enabled {
-		apply = "False"
+	if writeErr := writeDnfAutomaticConfig(o); writeErr != nil {
+		return writeErr
 	}
 
-	// Determine upgrade_type
-	upg := "security"
-	if o.Scope == "updates" || o.Scope == "all" {
-		upg = "default"
-	}
-
-	// Build exclude list
-	var excludeLine string
-	if len(o.ExcludePkgs) > 0 {
-		// DNF uses space-separated list
-		excludeLine = "exclude = " + strings.Join(o.ExcludePkgs, " ") + "\n"
-	}
-
-	// Write DNF automatic configuration
-	conf := fmt.Sprintf(`[commands]
-apply_updates = %s
-upgrade_type = %s
-
-[emitters]
-emit_via = motd
-
-[base]
-%srandom_sleep = 0
-`, apply, upg, excludeLine)
-
-	if err2 := fsutil.WriteFileAtomic("/etc/dnf/automatic.conf", []byte(conf), 0o644); err2 != nil {
-		return err2
-	}
-
-	// Configure timer frequency
 	timer := "dnf-automatic.timer"
 	oncal, err := systemd.OnCalendarFor(o.Frequency)
 	if err != nil {
@@ -86,33 +54,83 @@ emit_via = motd
 		return err
 	}
 
-	// Reload systemd daemon to pick up changes
 	if err := sd.Reload(ctx); err != nil {
 		return err
 	}
 
-	// Enable/disable and start/stop timer based on settings
-	if o.Enabled {
-		if err := sd.Enable(ctx, timer); err != nil {
-			return err
-		}
-		if err := sd.Start(ctx, timer); err != nil {
-			return err
-		}
-		// Restart to apply new schedule
-		if err := sd.Restart(ctx, timer); err != nil {
-			logger.Debugf("failed to restart %s: %v", timer, err)
-		}
-	} else {
-		if err := sd.Stop(ctx, timer); err != nil {
-			logger.Debugf("failed to stop %s while disabling updates: %v", timer, err)
-		}
-		if err := sd.Disable(ctx, timer); err != nil {
-			logger.Debugf("failed to disable %s while disabling updates: %v", timer, err)
-		}
-	}
+	return applyDnfTimerState(ctx, sd, timer, o.Enabled)
+}
 
+func writeDnfAutomaticConfig(o AutoUpdateOptions) error {
+	conf := fmt.Sprintf(`[commands]
+apply_updates = %s
+upgrade_type = %s
+
+[emitters]
+emit_via = motd
+
+[base]
+%srandom_sleep = 0
+`, dnfApplyUpdatesValue(o), dnfUpgradeType(o.Scope), dnfExcludeLine(o.ExcludePkgs))
+	return fsutil.WriteFileAtomic("/etc/dnf/automatic.conf", []byte(conf), 0o644)
+}
+
+func dnfApplyUpdatesValue(o AutoUpdateOptions) string {
+	if o.DownloadOnly || !o.Enabled {
+		return "False"
+	}
+	return "True"
+}
+
+func dnfUpgradeType(scope string) string {
+	if scope == "updates" || scope == "all" {
+		return "default"
+	}
+	return "security"
+}
+
+func dnfExcludeLine(packages []string) string {
+	if len(packages) == 0 {
+		return ""
+	}
+	return "exclude = " + strings.Join(packages, " ") + "\n"
+}
+
+func applyDnfTimerState(ctx context.Context, sd *systemd.Client, timer string, enabled bool) error {
+	if enabled {
+		if err := enableDnfTimer(ctx, sd, timer); err != nil {
+			return err
+		}
+		restartDnfTimer(ctx, sd, timer)
+		return nil
+	}
+	disableDnfTimer(ctx, sd, timer)
 	return nil
+}
+
+func enableDnfTimer(ctx context.Context, sd *systemd.Client, timer string) error {
+	if err := sd.Enable(ctx, timer); err != nil {
+		return err
+	}
+	if err := sd.Start(ctx, timer); err != nil {
+		return err
+	}
+	return nil
+}
+
+func restartDnfTimer(ctx context.Context, sd *systemd.Client, timer string) {
+	if err := sd.Restart(ctx, timer); err != nil {
+		logger.Debugf("failed to restart %s: %v", timer, err)
+	}
+}
+
+func disableDnfTimer(ctx context.Context, sd *systemd.Client, timer string) {
+	if err := sd.Stop(ctx, timer); err != nil {
+		logger.Debugf("failed to stop %s while disabling updates: %v", timer, err)
+	}
+	if err := sd.Disable(ctx, timer); err != nil {
+		logger.Debugf("failed to disable %s while disabling updates: %v", timer, err)
+	}
 }
 
 func (b *dnfBackend) ApplyOfflineNow() error {

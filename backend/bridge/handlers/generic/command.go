@@ -101,116 +101,104 @@ func HandleExecStream(sess *session.Session, stream net.Conn, args []string) err
 	logger.Debugf("[ExecStream] Starting with %d args", len(args))
 
 	if len(args) == 0 {
-		if err := ipc.WriteResultErrorAndClose(stream, 0, "no command specified", 400); err != nil {
-			logger.Debugf("[ExecStream] failed to write error+close frame: %v", err)
-		}
-		return fmt.Errorf("no command specified")
+		return writeExecStreamError(stream, "no command specified", 400)
 	}
 
 	cmdString := args[0]
 	cmdArgs := args[1:]
-
 	logger.Infof("[ExecStream] Executing: %s %v", cmdString, cmdArgs)
 
-	// Create command with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-
 	cmd := exec.CommandContext(ctx, cmdString, cmdArgs...)
 
-	// Get stdout and stderr pipes
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("failed to get stdout pipe: %v", err), 500); writeErr != nil {
-			logger.Debugf("[ExecStream] failed to write error+close frame: %v", writeErr)
-		}
-		return err
+		return writeExecStreamError(stream, fmt.Sprintf("failed to get stdout pipe: %v", err), 500)
 	}
-
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("failed to get stderr pipe: %v", err), 500); writeErr != nil {
-			logger.Debugf("[ExecStream] failed to write error+close frame: %v", writeErr)
-		}
-		return err
+		return writeExecStreamError(stream, fmt.Sprintf("failed to get stderr pipe: %v", err), 500)
 	}
 
-	// Start command
 	if err = cmd.Start(); err != nil {
-		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("failed to start command: %v", err), 500); writeErr != nil {
-			logger.Debugf("[ExecStream] failed to write error+close frame: %v", writeErr)
-		}
-		return err
+		return writeExecStreamError(stream, fmt.Sprintf("failed to start command: %v", err), 500)
 	}
 
-	// ANSI escape code remover
 	ansiRE := regexp.MustCompile(`\x1B\[[0-9;]*[A-Za-z]`)
-
-	// Stream stdout and stderr to client as raw data
 	done := make(chan struct{})
-	streamOutput := func(r io.Reader, prefix string) {
-		defer func() { done <- struct{}{} }()
+	go relayExecOutput(stdout, "[stdout] ", ansiRE, stream, done)
+	go relayExecOutput(stderr, "[stderr] ", ansiRE, stream, done)
 
-		scanner := bufio.NewScanner(r)
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			// Remove ANSI escape codes
-			cleanLine := ansiRE.ReplaceAllString(line, "")
-
-			// Log to server
-			logger.Infof("[ExecStream] %s%s", prefix, cleanLine)
-
-			// Send to client as raw data (with newline)
-			payload := []byte(cleanLine + "\n")
-			if frameErr := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
-				Opcode:   ipc.OpStreamData,
-				StreamID: 0,
-				Payload:  payload,
-			}); frameErr != nil {
-				logger.Debugf("[ExecStream] failed to write data frame: %v", frameErr)
-				return
-			}
-		}
-	}
-
-	// Stream both stdout and stderr
-	go streamOutput(stdout, "[stdout] ")
-	go streamOutput(stderr, "[stderr] ")
-
-	// Wait for command to complete
 	err = cmd.Wait()
-
-	// Wait for both stream goroutines to finish after command exits
-	// This ensures all output is sent before we send the result
 	<-done
 	<-done
 
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			exitCode = -1
+	exitCode := execExitCode(err)
+	logExecResult(err, exitCode)
+	return writeExecStreamResult(stream, exitCode)
+}
+
+func relayExecOutput(
+	reader io.Reader,
+	prefix string,
+	ansiRE *regexp.Regexp,
+	stream net.Conn,
+	done chan<- struct{},
+) {
+	defer func() { done <- struct{}{} }()
+
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := ansiRE.ReplaceAllString(scanner.Text(), "")
+		logger.Infof("[ExecStream] %s%s", prefix, line)
+		if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
+			Opcode:   ipc.OpStreamData,
+			StreamID: 0,
+			Payload:  []byte(line + "\n"),
+		}); err != nil {
+			logger.Debugf("[ExecStream] failed to write data frame: %v", err)
+			return
 		}
-		logger.Warnf("[ExecStream] Command failed: %v (exit code: %d)", err, exitCode)
-	} else {
-		logger.Infof("[ExecStream] Command completed successfully")
 	}
+}
 
-	// Send result with exit code
+func execExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode()
+	}
+	return -1
+}
+
+func logExecResult(err error, exitCode int) {
+	if err == nil {
+		logger.Infof("[ExecStream] Command completed successfully")
+		return
+	}
+	logger.Warnf("[ExecStream] Command failed: %v (exit code: %d)", err, exitCode)
+}
+
+func writeExecStreamResult(stream net.Conn, exitCode int) error {
 	if exitCode == 0 {
-		if resultErr := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
-			"exit_code": exitCode,
-		}); resultErr != nil {
-			logger.Debugf("[ExecStream] failed to write ok+close frame: %v", resultErr)
+		if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{"exit_code": exitCode}); err != nil {
+			logger.Debugf("[ExecStream] failed to write ok+close frame: %v", err)
 		}
-	} else {
-		if resultErr := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("command exited with code %d", exitCode), exitCode); resultErr != nil {
-			logger.Debugf("[ExecStream] failed to write error+close frame: %v", resultErr)
-		}
+		return nil
+	}
+	if err := ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("command exited with code %d", exitCode), exitCode); err != nil {
+		logger.Debugf("[ExecStream] failed to write error+close frame: %v", err)
 	}
 	return nil
+}
+
+func writeExecStreamError(stream net.Conn, message string, code int) error {
+	if err := ipc.WriteResultErrorAndClose(stream, 0, message, code); err != nil {
+		logger.Debugf("[ExecStream] failed to write error+close frame: %v", err)
+	}
+	return errors.New(message)
 }
 
 // HandleJSONStream handles a yamux stream for JSON response calls.

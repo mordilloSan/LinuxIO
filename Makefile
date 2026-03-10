@@ -79,6 +79,8 @@ GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(s
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
+MODERNIZE_MODULE      := golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize
+MODERNIZE_VERSION     ?= latest
 SKIP_ENSURE_GO ?= 0
 GO_BUILD_PREREQ := ensure-go
 ifeq ($(SKIP_ENSURE_GO),1)
@@ -153,7 +155,7 @@ print-toolchain-versions:
 
 ensure-node:
 	@echo ""
-	@echo " Ensuring Node.js $(NODE_VERSION) is available..."
+	@echo "🔍 Ensuring Node.js $(NODE_VERSION) is available..."
 	@if [ ! -d "$(NVM_DIR)" ]; then \
 		curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash; \
 	fi
@@ -165,16 +167,16 @@ ensure-node:
 		mkdir -p "$(NVM_DIR)/versions/node"; \
 		ln -snf "$(NVM_DIR)/versions/node/$$CURR" "$(NVM_DIR)/versions/node/current"; \
 		hash -r; \
-		echo " Node path: $$(command -v node)"; \
-		echo " Node version: $$(node -v)"; \
-		echo " NPM version:  $$(npm -v)"; \
-		echo " NPX version:  $$(npx -v)"; \
+		echo "   Node path: $$(command -v node)"; \
+		echo "   Node version: $$(node -v)"; \
+		echo "   NPM version:  $$(npm -v)"; \
+		echo "   NPX version:  $$(npx -v)"; \
 	'
-	@echo " Node.js environment ready!"
+	@echo "✅ Node.js environment ready!"
 
 ensure-go:
 	@echo ""
-	@echo " Ensuring Go $(GO_VERSION) is available..."
+	@echo "🔍 Ensuring Go $(GO_VERSION) is available..."
 	@bash -lc '\
 		set -euo pipefail; \
 		DESIRED="$(GO_VERSION)"; \
@@ -194,14 +196,14 @@ ensure-go:
 		  CUR="$$( "$${GO_DIR}/bin/go" version 2>/dev/null | awk "{print \$$3}" | sed "s/^go//" )"; \
 		fi; \
 		if [ "$$CUR" = "$$DESIRED" ]; then \
-		  echo " Go $$CUR already active at $$GO_DIR"; \
+		  echo "✅ Go $$CUR already active at $$GO_DIR"; \
 		else \
-		  echo " Downloading $$URL"; \
+		  echo "📥 Downloading $$URL"; \
 		  curl -fsSL "$$URL" -o "$$TMP/$$TARBALL"; \
 		  if [ -w /usr/local ]; then \
 		    rm -rf /usr/local/go; \
 		    tar -C /usr/local -xzf "$$TMP/$$TARBALL"; \
-		    echo " Installed Go $$DESIRED to /usr/local/go"; \
+		    echo "✅ Installed Go $$DESIRED to /usr/local/go"; \
 		  else \
 		    VERSIONS_DIR="$$HOME/.go-versions"; \
 		    DEST_VER_DIR="$$VERSIONS_DIR/go$${DESIRED}"; \
@@ -219,7 +221,7 @@ ensure-go:
 		elif [ -x /usr/local/go/bin/go ]; then /usr/local/go/bin/go version || true; \
 		else echo "  Go not found on expected paths; check PATH."; fi; \
 		rm -rf "$$TMP"; \
-		echo " Go is ready!"; \
+		echo "✅ Go is ready!"; \
 	'
 
 ensure-golint: ensure-go
@@ -233,7 +235,7 @@ ensure-golint: ensure-go
 	     if [ "$$major" = "2" ] && [ "$$built_ok" = "yes" ]; then need=0; fi; \
 	   fi; \
 	   if [ $$need -eq 1 ]; then \
-	     echo " Installing golangci-lint $(GOLANGCI_LINT_VERSION) (v2) with local Go ($(GO_BIN))..."; \
+	     echo "📥 Installing golangci-lint $(GOLANGCI_LINT_VERSION) (v2) with local Go ($(GO_BIN))..."; \
 	     rm -f "$$bin" || true; \
 	     PATH="$(GO_INSTALL_DIR)/bin:$$PATH" GOBIN="$(GO_INSTALL_DIR)/bin" GOTOOLCHAIN=local GOFLAGS="-buildvcs=false" \
 	       "$(GO_BIN)" install "$(GOLANGCI_LINT_MODULE)@$(GOLANGCI_LINT_VERSION)"; \
@@ -244,14 +246,14 @@ ensure-golint: ensure-go
 	   ver_no_v="$${ver#v}"; major="$${ver_no_v%%.*}"; \
 	   [ "$$major" = "2" ] || { echo " not a v2 golangci-lint"; exit 1; }; \
 	   echo "$$out" | grep -Eq 'built with go$(subst .,\.,$(GO_MAJOR_MINOR))(\.|$$)' || { echo " golangci-lint not built with Go $(GO_MAJOR_MINOR)"; exit 1; }; \
-	   echo " golangci-lint v2 ready."; \
+	   echo "✅ golangci-lint v2 ready."; \
 	}
 
 setup:
 	@echo ""
-	@echo " Installing frontend dependencies..."
+	@echo "📦 Installing frontend dependencies..."
 	@bash -c 'cd frontend && npm install --silent;'
-	@echo " Frontend dependencies installed!"
+	@echo "✅ Frontend dependencies installed!"
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
 lint: ensure-node setup
@@ -265,7 +267,7 @@ golint: ensure-golint
 
 # Optimized test target: runs setup ONCE, then parallelizes the actual checks
 test: ensure-node ensure-go ensure-golint setup dev-prep
-	@echo " Running checks (parallel)..."
+	@echo "🚀 Running checks (parallel)..."
 	@{ \
 	  $(MAKE) --no-print-directory lint-only & \
 	  $(MAKE) --no-print-directory tsc-only & \
@@ -275,30 +277,32 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
-	@echo " Running ESLint..."
-	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix --cache && echo " frontend Linting Ok!"'
+	@echo "🔎 Running ESLint..."
+	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix --cache && echo "✅ Frontend linting passed!"'
 
 tsc-only:
-	@echo " Running TypeScript type checks..."
-	@bash -c 'cd frontend && npx tsc && echo " TypeScript Linting Ok!"'
+	@echo "🔎 Running TypeScript type checks..."
+	@bash -c 'cd frontend && npx tsc && echo "✅ TypeScript checks passed!"'
 
 golint-only:
-	@echo " Linting Go module in: $(BACKEND_DIR)"
-	@echo " Running gofmt..."
+	@echo "🔎 Linting Go module in: $(BACKEND_DIR)"
+	@echo "   Running gofmt..."
 ifneq ($(CI),)
 	@fmt_out="$$(cd "$(BACKEND_DIR)" && gofmt -s -l .)"; \
 	if [ -n "$$fmt_out" ]; then echo "The following files are not gofmt'ed:"; echo "$$fmt_out"; exit 1; fi
 else
 	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
 endif
-	@echo " Ensuring go.mod is tidy..."
+	@echo "   Ensuring go.mod is tidy..."
 	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
-	@echo " Running golangci-lint..."
+	@echo "   Running modernize..."
+	@( cd "$(BACKEND_DIR)" && GOFLAGS="-buildvcs=false" GOTOOLCHAIN=local "$(GO_BIN)" run "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)" -fix ./... )
+	@echo "   Running golangci-lint..."
 	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
-	@echo " Go Linting Ok!"
+	@echo "✅ Go linting passed!"
 
 test-backend:
-	@echo " Running Go unit tests (backend)..."
+	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
 		out="$$(GOFLAGS="-buildvcs=false" go test ./... -count=1 -timeout 5m 2>&1)"; \
 		status=$$?; \
@@ -307,7 +311,7 @@ test-backend:
 
 analyze-auth:
 	@echo ""
-	@echo " Running C static analysis (linuxio-auth)..."
+	@echo "🔬 Running C static analysis (linuxio-auth)..."
 	@set -euo pipefail; \
 	FILE="backend/auth/linuxio-auth.c"; \
 	CPPCHK_DEFS='-D__has_include(x)=0 -DLINUXIO_VERSION="dev"'; \
@@ -317,55 +321,60 @@ analyze-auth:
 	CC_DB_DIR=".cache/clang"; \
 	CC_DB="$$CC_DB_DIR/compile_commands.json"; \
 	if ! command -v cppcheck >/dev/null 2>&1; then \
-	  echo " cppcheck not found (install: sudo apt-get install cppcheck)"; \
+	  echo "❌ cppcheck not found (install: sudo apt-get install cppcheck)"; \
 	  exit 1; \
 	fi; \
-	echo " cppcheck"; \
+	echo "   cppcheck"; \
 	cppcheck --enable=warning,style,performance,portability --inconclusive --std=c11 --force \
 	  $$CPPCHK_SUPPRESS $$CPPCHK_DEFS "$$FILE"; \
 	if ! command -v "$(CC)" >/dev/null 2>&1; then \
-	  echo " compiler not found: $(CC)"; \
+	  echo "❌ compiler not found: $(CC)"; \
 	  exit 1; \
 	fi; \
-	echo " $(CC) -fanalyzer"; \
+	echo "   $(CC) -fanalyzer"; \
 	"$(CC)" -fanalyzer -Wall -Wextra -Wshadow -Wformat=2 -Wconversion -Wnull-dereference -Wvla -O2 -c "$$FILE"; \
 	rm -f linuxio-auth.o; \
 	if ! command -v scan-build >/dev/null 2>&1; then \
 	  echo "  scan-build not found - skipping clang static analyzer"; \
 	else \
-	  echo " scan-build (clang static analyzer)"; \
+	  echo "   scan-build (clang static analyzer)"; \
 	  scan-build --use-cc=clang $(MAKE) --no-print-directory build-auth CC=clang WARNFLAGS="$$SB_WARNFLAGS"; \
 	fi; \
 	if ! command -v bear >/dev/null 2>&1; then \
-	  echo " bear not found (install: sudo apt-get install bear)"; \
+	  echo "❌ bear not found (install: sudo apt-get install bear)"; \
 	  exit 1; \
 	fi; \
 	if ! command -v clang-tidy >/dev/null 2>&1; then \
-	  echo " clang-tidy not found (install: sudo apt-get install clang-tidy)"; \
+	  echo "❌ clang-tidy not found (install: sudo apt-get install clang-tidy)"; \
 	  exit 1; \
 	fi; \
-	echo " clang-tidy (compile_commands.json via bear)"; \
+	echo "   clang-tidy (compile_commands.json via bear)"; \
 	mkdir -p "$$CC_DB_DIR"; \
 	rm -f "$$CC_DB"; \
 	bear --output "$$CC_DB" -- $(MAKE) --no-print-directory build-auth; \
 	clang-tidy $$CLANG_TIDY_OPTS -p "$$CC_DB_DIR" "$$FILE"; \
-	echo " C analysis complete."
+	echo "✅ C analysis complete."
 	
 
 build-vite:
 	@echo ""
-	@echo "  Building frontend..."
-	@bash -c 'cd frontend && npx vite build && echo " Frontend built successfully!"'
+	@echo "🏗️  Building frontend..."
+	@bash -c 'cd frontend && npm run build && echo "✅ Frontend built successfully!"'
+
+analyze: ensure-node setup
+	@echo ""
+	@echo "🔬 Building frontend bundle analysis..."
+	@bash -c 'cd frontend && npm run analyze && echo "✅ Frontend analysis built successfully!"'
 
 build-backend: $(GO_BUILD_PREREQ)
 	@echo ""
-	@echo "  Building backend..."
-	@echo " Module: $(MODULE_PATH)"
-	@echo " Version: $(GIT_VERSION)"
+	@echo "🏗️  Building backend..."
+	@echo "   Module: $(MODULE_PATH)"
+	@echo "   Version: $(GIT_VERSION)"
 	@if [ -n "$(BRIDGE_SHA256)" ]; then \
-		echo " Bridge SHA256: $(BRIDGE_SHA256)"; \
+		echo "   Bridge SHA256: $(BRIDGE_SHA256)"; \
 	else \
-		echo " Bridge SHA256: (not embedded - development mode)"; \
+		echo "   Bridge SHA256: (not embedded - development mode)"; \
 	fi
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false -tags=nomsgpack" \
@@ -377,17 +386,17 @@ build-backend: $(GO_BUILD_PREREQ)
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)' \
 		-X '$(MODULE_PATH)/common/config.BridgeSHA256=$(BRIDGE_SHA256)'" \
 	-o ../linuxio-webserver ./webserver/ && \
-	echo " Backend built successfully!" && \
-	echo " Path: $(PWD)/linuxio-webserver" && \
-	echo " Version: $(GIT_VERSION)" && \
-	echo " Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
-	echo " SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
+	echo "✅ Backend built successfully!" && \
+	echo "   Path: $(PWD)/linuxio-webserver" && \
+	echo "   Version: $(GIT_VERSION)" && \
+	echo "   Size: $$(du -h ../linuxio-webserver | cut -f1)" && \
+	echo "   SHA256: $$(shasum -a 256 ../linuxio-webserver | awk '{ print $$1 }')"
 
 build-bridge: $(GO_BUILD_PREREQ)
 	@echo ""
-	@echo " Building bridge..."
-	@echo " Module: $(MODULE_PATH)"
-	@echo " Version: $(GIT_VERSION)"
+	@echo "🏗️  Building bridge..."
+	@echo "   Module: $(MODULE_PATH)"
+	@echo "   Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false -tags=nomsgpack" \
 	go build \
@@ -397,40 +406,40 @@ build-bridge: $(GO_BUILD_PREREQ)
 		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio-bridge ./bridge && \
-	echo " Bridge built successfully!" && \
-	echo " Path: $(PWD)/linuxio-bridge" && \
-	echo " Version: $(GIT_VERSION)" && \
-	echo " Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
-	echo " SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
+	echo "✅ Bridge built successfully!" && \
+	echo "   Path: $(PWD)/linuxio-bridge" && \
+	echo "   Version: $(GIT_VERSION)" && \
+	echo "   Size: $$(du -h ../linuxio-bridge | cut -f1)" && \
+	echo "   SHA256: $$(shasum -a 256 ../linuxio-bridge | awk '{ print $$1 }')"
 
 build-auth:
 	@echo ""
-	@echo "  Building Session helper (C)..."
+	@echo "🏗️  Building Session helper (C)..."
 	@set -euo pipefail; \
 	LIBS="-lpam"; \
 	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null; then \
 	  LIBS="$$LIBS $$(pkg-config --libs libsystemd)"; \
-	  echo " Linking with libsystemd for journald support (via pkg-config)"; \
+	  echo "   Linking with libsystemd for journald support (via pkg-config)"; \
 	elif [ -f /usr/include/systemd/sd-journal.h ]; then \
 	  LIBS="$$LIBS -lsystemd"; \
-	  echo " Linking with libsystemd for journald support"; \
+	  echo "   Linking with libsystemd for journald support"; \
 	else \
-	  echo "  libsystemd-dev not found - auth helper logs will fall back to syslog"; \
+	  echo "⚠️  libsystemd-dev not found - auth helper logs will fall back to syslog"; \
 	  echo "   Install with: sudo apt-get install libsystemd-dev"; \
 	fi; \
 	$(CC) $(CFLAGS) -DLINUXIO_VERSION=\"$(GIT_VERSION)\" -o linuxio-auth backend/auth/linuxio-auth.c $(LDFLAGS) $$LIBS; \
 	if [ "$(STRIP)" = "1" ]; then strip --strip-unneeded linuxio-auth; fi; \
-	echo " Session helper built successfully!"; \
-	echo " Path: $$PWD/linuxio-auth"; \
-	echo " Size: $$(du -h linuxio-auth | cut -f1)"; \
-	echo " SHA256: $$(shasum -a 256 linuxio-auth | awk '{ print $$1 }')"; \
+	echo "✅ Session helper built successfully!"; \
+	echo "   Path: $$PWD/linuxio-auth"; \
+	echo "   Size: $$(du -h linuxio-auth | cut -f1)"; \
+	echo "   SHA256: $$(shasum -a 256 linuxio-auth | awk '{ print $$1 }')"; \
 	if command -v checksec >/dev/null 2>&1; then \
 	  echo " checksec:"; checksec --file=linuxio-auth || true; \
 	fi
 
 build-cli: $(GO_BUILD_PREREQ)
 	@echo ""
-	@echo "  Building CLI..."
+	@echo "🏗️  Building CLI..."
 	@cd "$(BACKEND_DIR)" && \
 	GOFLAGS="-buildvcs=false" \
 	go build \
@@ -440,9 +449,9 @@ build-cli: $(GO_BUILD_PREREQ)
 		-X '$(MODULE_PATH)/common/config.CommitSHA=$(GIT_COMMIT_SHORT)' \
 		-X '$(MODULE_PATH)/common/config.BuildTime=$(BUILD_TIME)'" \
 	-o ../linuxio ./ && \
-	echo " CLI built successfully!" && \
-	echo " Path: $(PWD)/linuxio" && \
-	echo " Size: $$(du -h ../linuxio | cut -f1)"
+	echo "✅ CLI built successfully!" && \
+	echo "   Path: $(PWD)/linuxio" && \
+	echo "   Size: $$(du -h ../linuxio | cut -f1)"
 
 dev-prep:
 	@mkdir -p "$(BACKEND_DIR)/webserver/web/frontend/assets"
@@ -454,7 +463,7 @@ dev-prep:
 
 dev: setup dev-prep
 	@echo ""
-	@echo " Starting development servers..."
+	@echo "🚀 Starting development servers..."
 	@echo "   Backend must be running via: sudo systemctl start linuxio"
 	@echo "   Vite proxies /ws, /auth, /api to port 8090"
 	@echo "   Vite log: $(VITE_DEV_LOG)"
@@ -489,7 +498,7 @@ dev: setup dev-prep
 	  nohup bash -c 'cd packaging/scripts && exec python3 -m http.server $(SCRIPT_SERVER_PORT)' >/dev/null 2>&1 & \
 	  echo $$! > "$(SCRIPT_SERVER_PID)"; \
 	  STARTED_SCRIPT_SERVER=1; \
-	  echo " Dev script server started (pid $$(cat "$(SCRIPT_SERVER_PID)"))"; \
+	  echo "✅ Dev script server started (pid $$(cat "$(SCRIPT_SERVER_PID)"))"; \
 	  echo "   ➜  Serving:  http://localhost:$(SCRIPT_SERVER_PORT)/"; \
 	fi
 	@if [ -f "$(VITE_DEV_PID)" ] && kill -0 "$$(cat "$(VITE_DEV_PID)")" 2>/dev/null; then \
@@ -501,21 +510,21 @@ dev: setup dev-prep
 	  STARTED_VITE=1; \
 	fi
 	@if [ -f "$(VITE_DEV_PID)" ]; then \
-	  echo " Vite started (pid $$(cat "$(VITE_DEV_PID)"))"; \
+	  echo "✅ Vite started (pid $$(cat "$(VITE_DEV_PID)"))"; \
 	  echo "   ➜  Local:   http://localhost:$(VITE_DEV_PORT)/"; \
 	  echo "   Stop with: kill $$(cat "$(VITE_DEV_PID)") $$(cat "$(SCRIPT_SERVER_PID)")"; \
 	else \
-	  echo " Failed to capture Vite PID. Check $(VITE_DEV_LOG) for details."; \
+	  echo "❌ Failed to capture Vite PID. Check $(VITE_DEV_LOG) for details."; \
 	fi
 	@trap cleanup INT TERM EXIT
 	@echo ""
-	@echo " Tailing LinuxIO logs (last $(DEV_LOG_LINES) lines)..."
+	@echo "📋 Tailing LinuxIO logs (last $(DEV_LOG_LINES) lines)..."
 	@linuxio logs $(DEV_LOG_LINES)
 
 # Internal target: build backend + auth + cli (requires bridge already built)
 _build-binaries: ensure-go
 	@echo ""
-	@echo " Capturing bridge hash for backend build..."
+	@echo "🔑 Capturing bridge hash for backend build..."
 	@BRIDGE_HASH=$$(shasum -a 256 linuxio-bridge | awk '{ print $$1 }'); \
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1
@@ -538,18 +547,18 @@ clean:
 	@rm -rf frontend/node_modules || true
 	@rm -f frontend/package-lock.json || true
 	@find "$(BACKEND_DIR)/webserver/frontend" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
-	@echo " Cleaned workspace."
+	@echo "🧹 Cleaned workspace."
 
 # ========== Installation Targets ==========
 
 uninstall:
 	@echo ""
-	@echo "  Uninstalling LinuxIO..."
+	@echo "🗑️  Uninstalling LinuxIO..."
 	@sudo ./packaging/scripts/uninstall.sh
 
 localinstall:
 	@echo ""
-	@echo " Installing LinuxIO from local build..."
+	@echo "📦 Installing LinuxIO from local build..."
 	@sudo ./packaging/scripts/localinstall.sh
 
 reinstall: uninstall fastbuild localinstall
@@ -559,7 +568,7 @@ reinstall: uninstall fastbuild localinstall
 
 fullinstall: uninstall
 	@echo ""
-	@echo " Installing LinuxIO from GitHub repo..."
+	@echo "📦 Installing LinuxIO from GitHub repo..."
 	@sudo ./packaging/scripts/install-linuxio-binaries.sh
 
 help:
@@ -578,6 +587,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint + backend tests (optimized)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
+	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
@@ -659,7 +669,7 @@ create-module:
 		echo "  make build-module $(MODULE)"; \
 		exit 1; \
 	fi
-	@echo " Creating new module: $(MODULE)"
+	@echo "📦 Creating new module: $(MODULE)"
 	@cp -r modules/.template "$(MODULE_DIR)"
 	@MODULE_TITLE="$$(echo "$(MODULE)" | sed 's/-/ /g; s/\b\(.\)/\u\1/g')"; \
 	sed -i "s/name: example-module/name: $(MODULE)/" "$(MODULE_DIR)/module.yaml"; \
@@ -668,19 +678,19 @@ create-module:
 	sed -i "s/window.LinuxIOModules\['example-module'\]/window.LinuxIOModules['$(MODULE)']/" "$(MODULE_DIR)/src/index.tsx"; \
 	sed -i "s/modules\/example-module/modules\/$(MODULE)/" "$(MODULE_DIR)/src/index.tsx"
 	@ln -sf ../../frontend/node_modules "$(MODULE_DIR)/node_modules"
-	@echo " Module created at: $(MODULE_DIR)"
+	@echo "✅ Module created at: $(MODULE_DIR)"
 	@echo "   TypeScript config: $(MODULE_DIR)/tsconfig.json"
 	@echo "   Node modules: Symlinked to frontend/node_modules"
 	@echo ""
 	@# Auto-link module for development
-	@echo " Linking module for development (HMR enabled)..."
+	@echo "🔗 Linking module for development (HMR enabled)..."
 	@sudo ln -s "$(MODULE_DIR)" "$(INSTALL_DIR)"
-	@echo " Module linked to $(INSTALL_DIR)"
+	@echo "✅ Module linked to $(INSTALL_DIR)"
 	@echo ""
 	@# Auto-restart LinuxIO services
-	@echo " Restarting LinuxIO services..."
+	@echo "🔄 Restarting LinuxIO services..."
 	@sudo systemctl restart linuxio.target
-	@echo " Services restarted"
+	@echo "✅ Services restarted"
 	@echo ""
 	@echo " Next steps:"
 	@echo "  1. Start dev server: make dev"
@@ -735,9 +745,9 @@ link-module:
 			exit 1; \
 		fi; \
 	else \
-		echo " Linking $(MODULE) for development..."; \
+		echo "🔗 Linking $(MODULE) for development..."; \
 		sudo ln -s "$(MODULE_DIR)" "$(INSTALL_DIR)"; \
-		echo " Module linked to $(INSTALL_DIR)"; \
+		echo "✅ Module linked to $(INSTALL_DIR)"; \
 		echo ""; \
 		echo " Next steps:"; \
 		echo "  1. Restart LinuxIO: sudo systemctl restart linuxio.target"; \
@@ -761,9 +771,9 @@ unlink-module:
 		echo "   Use 'make uninstall-module $(MODULE)' for deployed modules"; \
 		exit 1; \
 	fi
-	@echo " Unlinking $(MODULE)..."
+	@echo "🔗 Unlinking $(MODULE)..."
 	@sudo rm "$(INSTALL_DIR)"
-	@echo " Module unlinked"
+	@echo "✅ Module unlinked"
 	@echo "   To deploy for production: make deploy-module $(MODULE)"
 
 # Build and deploy module to system
@@ -775,9 +785,9 @@ deploy-module:
 	fi
 	@# Remove development symlink if it exists
 	@if [ -L "$(INSTALL_DIR)" ]; then \
-		echo " Unlinking development symlink..."; \
+		echo "🔗 Unlinking development symlink..."; \
 		sudo rm "$(INSTALL_DIR)"; \
-		echo " Development symlink removed"; \
+		echo "✅ Development symlink removed"; \
 		echo ""; \
 	elif [ -e "$(INSTALL_DIR)" ]; then \
 		echo "  Warning: $(INSTALL_DIR) exists but is not a symlink"; \
@@ -789,11 +799,11 @@ deploy-module:
 	@# Install the module
 	@$(MAKE) install-module MODULE=$(MODULE)
 	@echo ""
-	@echo " $(MODULE) deployed successfully!"
+	@echo "✅ $(MODULE) deployed successfully!"
 	@# Restart LinuxIO services
-	@echo " Restarting LinuxIO services..."
+	@echo "🔄 Restarting LinuxIO services..."
 	@sudo systemctl restart linuxio.target
-	@echo " Services restarted"
+	@echo "✅ Services restarted"
 	@echo ""
 	@echo "   View module at: https://localhost:8090/$(MODULE)"
 
@@ -808,13 +818,13 @@ install-module:
 	@sudo cp "$(MODULE_DIR)/module.yaml" "$(INSTALL_DIR)/"
 	@sudo cp "$(MODULE_DIR)/dist/component.js" "$(INSTALL_DIR)/ui/"
 	@sudo chmod -R 755 "$(INSTALL_DIR)"
-	@echo " Module installed to $(INSTALL_DIR)"
+	@echo "✅ Module installed to $(INSTALL_DIR)"
 
 # Uninstall module from system (requires sudo)
 uninstall-module:
 	@echo "Removing $(MODULE) from system..."
 	@sudo rm -rf "$(INSTALL_DIR)"
-	@echo " Module uninstalled"
+	@echo "✅ Module uninstalled"
 	@echo "   Restart LinuxIO: sudo systemctl restart linuxio.target"
 
 # Clean module build artifacts
@@ -822,12 +832,12 @@ clean-module:
 	@if [ -d "$(MODULE_DIR)" ]; then \
 		echo "Cleaning build artifacts for $(MODULE)..."; \
 		rm -rf "$(MODULE_DIR)/dist"; \
-		echo " Build artifacts removed"; \
+		echo "✅ Build artifacts removed"; \
 	fi
 
 # List all available modules
 list-modules:
-	@echo " Installed modules:"
+	@echo "📋 Installed modules:"
 	@module_count=0; \
 	for dir in modules/*/; do \
 		[ "$$dir" = "modules/.template/" ] && continue; \
@@ -905,7 +915,7 @@ cloc-breakdown:
 
 .PHONY: \
   default help clean run \
-  build fastbuild _build-binaries build-vite build-backend build-bridge build-auth build-cli \
+  build fastbuild _build-binaries build-vite analyze build-backend build-bridge build-auth build-cli \
   dev dev-prep setup test test-backend analyze-auth lint tsc golint lint-only tsc-only golint-only \
   ensure-node ensure-go ensure-golint \
   generate localinstall reinstall fullinstall uninstall print-toolchain-versions \

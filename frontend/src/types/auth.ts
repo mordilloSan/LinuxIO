@@ -30,6 +30,8 @@ export interface AuthState {
   privileged: boolean;
   dockerAvailable: boolean | null;
   indexerAvailable: boolean | null;
+  lmSensorsAvailable: boolean | null;
+  smartmontoolsAvailable: boolean | null;
 }
 
 /**
@@ -42,6 +44,8 @@ export interface AuthContextType {
   privileged: boolean;
   dockerAvailable: boolean | null;
   indexerAvailable: boolean | null;
+  lmSensorsAvailable: boolean | null;
+  smartmontoolsAvailable: boolean | null;
   method: "session";
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -82,6 +86,8 @@ export interface AuthActionTypes {
     privileged: boolean;
     dockerAvailable?: boolean | null;
     indexerAvailable?: boolean | null;
+    lmSensorsAvailable?: boolean | null;
+    smartmontoolsAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.INITIALIZE_FAILURE]: undefined;
   [AUTH_ACTIONS.SIGN_IN]: {
@@ -89,11 +95,15 @@ export interface AuthActionTypes {
     privileged: boolean;
     dockerAvailable?: boolean | null;
     indexerAvailable?: boolean | null;
+    lmSensorsAvailable?: boolean | null;
+    smartmontoolsAvailable?: boolean | null;
   };
   [AUTH_ACTIONS.SIGN_OUT]: undefined;
   [AUTH_ACTIONS.UPDATE_CAPABILITIES]: {
     dockerAvailable: boolean;
     indexerAvailable: boolean;
+    lmSensorsAvailable: boolean;
+    smartmontoolsAvailable: boolean;
   };
 }
 

@@ -1,6 +1,5 @@
 import {
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -14,6 +13,7 @@ import React, { useState, useEffect, useEffectEvent } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type AccountUser, type ModifyUserRequest } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditUserDialogProps {
@@ -95,7 +95,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Edit User: {user.username}</DialogTitle>
       <DialogContent>
         <div
@@ -161,7 +161,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
           {isPending ? "Saving..." : "Save"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

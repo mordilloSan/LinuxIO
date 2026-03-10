@@ -1,6 +1,5 @@
 import {
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -11,6 +10,7 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type CreateGroupRequest } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateGroupDialogProps {
@@ -61,7 +61,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create Group</DialogTitle>
       <DialogContent>
         <div
@@ -102,7 +102,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
           {isPending ? "Creating..." : "Create"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

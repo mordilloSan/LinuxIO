@@ -75,6 +75,8 @@ interface Download {
   progress: number;
   label: string;
   speed?: number;
+  bytes?: number;
+  total?: number;
   abortController: AbortController;
   stream?: Stream | null; // For stream-based downloads
 }
@@ -101,6 +103,9 @@ interface Compression {
   paths: string[];
   progress: number;
   label: string;
+  speed?: number;
+  bytes?: number;
+  total?: number;
   abortController: AbortController;
   stream?: Stream | null;
 }
@@ -112,6 +117,9 @@ interface Extraction {
   destination: string;
   progress: number;
   label: string;
+  speed?: number;
+  bytes?: number;
+  total?: number;
   abortController: AbortController;
   stream?: Stream | null;
 }
@@ -179,9 +187,10 @@ type Transfer =
   | Copy
   | Move;
 
-function createProgressSpeedCalculator(minWindowMs = 500) {
+function createProgressSpeedCalculator(minWindowMs = 500, alpha = 0.3) {
   let lastBytes = 0;
   let lastTime = Date.now();
+  let ewmaSpeed: number | undefined;
 
   return (bytes: number): number | undefined => {
     const now = Date.now();
@@ -191,7 +200,12 @@ function createProgressSpeedCalculator(minWindowMs = 500) {
     if (deltaMs > minWindowMs && deltaBytes > 0) {
       lastBytes = bytes;
       lastTime = now;
-      return deltaBytes / (deltaMs / 1000);
+      const instantSpeed = deltaBytes / (deltaMs / 1000);
+      ewmaSpeed =
+        ewmaSpeed === undefined
+          ? instantSpeed
+          : alpha * instantSpeed + (1 - alpha) * ewmaSpeed;
+      return ewmaSpeed;
     }
 
     return undefined;
@@ -445,8 +459,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
     ) => {
       const isSingleFile = paths.length === 1 && !paths[0].endsWith("/");
       const chunks: Uint8Array[] = [];
-      let lastBytes = 0;
-      let lastTime = Date.now();
+      const getSpeed = createProgressSpeedCalculator();
       await runStreamResult({
         open: () => openFileDownloadStream(paths),
         openErrorMessage: "Failed to open download stream",
@@ -459,16 +472,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           chunks.push(data);
         },
         onProgress: (progress) => {
-          const now = Date.now();
-          const deltaBytes = progress.bytes - lastBytes;
-          const deltaMs = now - lastTime;
-
-          let speed: number | undefined;
-          if (deltaMs > 500 && deltaBytes > 0) {
-            speed = deltaBytes / (deltaMs / 1000);
-            lastBytes = progress.bytes;
-            lastTime = now;
-          }
+          const speed = getSpeed(progress.bytes);
 
           let phaseLabel: string;
           switch (progress.phase) {
@@ -476,7 +480,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
               phaseLabel = "Preparing";
               break;
             case "compressing":
-              phaseLabel = "Compressing";
+              phaseLabel = "Downloading (compressing)";
               break;
             case "streaming":
             default:
@@ -487,6 +491,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
           updateDownload(reqId, {
             progress: progress.pct,
             label: formatDownloadLabel(phaseLabel, { percent: progress.pct }),
+            bytes: progress.bytes,
+            total: progress.total,
             ...(speed !== undefined && { speed }),
           });
         },
@@ -665,6 +671,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       const candidateLabelBase = archiveName || "archive.zip";
       const labelBase = allocateDownloadLabelBase(candidateLabelBase, id);
 
+      const getSpeed = createProgressSpeedCalculator();
+
       const compression: Compression = {
         id,
         type: "compression",
@@ -673,6 +681,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         paths,
         progress: 0,
         label: `Compressing ${labelBase} (0%)`,
+        speed: undefined,
         abortController,
       };
 
@@ -706,15 +715,20 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         },
         onProgress: (progress) => {
           const percent = Math.min(99, progress.pct);
+          const speed = getSpeed(progress.bytes);
+
           setCompressions((prev) =>
             prev.map((c) => {
               if (c.id !== id) return c;
               const next = Math.max(c.progress, percent);
-              if (next === c.progress) return c;
+              if (next === c.progress && speed === undefined) return c;
               return {
                 ...c,
                 progress: next,
                 label: `Compressing ${labelBase} (${next}%)`,
+                bytes: progress.bytes,
+                total: progress.total,
+                ...(speed !== undefined && { speed }),
               };
             }),
           );
@@ -811,6 +825,8 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
       };
       const labelBase = allocateDownloadLabelBase(deriveLabelBase(), id);
 
+      const getSpeed = createProgressSpeedCalculator();
+
       const extraction: Extraction = {
         id,
         type: "extraction",
@@ -818,6 +834,7 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         destination: destination || "",
         progress: 0,
         label: `Extracting ${labelBase} (0%)`,
+        speed: undefined,
         abortController,
       };
 
@@ -844,15 +861,20 @@ export const FileTransferProvider: React.FC<{ children: React.ReactNode }> = ({
         },
         onProgress: (progress) => {
           const percent = Math.min(99, progress.pct);
+          const speed = getSpeed(progress.bytes);
+
           setExtractions((prev) =>
             prev.map((item) => {
               if (item.id !== id) return item;
               const next = Math.max(item.progress, percent);
-              if (next === item.progress) return item;
+              if (next === item.progress && speed === undefined) return item;
               return {
                 ...item,
                 progress: next,
                 label: `Extracting ${labelBase} (${next}%)`,
+                bytes: progress.bytes,
+                total: progress.total,
+                ...(speed !== undefined && { speed }),
               };
             }),
           );

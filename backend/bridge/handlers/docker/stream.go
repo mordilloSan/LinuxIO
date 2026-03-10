@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"path/filepath"
@@ -28,6 +29,8 @@ const (
 	StreamTypeDockerIndexerAttach = "docker-indexer-attach"
 )
 
+var dockerLogANSIRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
 // RegisterStreamHandlers registers all docker stream handlers.
 func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn, []string) error) {
 	handlers[StreamTypeDockerLogs] = HandleDockerLogsStream
@@ -38,34 +41,25 @@ func RegisterStreamHandlers(handlers map[string]func(*session.Session, net.Conn,
 
 // HandleDockerLogsStream streams container logs in real-time.
 // Args: [containerID, tail] where tail is the number of lines to start with (default "100")
-func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []string) error {
-	if len(args) < 1 {
-		logger.Errorf("[DockerLogs] missing containerID")
-		if err := ipc.WriteStreamClose(stream, 1); err != nil {
-			logger.Debugf("[DockerLogs] failed to write stream close frame: %v", err)
-		}
-		return errors.New("missing containerID")
+func HandleDockerLogsStream(_ *session.Session, stream net.Conn, args []string) error {
+	containerID, tail, err := parseDockerLogsArgs(args)
+	if err != nil {
+		logger.Errorf("%v", err)
+		writeDockerLogsClose(stream)
+		return err
 	}
 
-	containerID := args[0]
-	tail := "100"
-	if len(args) >= 2 && args[1] != "" {
-		tail = args[1]
-	}
-
-	logger.Debugf("[DockerLogs] Starting stream for container=%s tail=%s", containerID, tail)
+	logger.Debugf("Starting stream for container=%s tail=%s", containerID, tail)
 
 	cli, err := getClient()
 	if err != nil {
-		logger.Errorf("[DockerLogs] docker client error: %v", err)
-		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-			logger.Debugf("[DockerLogs] failed to write stream close frame: %v", closeErr)
-		}
+		logger.Errorf("docker client error: %v", err)
+		writeDockerLogsClose(stream)
 		return err
 	}
 	defer func() {
 		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("[DockerLogs] failed to close Docker client: %v", cerr)
+			logger.Warnf("failed to close Docker client: %v", cerr)
 		}
 	}()
 
@@ -83,82 +77,97 @@ func HandleDockerLogsStream(sess *session.Session, stream net.Conn, args []strin
 
 	reader, err := cli.ContainerLogs(ctx, containerID, options)
 	if err != nil {
-		logger.Errorf("[DockerLogs] failed to get logs: %v", err)
-		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-			logger.Debugf("[DockerLogs] failed to write stream close frame: %v", closeErr)
-		}
+		logger.Errorf("failed to get logs: %v", err)
+		writeDockerLogsClose(stream)
 		return err
 	}
 	defer reader.Close()
 
-	// Monitor for client disconnect in background
+	monitorDockerLogDisconnect(stream, cancel)
+	return streamDockerLogs(ctx, stream, reader)
+}
+
+func parseDockerLogsArgs(args []string) (string, string, error) {
+	if len(args) < 1 {
+		return "", "", errors.New("missing containerID")
+	}
+
+	tail := "100"
+	if len(args) >= 2 && args[1] != "" {
+		tail = args[1]
+	}
+	return args[0], tail, nil
+}
+
+func monitorDockerLogDisconnect(stream net.Conn, cancel context.CancelFunc) {
 	go func() {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil || frame.Opcode == ipc.OpStreamClose {
 			cancel()
 		}
 	}()
+}
 
-	// ANSI escape code regex for stripping colors
-	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
-	// Stream docker logs to client
+func streamDockerLogs(ctx context.Context, stream net.Conn, reader io.Reader) error {
 	header := make([]byte, 8)
 	for {
-		// Check if context was cancelled
-		select {
-		case <-ctx.Done():
-			if err := ipc.WriteStreamClose(stream, 1); err != nil {
-				logger.Debugf("[DockerLogs] failed to write stream close frame: %v", err)
-			}
+		if ctx.Err() != nil {
+			writeDockerLogsClose(stream)
 			return nil
-		default:
 		}
 
-		// Read docker log frame header (8 bytes: [STREAM][0,0,0][SIZE(4 bytes)])
-		_, err := io.ReadFull(reader, header)
+		payload, done, err := readDockerLogFrame(reader, header)
 		if err != nil {
-			if err == io.EOF || errors.Is(err, context.Canceled) {
-				break
-			}
-			logger.Debugf("[DockerLogs] read header error: %v", err)
+			logger.Debugf("docker log stream error: %v", err)
 			break
 		}
-
-		size := int(binary.BigEndian.Uint32(header[4:]))
-		if size == 0 {
+		if done {
+			break
+		}
+		if len(payload) == 0 {
 			continue
 		}
-
-		// Read the actual log data
-		data := make([]byte, size)
-		_, err = io.ReadFull(reader, data)
-		if err != nil {
-			if err == io.EOF || errors.Is(err, context.Canceled) {
-				break
-			}
-			logger.Debugf("[DockerLogs] read data error: %v", err)
-			break
-		}
-
-		// Strip ANSI escape codes
-		cleanData := ansiRegex.ReplaceAll(data, nil)
-
-		// Send to client as stream data
-		frame := &ipc.StreamFrame{
+		if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
 			Opcode:   ipc.OpStreamData,
 			StreamID: 1,
-			Payload:  cleanData,
-		}
-		if err := ipc.WriteRelayFrame(stream, frame); err != nil {
+			Payload:  payload,
+		}); err != nil {
 			break
 		}
 	}
 
-	if err := ipc.WriteStreamClose(stream, 1); err != nil {
-		logger.Debugf("[DockerLogs] failed to write stream close frame: %v", err)
-	}
+	writeDockerLogsClose(stream)
 	return nil
+}
+
+func readDockerLogFrame(reader io.Reader, header []byte) ([]byte, bool, error) {
+	if _, err := io.ReadFull(reader, header); err != nil {
+		if err == io.EOF || errors.Is(err, context.Canceled) {
+			return nil, true, nil
+		}
+		return nil, false, fmt.Errorf("read header: %w", err)
+	}
+
+	size := int(binary.BigEndian.Uint32(header[4:]))
+	if size == 0 {
+		return nil, false, nil
+	}
+
+	data := make([]byte, size)
+	if _, err := io.ReadFull(reader, data); err != nil {
+		if err == io.EOF || errors.Is(err, context.Canceled) {
+			return nil, true, nil
+		}
+		return nil, false, fmt.Errorf("read data: %w", err)
+	}
+
+	return dockerLogANSIRegex.ReplaceAll(data, nil), false, nil
+}
+
+func writeDockerLogsClose(stream net.Conn) {
+	if err := ipc.WriteStreamClose(stream, 1); err != nil {
+		logger.Debugf("failed to write stream close frame: %v", err)
+	}
 }
 
 // ComposeStreamMessage represents a message sent during compose streaming
@@ -173,7 +182,7 @@ type ComposeStreamMessage struct {
 // action can be: "up", "down", "stop", "restart"
 func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []string) error {
 	if len(args) < 2 {
-		logger.Errorf("[DockerCompose] missing required arguments")
+		logger.Errorf("missing required arguments")
 		sendComposeError(stream, "missing required arguments: action, projectName")
 		return errors.New("missing required arguments")
 	}
@@ -186,7 +195,7 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 		composePath = args[2]
 	}
 
-	logger.Debugf("[DockerCompose] action=%s project=%s composePath=%s", action, projectName, composePath)
+	logger.Infof("action=%s project=%s composePath=%s", action, projectName, composePath)
 
 	// Determine config file and working directory
 	var configFile string
@@ -213,7 +222,7 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 	go func() {
 		frame, err := ipc.ReadRelayFrame(stream)
 		if err != nil || frame.Opcode == ipc.OpStreamClose {
-			logger.Debugf("[DockerCompose] client disconnected, cancelling command")
+			logger.Debugf("client disconnected, cancelling command")
 			cancel()
 		}
 	}()
@@ -258,7 +267,7 @@ func HandleDockerComposeStream(sess *session.Session, stream net.Conn, args []st
 	streamMu.Lock()
 	sendComposeMessage(stream, "complete", "operation completed successfully")
 	if err := ipc.WriteStreamClose(stream, 1); err != nil {
-		logger.Debugf("[DockerCompose] failed to write stream close frame: %v", err)
+		logger.Debugf("failed to write stream close frame: %v", err)
 	}
 	streamMu.Unlock()
 	return nil
@@ -272,7 +281,7 @@ func sendComposeMessage(stream net.Conn, msgType, message string) {
 
 	data, err := json.Marshal(msg)
 	if err != nil {
-		logger.Errorf("[DockerCompose] failed to marshal message: %v", err)
+		logger.Errorf("failed to marshal message: %v", err)
 		return
 	}
 
@@ -283,14 +292,14 @@ func sendComposeMessage(stream net.Conn, msgType, message string) {
 	}
 
 	if err := ipc.WriteRelayFrame(stream, frame); err != nil {
-		logger.Debugf("[DockerCompose] failed to write frame: %v", err)
+		logger.Debugf("failed to write frame: %v", err)
 	}
 }
 
 func sendComposeError(stream net.Conn, message string) {
 	sendComposeMessage(stream, "error", message)
 	if err := ipc.WriteStreamClose(stream, 1); err != nil {
-		logger.Debugf("[DockerCompose] failed to write stream close frame: %v", err)
+		logger.Debugf("failed to write stream close frame: %v", err)
 	}
 }
 

@@ -7,6 +7,7 @@ import {
   MenuItem,
   SelectChangeEvent,
   Tooltip,
+  Menu,
 } from "@mui/material";
 import type { SxProps } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -97,6 +98,12 @@ export type DashboardCardProps = SelectProps & {
   connectionStatus?: ConnectionStatus;
   /** @see {@link ContentLayout} */
   contentLayout?: ContentLayout;
+  /** Options shown when the user clicks the icon-text temperature badge. */
+  iconTextSelectOptions?: SelectOption[];
+  /** Currently selected icon-text option value. */
+  selectedIconTextOption?: string;
+  /** Called when the user picks a different icon-text option. */
+  onIconTextSelect?: (value: string) => void;
 };
 
 const DashboardCard: React.FC<DashboardCardProps> = ({
@@ -114,10 +121,15 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   onSelect,
   connectionStatus,
   contentLayout = "equal",
+  iconTextSelectOptions,
+  selectedIconTextOption,
+  onIconTextSelect,
 }) => {
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
   const [hovered, setHovered] = useState(false);
+  const [iconTextMenuAnchor, setIconTextMenuAnchor] =
+    useState<null | HTMLElement>(null);
 
   const [statsFlex, stats2Flex]: [number | string, number | string] = (() => {
     if (contentLayout === "equal") return [1, 1];
@@ -247,7 +259,15 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                   lineHeight: 1,
                   marginLeft: -4,
                   marginBottom: 4,
+                  cursor: iconTextSelectOptions?.length ? "pointer" : "default",
+                  borderRadius: 4,
                 }}
+                onClick={
+                  iconTextSelectOptions?.length
+                    ? (e) =>
+                        setIconTextMenuAnchor(e.currentTarget as HTMLElement)
+                    : undefined
+                }
               >
                 <div
                   style={{
@@ -272,6 +292,28 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                   {icon_text}
                 </Typography>
               </div>
+            )}
+            {iconTextSelectOptions && iconTextSelectOptions.length > 0 && (
+              <Menu
+                anchorEl={iconTextMenuAnchor}
+                open={Boolean(iconTextMenuAnchor)}
+                onClose={() => setIconTextMenuAnchor(null)}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                transformOrigin={{ vertical: "top", horizontal: "left" }}
+              >
+                {iconTextSelectOptions.map((opt, i) => (
+                  <MenuItem
+                    key={opt.id ?? i}
+                    selected={opt.value === selectedIconTextOption}
+                    onClick={() => {
+                      onIconTextSelect?.(opt.value);
+                      setIconTextMenuAnchor(null);
+                    }}
+                  >
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Menu>
             )}
           </div>
 

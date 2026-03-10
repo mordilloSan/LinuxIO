@@ -25,14 +25,14 @@ const (
 func SyncWatchtowerStack(username string) {
 	cfg, _, err := config.Load(username)
 	if err != nil {
-		logger.Warnf("[watchtower] failed to load config: %v", err)
+		logger.Warnf("failed to load config: %v", err)
 		return
 	}
 
 	// When no stacks have auto-update enabled, stop Watchtower entirely.
 	if len(cfg.Docker.AutoUpdateStacks) == 0 {
 		stopWatchtower()
-		logger.Infof("[watchtower] no auto-update stacks — watchtower stopped")
+		logger.Infof("no auto-update stacks — watchtower stopped")
 		return
 	}
 
@@ -41,15 +41,15 @@ func SyncWatchtowerStack(username string) {
 	// Write the generated compose file.
 	content := generateWatchtowerCompose(containerNames)
 	if err := os.WriteFile(watchtowerComposePath, []byte(content), 0o644); err != nil {
-		logger.Warnf("[watchtower] failed to write compose file: %v", err)
+		logger.Warnf("failed to write compose file: %v", err)
 		return
 	}
 
 	// Start or recreate Watchtower with the new config.
 	if err := composeUpWithSDK(context.Background(), watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, true, nil); err != nil {
-		logger.Warnf("[watchtower] compose up failed: %v", err)
+		logger.Warnf("compose up failed: %v", err)
 	} else {
-		logger.Infof("[watchtower] synced with containers: %s", strings.Join(containerNames, ", "))
+		logger.Infof("synced with containers: %s", strings.Join(containerNames, ", "))
 	}
 }
 
@@ -61,11 +61,11 @@ func stopWatchtower() {
 	}
 
 	if err := composeDownWithSDK(context.Background(), watchtowerProjectName, watchtowerComposePath, watchtowerGlobalDir, false, nil); err != nil {
-		logger.Warnf("[watchtower] compose down failed: %v", err)
+		logger.Warnf("compose down failed: %v", err)
 	}
 
 	if err := os.Remove(watchtowerComposePath); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("[watchtower] failed to remove compose file: %v", err)
+		logger.Warnf("failed to remove compose file: %v", err)
 	}
 }
 
@@ -75,18 +75,18 @@ func stopWatchtower() {
 func collectContainerNames(autoUpdateContainers []string) []string {
 	cli, err := getClient()
 	if err != nil {
-		logger.Debugf("[watchtower] docker client unavailable, using container names as fallback: %v", err)
+		logger.Debugf("docker client unavailable, using container names as fallback: %v", err)
 		return autoUpdateContainers
 	}
 	defer func() {
 		if cerr := cli.Close(); cerr != nil {
-			logger.Warnf("[watchtower] failed to close Docker client: %v", cerr)
+			logger.Warnf("failed to close Docker client: %v", cerr)
 		}
 	}()
 
 	running, err := cli.ContainerList(context.Background(), container.ListOptions{All: false})
 	if err != nil {
-		logger.Warnf("[watchtower] failed to list containers: %v", err)
+		logger.Warnf("failed to list containers: %v", err)
 		return autoUpdateContainers
 	}
 

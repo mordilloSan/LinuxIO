@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
+	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/mordilloSan/go-logger/logger"
@@ -255,18 +256,54 @@ func safeUint16(val int) uint16 {
 // HandleContainerTerminalStream handles a yamux stream for container terminal I/O.
 // Args: [containerID, shell, cols, rows]
 func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args []string) error {
-	if len(args) < 2 {
-		logger.Errorf("[ContainerTerminal] missing containerID or shell")
-		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-			logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
-		}
-		return fmt.Errorf("missing containerID or shell")
+	containerID, shell, cols, rows, err := parseContainerTerminalArgs(args)
+	if err != nil {
+		logger.Errorf("[ContainerTerminal] %v", err)
+		writeContainerTerminalClose(stream)
+		return err
 	}
 
-	containerID := args[0]
-	shell := args[1]
-
 	logger.Debugf("[ContainerTerminal] Starting for container=%s shell=%s user=%s", containerID, shell, sess.User.Username)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		logger.Errorf("[ContainerTerminal] docker client error: %v", err)
+		writeContainerTerminalClose(stream)
+		return err
+	}
+	defer cli.Close()
+
+	execResp, err := createContainerExec(ctx, cli, containerID, shell, cols, rows)
+	if err != nil {
+		logger.Errorf("[ContainerTerminal] exec create failed: %v", err)
+		writeContainerTerminalClose(stream)
+		return err
+	}
+
+	attachResp, err := attachContainerExec(ctx, cli, execResp.ID, cols, rows)
+	if err != nil {
+		logger.Errorf("[ContainerTerminal] exec attach failed: %v", err)
+		writeContainerTerminalClose(stream)
+		return err
+	}
+	defer attachResp.Close()
+
+	resizeContainerExec(ctx, cli, execResp.ID, cols, rows)
+
+	done := make(chan error, 2)
+	go streamContainerExecOutput(attachResp.Reader, stream, done)
+	go streamContainerExecInput(ctx, cli, execResp.ID, attachResp.Conn, stream, done)
+
+	return waitForContainerTerminalEnd(cancel, stream, done)
+}
+
+func parseContainerTerminalArgs(args []string) (string, string, int, int, error) {
+	if len(args) < 2 {
+		return "", "", 0, 0, fmt.Errorf("missing containerID or shell")
+	}
 
 	cols, rows := 120, 32
 	if len(args) >= 4 {
@@ -278,139 +315,122 @@ func HandleContainerTerminalStream(sess *session.Session, stream net.Conn, args 
 		}
 	}
 
-	var shellArgs []string
-	switch shell {
-	case "bash":
-		shellArgs = []string{"bash", "-il"}
-	default:
-		shellArgs = []string{shell, "-i"}
-	}
+	return args[0], args[1], cols, rows, nil
+}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		logger.Errorf("[ContainerTerminal] docker client error: %v", err)
-		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-			logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
-		}
-		return err
-	}
-	defer cli.Close()
-
+func createContainerExec(ctx context.Context, cli *client.Client, containerID, shell string, cols, rows int) (container.ExecCreateResponse, error) {
 	consoleSize := [2]uint{uint(rows), uint(cols)}
-	execResp, err := cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
+	return cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
 		Tty:          true,
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
 		Env:          []string{"TERM=xterm-256color"},
 		ConsoleSize:  &consoleSize,
-		Cmd:          shellArgs,
+		Cmd:          containerShellArgs(shell),
 	})
-	if err != nil {
-		logger.Errorf("[ContainerTerminal] exec create failed: %v", err)
-		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-			logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
-		}
-		return err
-	}
+}
 
-	attachResp, err := cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{
+func attachContainerExec(ctx context.Context, cli *client.Client, execID string, cols, rows int) (dockertypes.HijackedResponse, error) {
+	consoleSize := [2]uint{uint(rows), uint(cols)}
+	return cli.ContainerExecAttach(ctx, execID, container.ExecAttachOptions{
 		Tty:         true,
 		ConsoleSize: &consoleSize,
 	})
-	if err != nil {
-		logger.Errorf("[ContainerTerminal] exec attach failed: %v", err)
-		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-			logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
-		}
-		return err
-	}
-	defer attachResp.Close()
+}
 
-	if resizeErr := cli.ContainerExecResize(ctx, execResp.ID, container.ResizeOptions{
+func containerShellArgs(shell string) []string {
+	if shell == "bash" {
+		return []string{"bash", "-il"}
+	}
+	return []string{shell, "-i"}
+}
+
+func resizeContainerExec(ctx context.Context, cli *client.Client, execID string, cols, rows int) {
+	if err := cli.ContainerExecResize(ctx, execID, container.ResizeOptions{
 		Width:  uint(cols),
 		Height: uint(rows),
-	}); resizeErr != nil {
-		logger.Debugf("[ContainerTerminal] failed to set initial exec size: %v", resizeErr)
+	}); err != nil {
+		logger.Debugf("[ContainerTerminal] failed to resize exec tty: %v", err)
 	}
+}
 
-	done := make(chan error, 2)
-
-	// Docker exec output -> stream
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, readErr := attachResp.Reader.Read(buf)
-			if n > 0 {
-				payload := append([]byte(nil), buf[:n]...)
-				frame := &ipc.StreamFrame{
-					Opcode:   ipc.OpStreamData,
-					StreamID: 1,
-					Payload:  payload,
-				}
-				if writeErr := ipc.WriteRelayFrame(stream, frame); writeErr != nil {
-					done <- writeErr
-					return
-				}
+func streamContainerExecOutput(reader io.Reader, stream net.Conn, done chan<- error) {
+	buf := make([]byte, 4096)
+	for {
+		n, readErr := reader.Read(buf)
+		if n > 0 {
+			payload := append([]byte(nil), buf[:n]...)
+			frame := &ipc.StreamFrame{
+				Opcode:   ipc.OpStreamData,
+				StreamID: 1,
+				Payload:  payload,
 			}
-			if readErr != nil {
-				if errors.Is(readErr, io.EOF) {
-					done <- nil
-				} else {
-					done <- readErr
-				}
+			if writeErr := ipc.WriteRelayFrame(stream, frame); writeErr != nil {
+				done <- writeErr
 				return
 			}
 		}
-	}()
-
-	// Stream input/resize -> docker exec
-	go func() {
-		for {
-			frame, readErr := ipc.ReadRelayFrame(stream)
-			if readErr != nil {
-				done <- readErr
-				return
-			}
-
-			switch frame.Opcode {
-			case ipc.OpStreamData:
-				if len(frame.Payload) == 0 {
-					continue
-				}
-				if _, writeErr := attachResp.Conn.Write(frame.Payload); writeErr != nil {
-					done <- writeErr
-					return
-				}
-			case ipc.OpStreamResize:
-				if len(frame.Payload) < 4 {
-					continue
-				}
-				resizeCols := binary.BigEndian.Uint16(frame.Payload[0:2])
-				resizeRows := binary.BigEndian.Uint16(frame.Payload[2:4])
-				if resizeErr := cli.ContainerExecResize(ctx, execResp.ID, container.ResizeOptions{
-					Width:  uint(resizeCols),
-					Height: uint(resizeRows),
-				}); resizeErr != nil {
-					logger.Debugf("[ContainerTerminal] failed to resize exec tty: %v", resizeErr)
-				}
-			case ipc.OpStreamClose:
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
 				done <- nil
+			} else {
+				done <- readErr
+			}
+			return
+		}
+	}
+}
+
+func streamContainerExecInput(ctx context.Context, cli *client.Client, execID string, conn net.Conn, stream net.Conn, done chan<- error) {
+	for {
+		frame, readErr := ipc.ReadRelayFrame(stream)
+		if readErr != nil {
+			done <- readErr
+			return
+		}
+
+		switch frame.Opcode {
+		case ipc.OpStreamData:
+			if len(frame.Payload) == 0 {
+				continue
+			}
+			if _, writeErr := conn.Write(frame.Payload); writeErr != nil {
+				done <- writeErr
 				return
 			}
+		case ipc.OpStreamResize:
+			cols, rows, ok := parseResizePayload(frame.Payload)
+			if !ok {
+				continue
+			}
+			resizeContainerExec(ctx, cli, execID, cols, rows)
+		case ipc.OpStreamClose:
+			done <- nil
+			return
 		}
-	}()
-
-	err = <-done
-	cancel()
-	if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
-		logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
 	}
+}
+
+func parseResizePayload(payload []byte) (int, int, bool) {
+	if len(payload) < 4 {
+		return 0, 0, false
+	}
+	return int(binary.BigEndian.Uint16(payload[0:2])), int(binary.BigEndian.Uint16(payload[2:4])), true
+}
+
+func waitForContainerTerminalEnd(cancel context.CancelFunc, stream net.Conn, done <-chan error) error {
+	err := <-done
+	cancel()
+	writeContainerTerminalClose(stream)
 	if err != nil && !errors.Is(err, io.EOF) {
 		logger.Debugf("[ContainerTerminal] session ended with error: %v", err)
 	}
 	return nil
+}
+
+func writeContainerTerminalClose(stream net.Conn) {
+	if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+		logger.Debugf("[ContainerTerminal] failed to write stream close frame: %v", closeErr)
+	}
 }

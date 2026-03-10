@@ -132,11 +132,11 @@ func isRealWorkStatus(status uint32) bool {
 // HandlePackageUpdateStream handles streaming package updates with real-time progress.
 // args: package IDs to update (null-byte separated in payload)
 func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []string) error {
-	logger.Debugf("[PkgUpdate] Starting with %d packages", len(args))
+	logger.Infof("Starting update stream with %d packages", len(args))
 
 	if len(args) == 0 {
 		if err := ipc.WriteResultErrorAndClose(stream, 0, "no packages specified", 400); err != nil {
-			logger.Debugf("[PkgUpdate] failed to write error+close frame: %v", err)
+			logger.Debugf("failed to write error+close frame: %v", err)
 		}
 		return fmt.Errorf("no packages specified")
 	}
@@ -147,14 +147,14 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 		Status:     "Initializing",
 		Percentage: new(uint32(0)),
 	}); err != nil {
-		logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
+		logger.Debugf("failed to write progress frame: %v", err)
 	}
 
 	err := updatePackagesWithProgress(stream, args)
 	if err != nil {
-		logger.Errorf("[PkgUpdate] Error: %v", err)
+		logger.Errorf("Error: %v", err)
 		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 500); writeErr != nil {
-			logger.Debugf("[PkgUpdate] failed to write error+close frame: %v", writeErr)
+			logger.Debugf("failed to write error+close frame: %v", writeErr)
 		}
 		return err
 	}
@@ -162,8 +162,9 @@ func HandlePackageUpdateStream(sess *session.Session, stream net.Conn, args []st
 	if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{
 		"updated": len(args),
 	}); err != nil {
-		logger.Debugf("[PkgUpdate] failed to write ok+close frame: %v", err)
+		logger.Debugf("failed to write ok+close frame: %v", err)
 	}
+	logger.Infof("Completed update stream for %d packages", len(args))
 	return nil
 }
 
@@ -187,31 +188,17 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 		transactionIfc = "org.freedesktop.PackageKit.Transaction"
 	)
 
-	// Create transaction
-	obj := conn.Object(pkBusName, godbus.ObjectPath(pkObjPath))
-	var transPath godbus.ObjectPath
-	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
-		return fmt.Errorf("CreateTransaction failed: %w", err)
+	trans, transPath, err := createPackageKitTransaction(conn, pkBusName, pkObjPath)
+	if err != nil {
+		return err
 	}
-	trans := conn.Object(pkBusName, transPath)
-
-	// Listen for signals
-	sigCh := make(chan *godbus.Signal, 100)
-	conn.Signal(sigCh)
+	sigCh := subscribePackageKitSignals(conn, transPath, 100)
 	defer conn.RemoveSignal(sigCh)
-	defer func() {
-		if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-			logger.Debugf("failed to remove D-Bus match signal: %v", err)
-		}
-	}()
-
-	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
-		logger.Warnf("failed to add D-Bus match signal: %v", err)
-	}
+	defer removePackageKitSignalMatch(conn, transPath)
 
 	// Call UpdatePackages with all package IDs at once
 	// Flag 0 = no special flags (install normally)
-	logger.Debugf("[PkgUpdate] Calling UpdatePackages with %d packages", len(packageIDs))
+	logger.Infof("Calling UpdatePackages with %d packages", len(packageIDs))
 	call := trans.Call(transactionIfc+".UpdatePackages", 0, uint64(0), packageIDs)
 	if call.Err != nil {
 		return fmt.Errorf("UpdatePackages failed: %w", call.Err)
@@ -228,154 +215,236 @@ func updatePackagesWithProgress(stream net.Conn, packageIDs []string) error {
 			if sig == nil {
 				continue
 			}
-
-			switch sig.Name {
-			case transactionIfc + ".ItemProgress":
-				// ItemProgress(s id, u status, u percentage)
-				if len(sig.Body) >= 3 {
-					pkgID, _ := sig.Body[0].(string)
-					status, _ := sig.Body[1].(uint32)
-					pct, _ := sig.Body[2].(uint32)
-
-					// Only show progress for real package work (not cache/prep)
-					if !isRealWorkStatus(status) {
-						continue
-					}
-					lastWorkStatus = status
-
-					statusName := pkStatusNames[status]
-					if statusName == "" {
-						statusName = fmt.Sprintf("Status %d", status)
-					}
-
-					if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
-						Type:       "item_progress",
-						PackageID:  pkgID,
-						Status:     statusName,
-						StatusCode: new(status),
-						ItemPct:    new(pct),
-					}); err != nil {
-						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
-					}
-				}
-
-			case transactionIfc + ".Package":
-				// Package(u info, s package_id, s summary)
-				if len(sig.Body) >= 3 {
-					info, _ := sig.Body[0].(uint32)
-					pkgID, _ := sig.Body[1].(string)
-					summary, _ := sig.Body[2].(string)
-
-					if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
-						Type:           "package",
-						PackageID:      pkgID,
-						PackageSummary: summary,
-						Status:         packageInfoName(info),
-						InfoCode:       new(info),
-					}); err != nil {
-						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
-					}
-				}
-
-			case transactionIfc + ".Message":
-				// Message(u type, s details)
-				if len(sig.Body) >= 2 {
-					msgType, _ := sig.Body[0].(uint32)
-					details, _ := sig.Body[1].(string)
-
-					if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
-						Type:    "message",
-						Status:  fmt.Sprintf("Message %d", msgType),
-						Message: details,
-					}); err != nil {
-						logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
-					}
-				}
-
-			case transactionIfc + ".Percentage":
-				// Properties changed - check for Percentage
-				// This comes as PropertiesChanged signal for Transaction
-				// Skip - we handle percentage in ItemProgress
-
-			case transactionIfc + ".ErrorCode":
-				// ErrorCode(u code, s details)
-				if len(sig.Body) >= 2 {
-					code, _ := sig.Body[0].(uint32)
-					details, _ := sig.Body[1].(string)
-					return fmt.Errorf("PackageKit error %d: %s", code, details)
-				}
-				return fmt.Errorf("PackageKit error (unknown)")
-
-			case transactionIfc + ".Finished":
-				// Finished(u exit, u runtime)
-				logger.Debugf("[PkgUpdate] Finished signal received")
-				if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
-					Type:       "status",
-					Status:     "Finished",
-					Percentage: new(uint32(100)),
-				}); err != nil {
-					logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
-				}
+			done, err := handlePackageUpdateSignal(stream, sig, transactionIfc, &lastWorkStatus)
+			if err != nil {
+				return err
+			}
+			if done {
 				return nil
-
-			case "org.freedesktop.DBus.Properties.PropertiesChanged":
-				// Handle property changes for Percentage and Status
-				if len(sig.Body) >= 2 {
-					iface, _ := sig.Body[0].(string)
-					if iface == transactionIfc {
-						props, ok := sig.Body[1].(map[string]godbus.Variant)
-						if ok {
-							var currentStatus uint32
-							hasStatus := false
-							if statusVar, exists := props["Status"]; exists {
-								if s, ok := statusVar.Value().(uint32); ok {
-									currentStatus = s
-									hasStatus = true
-								}
-							}
-							if hasStatus && isRealWorkStatus(currentStatus) {
-								lastWorkStatus = currentStatus
-							}
-
-							statusForPercentage := currentStatus
-							if statusForPercentage == 0 {
-								statusForPercentage = lastWorkStatus
-							}
-
-							// Percentage often arrives without a Status field in the same signal.
-							// Reuse the last known work status so intermediate progress is not dropped.
-							if pctVar, exists := props["Percentage"]; exists {
-								if pct, ok := pctVar.Value().(uint32); ok && isRealWorkStatus(statusForPercentage) {
-									if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
-										Type:       "percentage",
-										Percentage: new(pct),
-									}); err != nil {
-										logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
-									}
-								}
-							}
-
-							// Only send status updates for real work statuses
-							if hasStatus && currentStatus > 0 && isRealWorkStatus(currentStatus) {
-								statusName := pkStatusNames[currentStatus]
-								if statusName == "" {
-									statusName = fmt.Sprintf("Status %d", currentStatus)
-								}
-								if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
-									Type:       "status",
-									Status:     statusName,
-									StatusCode: new(currentStatus),
-								}); err != nil {
-									logger.Debugf("[PkgUpdate] failed to write progress frame: %v", err)
-								}
-							}
-						}
-					}
-				}
 			}
 
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for package updates to complete")
 		}
 	}
+}
+
+func createPackageKitTransaction(
+	conn *godbus.Conn,
+	busName, objectPath string,
+) (godbus.BusObject, godbus.ObjectPath, error) {
+	obj := conn.Object(busName, godbus.ObjectPath(objectPath))
+	var transPath godbus.ObjectPath
+	if err := obj.Call("org.freedesktop.PackageKit.CreateTransaction", 0).Store(&transPath); err != nil {
+		return nil, "", fmt.Errorf("CreateTransaction failed: %w", err)
+	}
+	return conn.Object(busName, transPath), transPath, nil
+}
+
+func subscribePackageKitSignals(
+	conn *godbus.Conn,
+	transPath godbus.ObjectPath,
+	buffer int,
+) chan *godbus.Signal {
+	sigCh := make(chan *godbus.Signal, buffer)
+	conn.Signal(sigCh)
+	if err := conn.AddMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Warnf("failed to add D-Bus match signal: %v", err)
+	}
+	return sigCh
+}
+
+func removePackageKitSignalMatch(conn *godbus.Conn, transPath godbus.ObjectPath) {
+	if err := conn.RemoveMatchSignal(godbus.WithMatchObjectPath(transPath)); err != nil {
+		logger.Debugf("failed to remove D-Bus match signal: %v", err)
+	}
+}
+
+func handlePackageUpdateSignal(
+	stream net.Conn,
+	sig *godbus.Signal,
+	transactionIfc string,
+	lastWorkStatus *uint32,
+) (bool, error) {
+	switch sig.Name {
+	case transactionIfc + ".ItemProgress":
+		handleItemProgressSignal(stream, sig, lastWorkStatus)
+	case transactionIfc + ".Package":
+		handlePackageSignal(stream, sig)
+	case transactionIfc + ".Message":
+		handleMessageSignal(stream, sig)
+	case transactionIfc + ".Percentage":
+		return false, nil
+	case transactionIfc + ".ErrorCode":
+		return false, packageUpdateSignalError(sig)
+	case transactionIfc + ".Finished":
+		handleFinishedSignal(stream)
+		return true, nil
+	case "org.freedesktop.DBus.Properties.PropertiesChanged":
+		handlePropertiesChangedSignal(stream, sig, transactionIfc, lastWorkStatus)
+	}
+	return false, nil
+}
+
+func handleItemProgressSignal(stream net.Conn, sig *godbus.Signal, lastWorkStatus *uint32) {
+	if len(sig.Body) < 3 {
+		return
+	}
+	pkgID, _ := sig.Body[0].(string)
+	status, _ := sig.Body[1].(uint32)
+	pct, _ := sig.Body[2].(uint32)
+	if !isRealWorkStatus(status) {
+		return
+	}
+	*lastWorkStatus = status
+
+	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+		Type:       "item_progress",
+		PackageID:  pkgID,
+		Status:     packageStatusName(status),
+		StatusCode: new(status),
+		ItemPct:    new(pct),
+	}); err != nil {
+		logger.Debugf("failed to write progress frame: %v", err)
+	}
+}
+
+func handlePackageSignal(stream net.Conn, sig *godbus.Signal) {
+	if len(sig.Body) < 3 {
+		return
+	}
+	info, _ := sig.Body[0].(uint32)
+	pkgID, _ := sig.Body[1].(string)
+	summary, _ := sig.Body[2].(string)
+
+	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+		Type:           "package",
+		PackageID:      pkgID,
+		PackageSummary: summary,
+		Status:         packageInfoName(info),
+		InfoCode:       new(info),
+	}); err != nil {
+		logger.Debugf("failed to write progress frame: %v", err)
+	}
+}
+
+func handleMessageSignal(stream net.Conn, sig *godbus.Signal) {
+	if len(sig.Body) < 2 {
+		return
+	}
+	msgType, _ := sig.Body[0].(uint32)
+	details, _ := sig.Body[1].(string)
+
+	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+		Type:    "message",
+		Status:  fmt.Sprintf("Message %d", msgType),
+		Message: details,
+	}); err != nil {
+		logger.Debugf("failed to write progress frame: %v", err)
+	}
+}
+
+func packageUpdateSignalError(sig *godbus.Signal) error {
+	if len(sig.Body) >= 2 {
+		code, _ := sig.Body[0].(uint32)
+		details, _ := sig.Body[1].(string)
+		return fmt.Errorf("PackageKit error %d: %s", code, details)
+	}
+	return fmt.Errorf("PackageKit error (unknown)")
+}
+
+func handleFinishedSignal(stream net.Conn) {
+	logger.Infof("Finished signal received")
+	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+		Type:       "status",
+		Status:     "Finished",
+		Percentage: new(uint32(100)),
+	}); err != nil {
+		logger.Debugf("failed to write progress frame: %v", err)
+	}
+}
+
+func handlePropertiesChangedSignal(
+	stream net.Conn,
+	sig *godbus.Signal,
+	transactionIfc string,
+	lastWorkStatus *uint32,
+) {
+	props, statusForPercentage, currentStatus, hasStatus := parseTransactionProperties(sig, transactionIfc, *lastWorkStatus)
+	if props == nil {
+		return
+	}
+	if hasStatus && isRealWorkStatus(currentStatus) {
+		*lastWorkStatus = currentStatus
+	}
+	writePercentageProgress(stream, props, statusForPercentage)
+	writeStatusProgress(stream, currentStatus, hasStatus)
+}
+
+func parseTransactionProperties(
+	sig *godbus.Signal,
+	transactionIfc string,
+	lastWorkStatus uint32,
+) (map[string]godbus.Variant, uint32, uint32, bool) {
+	if len(sig.Body) < 2 {
+		return nil, 0, 0, false
+	}
+	iface, _ := sig.Body[0].(string)
+	if iface != transactionIfc {
+		return nil, 0, 0, false
+	}
+	props, ok := sig.Body[1].(map[string]godbus.Variant)
+	if !ok {
+		return nil, 0, 0, false
+	}
+
+	currentStatus, hasStatus := propertyUint32(props, "Status")
+	statusForPercentage := currentStatus
+	if statusForPercentage == 0 {
+		statusForPercentage = lastWorkStatus
+	}
+	return props, statusForPercentage, currentStatus, hasStatus
+}
+
+func writePercentageProgress(stream net.Conn, props map[string]godbus.Variant, status uint32) {
+	pct, ok := propertyUint32(props, "Percentage")
+	if !ok || !isRealWorkStatus(status) {
+		return
+	}
+	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+		Type:       "percentage",
+		Percentage: new(pct),
+	}); err != nil {
+		logger.Debugf("failed to write progress frame: %v", err)
+	}
+}
+
+func writeStatusProgress(stream net.Conn, currentStatus uint32, hasStatus bool) {
+	if !hasStatus || currentStatus == 0 || !isRealWorkStatus(currentStatus) {
+		return
+	}
+	if err := writePkgUpdateProgress(stream, 0, &PkgUpdateProgress{
+		Type:       "status",
+		Status:     packageStatusName(currentStatus),
+		StatusCode: new(currentStatus),
+	}); err != nil {
+		logger.Debugf("failed to write progress frame: %v", err)
+	}
+}
+
+func propertyUint32(props map[string]godbus.Variant, key string) (uint32, bool) {
+	variant, ok := props[key]
+	if !ok {
+		return 0, false
+	}
+	value, ok := variant.Value().(uint32)
+	return value, ok
+}
+
+func packageStatusName(status uint32) string {
+	statusName := pkStatusNames[status]
+	if statusName == "" {
+		return fmt.Sprintf("Status %d", status)
+	}
+	return statusName
 }

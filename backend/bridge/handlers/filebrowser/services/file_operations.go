@@ -259,67 +259,59 @@ func copyWithCallbacksAndRoot(root *fsroot.FSRoot, source, dest string, overwrit
 
 // copySingleFileWithCallbacks handles copying a single file with progress callbacks.
 func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, opts *ipc.OperationCallbacks) error {
-	// Check for cancellation
-	if opts != nil && opts.Cancel != nil && opts.Cancel() {
+	if isOperationCancelled(opts) {
 		return ipc.ErrAborted
 	}
 
-	// Open the source file.
 	src, err := root.Root.Open(relPath(source))
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 
-	// Create the destination directory if needed.
-	err = root.Root.MkdirAll(relPath(filepath.Dir(dest)), PermDir)
-	if err != nil {
-		return err
+	if mkdirErr := root.Root.MkdirAll(relPath(filepath.Dir(dest)), PermDir); mkdirErr != nil {
+		return mkdirErr
 	}
 
-	// Create the destination file.
 	dst, err := root.Root.OpenFile(relPath(dest), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
 	}
 	defer dst.Close()
 
-	// Copy the contents of the file with progress tracking.
-	buf := make([]byte, 32*1024) // 32KB buffer
+	if err := copyFileDataWithCallbacks(src, dst, opts); err != nil {
+		return err
+	}
+
+	if err := root.Root.Chmod(relPath(dest), PermFile); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func copyFileDataWithCallbacks(src io.Reader, dst io.Writer, opts *ipc.OperationCallbacks) error {
+	buf := make([]byte, 32*1024)
 	for {
-		// Check for cancellation
-		if opts != nil && opts.Cancel != nil && opts.Cancel() {
+		if isOperationCancelled(opts) {
 			return ipc.ErrAborted
 		}
 
 		n, readErr := src.Read(buf)
 		if n > 0 {
-			_, writeErr := dst.Write(buf[:n])
-			if writeErr != nil {
+			if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
 				return writeErr
 			}
-
-			// Report progress
-			if opts != nil && opts.Progress != nil {
-				opts.Progress(int64(n))
-			}
+			reportOperationProgress(opts, int64(n))
 		}
 
 		if readErr == io.EOF {
-			break
+			return nil
 		}
 		if readErr != nil {
 			return readErr
 		}
 	}
-
-	// Set the configured file permissions instead of copying from source
-	err = root.Root.Chmod(relPath(dest), PermFile)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // copyDirectoryWithCallbacks handles copying directories recursively with progress callbacks.
@@ -421,8 +413,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 		return validateErr
 	}
 
-	// Check for cancellation
-	if opts != nil && opts.Cancel != nil && opts.Cancel() {
+	if isOperationCancelled(opts) {
 		return ipc.ErrAborted
 	}
 
@@ -435,30 +426,18 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 		return destErr
 	}
 
-	// Try rename first (instant, no progress needed)
-	err = root.Root.Rename(relPath(src), relPath(dst))
-	if err == nil {
-		// Rename succeeded - update progress to 100%
-		if opts != nil && opts.Progress != nil {
-			totalSize, sizeErr := ComputeCopySize(dst)
-			if sizeErr != nil {
-				logger.Debugf("failed to compute move size after rename for %s: %v", dst, sizeErr)
-			} else {
-				opts.Progress(totalSize)
-			}
-		}
+	if moved, err := tryRenameMove(root, src, dst, opts); moved {
+		return err
+	} else if err != nil {
 		return nil
 	}
 
-	// Rename failed (likely different volumes) - fallback to copy with callbacks
-	err = copyWithCallbacksAndRoot(root, src, dst, overwrite, opts)
-	if err != nil {
+	if err := copyWithCallbacksAndRoot(root, src, dst, overwrite, opts); err != nil {
 		logger.Errorf("CopyFileWithCallbacks failed %v %v %v ", src, dst, err)
 		return err
 	}
 
-	// Check for cancellation before deleting source
-	if opts != nil && opts.Cancel != nil && opts.Cancel() {
+	if isOperationCancelled(opts) {
 		return ipc.ErrAborted
 	}
 
@@ -469,6 +448,31 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	}
 
 	return nil
+}
+
+func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCallbacks) (bool, error) {
+	if err := root.Root.Rename(relPath(src), relPath(dst)); err != nil {
+		return false, nil
+	}
+
+	totalSize, sizeErr := ComputeCopySize(dst)
+	if sizeErr != nil {
+		logger.Debugf("failed to compute move size after rename for %s: %v", dst, sizeErr)
+		return true, nil
+	}
+
+	reportOperationProgress(opts, totalSize)
+	return true, nil
+}
+
+func isOperationCancelled(opts *ipc.OperationCallbacks) bool {
+	return opts != nil && opts.Cancel != nil && opts.Cancel()
+}
+
+func reportOperationProgress(opts *ipc.OperationCallbacks, bytes int64) {
+	if opts != nil && opts.Progress != nil {
+		opts.Progress(bytes)
+	}
 }
 
 // DeleteFiles removes a file or directory
@@ -563,11 +567,6 @@ func WriteContentInFile(opts iteminfo.FileOptions, in io.Reader) error {
 // GetContent reads and returns the file content if it's considered an editable text file.
 func GetContent(realPath string) (string, error) {
 	const headerSize = 4096
-	// Thresholds for detecting binary-like content (these can be tuned)
-	const maxNullBytesInHeaderAbs = 10    // Max absolute null bytes in header
-	const maxNullByteRatioInHeader = 0.1  // Max 10% null bytes in header
-	const maxNullByteRatioInFile = 0.05   // Max 5% null bytes in the entire file
-	const maxNonPrintableRuneRatio = 0.05 // Max 5% non-printable runes in the entire file
 
 	cleanPath := cleanAbsPath(realPath)
 
@@ -590,98 +589,87 @@ func GetContent(realPath string) (string, error) {
 	if err != nil && err != io.EOF {
 		return "", err
 	}
-	actualHeader := headerBytes[:n]
-
-	// --- Start of new heuristic checks ---
-
-	if n > 0 {
-		// 1. Basic Check: Is the header valid UTF-8?
-		// If not, it's unlikely an editable UTF-8 text file.
-		if !utf8.Valid(actualHeader) {
-			return "", nil // Not an error, just not the text file we want
-		}
-
-		// 2. Check for excessive null bytes in the header
-		nullCountInHeader := 0
-		for _, b := range actualHeader {
-			if b == 0x00 {
-				nullCountInHeader++
-			}
-		}
-		// Reject if too many nulls absolutely or relatively in the header
-		if nullCountInHeader > 0 { // Only perform check if there are any nulls
-			if nullCountInHeader > maxNullBytesInHeaderAbs ||
-				(float64(nullCountInHeader)/float64(n) > maxNullByteRatioInHeader) {
-				return "", nil // Too many nulls in header
-			}
-		}
-
-		// 3. Check for other non-text ASCII control characters in the header
-		// (C0 controls excluding \t, \n, \r)
-		for _, b := range actualHeader {
-			if b < 0x20 && b != '\t' && b != '\n' && b != '\r' {
-				return "", nil // Found problematic control character
-			}
-			// C1 control characters (0x80-0x9F) would be caught by utf8.Valid if part of invalid sequences,
-			// or by the non-printable rune check later if they form valid (but undesirable) codepoints.
-		}
+	if !isEditableTextHeader(headerBytes[:n]) {
+		return "", nil
 	}
-	// --- End of new heuristic checks for header ---
 
-	// Now read the full file (original logic)
 	content, err := root.Root.ReadFile(relPath(cleanPath))
 	if err != nil {
 		return "", err
 	}
-	// Handle empty file (original logic - returns specific string)
 	if len(content) == 0 {
 		return "empty-file-x6OlSil", nil
 	}
 
-	stringContent := string(content)
-
-	// 4. Final UTF-8 validation for the entire file
-	// (This is crucial as the header might be fine, but the rest of the file isn't)
-	if !utf8.ValidString(stringContent) {
+	if !isEditableTextContent(content) {
 		return "", nil
 	}
 
-	// 5. Check for excessive null bytes in the entire file content
-	if len(content) > 0 { // Check only for non-empty files
-		totalNullCount := 0
-		for _, b := range content {
-			if b == 0x00 {
-				totalNullCount++
-			}
-		}
-		if float64(totalNullCount)/float64(len(content)) > maxNullByteRatioInFile {
-			return "", nil // Too many nulls in the entire file
-		}
+	return string(content), nil
+}
+
+func isEditableTextHeader(header []byte) bool {
+	const maxNullBytesInHeaderAbs = 10
+	const maxNullByteRatioInHeader = 0.1
+
+	if len(header) == 0 {
+		return true
+	}
+	if !utf8.Valid(header) {
+		return false
 	}
 
-	// 6. Check for excessive non-printable runes in the entire file content
-	// (Excluding tab, newline, carriage return, which are common in text files)
-	if len(stringContent) > 0 { // Check only for non-empty strings
-		nonPrintableRuneCount := 0
-		totalRuneCount := 0
-		for _, r := range stringContent {
-			totalRuneCount++
-			// unicode.IsPrint includes letters, numbers, punctuation, symbols, and spaces.
-			// It excludes control characters. We explicitly allow \t, \n, \r.
-			if !unicode.IsPrint(r) && r != '\t' && r != '\n' && r != '\r' {
-				nonPrintableRuneCount++
-			}
-		}
-
-		if totalRuneCount > 0 { // Avoid division by zero
-			if float64(nonPrintableRuneCount)/float64(totalRuneCount) > maxNonPrintableRuneRatio {
-				return "", nil // Too many non-printable runes
-			}
-		}
+	nullCount := countNullBytes(header)
+	if nullCount > maxNullBytesInHeaderAbs || float64(nullCount)/float64(len(header)) > maxNullByteRatioInHeader {
+		return false
 	}
 
-	// The file has passed all checks and is considered editable text.
-	return stringContent, nil
+	for _, b := range header {
+		if b < 0x20 && b != '\t' && b != '\n' && b != '\r' {
+			return false
+		}
+	}
+	return true
+}
+
+func isEditableTextContent(content []byte) bool {
+	const maxNullByteRatioInFile = 0.05
+	const maxNonPrintableRuneRatio = 0.05
+
+	stringContent := string(content)
+	if !utf8.ValidString(stringContent) {
+		return false
+	}
+	if float64(countNullBytes(content))/float64(len(content)) > maxNullByteRatioInFile {
+		return false
+	}
+	return nonPrintableRuneRatio(stringContent) <= maxNonPrintableRuneRatio
+}
+
+func countNullBytes(content []byte) int {
+	count := 0
+	for _, b := range content {
+		if b == 0x00 {
+			count++
+		}
+	}
+	return count
+}
+
+func nonPrintableRuneRatio(content string) float64 {
+	nonPrintableRuneCount := 0
+	totalRuneCount := 0
+
+	for _, r := range content {
+		totalRuneCount++
+		if !unicode.IsPrint(r) && r != '\t' && r != '\n' && r != '\r' {
+			nonPrintableRuneCount++
+		}
+	}
+	if totalRuneCount == 0 {
+		return 0
+	}
+	return float64(nonPrintableRuneCount) / float64(totalRuneCount)
 }
 
 // CommonPrefix returns the common directory path of provided files.

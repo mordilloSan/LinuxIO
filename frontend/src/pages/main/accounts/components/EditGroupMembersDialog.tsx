@@ -1,6 +1,5 @@
 import {
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -18,6 +17,7 @@ import {
   type AccountGroup,
   type ModifyGroupMembersRequest,
 } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
@@ -87,7 +87,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Edit Group Members: {group.name}</DialogTitle>
       <DialogContent>
         <div
@@ -126,7 +126,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
           {isPending ? "Saving..." : "Save"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

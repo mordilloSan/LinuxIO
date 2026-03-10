@@ -47,6 +47,7 @@ const fromBackendSettings = (settings: BackendSettings): AppConfig => ({
   hiddenCards: settings.appSettings.hiddenCards,
   containerOrder: settings.appSettings.containerOrder,
   dockerDashboardSections: settings.appSettings.dockerDashboardSections,
+  hardwareSections: settings.appSettings.hardwareSections,
   viewModes: normalizeViewModes(settings.appSettings.viewModes),
   chunkSizeMB: settings.appSettings.chunkSizeMB,
   dockerFolder: settings.docker.folder,
@@ -67,6 +68,7 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     config.hiddenCards !== undefined ||
     config.containerOrder !== undefined ||
     config.dockerDashboardSections !== undefined ||
+    config.hardwareSections !== undefined ||
     config.viewModes !== undefined ||
     config.chunkSizeMB !== undefined
   ) {
@@ -89,6 +91,8 @@ const toBackendSettings = (config: Partial<AppConfig>) => {
     if (config.dockerDashboardSections !== undefined)
       payload.appSettings.dockerDashboardSections =
         config.dockerDashboardSections;
+    if (config.hardwareSections !== undefined)
+      payload.appSettings.hardwareSections = config.hardwareSections;
     if (config.viewModes !== undefined)
       payload.appSettings.viewModes = config.viewModes;
     if (config.chunkSizeMB !== undefined)
@@ -113,6 +117,7 @@ const defaultConfig: AppConfig = {
   hiddenCards: undefined,
   containerOrder: undefined,
   dockerDashboardSections: undefined,
+  hardwareSections: undefined,
   viewModes: undefined,
   chunkSizeMB: undefined,
 };
@@ -130,6 +135,7 @@ const applyDefaults = (
   containerOrder: cfg?.containerOrder ?? defaultConfig.containerOrder,
   dockerDashboardSections:
     cfg?.dockerDashboardSections ?? defaultConfig.dockerDashboardSections,
+  hardwareSections: cfg?.hardwareSections ?? defaultConfig.hardwareSections,
   viewModes: cfg?.viewModes ?? defaultConfig.viewModes,
   chunkSizeMB: cfg?.chunkSizeMB ?? defaultConfig.chunkSizeMB,
   dockerFolder: cfg?.dockerFolder ?? defaultConfig.dockerFolder,

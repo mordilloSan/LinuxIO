@@ -56,14 +56,54 @@ export interface MemoryInfoResponse {
 
 export interface GpuDevice {
   address: string;
+  actual_freq_mhz?: number;
+  boost_freq_mhz?: number;
+  boot_vga?: boolean;
+  class_name?: string;
+  connected_displays?: number;
+  current_freq_mhz?: number;
   device_id: string;
+  display_names?: string[];
+  driver_module?: string;
+  driver_version?: string;
+  drm_card?: string;
   driver: string;
+  fan_percent?: number;
+  fan_rpm?: number;
+  gtt_total_bytes?: number;
+  gtt_used_bytes?: number;
+  link_speed?: string;
+  link_width?: string;
+  max_freq_mhz?: number;
+  max_link_speed?: string;
+  max_link_width?: string;
+  min_freq_mhz?: number;
+  memory_free_bytes?: number;
+  memory_total_bytes?: number;
+  memory_used_bytes?: number;
   model: string;
+  numa_node?: number;
+  power_draw_watts?: number;
+  power_limit_watts?: number;
+  power_state?: string;
+  programming_interface?: string;
+  raw_class?: string;
+  requested_freq_mhz?: number;
   revision: string;
+  rp0_freq_mhz?: number;
+  rp1_freq_mhz?: number;
+  rpn_freq_mhz?: number;
+  rc6_residency_ms?: number;
+  runtime_status?: string;
   subsystem: string;
   subsystem_id: string;
+  subclass_name?: string;
+  temperature_c?: number;
+  utilization_percent?: number;
   vendor: string;
   vendor_id: string;
+  visible_memory_total_bytes?: number;
+  visible_memory_used_bytes?: number;
 }
 
 export interface ApiDisk {
@@ -88,7 +128,7 @@ export interface MotherboardInfo {
     version: string;
   };
   temperatures?: {
-    socket: number[];
+    sensors: Record<string, number>;
   };
 }
 
@@ -101,11 +141,43 @@ export interface HostInfo {
   kernelArch: string;
 }
 
+export interface SystemInfo {
+  chassisType: string;
+  productName: string;
+  productVersion: string;
+  productVendor: string;
+  biosVendor: string;
+  biosVersion: string;
+  biosDate: string;
+  cpuSummary: string;
+}
+
+export interface PCIDevice {
+  class: string;
+  model: string;
+  vendor: string;
+  slot: string;
+}
+
+export interface MemoryModule {
+  id: string;
+  technology: string;
+  type: string;
+  size: string;
+  state: string;
+  rank: string;
+  speed: string;
+}
+
 export interface CapabilitiesResponse {
   docker_available: boolean;
   indexer_available: boolean;
+  lm_sensors_available: boolean;
+  smartmontools_available: boolean;
   docker_error?: string;
   indexer_error?: string;
+  lm_sensors_error?: string;
+  smartmontools_error?: string;
 }
 
 export interface DistroInfo {
@@ -654,6 +726,9 @@ export interface LinuxIOSchema {
     get_gpu_info: { args: []; result: GpuDevice[] };
     get_updates_fast: { args: []; result: Update[] };
     get_network_info: { args: []; result: InterfaceStats[] };
+    get_system_info: { args: []; result: SystemInfo };
+    get_pci_devices: { args: []; result: PCIDevice[] };
+    get_memory_modules: { args: []; result: MemoryModule[] };
   };
 
   docker: {

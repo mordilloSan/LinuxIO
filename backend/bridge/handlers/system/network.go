@@ -31,81 +31,86 @@ var (
 // Call this ONCE from bridge main() (or guard with once).
 func StartSimpleNetInfoSampler() {
 	onceSampler.Do(func() {
-		go func() {
-			for {
-				// Snapshot t0
-				stat1, _ := gopsnet.IOCounters(true)
-				stats1Map := make(map[string]gopsnet.IOCountersStat, len(stat1))
-				for _, s := range stat1 {
-					stats1Map[s.Name] = s
-				}
-				time.Sleep(1 * time.Second)
-
-				// Snapshot t1
-				stat2, _ := gopsnet.IOCounters(true)
-				stats2Map := make(map[string]gopsnet.IOCountersStat, len(stat2))
-				for _, s := range stat2 {
-					stats2Map[s.Name] = s
-				}
-
-				ifaces, _ := gopsnet.Interfaces()
-				tmp := make(map[string]SimpleNetInfo, len(ifaces))
-
-				for _, iface := range ifaces {
-					if strings.HasPrefix(iface.Name, "lo") {
-						continue
-					}
-
-					// collect IPv4s (addr.Addr is CIDR already)
-					var ipv4s []string
-					for _, addr := range iface.Addrs {
-						ip, _, _ := net.ParseCIDR(addr.Addr)
-						if ip != nil && ip.To4() != nil {
-							ipv4s = append(ipv4s, addr.Addr)
-						}
-					}
-
-					// link speed
-					speed := "unknown"
-					if b, err := os.ReadFile(fmt.Sprintf("/sys/class/net/%s/speed", iface.Name)); err == nil {
-						if s := strings.TrimSpace(string(b)); s != "" && s != "-1" {
-							speed = s + " Mbps"
-						}
-					}
-
-					// rx/tx KB/s
-					var rxKBs, txKBs float64
-					if s1, ok1 := stats1Map[iface.Name]; ok1 {
-						if s2, ok2 := stats2Map[iface.Name]; ok2 {
-							rx := float64(s2.BytesRecv-s1.BytesRecv) / 1024.0
-							tx := float64(s2.BytesSent-s1.BytesSent) / 1024.0
-							if rx < 0 {
-								rx = 0
-							}
-							if tx < 0 {
-								tx = 0
-							}
-							rxKBs, txKBs = rx, tx
-						}
-					}
-
-					tmp[iface.Name] = SimpleNetInfo{
-						Name:  iface.Name,
-						IPv4:  ipv4s,
-						MAC:   iface.HardwareAddr,
-						Speed: speed,
-						TxKBs: txKBs,
-						RxKBs: rxKBs,
-					}
-				}
-
-				simpleNetStatsLock.Lock()
-				simpleNetStats = tmp
-				simpleNetStatsLock.Unlock()
-				// loop continues; 1s spacing already provided above
-			}
-		}()
+		go runSimpleNetInfoSampler()
 	})
+}
+
+func runSimpleNetInfoSampler() {
+	for {
+		stats1Map := sampleIOCounters()
+		time.Sleep(1 * time.Second)
+		stats2Map := sampleIOCounters()
+
+		simpleNetStatsLock.Lock()
+		simpleNetStats = collectSimpleNetStats(stats1Map, stats2Map)
+		simpleNetStatsLock.Unlock()
+	}
+}
+
+func sampleIOCounters() map[string]gopsnet.IOCountersStat {
+	stats, _ := gopsnet.IOCounters(true)
+	result := make(map[string]gopsnet.IOCountersStat, len(stats))
+	for _, stat := range stats {
+		result[stat.Name] = stat
+	}
+	return result
+}
+
+func collectSimpleNetStats(stats1Map, stats2Map map[string]gopsnet.IOCountersStat) map[string]SimpleNetInfo {
+	ifaces, _ := gopsnet.Interfaces()
+	tmp := make(map[string]SimpleNetInfo, len(ifaces))
+	for _, iface := range ifaces {
+		if strings.HasPrefix(iface.Name, "lo") {
+			continue
+		}
+
+		rxKBs, txKBs := computeSimpleNetRates(iface.Name, stats1Map, stats2Map)
+		tmp[iface.Name] = SimpleNetInfo{
+			Name:  iface.Name,
+			IPv4:  collectInterfaceIPv4s(iface),
+			MAC:   iface.HardwareAddr,
+			Speed: readInterfaceSpeed(iface.Name),
+			TxKBs: txKBs,
+			RxKBs: rxKBs,
+		}
+	}
+	return tmp
+}
+
+func collectInterfaceIPv4s(iface gopsnet.InterfaceStat) []string {
+	var ipv4s []string
+	for _, addr := range iface.Addrs {
+		ip, _, _ := net.ParseCIDR(addr.Addr)
+		if ip != nil && ip.To4() != nil {
+			ipv4s = append(ipv4s, addr.Addr)
+		}
+	}
+	return ipv4s
+}
+
+func readInterfaceSpeed(name string) string {
+	b, err := os.ReadFile(fmt.Sprintf("/sys/class/net/%s/speed", name))
+	if err != nil {
+		return "unknown"
+	}
+
+	speed := strings.TrimSpace(string(b))
+	if speed == "" || speed == "-1" {
+		return "unknown"
+	}
+	return speed + " Mbps"
+}
+
+func computeSimpleNetRates(name string, stats1Map, stats2Map map[string]gopsnet.IOCountersStat) (float64, float64) {
+	s1, ok1 := stats1Map[name]
+	s2, ok2 := stats2Map[name]
+	if !ok1 || !ok2 {
+		return 0, 0
+	}
+
+	rx := max(float64(s2.BytesRecv-s1.BytesRecv)/1024.0, 0)
+	tx := max(float64(s2.BytesSent-s1.BytesSent)/1024.0, 0)
+	return rx, tx
 }
 
 // Pure fetcher used by the bridge handler map.

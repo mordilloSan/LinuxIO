@@ -1,10 +1,12 @@
-import ThermostatIcon from "@mui/icons-material/Thermostat";
-import { Typography } from "@mui/material";
+import MemoryIcon from "@mui/icons-material/Memory";
+import { Chip, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
+import MetricBar from "@/components/gauge/MetricBar";
+import { formatGpuPercent, getGpuType, hasGpuValue } from "@/utils/gpu";
 
 const GpuInfo: React.FC = () => {
   const theme = useTheme();
@@ -13,7 +15,7 @@ const GpuInfo: React.FC = () => {
     isPending: isLoading,
     isError,
   } = linuxio.system.get_gpu_info.useQuery({
-    refetchInterval: 50_000,
+    refetchInterval: 2_000,
   });
 
   let content: React.ReactNode = null;
@@ -30,52 +32,75 @@ const GpuInfo: React.FC = () => {
         style={{
           display: "flex",
           flexDirection: "column",
-          width: "fit-content",
+          width: "100%",
+          gap: theme.spacing(1.5),
         }}
       >
-        {gpus.flatMap((gpu, idx) =>
-          [
-            {
-              label: "GPU",
-              value: `${gpu.vendor} — ${gpu.model}`,
-              key: `gpu-${idx}`,
-            },
-            { label: "Driver", value: gpu.driver, key: `driver-${idx}` },
-            { label: "Address", value: gpu.address, key: `address-${idx}` },
-          ].map(({ label, value, key }, index, rows) => (
+        {gpus.map((gpu, idx) => (
+          <div
+            key={`${gpu.address}-${idx}`}
+            style={{
+              paddingBottom: idx === gpus.length - 1 ? 0 : 12,
+              borderBottom:
+                idx === gpus.length - 1
+                  ? "none"
+                  : "1px solid var(--mui-palette-divider)",
+            }}
+          >
             <div
-              key={key}
               style={{
                 display: "flex",
-                alignItems: "baseline",
-                justifyContent: "flex-start",
-                paddingTop: theme.spacing(0.5),
-                paddingBottom: theme.spacing(0.5),
-                borderBottom:
-                  index === rows.length - 1
-                    ? "none"
-                    : "1px solid var(--mui-palette-divider)",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
                 gap: theme.spacing(1),
+                marginBottom: 12,
               }}
             >
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  fontSize: "0.62rem",
-                  flexShrink: 0,
+              <div style={{ minWidth: 0 }}>
+                <Typography variant="subtitle2" fontWeight={700} noWrap>
+                  {gpu.model || `GPU ${idx + 1}`}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {gpu.vendor} • {getGpuType(gpu)}
+                </Typography>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 4,
                 }}
               >
-                {label}
-              </Typography>
-              <Typography variant="body2" fontWeight={500} noWrap>
-                {value}
-              </Typography>
+                {hasGpuValue(gpu.runtime_status) && (
+                  <Chip
+                    size="small"
+                    label={gpu.runtime_status}
+                    color={gpu.runtime_status === "active" ? "success" : "info"}
+                    variant="outlined"
+                  />
+                )}
+                {typeof gpu.connected_displays === "number" && (
+                  <Chip
+                    size="small"
+                    label={`${gpu.connected_displays} display${gpu.connected_displays === 1 ? "" : "s"}`}
+                    variant="outlined"
+                  />
+                )}
+              </div>
             </div>
-          )),
-        )}
+
+            {hasGpuValue(gpu.utilization_percent) && (
+              <MetricBar
+                label="GPU Load"
+                percent={gpu.utilization_percent}
+                color={theme.palette.primary.main}
+                tooltip={`Current GPU usage: ${formatGpuPercent(gpu.utilization_percent)}`}
+                rightLabel={formatGpuPercent(gpu.utilization_percent)}
+              />
+            )}
+          </div>
+        ))}
       </div>
     );
   }
@@ -84,7 +109,7 @@ const GpuInfo: React.FC = () => {
     <DashboardCard
       title="GPU"
       stats={content}
-      icon={ThermostatIcon}
+      icon={MemoryIcon}
       iconProps={{ sx: { color: "text.secondary" } }}
       avatarIcon="bi:gpu-card"
     />

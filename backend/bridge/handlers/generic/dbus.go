@@ -85,6 +85,16 @@ type DbusSignalData struct {
 	Body       []any  `json:"body"`
 }
 
+type dbusStreamRequest struct {
+	busType     string
+	destination string
+	path        string
+	iface       string
+	method      string
+	signalNames []string
+	methodArgs  []string
+}
+
 // HandleDbusStream handles D-Bus operations with signal streaming.
 // This allows modules to call D-Bus methods that emit progress signals.
 //
@@ -102,53 +112,18 @@ type DbusSignalData struct {
 func HandleDbusStream(stream net.Conn, args []string) error {
 	logger.Debugf("[DbusStream] Starting with %d args", len(args))
 
-	if len(args) < 5 {
-		errMsg := "dbus stream requires at least [bus, destination, path, interface, method]"
-		if err := ipc.WriteResultErrorAndClose(stream, 0, errMsg, 400); err != nil {
-			logger.Debugf("[DbusStream] failed to write error+close frame: %v", err)
-		}
-		return errors.New(errMsg)
-	}
-
-	busType := args[0]
-	destination := args[1]
-	path := args[2]
-	iface := args[3]
-	method := args[4]
-
-	// Find signal names and method arguments (separated by "--")
-	var signalNames []string
-	var methodArgs []string
-	separatorIdx := -1
-
-	for i := 5; i < len(args); i++ {
-		if args[i] == "--" {
-			separatorIdx = i
-			break
-		}
-		signalNames = append(signalNames, args[i])
-	}
-
-	if separatorIdx >= 0 && separatorIdx+1 < len(args) {
-		methodArgs = args[separatorIdx+1:]
-	}
-
-	logger.Infof("[DbusStream] Calling %s.%s on %s (signals: %v)", iface, method, destination, signalNames)
-
-	// Select bus
-	var conn *godbus.Conn
-	var err error
-	if busType == "session" {
-		conn, err = godbus.ConnectSessionBus()
-	} else {
-		conn, err = godbus.ConnectSystemBus()
-	}
+	request, err := parseDbusStreamRequest(args)
 	if err != nil {
-		errMsg := fmt.Sprintf("failed to connect to %s bus: %v", busType, err)
-		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, errMsg, 500); writeErr != nil {
-			logger.Debugf("[DbusStream] failed to write error+close frame: %v", writeErr)
-		}
-		return errors.New(errMsg)
+		return writeDbusStreamError(stream, err.Error(), 400)
+	}
+	logger.Infof(
+		"[DbusStream] Calling %s.%s on %s (signals: %v)",
+		request.iface, request.method, request.destination, request.signalNames,
+	)
+
+	conn, err := connectDbusStream(request.busType)
+	if err != nil {
+		return writeDbusStreamError(stream, fmt.Sprintf("failed to connect to %s bus: %v", request.busType, err), 500)
 	}
 	defer func() {
 		if cerr := conn.Close(); cerr != nil {
@@ -156,56 +131,97 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 		}
 	}()
 
-	// Get object
-	obj := conn.Object(destination, godbus.ObjectPath(path))
+	obj := conn.Object(request.destination, godbus.ObjectPath(request.path))
+	sigCh, cleanupSignals := subscribeDbusSignals(conn, request.path)
+	defer cleanupSignals()
 
-	// Subscribe to signals
+	if err := callDbusStreamMethod(obj, request); err != nil {
+		return writeDbusStreamError(stream, fmt.Sprintf("D-Bus method call failed: %v", err), 500)
+	}
+
+	signalMap := buildDbusSignalMap(request.iface, request.signalNames)
+	hasFinishedSignal := hasDbusFinishedSignal(signalMap, request.iface)
+	return streamDbusSignals(stream, sigCh, request.iface, signalMap, hasFinishedSignal)
+}
+
+func parseDbusStreamRequest(args []string) (*dbusStreamRequest, error) {
+	if len(args) < 5 {
+		return nil, errors.New("dbus stream requires at least [bus, destination, path, interface, method]")
+	}
+	request := &dbusStreamRequest{
+		busType:     args[0],
+		destination: args[1],
+		path:        args[2],
+		iface:       args[3],
+		method:      args[4],
+	}
+	separatorIdx := len(args)
+	for i := 5; i < len(args); i++ {
+		if args[i] == "--" {
+			separatorIdx = i
+			break
+		}
+		request.signalNames = append(request.signalNames, args[i])
+	}
+	if separatorIdx < len(args)-1 {
+		request.methodArgs = append(request.methodArgs, args[separatorIdx+1:]...)
+	}
+	return request, nil
+}
+
+func connectDbusStream(busType string) (*godbus.Conn, error) {
+	if busType == "session" {
+		return godbus.ConnectSessionBus()
+	}
+	return godbus.ConnectSystemBus()
+}
+
+func subscribeDbusSignals(conn *godbus.Conn, path string) (chan *godbus.Signal, func()) {
 	sigCh := make(chan *godbus.Signal, 100)
 	conn.Signal(sigCh)
-	defer conn.RemoveSignal(sigCh)
-
-	// Add match for the object path
 	matchOpt := godbus.WithMatchObjectPath(godbus.ObjectPath(path))
 	if err := conn.AddMatchSignal(matchOpt); err != nil {
 		logger.Warnf("[DbusStream] Failed to add D-Bus match signal: %v", err)
 	}
-	defer func() {
+	return sigCh, func() {
+		conn.RemoveSignal(sigCh)
 		if err := conn.RemoveMatchSignal(matchOpt); err != nil {
 			logger.Debugf("[DbusStream] Failed to remove D-Bus match signal: %v", err)
 		}
-	}()
+	}
+}
 
-	// Convert method args to interface{}
-	dbusArgs := make([]any, len(methodArgs))
-	for i, arg := range methodArgs {
+func callDbusStreamMethod(obj godbus.BusObject, request *dbusStreamRequest) error {
+	dbusArgs := make([]any, len(request.methodArgs))
+	for i, arg := range request.methodArgs {
 		dbusArgs[i] = arg
 	}
+	logger.Debugf("[DbusStream] Calling method %s.%s with %d args", request.iface, request.method, len(dbusArgs))
+	return obj.Call(request.iface+"."+request.method, 0, dbusArgs...).Err
+}
 
-	// Call the D-Bus method
-	logger.Debugf("[DbusStream] Calling method %s.%s with %d args", iface, method, len(dbusArgs))
-	call := obj.Call(iface+"."+method, 0, dbusArgs...)
-	if call.Err != nil {
-		errMsg := fmt.Sprintf("D-Bus method call failed: %v", call.Err)
-		if writeErr := ipc.WriteResultErrorAndClose(stream, 0, errMsg, 500); writeErr != nil {
-			logger.Debugf("[DbusStream] failed to write error+close frame: %v", writeErr)
-		}
-		return errors.New(errMsg)
-	}
-
-	// Create a map of signal names for quick lookup
-	// Store both full names and short names for flexible matching
-	signalMap := make(map[string]bool)
+func buildDbusSignalMap(iface string, signalNames []string) map[string]bool {
+	signalMap := make(map[string]bool, len(signalNames)*2)
 	for _, sig := range signalNames {
-		fullName := iface + "." + sig
-		signalMap[fullName] = true
-		signalMap[sig] = true // Also store short name for fallback matching
+		signalMap[iface+"."+sig] = true
+		signalMap[sig] = true
 	}
+	return signalMap
+}
 
-	// Process signals until timeout or specific signal received
+func hasDbusFinishedSignal(signalMap map[string]bool, iface string) bool {
+	return signalMap[iface+".Finished"] || signalMap[iface+".Done"] || signalMap[iface+".Complete"]
+}
+
+func streamDbusSignals(
+	stream net.Conn,
+	sigCh <-chan *godbus.Signal,
+	iface string,
+	signalMap map[string]bool,
+	hasFinishedSignal bool,
+) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-
-	hasFinishedSignal := signalMap[iface+".Finished"] || signalMap[iface+".Done"] || signalMap[iface+".Complete"]
 
 	for {
 		select {
@@ -213,61 +229,70 @@ func HandleDbusStream(stream net.Conn, args []string) error {
 			if sig == nil {
 				continue
 			}
-
-			// Check if this is a signal we care about
-			if !signalMap[sig.Name] {
-				// Also check without interface prefix (for flexibility)
-				shortName := strings.TrimPrefix(sig.Name, iface+".")
-				if !signalMap[shortName] {
-					continue
-				}
-			}
-
-			logger.Debugf("[DbusStream] Received signal: %s", sig.Name)
-
-			// Send signal to client as JSON
-			signalData := DbusSignalData{
-				SignalName: sig.Name,
-				Body:       sig.Body,
-			}
-			payload, err := json.Marshal(signalData)
-			if err != nil {
-				logger.Warnf("[DbusStream] Failed to marshal signal: %v", err)
+			if !matchesDbusSignal(signalMap, iface, sig.Name) {
 				continue
 			}
-
-			if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
-				Opcode:   ipc.OpStreamData,
-				StreamID: 0,
-				Payload:  payload,
-			}); err != nil {
-				logger.Debugf("[DbusStream] failed to write data frame: %v", err)
+			logger.Debugf("[DbusStream] Received signal: %s", sig.Name)
+			if err := writeDbusSignalFrame(stream, sig); err != nil {
 				return err
 			}
-
-			// If this is a "Finished" signal, we're done
-			if hasFinishedSignal && (sig.Name == iface+".Finished" || sig.Name == iface+".Done" || sig.Name == iface+".Complete") {
+			if hasFinishedSignal && isDbusFinishedSignal(iface, sig.Name) {
 				logger.Infof("[DbusStream] Received Finished signal, operation complete")
-				if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{"completed": true}); err != nil {
-					logger.Debugf("[DbusStream] failed to write ok+close frame: %v", err)
-				}
-				return nil
+				return writeDbusStreamOK(stream)
 			}
-
 		case <-ctx.Done():
-			// Timeout - but this might be OK if there's no explicit Finished signal
 			if !hasFinishedSignal {
 				logger.Infof("[DbusStream] Context timeout, operation assumed complete")
-				if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{"completed": true}); err != nil {
-					logger.Debugf("[DbusStream] failed to write ok+close frame: %v", err)
-				}
-			} else {
-				logger.Warnf("[DbusStream] Timeout waiting for signals")
-				if err := ipc.WriteResultErrorAndClose(stream, 0, "timeout waiting for D-Bus signals", 500); err != nil {
-					logger.Debugf("[DbusStream] failed to write error+close frame: %v", err)
-				}
+				return writeDbusStreamOK(stream)
 			}
-			return ctx.Err()
+			logger.Warnf("[DbusStream] Timeout waiting for signals")
+			return writeDbusStreamError(stream, "timeout waiting for D-Bus signals", 500)
 		}
 	}
+}
+
+func matchesDbusSignal(signalMap map[string]bool, iface, signalName string) bool {
+	if signalMap[signalName] {
+		return true
+	}
+	shortName := strings.TrimPrefix(signalName, iface+".")
+	return signalMap[shortName]
+}
+
+func writeDbusSignalFrame(stream net.Conn, sig *godbus.Signal) error {
+	payload, err := json.Marshal(DbusSignalData{
+		SignalName: sig.Name,
+		Body:       sig.Body,
+	})
+	if err != nil {
+		logger.Warnf("[DbusStream] Failed to marshal signal: %v", err)
+		return nil
+	}
+	if err := ipc.WriteRelayFrame(stream, &ipc.StreamFrame{
+		Opcode:   ipc.OpStreamData,
+		StreamID: 0,
+		Payload:  payload,
+	}); err != nil {
+		logger.Debugf("[DbusStream] failed to write data frame: %v", err)
+		return err
+	}
+	return nil
+}
+
+func isDbusFinishedSignal(iface, signalName string) bool {
+	return signalName == iface+".Finished" || signalName == iface+".Done" || signalName == iface+".Complete"
+}
+
+func writeDbusStreamOK(stream net.Conn) error {
+	if err := ipc.WriteResultOKAndClose(stream, 0, map[string]any{"completed": true}); err != nil {
+		logger.Debugf("[DbusStream] failed to write ok+close frame: %v", err)
+	}
+	return nil
+}
+
+func writeDbusStreamError(stream net.Conn, message string, code int) error {
+	if err := ipc.WriteResultErrorAndClose(stream, 0, message, code); err != nil {
+		logger.Debugf("[DbusStream] failed to write error+close frame: %v", err)
+	}
+	return errors.New(message)
 }

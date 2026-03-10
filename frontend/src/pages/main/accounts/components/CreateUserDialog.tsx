@@ -1,6 +1,5 @@
 import {
   Button,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -15,6 +14,7 @@ import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type CreateUserRequest } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface CreateUserDialogProps {
@@ -102,7 +102,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Create User</DialogTitle>
       <DialogContent>
         <div
@@ -208,7 +208,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
           {isPending ? "Creating..." : "Create"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

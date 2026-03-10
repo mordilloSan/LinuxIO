@@ -1,7 +1,6 @@
 import {
   Button,
   Chip,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -13,6 +12,7 @@ import React from "react";
 import { toast } from "sonner";
 
 import { linuxio } from "@/api";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DeleteUserDialogProps {
@@ -55,7 +55,7 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <GeneralDialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Delete User{usernames.length > 1 ? "s" : ""}</DialogTitle>
       <DialogContent>
         <DialogContentText>
@@ -90,7 +90,7 @@ const DeleteUserDialog: React.FC<DeleteUserDialogProps> = ({
           {isDeleting ? "Deleting..." : "Delete"}
         </Button>
       </DialogActions>
-    </Dialog>
+    </GeneralDialog>
   );
 };
 

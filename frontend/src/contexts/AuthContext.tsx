@@ -28,6 +28,8 @@ const initialState: AuthState = {
   privileged: false,
   dockerAvailable: null,
   indexerAvailable: null,
+  lmSensorsAvailable: null,
+  smartmontoolsAvailable: null,
 };
 
 const reducer = (state: AuthState, action: AuthActions): AuthState => {
@@ -43,6 +45,8 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         privileged: action.payload.privileged,
         dockerAvailable: action.payload.dockerAvailable ?? null,
         indexerAvailable: action.payload.indexerAvailable ?? null,
+        lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
+        smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
       return {
@@ -53,6 +57,8 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         privileged: false,
         dockerAvailable: null,
         indexerAvailable: null,
+        lmSensorsAvailable: null,
+        smartmontoolsAvailable: null,
       };
     case AUTH_ACTIONS.SIGN_IN:
       return {
@@ -62,6 +68,8 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         privileged: action.payload.privileged,
         dockerAvailable: action.payload.dockerAvailable ?? null,
         indexerAvailable: action.payload.indexerAvailable ?? null,
+        lmSensorsAvailable: action.payload.lmSensorsAvailable ?? null,
+        smartmontoolsAvailable: action.payload.smartmontoolsAvailable ?? null,
       };
     case AUTH_ACTIONS.SIGN_OUT:
       return {
@@ -71,12 +79,16 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         privileged: false,
         dockerAvailable: null,
         indexerAvailable: null,
+        lmSensorsAvailable: null,
+        smartmontoolsAvailable: null,
       };
     case AUTH_ACTIONS.UPDATE_CAPABILITIES:
       return {
         ...state,
         dockerAvailable: action.payload.dockerAvailable,
         indexerAvailable: action.payload.indexerAvailable,
+        lmSensorsAvailable: action.payload.lmSensorsAvailable,
+        smartmontoolsAvailable: action.payload.smartmontoolsAvailable,
       };
     default: {
       const exhaustiveCheck: never = action;
@@ -169,6 +181,8 @@ function AuthProvider({ children }: AuthProviderProps) {
             payload: {
               dockerAvailable: caps.docker_available,
               indexerAvailable: caps.indexer_available,
+              lmSensorsAvailable: caps.lm_sensors_available,
+              smartmontoolsAvailable: caps.smartmontools_available,
             },
           });
         } catch (err) {
@@ -178,6 +192,8 @@ function AuthProvider({ children }: AuthProviderProps) {
             payload: {
               dockerAvailable: false,
               indexerAvailable: false,
+              lmSensorsAvailable: false,
+              smartmontoolsAvailable: false,
             },
           });
         }

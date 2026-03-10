@@ -39,46 +39,13 @@ func ReadSSE(ctx context.Context, r io.Reader) (<-chan SSEEvent, <-chan error) {
 		var dataParts []string
 
 		for scanner.Scan() {
-			select {
-			case <-ctx.Done():
+			if ctx.Err() != nil {
 				return
-			default:
 			}
-
-			line := scanner.Text()
-
-			// SSE comment
-			if strings.HasPrefix(line, ":") {
-				continue
+			currentType, dataParts = processSSELine(scanner.Text(), currentType, dataParts, events, ctx)
+			if ctx.Err() != nil {
+				return
 			}
-
-			// Empty line dispatches the accumulated event
-			if line == "" {
-				if len(dataParts) > 0 || currentType != "" {
-					evt := SSEEvent{
-						Type: currentType,
-						Data: strings.Join(dataParts, "\n"),
-					}
-					select {
-					case events <- evt:
-					case <-ctx.Done():
-						return
-					}
-					currentType = ""
-					dataParts = dataParts[:0]
-				}
-				continue
-			}
-
-			if after, ok := strings.CutPrefix(line, "event:"); ok {
-				currentType = strings.TrimSpace(after)
-				continue
-			}
-			if after, ok := strings.CutPrefix(line, "data:"); ok {
-				dataParts = append(dataParts, strings.TrimSpace(after))
-				continue
-			}
-			// Other fields (id:, retry:) are ignored.
 		}
 
 		if err := scanner.Err(); err != nil {
@@ -89,18 +56,44 @@ func ReadSSE(ctx context.Context, r io.Reader) (<-chan SSEEvent, <-chan error) {
 			return
 		}
 
-		// EOF with un-dispatched data — flush it.
-		if len(dataParts) > 0 || currentType != "" {
-			evt := SSEEvent{
-				Type: currentType,
-				Data: strings.Join(dataParts, "\n"),
-			}
-			select {
-			case events <- evt:
-			case <-ctx.Done():
-			}
-		}
+		flushSSEEvent(currentType, dataParts, events, ctx)
 	}()
 
 	return events, errCh
+}
+
+func processSSELine(
+	line, currentType string,
+	dataParts []string,
+	events chan<- SSEEvent,
+	ctx context.Context,
+) (string, []string) {
+	if strings.HasPrefix(line, ":") {
+		return currentType, dataParts
+	}
+	if line == "" {
+		flushSSEEvent(currentType, dataParts, events, ctx)
+		return "", dataParts[:0]
+	}
+	if after, ok := strings.CutPrefix(line, "event:"); ok {
+		return strings.TrimSpace(after), dataParts
+	}
+	if after, ok := strings.CutPrefix(line, "data:"); ok {
+		return currentType, append(dataParts, strings.TrimSpace(after))
+	}
+	return currentType, dataParts
+}
+
+func flushSSEEvent(currentType string, dataParts []string, events chan<- SSEEvent, ctx context.Context) {
+	if len(dataParts) == 0 && currentType == "" {
+		return
+	}
+	evt := SSEEvent{
+		Type: currentType,
+		Data: strings.Join(dataParts, "\n"),
+	}
+	select {
+	case events <- evt:
+	case <-ctx.Done():
+	}
 }

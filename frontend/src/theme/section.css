@@ -1,0 +1,17 @@
+/* Section headers: reveal toggle icon on hover */
+.dd-section-header:hover .section-toggle {
+  opacity: 1 !important;
+}
+
+/* InfoRow: layout + themed divider via CSS custom property */
+.dd-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-block: 2.4px;
+  border-bottom: 1px solid var(--dd-divider, rgba(0, 0, 0, 0.12));
+  gap: 4px;
+}
+.dd-info-row:last-child {
+  border-bottom: none;
+}
