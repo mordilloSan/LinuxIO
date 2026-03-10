@@ -246,10 +246,20 @@ func waitForJournalctl(cmd *exec.Cmd) {
 	}
 }
 
+type journalEntry struct {
+	Timestamp string `json:"__REALTIME_TIMESTAMP"`
+	Unit      string `json:"_SYSTEMD_UNIT"`
+	SyslogID  string `json:"SYSLOG_IDENTIFIER"`
+	PID       string `json:"_PID"`
+	SyslogPID string `json:"SYSLOG_PID"`
+	Priority  string `json:"PRIORITY"`
+	Message   string `json:"MESSAGE"`
+}
+
 // formatJournalEntry parses a journalctl JSON line and formats it with colors
 // PRIORITY levels: 7=DEBUG(cyan), 6,5=INFO(green), 4=WARNING(yellow), 3,2,1,0=ERROR(red)
 func formatJournalEntry(jsonLine string) string {
-	var entry map[string]any
+	var entry journalEntry
 	if err := json.Unmarshal([]byte(jsonLine), &entry); err != nil {
 		return ""
 	}
@@ -258,29 +268,26 @@ func formatJournalEntry(jsonLine string) string {
 	unit := journalUnit(entry)
 	pid := journalPID(entry)
 	level := journalPriorityLevel(entry)
-	message := journalMessage(entry)
 
 	if pid != "" {
-		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, message)
+		return fmt.Sprintf("%s  %s[%s]: %s %s", timestamp, unit, pid, level, entry.Message)
 	}
-	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, message)
+	return fmt.Sprintf("%s  %s: %s %s", timestamp, unit, level, entry.Message)
 }
 
-func journalTimestamp(entry map[string]any) string {
-	if ts, ok := entry["__REALTIME_TIMESTAMP"].(string); ok {
-		if usec, err := strconv.ParseInt(ts, 10, 64); err == nil {
-			return time.Unix(0, usec*1000).Format("Jan 02 15:04:05")
-		}
+func journalTimestamp(entry journalEntry) string {
+	if usec, err := strconv.ParseInt(entry.Timestamp, 10, 64); err == nil {
+		return time.Unix(0, usec*1000).Format("Jan 02 15:04:05")
 	}
 	return time.Now().Format("Jan 02 15:04:05")
 }
 
-func journalUnit(entry map[string]any) string {
+func journalUnit(entry journalEntry) string {
 	unit := "unknown"
-	if value, ok := entry["_SYSTEMD_UNIT"].(string); ok {
-		unit = value
-	} else if value, ok := entry["SYSLOG_IDENTIFIER"].(string); ok {
-		unit = value
+	if entry.Unit != "" {
+		unit = entry.Unit
+	} else if entry.SyslogID != "" {
+		unit = entry.SyslogID
 	}
 	if at := strings.Index(unit, "@"); at >= 0 {
 		unit = unit[:at]
@@ -290,19 +297,15 @@ func journalUnit(entry map[string]any) string {
 	return unit
 }
 
-func journalPID(entry map[string]any) string {
-	if value, ok := entry["_PID"].(string); ok {
-		return value
+func journalPID(entry journalEntry) string {
+	if entry.PID != "" {
+		return entry.PID
 	}
-	if value, ok := entry["SYSLOG_PID"].(string); ok {
-		return value
-	}
-	return ""
+	return entry.SyslogPID
 }
 
-func journalPriorityLevel(entry map[string]any) string {
-	priority, _ := entry["PRIORITY"].(string)
-	switch priority {
+func journalPriorityLevel(entry journalEntry) string {
+	switch entry.Priority {
 	case "7":
 		return "\033[36m[DEBUG]\033[0m"
 	case "6", "5":
@@ -314,11 +317,6 @@ func journalPriorityLevel(entry map[string]any) string {
 	default:
 		return ""
 	}
-}
-
-func journalMessage(entry map[string]any) string {
-	message, _ := entry["MESSAGE"].(string)
-	return message
 }
 
 type ModuleConfig struct {
