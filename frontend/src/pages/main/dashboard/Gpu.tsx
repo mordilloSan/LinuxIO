@@ -4,124 +4,9 @@ import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { linuxio } from "@/api";
-import type { GpuDevice } from "@/api/linuxio-types";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
-import {
-  formatGpuBytes,
-  formatGpuClock,
-  formatGpuDisplays,
-  formatGpuPercent,
-  formatGpuTemperature,
-  formatGpuWatts,
-  getGpuType,
-  hasGpuValue,
-} from "@/utils/gpu";
-
-const getBarColor = (
-  value: number,
-  palette: { success: string; warning: string; error: string },
-) => {
-  if (value < 50) return palette.success;
-  if (value < 80) return palette.warning;
-  return palette.error;
-};
-
-const gpuRows = (gpu: GpuDevice) =>
-  [
-    {
-      label: "Type",
-      value: getGpuType(gpu),
-    },
-    {
-      label: "Usage",
-      value: hasGpuValue(gpu.utilization_percent)
-        ? formatGpuPercent(gpu.utilization_percent)
-        : undefined,
-    },
-    {
-      label: "Temperature",
-      value: hasGpuValue(gpu.temperature_c)
-        ? formatGpuTemperature(gpu.temperature_c)
-        : undefined,
-    },
-    gpu.memory_total_bytes
-      ? {
-          label: "Memory",
-          value: `${formatGpuBytes(gpu.memory_used_bytes ?? 0)} / ${formatGpuBytes(gpu.memory_total_bytes)}`,
-        }
-      : null,
-    hasGpuValue(gpu.current_freq_mhz)
-      ? {
-          label: "Clock",
-          value: `${formatGpuClock(gpu.current_freq_mhz)} / ${formatGpuClock(gpu.max_freq_mhz)}`,
-        }
-      : null,
-    {
-      label: "Displays",
-      value:
-        gpu.display_names?.length || typeof gpu.connected_displays === "number"
-          ? formatGpuDisplays(gpu)
-          : undefined,
-    },
-    {
-      label: "Driver",
-      value: gpu.driver_version
-        ? `${gpu.driver} (${gpu.driver_version})`
-        : gpu.driver || "—",
-    },
-    {
-      label: "Address",
-      value: gpu.address || "—",
-    },
-    {
-      label: "Runtime",
-      value: gpu.runtime_status || undefined,
-    },
-    {
-      label: "Power",
-      value: hasGpuValue(gpu.power_draw_watts)
-        ? hasGpuValue(gpu.power_limit_watts)
-          ? `${formatGpuWatts(gpu.power_draw_watts)} / ${formatGpuWatts(gpu.power_limit_watts)}`
-          : formatGpuWatts(gpu.power_draw_watts)
-        : "—",
-    },
-    {
-      label: "PCIe",
-      value: gpu.link_speed
-        ? gpu.link_width
-          ? `${gpu.link_speed} x${gpu.link_width}`
-          : gpu.link_speed
-        : undefined,
-    },
-    {
-      label: "Vendor ID",
-      value: gpu.vendor_id || undefined,
-    },
-    {
-      label: "Device ID",
-      value: gpu.device_id || undefined,
-    },
-    {
-      label: "Revision",
-      value: gpu.revision || undefined,
-    },
-    {
-      label: "Subsystem",
-      value: gpu.subsystem || undefined,
-    },
-    {
-      label: "Class",
-      value: gpu.class_name || undefined,
-    },
-    {
-      label: "Interface",
-      value: gpu.programming_interface || undefined,
-    },
-  ].filter(
-    (row): row is { label: string; value: string } =>
-      typeof row?.value === "string" && row.value.trim() !== "",
-  );
+import { formatGpuPercent, getGpuType, hasGpuValue } from "@/utils/gpu";
 
 const GpuInfo: React.FC = () => {
   const theme = useTheme();
@@ -130,7 +15,7 @@ const GpuInfo: React.FC = () => {
     isPending: isLoading,
     isError,
   } = linuxio.system.get_gpu_info.useQuery({
-    refetchInterval: 10_000,
+    refetchInterval: 2_000,
   });
 
   let content: React.ReactNode = null;
@@ -164,9 +49,10 @@ const GpuInfo: React.FC = () => {
           >
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                gap: theme.spacing(2),
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: theme.spacing(1),
                 marginBottom: 12,
               }}
             >
@@ -181,10 +67,9 @@ const GpuInfo: React.FC = () => {
               <div
                 style={{
                   display: "flex",
-                  alignItems: "flex-start",
-                  gap: 6,
-                  flexWrap: "wrap",
-                  justifyContent: "flex-end",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 4,
                 }}
               >
                 {hasGpuValue(gpu.runtime_status) && (
@@ -205,89 +90,15 @@ const GpuInfo: React.FC = () => {
               </div>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 10,
-              }}
-            >
-              {hasGpuValue(gpu.utilization_percent) && (
-                <MetricBar
-                  label="GPU Load"
-                  percent={gpu.utilization_percent}
-                  color={getBarColor(gpu.utilization_percent, {
-                    success: theme.palette.success.main,
-                    warning: theme.palette.warning.main,
-                    error: theme.palette.error.main,
-                  })}
-                  tooltip={`Current GPU usage: ${formatGpuPercent(gpu.utilization_percent)}`}
-                  rightLabel={formatGpuPercent(gpu.utilization_percent)}
-                />
-              )}
-              {gpu.memory_total_bytes ? (
-                <MetricBar
-                  label="VRAM"
-                  percent={Math.min(
-                    ((gpu.memory_used_bytes ?? 0) / gpu.memory_total_bytes) *
-                      100,
-                    100,
-                  )}
-                  color={theme.palette.primary.main}
-                  tooltip={`${formatGpuBytes(gpu.memory_used_bytes ?? 0)} / ${formatGpuBytes(gpu.memory_total_bytes)}`}
-                  rightLabel={formatGpuBytes(gpu.memory_used_bytes ?? 0)}
-                />
-              ) : null}
-              {hasGpuValue(gpu.temperature_c) && (
-                <MetricBar
-                  label="Temperature"
-                  percent={Math.min((gpu.temperature_c / 105) * 100, 100)}
-                  color={getBarColor(gpu.temperature_c, {
-                    success: theme.palette.success.main,
-                    warning: theme.palette.warning.main,
-                    error: theme.palette.error.main,
-                  })}
-                  tooltip={`Current GPU temperature: ${formatGpuTemperature(gpu.temperature_c)}`}
-                  rightLabel={formatGpuTemperature(gpu.temperature_c)}
-                />
-              )}
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: 12,
-                marginTop: 14,
-              }}
-            >
-              {gpuRows(gpu).map(({ label, value }) => (
-                <div key={`${gpu.address}-${label}`} style={{ minWidth: 0 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                      fontSize: "0.62rem",
-                    }}
-                  >
-                    {label}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={500}
-                    sx={{
-                      lineHeight: 1.3,
-                      wordBreak: "break-word",
-                      color: theme.palette.text.primary,
-                    }}
-                  >
-                    {value}
-                  </Typography>
-                </div>
-              ))}
-            </div>
+            {hasGpuValue(gpu.utilization_percent) && (
+              <MetricBar
+                label="GPU Load"
+                percent={gpu.utilization_percent}
+                color={theme.palette.primary.main}
+                tooltip={`Current GPU usage: ${formatGpuPercent(gpu.utilization_percent)}`}
+                rightLabel={formatGpuPercent(gpu.utilization_percent)}
+              />
+            )}
           </div>
         ))}
       </div>
