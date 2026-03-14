@@ -1,4 +1,3 @@
-import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
@@ -129,8 +128,7 @@ const Processor: React.FC = () => {
       </div>
     ),
     icon_text: IconText,
-    icon: TemperatureIcon,
-    iconProps: { sx: { color: "text.secondary" } },
+    icon: "mdi:thermometer",
     ...(lmSensorsAvailable &&
       sensorOptions.length >= 1 && {
         iconTextSelectOptions: sensorOptions,

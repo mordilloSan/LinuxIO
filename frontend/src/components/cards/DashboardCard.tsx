@@ -9,9 +9,7 @@ import {
   Tooltip,
   Menu,
 } from "@mui/material";
-import type { SxProps } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import type { Theme } from "@mui/material/styles";
 import React, { useState } from "react";
 
 import FrostedCard from "./RootCard";
@@ -88,10 +86,8 @@ export type DashboardCardProps = SelectProps & {
   stats2?: React.ReactNode;
   /** Iconify icon ID rendered as the card's top-right avatar. */
   avatarIcon: string;
-  /** Optional MUI SvgIcon component shown next to `icon_text` in the header. */
-  icon?: React.ElementType;
-  /** Style overrides forwarded to the `icon` component. */
-  iconProps?: { sx?: SxProps<Theme> };
+  /** Optional Iconify icon ID shown next to `icon_text` in the header. */
+  icon?: string;
   /** Short string (e.g. temperature) rendered beside `icon`. */
   icon_text?: string;
   /** Shows a colored dot in the header indicating connectivity state. */
@@ -112,8 +108,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   stats,
   stats2,
   avatarIcon,
-  icon: IconComponent,
-  iconProps,
+  icon,
   icon_text,
   selectOptions = [],
   selectedOption = "",
@@ -250,7 +245,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
             {statusDot}
             {renderSelect}
 
-            {IconComponent && icon_text && (
+            {icon && icon_text && (
               <div
                 style={{
                   display: "inline-flex",
@@ -276,13 +271,11 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
                     marginRight: -4,
                   }}
                 >
-                  <IconComponent
-                    {...iconProps}
-                    sx={{
-                      verticalAlign: "middle",
-                      color: primaryColor,
-                      ...iconProps?.sx,
-                    }}
+                  <Icon
+                    icon={icon}
+                    width="24px"
+                    height="24px"
+                    color={primaryColor}
                   />
                 </div>
                 <Typography

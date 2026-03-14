@@ -1,4 +1,3 @@
-import TemperatureIcon from "@mui/icons-material/Thermostat";
 import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useState } from "react";
@@ -104,8 +103,7 @@ const MotherBoardInfo: React.FC = () => {
       title="Motherboard"
       stats={visibleDetails}
       icon_text={IconText}
-      icon={TemperatureIcon}
-      iconProps={{ sx: { color: "text.secondary" } }}
+      icon="mdi:thermometer"
       avatarIcon="bi:motherboard"
       {...(lmSensorsAvailable &&
         sensorOptions.length >= 1 && {

@@ -1,4 +1,3 @@
-import MemoryIcon from "@mui/icons-material/Memory";
 import { Chip, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
@@ -80,13 +79,6 @@ const GpuInfo: React.FC = () => {
                     variant="outlined"
                   />
                 )}
-                {typeof gpu.connected_displays === "number" && (
-                  <Chip
-                    size="small"
-                    label={`${gpu.connected_displays} display${gpu.connected_displays === 1 ? "" : "s"}`}
-                    variant="outlined"
-                  />
-                )}
               </div>
             </div>
 
@@ -109,8 +101,7 @@ const GpuInfo: React.FC = () => {
     <DashboardCard
       title="GPU"
       stats={content}
-      icon={MemoryIcon}
-      iconProps={{ sx: { color: "text.secondary" } }}
+      icon="mdi:memory"
       avatarIcon="bi:gpu-card"
     />
   );
