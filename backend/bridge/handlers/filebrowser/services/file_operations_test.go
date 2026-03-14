@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -347,15 +348,16 @@ func TestGetContent(t *testing.T) {
 	})
 
 	t.Run("get_large_file_content", func(t *testing.T) {
-		largeContent := "x"
+		var largeContent strings.Builder
+		largeContent.WriteString("x")
 		for range 1000 {
-			largeContent += "1234567890"
+			largeContent.WriteString("1234567890")
 		}
-		filePath := createTestFile(t, tmpDir, "large.txt", []byte(largeContent))
+		filePath := createTestFile(t, tmpDir, "large.txt", []byte(largeContent.String()))
 
 		content, err := GetContent(filePath)
 		assert.NoError(t, err)
-		assert.Equal(t, largeContent, content)
+		assert.Equal(t, largeContent.String(), content)
 	})
 
 	t.Run("get_nonexistent_file", func(t *testing.T) {
