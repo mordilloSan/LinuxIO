@@ -76,6 +76,8 @@ else
 endif
 
 GO_BIN := $(if $(wildcard $(GO_INSTALL_DIR)/bin/go),$(GO_INSTALL_DIR)/bin/go,$(shell which go))
+GO_TOOLCHAIN ?= auto
+GO_CMD_ENV = PATH="$(GO_INSTALL_DIR)/bin:$$PATH" GOTOOLCHAIN=$(GO_TOOLCHAIN)
 GOLANGCI_LINT_MODULE  := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= latest
 GOLANGCI_LINT         := $(GO_INSTALL_DIR)/bin/golangci-lint
@@ -181,6 +183,7 @@ ensure-go:
 		set -euo pipefail; \
 		DESIRED="$(GO_VERSION)"; \
 		GO_DIR="$(GO_INSTALL_DIR)"; \
+		ACTIVE_ROOT=""; \
 		ARCH="$$(uname -m)"; \
 		case "$$ARCH" in \
 		  x86_64|amd64) GOARCH=amd64 ;; \
@@ -192,11 +195,19 @@ ensure-go:
 		URL="https://go.dev/dl/$${TARBALL}"; \
 		\
 		CUR=""; \
-		if [ -x "$${GO_DIR}/bin/go" ]; then \
-		  CUR="$$( "$${GO_DIR}/bin/go" version 2>/dev/null | awk "{print \$$3}" | sed "s/^go//" )"; \
-		fi; \
+		for CANDIDATE in "$$GO_DIR" /usr/local/go; do \
+		  if [ -f "$$CANDIDATE/VERSION" ]; then \
+		    ACTIVE_ROOT="$$CANDIDATE"; \
+		    CUR="$$(sed -n "1s/^go//p" "$$CANDIDATE/VERSION" 2>/dev/null)"; \
+		    break; \
+		  elif [ -x "$$CANDIDATE/bin/go" ]; then \
+		    ACTIVE_ROOT="$$CANDIDATE"; \
+		    CUR="$$( "$$CANDIDATE/bin/go" version 2>/dev/null | awk "{print \$$3}" | sed "s/^go//" )"; \
+		    break; \
+		  fi; \
+		done; \
 		if [ "$$CUR" = "$$DESIRED" ]; then \
-		  echo "✅ Go $$CUR already active at $$GO_DIR"; \
+		  echo "✅ Go $$CUR already active at $$ACTIVE_ROOT"; \
 		else \
 		  echo "📥 Downloading $$URL"; \
 		  curl -fsSL "$$URL" -o "$$TMP/$$TARBALL"; \
@@ -217,9 +228,19 @@ ensure-go:
 		    fi; \
 		  fi; \
 		fi; \
-		if [ -x "$$GO_DIR/bin/go" ]; then "$$GO_DIR/bin/go" version || true; \
-		elif [ -x /usr/local/go/bin/go ]; then /usr/local/go/bin/go version || true; \
-		else echo "  Go not found on expected paths; check PATH."; fi; \
+		FINAL_ROOT=""; \
+		if [ -x "$$GO_DIR/bin/go" ]; then FINAL_ROOT="$$GO_DIR"; \
+		elif [ -x /usr/local/go/bin/go ]; then FINAL_ROOT="/usr/local/go"; \
+		fi; \
+		if [ -n "$$FINAL_ROOT" ]; then \
+		  "$$FINAL_ROOT/bin/go" version || true; \
+		  META="$$(sed -n "1p" "$$FINAL_ROOT/VERSION" 2>/dev/null || true)"; \
+		  if [ -n "$$META" ] && ! "$$FINAL_ROOT/bin/go" version 2>/dev/null | grep -Fq "$$META"; then \
+		    echo "note: $$FINAL_ROOT/VERSION reports $$META"; \
+		  fi; \
+		else \
+		  echo "  Go not found on expected paths; check PATH."; \
+		fi; \
 		rm -rf "$$TMP"; \
 		echo "✅ Go is ready!"; \
 	'
@@ -237,7 +258,7 @@ ensure-golint: ensure-go
 	   if [ $$need -eq 1 ]; then \
 	     echo "📥 Installing golangci-lint $(GOLANGCI_LINT_VERSION) (v2) with local Go ($(GO_BIN))..."; \
 	     rm -f "$$bin" || true; \
-	     PATH="$(GO_INSTALL_DIR)/bin:$$PATH" GOBIN="$(GO_INSTALL_DIR)/bin" GOTOOLCHAIN=local GOFLAGS="-buildvcs=false" \
+	     $(GO_CMD_ENV) GOBIN="$(GO_INSTALL_DIR)/bin" GOFLAGS="-buildvcs=false" \
 	       "$(GO_BIN)" install "$(GOLANGCI_LINT_MODULE)@$(GOLANGCI_LINT_VERSION)"; \
 	   fi; \
 	   "$$bin" version | head -n1; \
@@ -294,17 +315,17 @@ else
 	@( cd "$(BACKEND_DIR)" && gofmt -s -w . )
 endif
 	@echo "   Ensuring go.mod is tidy..."
-	@( cd "$(BACKEND_DIR)" && go mod tidy && go mod download )
+	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy && $(GO_CMD_ENV) "$(GO_BIN)" mod download )
 	@echo "   Running modernize..."
-	@( cd "$(BACKEND_DIR)" && GOFLAGS="-buildvcs=false" GOTOOLCHAIN=local "$(GO_BIN)" run "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)" -fix ./... )
+	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" run "$(MODERNIZE_MODULE)@$(MODERNIZE_VERSION)" -fix ./... )
 	@echo "   Running golangci-lint..."
-	@( cd "$(BACKEND_DIR)" && "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
+	@( cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GOLANGCI_LINT)" run --fix ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
 	@echo "✅ Go linting passed!"
 
 test-backend:
 	@echo "🧪 Running Go unit tests (backend)..."
 	@cd "$(BACKEND_DIR)" && \
-		out="$$(GOFLAGS="-buildvcs=false" go test ./... -count=1 -timeout 5m 2>&1)"; \
+		out="$$( $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test ./... -count=1 -timeout 5m 2>&1)"; \
 		status=$$?; \
 		echo "$$out" | grep -v '\[no test files\]' || true; \
 		exit $$status
@@ -377,8 +398,8 @@ build-backend: $(GO_BUILD_PREREQ)
 		echo "   Bridge SHA256: (not embedded - development mode)"; \
 	fi
 	@cd "$(BACKEND_DIR)" && \
-	GOFLAGS="-buildvcs=false -tags=nomsgpack" \
-	go build \
+	$(GO_CMD_ENV) GOFLAGS="-buildvcs=false -tags=nomsgpack" \
+	"$(GO_BIN)" build \
 	-ldflags "\
 		-s -w \
 		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
@@ -398,8 +419,8 @@ build-bridge: $(GO_BUILD_PREREQ)
 	@echo "   Module: $(MODULE_PATH)"
 	@echo "   Version: $(GIT_VERSION)"
 	@cd "$(BACKEND_DIR)" && \
-	GOFLAGS="-buildvcs=false -tags=nomsgpack" \
-	go build \
+	$(GO_CMD_ENV) GOFLAGS="-buildvcs=false -tags=nomsgpack" \
+	"$(GO_BIN)" build \
 	-ldflags "\
 		-s -w \
 		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
@@ -441,8 +462,8 @@ build-cli: $(GO_BUILD_PREREQ)
 	@echo ""
 	@echo "🏗️  Building CLI..."
 	@cd "$(BACKEND_DIR)" && \
-	GOFLAGS="-buildvcs=false" \
-	go build \
+	$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
+	"$(GO_BIN)" build \
 	-ldflags "\
 		-s -w \
 		-X '$(MODULE_PATH)/common/config.Version=$(GIT_VERSION)' \
@@ -536,7 +557,7 @@ build: generate test build-vite build-bridge _build-binaries
 fastbuild: generate build-bridge _build-binaries
 
 generate:
-	@cd "$(BACKEND_DIR)" && go generate ./bridge/handlers/config/init.go
+	@cd "$(BACKEND_DIR)" && $(GO_CMD_ENV) "$(GO_BIN)" generate ./bridge/handlers/config/init.go
 
 clean:
 	@rm -f ./linuxio || true
@@ -578,7 +599,7 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Toolchain setup$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-node      $(COLOR_RESET) Install/activate Node $(NODE_VERSION) via nvm"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-go        $(COLOR_RESET) Install Go $(GO_VERSION) (user-local, no sudo)"
-	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go 1.25)"
+	@$(PRINTC) "$(COLOR_GREEN)    make ensure-golint    $(COLOR_RESET) Install golangci-lint (built with local Go 1.26)"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"

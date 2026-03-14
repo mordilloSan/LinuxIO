@@ -1,6 +1,6 @@
 module github.com/mordilloSan/LinuxIO/backend
 
-go 1.26.0
+go 1.26.1
 
 require (
 	github.com/compose-spec/compose-go/v2 v2.10.1
