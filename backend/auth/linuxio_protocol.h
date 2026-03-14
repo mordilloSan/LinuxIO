@@ -5,7 +5,7 @@
  *   - linuxio-auth (C)
  *   - linuxio webserver/bridge (Go)
  *
- * Keep in sync with backend/common/protocol/
+ * Keep in sync with backend/common/ipc/auth.go
  */
 
 #ifndef LINUXIO_PROTOCOL_H

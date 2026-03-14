@@ -5,7 +5,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 )
 
 type ServiceStatus struct {

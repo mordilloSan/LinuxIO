@@ -21,7 +21,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	appconfig "github.com/mordilloSan/LinuxIO/backend/common/config"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
-	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -29,8 +28,8 @@ import (
 // The auth daemon writes bootstrap data to the bridge's stdin via a pipe.
 // FAIL-FAST: If bootstrap is invalid, exit immediately with code 1.
 // This ensures the auth daemon's exec-status pipe detects failure.
-func readBootstrap() *protocol.Bootstrap {
-	b, err := protocol.ReadBootstrap(os.Stdin)
+func readBootstrap() *ipc.Bootstrap {
+	b, err := ipc.ReadBootstrap(os.Stdin)
 	if err != nil {
 		// Write to stderr because logger is not yet iniated(systemd captures to journal)
 		fmt.Fprintf(os.Stderr, "bridge bootstrap error: failed to read: %v\n", err)
@@ -46,7 +45,7 @@ func readBootstrap() *protocol.Bootstrap {
 }
 
 // Bootstrap config and session - initialized in main() after CLI checks
-var bootCfg *protocol.Bootstrap
+var bootCfg *ipc.Bootstrap
 var Sess *session.Session
 
 // Global shutdown signal for all handlers: closed when shutdown starts.
