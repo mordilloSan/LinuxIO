@@ -23,25 +23,6 @@ var yamuxSessions = struct {
 	sessions: make(map[string]*ipc.YamuxSession),
 }
 
-func replaceYamuxSession(sessionID string, next *ipc.YamuxSession) (prev *ipc.YamuxSession) {
-	yamuxSessions.Lock()
-	prev = yamuxSessions.sessions[sessionID]
-	yamuxSessions.sessions[sessionID] = next
-	yamuxSessions.Unlock()
-	return prev
-}
-
-func removeCurrentYamuxSession(sessionID string, current *ipc.YamuxSession) bool {
-	yamuxSessions.Lock()
-	defer yamuxSessions.Unlock()
-
-	if existing, ok := yamuxSessions.sessions[sessionID]; ok && existing == current {
-		delete(yamuxSessions.sessions, sessionID)
-		return true
-	}
-	return false
-}
-
 // validateBridgeHash computes SHA256 of the bridge binary and compares to expected.
 // Returns error if no hash embedded, hash mismatch, or file cannot be read.
 func validateBridgeHash(bridgePath string) error {
@@ -99,26 +80,28 @@ func StartBridge(sess *session.Session, password string, verbose bool) (bool, er
 		return false, fmt.Errorf("failed to create yamux session: %w", err)
 	}
 
+	// Store the session keyed by session ID
+	yamuxSessions.Lock()
+	// Clean up old session if exists
+	if old, exists := yamuxSessions.sessions[sess.SessionID]; exists {
+		old.Close()
+	}
 	yamuxSession.SetOnClose(func() {
-		if !removeCurrentYamuxSession(sess.SessionID, yamuxSession) {
-			return
-		}
-
+		yamuxSessions.Lock()
+		delete(yamuxSessions.sessions, sess.SessionID)
+		yamuxSessions.Unlock()
 		logger.DebugKV("yamux session closed and removed", "session_id", sess.SessionID)
 
-		// Terminate the session when the active bridge dies.
-		// This triggers session deletion which closes the WebSocket.
+		// Terminate the session when bridge dies
+		// This triggers session deletion which closes the WebSocket
 		if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
 			logger.WarnKV("failed to terminate session after bridge closure",
 				"session_id", sess.SessionID,
 				"error", err)
 		}
 	})
-
-	old := replaceYamuxSession(sess.SessionID, yamuxSession)
-	if old != nil {
-		old.Close()
-	}
+	yamuxSessions.sessions[sess.SessionID] = yamuxSession
+	yamuxSessions.Unlock()
 
 	logger.InfoKV("bridge launch via daemon acknowledged",
 		"user", sess.User.Username,
@@ -144,7 +127,10 @@ func GetYamuxSession(sessionID string) (*ipc.YamuxSession, error) {
 	}
 
 	if session.IsClosed() {
-		removeCurrentYamuxSession(sessionID, session)
+		// Clean up stale entry
+		yamuxSessions.Lock()
+		delete(yamuxSessions.sessions, sessionID)
+		yamuxSessions.Unlock()
 		return nil, fmt.Errorf("yamux session for %s is closed", sessionID)
 	}
 
