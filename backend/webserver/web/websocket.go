@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,6 +25,7 @@ const (
 	pongWait            = 35 * time.Second
 	writeWait           = 10 * time.Second
 	relayReadBufferSize = 32 * 1024
+	maxWebSocketMessage = 16*1024*1024 + 14 // [streamID:4][flags:1][opcode:1][streamID:4][len:4][payload]
 )
 
 // Stream flags for WebSocket binary protocol
@@ -56,8 +58,22 @@ type wsBinaryMessageWriter interface {
 }
 
 var upgrader = websocket.Upgrader{
-	// Origin check is handled by the CORS middleware.
-	CheckOrigin: func(*http.Request) bool { return true },
+	// Match Gorilla's safe default: accept requests without Origin, and
+	// require same-host Origin for browser WebSocket handshakes.
+	CheckOrigin: checkWebSocketOrigin,
+}
+
+func checkWebSocketOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 // wsConnsBySession tracks all active WebSocket connections for each session.
@@ -211,6 +227,7 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 		}()
 
 		logger.Infof("Connected: user=%s", sess.User.Username)
+		conn.SetReadLimit(maxWebSocketMessage)
 
 		// Count websocket liveness toward session activity so transport and
 		// idle-session lifecycles stay aligned under the configured throttle.

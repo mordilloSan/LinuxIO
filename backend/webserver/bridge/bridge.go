@@ -80,28 +80,40 @@ func StartBridge(sess *session.Session, password string, verbose bool) (bool, er
 		return false, fmt.Errorf("failed to create yamux session: %w", err)
 	}
 
-	// Store the session keyed by session ID
-	yamuxSessions.Lock()
-	// Clean up old session if exists
-	if old, exists := yamuxSessions.sessions[sess.SessionID]; exists {
-		old.Close()
-	}
 	yamuxSession.SetOnClose(func() {
+		shouldTerminate := false
 		yamuxSessions.Lock()
-		delete(yamuxSessions.sessions, sess.SessionID)
+		if current, exists := yamuxSessions.sessions[sess.SessionID]; exists && current == yamuxSession {
+			delete(yamuxSessions.sessions, sess.SessionID)
+			shouldTerminate = true
+		}
 		yamuxSessions.Unlock()
+
+		if !shouldTerminate {
+			return
+		}
+
 		logger.DebugKV("yamux session closed and removed", "session_id", sess.SessionID)
 
-		// Terminate the session when bridge dies
-		// This triggers session deletion which closes the WebSocket
+		// Terminate the session when the active bridge dies.
+		// This triggers session deletion which closes the WebSocket.
 		if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
 			logger.WarnKV("failed to terminate session after bridge closure",
 				"session_id", sess.SessionID,
 				"error", err)
 		}
 	})
+
+	// Store the session keyed by session ID and replace any existing session.
+	var old *ipc.YamuxSession
+	yamuxSessions.Lock()
+	old = yamuxSessions.sessions[sess.SessionID]
 	yamuxSessions.sessions[sess.SessionID] = yamuxSession
 	yamuxSessions.Unlock()
+
+	if old != nil {
+		old.Close()
+	}
 
 	logger.InfoKV("bridge launch via daemon acknowledged",
 		"user", sess.User.Username,
@@ -129,7 +141,9 @@ func GetYamuxSession(sessionID string) (*ipc.YamuxSession, error) {
 	if session.IsClosed() {
 		// Clean up stale entry
 		yamuxSessions.Lock()
-		delete(yamuxSessions.sessions, sessionID)
+		if current, exists := yamuxSessions.sessions[sessionID]; exists && current == session {
+			delete(yamuxSessions.sessions, sessionID)
+		}
 		yamuxSessions.Unlock()
 		return nil, fmt.Errorf("yamux session for %s is closed", sessionID)
 	}
