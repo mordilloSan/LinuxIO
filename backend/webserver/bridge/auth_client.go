@@ -8,7 +8,7 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/protocol"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -32,7 +32,7 @@ type AuthResult struct {
 // On success, returns the connection which is now connected to the forked bridge
 // process (the auth daemon passed our FD to the bridge via dup2).
 // The caller owns the connection and must close it.
-func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
+func Authenticate(req *protocol.AuthRequest) (*AuthResult, error) {
 	// Connect to daemon
 	conn, err := net.DialTimeout("unix", DefaultAuthSocketPath, authDialTimeout)
 	if err != nil {
@@ -46,7 +46,7 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 	}
 
 	// Write binary request
-	if err = ipc.WriteAuthRequest(conn, req); err != nil {
+	if err = protocol.WriteAuthRequest(conn, req); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to send auth request: %w", err)
 	}
@@ -57,7 +57,7 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 		return nil, fmt.Errorf("failed to set read deadline: %w", err)
 	}
 
-	resp, err := ipc.ReadAuthResponse(conn)
+	resp, err := protocol.ReadAuthResponse(conn)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to read auth response: %w", err)
@@ -90,8 +90,8 @@ func Authenticate(req *ipc.AuthRequest) (*AuthResult, error) {
 }
 
 // BuildRequest creates a Request from a session and additional auth parameters
-func BuildRequest(sess *session.Session, password string, verbose bool) *ipc.AuthRequest {
-	return &ipc.AuthRequest{
+func BuildRequest(sess *session.Session, password string, verbose bool) *protocol.AuthRequest {
+	return &protocol.AuthRequest{
 		User:      sess.User.Username,
 		Password:  password,
 		SessionID: sess.SessionID,

@@ -6,7 +6,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/testdbus"
+	"github.com/mordilloSan/LinuxIO/backend/internal/testdbus"
 )
 
 type unitInfoManager struct {

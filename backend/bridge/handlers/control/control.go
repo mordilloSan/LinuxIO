@@ -18,8 +18,8 @@ import (
 
 	"github.com/mordilloSan/go-logger/logger"
 
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/config"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 // buildScriptURLs constructs URLs to download install script and checksum from a specific release

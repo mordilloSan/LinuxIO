@@ -55,7 +55,6 @@ export type MuxStatus = "connecting" | "open" | "closed" | "error";
 const MAX_SCROLLBACK = 64 * 1024;
 // Max buffered bytes while no handler is attached (prevents unbounded memory growth)
 const MAX_DETACHED_BUFFER = 4 * 1024 * 1024;
-const INITIAL_RECV_BUFFER = 4 * 1024;
 
 /**
  * Efficient circular buffer - pre-allocated, no reallocations on write.
@@ -131,9 +130,7 @@ class StreamImpl implements Stream {
   private _status: StreamStatus = "opening";
   private buffer: Uint8Array[] = []; // Buffer for when handler is detached
   private bufferedBytes = 0;
-  private recvBuffer: Uint8Array = new Uint8Array(0); // Capacity buffer for partial StreamFrames
-  private recvStart = 0;
-  private recvEnd = 0;
+  private recvBuffer: Uint8Array = new Uint8Array(0); // Buffer for partial StreamFrames
   private scrollback = new CircularBuffer(MAX_SCROLLBACK); // Efficient circular buffer
 
   constructor(
@@ -297,29 +294,30 @@ class StreamImpl implements Stream {
    * StreamFrame format: [opcode:1][streamID:4][length:4][payload:N]
    */
   handleRawData(data: Uint8Array): void {
-    this.appendRecvData(data);
+    // Append to receive buffer
+    const newBuffer = new Uint8Array(this.recvBuffer.length + data.length);
+    newBuffer.set(this.recvBuffer);
+    newBuffer.set(data, this.recvBuffer.length);
+    this.recvBuffer = newBuffer;
 
     // Parse complete frames from buffer
-    while (this.recvEnd - this.recvStart >= 9) {
-      const unreadLength = this.recvEnd - this.recvStart;
+    while (this.recvBuffer.length >= 9) {
       const view = new DataView(
         this.recvBuffer.buffer,
-        this.recvBuffer.byteOffset + this.recvStart,
-        unreadLength,
+        this.recvBuffer.byteOffset,
+        this.recvBuffer.byteLength,
       );
-      const opcode = this.recvBuffer[this.recvStart];
+      const opcode = this.recvBuffer[0];
       const payloadLength = view.getUint32(5, false); // Big endian
       const frameLength = 9 + payloadLength;
 
-      if (unreadLength < frameLength) {
+      if (this.recvBuffer.length < frameLength) {
         // Incomplete frame, wait for more data
         break;
       }
 
       // Extract payload
-      const payloadStart = this.recvStart + 9;
-      const payloadEnd = this.recvStart + frameLength;
-      const payload = this.recvBuffer.slice(payloadStart, payloadEnd);
+      const payload = this.recvBuffer.slice(9, frameLength);
 
       // Route based on opcode
       switch (opcode) {
@@ -343,61 +341,8 @@ class StreamImpl implements Stream {
           );
       }
 
-      this.recvStart += frameLength;
-    }
-
-    this.compactRecvBuffer();
-  }
-
-  private appendRecvData(data: Uint8Array): void {
-    if (data.length === 0) {
-      return;
-    }
-
-    if (this.recvStart === this.recvEnd) {
-      this.recvStart = 0;
-      this.recvEnd = 0;
-    }
-
-    const unread = this.recvEnd - this.recvStart;
-    const required = unread + data.length;
-    const freeTail = this.recvBuffer.length - this.recvEnd;
-
-    if (required > this.recvBuffer.length) {
-      let nextCapacity = this.recvBuffer.length || INITIAL_RECV_BUFFER;
-      while (nextCapacity < required) {
-        nextCapacity *= 2;
-      }
-
-      const nextBuffer = new Uint8Array(nextCapacity);
-      if (unread > 0) {
-        nextBuffer.set(this.recvBuffer.subarray(this.recvStart, this.recvEnd));
-      }
-      this.recvBuffer = nextBuffer;
-      this.recvStart = 0;
-      this.recvEnd = unread;
-    } else if (freeTail < data.length && unread > 0) {
-      this.recvBuffer.copyWithin(0, this.recvStart, this.recvEnd);
-      this.recvStart = 0;
-      this.recvEnd = unread;
-    }
-
-    this.recvBuffer.set(data, this.recvEnd);
-    this.recvEnd += data.length;
-  }
-
-  private compactRecvBuffer(): void {
-    if (this.recvStart === this.recvEnd) {
-      this.recvStart = 0;
-      this.recvEnd = 0;
-      return;
-    }
-
-    const unread = this.recvEnd - this.recvStart;
-    if (this.recvStart >= this.recvBuffer.length / 2) {
-      this.recvBuffer.copyWithin(0, this.recvStart, this.recvEnd);
-      this.recvStart = 0;
-      this.recvEnd = unread;
+      // Remove processed frame from buffer
+      this.recvBuffer = this.recvBuffer.slice(frameLength);
     }
   }
 

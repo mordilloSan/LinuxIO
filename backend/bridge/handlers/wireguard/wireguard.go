@@ -18,8 +18,8 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/go-logger/logger"
 )
 
