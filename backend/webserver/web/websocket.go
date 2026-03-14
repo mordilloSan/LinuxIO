@@ -20,16 +20,10 @@ import (
 
 // WebSocket keepalive configuration
 const (
-	// How often to send ping frames to the client
-	pingInterval = 25 * time.Second
-
-	// How long to wait for a pong response before considering connection dead
-	// This is the read deadline - must be longer than pingInterval to allow
-	// the ping/pong cycle to complete even when no data is being sent
-	pongWait = 35 * time.Second // pingInterval + 10 seconds buffer
-
-	// Maximum time allowed to write a message (ping or data)
-	writeWait = 10 * time.Second
+	pingInterval        = 25 * time.Second
+	pongWait            = 35 * time.Second
+	writeWait           = 10 * time.Second
+	relayReadBufferSize = 32 * 1024
 )
 
 // Stream flags for WebSocket binary protocol
@@ -54,6 +48,11 @@ type relayStream struct {
 	id     uint32
 	stream io.ReadWriteCloser
 	cancel chan struct{}
+}
+
+type wsBinaryMessageWriter interface {
+	SetWriteDeadline(time.Time) error
+	NextWriter(messageType int) (io.WriteCloser, error)
 }
 
 var upgrader = websocket.Upgrader{
@@ -401,7 +400,7 @@ func (r *streamRelay) handleRST(streamID uint32) {
 
 // relayFromBridge reads from yamux stream and sends to WebSocket
 func (r *streamRelay) relayFromBridge(rs *relayStream) {
-	buf := make([]byte, 4096)
+	buf := make([]byte, relayReadBufferSize)
 	for {
 		select {
 		case <-rs.cancel:
@@ -432,22 +431,10 @@ func (r *streamRelay) sendFrame(streamID uint32, flags byte, payload []byte) {
 		return
 	}
 
-	frame := make([]byte, 5+len(payload))
-	binary.BigEndian.PutUint32(frame[0:4], streamID)
-	frame[4] = flags
-	if len(payload) > 0 {
-		copy(frame[5:], payload)
-	}
-
 	r.wsMu.Lock()
 	defer r.wsMu.Unlock()
 
-	if err := r.ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
-		logger.Debugf("failed to set write deadline: %v", err)
-		return
-	}
-
-	err := r.ws.WriteMessage(websocket.BinaryMessage, frame)
+	err := writeBinaryFrameMessage(r.ws, time.Now().Add(writeWait), streamID, flags, payload)
 
 	// Always clear deadline after write attempt
 	if clearErr := r.ws.SetWriteDeadline(time.Time{}); clearErr != nil {
@@ -457,6 +444,34 @@ func (r *streamRelay) sendFrame(streamID uint32, flags byte, payload []byte) {
 	if err != nil {
 		logger.Debugf("failed to send frame: %v", err)
 	}
+}
+
+func writeBinaryFrameMessage(ws wsBinaryMessageWriter, deadline time.Time, streamID uint32, flags byte, payload []byte) (err error) {
+	if writeErr := ws.SetWriteDeadline(deadline); writeErr != nil {
+		return writeErr
+	}
+
+	writer, err := ws.NextWriter(websocket.BinaryMessage)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		closeErr := writer.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+
+	var header [5]byte
+	binary.BigEndian.PutUint32(header[0:4], streamID)
+	header[4] = flags
+	if _, err = writer.Write(header[:]); err != nil {
+		return err
+	}
+	if len(payload) > 0 {
+		_, err = writer.Write(payload)
+	}
+	return err
 }
 
 // closeStream closes and removes a stream

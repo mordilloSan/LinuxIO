@@ -46,12 +46,12 @@ type StreamFrame struct {
 
 // WriteRelayFrame writes a StreamFrame to the writer.
 func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
-	header := make([]byte, 9)
+	var header [9]byte
 	header[0] = f.Opcode
 	binary.BigEndian.PutUint32(header[1:5], f.StreamID)
 	binary.BigEndian.PutUint32(header[5:9], uint32(len(f.Payload)))
 
-	if _, err := w.Write(header); err != nil {
+	if _, err := w.Write(header[:]); err != nil {
 		return fmt.Errorf("write header: %w", err)
 	}
 	if len(f.Payload) > 0 {
@@ -64,8 +64,8 @@ func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
 
 // ReadRelayFrame reads a StreamFrame from the reader.
 func ReadRelayFrame(r io.Reader) (*StreamFrame, error) {
-	header := make([]byte, 9)
-	if _, err := io.ReadFull(r, header); err != nil {
+	var header [9]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
 		return nil, fmt.Errorf("read header: %w", err)
 	}
 
@@ -124,6 +124,11 @@ type ResultFrame struct {
 	Data   json.RawMessage `json:"data,omitempty"`  // Optional result data
 }
 
+var (
+	resultOKNoDataPayload = []byte(`{"status":"ok"}`)
+	resultOKDataPrefix    = []byte(`{"status":"ok","data":`)
+)
+
 // WriteProgress writes a progress update to the stream.
 // The data parameter can be any JSON-serializable struct defined by the handler.
 func WriteProgress(w io.Writer, streamID uint32, data any) error {
@@ -153,17 +158,21 @@ func WriteResultFrame(w io.Writer, streamID uint32, r *ResultFrame) error {
 
 // WriteResultOK is a convenience function for writing a successful result.
 func WriteResultOK(w io.Writer, streamID uint32, data any) error {
-	var rawData json.RawMessage
+	payload := resultOKNoDataPayload
 	if data != nil {
-		b, err := json.Marshal(data)
+		rawData, err := json.Marshal(data)
 		if err != nil {
 			return fmt.Errorf("marshal data: %w", err)
 		}
-		rawData = b
+		payload = make([]byte, 0, len(resultOKDataPrefix)+len(rawData)+1)
+		payload = append(payload, resultOKDataPrefix...)
+		payload = append(payload, rawData...)
+		payload = append(payload, '}')
 	}
-	return WriteResultFrame(w, streamID, &ResultFrame{
-		Status: "ok",
-		Data:   rawData,
+	return WriteRelayFrame(w, &StreamFrame{
+		Opcode:   OpStreamResult,
+		StreamID: streamID,
+		Payload:  payload,
 	})
 }
 

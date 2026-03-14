@@ -35,6 +35,8 @@ NVM_DIR ?= $(HOME)/.nvm
 export PATH := $(GO_INSTALL_DIR)/bin:$(NVM_DIR)/versions/node/current/bin:$(PATH)
 NVM_SETUP = export NVM_DIR="$(NVM_DIR)"; \
             [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
+IPC_PROFILE_DIR ?= .profiles/ipc
+IPC_PROFILE_BENCHTIME ?= 3s
 
 # Colors
 COLOR_RESET  := \033[0m
@@ -308,6 +310,40 @@ test-backend:
 		status=$$?; \
 		echo "$$out" | grep -v '\[no test files\]' || true; \
 		exit $$status
+
+ipc-test: ensure-go
+	@echo "🧪 Running IPC package tests..."
+	@cd "$(BACKEND_DIR)" && GOFLAGS="-buildvcs=false" go test ./common/ipc ./webserver/web
+
+ipc-race: ensure-go
+	@echo "🧪 Running IPC race tests..."
+	@cd "$(BACKEND_DIR)" && GOFLAGS="-buildvcs=false" go test -race -count=20 -shuffle=on -cpu=1,4 ./common/ipc ./webserver/web
+
+ipc-bench: ensure-go
+	@echo "📊 Running IPC benchmarks..."
+	@cd "$(BACKEND_DIR)" && GOFLAGS="-buildvcs=false" go test -run '^$$' -bench . -benchmem -count=1 ./common/ipc ./webserver/web
+
+ipc-profile: ensure-go
+	@echo "📈 Collecting IPC benchmark profiles..."
+	@mkdir -p "$(BACKEND_DIR)/$(IPC_PROFILE_DIR)/common-ipc" "$(BACKEND_DIR)/$(IPC_PROFILE_DIR)/web-relay"
+	@cd "$(BACKEND_DIR)" && \
+		GOFLAGS="-buildvcs=false" go test -run '^$$' -bench . -benchmem -benchtime="$(IPC_PROFILE_BENCHTIME)" -count=1 \
+			-cpuprofile "$(IPC_PROFILE_DIR)/common-ipc/cpu.out" \
+			-memprofile "$(IPC_PROFILE_DIR)/common-ipc/mem.out" \
+			-blockprofile "$(IPC_PROFILE_DIR)/common-ipc/block.out" \
+			-mutexprofile "$(IPC_PROFILE_DIR)/common-ipc/mutex.out" \
+			-trace "$(IPC_PROFILE_DIR)/common-ipc/trace.out" \
+			./common/ipc && \
+		GOFLAGS="-buildvcs=false" go test -run '^$$' -bench . -benchmem -benchtime="$(IPC_PROFILE_BENCHTIME)" -count=1 \
+			-cpuprofile "$(IPC_PROFILE_DIR)/web-relay/cpu.out" \
+			-memprofile "$(IPC_PROFILE_DIR)/web-relay/mem.out" \
+			-blockprofile "$(IPC_PROFILE_DIR)/web-relay/block.out" \
+			-mutexprofile "$(IPC_PROFILE_DIR)/web-relay/mutex.out" \
+			-trace "$(IPC_PROFILE_DIR)/web-relay/trace.out" \
+			./webserver/web
+	@echo "✅ IPC profiles written under $(BACKEND_DIR)/$(IPC_PROFILE_DIR)"
+	@echo "   Common IPC: $(BACKEND_DIR)/$(IPC_PROFILE_DIR)/common-ipc"
+	@echo "   Web relay:  $(BACKEND_DIR)/$(IPC_PROFILE_DIR)/web-relay"
 
 analyze-auth:
 	@echo ""
@@ -587,6 +623,10 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run gofmt + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + golint + backend tests (optimized)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend     $(COLOR_RESET) Run Go unit tests only"
+	@$(PRINTC) "$(COLOR_GREEN)    make ipc-test         $(COLOR_RESET) Run focused IPC/backend relay tests"
+	@$(PRINTC) "$(COLOR_GREEN)    make ipc-race         $(COLOR_RESET) Run IPC/backend relay race checks"
+	@$(PRINTC) "$(COLOR_GREEN)    make ipc-bench        $(COLOR_RESET) Run IPC/common + web relay benchmarks"
+	@$(PRINTC) "$(COLOR_GREEN)    make ipc-profile      $(COLOR_RESET) Capture IPC/common + web relay benchmark profiles"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) ""
