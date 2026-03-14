@@ -9,7 +9,7 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 	"github.com/mordilloSan/go-logger/logger"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/utils"
 )
 
 const (

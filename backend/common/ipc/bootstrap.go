@@ -1,6 +1,6 @@
-// Package protocol defines the binary bootstrap protocol for LinuxIO auth/bridge communication.
+// Binary bootstrap protocol for LinuxIO auth/bridge communication.
 // Keep in sync with packaging/linuxio_protocol.h
-package protocol
+package ipc
 
 import (
 	"encoding/binary"
@@ -70,21 +70,4 @@ func ReadBootstrap(r io.Reader) (*Bootstrap, error) {
 	}
 
 	return b, nil
-}
-
-// readLenStr reads a length-prefixed string (2-byte length + data).
-func readLenStr(r io.Reader) (string, error) {
-	var lenBuf [2]byte
-	if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
-		return "", err
-	}
-	length := binary.BigEndian.Uint16(lenBuf[:])
-	if length == 0 {
-		return "", nil
-	}
-	data := make([]byte, length)
-	if _, err := io.ReadFull(r, data); err != nil {
-		return "", err
-	}
-	return string(data), nil
 }
