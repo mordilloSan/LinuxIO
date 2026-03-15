@@ -1,5 +1,4 @@
-import CancelIcon from "@mui/icons-material/Cancel";
-import CloseIcon from "@mui/icons-material/Close";
+import { Icon } from "@iconify/react";
 import {
   Alert,
   IconButton,
@@ -68,7 +67,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                 size="small"
                 onClick={onClearError}
               >
-                <CloseIcon fontSize="inherit" />
+                <Icon icon="mdi:close" width={18} height={18} />
               </IconButton>
             )
           }
@@ -104,7 +103,7 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
               {onCancel && (
                 <Tooltip title="Cancel update">
                   <IconButton size="small" onClick={onCancel} sx={{ ml: 0.5 }}>
-                    <CancelIcon fontSize="small" />
+                    <Icon icon="mdi:cancel" width={20} height={20} />
                   </IconButton>
                 </Tooltip>
               )}

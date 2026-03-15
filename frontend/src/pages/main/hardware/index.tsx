@@ -1,5 +1,4 @@
 import { Icon } from "@iconify/react";
-import { ExpandMore as ExpandMoreIcon } from "@mui/icons-material";
 import {
   Chip,
   Collapse,
@@ -99,8 +98,11 @@ const SectionHeader: React.FC<{
         pointerEvents: "none",
       }}
     >
-      <ExpandMoreIcon
-        sx={{
+      <Icon
+        icon="mdi:chevron-down"
+        width={24}
+        height={24}
+        style={{
           transition: "transform 0.2s",
           transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
         }}

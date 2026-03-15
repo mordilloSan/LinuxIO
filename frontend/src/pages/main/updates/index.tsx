@@ -1,5 +1,4 @@
-import RefreshIcon from "@mui/icons-material/Refresh";
-import SettingsIcon from "@mui/icons-material/Settings";
+import { Icon } from "@iconify/react";
 import { Button, IconButton, Tooltip } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
@@ -74,14 +73,14 @@ const Updates: React.FC = () => {
                     aria-label="Open update settings"
                     onClick={() => setSettingsOpen(true)}
                   >
-                    <SettingsIcon fontSize="small" />
+                    <Icon icon="mdi:cog" width={20} height={20} />
                   </IconButton>
                 </Tooltip>
                 {updates.length > 0 ? (
                   <Button
                     variant="contained"
                     size="small"
-                    startIcon={<RefreshIcon />}
+                    startIcon={<Icon icon="mdi:refresh" width={20} height={20} />}
                     disabled={!!updatingPackage || isLoading}
                     onClick={() => updateAll(updates.map((u) => u.package_id))}
                   >

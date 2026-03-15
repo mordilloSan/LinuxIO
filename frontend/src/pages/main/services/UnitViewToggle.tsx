@@ -1,5 +1,4 @@
-import GridViewIcon from "@mui/icons-material/GridView";
-import TableRowsIcon from "@mui/icons-material/TableRows";
+import { Icon } from "@iconify/react";
 import { IconButton, Tooltip } from "@mui/material";
 import React from "react";
 
@@ -23,9 +22,9 @@ const UnitViewToggle: React.FC<UnitViewToggleProps> = ({ viewModeKey }) => {
         onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
       >
         {viewMode === "table" ? (
-          <GridViewIcon fontSize="small" />
+          <Icon icon="mdi:view-grid" width={20} height={20} />
         ) : (
-          <TableRowsIcon fontSize="small" />
+          <Icon icon="mdi:table-row" width={20} height={20} />
         )}
       </IconButton>
     </Tooltip>

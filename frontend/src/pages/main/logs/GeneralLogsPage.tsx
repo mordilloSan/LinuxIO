@@ -1,10 +1,4 @@
-import BugReportIcon from "@mui/icons-material/BugReport";
-import DownloadIcon from "@mui/icons-material/Download";
-import ErrorIcon from "@mui/icons-material/Error";
-import FileCopyIcon from "@mui/icons-material/FileCopy";
-import InfoIcon from "@mui/icons-material/Info";
-import SearchIcon from "@mui/icons-material/Search";
-import WarningIcon from "@mui/icons-material/Warning";
+import { Icon } from "@iconify/react";
 import {
   Alert,
   Autocomplete,
@@ -111,16 +105,16 @@ const getPriorityIcon = (priority: LogPriority) => {
     case LogPriority.ALERT:
     case LogPriority.CRITICAL:
     case LogPriority.ERROR:
-      return <ErrorIcon fontSize="small" />;
+      return <Icon icon="mdi:alert-circle" width={20} height={20} />;
     case LogPriority.WARNING:
-      return <WarningIcon fontSize="small" />;
+      return <Icon icon="mdi:alert" width={20} height={20} />;
     case LogPriority.INFO:
     case LogPriority.NOTICE:
-      return <InfoIcon fontSize="small" />;
+      return <Icon icon="mdi:information" width={20} height={20} />;
     case LogPriority.DEBUG:
-      return <BugReportIcon fontSize="small" />;
+      return <Icon icon="mdi:bug" width={20} height={20} />;
     default:
-      return <InfoIcon fontSize="small" />;
+      return <Icon icon="mdi:information" width={20} height={20} />;
   }
 };
 
@@ -637,7 +631,7 @@ const GeneralLogsPage: React.FC = () => {
             input: {
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
+                  <Icon icon="mdi:magnify" width={20} height={20} />
                 </InputAdornment>
               ),
             },
@@ -650,7 +644,7 @@ const GeneralLogsPage: React.FC = () => {
               size="small"
               disabled={filteredLogs.length === 0}
             >
-              <FileCopyIcon fontSize="small" />
+              <Icon icon="mdi:content-copy" width={20} height={20} />
             </IconButton>
           </span>
         </Tooltip>
@@ -661,7 +655,7 @@ const GeneralLogsPage: React.FC = () => {
               size="small"
               disabled={filteredLogs.length === 0}
             >
-              <DownloadIcon fontSize="small" />
+              <Icon icon="mdi:download" width={20} height={20} />
             </IconButton>
           </span>
         </Tooltip>

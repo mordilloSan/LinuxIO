@@ -1,6 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { Icon } from "@iconify/react";
 import {
   Accordion,
   AccordionDetails,
@@ -532,7 +530,7 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
               <TableCell align="right">
                 <Tooltip title="Resize">
                   <IconButton size="small" onClick={() => onResize(lv)}>
-                    <EditIcon fontSize="small" />
+                    <Icon icon="mdi:pencil" width={20} height={20} />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Delete">
@@ -541,7 +539,7 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                     color="error"
                     onClick={() => onDelete(lv)}
                   >
-                    <DeleteIcon fontSize="small" />
+                    <Icon icon="mdi:delete" width={20} height={20} />
                   </IconButton>
                 </Tooltip>
               </TableCell>
@@ -625,7 +623,7 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         expanded={expanded === "lvs"}
         onChange={handleAccordionChange("lvs")}
       >
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <AccordionSummary expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}>
           <Typography fontWeight={600}>
             Logical Volumes ({lvsList.length})
           </Typography>
@@ -643,7 +641,7 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         expanded={expanded === "vgs"}
         onChange={handleAccordionChange("vgs")}
       >
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <AccordionSummary expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}>
           <Typography fontWeight={600}>
             Volume Groups ({vgsList.length})
           </Typography>
@@ -657,7 +655,7 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         expanded={expanded === "pvs"}
         onChange={handleAccordionChange("pvs")}
       >
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <AccordionSummary expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}>
           <Typography fontWeight={600}>
             Physical Volumes ({pvsList.length})
           </Typography>

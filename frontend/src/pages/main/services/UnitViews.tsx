@@ -1,12 +1,4 @@
-import BlockIcon from "@mui/icons-material/Block";
-import CheckIcon from "@mui/icons-material/Check";
-import CloseIcon from "@mui/icons-material/Close";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import RefreshIcon from "@mui/icons-material/Refresh";
-import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import StopCircleIcon from "@mui/icons-material/StopCircle";
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import { Icon } from "@iconify/react";
 import { Button, Grid, Tooltip, useMediaQuery, useTheme } from "@mui/material";
 import { motion } from "framer-motion";
 import React from "react";
@@ -207,18 +199,18 @@ export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
     <DetailRow label="Auto-start">
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         {auto ? (
-          <CheckIcon
-            style={{
-              fontSize: 15,
-              color: "var(--mui-palette-success-main)",
-            }}
+          <Icon
+            icon="mdi:check"
+            width={15}
+            height={15}
+            color="var(--mui-palette-success-main)"
           />
         ) : (
-          <BlockIcon
-            style={{
-              fontSize: 15,
-              color: "var(--mui-palette-text-disabled)",
-            }}
+          <Icon
+            icon="mdi:block-helper"
+            width={15}
+            height={15}
+            color="var(--mui-palette-text-disabled)"
           />
         )}
         <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{label}</span>
@@ -340,7 +332,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="error"
-            startIcon={<StopCircleIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:stop-circle" width={20} height={20} />}
             onClick={() => stopService([unitName])}
             disabled={anyPending}
           >
@@ -353,7 +345,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="success"
-            startIcon={<PlayArrowIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:play" width={20} height={20} />}
             onClick={() => startService([unitName])}
             disabled={anyPending}
           >
@@ -366,7 +358,7 @@ export const UnitCardActions: React.FC<{
           <Button
             size="small"
             variant="outlined"
-            startIcon={<RestartAltIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:restart" width={20} height={20} />}
             onClick={() => restartService([unitName])}
             disabled={!isActive || anyPending}
           >
@@ -379,7 +371,7 @@ export const UnitCardActions: React.FC<{
           <Button
             size="small"
             variant="outlined"
-            startIcon={<RefreshIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:refresh" width={20} height={20} />}
             onClick={() => reloadService([unitName])}
             disabled={!isActive || anyPending}
           >
@@ -393,7 +385,7 @@ export const UnitCardActions: React.FC<{
             <Button
               size="small"
               variant="outlined"
-              startIcon={<BlockIcon fontSize="small" />}
+              startIcon={<Icon icon="mdi:block-helper" width={20} height={20} />}
               onClick={() => disableService([unitName])}
               disabled={isMasked || anyPending}
             >
@@ -408,7 +400,7 @@ export const UnitCardActions: React.FC<{
               size="small"
               variant="outlined"
               color="success"
-              startIcon={<PlayArrowIcon fontSize="small" />}
+              startIcon={<Icon icon="mdi:play" width={20} height={20} />}
               onClick={() => enableService([unitName])}
               disabled={isMasked || anyPending}
             >
@@ -423,7 +415,7 @@ export const UnitCardActions: React.FC<{
             size="small"
             variant="outlined"
             color="warning"
-            startIcon={<VisibilityIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:eye" width={20} height={20} />}
             onClick={() => unmaskService([unitName])}
             disabled={anyPending}
           >
@@ -435,7 +427,7 @@ export const UnitCardActions: React.FC<{
           <Button
             size="small"
             variant="outlined"
-            startIcon={<VisibilityOffIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:eye-off" width={20} height={20} />}
             onClick={() => maskService([unitName])}
             disabled={anyPending}
           >
@@ -515,7 +507,7 @@ export function UnitInfoPanel({
             flexShrink: 0,
           }}
         >
-          <CloseIcon fontSize="small" />
+          <Icon icon="mdi:close" width={20} height={20} />
         </button>
       </div>
 

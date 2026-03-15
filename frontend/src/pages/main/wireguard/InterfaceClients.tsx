@@ -1,6 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import GetAppIcon from "@mui/icons-material/GetApp";
-import QrCodeIcon from "@mui/icons-material/QrCode";
+import { Icon } from "@iconify/react";
 import {
   CardContent,
   Chip,
@@ -252,19 +250,19 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                           onClick={() => handleDeletePeer(peer.name)}
                           sx={{ color: "error.main" }}
                         >
-                          <DeleteIcon />
+                          <Icon icon="mdi:delete" width={22} height={22} />
                         </IconButton>
                         <IconButton
                           aria-label="Download Config"
                           onClick={() => handleDownloadConfig(peer.name)}
                         >
-                          <GetAppIcon />
+                          <Icon icon="mdi:download" width={22} height={22} />
                         </IconButton>
                         <IconButton
                           aria-label="View QR Code"
                           onClick={() => handleViewQrCode(peer.name)}
                         >
-                          <QrCodeIcon />
+                          <Icon icon="mdi:qrcode" width={22} height={22} />
                         </IconButton>
                       </div>
                     </div>

@@ -1,8 +1,4 @@
-import {
-  Add as AddIcon,
-  GridView as GridViewIcon,
-  TableRows as TableRowsIcon,
-} from "@mui/icons-material";
+import { Icon } from "@iconify/react";
 import { Button, IconButton, Tooltip } from "@mui/material";
 import React, { useState } from "react";
 
@@ -45,7 +41,7 @@ const StoragePage: React.FC = () => {
               variant="contained"
               size="small"
               onClick={createLVHandler}
-              startIcon={<AddIcon />}
+              startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
             >
               Create LV
             </Button>
@@ -78,9 +74,9 @@ const StoragePage: React.FC = () => {
                   }
                 >
                   {nfsView === "table" ? (
-                    <GridViewIcon fontSize="small" />
+                    <Icon icon="mdi:view-grid" width={20} height={20} />
                   ) : (
-                    <TableRowsIcon fontSize="small" />
+                    <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
                 </IconButton>
               </Tooltip>
@@ -89,7 +85,7 @@ const StoragePage: React.FC = () => {
                   variant="contained"
                   size="small"
                   onClick={mountNFSHandler}
-                  startIcon={<AddIcon />}
+                  startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                 >
                   Mount NFS
                 </Button>

@@ -1,4 +1,4 @@
-import TerminalIcon from "@mui/icons-material/Terminal";
+import { Icon } from "@iconify/react";
 import { FormControlLabel, Switch, Tooltip, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import React from "react";
@@ -32,9 +32,11 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <TerminalIcon
-            fontSize="small"
-            style={{ color: "var(--mui-palette-text-secondary)" }}
+          <Icon
+            icon="mdi:console"
+            width={20}
+            height={20}
+            color="var(--mui-palette-text-secondary)"
           />
           <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>{title}</span>
         </div>

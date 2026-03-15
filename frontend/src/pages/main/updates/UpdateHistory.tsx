@@ -1,4 +1,4 @@
-import HistoryIcon from "@mui/icons-material/History";
+import { Icon } from "@iconify/react";
 import {
   Chip,
   Table,
@@ -46,7 +46,7 @@ const UpdateHistory: React.FC = () => {
             color: theme.palette.primary.main,
           }}
         >
-          <HistoryIcon fontSize="small" />
+          <Icon icon="mdi:history" width={20} height={20} />
         </div>
       )}
       renderMainRow={(row) => (
