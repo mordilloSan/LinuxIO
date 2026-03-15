@@ -27,13 +27,6 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
     // Only show icons on hover
     if (!isHovered) return null;
 
-    const iconStyles = {
-      fontSize: "1.15rem",
-      ml: 1,
-      transition: "opacity 0.2s ease",
-      opacity: 0.8,
-    };
-
     // If hovering show current sort direction
     return sortOrder === "asc" ? (
       <Icon

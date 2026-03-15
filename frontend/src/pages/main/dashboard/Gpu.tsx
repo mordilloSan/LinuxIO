@@ -17,85 +17,79 @@ const GpuInfo: React.FC = () => {
     refetchInterval: 2_000,
   });
 
-  let content: React.ReactNode = null;
-
-  if (isLoading) {
-    content = <Typography variant="body2">Loading…</Typography>;
-  } else if (isError || !gpus || gpus.length === 0) {
-    content = (
-      <Typography variant="body2">No GPU information available.</Typography>
-    );
-  } else {
-    content = (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          width: "100%",
-          gap: theme.spacing(1.5),
-        }}
-      >
-        {gpus.map((gpu, idx) => (
+  const content: React.ReactNode = isLoading ? (
+    <Typography variant="body2">Loading…</Typography>
+  ) : isError || !gpus || gpus.length === 0 ? (
+    <Typography variant="body2">No GPU information available.</Typography>
+  ) : (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        gap: theme.spacing(1.5),
+      }}
+    >
+      {gpus.map((gpu, idx) => (
+        <div
+          key={`${gpu.address}-${idx}`}
+          style={{
+            paddingBottom: idx === gpus.length - 1 ? 0 : 12,
+            borderBottom:
+              idx === gpus.length - 1
+                ? "none"
+                : "1px solid var(--mui-palette-divider)",
+          }}
+        >
           <div
-            key={`${gpu.address}-${idx}`}
             style={{
-              paddingBottom: idx === gpus.length - 1 ? 0 : 12,
-              borderBottom:
-                idx === gpus.length - 1
-                  ? "none"
-                  : "1px solid var(--mui-palette-divider)",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: theme.spacing(1),
+              marginBottom: 12,
             }}
           >
+            <div style={{ minWidth: 0 }}>
+              <Typography variant="subtitle2" fontWeight={700} noWrap>
+                {gpu.model || `GPU ${idx + 1}`}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {gpu.vendor} • {getGpuType(gpu)}
+              </Typography>
+            </div>
             <div
               style={{
                 display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: theme.spacing(1),
-                marginBottom: 12,
+                flexDirection: "column",
+                alignItems: "flex-end",
+                gap: 4,
               }}
             >
-              <div style={{ minWidth: 0 }}>
-                <Typography variant="subtitle2" fontWeight={700} noWrap>
-                  {gpu.model || `GPU ${idx + 1}`}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" noWrap>
-                  {gpu.vendor} • {getGpuType(gpu)}
-                </Typography>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-end",
-                  gap: 4,
-                }}
-              >
-                {hasGpuValue(gpu.runtime_status) && (
-                  <Chip
-                    size="small"
-                    label={gpu.runtime_status}
-                    color={gpu.runtime_status === "active" ? "success" : "info"}
-                    variant="outlined"
-                  />
-                )}
-              </div>
+              {hasGpuValue(gpu.runtime_status) && (
+                <Chip
+                  size="small"
+                  label={gpu.runtime_status}
+                  color={gpu.runtime_status === "active" ? "success" : "info"}
+                  variant="outlined"
+                />
+              )}
             </div>
-
-            {hasGpuValue(gpu.utilization_percent) && (
-              <MetricBar
-                label="GPU Load"
-                percent={gpu.utilization_percent}
-                color={theme.palette.primary.main}
-                tooltip={`Current GPU usage: ${formatGpuPercent(gpu.utilization_percent)}`}
-                rightLabel={formatGpuPercent(gpu.utilization_percent)}
-              />
-            )}
           </div>
-        ))}
-      </div>
-    );
-  }
+
+          {hasGpuValue(gpu.utilization_percent) && (
+            <MetricBar
+              label="GPU Load"
+              percent={gpu.utilization_percent}
+              color={theme.palette.primary.main}
+              tooltip={`Current GPU usage: ${formatGpuPercent(gpu.utilization_percent)}`}
+              rightLabel={formatGpuPercent(gpu.utilization_percent)}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <DashboardCard

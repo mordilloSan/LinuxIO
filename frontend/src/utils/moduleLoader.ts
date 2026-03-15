@@ -88,9 +88,10 @@ async function loadModuleFromSource(
     return module.default;
   } catch (error) {
     console.error(`Failed to load module ${moduleName} from source:`, error);
-    throw new Error(
-      `Failed to load module ${moduleName}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to load module ${moduleName}: ${message}`, {
+      cause: error,
+    });
   }
 }
 

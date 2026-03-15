@@ -73,7 +73,7 @@ export default [
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "react/no-unescaped-entities": "warn",
-      "no-unused-vars": "warn",
+      "no-unused-vars": "off",
       "unused-imports/no-unused-imports": "warn",
       "unused-imports/no-unused-vars": [
         "warn",
