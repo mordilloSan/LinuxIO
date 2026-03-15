@@ -1,3 +1,4 @@
+import { useTheme } from "@mui/material/styles";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -27,6 +28,7 @@ export interface AppTooltipProps {
 
 // Distance (px) from the trigger edge to the tooltip bubble — matches MUI default.
 const OFFSET = 8;
+const OFFSET_BOTTOM = 12;
 
 function calcStyle(
   placement: TooltipPlacement,
@@ -35,70 +37,52 @@ function calcStyle(
   const midX = rect.left + rect.width / 2;
   const midY = rect.top + rect.height / 2;
 
+  // Uses the CSS `translate` property (not `transform`) so that it doesn't
+  // conflict with the scale animation applied via `transform` in the CSS.
   switch (placement) {
     case "bottom":
       return {
-        top: rect.bottom + OFFSET,
+        top: rect.bottom + OFFSET_BOTTOM,
         left: midX,
-        transform: "translateX(-50%)",
+        translate: "-50%",
       };
     case "bottom-start":
-      return { top: rect.bottom + OFFSET, left: rect.left };
+      return { top: rect.bottom + OFFSET_BOTTOM, left: rect.left };
     case "bottom-end":
       return {
-        top: rect.bottom + OFFSET,
+        top: rect.bottom + OFFSET_BOTTOM,
         left: rect.right,
-        transform: "translateX(-100%)",
+        translate: "-100%",
       };
     case "top":
-      return {
-        top: rect.top - OFFSET,
-        left: midX,
-        transform: "translateX(-50%) translateY(-100%)",
-      };
+      return { top: rect.top - OFFSET, left: midX, translate: "-50% -100%" };
     case "top-start":
-      return {
-        top: rect.top - OFFSET,
-        left: rect.left,
-        transform: "translateY(-100%)",
-      };
+      return { top: rect.top - OFFSET, left: rect.left, translate: "0 -100%" };
     case "top-end":
       return {
         top: rect.top - OFFSET,
         left: rect.right,
-        transform: "translateX(-100%) translateY(-100%)",
+        translate: "-100% -100%",
       };
     case "left":
-      return {
-        top: midY,
-        left: rect.left - OFFSET,
-        transform: "translateX(-100%) translateY(-50%)",
-      };
+      return { top: midY, left: rect.left - OFFSET, translate: "-100% -50%" };
     case "left-start":
-      return {
-        top: rect.top,
-        left: rect.left - OFFSET,
-        transform: "translateX(-100%)",
-      };
+      return { top: rect.top, left: rect.left - OFFSET, translate: "-100%" };
     case "left-end":
       return {
         top: rect.bottom,
         left: rect.left - OFFSET,
-        transform: "translateX(-100%) translateY(-100%)",
+        translate: "-100% -100%",
       };
     case "right":
-      return {
-        top: midY,
-        left: rect.right + OFFSET,
-        transform: "translateY(-50%)",
-      };
+      return { top: midY, left: rect.right + OFFSET, translate: "0 -50%" };
     case "right-start":
       return { top: rect.top, left: rect.right + OFFSET };
     case "right-end":
       return {
         top: rect.bottom,
         left: rect.right + OFFSET,
-        transform: "translateY(-100%)",
+        translate: "0 -100%",
       };
   }
 }
@@ -110,6 +94,8 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
   placement = "bottom",
   className,
 }) => {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
   const [visible, setVisible] = useState(false);
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
   const wrapperRef = useRef<HTMLSpanElement>(null);
@@ -162,7 +148,12 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
             ]
               .filter(Boolean)
               .join(" ")}
-            style={tooltipStyle}
+            style={{
+              ...tooltipStyle,
+              backgroundColor: isDark
+                ? "rgba(66, 66, 66, 0.95)"
+                : "rgba(110, 110, 110, 0.92)",
+            }}
           >
             {title}
           </div>,
