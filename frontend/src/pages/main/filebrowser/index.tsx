@@ -1,6 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
-import GridViewIcon from "@mui/icons-material/GridView";
-import ViewListIcon from "@mui/icons-material/ViewList";
+import { Icon } from "@iconify/react";
 import {
   Alert,
   AlertTitle,
@@ -80,8 +78,8 @@ import {
 } from "@/utils/fileUpload";
 
 const viewIconMap: Record<ViewMode, ReactNode> = {
-  card: <GridViewIcon fontSize="small" />,
-  list: <ViewListIcon fontSize="small" />,
+  card: <Icon icon="mdi:view-grid" width={20} height={20} />,
+  list: <Icon icon="mdi:view-list" width={20} height={20} />,
 };
 
 const FileEditor = React.lazy(
@@ -1272,7 +1270,7 @@ const FileBrowser: React.FC = () => {
             ? "Multiple Items Details"
             : "File Details"}
           <IconButton onClick={handleCloseDetailDialog} size="small">
-            <CloseIcon fontSize="small" />
+            <Icon icon="mdi:close" width={18} height={18} />
           </IconButton>
         </DialogTitle>
         <DialogContent dividers sx={{ minHeight: 200 }}>

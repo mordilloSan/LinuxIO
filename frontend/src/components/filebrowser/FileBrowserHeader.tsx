@@ -71,7 +71,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
             theme.palette.mode === "light"
               ? theme.darken(theme.sidebar.background, 0.13)
               : theme.lighten(theme.sidebar.background, 0.06),
-          boxShadow: theme.shadows[2],
+          boxShadow: theme.shadows[2].replace(/;$/, ""),
         }}
       >
         {/* Left section - Status indicator when editing */}

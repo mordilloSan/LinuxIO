@@ -1,15 +1,4 @@
-import ArchiveIcon from "@mui/icons-material/Archive";
-import AudioFileIcon from "@mui/icons-material/AudioFile";
-import CodeIcon from "@mui/icons-material/Code";
-import DescriptionIcon from "@mui/icons-material/Description";
-import FolderIcon from "@mui/icons-material/Folder";
-import ImageIcon from "@mui/icons-material/Image";
-import LinkIcon from "@mui/icons-material/Link";
-import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
-import TableChartIcon from "@mui/icons-material/TableChart";
-import TerminalIcon from "@mui/icons-material/Terminal";
-import TextFieldsIcon from "@mui/icons-material/TextFields";
-import VideocamIcon from "@mui/icons-material/Videocam";
+import { Icon } from "@iconify/react";
 import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -23,27 +12,27 @@ interface FileIconProps {
   isSymlink?: boolean;
 }
 
-const getIconForType = (filename?: string) => {
-  if (!filename) return DescriptionIcon;
+const getIconForType = (filename?: string): string => {
+  if (!filename) return "mdi:file";
 
   // Extract extension from filename
   const lastDotIndex = filename.lastIndexOf(".");
-  if (lastDotIndex === -1) return DescriptionIcon;
+  if (lastDotIndex === -1) return "mdi:file";
 
   const ext = filename.slice(lastDotIndex + 1).toLowerCase();
 
   // PDF
-  if (ext === "pdf") return PictureAsPdfIcon;
+  if (ext === "pdf") return "mdi:file-pdf-box";
 
   // Documents
-  if (["doc", "docx", "odt", "rtf"].includes(ext)) return DescriptionIcon;
+  if (["doc", "docx", "odt", "rtf"].includes(ext)) return "mdi:file-document";
 
   // Spreadsheets
-  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return TableChartIcon;
+  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return "mdi:file-table";
 
   // Images
   if (["png", "jpg", "jpeg", "gif", "svg", "bmp", "ico", "webp"].includes(ext))
-    return ImageIcon;
+    return "mdi:file-image";
 
   // Code
   if (
@@ -67,27 +56,27 @@ const getIconForType = (filename?: string) => {
       "css",
     ].includes(ext)
   )
-    return CodeIcon;
+    return "mdi:file-code";
 
   // Text
-  if (["txt", "md", "markdown", "log"].includes(ext)) return TextFieldsIcon;
+  if (["txt", "md", "markdown", "log"].includes(ext)) return "mdi:file-document-outline";
 
   // Video
   if (["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"].includes(ext))
-    return VideocamIcon;
+    return "mdi:file-video";
 
   // Audio
   if (["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma"].includes(ext))
-    return AudioFileIcon;
+    return "mdi:file-music";
 
   // Archives
   if (["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].includes(ext))
-    return ArchiveIcon;
+    return "mdi:archive";
 
   // Executables
-  if (["exe", "bin", "sh", "app", "dmg"].includes(ext)) return TerminalIcon;
+  if (["exe", "bin", "sh", "app", "dmg"].includes(ext)) return "mdi:console";
 
-  return DescriptionIcon;
+  return "mdi:file";
 };
 
 const getIconColor = (
@@ -181,7 +170,7 @@ const FileIcon = React.memo(
     isSymlink = false,
   }: FileIconProps) => {
     const theme = useTheme();
-    const IconComponent = isDirectory ? FolderIcon : getIconForType(filename);
+    const iconName = isDirectory ? "mdi:folder" : getIconForType(filename);
     const defaultIconColor =
       theme.palette.mode === "dark"
         ? theme.palette.common.white
@@ -190,13 +179,6 @@ const FileIcon = React.memo(
       ? theme.palette.primary.main
       : getIconColor(filename, defaultIconColor);
     const wrapperOpacity = hidden ? 0.25 : 1;
-    const iconProps = {
-      sx: {
-        fontSize: size,
-        color: iconColor,
-        flexShrink: 0,
-      },
-    };
 
     if (!isSymlink) {
       return (
@@ -208,7 +190,7 @@ const FileIcon = React.memo(
             transition: "opacity 120ms ease",
           }}
         >
-          {React.createElement(IconComponent, iconProps)}
+          <Icon icon={iconName} width={size} height={size} color={iconColor} style={{ flexShrink: 0 }} />
         </span>
       );
     }
@@ -224,11 +206,13 @@ const FileIcon = React.memo(
           transition: "opacity 120ms ease",
         }}
       >
-        {React.createElement(IconComponent, iconProps)}
-        <LinkIcon
-          sx={{
+        <Icon icon={iconName} width={size} height={size} color={iconColor} style={{ flexShrink: 0 }} />
+        <Icon
+          icon="mdi:link"
+          width={size * 0.35}
+          height={size * 0.35}
+          style={{
             position: "absolute",
-            fontSize: size * 0.35,
             color: theme.palette.text.secondary,
             bottom: isDirectory ? "20%" : "10%",
             right: isDirectory ? "10%" : "15%",

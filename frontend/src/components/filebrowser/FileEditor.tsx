@@ -8,7 +8,13 @@ import {
   useRef,
   useCallback,
 } from "react";
-import AceEditor from "react-ace";
+import ReactAce from "react-ace";
+
+// react-ace CJS exports the component as .default — Rolldown may not unwrap it
+const AceEditor =
+  typeof (ReactAce as any).default === "function"
+    ? (ReactAce as any).default
+    : ReactAce;
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 
