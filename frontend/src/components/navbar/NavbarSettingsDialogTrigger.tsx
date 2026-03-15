@@ -1,8 +1,10 @@
+import { Icon } from "@iconify/react";
 import { IconButton, Tooltip } from "@mui/material";
-import Settings from "lucide-react/dist/esm/icons/settings";
 import React, { useCallback, useState } from "react";
 
 import SettingsDialog from "./SettingsDialog";
+
+import { iconSize } from "@/constants";
 
 const NavbarSettingsDialogTrigger: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -20,11 +22,10 @@ const NavbarSettingsDialogTrigger: React.FC = () => {
       <Tooltip title="Open settings">
         <IconButton
           color="inherit"
-          size="large"
           aria-label="Open settings"
           onClick={handleOpen}
         >
-          <Settings size={18} />
+          <Icon icon="mdi:cog" width={iconSize.md} height={iconSize.md} />
         </IconButton>
       </Tooltip>
 

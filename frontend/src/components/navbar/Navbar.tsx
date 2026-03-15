@@ -1,4 +1,4 @@
-import MenuIcon from "@mui/icons-material/Menu";
+import { Icon } from "@iconify/react";
 import {
   Grid,
   InputBase,
@@ -8,7 +8,6 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import SearchIcon from "lucide-react/dist/esm/icons/search";
 import React, { useState } from "react";
 
 import NavbarNotificationsDropdown from "./NavbarNotificationsDropdown";
@@ -16,6 +15,7 @@ import NavbarSettingsDialogTrigger from "./NavbarSettingsDialogTrigger";
 import Settings from "./NavbarThemeToggle";
 import NavbarUserDropdown from "./NavbarUserDropdown";
 
+import { iconSize } from "@/constants";
 import { getHoverBackground } from "@/theme/components";
 
 interface NavbarProps {
@@ -45,9 +45,8 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
               color="inherit"
               aria-label="Open drawer"
               onClick={onDrawerToggle}
-              size="large"
             >
-              <MenuIcon sx={{ width: 22, height: 22 }} />
+              <Icon icon="mdi:menu" width={iconSize.md} height={iconSize.md} />
             </IconButton>
           </Grid>
 
@@ -77,7 +76,7 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
                     justifyContent: "center",
                   }}
                 >
-                  <SearchIcon width={22} height={22} />
+                  <Icon icon="mdi:magnify" width={iconSize.md} height={iconSize.md} />
                 </div>
                 <InputBase
                   placeholder="Search"
@@ -102,7 +101,7 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
           <Grid sx={{ flexGrow: 1 }} />
 
           {/* User Actions */}
-          <Grid>
+          <Grid sx={{ display: "flex", alignItems: "center" }}>
             <NavbarNotificationsDropdown />
             <Settings />
             <NavbarSettingsDialogTrigger />

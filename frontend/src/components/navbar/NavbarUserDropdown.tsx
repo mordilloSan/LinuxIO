@@ -11,8 +11,10 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
-import LucidePower from "lucide-react/dist/esm/icons/power";
+import { Icon } from "@iconify/react";
 import React, { useRef, useState } from "react";
+
+import { iconSize } from "@/constants";
 import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
@@ -79,8 +81,8 @@ function NavbarUserDropdown() {
   return (
     <>
       <Tooltip title="Account">
-        <IconButton color="inherit" ref={ref} onClick={toggleMenu} size="large">
-          <LucidePower />
+        <IconButton color="inherit" ref={ref} onClick={toggleMenu}>
+          <Icon icon="mdi:power" width={iconSize.md} height={iconSize.md} />
         </IconButton>
       </Tooltip>
 

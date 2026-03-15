@@ -1,9 +1,9 @@
 // src/components/NavbarThemeToggle.tsx
+import { Icon } from "@iconify/react";
 import { IconButton, Tooltip } from "@mui/material";
-import Moon from "lucide-react/dist/esm/icons/moon";
-import Sun from "lucide-react/dist/esm/icons/sun";
 import React from "react";
 
+import { iconSize } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
 
 function NavbarThemeToggle() {
@@ -16,8 +16,8 @@ function NavbarThemeToggle() {
 
   return (
     <Tooltip title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
-      <IconButton color="inherit" onClick={toggleTheme} size="large">
-        {isDark ? <Moon /> : <Sun />}
+      <IconButton color="inherit" onClick={toggleTheme}>
+        {isDark ? <Icon icon="mdi:weather-night" width={iconSize.md} height={iconSize.md} /> : <Icon icon="mdi:weather-sunny" width={iconSize.md} height={iconSize.md} />}
       </IconButton>
     </Tooltip>
   );

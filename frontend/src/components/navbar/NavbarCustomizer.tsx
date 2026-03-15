@@ -7,9 +7,10 @@ import {
   useTheme as useMuiTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import Paintbrush from "lucide-react/dist/esm/icons/paintbrush";
+import { Icon } from "@iconify/react";
 import { useMemo, useState } from "react";
 
+import { iconSize } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
 import { COLOR_TOKENS } from "@/theme/colors";
 
@@ -31,10 +32,9 @@ function NavbarColorCustomizer() {
         <IconButton
           color="inherit"
           onClick={(e) => setAnchorEl(e.currentTarget)}
-          size="large"
           aria-label="Customize primary color"
         >
-          <Paintbrush size={18} />
+          <Icon icon="mdi:brush" width={iconSize.md} height={iconSize.md} />
         </IconButton>
       </Tooltip>
 

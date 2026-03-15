@@ -1,6 +1,6 @@
 import { IconButton, Tooltip, Typography, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
+import { Icon } from "@iconify/react";
 import { useRef } from "react";
 
 import { useConfigValue } from "@/hooks/useConfig";
@@ -182,7 +182,7 @@ function ThemeColorsSection() {
               disabled={!hasAnyOverride}
               aria-label="Reset all colors to default"
             >
-              <RotateCcw size={14} />
+              <Icon icon="mdi:refresh" width={14} height={14} />
             </IconButton>
           </span>
         </Tooltip>
@@ -225,7 +225,7 @@ function ThemeColorsSection() {
                     onClick={() => handleReset(key)}
                     aria-label={`Reset ${label} to default`}
                   >
-                    <RotateCcw size={14} />
+                    <Icon icon="mdi:refresh" width={14} height={14} />
                   </IconButton>
                 </Tooltip>
               )}

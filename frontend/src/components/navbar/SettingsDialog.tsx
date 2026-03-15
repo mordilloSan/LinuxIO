@@ -1,4 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
+import { Icon } from "@iconify/react";
 import {
   DialogContent,
   DialogTitle,
@@ -58,7 +58,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ open, onClose }) => {
             onClick={handleClose}
             aria-label="Close settings"
           >
-            <CloseIcon fontSize="small" />
+            <Icon icon="mdi:close" width={18} height={18} />
           </IconButton>
         </div>
       </DialogTitle>

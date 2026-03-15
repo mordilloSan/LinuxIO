@@ -1,4 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
+import { Icon } from "@iconify/react";
 import {
   Badge,
   Button,
@@ -13,18 +13,10 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle";
-import Bell from "lucide-react/dist/esm/icons/bell";
-import CheckCircle from "lucide-react/dist/esm/icons/check-circle";
-import Download from "lucide-react/dist/esm/icons/download";
-import FolderSync from "lucide-react/dist/esm/icons/folder-sync";
-import Info from "lucide-react/dist/esm/icons/info";
-import Loader2 from "lucide-react/dist/esm/icons/loader-2";
-import Upload from "lucide-react/dist/esm/icons/upload";
-import XCircle from "lucide-react/dist/esm/icons/x-circle";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { iconSize as iconSizes } from "@/constants";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
@@ -182,7 +174,7 @@ function TransferItem({
       secondaryAction={
         !isIndexer ? (
           <IconButton edge="end" size="small" onClick={onCancel}>
-            <CloseIcon fontSize="small" />
+            <Icon icon="mdi:close" width={22} height={22} />
           </IconButton>
         ) : undefined
       }
@@ -221,7 +213,7 @@ function TransferItem({
 function NavbarNotificationsDropdown() {
   const theme = useTheme();
   const ref = useRef<HTMLButtonElement>(null);
-  const iconSize = 18;
+  const iconSize = iconSizes.md;
 
   // Full dropdown state (user-clicked)
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -371,32 +363,32 @@ function NavbarNotificationsDropdown() {
     switch (type) {
       case "success":
         return {
-          icon: <CheckCircle size={iconSize} />,
+          icon: <Icon icon="mdi:check-circle" width={iconSize} height={iconSize} />,
           color: theme.palette.success.main,
         };
       case "error":
         return {
-          icon: <XCircle size={iconSize} />,
+          icon: <Icon icon="mdi:close-circle" width={iconSize} height={iconSize} />,
           color: theme.palette.error.main,
         };
       case "warning":
         return {
-          icon: <AlertTriangle size={iconSize} />,
+          icon: <Icon icon="mdi:alert" width={iconSize} height={iconSize} />,
           color: theme.palette.warning.main,
         };
       case "info":
         return {
-          icon: <Info size={iconSize} />,
+          icon: <Icon icon="mdi:information" width={iconSize} height={iconSize} />,
           color: theme.palette.info.main,
         };
       case "loading":
         return {
-          icon: <Loader2 size={iconSize} />,
+          icon: <Icon icon="mdi:loading" width={iconSize} height={iconSize} />,
           color: theme.palette.text.secondary,
         };
       default:
         return {
-          icon: <Bell size={iconSize} />,
+          icon: <Icon icon="mdi:bell" width={iconSize} height={iconSize} />,
           color: theme.palette.text.secondary,
         };
     }
@@ -407,25 +399,25 @@ function NavbarNotificationsDropdown() {
       case "download":
       case "compression":
         return {
-          icon: <Download size={iconSize} />,
+          icon: <Icon icon="mdi:download" width={iconSize} height={iconSize} />,
           color: theme.palette.info.main,
         };
       case "upload":
       case "extraction":
         return {
-          icon: <Upload size={iconSize} />,
+          icon: <Icon icon="mdi:upload" width={iconSize} height={iconSize} />,
           color: theme.palette.info.main,
         };
       case "indexer":
       case "copy":
       case "move":
         return {
-          icon: <FolderSync size={iconSize} />,
+          icon: <Icon icon="mdi:folder-sync" width={iconSize} height={iconSize} />,
           color: theme.palette.info.main,
         };
       default:
         return {
-          icon: <Loader2 size={iconSize} />,
+          icon: <Icon icon="mdi:loading" width={iconSize} height={iconSize} />,
           color: theme.palette.text.secondary,
         };
     }
@@ -484,7 +476,7 @@ function NavbarNotificationsDropdown() {
       </div>
 
       <Tooltip title="Notifications">
-        <IconButton color="inherit" ref={ref} onClick={handleOpen} size="large">
+        <IconButton color="inherit" ref={ref} onClick={handleOpen}>
           <Badge
             badgeContent={badgeCount}
             sx={{
@@ -497,7 +489,7 @@ function NavbarNotificationsDropdown() {
               },
             }}
           >
-            <Bell />
+            <Icon icon="mdi:bell" width={22} height={22} />
           </Badge>
         </IconButton>
       </Tooltip>
@@ -569,7 +561,7 @@ function NavbarNotificationsDropdown() {
                     <ListItemIcon
                       sx={{ minWidth: 36, color: theme.palette.success.main }}
                     >
-                      <CheckCircle size={iconSize} />
+                      <Icon icon="mdi:check-circle" width={iconSize} height={iconSize} />
                     </ListItemIcon>
                     <ListItemText
                       disableTypography
