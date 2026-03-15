@@ -436,6 +436,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     <Chip
                       label={network.Driver}
                       size="small"
+                      color="primary"
                       variant="soft"
                       sx={{ fontSize: "0.75rem" }}
                     />
@@ -448,21 +449,21 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       gap: theme.spacing(0.75),
                     }}
                   >
-                    <Chip label={`Scope: ${network.Scope}`} size="small" variant="outlined" />
+                    <Chip label={`Scope: ${network.Scope}`} size="small" variant="soft" />
                     <Chip
                       label={`Internal: ${network.Internal ? "Yes" : "No"}`}
                       size="small"
-                      variant="outlined"
+                      variant="soft"
                     />
                     <Chip
                       label={`IPv4: ${network.EnableIPv4 !== false ? "Yes" : "No"}`}
                       size="small"
-                      variant="outlined"
+                      variant="soft"
                     />
                     <Chip
                       label={`IPv6: ${network.EnableIPv6 ? "Yes" : "No"}`}
                       size="small"
-                      variant="outlined"
+                      variant="soft"
                     />
                   </div>
 
@@ -492,7 +493,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                           key={`${network.Id}-ipam-${i}`}
                           label={ipam.Subnet}
                           size="small"
-                          variant="soft"
+                          variant="outlined"
                           sx={wrappableChipStyles}
                         />
                       ))
