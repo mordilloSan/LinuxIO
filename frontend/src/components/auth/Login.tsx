@@ -1,5 +1,4 @@
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import { Icon } from "@iconify/react";
 import {
   Alert,
   Button,
@@ -136,7 +135,7 @@ function LogIn() {
                       "&:hover": { color: "text.primary" },
                     }}
                   >
-                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                    {showPassword ? <Icon icon="mdi:eye-off" width={22} height={22} /> : <Icon icon="mdi:eye" width={22} height={22} />}
                   </IconButton>
                 </InputAdornment>
               ),

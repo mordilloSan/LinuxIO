@@ -1,5 +1,4 @@
-import ClearIcon from "@mui/icons-material/Clear";
-import SearchIcon from "@mui/icons-material/Search";
+import { Icon } from "@iconify/react";
 import { IconButton, InputAdornment, TextField, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import React, { useState, useCallback } from "react";
@@ -57,9 +56,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
         input: {
           startAdornment: (
             <InputAdornment position="start">
-              <SearchIcon
-                fontSize="small"
-                sx={{
+              <Icon
+                icon="mdi:magnify"
+                width={20}
+                height={20}
+                style={{
                   color: isFocused
                     ? theme.palette.primary.main
                     : theme.palette.text.secondary,
@@ -79,7 +80,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                   padding: 0.5,
                 }}
               >
-                <ClearIcon fontSize="small" />
+                <Icon icon="mdi:close" width={18} height={18} />
               </IconButton>
             </InputAdornment>
           ),

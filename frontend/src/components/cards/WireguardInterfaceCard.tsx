@@ -1,7 +1,4 @@
-import AddIcon from "@mui/icons-material/Add";
-import DeleteIcon from "@mui/icons-material/Delete";
-import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
-import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import { Icon } from "@iconify/react";
 import { CardContent, Typography, IconButton, Tooltip } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
@@ -100,7 +97,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     );
                   }}
                 >
-                  <PowerSettingsNewIcon />
+                  <Icon icon="mdi:power" width={22} height={22} />
                 </IconButton>
               </Tooltip>
               <Tooltip
@@ -122,7 +119,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     handleToggleBootPersistence(iface.name, iface.isEnabled);
                   }}
                 >
-                  <RestartAltIcon />
+                  <Icon icon="mdi:restart" width={22} height={22} />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Add Peer">
@@ -132,7 +129,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                     handleAddPeer(iface.name, {});
                   }}
                 >
-                  <AddIcon />
+                  <Icon icon="mdi:plus" width={22} height={22} />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Delete Interface">
@@ -143,7 +140,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                   }}
                   sx={{ color: theme.palette.error.main }}
                 >
-                  <DeleteIcon />
+                  <Icon icon="mdi:delete" width={22} height={22} />
                 </IconButton>
               </Tooltip>
             </div>

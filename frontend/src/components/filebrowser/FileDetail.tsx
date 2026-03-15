@@ -1,9 +1,4 @@
-import DownloadIcon from "@mui/icons-material/Download";
-import EditIcon from "@mui/icons-material/Edit";
-import FolderIcon from "@mui/icons-material/Folder";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
-import LinkIcon from "@mui/icons-material/Link";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import { Icon } from "@iconify/react";
 import {
   Button,
   CircularProgress,
@@ -107,9 +102,9 @@ const FileDetail: React.FC<FileDetailProps> = ({
   const canEdit = !isDirectory && isEditableFile(resource.name);
 
   const getTypeIcon = () => {
-    if (isSymlink) return <LinkIcon fontSize="large" />;
-    if (isDirectory) return <FolderIcon fontSize="large" />;
-    return <InsertDriveFileIcon fontSize="large" />;
+    if (isSymlink) return <Icon icon="mdi:link" width={28} height={28} />;
+    if (isDirectory) return <Icon icon="mdi:folder" width={28} height={28} />;
+    return <Icon icon="mdi:file" width={28} height={28} />;
   };
 
   const getTypeLabel = () => {
@@ -167,7 +162,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
                     gap: theme.spacing(0.5),
                   }}
                 >
-                  <VisibilityOffIcon sx={{ fontSize: 16 }} />
+                  <Icon icon="mdi:eye-off" width={16} height={16} />
                   <Typography variant="body2" color="text.secondary">
                     Hidden
                   </Typography>
@@ -267,7 +262,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
           >
             <Button
               variant="contained"
-              startIcon={<DownloadIcon />}
+              startIcon={<Icon icon="mdi:download" width={20} height={20} />}
               onClick={() => onDownload(resource.path)}
             >
               Download
@@ -275,7 +270,7 @@ const FileDetail: React.FC<FileDetailProps> = ({
             {canEdit && onEdit && (
               <Button
                 variant="outlined"
-                startIcon={<EditIcon />}
+                startIcon={<Icon icon="mdi:pencil" width={20} height={20} />}
                 onClick={() => onEdit(resource.path)}
               >
                 Edit

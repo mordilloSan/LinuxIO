@@ -1,4 +1,4 @@
-import BuildIcon from "@mui/icons-material/Build";
+import { Icon } from "@iconify/react";
 import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
@@ -48,7 +48,7 @@ const DevToolsButton: React.FC = () => {
             } as React.CSSProperties
           }
         >
-          <BuildIcon sx={{ fontSize: 16, color: "primary.main" }} />
+          <Icon icon="mdi:wrench" width={16} height={16} style={{ color: theme.palette.primary.main }} />
           <Typography variant="caption" color="text.secondary">
             Dev Tools
           </Typography>

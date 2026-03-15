@@ -1,4 +1,4 @@
-import TuneIcon from "@mui/icons-material/Tune";
+import { Icon } from "@iconify/react";
 import {
   Paper,
   ToggleButton,
@@ -105,7 +105,7 @@ const TabSelector: React.FC<TabSelectorProps> = ({
                 onClick={(e) => setAnchorEl(e.currentTarget)}
                 sx={{ mt: 0.5, flexShrink: 0 }}
               >
-                <TuneIcon fontSize="small" />
+                <Icon icon="mdi:tune" width={20} height={20} />
               </IconButton>
               <Popover
                 open={Boolean(anchorEl)}

@@ -1,6 +1,4 @@
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CloseIcon from "@mui/icons-material/Close";
-import ErrorIcon from "@mui/icons-material/Error";
+import { Icon } from "@iconify/react";
 import {
   Dialog,
   DialogTitle,
@@ -187,14 +185,14 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           }}
         >
           {isRunning && <LinearProgress sx={{ width: 100 }} />}
-          {success && <CheckCircleIcon color="success" />}
-          {error && <ErrorIcon color="error" />}
+          {success && <Icon icon="mdi:check-circle" width={24} height={24} color={theme.palette.success.main} />}
+          {error && <Icon icon="mdi:alert-circle" width={24} height={24} color={theme.palette.error.main} />}
           <Typography variant="h6">
             {getActionLabel()} Stack: {projectName}
           </Typography>
         </div>
         <IconButton onClick={handleClose} size="small">
-          <CloseIcon />
+          <Icon icon="mdi:close" width={20} height={20} />
         </IconButton>
       </DialogTitle>
 

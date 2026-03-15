@@ -1,4 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
+import { Icon } from "@iconify/react";
 import {
   DialogTitle,
   DialogContent,
@@ -78,7 +78,7 @@ const LogDialog: React.FC<LogDialogProps> = ({
           />
         </Tooltip>
         <IconButton onClick={onClose} size="small">
-          <CloseIcon fontSize="small" />
+          <Icon icon="mdi:close" width={18} height={18} />
         </IconButton>
       </DialogTitle>
 

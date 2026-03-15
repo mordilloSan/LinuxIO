@@ -1,5 +1,4 @@
-import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import { Icon } from "@iconify/react";
 import {
   Alert,
   Button,
@@ -69,7 +68,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           borderColor: "divider",
         }}
       >
-        <CleaningServicesIcon color="error" />
+        <Icon icon="mdi:broom" width={24} height={24} />
         <Typography variant="h6">Prune System</Typography>
       </DialogTitle>
 
@@ -148,7 +147,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
         </div>
 
         {opts.volumes && (
-          <Alert severity="warning" icon={<WarningAmberIcon />} sx={{ mt: 2 }}>
+          <Alert severity="warning" icon={<Icon icon="mdi:alert" width={22} height={22} />} sx={{ mt: 2 }}>
             <Typography variant="body2">
               <strong>Warning:</strong> Removing unused volumes will permanently
               delete data that is not attached to any container. This cannot be
@@ -169,7 +168,7 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
           disabled={isLoading || selectedCount === 0}
           variant="contained"
           color={opts.volumes ? "error" : "warning"}
-          startIcon={<CleaningServicesIcon />}
+          startIcon={<Icon icon="mdi:broom" width={20} height={20} />}
         >
           {isLoading ? "Pruning..." : `Prune Selected (${selectedCount})`}
         </Button>

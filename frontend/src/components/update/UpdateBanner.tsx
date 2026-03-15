@@ -1,5 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
-import DownloadIcon from "@mui/icons-material/Download";
+import { Icon } from "@iconify/react";
 import { Alert, Button, IconButton, Link, useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
@@ -92,7 +91,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
             onClick={onDismiss}
             disabled={isUpdating}
           >
-            <CloseIcon fontSize="small" />
+            <Icon icon="mdi:close" width={18} height={18} />
           </IconButton>
         }
       >
@@ -123,7 +122,7 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
             <Button
               variant="contained"
               size="small"
-              startIcon={!isUpdating ? <DownloadIcon /> : null}
+              startIcon={!isUpdating ? <Icon icon="mdi:download" width={20} height={20} /> : null}
               onClick={handleUpdate}
               disabled={isUpdating}
               sx={{ whiteSpace: "nowrap" }}

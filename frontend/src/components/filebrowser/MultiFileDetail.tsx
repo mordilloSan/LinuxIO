@@ -1,4 +1,4 @@
-import DownloadIcon from "@mui/icons-material/Download";
+import { Icon } from "@iconify/react";
 import { Button, Divider, Paper, Typography, useTheme } from "@mui/material";
 import React from "react";
 
@@ -152,7 +152,7 @@ const MultiFileItemRow: React.FC<{
         {!isDir && (
           <Button
             size="small"
-            startIcon={<DownloadIcon fontSize="small" />}
+            startIcon={<Icon icon="mdi:download" width={18} height={18} />}
             onClick={() => onDownload(item.path)}
           >
             Download

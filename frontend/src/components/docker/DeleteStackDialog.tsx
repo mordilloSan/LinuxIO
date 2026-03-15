@@ -1,6 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import FolderDeleteIcon from "@mui/icons-material/FolderDelete";
-import WarningIcon from "@mui/icons-material/Warning";
+import { Icon } from "@iconify/react";
 import {
   Dialog,
   DialogTitle,
@@ -74,7 +72,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           gap: 1,
         }}
       >
-        <DeleteIcon color="error" />
+        <Icon icon="mdi:delete" width={24} height={24} color={theme.palette.error.main} />
         <Typography variant="h6">Delete Stack: {projectName}</Typography>
       </DialogTitle>
 
@@ -136,7 +134,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
         </RadioGroup>
 
         {deleteOption === "directory" && (
-          <Alert severity="warning" icon={<WarningIcon />} sx={{ mt: 2 }}>
+          <Alert severity="warning" icon={<Icon icon="mdi:alert" width={22} height={22} />} sx={{ mt: 2 }}>
             <Typography variant="body2">
               <strong>Warning:</strong> This will permanently delete the entire
               stack directory including all configuration files, data, and
@@ -167,7 +165,7 @@ const DeleteStackDialog: React.FC<DeleteStackDialogProps> = ({
           variant="contained"
           color={deleteOption === "directory" ? "error" : "primary"}
           startIcon={
-            deleteOption === "directory" ? <FolderDeleteIcon /> : <DeleteIcon />
+            deleteOption === "directory" ? <Icon icon="mdi:folder-remove" width={20} height={20} /> : <Icon icon="mdi:delete" width={20} height={20} />
           }
         >
           {isLoading ? "Deleting..." : "Delete"}

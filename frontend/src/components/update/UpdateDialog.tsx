@@ -1,5 +1,4 @@
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import ErrorIcon from "@mui/icons-material/Error";
+import { Icon } from "@iconify/react";
 import {
   Button,
   Dialog,
@@ -84,9 +83,9 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({
               }}
             >
               {updateSuccess ? (
-                <CheckCircleIcon fontSize="large" />
+                <Icon icon="mdi:check-circle" width={28} height={28} />
               ) : (
-                <ErrorIcon fontSize="large" />
+                <Icon icon="mdi:alert-circle" width={28} height={28} />
               )}
               <div>
                 <Typography variant="h6" fontWeight="bold">

@@ -1,17 +1,4 @@
-import ArchiveIcon from "@mui/icons-material/Archive";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import ContentCutIcon from "@mui/icons-material/ContentCut";
-import ContentPasteIcon from "@mui/icons-material/ContentPaste";
-import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
-import DeleteIcon from "@mui/icons-material/Delete";
-import DownloadIcon from "@mui/icons-material/Download";
-import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
-import FolderOpenIcon from "@mui/icons-material/FolderOpen";
-import NoteAddIcon from "@mui/icons-material/NoteAdd";
-import SecurityIcon from "@mui/icons-material/Security";
-import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import UploadIcon from "@mui/icons-material/Upload";
-import VisibilityIcon from "@mui/icons-material/Visibility";
+import { Icon } from "@iconify/react";
 import {
   Menu,
   MenuItem,
@@ -117,21 +104,21 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       {/* Always available actions */}
       <MenuItem onClick={onCreateFile}>
         <ListItemIcon>
-          <NoteAddIcon fontSize="small" />
+          <Icon icon="mdi:file-plus" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Create File</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onCreateFolder}>
         <ListItemIcon>
-          <CreateNewFolderIcon fontSize="small" />
+          <Icon icon="mdi:folder-plus" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Create Folder</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onUpload}>
         <ListItemIcon>
-          <UploadIcon fontSize="small" />
+          <Icon icon="mdi:upload" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Upload</ListItemText>
       </MenuItem>
@@ -142,7 +129,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       {canOpenContainingFolder && (
         <MenuItem onClick={onOpenContainingFolder}>
           <ListItemIcon>
-            <FolderOpenIcon fontSize="small" />
+            <Icon icon="mdi:folder-open" width={20} height={20} />
           </ListItemIcon>
           <ListItemText>Open Containing Folder</ListItemText>
         </MenuItem>
@@ -153,35 +140,35 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       {/* Selection-based actions */}
       <MenuItem onClick={onChangePermissions} disabled={!hasSelection}>
         <ListItemIcon>
-          <SecurityIcon fontSize="small" />
+          <Icon icon="mdi:shield-lock" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Change Permissions</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onCopy} disabled={!hasSelection}>
         <ListItemIcon>
-          <ContentCopyIcon fontSize="small" />
+          <Icon icon="mdi:content-copy" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Copy</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onCut} disabled={!hasSelection}>
         <ListItemIcon>
-          <ContentCutIcon fontSize="small" />
+          <Icon icon="mdi:content-cut" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Cut</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onRename} disabled={renameDisabled}>
         <ListItemIcon>
-          <DriveFileRenameOutlineIcon fontSize="small" />
+          <Icon icon="mdi:rename-box" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Rename</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onPaste} disabled={!hasClipboard}>
         <ListItemIcon>
-          <ContentPasteIcon fontSize="small" />
+          <Icon icon="mdi:content-paste" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Paste</ListItemText>
       </MenuItem>
@@ -190,35 +177,35 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
 
       <MenuItem onClick={onDownload} disabled={!hasSelection}>
         <ListItemIcon>
-          <DownloadIcon fontSize="small" />
+          <Icon icon="mdi:download" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Download</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onShowDetails} disabled={detailsDisabled}>
         <ListItemIcon>
-          <VisibilityIcon fontSize="small" />
+          <Icon icon="mdi:eye" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Show Details</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onCompress} disabled={compressDisabled}>
         <ListItemIcon>
-          <ArchiveIcon fontSize="small" />
+          <Icon icon="mdi:archive" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Compress to ZIP</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onExtract} disabled={extractDisabled}>
         <ListItemIcon>
-          <UnarchiveIcon fontSize="small" />
+          <Icon icon="mdi:archive-arrow-up" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Extract Here</ListItemText>
       </MenuItem>
 
       <MenuItem onClick={onDelete} disabled={!hasSelection}>
         <ListItemIcon>
-          <DeleteIcon fontSize="small" />
+          <Icon icon="mdi:delete" width={20} height={20} />
         </ListItemIcon>
         <ListItemText>Delete</ListItemText>
       </MenuItem>

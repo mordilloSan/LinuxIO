@@ -1,4 +1,4 @@
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { Icon } from "@iconify/react";
 import {
   Table,
   TableBody,
@@ -158,7 +158,10 @@ function UnifiedCollapsibleTable<T>({
                             setExpanded(isExpanded ? null : rowKey);
                           }}
                         >
-                          <ExpandMoreIcon
+                          <Icon
+                            icon="mdi:chevron-down"
+                            width={22}
+                            height={22}
                             style={{
                               transform: isExpanded
                                 ? "rotate(180deg)"

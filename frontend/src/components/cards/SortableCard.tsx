@@ -1,6 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DragIndicator } from "@mui/icons-material";
+import { Icon } from "@iconify/react";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
@@ -60,9 +60,7 @@ const SortableCard: React.FC<SortableCardProps> = ({
             } as React.CSSProperties
           }
         >
-          <DragIndicator
-            sx={{ fontSize: 40, color: "text.secondary", opacity: 0.7 }}
-          />
+          <Icon icon="mdi:drag" width={40} height={40} style={{ color: theme.palette.text.secondary, opacity: 0.7 }} />
         </div>
       )}
       {children}

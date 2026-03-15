@@ -1,8 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
-import SaveIcon from "@mui/icons-material/Save";
-import SyncIcon from "@mui/icons-material/Sync";
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import { Icon } from "@iconify/react";
 import {
   CircularProgress,
   IconButton,
@@ -153,7 +149,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                     onClick={onCloseEditor || (() => {})}
                     disabled={isSaving}
                   >
-                    <CloseIcon fontSize="medium" />
+                    <Icon icon="mdi:close" width={22} height={22} />
                   </IconButton>
                 </Tooltip>
 
@@ -162,7 +158,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                     onClick={onSaveFile || (() => {})}
                     disabled={isSaving}
                   >
-                    <SaveIcon fontSize="medium" />
+                    <Icon icon="mdi:content-save" width={22} height={22} />
                   </IconButton>
                 </Tooltip>
               </>
@@ -190,9 +186,9 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                     }
                   >
                     {showHiddenFiles ? (
-                      <VisibilityIcon />
+                      <Icon icon="mdi:eye" width={22} height={22} />
                     ) : (
-                      <VisibilityOffIcon />
+                      <Icon icon="mdi:eye-off" width={22} height={22} />
                     )}
                   </IconButton>
                 </Tooltip>
@@ -218,10 +214,13 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                       {isIndexing ? (
                         <CircularProgress size={24} />
                       ) : (
-                        <SyncIcon
-                          sx={{
+                        <Icon
+                          icon="mdi:sync"
+                          width={22}
+                          height={22}
+                          style={{
                             color: !indexerEnabled
-                              ? "text.disabled"
+                              ? theme.palette.text.disabled
                               : "inherit",
                           }}
                         />

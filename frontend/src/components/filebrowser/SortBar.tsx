@@ -1,5 +1,4 @@
-import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import { Icon } from "@iconify/react";
 import { Typography, useTheme } from "@mui/material";
 import React from "react";
 
@@ -37,9 +36,9 @@ const SortBar: React.FC<SortBarProps> = ({ sortOrder, onSortChange }) => {
 
     // If hovering show current sort direction
     return sortOrder === "asc" ? (
-      <ArrowUpwardIcon sx={iconStyles} />
+      <Icon icon="mdi:arrow-up" width={18} height={18} style={{ marginLeft: 4, transition: "opacity 0.2s ease", opacity: 0.8 }} />
     ) : (
-      <ArrowDownwardIcon sx={iconStyles} />
+      <Icon icon="mdi:arrow-down" width={18} height={18} style={{ marginLeft: 4, transition: "opacity 0.2s ease", opacity: 0.8 }} />
     );
   };
 
