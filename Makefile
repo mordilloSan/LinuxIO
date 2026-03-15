@@ -299,7 +299,7 @@ test: ensure-node ensure-go ensure-golint setup dev-prep
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
 	@echo "🔎 Running ESLint..."
-	@bash -c 'cd frontend && npx eslint src --ext .js,.jsx,.ts,.tsx --fix --cache && echo "✅ Frontend linting passed!"'
+	@bash -c 'cd frontend && npm run --silent lint && echo "✅ Frontend linting passed!"'
 
 tsc-only:
 	@echo "🔎 Running TypeScript type checks..."
