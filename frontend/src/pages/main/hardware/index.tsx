@@ -597,29 +597,14 @@ const HardwarePage: React.FC = () => {
           {[
             { id: "cpu", component: MemoProcessor },
             { id: "memory", component: MemoMemory },
+            { id: "gpu", component: MemoGpuInfo },
           ].map(({ id, component: CardComponent }) => (
-            <Grid key={id} size={{ xs: 12, lg: 6 }}>
+            <Grid key={id} size={{ xs: 12, lg: 4 }}>
               <ErrorBoundary>
                 <CardComponent />
               </ErrorBoundary>
             </Grid>
           ))}
-        </Grid>
-      </Collapse>
-
-      {/* ── GPU ─────────────────────────────────────────────────────────── */}
-      <SectionHeader
-        title="GPU"
-        expanded={sections.gpu}
-        onClick={() => toggleSection("gpu")}
-      />
-      <Collapse in={sections.gpu}>
-        <Grid container spacing={4} sx={{ mb: 2 }}>
-          <Grid size={{ xs: 12 }}>
-            <ErrorBoundary>
-              <MemoGpuInfo />
-            </ErrorBoundary>
-          </Grid>
         </Grid>
       </Collapse>
 
