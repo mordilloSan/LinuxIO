@@ -70,24 +70,19 @@ export default [
       ...react.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
       "react-compiler/react-compiler": "error",
-      "react/react-in-jsx-scope": "off",
+      "react/react-in-jsx-scope": "warn",
       "react/prop-types": "off",
       "react/no-unescaped-entities": "warn",
       "no-unused-vars": "off",
       "unused-imports/no-unused-imports": "warn",
-      "unused-imports/no-unused-vars": [
-        "warn",
-        {
+      "unused-imports/no-unused-vars": [ "warn", {
           vars: "all",
           varsIgnorePattern: "^_",
           args: "after-used",
           argsIgnorePattern: "^_",
-        },
-      ],
+        },],
 
-      "import-x/order": [
-        "warn",
-        {
+      "import-x/order": [ "warn", {
           groups: [
             "builtin",
             "external",
