@@ -364,7 +364,7 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
               (isOutlined
                 ? "transparent"
                 : isSoft
-                  ? alpha(chipColor, 0.13)
+                  ? alpha(chipColor, isDefaultColor ? 0.06 : 0.13)
                   : alpha(
                       chipColor,
                       isDefaultColor
