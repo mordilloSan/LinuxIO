@@ -1,6 +1,11 @@
 1 - Implement power managment 
+Revisit `frontend/package.json` `overrides` after upstream ESLint 10 support lands and transitive deps settle:
+- `zod-validation-error`
+- `eslint-plugin-react`
+- `eslint-plugin-react-hooks`
+- `@tanstack/eslint-plugin-query`
 
-2 - implement monitoring (pcp?)
+2 - implement monitoring
 
 3 - Remove func StartSimpleNetInfoSampler()
 

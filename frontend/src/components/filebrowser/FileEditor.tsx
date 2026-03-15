@@ -125,7 +125,7 @@ const FileEditor = forwardRef<FileEditorHandle, FileEditorProps>(
         ? editorState
         : createEditorState(filePath, initialContent);
     const { content, isDirty } = normalizedState;
-    const editorRef = useRef<AceEditor>(null);
+    const editorRef = useRef<InstanceType<typeof ReactAce>>(null);
     const theme = useTheme();
     const isDarkMode = theme.palette.mode === "dark";
     const language = getLanguageMode(fileName);

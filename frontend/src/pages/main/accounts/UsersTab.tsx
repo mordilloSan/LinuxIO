@@ -540,7 +540,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       }}
                       disabled={user.username === "root"}
                     >
-                      <EditIcon fontSize="small" />
+                      <Icon icon="mdi:pencil" width={20} height={20} />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Change Password">
@@ -551,7 +551,11 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         handleChangePassword(user);
                       }}
                     >
-                      <PasswordIcon fontSize="small" />
+                      <Icon
+                        icon="mdi:form-textbox-password"
+                        width={20}
+                        height={20}
+                      />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title={user.isLocked ? "Unlock" : "Lock"}>
@@ -569,9 +573,9 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       }
                     >
                       {user.isLocked ? (
-                        <LockOpenIcon fontSize="small" />
+                        <Icon icon="mdi:lock-open" width={20} height={20} />
                       ) : (
-                        <LockIcon fontSize="small" />
+                        <Icon icon="mdi:lock" width={20} height={20} />
                       )}
                     </IconButton>
                   </Tooltip>

@@ -62,20 +62,18 @@ export default [
     },
     settings: {
       react: {
-        // workaround: hardcoded until eslint-plugin-react supports eslint 10+
+        // eslint-plugin-react's detect path is not ESLint 10-safe yet in this setup.
         version: "19.2",
       },
     },
     rules: {
       ...react.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
-
-      // React Compiler rule (from the correct plugin!)
       "react-compiler/react-compiler": "error",
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "react/no-unescaped-entities": "warn",
-      "no-unused-vars": "off",
+      "no-unused-vars": "warn",
       "unused-imports/no-unused-imports": "warn",
       "unused-imports/no-unused-vars": [
         "warn",
