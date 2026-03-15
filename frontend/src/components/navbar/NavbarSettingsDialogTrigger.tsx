@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
-import { IconButton, Tooltip } from "@mui/material";
+import { IconButton } from "@mui/material";
 import React, { useCallback, useState } from "react";
 
 import SettingsDialog from "./SettingsDialog";
 
+import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize } from "@/constants";
 
 const NavbarSettingsDialogTrigger: React.FC = () => {
@@ -19,7 +20,7 @@ const NavbarSettingsDialogTrigger: React.FC = () => {
 
   return (
     <>
-      <Tooltip title="Open settings">
+      <AppTooltip title="Open settings">
         <IconButton
           color="inherit"
           aria-label="Open settings"
@@ -27,7 +28,7 @@ const NavbarSettingsDialogTrigger: React.FC = () => {
         >
           <Icon icon="mdi:cog" width={iconSize.md} height={iconSize.md} />
         </IconButton>
-      </Tooltip>
+      </AppTooltip>
 
       <SettingsDialog open={open} onClose={handleClose} />
     </>

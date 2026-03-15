@@ -1,8 +1,9 @@
 import { Icon } from "@iconify/react";
-import { IconButton, Tooltip, Typography, useTheme } from "@mui/material";
+import { IconButton, Typography, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useRef } from "react";
 
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useConfigValue } from "@/hooks/useConfig";
 import { ThemeColors } from "@/types/config";
 
@@ -168,7 +169,7 @@ function ThemeColorsSection() {
         <Typography variant="body1" fontWeight={600} sx={{ flexGrow: 1 }}>
           Colors
         </Typography>
-        <Tooltip
+        <AppTooltip
           title={
             hasAnyOverride
               ? "Reset all colors to default"
@@ -185,7 +186,7 @@ function ThemeColorsSection() {
               <Icon icon="mdi:refresh" width={14} height={14} />
             </IconButton>
           </span>
-        </Tooltip>
+        </AppTooltip>
       </div>
 
       {entries.map(({ key, label, description, effectiveColor }) => {
@@ -219,7 +220,7 @@ function ThemeColorsSection() {
               }}
             >
               {isOverridden && (
-                <Tooltip title="Reset to default">
+                <AppTooltip title="Reset to default">
                   <IconButton
                     size="small"
                     onClick={() => handleReset(key)}
@@ -227,7 +228,7 @@ function ThemeColorsSection() {
                   >
                     <Icon icon="mdi:refresh" width={14} height={14} />
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
               )}
               <ColorSwatch
                 color={effectiveColor}

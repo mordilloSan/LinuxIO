@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Divider,
-  Tooltip,
   Menu,
   MenuItem,
   IconButton,
@@ -16,6 +15,7 @@ import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize } from "@/constants";
 import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
@@ -79,11 +79,11 @@ function NavbarUserDropdown() {
 
   return (
     <>
-      <Tooltip title="Account">
+      <AppTooltip title="Account">
         <IconButton color="inherit" ref={ref} onClick={toggleMenu}>
           <Icon icon="mdi:power" width={iconSize.md} height={iconSize.md} />
         </IconButton>
-      </Tooltip>
+      </AppTooltip>
 
       <Menu
         id="menu-appbar"

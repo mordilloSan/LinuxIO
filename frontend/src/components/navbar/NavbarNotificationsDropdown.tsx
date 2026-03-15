@@ -9,13 +9,13 @@ import {
   ListItemIcon,
   ListItemText,
   Popover,
-  Tooltip,
   Typography,
   useTheme,
 } from "@mui/material";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import AppTooltip from "@/components/ui/AppTooltip";
 import { iconSize as iconSizes } from "@/constants";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
@@ -191,13 +191,13 @@ function TransferItem({
         }
         secondary={
           <div style={{ marginTop: 4 }}>
-            <Tooltip title={detailText} arrow placement="top">
+            <AppTooltip title={detailText} arrow placement="top">
               <LinearProgress
                 variant="determinate"
                 value={transfer.progress}
                 sx={{ height: 5, borderRadius: 1, mb: 0.5 }}
               />
-            </Tooltip>
+            </AppTooltip>
             <Typography variant="caption" color="text.secondary">
               {detailText}
             </Typography>
@@ -483,7 +483,7 @@ function NavbarNotificationsDropdown() {
         )}
       </div>
 
-      <Tooltip title="Notifications">
+      <AppTooltip title="Notifications">
         <IconButton color="inherit" ref={ref} onClick={handleOpen}>
           <Badge
             badgeContent={badgeCount}
@@ -500,7 +500,7 @@ function NavbarNotificationsDropdown() {
             <Icon icon="mdi:bell" width={22} height={22} />
           </Badge>
         </IconButton>
-      </Tooltip>
+      </AppTooltip>
 
       {/* Full dropdown — everything */}
       <Popover
