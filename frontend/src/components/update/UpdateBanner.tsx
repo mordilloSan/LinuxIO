@@ -122,7 +122,11 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({
             <Button
               variant="contained"
               size="small"
-              startIcon={!isUpdating ? <Icon icon="mdi:download" width={20} height={20} /> : null}
+              startIcon={
+                !isUpdating ? (
+                  <Icon icon="mdi:download" width={20} height={20} />
+                ) : null
+              }
               onClick={handleUpdate}
               disabled={isUpdating}
               sx={{ whiteSpace: "nowrap" }}

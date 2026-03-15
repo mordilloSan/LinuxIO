@@ -89,7 +89,9 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               edge="end"
             >
-              {!collapsed && <Icon icon="mdi:chevron-left" width={22} height={22} />}
+              {!collapsed && (
+                <Icon icon="mdi:chevron-left" width={22} height={22} />
+              )}
               {hovered && collapsed && (
                 <Icon icon="mdi:chevron-right" width={22} height={22} />
               )}

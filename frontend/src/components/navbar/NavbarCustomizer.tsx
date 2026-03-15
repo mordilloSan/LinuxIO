@@ -1,3 +1,4 @@
+import { Icon } from "@iconify/react";
 import {
   IconButton,
   Button,
@@ -7,7 +8,6 @@ import {
   useTheme as useMuiTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { Icon } from "@iconify/react";
 import { useMemo, useState } from "react";
 
 import { iconSize } from "@/constants";

@@ -179,7 +179,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
           <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
             <Tooltip title={project.config_files.join(", ") || "Unknown"}>
               <div style={{ display: "flex", alignItems: "center" }}>
-                <Icon icon="mdi:folder-open" width={20} height={20} style={{ marginRight: 4, opacity: 0.7 }} />
+                <Icon
+                  icon="mdi:folder-open"
+                  width={20}
+                  height={20}
+                  style={{ marginRight: 4, opacity: 0.7 }}
+                />
                 <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
                   {project.config_files[0]?.split("/").pop() ||
                     "docker-compose.yml"}

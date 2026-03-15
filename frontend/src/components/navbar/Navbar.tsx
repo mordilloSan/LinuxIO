@@ -76,7 +76,11 @@ const Navbar: React.FC<NavbarProps> = ({ onDrawerToggle }) => {
                     justifyContent: "center",
                   }}
                 >
-                  <Icon icon="mdi:magnify" width={iconSize.md} height={iconSize.md} />
+                  <Icon
+                    icon="mdi:magnify"
+                    width={iconSize.md}
+                    height={iconSize.md}
+                  />
                 </div>
                 <InputBase
                   placeholder="Search"

@@ -60,7 +60,12 @@ const SortableCard: React.FC<SortableCardProps> = ({
             } as React.CSSProperties
           }
         >
-          <Icon icon="mdi:drag" width={40} height={40} style={{ color: theme.palette.text.secondary, opacity: 0.7 }} />
+          <Icon
+            icon="mdi:drag"
+            width={40}
+            height={40}
+            style={{ color: theme.palette.text.secondary, opacity: 0.7 }}
+          />
         </div>
       )}
       {children}

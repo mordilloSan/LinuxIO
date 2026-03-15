@@ -135,7 +135,11 @@ function LogIn() {
                       "&:hover": { color: "text.primary" },
                     }}
                   >
-                    {showPassword ? <Icon icon="mdi:eye-off" width={22} height={22} /> : <Icon icon="mdi:eye" width={22} height={22} />}
+                    {showPassword ? (
+                      <Icon icon="mdi:eye-off" width={22} height={22} />
+                    ) : (
+                      <Icon icon="mdi:eye" width={22} height={22} />
+                    )}
                   </IconButton>
                 </InputAdornment>
               ),

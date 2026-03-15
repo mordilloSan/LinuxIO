@@ -623,7 +623,9 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         expanded={expanded === "lvs"}
         onChange={handleAccordionChange("lvs")}
       >
-        <AccordionSummary expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}>
+        <AccordionSummary
+          expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}
+        >
           <Typography fontWeight={600}>
             Logical Volumes ({lvsList.length})
           </Typography>
@@ -641,7 +643,9 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         expanded={expanded === "vgs"}
         onChange={handleAccordionChange("vgs")}
       >
-        <AccordionSummary expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}>
+        <AccordionSummary
+          expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}
+        >
           <Typography fontWeight={600}>
             Volume Groups ({vgsList.length})
           </Typography>
@@ -655,7 +659,9 @@ const LVMManagement: React.FC<LVMManagementProps> = ({
         expanded={expanded === "pvs"}
         onChange={handleAccordionChange("pvs")}
       >
-        <AccordionSummary expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}>
+        <AccordionSummary
+          expandIcon={<Icon icon="mdi:chevron-down" width={24} height={24} />}
+        >
           <Typography fontWeight={600}>
             Physical Volumes ({pvsList.length})
           </Typography>

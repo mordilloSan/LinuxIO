@@ -1,3 +1,4 @@
+import { Icon } from "@iconify/react";
 import {
   Divider,
   Tooltip,
@@ -11,13 +12,11 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
-import { Icon } from "@iconify/react";
 import React, { useRef, useState } from "react";
-
-import { iconSize } from "@/constants";
 import { useNavigate } from "react-router-dom";
 
 import { linuxio } from "@/api";
+import { iconSize } from "@/constants";
 import useAuth from "@/hooks/useAuth";
 import usePowerAction from "@/hooks/usePowerAction";
 

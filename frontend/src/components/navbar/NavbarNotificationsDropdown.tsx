@@ -363,12 +363,16 @@ function NavbarNotificationsDropdown() {
     switch (type) {
       case "success":
         return {
-          icon: <Icon icon="mdi:check-circle" width={iconSize} height={iconSize} />,
+          icon: (
+            <Icon icon="mdi:check-circle" width={iconSize} height={iconSize} />
+          ),
           color: theme.palette.success.main,
         };
       case "error":
         return {
-          icon: <Icon icon="mdi:close-circle" width={iconSize} height={iconSize} />,
+          icon: (
+            <Icon icon="mdi:close-circle" width={iconSize} height={iconSize} />
+          ),
           color: theme.palette.error.main,
         };
       case "warning":
@@ -378,7 +382,9 @@ function NavbarNotificationsDropdown() {
         };
       case "info":
         return {
-          icon: <Icon icon="mdi:information" width={iconSize} height={iconSize} />,
+          icon: (
+            <Icon icon="mdi:information" width={iconSize} height={iconSize} />
+          ),
           color: theme.palette.info.main,
         };
       case "loading":
@@ -412,7 +418,9 @@ function NavbarNotificationsDropdown() {
       case "copy":
       case "move":
         return {
-          icon: <Icon icon="mdi:folder-sync" width={iconSize} height={iconSize} />,
+          icon: (
+            <Icon icon="mdi:folder-sync" width={iconSize} height={iconSize} />
+          ),
           color: theme.palette.info.main,
         };
       default:
@@ -561,7 +569,11 @@ function NavbarNotificationsDropdown() {
                     <ListItemIcon
                       sx={{ minWidth: 36, color: theme.palette.success.main }}
                     >
-                      <Icon icon="mdi:check-circle" width={iconSize} height={iconSize} />
+                      <Icon
+                        icon="mdi:check-circle"
+                        width={iconSize}
+                        height={iconSize}
+                      />
                     </ListItemIcon>
                     <ListItemText
                       disableTypography

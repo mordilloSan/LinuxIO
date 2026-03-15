@@ -147,7 +147,11 @@ const PruneDialog: React.FC<PruneDialogProps> = ({
         </div>
 
         {opts.volumes && (
-          <Alert severity="warning" icon={<Icon icon="mdi:alert" width={22} height={22} />} sx={{ mt: 2 }}>
+          <Alert
+            severity="warning"
+            icon={<Icon icon="mdi:alert" width={22} height={22} />}
+            sx={{ mt: 2 }}
+          >
             <Typography variant="body2">
               <strong>Warning:</strong> Removing unused volumes will permanently
               delete data that is not attached to any container. This cannot be

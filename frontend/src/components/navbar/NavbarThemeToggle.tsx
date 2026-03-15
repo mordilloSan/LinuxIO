@@ -17,7 +17,19 @@ function NavbarThemeToggle() {
   return (
     <Tooltip title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
       <IconButton color="inherit" onClick={toggleTheme}>
-        {isDark ? <Icon icon="mdi:weather-night" width={iconSize.md} height={iconSize.md} /> : <Icon icon="mdi:weather-sunny" width={iconSize.md} height={iconSize.md} />}
+        {isDark ? (
+          <Icon
+            icon="mdi:weather-night"
+            width={iconSize.md}
+            height={iconSize.md}
+          />
+        ) : (
+          <Icon
+            icon="mdi:weather-sunny"
+            width={iconSize.md}
+            height={iconSize.md}
+          />
+        )}
       </IconButton>
     </Tooltip>
   );

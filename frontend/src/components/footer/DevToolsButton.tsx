@@ -48,7 +48,12 @@ const DevToolsButton: React.FC = () => {
             } as React.CSSProperties
           }
         >
-          <Icon icon="mdi:wrench" width={16} height={16} style={{ color: theme.palette.primary.main }} />
+          <Icon
+            icon="mdi:wrench"
+            width={16}
+            height={16}
+            style={{ color: theme.palette.primary.main }}
+          />
           <Typography variant="caption" color="text.secondary">
             Dev Tools
           </Typography>

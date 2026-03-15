@@ -385,7 +385,9 @@ export const UnitCardActions: React.FC<{
             <Button
               size="small"
               variant="outlined"
-              startIcon={<Icon icon="mdi:block-helper" width={20} height={20} />}
+              startIcon={
+                <Icon icon="mdi:block-helper" width={20} height={20} />
+              }
               onClick={() => disableService([unitName])}
               disabled={isMasked || anyPending}
             >

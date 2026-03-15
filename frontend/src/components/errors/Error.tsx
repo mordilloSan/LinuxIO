@@ -19,7 +19,12 @@ const ErrorMessage: React.FC = () => {
         gap: 8,
       }}
     >
-      <Icon icon="mdi:alert-circle-outline" width={iconSize.lg} height={iconSize.lg} color={theme.palette.error.main} />
+      <Icon
+        icon="mdi:alert-circle-outline"
+        width={iconSize.lg}
+        height={iconSize.lg}
+        color={theme.palette.error.main}
+      />
       <Typography color="error" variant="body1">
         Failed to load!
       </Typography>

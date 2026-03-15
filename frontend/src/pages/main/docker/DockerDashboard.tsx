@@ -673,7 +673,12 @@ const DockerDashboard: React.FC = () => {
                     title="Version"
                     subtitle="Engine & runtime versions"
                     icon={
-                      <Icon icon="mdi:tag" width={28} height={28} color={theme.palette.primary.main} />
+                      <Icon
+                        icon="mdi:tag"
+                        width={28}
+                        height={28}
+                        color={theme.palette.primary.main}
+                      />
                     }
                   >
                     <InfoRow label="Server" value={dockerInfo.server_version} />
@@ -689,7 +694,12 @@ const DockerDashboard: React.FC = () => {
                     title="System"
                     subtitle="Host machine information"
                     icon={
-                      <Icon icon="mdi:monitor" width={28} height={28} color={theme.palette.primary.main} />
+                      <Icon
+                        icon="mdi:monitor"
+                        width={28}
+                        height={28}
+                        color={theme.palette.primary.main}
+                      />
                     }
                   >
                     <InfoRow label="Hostname" value={dockerInfo.name} />
@@ -711,7 +721,12 @@ const DockerDashboard: React.FC = () => {
                     title="Configuration"
                     subtitle="Storage & runtime settings"
                     icon={
-                      <Icon icon="mdi:wrench" width={28} height={28} color={theme.palette.primary.main} />
+                      <Icon
+                        icon="mdi:wrench"
+                        width={28}
+                        height={28}
+                        color={theme.palette.primary.main}
+                      />
                     }
                   >
                     <InfoRow
@@ -782,7 +797,12 @@ const DockerDashboard: React.FC = () => {
             <FrostedCard>
               <ResourceCardHeader
                 icon={
-                  <Icon icon="mdi:cube-outline" width={28} height={28} color={theme.palette.primary.main} />
+                  <Icon
+                    icon="mdi:cube-outline"
+                    width={28}
+                    height={28}
+                    color={theme.palette.primary.main}
+                  />
                 }
                 title="Containers"
                 subtitle={
@@ -930,7 +950,12 @@ const DockerDashboard: React.FC = () => {
             <FrostedCard>
               <ResourceCardHeader
                 icon={
-                  <Icon icon="mdi:layers" width={28} height={28} color={theme.palette.primary.main} />
+                  <Icon
+                    icon="mdi:layers"
+                    width={28}
+                    height={28}
+                    color={theme.palette.primary.main}
+                  />
                 }
                 title="Images"
                 subtitle={

@@ -185,8 +185,22 @@ const ComposeOperationDialog: React.FC<ComposeOperationDialogProps> = ({
           }}
         >
           {isRunning && <LinearProgress sx={{ width: 100 }} />}
-          {success && <Icon icon="mdi:check-circle" width={24} height={24} color={theme.palette.success.main} />}
-          {error && <Icon icon="mdi:alert-circle" width={24} height={24} color={theme.palette.error.main} />}
+          {success && (
+            <Icon
+              icon="mdi:check-circle"
+              width={24}
+              height={24}
+              color={theme.palette.success.main}
+            />
+          )}
+          {error && (
+            <Icon
+              icon="mdi:alert-circle"
+              width={24}
+              height={24}
+              color={theme.palette.error.main}
+            />
+          )}
           <Typography variant="h6">
             {getActionLabel()} Stack: {projectName}
           </Typography>

@@ -59,7 +59,8 @@ const getIconForType = (filename?: string): string => {
     return "mdi:file-code";
 
   // Text
-  if (["txt", "md", "markdown", "log"].includes(ext)) return "mdi:file-document-outline";
+  if (["txt", "md", "markdown", "log"].includes(ext))
+    return "mdi:file-document-outline";
 
   // Video
   if (["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"].includes(ext))
@@ -190,7 +191,13 @@ const FileIcon = React.memo(
             transition: "opacity 120ms ease",
           }}
         >
-          <Icon icon={iconName} width={size} height={size} color={iconColor} style={{ flexShrink: 0 }} />
+          <Icon
+            icon={iconName}
+            width={size}
+            height={size}
+            color={iconColor}
+            style={{ flexShrink: 0 }}
+          />
         </span>
       );
     }
@@ -206,7 +213,13 @@ const FileIcon = React.memo(
           transition: "opacity 120ms ease",
         }}
       >
-        <Icon icon={iconName} width={size} height={size} color={iconColor} style={{ flexShrink: 0 }} />
+        <Icon
+          icon={iconName}
+          width={size}
+          height={size}
+          color={iconColor}
+          style={{ flexShrink: 0 }}
+        />
         <Icon
           icon="mdi:link"
           width={size * 0.35}

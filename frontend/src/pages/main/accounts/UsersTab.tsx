@@ -317,7 +317,11 @@ const UsersTab: React.FC<UsersTabProps> = ({
                           size="small"
                           onClick={() => handleChangePassword(user)}
                         >
-                          <Icon icon="mdi:form-textbox-password" width={20} height={20} />
+                          <Icon
+                            icon="mdi:form-textbox-password"
+                            width={20}
+                            height={20}
+                          />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title={user.isLocked ? "Unlock" : "Lock"}>

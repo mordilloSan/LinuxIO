@@ -107,7 +107,11 @@ export default function CollapsibleCard<T extends Record<string, any>>({
               setOpen((o) => !o);
             }}
           >
-            {open ? <Icon icon="mdi:chevron-up" width={24} height={24} /> : <Icon icon="mdi:chevron-down" width={24} height={24} />}
+            {open ? (
+              <Icon icon="mdi:chevron-up" width={24} height={24} />
+            ) : (
+              <Icon icon="mdi:chevron-down" width={24} height={24} />
+            )}
           </IconButton>
         </CardContent>
 

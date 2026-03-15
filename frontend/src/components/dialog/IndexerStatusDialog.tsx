@@ -80,8 +80,22 @@ const IndexerStatusDialog: React.FC<IndexerStatusDialogProps> = ({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           {isRunning && <LinearProgress sx={{ width: 100 }} />}
-          {!isRunning && success && <Icon icon="mdi:check-circle" width={24} height={24} color={theme.palette.success.main} />}
-          {!isRunning && error && <Icon icon="mdi:alert-circle" width={24} height={24} color={theme.palette.error.main} />}
+          {!isRunning && success && (
+            <Icon
+              icon="mdi:check-circle"
+              width={24}
+              height={24}
+              color={theme.palette.success.main}
+            />
+          )}
+          {!isRunning && error && (
+            <Icon
+              icon="mdi:alert-circle"
+              width={24}
+              height={24}
+              color={theme.palette.error.main}
+            />
+          )}
           <Typography variant="h6">{title}</Typography>
         </div>
         <IconButton onClick={onClose} size="small">

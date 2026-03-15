@@ -80,7 +80,9 @@ const Updates: React.FC = () => {
                   <Button
                     variant="contained"
                     size="small"
-                    startIcon={<Icon icon="mdi:refresh" width={20} height={20} />}
+                    startIcon={
+                      <Icon icon="mdi:refresh" width={20} height={20} />
+                    }
                     disabled={!!updatingPackage || isLoading}
                     onClick={() => updateAll(updates.map((u) => u.package_id))}
                   >
