@@ -43,6 +43,7 @@
     "sonner": "^2.0.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@iconify-json/bi": "^1.2.7",
     "@iconify-json/eos-icons": "^1.2.3",
     "@iconify-json/la": "^1.2.1",
@@ -58,9 +59,9 @@
     "@typescript-eslint/parser": "^8.57.0",
     "@vitejs/plugin-react": "^6.0.0",
     "babel-plugin-react-compiler": "^1.0.0",
-    "eslint": "^9.39.4",
+    "eslint": "^10.0.0",
     "eslint-config-prettier": "^10.1.2",
-    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-import-x": "^4.16.2",
     "eslint-plugin-prettier": "^5.4.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-compiler": "^19.1.0-rc.2",
@@ -74,6 +75,15 @@
     "vite-plugin-compression2": "^2.5.1"
   },
   "overrides": {
-    "zod-validation-error": "^4.0.2"
+    "zod-validation-error": "^4.0.2",
+    "eslint-plugin-react": {
+      "eslint": ">=9"
+    },
+    "eslint-plugin-react-hooks": {
+      "eslint": ">=9"
+    },
+    "@tanstack/eslint-plugin-query": {
+      "eslint": ">=9"
+    }
   }
 }

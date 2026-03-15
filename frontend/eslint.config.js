@@ -6,7 +6,7 @@ import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 import prettier from "eslint-plugin-prettier";
 import prettierConfig from "eslint-config-prettier";
-import importPlugin from "eslint-plugin-import";
+import importPlugin from "eslint-plugin-import-x";
 import unusedImports from "eslint-plugin-unused-imports";
 import globals from "globals";
 import tanstackQuery from "@tanstack/eslint-plugin-query";
@@ -57,12 +57,13 @@ export default [
       react,
       "react-hooks": reactHooks,
       "react-compiler": reactCompiler,
-      import: importPlugin,
+      "import-x": importPlugin,
       "unused-imports": unusedImports,
     },
     settings: {
       react: {
-        version: "detect",
+        // workaround: hardcoded until eslint-plugin-react supports eslint 10+
+        version: "19.2",
       },
     },
     rules: {
@@ -86,7 +87,7 @@ export default [
         },
       ],
 
-      "import/order": [
+      "import-x/order": [
         "warn",
         {
           groups: [
