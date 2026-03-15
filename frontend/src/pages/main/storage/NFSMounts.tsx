@@ -2,7 +2,6 @@ import {
   Alert,
   Autocomplete,
   Button,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -28,6 +27,7 @@ import React, {
 import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
+import Chip from "@/components/ui/AppChip";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable, {
@@ -702,12 +702,13 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
                       marginBottom: 4,
                     }}
                   >
-                    <Chip label={mount.fsType} size="small" />
+                    <Chip label={mount.fsType} size="small" variant="soft" />
                     {mount.options?.slice(0, 2).map((opt, i) => (
                       <Chip
                         key={`${mount.mountpoint}-${i}`}
                         label={opt}
                         size="small"
+                        variant="soft"
                       />
                     ))}
                   </div>
@@ -816,7 +817,7 @@ const NFSMounts: React.FC<NFSMountsProps> = ({
               >
                 {mount.options && mount.options.length > 0 ? (
                   mount.options.map((opt, i) => (
-                    <Chip key={i} label={opt} size="small" />
+                    <Chip key={i} label={opt} size="small" variant="soft" />
                   ))
                 ) : (
                   <Typography variant="body2" color="text.secondary">

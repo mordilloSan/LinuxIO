@@ -1,10 +1,10 @@
 import { Icon } from "@iconify/react";
-import { Chip, Divider, IconButton, Tooltip, Typography } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Divider, IconButton, Tooltip, Typography } from "@mui/material";
 import React from "react";
 
 import type { ComposeProject } from "./ComposeList";
 
+import Chip from "@/components/ui/AppChip";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import { getComposeStatusColor } from "@/constants/statusColors";
@@ -65,14 +65,11 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
         <Chip
           label={project.status}
           size="small"
+          color={statusColor}
+          variant="soft"
           sx={{
             textTransform: "capitalize",
             fontSize: "0.65rem",
-            fontWeight: 500,
-            color: statusColor,
-            bgcolor: alpha(statusColor, 0.14),
-            border: `1px solid ${alpha(statusColor, 0.45)}`,
-            borderRadius: "999px",
             "& .MuiChip-label": { px: 1.5 },
           }}
         />
@@ -123,7 +120,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
             <Chip
               label="Managed by LinuxIO"
               size="small"
-              variant="outlined"
+              variant="soft"
               onClick={
                 onPreview && project.config_files.length > 0
                   ? () => onPreview(project.name, project.config_files[0])

@@ -1,6 +1,5 @@
 import {
   CardContent,
-  Chip,
   CircularProgress,
   Collapse,
   Grid,
@@ -13,6 +12,7 @@ import { toast } from "sonner";
 
 import { linuxio, CACHE_TTL_MS } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import Chip from "@/components/ui/AppChip";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { Update } from "@/types/update";
 import { getMutationErrorMessage } from "@/utils/mutations";

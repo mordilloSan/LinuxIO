@@ -3,7 +3,6 @@ import {
   Grid,
   TableCell,
   TextField,
-  Chip,
   Typography,
   Checkbox,
   Button,
@@ -20,6 +19,7 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -100,7 +100,7 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
           }}
         >
           {volumeNames.map((name) => (
-            <Chip key={name} label={name} size="small" sx={{ mr: 1, mb: 1 }} />
+            <Chip key={name} label={name} size="small" variant="soft" sx={{ mr: 1, mb: 1 }} />
           ))}
         </div>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
@@ -300,6 +300,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
                     <Chip
                       label={volume.Driver}
                       size="small"
+                      variant="soft"
                       sx={{ fontSize: "0.75rem" }}
                     />
                   </div>
@@ -326,11 +327,13 @@ const VolumeList: React.FC<VolumeListProps> = ({
                     <Chip
                       label={`Scope: ${volume.Scope || "local"}`}
                       size="small"
+                      variant="soft"
                     />
                     {volume.CreatedAt && (
                       <Chip
                         label={new Date(volume.CreatedAt).toLocaleDateString()}
                         size="small"
+                        variant="soft"
                       />
                     )}
                   </div>
@@ -387,6 +390,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
                 <Chip
                   label={volume.Driver}
                   size="small"
+                  variant="soft"
                   sx={{ fontSize: "0.75rem" }}
                 />
               </TableCell>
@@ -456,6 +460,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
+                      variant="soft"
                       sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                     />
                   ))
@@ -476,6 +481,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
+                      variant="soft"
                       sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                     />
                   ))

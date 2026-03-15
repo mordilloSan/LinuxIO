@@ -1,5 +1,4 @@
 import {
-  Chip,
   Collapse,
   Divider,
   Switch,
@@ -22,6 +21,7 @@ import ActionButton from "../../pages/main/docker/ActionButton";
 import ComponentLoader from "../loaders/ComponentLoader";
 
 import { linuxio } from "@/api";
+import Chip from "@/components/ui/AppChip";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
@@ -330,7 +330,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 <Chip
                   label="Managed by LinuxIO"
                   size="small"
-                  variant="outlined"
+                  variant="soft"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleLogsClick();
@@ -517,6 +517,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                 key={i}
                 label={label}
                 size="small"
+                variant="soft"
                 sx={{ fontFamily: "monospace", fontSize: "0.7rem", height: 22 }}
               />
             );

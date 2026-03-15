@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import {
   Alert,
   Autocomplete,
-  Chip,
   FormControl,
   FormControlLabel,
   IconButton,
@@ -27,6 +26,7 @@ import React, {
 } from "react";
 
 import { useStreamMux, openGeneralLogsStream, decodeString } from "@/api";
+import Chip from "@/components/ui/AppChip";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
@@ -441,18 +441,8 @@ const GeneralLogsPage: React.FC = () => {
             label={getPriorityLabel(log.priority)}
             size="small"
             color={getPriorityColor(log.priority) as any}
-            sx={{
-              fontWeight: 600,
-              fontSize: "0.7rem",
-            }}
-          />
-        </TableCell>
-        <TableCell sx={{ width: "1%" }}>
-          <Chip
-            label={log.identifier}
-            size="small"
-            variant="outlined"
-            sx={{ fontSize: "0.75rem" }}
+            variant="soft"
+            sx={{ fontSize: "0.7rem" }}
           />
         </TableCell>
         <TableCell sx={{ width: "1%" }}>
@@ -460,19 +450,23 @@ const GeneralLogsPage: React.FC = () => {
             variant="body2"
             sx={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}
           >
+            {log.identifier}
+          </Typography>
+        </TableCell>
+        <TableCell sx={{ width: "1%" }}>
+          <Typography
+            variant="body2"
+            sx={{ fontSize: "0.83rem", whiteSpace: "nowrap" }}
+          >
             {log.timestamp}
           </Typography>
         </TableCell>
         <TableCell sx={{ maxWidth: 0 }}>
           <Typography
             variant="body2"
-            sx={{
-              fontFamily: "monospace",
-              fontSize: "0.85rem",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
+            color="text.secondary"
+            noWrap
+            sx={{ fontSize: "0.75rem" }}
           >
             {log.message}
           </Typography>

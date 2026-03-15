@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Chip,
   Table,
   TableBody,
   TableCell,
@@ -14,6 +13,7 @@ import { linuxio } from "@/api";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppChip from "@/components/ui/AppChip";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
@@ -76,11 +76,12 @@ const UpdateHistory: React.FC = () => {
               minWidth: { xs: 112, sm: 148 },
             }}
           >
-            <Chip
+            <AppChip
               label={row.upgrades.length}
               size="small"
               color="success"
-              sx={{ minWidth: 40 }}
+              variant="soft"
+              style={{ minWidth: 40 }}
             />
           </TableCell>
         </>

@@ -3,7 +3,6 @@ import {
   Grid,
   TableCell,
   TextField,
-  Chip,
   Typography,
   Checkbox,
   Button,
@@ -20,6 +19,7 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -123,6 +123,7 @@ const DeleteImageDialog: React.FC<DeleteImageDialogProps> = ({
               key={`${tag}-${idx}`}
               label={tag}
               size="small"
+              variant="soft"
               sx={{ mr: 1, mb: 1 }}
             />
           ))}
@@ -340,6 +341,7 @@ const ImageList: React.FC<ImageListProps> = ({
                     <Chip
                       label={image.tag}
                       size="small"
+                      variant="soft"
                       sx={{ fontSize: "0.75rem" }}
                     />
                   </div>
@@ -378,6 +380,7 @@ const ImageList: React.FC<ImageListProps> = ({
                     <Chip
                       label={`Used by ${image.containers}`}
                       size="small"
+                      variant="soft"
                       color={image.containers > 0 ? "success" : "default"}
                     />
                   </div>
@@ -449,6 +452,7 @@ const ImageList: React.FC<ImageListProps> = ({
                 <Chip
                   label={image.tag}
                   size="small"
+                  variant="soft"
                   sx={{ fontSize: "0.75rem" }}
                 />
               </TableCell>
@@ -481,6 +485,7 @@ const ImageList: React.FC<ImageListProps> = ({
                 <Chip
                   label={image.containers}
                   size="small"
+                  variant="soft"
                   color={image.containers > 0 ? "success" : "default"}
                   sx={{ minWidth: 40 }}
                 />
@@ -521,6 +526,7 @@ const ImageList: React.FC<ImageListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
+                      variant="soft"
                       sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                     />
                   ))

@@ -5,7 +5,6 @@ import {
   DialogActions,
   TextField,
   Autocomplete,
-  Chip,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,6 +17,7 @@ import {
   type ModifyGroupMembersRequest,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import Chip from "@/components/ui/AppChip";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditGroupMembersDialogProps {
@@ -111,7 +111,7 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
                 const itemProps = getItemProps({ index });
                 const { key, ...chipProps } = itemProps;
                 return (
-                  <Chip key={key} label={option} size="small" {...chipProps} />
+                  <Chip key={key} label={option} size="small" variant="soft" {...chipProps} />
                 );
               })
             }

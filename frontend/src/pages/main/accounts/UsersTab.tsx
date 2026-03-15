@@ -3,7 +3,6 @@ import {
   Grid,
   TableCell,
   TextField,
-  Chip,
   Typography,
   Checkbox,
   Button,
@@ -21,6 +20,7 @@ import EditUserDialog from "./components/EditUserDialog";
 
 import { linuxio, type AccountUser } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -354,10 +354,10 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     }}
                   >
                     {user.username === currentUser?.name && (
-                      <Chip label="Your account" size="small" color="primary" />
+                      <Chip label="Your account" size="small" color="primary" variant="soft" />
                     )}
                     {user.isLocked && (
-                      <Chip label="Locked" size="small" color="warning" />
+                      <Chip label="Locked" size="small" color="warning" variant="soft" />
                     )}
                   </div>
 
@@ -394,7 +394,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         key={`${user.username}-${group}`}
                         label={idx === 0 ? `${group} (primary)` : group}
                         size="small"
-                        variant={idx === 0 ? "filled" : "outlined"}
+                        variant="soft"
                         sx={{ fontSize: "0.7rem" }}
                       />
                     ))}
@@ -457,6 +457,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       label="Your account"
                       size="small"
                       color="primary"
+                      variant="soft"
                       sx={{ fontSize: "0.65rem", height: 20 }}
                     />
                   )}
@@ -465,6 +466,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       label="locked"
                       size="small"
                       color="warning"
+                      variant="soft"
                       sx={{ fontSize: "0.65rem", height: 20 }}
                     />
                   )}
@@ -509,7 +511,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                             : group
                         }
                         size="small"
-                        variant={idx === 0 ? "filled" : "outlined"}
+                        variant="soft"
                         sx={{ fontSize: "0.65rem", height: 20 }}
                       />
                     ))}
@@ -517,7 +519,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     <Chip
                       label={`+${getAllGroups(user).length - 3}`}
                       size="small"
-                      variant="outlined"
+                      variant="soft"
                       sx={{ fontSize: "0.65rem", height: 20 }}
                     />
                   )}
@@ -617,7 +619,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     key={group}
                     label={idx === 0 ? `${group} (primary)` : group}
                     size="small"
-                    variant={idx === 0 ? "filled" : "outlined"}
+                    variant="soft"
                     sx={{ mr: 1, mb: 1 }}
                   />
                 ))}

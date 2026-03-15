@@ -5,7 +5,6 @@ import {
   Typography,
   IconButton,
   Divider,
-  Chip,
   List,
   ListItem,
   ListItemText,
@@ -16,6 +15,7 @@ import React from "react";
 
 import linuxio from "@/api/react-query";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import Chip from "@/components/ui/AppChip";
 
 interface ModuleDetailsDrawerProps {
   open: boolean;
@@ -108,20 +108,21 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                             label="System Module"
                             size="small"
                             color="primary"
+                            variant="soft"
                           />
                         )}
                         {module.isSymlink && (
                           <Chip
                             label="Symlink"
                             size="small"
-                            variant="outlined"
+                            variant="soft"
                           />
                         )}
                         {!module.isSystem && !module.isSymlink && (
                           <Chip
                             label="User Module"
                             size="small"
-                            variant="outlined"
+                            variant="soft"
                           />
                         )}
                       </Box>
@@ -139,7 +140,7 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                 </Typography>
                 <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
                   {module.handlers.map((handler) => (
-                    <Chip key={handler} label={handler} size="small" />
+                    <Chip key={handler} label={handler} size="small" variant="soft" />
                   ))}
                 </Box>
               </Box>
@@ -157,6 +158,7 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                       key={perm}
                       label={perm}
                       size="small"
+                      variant="soft"
                       color="warning"
                     />
                   ))}

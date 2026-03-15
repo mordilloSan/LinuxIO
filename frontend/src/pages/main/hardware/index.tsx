@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Chip,
   Collapse,
   Grid,
   IconButton,
@@ -12,6 +11,7 @@ import React, { useCallback, useMemo } from "react";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import Chip from "@/components/ui/AppChip";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import MetricBar from "@/components/gauge/MetricBar";
 import UnifiedCollapsibleTable, {
@@ -291,7 +291,7 @@ const SensorGroupCard: React.FC<{ group: SensorGroup }> = ({ group }) => {
               size="small"
               label={`${r.value} ${r.unit}`}
               color={unitChipColor(r.unit)}
-              variant="outlined"
+              variant="soft"
               sx={{ height: 20, fontSize: "0.65rem" }}
             />
           </div>
@@ -573,7 +573,7 @@ const HardwarePage: React.FC = () => {
                     size="small"
                     label={mod.state}
                     color={mod.state === "Present" ? "success" : "default"}
-                    variant="outlined"
+                    variant="soft"
                     sx={{ height: 22, fontSize: "0.75rem" }}
                   />
                 </TableCell>
@@ -656,13 +656,13 @@ const HardwarePage: React.FC = () => {
                     size="small"
                     label={`${sensorSummary.adapters} Adapter${sensorSummary.adapters !== 1 ? "s" : ""}`}
                     color="primary"
-                    variant="outlined"
+                    variant="soft"
                   />
                   <Chip
                     size="small"
                     label={`${sensorSummary.readings} Reading${sensorSummary.readings !== 1 ? "s" : ""}`}
                     color="default"
-                    variant="outlined"
+                    variant="soft"
                   />
                   {sensorSummary.maxTemp != null && (
                     <Chip
@@ -675,7 +675,7 @@ const HardwarePage: React.FC = () => {
                             ? "warning"
                             : "success"
                       }
-                      variant="outlined"
+                      variant="soft"
                     />
                   )}
                 </FrostedCard>

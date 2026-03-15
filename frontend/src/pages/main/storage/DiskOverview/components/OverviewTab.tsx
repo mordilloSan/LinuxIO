@@ -1,6 +1,7 @@
-import { Chip, Typography } from "@mui/material";
+import { Typography } from "@mui/material";
 import React from "react";
 
+import Chip from "@/components/ui/AppChip";
 import type { DriveInfo } from "../types";
 import { formatDataUnits, formatPowerOnTime } from "../utils";
 
@@ -234,7 +235,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                 label={`State ${power.currentState}`}
                 size="small"
                 color="primary"
-                variant="outlined"
+                variant="soft"
               />
               <Typography variant="body2" color="text.secondary">
                 ~{power.estimatedW.toFixed(2)}W

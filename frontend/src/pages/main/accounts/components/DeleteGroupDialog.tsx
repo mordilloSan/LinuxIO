@@ -1,6 +1,5 @@
 import {
   Button,
-  Chip,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -13,6 +12,7 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import Chip from "@/components/ui/AppChip";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface DeleteGroupDialogProps {
@@ -71,7 +71,7 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
           }}
         >
           {groupNames.map((name) => (
-            <Chip key={name} label={name} size="small" sx={{ mr: 1, mb: 1 }} />
+            <Chip key={name} label={name} size="small" variant="soft" sx={{ mr: 1, mb: 1 }} />
           ))}
         </div>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>

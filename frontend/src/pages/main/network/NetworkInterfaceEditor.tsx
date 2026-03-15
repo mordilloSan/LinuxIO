@@ -1,7 +1,6 @@
 import {
   Button,
   Collapse,
-  Chip,
   FormControlLabel,
   Switch,
   TextField,
@@ -17,6 +16,7 @@ import { toast } from "sonner";
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
 
 import { linuxio } from "@/api";
+import Chip from "@/components/ui/AppChip";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 /* ================= helpers ================= */
@@ -373,6 +373,7 @@ const NetworkInterfaceEditor: React.FC<Props> = ({
           <Chip
             size="small"
             color="primary"
+            variant="soft"
             label={
               iface.ipv4_method === "manual"
                 ? "static IP"

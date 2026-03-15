@@ -5,7 +5,6 @@ import {
   AccordionSummary,
   Alert,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -38,6 +37,7 @@ import {
   type PhysicalVolume,
   type VolumeGroup,
 } from "@/api";
+import Chip from "@/components/ui/AppChip";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -399,7 +399,7 @@ const PVTable: React.FC<{ data: PhysicalVolume[] }> = ({ data }) => (
               <TableCell>{formatFileSize(pv.size)}</TableCell>
               <TableCell>{formatFileSize(pv.free)}</TableCell>
               <TableCell>
-                <Chip label={pv.format} size="small" />
+                <Chip label={pv.format} size="small" variant="soft" />
               </TableCell>
             </TableRow>
           ))
@@ -501,7 +501,7 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                     {lv.mountpoint}
                   </Typography>
                 ) : (
-                  <Chip label="Not mounted" size="small" variant="outlined" />
+                  <Chip label="Not mounted" size="small" variant="soft" />
                 )}
               </TableCell>
               <TableCell>

@@ -1,9 +1,10 @@
-import { Chip, TableCell } from "@mui/material";
+import { TableCell } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { UnitTableView, statusDot } from "./UnitViews";
 
+import Chip from "@/components/ui/AppChip";
 import type { Socket } from "@/api";
 
 interface SocketTableViewProps {
@@ -127,7 +128,7 @@ const SocketTableView: React.FC<SocketTableViewProps> = ({
                           key={addr}
                           label={addr}
                           size="small"
-                          variant="outlined"
+                          variant="soft"
                         />
                       ))
                     : "—"}

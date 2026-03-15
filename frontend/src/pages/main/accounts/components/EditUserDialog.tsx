@@ -5,7 +5,6 @@ import {
   DialogActions,
   TextField,
   Autocomplete,
-  Chip,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,6 +13,7 @@ import { toast } from "sonner";
 
 import { linuxio, type AccountUser, type ModifyUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import Chip from "@/components/ui/AppChip";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface EditUserDialogProps {
@@ -146,7 +146,7 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
                 const itemProps = getItemProps({ index });
                 const { key, ...chipProps } = itemProps;
                 return (
-                  <Chip key={key} label={option} size="small" {...chipProps} />
+                  <Chip key={key} label={option} size="small" variant="soft" {...chipProps} />
                 );
               })
             }

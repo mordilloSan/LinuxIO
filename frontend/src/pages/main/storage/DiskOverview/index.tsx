@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Button,
-  Chip,
   Collapse,
   Divider,
   Fade,
@@ -47,6 +46,7 @@ import {
   type ApiDisk,
   type NFSMount,
 } from "@/api";
+import Chip from "@/components/ui/AppChip";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -157,13 +157,13 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
             marginBottom: 16,
           }}
         >
-          <Chip label={filesystem.fstype.toUpperCase()} size="small" />
+          <Chip label={filesystem.fstype.toUpperCase()} size="small" variant="soft" />
           {filesystem.readOnly && (
-            <Chip label="Read-only" size="small" color="warning" />
+            <Chip label="Read-only" size="small" color="warning" variant="soft" />
           )}
-          {nfsMount && <Chip label="NFS mount" size="small" color="info" />}
+          {nfsMount && <Chip label="NFS mount" size="small" color="info" variant="soft" />}
           {isSystemMount && (
-            <Chip label="System mount" size="small" color="default" />
+            <Chip label="System mount" size="small" color="default" variant="soft" />
           )}
         </div>
 
@@ -926,12 +926,12 @@ const DiskOverview: React.FC = () => {
                             label={formatFileSize(drive.sizeBytes)}
                             size="small"
                             color="primary"
-                            variant="outlined"
+                            variant="soft"
                           />
                           <Chip
                             label={drive.transport.toUpperCase()}
                             size="small"
-                            variant="outlined"
+                            variant="soft"
                           />
                           {drive.smart?.smart_status && (
                             <Chip
@@ -944,7 +944,7 @@ const DiskOverview: React.FC = () => {
                               }
                               size="small"
                               color={getHealthColor(drive.smart)}
-                              variant="filled"
+                              variant="soft"
                             />
                           )}
                         </div>

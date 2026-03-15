@@ -3,7 +3,6 @@ import {
   Grid,
   TableCell,
   TextField,
-  Chip,
   Typography,
   Checkbox,
   Button,
@@ -18,6 +17,7 @@ import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
 import { linuxio, type AccountGroup } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -223,9 +223,9 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     }}
                   >
                     {group.isSystem && (
-                      <Chip label="System" size="small" variant="outlined" />
+                      <Chip label="System" size="small" variant="soft" />
                     )}
-                    <Chip label={`GID: ${group.gid}`} size="small" />
+                    <Chip label={`GID: ${group.gid}`} size="small" variant="soft" />
                   </div>
 
                   <Typography variant="caption" color="text.secondary">
@@ -245,6 +245,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                           key={`${group.name}-${member}`}
                           label={member}
                           size="small"
+                          variant="soft"
                           sx={{ fontSize: "0.7rem" }}
                         />
                       ))
@@ -302,7 +303,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     <Chip
                       label="system"
                       size="small"
-                      variant="outlined"
+                      variant="soft"
                       sx={{ fontSize: "0.65rem", height: 20 }}
                     />
                   )}
@@ -323,6 +324,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                           key={member}
                           label={member}
                           size="small"
+                          variant="soft"
                           sx={{ fontSize: "0.7rem" }}
                         />
                       ))
@@ -335,7 +337,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     <Chip
                       label={`+${group.members.length - 3}`}
                       size="small"
-                      variant="outlined"
+                      variant="soft"
                       sx={{ fontSize: "0.7rem" }}
                     />
                   )}
@@ -379,6 +381,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       key={member}
                       label={member}
                       size="small"
+                      variant="soft"
                       sx={{ mr: 1, mb: 1 }}
                     />
                   ))

@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   Button,
-  Chip,
   Collapse,
   Divider,
   Grid,
@@ -19,6 +18,7 @@ import "./docker-dashboard.css";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import Chip from "@/components/ui/AppChip";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import { useConfigValue } from "@/hooks/useConfig";
@@ -26,52 +26,19 @@ import { formatFileSize } from "@/utils/formaters";
 
 // ─── small helpers ────────────────────────────────────────────────────────────
 
-const stateChipSx = (color: string) => ({
-  bgcolor: `${color}22`,
-  color,
-  borderColor: `${color}55`,
-  border: "1px solid",
-  fontWeight: 600,
-});
-
 const StateChip: React.FC<{ state: string; status: string }> = ({
   state,
   status,
 }) => {
-  const theme = useTheme();
   if (status.toLowerCase().includes("unhealthy"))
-    return (
-      <Chip
-        size="small"
-        label="Unhealthy"
-        sx={stateChipSx(theme.palette.warning.main)}
-      />
-    );
+    return <Chip size="small" label="Unhealthy" color="warning" variant="soft" />;
   if (status.toLowerCase().includes("healthy"))
-    return (
-      <Chip
-        size="small"
-        label="Healthy"
-        sx={stateChipSx(theme.palette.success.main)}
-      />
-    );
+    return <Chip size="small" label="Healthy" color="success" variant="soft" />;
   if (state === "running")
-    return (
-      <Chip
-        size="small"
-        label="Running"
-        sx={stateChipSx(theme.palette.success.main)}
-      />
-    );
+    return <Chip size="small" label="Running" color="success" variant="soft" />;
   if (state === "exited" || state === "dead")
-    return (
-      <Chip
-        size="small"
-        label="Stopped"
-        sx={stateChipSx(theme.palette.error.main)}
-      />
-    );
-  return <Chip size="small" label={state} />;
+    return <Chip size="small" label="Stopped" color="error" variant="soft" />;
+  return <Chip size="small" label={state} variant="soft" />;
 };
 
 const InfoRow: React.FC<{ label: string; value: React.ReactNode }> = ({
@@ -1065,7 +1032,8 @@ const DockerDashboard: React.FC = () => {
                               <Chip
                                 size="small"
                                 label="In Use"
-                                sx={stateChipSx(theme.palette.success.main)}
+                                color="success"
+                                variant="soft"
                               />
                             )}
                           </div>

@@ -2,7 +2,6 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
 import {
-  Chip,
   Collapse,
   IconButton,
   Switch,
@@ -22,6 +21,7 @@ import React, { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import ActionButton from "./ActionButton";
+import Chip from "@/components/ui/AppChip";
 
 import "@/components/cards/frosted-card.css";
 
@@ -511,7 +511,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 <Chip
                   label="Managed by LinuxIO"
                   size="small"
-                  variant="outlined"
+                  variant="soft"
                   onClick={() => {
                     setHasLoadedLogs(true);
                     setLogDialogOpen(true);

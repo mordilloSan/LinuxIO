@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Chip,
   Grid,
   IconButton,
   Table,
@@ -14,11 +13,11 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import React, { useCallback, useState } from "react";
 
 import ComposeStackCard from "./ComposeStackCard";
 
+import Chip from "@/components/ui/AppChip";
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
@@ -141,18 +140,13 @@ const ComposeList: React.FC<ComposeListProps> = ({
               <Chip
                 label={project.status}
                 size="small"
+                color={statusColor}
+                variant="soft"
                 sx={{
                   display: { xs: "none", sm: "inline-flex" },
                   textTransform: "capitalize",
                   fontSize: "0.68rem",
-                  fontWeight: 500,
-                  color: statusColor,
-                  bgcolor: alpha(statusColor, 0.14),
-                  border: `1px solid ${alpha(statusColor, 0.45)}`,
-                  borderRadius: "999px",
-                  "& .MuiChip-label": {
-                    px: 3,
-                  },
+                  "& .MuiChip-label": { px: 3 },
                 }}
               />
             </div>
@@ -220,7 +214,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                   <Chip
                     label="Managed by LinuxIO"
                     size="small"
-                    variant="outlined"
+                    variant="soft"
                     onClick={
                       onPreview && project.config_files.length > 0
                         ? () => onPreview(project.name, project.config_files[0])
@@ -383,6 +377,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       color={
                         service.state === "running" ? "success" : "default"
                       }
+                      variant="soft"
                       sx={{ textTransform: "capitalize" }}
                     />
                   </TableCell>

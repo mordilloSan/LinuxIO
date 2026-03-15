@@ -7,7 +7,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Chip,
   Typography,
   Checkbox,
   Button,
@@ -31,6 +30,7 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
@@ -226,7 +226,7 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
           }}
         >
           {networkNames.map((name) => (
-            <Chip key={name} label={name} size="small" sx={{ mr: 1, mb: 1 }} />
+            <Chip key={name} label={name} size="small" variant="soft" sx={{ mr: 1, mb: 1 }} />
           ))}
         </div>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
@@ -436,6 +436,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                     <Chip
                       label={network.Driver}
                       size="small"
+                      variant="soft"
                       sx={{ fontSize: "0.75rem" }}
                     />
                   </div>
@@ -447,18 +448,21 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       gap: theme.spacing(0.75),
                     }}
                   >
-                    <Chip label={`Scope: ${network.Scope}`} size="small" />
+                    <Chip label={`Scope: ${network.Scope}`} size="small" variant="outlined" />
                     <Chip
                       label={`Internal: ${network.Internal ? "Yes" : "No"}`}
                       size="small"
+                      variant="outlined"
                     />
                     <Chip
                       label={`IPv4: ${network.EnableIPv4 !== false ? "Yes" : "No"}`}
                       size="small"
+                      variant="outlined"
                     />
                     <Chip
                       label={`IPv6: ${network.EnableIPv6 ? "Yes" : "No"}`}
                       size="small"
+                      variant="outlined"
                     />
                   </div>
 
@@ -488,6 +492,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                           key={`${network.Id}-ipam-${i}`}
                           label={ipam.Subnet}
                           size="small"
+                          variant="soft"
                           sx={wrappableChipStyles}
                         />
                       ))
@@ -550,6 +555,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 <Chip
                   label={network.Driver}
                   size="small"
+                  variant="soft"
                   sx={{ fontSize: "0.75rem" }}
                 />
               </TableCell>
@@ -562,6 +568,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 <Chip
                   label={network.Internal ? "Yes" : "No"}
                   size="small"
+                  variant="soft"
                   color={network.Internal ? "warning" : "default"}
                 />
               </TableCell>
@@ -569,6 +576,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 <Chip
                   label={network.EnableIPv4 !== false ? "Yes" : "No"}
                   size="small"
+                  variant="soft"
                   color={network.EnableIPv4 !== false ? "success" : "default"}
                 />
               </TableCell>
@@ -576,6 +584,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                 <Chip
                   label={network.EnableIPv6 ? "Yes" : "No"}
                   size="small"
+                  variant="soft"
                   color={network.EnableIPv6 ? "success" : "default"}
                 />
               </TableCell>
@@ -626,6 +635,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       key={i}
                       label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
                       size="small"
+                      variant="soft"
                       sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                     />
                   ))
@@ -652,6 +662,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
+                      variant="soft"
                       sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                     />
                   ))
@@ -678,6 +689,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       key={key}
                       label={`${key}: ${val}`}
                       size="small"
+                      variant="soft"
                       sx={{ mr: 1, mb: 1, ...wrappableChipStyles }}
                     />
                   ))

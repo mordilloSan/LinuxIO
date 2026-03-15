@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
   CardContent,
-  Chip,
   Dialog,
   DialogContent,
   Grid,
@@ -16,6 +15,7 @@ import { toast } from "sonner";
 
 import { linuxio, type Peer } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
+import Chip from "@/components/ui/AppChip";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -240,7 +240,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                             size="small"
                             label={isOnline ? "Online" : "Offline"}
                             color={isOnline ? "success" : "default"}
-                            variant={isOnline ? "filled" : "outlined"}
+                            variant="soft"
                           />
                         </Tooltip>
                       </div>

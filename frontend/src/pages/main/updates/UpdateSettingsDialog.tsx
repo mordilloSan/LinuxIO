@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Chip,
   DialogContent,
   DialogTitle,
   IconButton,
@@ -11,6 +10,7 @@ import React from "react";
 
 import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
 
+import Chip from "@/components/ui/AppChip";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 
 interface UpdateSettingsDialogProps {
@@ -49,7 +49,7 @@ const UpdateSettingsDialog: React.FC<UpdateSettingsDialogProps> = ({
             <Chip
               size="small"
               label={settingsState.serverState.backend}
-              variant="outlined"
+              variant="soft"
             />
           ) : null}
           <IconButton
