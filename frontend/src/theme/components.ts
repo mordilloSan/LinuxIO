@@ -1,4 +1,4 @@
-import { Theme } from "@mui/material/styles";
+import { alpha, Theme } from "@mui/material/styles";
 
 // === Helpers ===
 
@@ -20,6 +20,26 @@ const transitionStyles = (theme: Theme) => ({
     },
   ),
 });
+
+const getChipColor = (theme: Theme, color?: string) => {
+  switch (color) {
+    case "primary":
+      return theme.palette.primary.main;
+    case "secondary":
+      return theme.palette.secondary.main;
+    case "success":
+      return theme.palette.success.main;
+    case "error":
+      return theme.palette.error.main;
+    case "warning":
+      return theme.palette.warning.main;
+    case "info":
+      return theme.palette.info.main;
+    case "default":
+    default:
+      return theme.palette.text.secondary;
+  }
+};
 
 // === Components ===
 
@@ -154,9 +174,34 @@ const components = {
   },
   MuiChip: {
     styleOverrides: {
-      root: { borderRadius: "6px" },
+      root: (params: {
+        theme: Theme;
+        ownerState: { color?: string; variant?: string; disabled?: boolean };
+      }) => {
+        const { theme, ownerState } = params;
+        const isFilled = (ownerState.variant ?? "filled") === "filled";
+        const chipColor = getChipColor(theme, ownerState.color);
+
+        return {
+          borderRadius: "999px",
+          fontWeight: 500,
+          boxSizing: "border-box",
+          ...(isFilled &&
+            !ownerState.disabled && {
+              color: chipColor,
+              backgroundColor: alpha(
+                chipColor,
+                theme.palette.mode === "dark" ? 0.2 : 0.14,
+              ),
+              border: `1px solid ${alpha(
+                chipColor,
+                theme.palette.mode === "dark" ? 0.42 : 0.28,
+              )}`,
+            }),
+        };
+      },
       filled: {
-        textShadow: "0 1px 1px rgba(0, 0, 0, 0.2)",
+        textShadow: "none",
       },
     },
   },
