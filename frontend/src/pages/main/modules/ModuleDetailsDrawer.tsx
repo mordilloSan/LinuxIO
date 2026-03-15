@@ -1,4 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
+import { Icon } from "@iconify/react";
 import {
   Drawer,
   Box,
@@ -43,7 +43,7 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
           <Typography variant="h5">Module Details</Typography>
           <IconButton onClick={onClose}>
-            <CloseIcon />
+            <Icon icon="mdi:close" width={20} height={20} />
           </IconButton>
         </Box>
 

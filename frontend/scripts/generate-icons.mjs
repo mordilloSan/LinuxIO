@@ -1,113 +1,228 @@
 /**
- * Extracts only the specific Iconify icons used in this app and writes them
- * to src/lib/icons.ts so they are bundled at build time — no CDN calls needed.
+ * Scans the frontend source tree for Iconify ids and emits only the icon
+ * collections actually referenced by the app.
  *
- * Run: node scripts/generate-icons.mjs
- * Called automatically by the build and analyze npm scripts.
+ * Run manually with: node scripts/generate-icons.mjs
+ * Vite also calls this automatically before serving or building.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { resolve, dirname } from "path";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { dirname, extname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const frontendDir = resolve(__dirname, "..");
+const sourceDir = resolve(frontendDir, "src");
+const outputPath = resolve(frontendDir, "src/lib/icons.ts");
 
-function loadIconSet(name) {
-  const jsonPath = resolve(
-    frontendDir,
-    `node_modules/@iconify-json/${name}/icons.json`,
+const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
+const ICON_PATTERN = /\b([a-z0-9-]+):([a-z0-9-]+)\b/g;
+
+// Add icon ids here when they are composed dynamically and cannot be discovered
+// from string literals in the source tree.
+const EXTRA_ICONS = {};
+
+function walkFiles(dir) {
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((left, right) =>
+    left.name.localeCompare(right.name),
   );
-  return JSON.parse(readFileSync(jsonPath, "utf-8"));
+
+  const files = [];
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...walkFiles(fullPath));
+      continue;
+    }
+
+    if (!SOURCE_EXTENSIONS.has(extname(entry.name))) {
+      continue;
+    }
+
+    files.push(fullPath);
+  }
+
+  return files;
+}
+
+function readIconifyPackageNames() {
+  const packageJson = JSON.parse(
+    readFileSync(resolve(frontendDir, "package.json"), "utf-8"),
+  );
+
+  const dependencyGroups = [
+    packageJson.dependencies ?? {},
+    packageJson.devDependencies ?? {},
+  ];
+
+  const packages = new Set();
+
+  for (const group of dependencyGroups) {
+    for (const packageName of Object.keys(group)) {
+      if (packageName.startsWith("@iconify-json/")) {
+        packages.add(packageName.replace("@iconify-json/", ""));
+      }
+    }
+  }
+
+  return [...packages].sort();
+}
+
+function loadCollections() {
+  const collections = new Map();
+
+  for (const packageName of readIconifyPackageNames()) {
+    const jsonPath = resolve(
+      frontendDir,
+      `node_modules/@iconify-json/${packageName}/icons.json`,
+    );
+    const data = JSON.parse(readFileSync(jsonPath, "utf-8"));
+    collections.set(data.prefix, data);
+  }
+
+  return collections;
+}
+
+function collectRequestedIcons(availablePrefixes) {
+  const requested = new Map(
+    [...availablePrefixes].map((prefix) => [prefix, new Set()]),
+  );
+
+  for (const filePath of walkFiles(sourceDir)) {
+    if (filePath === outputPath) {
+      continue;
+    }
+
+    const source = readFileSync(filePath, "utf-8");
+
+    for (const match of source.matchAll(ICON_PATTERN)) {
+      const [, prefix, name] = match;
+
+      if (!availablePrefixes.has(prefix)) {
+        continue;
+      }
+
+      requested.get(prefix).add(name);
+    }
+  }
+
+  for (const [prefix, names] of Object.entries(EXTRA_ICONS)) {
+    if (!requested.has(prefix)) {
+      requested.set(prefix, new Set());
+    }
+
+    for (const name of names) {
+      requested.get(prefix).add(name);
+    }
+  }
+
+  return requested;
 }
 
 function extractIcons(data, names) {
-  const result = {};
+  const icons = {};
+  const missing = [];
+
   for (const name of names) {
     const icon = data.icons[name];
-    if (icon) {
-      result[name] = icon;
-    } else {
-      console.warn(`    Icon not found: ${data.prefix}:${name}`);
+
+    if (!icon) {
+      missing.push(`${data.prefix}:${name}`);
+      continue;
     }
+
+    icons[name] = icon;
   }
-  return result;
+
+  return { icons, missing };
 }
 
-// Every Iconify icon string used in the app (excluding dynamic ones like
-// simple-icons:${platform} which can't be known at build time).
-const ICONS = {
-  mdi: [
-    "ethernet",
-    "docker",
-    "harddisk",
-    "harddisk-plus",
-    "pencil",
-    "play",
-    "stop",
-    "restart",
-    "delete",
-    "delete-outline",
-    "file-document-outline",
-    "console",
-    "text-box-outline",
-    "wifi",
-    "alert",
-    "alert-circle",
-    "bell",
-    "check-circle",
-    "chevron-left",
-    "chevron-right",
-    "close",
-    "close-circle",
-    "cog",
-    "download",
-    "folder-sync",
-    "information",
-    "lan-connect",
-    "loading",
-    "magnify",
-    "memory",
-    "menu",
-    "moon-waning-crescent",
-    "network",
-    "brush",
-    "power",
-    "refresh",
-    "thermometer",
-    "upload",
-    "weather-sunny",
-  ],
-  ph: ["cpu"],
-  la: ["memory"],
-  bi: ["motherboard", "gpu-card"],
-};
+function buildOutput(collections, requestedIcons) {
+  const sections = [];
+  const missingIcons = [];
+  let totalIcons = 0;
 
-let output = `// Auto-generated by scripts/generate-icons.mjs — do not edit manually.
-// Re-generated automatically on every build via the prebuild npm script.
-// Only the specific icons used by the app are included — no full icon sets.
-import { addCollection } from "@iconify/react";
+  for (const prefix of [...requestedIcons.keys()].sort()) {
+    const names = [...requestedIcons.get(prefix)].sort();
 
-`;
+    if (names.length === 0) {
+      continue;
+    }
 
-for (const [prefix, names] of Object.entries(ICONS)) {
-  console.log(`Processing ${prefix}: ${names.join(", ")}`);
-  const data = loadIconSet(prefix);
-  const icons = extractIcons(data, names);
-  const count = Object.keys(icons).length;
+    const collection = collections.get(prefix);
+    if (!collection) {
+      missingIcons.push(...names.map((name) => `${prefix}:${name}`));
+      continue;
+    }
 
-  output += `// ${prefix} — ${count} icon${count !== 1 ? "s" : ""}
+    const { icons, missing } = extractIcons(collection, names);
+    const count = Object.keys(icons).length;
+
+    if (count === 0) {
+      missingIcons.push(...missing);
+      continue;
+    }
+
+    totalIcons += count;
+    missingIcons.push(...missing);
+
+    sections.push(`// ${prefix} - ${count} icon${count !== 1 ? "s" : ""}
 addCollection({
   prefix: ${JSON.stringify(prefix)},
-  width: ${data.width ?? 24},
-  height: ${data.height ?? 24},
+  width: ${collection.width ?? 24},
+  height: ${collection.height ?? 24},
   icons: ${JSON.stringify(icons, null, 2)},
-});
+});`);
+  }
 
-`;
+  const header = [
+    "// Auto-generated by scripts/generate-icons.mjs - do not edit manually.",
+    "// Generated from Iconify ids found in src/**/*.{ts,tsx,js,jsx} plus EXTRA_ICONS.",
+  ];
+
+  const body = [];
+
+  if (sections.length > 0) {
+    body.push('import { addCollection } from "@iconify/react";', "");
+    body.push(sections.join("\n\n"));
+  }
+
+  const output = `${header.join("\n")}\n${body.length > 0 ? `\n${body.join("\n")}\n` : "\n"}`;
+
+  return {
+    output,
+    totalIcons,
+    missingIcons,
+    collectionCount: sections.length,
+  };
 }
 
-mkdirSync(resolve(frontendDir, "src/lib"), { recursive: true });
-const outPath = resolve(frontendDir, "src/lib/icons.ts");
-writeFileSync(outPath, output);
-console.log(` Icon bundle written to src/lib/icons.ts`);
+export function generateIcons() {
+  const collections = loadCollections();
+  const requestedIcons = collectRequestedIcons(new Set(collections.keys()));
+  const { output, totalIcons, missingIcons, collectionCount } = buildOutput(
+    collections,
+    requestedIcons,
+  );
+
+  mkdirSync(resolve(frontendDir, "src/lib"), { recursive: true });
+  writeFileSync(outputPath, output);
+
+  console.log(
+    `[icons] Generated ${totalIcons} icon${totalIcons !== 1 ? "s" : ""} from ${collectionCount} collection${collectionCount !== 1 ? "s" : ""}.`,
+  );
+
+  if (missingIcons.length > 0) {
+    console.warn(
+      `[icons] Skipped missing icons: ${missingIcons.sort().join(", ")}`,
+    );
+  }
+}
+
+const executedPath = process.argv[1] && resolve(process.argv[1]);
+
+if (executedPath === fileURLToPath(import.meta.url)) {
+  generateIcons();
+}

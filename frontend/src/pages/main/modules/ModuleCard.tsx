@@ -1,6 +1,4 @@
 import { Icon } from "@iconify/react";
-import DeleteIcon from "@mui/icons-material/Delete";
-import InfoIcon from "@mui/icons-material/Info";
 import {
   Grid,
   Typography,
@@ -143,7 +141,7 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
           <div style={{ display: "flex", gap: 4, marginTop: "auto" }}>
             <Tooltip title="View Details">
               <IconButton size="small" onClick={onViewDetails}>
-                <InfoIcon />
+                <Icon icon="mdi:information" width={20} height={20} />
               </IconButton>
             </Tooltip>
             <Tooltip title="Uninstall">
@@ -152,7 +150,7 @@ const ModuleCard: React.FC<ModuleCardProps> = ({
                 color="error"
                 onClick={() => setUninstallDialogOpen(true)}
               >
-                <DeleteIcon />
+                <Icon icon="mdi:delete" width={20} height={20} />
               </IconButton>
             </Tooltip>
           </div>

@@ -6,6 +6,9 @@ import { compression } from 'vite-plugin-compression2';
 import { analyzer } from 'vite-bundle-analyzer';
 
 export default defineConfig(async ({ command }) => {
+  const { generateIcons } = await import("./scripts/generate-icons.mjs");
+  generateIcons();
+
   const isBuild = command === "build";
   const shouldAnalyze = isBuild && process.env.BUNDLE_ANALYZE === "true";
 
