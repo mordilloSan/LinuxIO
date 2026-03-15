@@ -30,7 +30,16 @@ const UpdateHistory: React.FC = () => {
 
   const columns: UnifiedTableColumn[] = [
     { field: "date", headerName: "Date", align: "left" },
-    { field: "packages", headerName: "Packages Updated", align: "center" },
+    {
+      field: "packages",
+      headerName: "Packages Updated",
+      align: "center",
+      sx: {
+        width: { xs: 112, sm: 148 },
+        minWidth: { xs: 112, sm: 148 },
+        whiteSpace: "nowrap",
+      },
+    },
   ];
 
   return (
@@ -60,7 +69,13 @@ const UpdateHistory: React.FC = () => {
               {row.date}
             </Typography>
           </TableCell>
-          <TableCell align="center">
+          <TableCell
+            align="center"
+            sx={{
+              width: { xs: 112, sm: 148 },
+              minWidth: { xs: 112, sm: 148 },
+            }}
+          >
             <Chip
               label={row.upgrades.length}
               size="small"
@@ -94,7 +109,7 @@ const UpdateHistory: React.FC = () => {
                         width: "20%",
                         padding: "8px 12px",
                         color: "text.secondary",
-                        fontFamily: "monospace",
+                        fontFamily: theme.typography.fontFamily,
                         fontSize: "0.85rem",
                         ...responsiveTextStyles,
                       }}
