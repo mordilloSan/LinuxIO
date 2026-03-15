@@ -1,6 +1,4 @@
-import DownloadIcon from "@mui/icons-material/Download";
-import FileCopyIcon from "@mui/icons-material/FileCopy";
-import SearchIcon from "@mui/icons-material/Search";
+import { Icon } from "@iconify/react";
 import { IconButton, TextField, Tooltip } from "@mui/material";
 import React, { useState, useMemo } from "react";
 
@@ -66,7 +64,7 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       onClose={onClose}
       titleContent={
         <>
-          <SearchIcon fontSize="small" />
+          <Icon icon="mdi:magnify" width={20} height={20} />
           <TextField
             variant="standard"
             placeholder="Search logs…"
@@ -81,12 +79,12 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
         <>
           <Tooltip title="Copy logs">
             <IconButton onClick={handleCopy} size="small">
-              <FileCopyIcon fontSize="small" />
+              <Icon icon="mdi:content-copy" width={20} height={20} />
             </IconButton>
           </Tooltip>
           <Tooltip title="Download logs">
             <IconButton onClick={handleDownload} size="small">
-              <DownloadIcon fontSize="small" />
+              <Icon icon="mdi:download" width={20} height={20} />
             </IconButton>
           </Tooltip>
         </>

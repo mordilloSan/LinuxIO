@@ -1,8 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import LockIcon from "@mui/icons-material/Lock";
-import LockOpenIcon from "@mui/icons-material/LockOpen";
-import PasswordIcon from "@mui/icons-material/Password";
+import { Icon } from "@iconify/react";
 import {
   Grid,
   TableCell,
@@ -266,7 +262,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
             variant="contained"
             color="error"
             size="small"
-            startIcon={<DeleteIcon />}
+            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})
@@ -313,7 +309,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                           onClick={() => handleEditUser(user)}
                           disabled={user.username === "root"}
                         >
-                          <EditIcon fontSize="small" />
+                          <Icon icon="mdi:pencil" width={20} height={20} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Change Password">
@@ -321,7 +317,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                           size="small"
                           onClick={() => handleChangePassword(user)}
                         >
-                          <PasswordIcon fontSize="small" />
+                          <Icon icon="mdi:form-textbox-password" width={20} height={20} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title={user.isLocked ? "Unlock" : "Lock"}>
@@ -336,9 +332,9 @@ const UsersTab: React.FC<UsersTabProps> = ({
                           }
                         >
                           {user.isLocked ? (
-                            <LockOpenIcon fontSize="small" />
+                            <Icon icon="mdi:lock-open" width={20} height={20} />
                           ) : (
-                            <LockIcon fontSize="small" />
+                            <Icon icon="mdi:lock" width={20} height={20} />
                           )}
                         </IconButton>
                       </Tooltip>

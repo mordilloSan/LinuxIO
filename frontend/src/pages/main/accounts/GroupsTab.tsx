@@ -1,5 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
+import { Icon } from "@iconify/react";
 import {
   Grid,
   TableCell,
@@ -167,7 +166,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
             variant="contained"
             color="error"
             size="small"
-            startIcon={<DeleteIcon />}
+            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})
@@ -210,7 +209,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                         onClick={() => handleEditMembers(group)}
                         disabled={group.name === "root"}
                       >
-                        <EditIcon fontSize="small" />
+                        <Icon icon="mdi:pencil" width={20} height={20} />
                       </IconButton>
                     </Tooltip>
                   </div>
@@ -359,7 +358,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       }}
                       disabled={group.name === "root"}
                     >
-                      <EditIcon fontSize="small" />
+                      <Icon icon="mdi:pencil" width={20} height={20} />
                     </IconButton>
                   </Tooltip>
                 </div>

@@ -12,7 +12,7 @@ import {
   rectSortingStrategy,
   SortableContext,
 } from "@dnd-kit/sortable";
-import { DragIndicator, Settings } from "@mui/icons-material";
+import { Icon } from "@iconify/react";
 import {
   Checkbox,
   FormControlLabel,
@@ -142,7 +142,7 @@ const Dashboard: React.FC = () => {
             onClick={(e) => setAnchorEl(e.currentTarget)}
             size="small"
           >
-            <Settings />
+            <Icon icon="mdi:cog" width={20} height={20} />
           </IconButton>
         </Tooltip>
         <Tooltip title={editMode ? "Lock layout" : "Edit layout"}>
@@ -151,7 +151,7 @@ const Dashboard: React.FC = () => {
             color={editMode ? "primary" : "default"}
             size="small"
           >
-            <DragIndicator />
+            <Icon icon="mdi:drag" width={20} height={20} />
           </IconButton>
         </Tooltip>
       </div>

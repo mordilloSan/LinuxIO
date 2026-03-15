@@ -1,4 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
+import { Icon } from "@iconify/react";
 import {
   Grid,
   TableCell,
@@ -257,7 +257,7 @@ const VolumeList: React.FC<VolumeListProps> = ({
             variant="contained"
             color="error"
             size="small"
-            startIcon={<DeleteIcon />}
+            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})

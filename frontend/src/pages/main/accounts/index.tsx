@@ -1,8 +1,4 @@
-import {
-  Add as AddIcon,
-  GridView as GridViewIcon,
-  TableRows as TableRowsIcon,
-} from "@mui/icons-material";
+import { Icon } from "@iconify/react";
 import { Button, IconButton, Tooltip } from "@mui/material";
 import React, { useState } from "react";
 
@@ -52,9 +48,9 @@ const AccountsPage: React.FC = () => {
                   }
                 >
                   {usersView === "table" ? (
-                    <GridViewIcon fontSize="small" />
+                    <Icon icon="mdi:view-grid" width={20} height={20} />
                   ) : (
-                    <TableRowsIcon fontSize="small" />
+                    <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
                 </IconButton>
               </Tooltip>
@@ -63,7 +59,7 @@ const AccountsPage: React.FC = () => {
                   variant="contained"
                   size="small"
                   onClick={createUserHandler}
-                  startIcon={<AddIcon />}
+                  startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                 >
                   Add User
                 </Button>
@@ -98,9 +94,9 @@ const AccountsPage: React.FC = () => {
                   }
                 >
                   {groupsView === "table" ? (
-                    <GridViewIcon fontSize="small" />
+                    <Icon icon="mdi:view-grid" width={20} height={20} />
                   ) : (
-                    <TableRowsIcon fontSize="small" />
+                    <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
                 </IconButton>
               </Tooltip>
@@ -109,7 +105,7 @@ const AccountsPage: React.FC = () => {
                   variant="contained"
                   size="small"
                   onClick={createGroupHandler}
-                  startIcon={<AddIcon />}
+                  startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                 >
                   Add Group
                 </Button>

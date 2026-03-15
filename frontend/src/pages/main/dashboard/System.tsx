@@ -1,5 +1,4 @@
-import GppGoodOutlinedIcon from "@mui/icons-material/GppGoodOutlined";
-import SecurityUpdateWarningIcon from "@mui/icons-material/SecurityUpdateWarning";
+import { Icon } from "@iconify/react";
 import { Link, Typography, useTheme } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
@@ -55,11 +54,11 @@ const SystemHealth = () => {
   const distro = distroInfo?.platform || "Unknown";
 
   let statusColor = theme.palette.success.dark;
-  let IconComponent = GppGoodOutlinedIcon;
+  let iconName = "mdi:shield-check-outline";
   let iconLink = "/updates";
   if (totalPackages > 0) {
     statusColor = theme.palette.warning.main;
-    IconComponent = SecurityUpdateWarningIcon;
+    iconName = "mdi:shield-alert-outline";
   }
 
   const stats2 = (
@@ -73,7 +72,7 @@ const SystemHealth = () => {
           underline="hover"
           color="inherit"
         >
-          <IconComponent sx={{ fontSize: 100, color: statusColor }} />
+          <Icon icon={iconName} width={100} height={100} color={statusColor} />
         </Link>
       )}
     </div>

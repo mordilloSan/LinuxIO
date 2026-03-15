@@ -1,8 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import StopCircleIcon from "@mui/icons-material/StopCircle";
+import { Icon } from "@iconify/react";
 import { Chip, Divider, IconButton, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import React from "react";
@@ -156,7 +152,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                     }
                     disabled={isLoading}
                   >
-                    <EditIcon fontSize="small" />
+                    <Icon icon="mdi:pencil" width={20} height={20} />
                   </IconButton>
                 </Tooltip>
               )}
@@ -168,7 +164,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                       onClick={() => onRestart(project.name)}
                       disabled={isLoading}
                     >
-                      <RestartAltIcon fontSize="small" />
+                      <Icon icon="mdi:restart" width={20} height={20} />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Stop">
@@ -177,7 +173,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                       onClick={() => onStop(project.name)}
                       disabled={isLoading}
                     >
-                      <StopCircleIcon fontSize="small" />
+                      <Icon icon="mdi:stop-circle" width={20} height={20} />
                     </IconButton>
                   </Tooltip>
                 </>
@@ -188,7 +184,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                     onClick={() => onStart(project.name)}
                     disabled={isLoading}
                   >
-                    <PlayArrowIcon fontSize="small" />
+                    <Icon icon="mdi:play" width={20} height={20} />
                   </IconButton>
                 </Tooltip>
               )}
@@ -198,7 +194,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                   onClick={() => onDelete(project)}
                   disabled={isLoading}
                 >
-                  <DeleteIcon fontSize="small" />
+                  <Icon icon="mdi:delete" width={20} height={20} />
                 </IconButton>
               </Tooltip>
             </div>

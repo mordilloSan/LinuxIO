@@ -1,14 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  Build as BuildIcon,
-  ChevronRight as ChevronRightIcon,
-  Computer as ComputerIcon,
-  ExpandMore as ExpandMoreIcon,
-  Inventory2 as ContainersIcon,
-  Layers as ImagesIcon,
-  LocalOffer as TagIcon,
-} from "@mui/icons-material";
-import {
   Button,
   Chip,
   Collapse,
@@ -193,7 +184,7 @@ const ResourceCardHeader: React.FC<{
     </div>
     <Button
       size="small"
-      endIcon={<ChevronRightIcon />}
+      endIcon={<Icon icon="mdi:chevron-right" width={20} height={20} />}
       onClick={onViewAll}
       sx={{ flexShrink: 0 }}
     >
@@ -370,8 +361,11 @@ const DockerDashboard: React.FC = () => {
             pointerEvents: "none",
           }}
         >
-          <ExpandMoreIcon
-            sx={{
+          <Icon
+            icon="mdi:chevron-down"
+            width={24}
+            height={24}
+            style={{
               transition: "transform 0.2s",
               transform: sections.overview ? "rotate(0deg)" : "rotate(-90deg)",
             }}
@@ -493,8 +487,11 @@ const DockerDashboard: React.FC = () => {
             pointerEvents: "none",
           }}
         >
-          <ExpandMoreIcon
-            sx={{
+          <Icon
+            icon="mdi:chevron-down"
+            width={24}
+            height={24}
+            style={{
               transition: "transform 0.2s",
               transform: sections.daemon ? "rotate(0deg)" : "rotate(-90deg)",
             }}
@@ -676,7 +673,7 @@ const DockerDashboard: React.FC = () => {
                     title="Version"
                     subtitle="Engine & runtime versions"
                     icon={
-                      <TagIcon sx={{ color: "primary.main", fontSize: 28 }} />
+                      <Icon icon="mdi:tag" width={28} height={28} color={theme.palette.primary.main} />
                     }
                   >
                     <InfoRow label="Server" value={dockerInfo.server_version} />
@@ -692,9 +689,7 @@ const DockerDashboard: React.FC = () => {
                     title="System"
                     subtitle="Host machine information"
                     icon={
-                      <ComputerIcon
-                        sx={{ color: "primary.main", fontSize: 28 }}
-                      />
+                      <Icon icon="mdi:monitor" width={28} height={28} color={theme.palette.primary.main} />
                     }
                   >
                     <InfoRow label="Hostname" value={dockerInfo.name} />
@@ -716,7 +711,7 @@ const DockerDashboard: React.FC = () => {
                     title="Configuration"
                     subtitle="Storage & runtime settings"
                     icon={
-                      <BuildIcon sx={{ color: "primary.main", fontSize: 28 }} />
+                      <Icon icon="mdi:wrench" width={28} height={28} color={theme.palette.primary.main} />
                     }
                   >
                     <InfoRow
@@ -769,8 +764,11 @@ const DockerDashboard: React.FC = () => {
             pointerEvents: "none",
           }}
         >
-          <ExpandMoreIcon
-            sx={{
+          <Icon
+            icon="mdi:chevron-down"
+            width={24}
+            height={24}
+            style={{
               transition: "transform 0.2s",
               transform: sections.resources ? "rotate(0deg)" : "rotate(-90deg)",
             }}
@@ -784,9 +782,7 @@ const DockerDashboard: React.FC = () => {
             <FrostedCard>
               <ResourceCardHeader
                 icon={
-                  <ContainersIcon
-                    sx={{ color: "primary.main", fontSize: 28 }}
-                  />
+                  <Icon icon="mdi:cube-outline" width={28} height={28} color={theme.palette.primary.main} />
                 }
                 title="Containers"
                 subtitle={
@@ -934,7 +930,7 @@ const DockerDashboard: React.FC = () => {
             <FrostedCard>
               <ResourceCardHeader
                 icon={
-                  <ImagesIcon sx={{ color: "primary.main", fontSize: 28 }} />
+                  <Icon icon="mdi:layers" width={28} height={28} color={theme.palette.primary.main} />
                 }
                 title="Images"
                 subtitle={

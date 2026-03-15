@@ -1,12 +1,4 @@
-import {
-  Add as AddIcon,
-  CleaningServices as CleaningServicesIcon,
-  DragIndicator,
-  GridView as GridViewIcon,
-  PlayArrow as PlayArrowIcon,
-  Stop as StopIcon,
-  TableRows as TableRowsIcon,
-} from "@mui/icons-material";
+import { Icon } from "@iconify/react";
 import {
   Alert,
   AlertTitle,
@@ -193,7 +185,7 @@ const DockerPage: React.FC = () => {
                 <Button
                   size="small"
                   variant="outlined"
-                  startIcon={<PlayArrowIcon />}
+                  startIcon={<Icon icon="mdi:play" width={20} height={20} />}
                   disabled={isStartingAll || stoppedContainers.length === 0}
                   onClick={() => startAllStopped([])}
                 >
@@ -203,7 +195,7 @@ const DockerPage: React.FC = () => {
                   size="small"
                   variant="outlined"
                   color="warning"
-                  startIcon={<StopIcon />}
+                  startIcon={<Icon icon="mdi:stop" width={20} height={20} />}
                   disabled={isStoppingAll || runningContainers.length === 0}
                   onClick={() => stopAllRunning([])}
                 >
@@ -213,7 +205,7 @@ const DockerPage: React.FC = () => {
                   size="small"
                   variant="outlined"
                   color="error"
-                  startIcon={<CleaningServicesIcon />}
+                  startIcon={<Icon icon="mdi:broom" width={20} height={20} />}
                   disabled={isPruning}
                   onClick={() => setPruneDialogOpen(true)}
                 >
@@ -249,9 +241,9 @@ const DockerPage: React.FC = () => {
                     }
                   >
                     {containerView === "card" ? (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     ) : (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     )}
                   </IconButton>
                 </Tooltip>
@@ -263,7 +255,7 @@ const DockerPage: React.FC = () => {
                     color={containerEditMode ? "primary" : "default"}
                     size="small"
                   >
-                    <DragIndicator />
+                    <Icon icon="mdi:drag" width={20} height={20} />
                   </IconButton>
                 </Tooltip>
               </>
@@ -299,9 +291,9 @@ const DockerPage: React.FC = () => {
                     }
                   >
                     {stacksView === "table" ? (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     ) : (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
                   </IconButton>
                 </Tooltip>
@@ -332,7 +324,7 @@ const DockerPage: React.FC = () => {
                     variant="contained"
                     size="small"
                     onClick={createStackHandler}
-                    startIcon={<AddIcon />}
+                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                   >
                     Create Stack
                   </Button>
@@ -369,9 +361,9 @@ const DockerPage: React.FC = () => {
                     }
                   >
                     {networksView === "table" ? (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     ) : (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
                   </IconButton>
                 </Tooltip>
@@ -380,7 +372,7 @@ const DockerPage: React.FC = () => {
                     variant="contained"
                     size="small"
                     onClick={createNetworkHandler}
-                    startIcon={<AddIcon />}
+                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                   >
                     Add Network
                   </Button>
@@ -415,9 +407,9 @@ const DockerPage: React.FC = () => {
                     }
                   >
                     {volumesView === "table" ? (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     ) : (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
                   </IconButton>
                 </Tooltip>
@@ -426,7 +418,7 @@ const DockerPage: React.FC = () => {
                     variant="contained"
                     size="small"
                     onClick={createVolumeHandler}
-                    startIcon={<AddIcon />}
+                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                   >
                     Add Volume
                   </Button>
@@ -461,9 +453,9 @@ const DockerPage: React.FC = () => {
                     }
                   >
                     {imagesView === "table" ? (
-                      <GridViewIcon fontSize="small" />
+                      <Icon icon="mdi:view-grid" width={20} height={20} />
                     ) : (
-                      <TableRowsIcon fontSize="small" />
+                      <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
                   </IconButton>
                 </Tooltip>
@@ -472,7 +464,7 @@ const DockerPage: React.FC = () => {
                     variant="contained"
                     size="small"
                     onClick={createImageHandler}
-                    startIcon={<AddIcon />}
+                    startIcon={<Icon icon="mdi:plus" width={20} height={20} />}
                   >
                     Add Image
                   </Button>

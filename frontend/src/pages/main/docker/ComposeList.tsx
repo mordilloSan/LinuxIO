@@ -1,9 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import FolderOpenIcon from "@mui/icons-material/FolderOpen";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import StopCircleIcon from "@mui/icons-material/StopCircle";
+import { Icon } from "@iconify/react";
 import {
   Chip,
   Grid,
@@ -184,10 +179,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
           <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
             <Tooltip title={project.config_files.join(", ") || "Unknown"}>
               <div style={{ display: "flex", alignItems: "center" }}>
-                <FolderOpenIcon
-                  fontSize="small"
-                  sx={{ mr: 0.5, opacity: 0.7 }}
-                />
+                <Icon icon="mdi:folder-open" width={20} height={20} style={{ marginRight: 4, opacity: 0.7 }} />
                 <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
                   {project.config_files[0]?.split("/").pop() ||
                     "docker-compose.yml"}
@@ -252,7 +244,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         disabled={isLoading}
                         sx={{ p: { xs: 0.5, sm: 1 } }}
                       >
-                        <EditIcon fontSize="small" />
+                        <Icon icon="mdi:pencil" width={20} height={20} />
                       </IconButton>
                     </Tooltip>
                   )}
@@ -266,7 +258,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           disabled={isLoading}
                           sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <RestartAltIcon fontSize="small" />
+                          <Icon icon="mdi:restart" width={20} height={20} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Stop">
@@ -276,7 +268,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           disabled={isLoading}
                           sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <StopCircleIcon fontSize="small" />
+                          <Icon icon="mdi:stop-circle" width={20} height={20} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
@@ -286,7 +278,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           disabled={isLoading}
                           sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <DeleteIcon fontSize="small" />
+                          <Icon icon="mdi:delete" width={20} height={20} />
                         </IconButton>
                       </Tooltip>
                     </>
@@ -299,7 +291,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           disabled={isLoading}
                           sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <PlayArrowIcon fontSize="small" />
+                          <Icon icon="mdi:play" width={20} height={20} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
@@ -309,7 +301,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                           disabled={isLoading}
                           sx={{ p: { xs: 0.5, sm: 1 } }}
                         >
-                          <DeleteIcon fontSize="small" />
+                          <Icon icon="mdi:delete" width={20} height={20} />
                         </IconButton>
                       </Tooltip>
                     </>

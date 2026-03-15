@@ -1,5 +1,4 @@
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { Icon } from "@iconify/react";
 import {
   CardContent,
   Collapse,
@@ -108,7 +107,7 @@ export default function CollapsibleCard<T extends Record<string, any>>({
               setOpen((o) => !o);
             }}
           >
-            {open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            {open ? <Icon icon="mdi:chevron-up" width={24} height={24} /> : <Icon icon="mdi:chevron-down" width={24} height={24} />}
           </IconButton>
         </CardContent>
 

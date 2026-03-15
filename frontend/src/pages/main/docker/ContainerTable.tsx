@@ -1,7 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { Icon } from "@iconify/react";
 import {
   Chip,
   Collapse,
@@ -270,7 +269,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                 cursor: "grab",
               }}
             >
-              <DragIndicatorIcon fontSize="small" />
+              <Icon icon="mdi:drag" width={20} height={20} />
             </span>
           </TableCell>
         )}
@@ -629,8 +628,10 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   ports.length > 2 || mounts.length > 2 ? "visible" : "hidden",
               }}
             >
-              <ExpandMoreIcon
-                fontSize="small"
+              <Icon
+                icon="mdi:chevron-down"
+                width={20}
+                height={20}
                 style={{
                   transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
                   transition: "0.2s",

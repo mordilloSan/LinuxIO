@@ -1,4 +1,4 @@
-import DeleteIcon from "@mui/icons-material/Delete";
+import { Icon } from "@iconify/react";
 import {
   Grid,
   Table,
@@ -393,7 +393,7 @@ const NetworkList: React.FC<NetworkListProps> = ({
             variant="contained"
             color="error"
             size="small"
-            startIcon={<DeleteIcon />}
+            startIcon={<Icon icon="mdi:delete" width={20} height={20} />}
             onClick={() => setDeleteDialogOpen(true)}
           >
             Delete ({effectiveSelected.size})
