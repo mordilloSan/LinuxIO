@@ -17,10 +17,74 @@ const outputPath = resolve(frontendDir, "src/lib/icons.ts");
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
 const ICON_PATTERN = /\b([a-z0-9-]+):([a-z0-9-]+)\b/g;
+const INDENT = "  ";
+const IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 // Add icon ids here when they are composed dynamically and cannot be discovered
 // from string literals in the source tree.
 const EXTRA_ICONS = {};
+
+function formatKey(key) {
+  return IDENTIFIER_PATTERN.test(key) ? key : JSON.stringify(key);
+}
+
+function formatString(value) {
+  return `'${value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("'", "\\'")
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")}'`;
+}
+
+function formatValue(value, indentLevel = 0) {
+  if (typeof value === "string") {
+    return formatString(value);
+  }
+
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value === null
+  ) {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "[]";
+    }
+
+    const indent = INDENT.repeat(indentLevel);
+    const nextIndent = INDENT.repeat(indentLevel + 1);
+    const lines = ["["];
+
+    for (const item of value) {
+      lines.push(`${nextIndent}${formatValue(item, indentLevel + 1)},`);
+    }
+
+    lines.push(`${indent}]`);
+    return lines.join("\n");
+  }
+
+  const entries = Object.entries(value);
+
+  if (entries.length === 0) {
+    return "{}";
+  }
+
+  const indent = INDENT.repeat(indentLevel);
+  const nextIndent = INDENT.repeat(indentLevel + 1);
+  const lines = ["{"];
+
+  for (const [key, entryValue] of entries) {
+    lines.push(
+      `${nextIndent}${formatKey(key)}: ${formatValue(entryValue, indentLevel + 1)},`,
+    );
+  }
+
+  lines.push(`${indent}}`);
+  return lines.join("\n");
+}
 
 function walkFiles(dir) {
   const entries = readdirSync(dir, { withFileTypes: true }).sort((left, right) =>
@@ -173,7 +237,7 @@ addCollection({
   prefix: ${JSON.stringify(prefix)},
   width: ${collection.width ?? 24},
   height: ${collection.height ?? 24},
-  icons: ${JSON.stringify(icons, null, 2)},
+  icons: ${formatValue(icons, 1)},
 });`);
   }
 
