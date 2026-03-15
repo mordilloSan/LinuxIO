@@ -1,9 +1,10 @@
 import { Typography } from "@mui/material";
 import React from "react";
 
-import Chip from "@/components/ui/AppChip";
 import type { DriveInfo } from "../types";
 import { formatDataUnits, formatPowerOnTime } from "../utils";
+
+import Chip from "@/components/ui/AppChip";
 
 interface OverviewTabProps {
   drive: DriveInfo;

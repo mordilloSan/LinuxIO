@@ -112,11 +112,7 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                           />
                         )}
                         {module.isSymlink && (
-                          <Chip
-                            label="Symlink"
-                            size="small"
-                            variant="soft"
-                          />
+                          <Chip label="Symlink" size="small" variant="soft" />
                         )}
                         {!module.isSystem && !module.isSymlink && (
                           <Chip
@@ -140,7 +136,12 @@ const ModuleDetailsDrawer: React.FC<ModuleDetailsDrawerProps> = ({
                 </Typography>
                 <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
                   {module.handlers.map((handler) => (
-                    <Chip key={handler} label={handler} size="small" variant="soft" />
+                    <Chip
+                      key={handler}
+                      label={handler}
+                      size="small"
+                      variant="soft"
+                    />
                   ))}
                 </Box>
               </Box>

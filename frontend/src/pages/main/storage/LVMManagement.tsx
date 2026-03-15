@@ -37,8 +37,8 @@ import {
   type PhysicalVolume,
   type VolumeGroup,
 } from "@/api";
-import Chip from "@/components/ui/AppChip";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import Chip from "@/components/ui/AppChip";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 

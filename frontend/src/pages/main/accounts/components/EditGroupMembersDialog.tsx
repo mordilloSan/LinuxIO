@@ -111,7 +111,13 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
                 const itemProps = getItemProps({ index });
                 const { key, ...chipProps } = itemProps;
                 return (
-                  <Chip key={key} label={option} size="small" variant="soft" {...chipProps} />
+                  <Chip
+                    key={key}
+                    label={option}
+                    size="small"
+                    variant="soft"
+                    {...chipProps}
+                  />
                 );
               })
             }

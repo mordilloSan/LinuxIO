@@ -46,9 +46,9 @@ import {
   type ApiDisk,
   type NFSMount,
 } from "@/api";
-import Chip from "@/components/ui/AppChip";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import Chip from "@/components/ui/AppChip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { FilesystemInfo } from "@/types/fs";
@@ -157,13 +157,29 @@ const FilesystemCardDetails: React.FC<FilesystemCardDetailsProps> = ({
             marginBottom: 16,
           }}
         >
-          <Chip label={filesystem.fstype.toUpperCase()} size="small" variant="soft" />
+          <Chip
+            label={filesystem.fstype.toUpperCase()}
+            size="small"
+            variant="soft"
+          />
           {filesystem.readOnly && (
-            <Chip label="Read-only" size="small" color="warning" variant="soft" />
+            <Chip
+              label="Read-only"
+              size="small"
+              color="warning"
+              variant="soft"
+            />
           )}
-          {nfsMount && <Chip label="NFS mount" size="small" color="info" variant="soft" />}
+          {nfsMount && (
+            <Chip label="NFS mount" size="small" color="info" variant="soft" />
+          )}
           {isSystemMount && (
-            <Chip label="System mount" size="small" color="default" variant="soft" />
+            <Chip
+              label="System mount"
+              size="small"
+              color="default"
+              variant="soft"
+            />
           )}
         </div>
 

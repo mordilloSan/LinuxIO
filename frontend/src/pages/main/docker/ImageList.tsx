@@ -19,10 +19,10 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
-import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import Chip from "@/components/ui/AppChip";
 import {
   responsiveTextStyles,
   longTextStyles,

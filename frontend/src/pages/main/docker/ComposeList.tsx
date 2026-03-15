@@ -17,10 +17,10 @@ import React, { useCallback, useState } from "react";
 
 import ComposeStackCard from "./ComposeStackCard";
 
-import Chip from "@/components/ui/AppChip";
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
+import Chip from "@/components/ui/AppChip";
 import { getComposeStatusColor } from "@/constants/statusColors";
 
 interface ComposeService {

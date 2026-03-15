@@ -21,12 +21,11 @@ import React, { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import ActionButton from "./ActionButton";
-import Chip from "@/components/ui/AppChip";
-
 import "@/components/cards/frosted-card.css";
 
 import { linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
+import Chip from "@/components/ui/AppChip";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";

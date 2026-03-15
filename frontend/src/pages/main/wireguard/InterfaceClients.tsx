@@ -15,8 +15,8 @@ import { toast } from "sonner";
 
 import { linuxio, type Peer } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
-import Chip from "@/components/ui/AppChip";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import Chip from "@/components/ui/AppChip";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const wireguardToastMeta = {

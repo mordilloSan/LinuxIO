@@ -19,10 +19,10 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
-import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import Chip from "@/components/ui/AppChip";
 import {
   responsiveTextStyles,
   longTextStyles,
@@ -100,7 +100,13 @@ const DeleteVolumeDialog: React.FC<DeleteVolumeDialogProps> = ({
           }}
         >
           {volumeNames.map((name) => (
-            <Chip key={name} label={name} size="small" variant="soft" sx={{ mr: 1, mb: 1 }} />
+            <Chip
+              key={name}
+              label={name}
+              size="small"
+              variant="soft"
+              sx={{ mr: 1, mb: 1 }}
+            />
           ))}
         </div>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>

@@ -71,7 +71,13 @@ const DeleteGroupDialog: React.FC<DeleteGroupDialogProps> = ({
           }}
         >
           {groupNames.map((name) => (
-            <Chip key={name} label={name} size="small" variant="soft" sx={{ mr: 1, mb: 1 }} />
+            <Chip
+              key={name}
+              label={name}
+              size="small"
+              variant="soft"
+              sx={{ mr: 1, mb: 1 }}
+            />
           ))}
         </div>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>

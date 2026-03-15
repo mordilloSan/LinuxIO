@@ -17,10 +17,10 @@ import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
 
 import { linuxio, type AccountGroup } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
-import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import Chip from "@/components/ui/AppChip";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 interface GroupsTabProps {
@@ -225,7 +225,11 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     {group.isSystem && (
                       <Chip label="System" size="small" variant="soft" />
                     )}
-                    <Chip label={`GID: ${group.gid}`} size="small" variant="soft" />
+                    <Chip
+                      label={`GID: ${group.gid}`}
+                      size="small"
+                      variant="soft"
+                    />
                   </div>
 
                   <Typography variant="caption" color="text.secondary">

@@ -4,8 +4,8 @@ import React from "react";
 
 import { UnitTableView, statusDot } from "./UnitViews";
 
-import Chip from "@/components/ui/AppChip";
 import type { Socket } from "@/api";
+import Chip from "@/components/ui/AppChip";
 
 interface SocketTableViewProps {
   sockets: Socket[];

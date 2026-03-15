@@ -30,10 +30,10 @@ import { toast } from "sonner";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
-import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import Chip from "@/components/ui/AppChip";
 import {
   responsiveTextStyles,
   longTextStyles,
@@ -226,7 +226,13 @@ const DeleteNetworkDialog: React.FC<DeleteNetworkDialogProps> = ({
           }}
         >
           {networkNames.map((name) => (
-            <Chip key={name} label={name} size="small" variant="soft" sx={{ mr: 1, mb: 1 }} />
+            <Chip
+              key={name}
+              label={name}
+              size="small"
+              variant="soft"
+              sx={{ mr: 1, mb: 1 }}
+            />
           ))}
         </div>
         <DialogContentText sx={{ mt: 2, color: "warning.main" }}>
@@ -449,7 +455,11 @@ const NetworkList: React.FC<NetworkListProps> = ({
                       gap: theme.spacing(0.75),
                     }}
                   >
-                    <Chip label={`Scope: ${network.Scope}`} size="small" variant="soft" />
+                    <Chip
+                      label={`Scope: ${network.Scope}`}
+                      size="small"
+                      variant="soft"
+                    />
                     <Chip
                       label={`Internal: ${network.Internal ? "Yes" : "No"}`}
                       size="small"

@@ -21,10 +21,10 @@ import ActionButton from "../../pages/main/docker/ActionButton";
 import ComponentLoader from "../loaders/ComponentLoader";
 
 import { linuxio } from "@/api";
-import Chip from "@/components/ui/AppChip";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import Chip from "@/components/ui/AppChip";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";

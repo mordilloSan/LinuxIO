@@ -186,8 +186,7 @@ const applyStyleObject = (
     }
 
     if (key === "bgcolor") {
-      target.backgroundColor =
-        value as React.CSSProperties["backgroundColor"];
+      target.backgroundColor = value as React.CSSProperties["backgroundColor"];
       continue;
     }
 
@@ -358,7 +357,7 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
           {
             "--app-chip-color": isOutlined
               ? chipColor
-              : rootStyle.color ?? chipColor,
+              : (rootStyle.color ?? chipColor),
             "--app-chip-background":
               rootStyle.backgroundColor ??
               (isOutlined
@@ -417,7 +416,9 @@ const AppChip = React.forwardRef<HTMLSpanElement, AppChipProps>(
             className="app-chip__delete"
             onClick={handleDeleteClick}
             tabIndex={-1}
-            aria-label={typeof label === "string" ? `Remove ${label}` : "Remove"}
+            aria-label={
+              typeof label === "string" ? `Remove ${label}` : "Remove"
+            }
             disabled={disabled}
           >
             <Icon icon="mdi:close-circle" width={16} height={16} />

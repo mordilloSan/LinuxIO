@@ -3,9 +3,9 @@ import { useTheme } from "@mui/material/styles";
 import React from "react";
 
 import { linuxio } from "@/api";
-import Chip from "@/components/ui/AppChip";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
+import Chip from "@/components/ui/AppChip";
 import { formatGpuPercent, getGpuType, hasGpuValue } from "@/utils/gpu";
 
 const GpuInfo: React.FC = () => {

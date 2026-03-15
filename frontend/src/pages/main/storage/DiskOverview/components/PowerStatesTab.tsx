@@ -10,8 +10,9 @@ import {
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
-import Chip from "@/components/ui/AppChip";
 import type { PowerData } from "../types";
+
+import Chip from "@/components/ui/AppChip";
 
 interface PowerStatesTabProps {
   power: PowerData;
@@ -33,7 +34,11 @@ export const PowerStatesTab: React.FC<PowerStatesTabProps> = ({ power }) => {
             alignItems: "center",
           }}
         >
-          <Chip label={`Power State ${power.currentState}`} color="primary" variant="soft" />
+          <Chip
+            label={`Power State ${power.currentState}`}
+            color="primary"
+            variant="soft"
+          />
           <Typography variant="body2" color="text.secondary">
             Estimated Power: ~{power.estimatedW.toFixed(2)}W
           </Typography>

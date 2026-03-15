@@ -18,9 +18,9 @@ import "./docker-dashboard.css";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
-import Chip from "@/components/ui/AppChip";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
+import Chip from "@/components/ui/AppChip";
 import { useConfigValue } from "@/hooks/useConfig";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -31,7 +31,9 @@ const StateChip: React.FC<{ state: string; status: string }> = ({
   status,
 }) => {
   if (status.toLowerCase().includes("unhealthy"))
-    return <Chip size="small" label="Unhealthy" color="warning" variant="soft" />;
+    return (
+      <Chip size="small" label="Unhealthy" color="warning" variant="soft" />
+    );
   if (status.toLowerCase().includes("healthy"))
     return <Chip size="small" label="Healthy" color="success" variant="soft" />;
   if (state === "running")

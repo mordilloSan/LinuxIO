@@ -20,10 +20,10 @@ import EditUserDialog from "./components/EditUserDialog";
 
 import { linuxio, type AccountUser } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
-import Chip from "@/components/ui/AppChip";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import Chip from "@/components/ui/AppChip";
 import useAuth from "@/hooks/useAuth";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -354,10 +354,20 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     }}
                   >
                     {user.username === currentUser?.name && (
-                      <Chip label="Your account" size="small" color="primary" variant="soft" />
+                      <Chip
+                        label="Your account"
+                        size="small"
+                        color="primary"
+                        variant="soft"
+                      />
                     )}
                     {user.isLocked && (
-                      <Chip label="Locked" size="small" color="warning" variant="soft" />
+                      <Chip
+                        label="Locked"
+                        size="small"
+                        color="warning"
+                        variant="soft"
+                      />
                     )}
                   </div>
 

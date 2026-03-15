@@ -10,8 +10,8 @@ import React from "react";
 
 import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
 
-import Chip from "@/components/ui/AppChip";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import Chip from "@/components/ui/AppChip";
 
 interface UpdateSettingsDialogProps {
   open: boolean;

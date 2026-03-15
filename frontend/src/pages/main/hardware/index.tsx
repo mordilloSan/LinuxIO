@@ -11,12 +11,12 @@ import React, { useCallback, useMemo } from "react";
 
 import { linuxio } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
-import Chip from "@/components/ui/AppChip";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import MetricBar from "@/components/gauge/MetricBar";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import Chip from "@/components/ui/AppChip";
 import { useConfigValue } from "@/hooks/useConfig";
 import "@/theme/section.css";
 import GpuInfo from "@/pages/main/dashboard/Gpu";
