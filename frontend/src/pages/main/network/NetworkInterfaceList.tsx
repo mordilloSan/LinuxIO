@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Typography, Grid, Tooltip, Fade } from "@mui/material";
+import { Typography, Grid } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -11,6 +11,7 @@ import NetworkTrafficGraph from "./NetworkTrafficGraph";
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTooltip from "@/components/ui/AppTooltip";
 
 export type { NetworkInterface };
 
@@ -186,12 +187,9 @@ const NetworkInterfaceList = () => {
                     cursor: "pointer",
                   }}
                 >
-                  <Tooltip
+                  <AppTooltip
                     title={getStatusTooltip(iface.state)}
-                    placement="top"
                     arrow
-                    slots={{ transition: Fade }}
-                    slotProps={{ transition: { timeout: 300 } }}
                   >
                     <span
                       style={{
@@ -212,7 +210,7 @@ const NetworkInterfaceList = () => {
                                 : theme.palette.grey[500],
                       }}
                     />
-                  </Tooltip>
+                  </AppTooltip>
 
                   <div
                     style={{ display: "flex", alignItems: "flex-start" }}

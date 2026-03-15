@@ -3,13 +3,11 @@ import {
   Button,
   Collapse,
   Divider,
-  Fade,
   Grid,
   LinearProgress,
   Tab,
   Tabs,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -49,6 +47,7 @@ import {
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { FilesystemInfo } from "@/types/fs";
@@ -842,12 +841,9 @@ const DiskOverview: React.FC = () => {
                         onClick={() => handleToggle(drive.name)}
                       >
                         {drive.transport.toLowerCase() === "usb" ? (
-                          <Tooltip
+                          <AppTooltip
                             title="Create Bootable USB"
-                            placement="top"
                             arrow
-                            slots={{ transition: Fade }}
-                            slotProps={{ transition: { timeout: 300 } }}
                           >
                             <div
                               className="fc-opacity-hover"
@@ -868,14 +864,12 @@ const DiskOverview: React.FC = () => {
                                 color={theme.palette.text.secondary}
                               />
                             </div>
-                          </Tooltip>
+                          </AppTooltip>
                         ) : getTemperature(drive.smart) !== null ? (
-                          <Tooltip
+                          <AppTooltip
                             title="Drive Temperature"
                             placement="top"
                             arrow
-                            slots={{ transition: Fade }}
-                            slotProps={{ transition: { timeout: 300 } }}
                           >
                             <div
                               style={{
@@ -897,7 +891,7 @@ const DiskOverview: React.FC = () => {
                                 {getTemperature(drive.smart)}°C
                               </Typography>
                             </div>
-                          </Tooltip>
+                          </AppTooltip>
                         ) : null}
                         <div
                           style={{

@@ -4,7 +4,6 @@ import {
   ListItemIcon,
   Menu,
   MenuItem,
-  Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
@@ -18,6 +17,7 @@ import DashboardCard from "@/components/cards/DashboardCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import ErrorMessage from "@/components/errors/Error";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const LogsDialog = React.lazy(() => import("@/pages/main/docker/LogsDialog"));
@@ -265,7 +265,7 @@ const DockerInfo: React.FC = () => {
         );
 
         return (
-          <Tooltip
+          <AppTooltip
             key={c.Id}
             title={
               <div style={{ textAlign: "center" }}>
@@ -303,7 +303,7 @@ const DockerInfo: React.FC = () => {
                 }}
               />
             </div>
-          </Tooltip>
+          </AppTooltip>
         );
       })}
       <Menu

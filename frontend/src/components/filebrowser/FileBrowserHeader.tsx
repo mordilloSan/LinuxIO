@@ -5,7 +5,6 @@ import {
   Typography,
   useMediaQuery,
   useTheme,
-  Tooltip,
 } from "@mui/material";
 import React, { ReactNode, useCallback } from "react";
 
@@ -13,6 +12,7 @@ import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
 
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
 
@@ -144,35 +144,35 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
           >
             {showQuickSave && (
               <>
-                <Tooltip title="Close editor">
+                <AppTooltip title="Close editor">
                   <IconButton
                     onClick={onCloseEditor || (() => {})}
                     disabled={isSaving}
                   >
                     <Icon icon="mdi:close" width={22} height={22} />
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
 
-                <Tooltip title="Save changes">
+                <AppTooltip title="Save changes">
                   <IconButton
                     onClick={onSaveFile || (() => {})}
                     disabled={isSaving}
                   >
                     <Icon icon="mdi:content-save" width={22} height={22} />
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
               </>
             )}
 
             {!showQuickSave && (
               <>
-                <Tooltip title="Switch view">
+                <AppTooltip title="Switch view">
                   <IconButton onClick={onSwitchView} aria-label="Switch view">
                     {viewIcon}
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
 
-                <Tooltip
+                <AppTooltip
                   title={
                     showHiddenFiles ? "Hide hidden files" : "Show hidden files"
                   }
@@ -191,9 +191,9 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                       <Icon icon="mdi:eye-off" width={22} height={22} />
                     )}
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
 
-                <Tooltip
+                <AppTooltip
                   title={
                     isIndexing
                       ? "Indexing..."
@@ -227,7 +227,7 @@ const FileBrowserHeader: React.FC<FileBrowserHeaderProps> = ({
                       )}
                     </IconButton>
                   </span>
-                </Tooltip>
+                </AppTooltip>
               </>
             )}
           </div>

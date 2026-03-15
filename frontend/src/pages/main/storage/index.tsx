@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Button, IconButton, Tooltip } from "@mui/material";
+import { Button, IconButton } from "@mui/material";
 import React, { useState } from "react";
 
 import DiskOverview from "./DiskOverview";
@@ -7,6 +7,7 @@ import LVMManagement from "./LVMManagement";
 import NFSMounts from "./NFSMounts";
 
 import { TabContainer } from "@/components/tabbar";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
 const StoragePage: React.FC = () => {
@@ -60,7 +61,7 @@ const StoragePage: React.FC = () => {
           ),
           rightContent: (
             <>
-              <Tooltip
+              <AppTooltip
                 title={
                   nfsView === "table"
                     ? "Switch to card view"
@@ -79,7 +80,7 @@ const StoragePage: React.FC = () => {
                     <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
                 </IconButton>
-              </Tooltip>
+              </AppTooltip>
               {mountNFSHandler && (
                 <Button
                   variant="contained"

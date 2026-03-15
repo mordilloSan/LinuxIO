@@ -6,7 +6,6 @@ import {
   Select,
   MenuItem,
   SelectChangeEvent,
-  Tooltip,
   Menu,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -14,6 +13,7 @@ import React, { useState } from "react";
 
 import FrostedCard from "./RootCard";
 
+import AppTooltip from "@/components/ui/AppTooltip";
 import { cardHeight } from "@/constants";
 import {
   getAccentCardHoverStyles,
@@ -137,7 +137,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   };
 
   const statusDot = connectionStatus && (
-    <Tooltip
+    <AppTooltip
       title={connectionStatus === "online" ? "Connected" : "Disconnected"}
       arrow
     >
@@ -154,7 +154,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
           flexShrink: 0,
         }}
       />
-    </Tooltip>
+    </AppTooltip>
   );
 
   const renderSelect = selectOptions.length > 0 && (

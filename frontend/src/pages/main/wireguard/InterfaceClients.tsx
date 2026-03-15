@@ -5,7 +5,6 @@ import {
   DialogContent,
   Grid,
   IconButton,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -17,6 +16,7 @@ import { linuxio, type Peer } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 const wireguardToastMeta = {
@@ -229,7 +229,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                         <Typography variant="h6" sx={{ fontSize: "1.1rem" }}>
                           {peer.name || "Peer"}
                         </Typography>
-                        <Tooltip
+                        <AppTooltip
                           title={
                             isOnline
                               ? "Handshake < 3 minutes"
@@ -242,7 +242,7 @@ const InterfaceClients: React.FC<InterfaceDetailsProps> = ({ params }) => {
                             color={isOnline ? "success" : "default"}
                             variant="soft"
                           />
-                        </Tooltip>
+                        </AppTooltip>
                       </div>
                       <div style={{ display: "flex" }}>
                         <IconButton

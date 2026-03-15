@@ -1,6 +1,8 @@
-import { IconButton, Tooltip, useTheme } from "@mui/material";
+import { IconButton, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import React, { ReactNode } from "react";
+
+import AppTooltip from "@/components/ui/AppTooltip";
 
 interface QuickActionButtonProps {
   icon: ReactNode;
@@ -21,7 +23,7 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
   const isDark = theme.palette.mode === "dark";
 
   return (
-    <Tooltip title={label}>
+    <AppTooltip title={label}>
       <span>
         <IconButton
           className="quick-toggle action"
@@ -54,7 +56,7 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
           {icon}
         </IconButton>
       </span>
-    </Tooltip>
+    </AppTooltip>
   );
 };
 

@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
-import { IconButton, TextField, Tooltip } from "@mui/material";
+import { IconButton, TextField } from "@mui/material";
 import React, { useState, useMemo } from "react";
 
 import { openDockerLogsStream } from "@/api";
 import LogDialog from "@/components/dialog/LogDialog";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
 
 interface LogsDialogProps {
@@ -77,16 +78,16 @@ const LogsDialog: React.FC<LogsDialogProps> = ({
       }
       extraActions={
         <>
-          <Tooltip title="Copy logs">
+          <AppTooltip title="Copy logs">
             <IconButton onClick={handleCopy} size="small">
               <Icon icon="mdi:content-copy" width={20} height={20} />
             </IconButton>
-          </Tooltip>
-          <Tooltip title="Download logs">
+          </AppTooltip>
+          <AppTooltip title="Download logs">
             <IconButton onClick={handleDownload} size="small">
               <Icon icon="mdi:download" width={20} height={20} />
             </IconButton>
-          </Tooltip>
+          </AppTooltip>
         </>
       }
       logs={filtered}

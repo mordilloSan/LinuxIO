@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Button, IconButton, Tooltip } from "@mui/material";
+import { Button, IconButton } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 
@@ -9,6 +9,7 @@ import UpdateStatus from "./UpdateStatus";
 
 import { linuxio } from "@/api";
 import { TabContainer } from "@/components/tabbar";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { usePackageUpdater } from "@/hooks/usePackageUpdater";
 
 const Updates: React.FC = () => {
@@ -67,7 +68,7 @@ const Updates: React.FC = () => {
                   gap: theme.spacing(1),
                 }}
               >
-                <Tooltip title="Update settings">
+                <AppTooltip title="Update settings">
                   <IconButton
                     size="small"
                     aria-label="Open update settings"
@@ -75,7 +76,7 @@ const Updates: React.FC = () => {
                   >
                     <Icon icon="mdi:cog" width={20} height={20} />
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
                 {updates.length > 0 ? (
                   <Button
                     variant="contained"

@@ -23,7 +23,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -39,6 +38,7 @@ import {
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -528,12 +528,12 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                 )}
               </TableCell>
               <TableCell align="right">
-                <Tooltip title="Resize">
+                <AppTooltip title="Resize">
                   <IconButton size="small" onClick={() => onResize(lv)}>
                     <Icon icon="mdi:pencil" width={20} height={20} />
                   </IconButton>
-                </Tooltip>
-                <Tooltip title="Delete">
+                </AppTooltip>
+                <AppTooltip title="Delete">
                   <IconButton
                     size="small"
                     color="error"
@@ -541,7 +541,7 @@ const LVTable: React.FC<LVTableProps> = ({ data, onResize, onDelete }) => (
                   >
                     <Icon icon="mdi:delete" width={20} height={20} />
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
               </TableCell>
             </TableRow>
           ))

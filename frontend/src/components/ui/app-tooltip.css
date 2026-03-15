@@ -1,6 +1,8 @@
-/* ── Trigger wrapper — inline-flex so it doesn't affect surrounding layout ── */
+/* display:contents makes the wrapper invisible to layout — it won't add
+   gaps, break absolute positioning, or shift flex/grid children. */
 .app-tooltip-trigger {
-  display: inline-flex;
+  display: contents;
+  vertical-align: top;
 }
 
 /* ── Base tooltip bubble ── */

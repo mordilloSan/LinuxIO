@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Divider, IconButton, Tooltip, Typography } from "@mui/material";
+import { Divider, IconButton, Typography } from "@mui/material";
 import React from "react";
 
 import type { ComposeProject } from "./ComposeList";
@@ -7,6 +7,7 @@ import type { ComposeProject } from "./ComposeList";
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { getComposeStatusColor } from "@/constants/statusColors";
 
 const getStatusColor = (status: string) => {
@@ -116,7 +117,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
         }}
       >
         {isWatchtower ? (
-          <Tooltip title="View compose file">
+          <AppTooltip title="View compose file">
             <Chip
               label="Managed by LinuxIO"
               size="small"
@@ -136,12 +137,12 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                 "&:hover": { opacity: 1 },
               }}
             />
-          </Tooltip>
+          </AppTooltip>
         ) : (
           <>
             <div style={{ display: "flex", gap: 2 }}>
               {onEdit && project.config_files.length > 0 && (
-                <Tooltip title="Edit">
+                <AppTooltip title="Edit">
                   <IconButton
                     size="small"
                     onClick={() =>
@@ -151,11 +152,11 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                   >
                     <Icon icon="mdi:pencil" width={20} height={20} />
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
               )}
               {isRunning ? (
                 <>
-                  <Tooltip title="Restart">
+                  <AppTooltip title="Restart">
                     <IconButton
                       size="small"
                       onClick={() => onRestart(project.name)}
@@ -163,8 +164,8 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                     >
                       <Icon icon="mdi:restart" width={20} height={20} />
                     </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Stop">
+                  </AppTooltip>
+                  <AppTooltip title="Stop">
                     <IconButton
                       size="small"
                       onClick={() => onStop(project.name)}
@@ -172,10 +173,10 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                     >
                       <Icon icon="mdi:stop-circle" width={20} height={20} />
                     </IconButton>
-                  </Tooltip>
+                  </AppTooltip>
                 </>
               ) : (
-                <Tooltip title="Start">
+                <AppTooltip title="Start">
                   <IconButton
                     size="small"
                     onClick={() => onStart(project.name)}
@@ -183,9 +184,9 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                   >
                     <Icon icon="mdi:play" width={20} height={20} />
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
               )}
-              <Tooltip title="Delete">
+              <AppTooltip title="Delete">
                 <IconButton
                   size="small"
                   onClick={() => onDelete(project)}
@@ -193,7 +194,7 @@ const ComposeStackCard: React.FC<ComposeStackCardProps> = ({
                 >
                   <Icon icon="mdi:delete" width={20} height={20} />
                 </IconButton>
-              </Tooltip>
+              </AppTooltip>
             </div>
           </>
         )}

@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react";
-import { CardContent, Typography, IconButton, Tooltip } from "@mui/material";
+import { CardContent, Typography, IconButton } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 import React, { RefObject, useState } from "react";
 
 import FrostedCard from "@/components/cards/RootCard";
+import AppTooltip from "@/components/ui/AppTooltip";
 import {
   getAccentCardHoverStyles,
   getAccentCardStyles,
@@ -78,7 +79,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
               {iface.name}
             </Typography>
             <div>
-              <Tooltip
+              <AppTooltip
                 title={iface.isConnected === "Active" ? "Turn Off" : "Turn On"}
               >
                 <IconButton
@@ -99,8 +100,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                 >
                   <Icon icon="mdi:power" width={22} height={22} />
                 </IconButton>
-              </Tooltip>
-              <Tooltip
+              </AppTooltip>
+              <AppTooltip
                 title={
                   iface.isEnabled
                     ? "Disable Boot Persistence"
@@ -121,8 +122,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                 >
                   <Icon icon="mdi:restart" width={22} height={22} />
                 </IconButton>
-              </Tooltip>
-              <Tooltip title="Add Peer">
+              </AppTooltip>
+              <AppTooltip title="Add Peer">
                 <IconButton
                   onClick={(e) => {
                     e.stopPropagation();
@@ -131,8 +132,8 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                 >
                   <Icon icon="mdi:plus" width={22} height={22} />
                 </IconButton>
-              </Tooltip>
-              <Tooltip title="Delete Interface">
+              </AppTooltip>
+              <AppTooltip title="Delete Interface">
                 <IconButton
                   onClick={(e) => {
                     e.stopPropagation();
@@ -142,7 +143,7 @@ const InterfaceCard: React.FC<InterfaceCardProps> = ({
                 >
                   <Icon icon="mdi:delete" width={22} height={22} />
                 </IconButton>
-              </Tooltip>
+              </AppTooltip>
             </div>
           </div>
           <Typography variant="body2" color="text.secondary">

@@ -1,13 +1,9 @@
 import { Icon } from "@iconify/react";
-import {
-  Alert,
-  IconButton,
-  LinearProgress,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Alert, IconButton, LinearProgress, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
+
+import AppTooltip from "@/components/ui/AppTooltip";
 
 interface UpdateActionsProps {
   isUpdating: boolean;
@@ -101,11 +97,11 @@ const UpdateActions: React.FC<UpdateActionsProps> = ({
                 {Math.round(progress)}%
               </Typography>
               {onCancel && (
-                <Tooltip title="Cancel update">
+                <AppTooltip title="Cancel update">
                   <IconButton size="small" onClick={onCancel} sx={{ ml: 0.5 }}>
                     <Icon icon="mdi:cancel" width={20} height={20} />
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
               )}
             </div>
           </div>

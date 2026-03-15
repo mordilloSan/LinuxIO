@@ -8,7 +8,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
@@ -21,6 +20,7 @@ import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { getComposeStatusColor } from "@/constants/statusColors";
 
 interface ComposeService {
@@ -171,7 +171,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
           </TableCell>
           <TableCell align="center">{getTotalContainers(project)}</TableCell>
           <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>
-            <Tooltip title={project.config_files.join(", ") || "Unknown"}>
+            <AppTooltip title={project.config_files.join(", ") || "Unknown"}>
               <div style={{ display: "flex", alignItems: "center" }}>
                 <Icon
                   icon="mdi:folder-open"
@@ -184,10 +184,10 @@ const ComposeList: React.FC<ComposeListProps> = ({
                     "docker-compose.yml"}
                 </Typography>
               </div>
-            </Tooltip>
+            </AppTooltip>
           </TableCell>
           <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
-            <Tooltip title={project.working_dir || "Unknown"}>
+            <AppTooltip title={project.working_dir || "Unknown"}>
               <Typography
                 variant="body2"
                 noWrap
@@ -199,7 +199,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
               >
                 {project.working_dir || "-"}
               </Typography>
-            </Tooltip>
+            </AppTooltip>
           </TableCell>
           <TableCell align="right">
             <div
@@ -210,7 +210,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
               }}
             >
               {project.name === "linuxio-watchtower" ? (
-                <Tooltip title="View compose file" arrow>
+                <AppTooltip title="View compose file" arrow>
                   <Chip
                     label="Managed by LinuxIO"
                     size="small"
@@ -230,11 +230,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       "&:hover": { opacity: 1 },
                     }}
                   />
-                </Tooltip>
+                </AppTooltip>
               ) : (
                 <>
                   {onEdit && project.config_files.length > 0 && (
-                    <Tooltip title="Edit">
+                    <AppTooltip title="Edit">
                       <IconButton
                         size="small"
                         onClick={() =>
@@ -245,12 +245,12 @@ const ComposeList: React.FC<ComposeListProps> = ({
                       >
                         <Icon icon="mdi:pencil" width={20} height={20} />
                       </IconButton>
-                    </Tooltip>
+                    </AppTooltip>
                   )}
                   {project.status === "running" ||
                   project.status === "partial" ? (
                     <>
-                      <Tooltip title="Restart">
+                      <AppTooltip title="Restart">
                         <IconButton
                           size="small"
                           onClick={() => onRestart(project.name)}
@@ -259,8 +259,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         >
                           <Icon icon="mdi:restart" width={20} height={20} />
                         </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Stop">
+                      </AppTooltip>
+                      <AppTooltip title="Stop">
                         <IconButton
                           size="small"
                           onClick={() => onStop(project.name)}
@@ -269,8 +269,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         >
                           <Icon icon="mdi:stop-circle" width={20} height={20} />
                         </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
+                      </AppTooltip>
+                      <AppTooltip title="Delete">
                         <IconButton
                           size="small"
                           onClick={() => onDelete(project)}
@@ -279,11 +279,11 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         >
                           <Icon icon="mdi:delete" width={20} height={20} />
                         </IconButton>
-                      </Tooltip>
+                      </AppTooltip>
                     </>
                   ) : (
                     <>
-                      <Tooltip title="Start">
+                      <AppTooltip title="Start">
                         <IconButton
                           size="small"
                           onClick={() => onStart(project.name)}
@@ -292,8 +292,8 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         >
                           <Icon icon="mdi:play" width={20} height={20} />
                         </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
+                      </AppTooltip>
+                      <AppTooltip title="Delete">
                         <IconButton
                           size="small"
                           onClick={() => onDelete(project)}
@@ -302,7 +302,7 @@ const ComposeList: React.FC<ComposeListProps> = ({
                         >
                           <Icon icon="mdi:delete" width={20} height={20} />
                         </IconButton>
-                      </Tooltip>
+                      </AppTooltip>
                     </>
                   )}
                 </>

@@ -7,7 +7,6 @@ import {
   Checkbox,
   Button,
   IconButton,
-  Tooltip,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -24,6 +23,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -303,7 +303,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                       </Typography>
                     </div>
                     <div style={{ display: "flex", gap: 2 }}>
-                      <Tooltip title="Edit">
+                      <AppTooltip title="Edit">
                         <IconButton
                           size="small"
                           onClick={() => handleEditUser(user)}
@@ -311,8 +311,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         >
                           <Icon icon="mdi:pencil" width={20} height={20} />
                         </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Change Password">
+                      </AppTooltip>
+                      <AppTooltip title="Change Password">
                         <IconButton
                           size="small"
                           onClick={() => handleChangePassword(user)}
@@ -323,8 +323,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                             height={20}
                           />
                         </IconButton>
-                      </Tooltip>
-                      <Tooltip title={user.isLocked ? "Unlock" : "Lock"}>
+                      </AppTooltip>
+                      <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
                         <IconButton
                           size="small"
                           onClick={() => handleToggleLock(user)}
@@ -341,7 +341,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                             <Icon icon="mdi:lock" width={20} height={20} />
                           )}
                         </IconButton>
-                      </Tooltip>
+                      </AppTooltip>
                     </div>
                   </div>
 
@@ -543,7 +543,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     gap: 2,
                   }}
                 >
-                  <Tooltip title="Edit">
+                  <AppTooltip title="Edit">
                     <IconButton
                       size="small"
                       onClick={(e) => {
@@ -554,8 +554,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                     >
                       <Icon icon="mdi:pencil" width={20} height={20} />
                     </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Change Password">
+                  </AppTooltip>
+                  <AppTooltip title="Change Password">
                     <IconButton
                       size="small"
                       onClick={(e) => {
@@ -569,8 +569,8 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         height={20}
                       />
                     </IconButton>
-                  </Tooltip>
-                  <Tooltip title={user.isLocked ? "Unlock" : "Lock"}>
+                  </AppTooltip>
+                  <AppTooltip title={user.isLocked ? "Unlock" : "Lock"}>
                     <IconButton
                       size="small"
                       onClick={(e) => {
@@ -590,7 +590,7 @@ const UsersTab: React.FC<UsersTabProps> = ({
                         <Icon icon="mdi:lock" width={20} height={20} />
                       )}
                     </IconButton>
-                  </Tooltip>
+                  </AppTooltip>
                 </div>
               </TableCell>
             </>

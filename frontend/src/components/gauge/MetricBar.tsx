@@ -1,6 +1,8 @@
-import { Tooltip, Typography, LinearProgress } from "@mui/material";
+import { Typography, LinearProgress } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
+
+import AppTooltip from "@/components/ui/AppTooltip";
 
 interface MetricBarProps {
   label: string;
@@ -22,7 +24,7 @@ const MetricBar: React.FC<MetricBarProps> = ({
   const theme = useTheme();
 
   return (
-    <Tooltip title={tooltip ?? ""}>
+    <AppTooltip title={tooltip ?? ""}>
       <div style={{ width: "100%", marginBottom: 4 }}>
         <div
           style={{
@@ -62,7 +64,7 @@ const MetricBar: React.FC<MetricBarProps> = ({
           }}
         />
       </div>
-    </Tooltip>
+    </AppTooltip>
   );
 };
 

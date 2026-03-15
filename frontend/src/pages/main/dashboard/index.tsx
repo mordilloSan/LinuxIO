@@ -19,7 +19,6 @@ import {
   Grid,
   IconButton,
   Popover,
-  Tooltip,
   useTheme,
 } from "@mui/material";
 import React, { useCallback, useMemo, useState } from "react";
@@ -36,6 +35,7 @@ import SystemHealth from "./System";
 
 import SortableCard from "@/components/cards/SortableCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
+import AppTooltip from "@/components/ui/AppTooltip";
 import useAuth from "@/hooks/useAuth";
 import { useConfigValue } from "@/hooks/useConfig";
 
@@ -137,15 +137,15 @@ const Dashboard: React.FC = () => {
           marginBottom: theme.spacing(1),
         }}
       >
-        <Tooltip title="Card visibility">
+        <AppTooltip title="Card visibility">
           <IconButton
             onClick={(e) => setAnchorEl(e.currentTarget)}
             size="small"
           >
             <Icon icon="mdi:cog" width={20} height={20} />
           </IconButton>
-        </Tooltip>
-        <Tooltip title={editMode ? "Lock layout" : "Edit layout"}>
+        </AppTooltip>
+        <AppTooltip title={editMode ? "Lock layout" : "Edit layout"}>
           <IconButton
             onClick={() => setEditMode((prev) => !prev)}
             color={editMode ? "primary" : "default"}
@@ -153,7 +153,7 @@ const Dashboard: React.FC = () => {
           >
             <Icon icon="mdi:drag" width={20} height={20} />
           </IconButton>
-        </Tooltip>
+        </AppTooltip>
       </div>
 
       <Popover

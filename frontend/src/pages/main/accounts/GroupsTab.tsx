@@ -7,7 +7,6 @@ import {
   Checkbox,
   Button,
   IconButton,
-  Tooltip,
 } from "@mui/material";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -21,6 +20,7 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 interface GroupsTabProps {
@@ -203,7 +203,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                         {group.name}
                       </Typography>
                     </div>
-                    <Tooltip title="Edit Members">
+                    <AppTooltip title="Edit Members">
                       <IconButton
                         size="small"
                         onClick={() => handleEditMembers(group)}
@@ -211,7 +211,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                       >
                         <Icon icon="mdi:pencil" width={20} height={20} />
                       </IconButton>
-                    </Tooltip>
+                    </AppTooltip>
                   </div>
 
                   <div
@@ -355,7 +355,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     gap: 2,
                   }}
                 >
-                  <Tooltip title="Edit Members">
+                  <AppTooltip title="Edit Members">
                     <IconButton
                       size="small"
                       onClick={(e) => {
@@ -366,7 +366,7 @@ const GroupsTab: React.FC<GroupsTabProps> = ({
                     >
                       <Icon icon="mdi:pencil" width={20} height={20} />
                     </IconButton>
-                  </Tooltip>
+                  </AppTooltip>
                 </div>
               </TableCell>
             </>

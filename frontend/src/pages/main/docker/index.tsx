@@ -4,7 +4,6 @@ import {
   AlertTitle,
   Button,
   IconButton,
-  Tooltip,
   Typography,
   useTheme,
 } from "@mui/material";
@@ -22,6 +21,7 @@ import VolumeList from "./VolumeList";
 import { linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -225,7 +225,7 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     containerView === "card"
                       ? "Switch to table view"
@@ -246,8 +246,8 @@ const DockerPage: React.FC = () => {
                       <Icon icon="mdi:view-grid" width={20} height={20} />
                     )}
                   </IconButton>
-                </Tooltip>
-                <Tooltip
+                </AppTooltip>
+                <AppTooltip
                   title={containerEditMode ? "Lock layout" : "Edit layout"}
                 >
                   <IconButton
@@ -257,7 +257,7 @@ const DockerPage: React.FC = () => {
                   >
                     <Icon icon="mdi:drag" width={20} height={20} />
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
               </>
             ),
           },
@@ -277,7 +277,7 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     stacksView === "table"
                       ? "Switch to card view"
@@ -296,9 +296,9 @@ const DockerPage: React.FC = () => {
                       <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
                 {reindexStackHandler && (
-                  <Tooltip
+                  <AppTooltip
                     title={
                       !indexerEnabled
                         ? indexerReason
@@ -317,7 +317,7 @@ const DockerPage: React.FC = () => {
                         Scan
                       </Button>
                     </span>
-                  </Tooltip>
+                  </AppTooltip>
                 )}
                 {createStackHandler && (
                   <Button
@@ -345,7 +345,7 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     networksView === "table"
                       ? "Switch to card view"
@@ -366,7 +366,7 @@ const DockerPage: React.FC = () => {
                       <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
                 {createNetworkHandler && (
                   <Button
                     variant="contained"
@@ -393,7 +393,7 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     volumesView === "table"
                       ? "Switch to card view"
@@ -412,7 +412,7 @@ const DockerPage: React.FC = () => {
                       <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
                 {createVolumeHandler && (
                   <Button
                     variant="contained"
@@ -439,7 +439,7 @@ const DockerPage: React.FC = () => {
             ),
             rightContent: (
               <>
-                <Tooltip
+                <AppTooltip
                   title={
                     imagesView === "table"
                       ? "Switch to card view"
@@ -458,7 +458,7 @@ const DockerPage: React.FC = () => {
                       <Icon icon="mdi:table-row" width={20} height={20} />
                     )}
                   </IconButton>
-                </Tooltip>
+                </AppTooltip>
                 {createImageHandler && (
                   <Button
                     variant="contained"

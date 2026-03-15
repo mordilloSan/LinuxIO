@@ -11,7 +11,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -26,6 +25,7 @@ import "@/components/cards/frosted-card.css";
 import { linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
@@ -275,7 +275,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Name (with status dot) */}
         <TableCell>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <Tooltip title={displayState}>
+            <AppTooltip title={displayState}>
               <span
                 style={{
                   width: 8,
@@ -286,7 +286,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   display: "inline-block",
                 }}
               />
-            </Tooltip>
+            </AppTooltip>
             <DockerIcon identifier={container.icon} size={24} alt={name} />
             <Typography variant="body2" fontWeight="bold" noWrap>
               {name}
@@ -326,9 +326,10 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Network */}
         <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
           {networks.length > 0 ? (
-            <Tooltip
-              title={networks.map(([n]) => n).join(", ")}
-              disableHoverListener={networks.length <= 1}
+            <AppTooltip
+              title={
+                networks.length > 1 ? networks.map(([n]) => n).join(", ") : ""
+              }
             >
               <Typography
                 variant="body2"
@@ -351,7 +352,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   </span>
                 )}
               </Typography>
-            </Tooltip>
+            </AppTooltip>
           ) : (
             <Typography variant="body2" color="text.disabled">
               —
@@ -362,11 +363,14 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
         {/* Container IP */}
         <TableCell sx={{ display: { xs: "none", lg: "table-cell" } }}>
           {networks.length > 0 && networks[0][1].IPAddress ? (
-            <Tooltip
-              title={networks
-                .map(([n, ep]) => `${n}: ${ep.IPAddress}`)
-                .join("\n")}
-              disableHoverListener={networks.length <= 1}
+            <AppTooltip
+              title={
+                networks.length > 1
+                  ? networks
+                      .map(([n, ep]) => `${n}: ${ep.IPAddress}`)
+                      .join("\n")
+                  : ""
+              }
             >
               <Typography
                 variant="body2"
@@ -374,7 +378,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
               >
                 {networks[0][1].IPAddress}
               </Typography>
-            </Tooltip>
+            </AppTooltip>
           ) : (
             <Typography variant="body2" color="text.disabled">
               —
@@ -429,7 +433,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
           {mounts.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {mounts.slice(0, 2).map((m, i) => (
-                <Tooltip key={i} title={`${m.Destination} → ${m.Source}`}>
+                <AppTooltip key={i} title={`${m.Destination} → ${m.Source}`}>
                   <Typography
                     variant="body2"
                     noWrap
@@ -450,7 +454,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                       {m.Source}
                     </span>
                   </Typography>
-                </Tooltip>
+                </AppTooltip>
               ))}
               {mounts.length > 2 && (
                 <Typography variant="caption" color="text.disabled">
@@ -506,7 +510,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
             }}
           >
             {isWatchtower ? (
-              <Tooltip title="View Logs">
+              <AppTooltip title="View Logs">
                 <Chip
                   label="Managed by LinuxIO"
                   size="small"
@@ -517,46 +521,46 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   }}
                   sx={{ fontSize: "0.68rem", opacity: 0.7, cursor: "pointer" }}
                 />
-              </Tooltip>
+              </AppTooltip>
             ) : (
               <>
                 {container.State !== "running" && (
-                  <Tooltip title="Start">
+                  <AppTooltip title="Start">
                     <span>
                       <ActionButton
                         icon="mdi:play"
                         onClick={() => startContainer([container.Id])}
                       />
                     </span>
-                  </Tooltip>
+                  </AppTooltip>
                 )}
                 {container.State === "running" && (
-                  <Tooltip title="Stop">
+                  <AppTooltip title="Stop">
                     <span>
                       <ActionButton
                         icon="mdi:stop"
                         onClick={() => stopContainer([container.Id])}
                       />
                     </span>
-                  </Tooltip>
+                  </AppTooltip>
                 )}
-                <Tooltip title="Restart">
+                <AppTooltip title="Restart">
                   <span>
                     <ActionButton
                       icon="mdi:restart"
                       onClick={() => restartContainer([container.Id])}
                     />
                   </span>
-                </Tooltip>
-                <Tooltip title="Remove">
+                </AppTooltip>
+                <AppTooltip title="Remove">
                   <span>
                     <ActionButton
                       icon="mdi:delete"
                       onClick={() => removeContainer([container.Id])}
                     />
                   </span>
-                </Tooltip>
-                <Tooltip title="Logs">
+                </AppTooltip>
+                <AppTooltip title="Logs">
                   <span>
                     <ActionButton
                       icon="mdi:file-document-outline"
@@ -566,11 +570,11 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                       }}
                     />
                   </span>
-                </Tooltip>
+                </AppTooltip>
               </>
             )}
             {!isWatchtower && (
-              <Tooltip title="Terminal">
+              <AppTooltip title="Terminal">
                 <span>
                   <ActionButton
                     icon="mdi:console"
@@ -580,10 +584,10 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     }}
                   />
                 </span>
-              </Tooltip>
+              </AppTooltip>
             )}
             {container.url && (
-              <Tooltip title="Open App">
+              <AppTooltip title="Open App">
                 <span>
                   <ActionButton
                     icon="mdi:open-in-new"
@@ -592,9 +596,9 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                     }
                   />
                 </span>
-              </Tooltip>
+              </AppTooltip>
             )}
-            <Tooltip title={autoUpdateTooltip}>
+            <AppTooltip title={autoUpdateTooltip}>
               <span style={{ display: "inline-flex" }}>
                 <Switch
                   size="small"
@@ -617,7 +621,7 @@ const ContainerRow: React.FC<ContainerRowProps> = ({
                   }
                 />
               </span>
-            </Tooltip>
+            </AppTooltip>
             <IconButton
               size="small"
               onClick={() => setExpanded((v) => !v)}

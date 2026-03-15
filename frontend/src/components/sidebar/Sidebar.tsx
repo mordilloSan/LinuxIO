@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react";
-import { Drawer, useTheme, List, IconButton, Tooltip } from "@mui/material";
+import { Drawer, useTheme, List, IconButton } from "@mui/material";
 import React, { useState, useCallback } from "react";
 
 import SidebarNavList from "./SidebarNavList";
 import LogoDisplay from "../logo/LogoDisplay";
 
+import AppTooltip from "@/components/ui/AppTooltip";
 import { collapsedDrawerWidth, drawerWidth } from "@/constants";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
 import useSidebar from "@/hooks/useSidebar";
@@ -76,7 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
         <LogoDisplay showText={showText} />
 
         {isDesktop && (!collapsed || (hovered && collapsed)) && (
-          <Tooltip title={collapsed ? "Expand" : "Collapse"}>
+          <AppTooltip title={collapsed ? "Expand" : "Collapse"}>
             <IconButton
               onClick={toggleCollapse}
               size="small"
@@ -96,7 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({ items }) => {
                 <Icon icon="mdi:chevron-right" width={22} height={22} />
               )}
             </IconButton>
-          </Tooltip>
+          </AppTooltip>
         )}
       </div>
 

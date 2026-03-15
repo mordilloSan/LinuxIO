@@ -13,7 +13,6 @@ import {
   Switch,
   TableCell,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -30,6 +29,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
@@ -631,7 +631,7 @@ const GeneralLogsPage: React.FC = () => {
             },
           }}
         />
-        <Tooltip title="Copy logs">
+        <AppTooltip title="Copy logs">
           <span>
             <IconButton
               onClick={handleCopy}
@@ -641,8 +641,8 @@ const GeneralLogsPage: React.FC = () => {
               <Icon icon="mdi:content-copy" width={20} height={20} />
             </IconButton>
           </span>
-        </Tooltip>
-        <Tooltip title="Download logs">
+        </AppTooltip>
+        <AppTooltip title="Download logs">
           <span>
             <IconButton
               onClick={handleDownload}
@@ -652,8 +652,10 @@ const GeneralLogsPage: React.FC = () => {
               <Icon icon="mdi:download" width={20} height={20} />
             </IconButton>
           </span>
-        </Tooltip>
-        <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
+        </AppTooltip>
+        <AppTooltip
+          title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
+        >
           <FormControlLabel
             control={
               <Switch
@@ -664,7 +666,7 @@ const GeneralLogsPage: React.FC = () => {
             }
             label="Live"
           />
-        </Tooltip>
+        </AppTooltip>
         <Typography fontWeight="bold">{filteredLogs.length} shown</Typography>
       </div>
 

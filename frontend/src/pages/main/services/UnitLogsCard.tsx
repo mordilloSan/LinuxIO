@@ -1,11 +1,12 @@
 import { Icon } from "@iconify/react";
-import { FormControlLabel, Switch, Tooltip, useTheme } from "@mui/material";
+import { FormControlLabel, Switch, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
 
 interface UnitLogsCardProps {
@@ -40,7 +41,9 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
           />
           <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>{title}</span>
         </div>
-        <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
+        <AppTooltip
+          title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
+        >
           <FormControlLabel
             control={
               <Switch
@@ -51,7 +54,7 @@ const UnitLogsCard: React.FC<UnitLogsCardProps> = ({ unitName, title }) => {
             }
             label="Live"
           />
-        </Tooltip>
+        </AppTooltip>
       </div>
       <div
         style={{

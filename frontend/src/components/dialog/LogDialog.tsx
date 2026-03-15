@@ -7,13 +7,13 @@ import {
   Alert,
   Switch,
   FormControlLabel,
-  Tooltip,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTooltip from "@/components/ui/AppTooltip";
 
 interface LogDialogProps {
   open: boolean;
@@ -64,7 +64,9 @@ const LogDialog: React.FC<LogDialogProps> = ({
           {titleContent ?? <Typography variant="h6">{title}</Typography>}
         </div>
         {extraActions}
-        <Tooltip title={liveMode ? "Live streaming ON" : "Live streaming OFF"}>
+        <AppTooltip
+          title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
+        >
           <FormControlLabel
             control={
               <Switch
@@ -76,7 +78,7 @@ const LogDialog: React.FC<LogDialogProps> = ({
             label="Live"
             sx={{ ml: 1 }}
           />
-        </Tooltip>
+        </AppTooltip>
         <IconButton onClick={onClose} size="small">
           <Icon icon="mdi:close" width={18} height={18} />
         </IconButton>

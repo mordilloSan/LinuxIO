@@ -103,9 +103,14 @@ const AppTooltip: React.FC<AppTooltipProps> = ({
 
   const show = useCallback(() => {
     enterTimer.current = setTimeout(() => {
-      const node = wrapperRef.current;
-      if (!node) return;
-      setTooltipStyle(calcStyle(placement, node.getBoundingClientRect()));
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
+      // Some triggers are wrapped in a zero-sized box, for example when the
+      // trigger itself is absolutely positioned. Measure the first child
+      // element when available so the tooltip anchors to the visible target.
+      const target =
+        (wrapper.firstElementChild as HTMLElement | null) ?? wrapper;
+      setTooltipStyle(calcStyle(placement, target.getBoundingClientRect()));
       setVisible(true);
     }, 100);
   }, [placement]);

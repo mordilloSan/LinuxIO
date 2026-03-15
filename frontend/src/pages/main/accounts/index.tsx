@@ -1,11 +1,12 @@
 import { Icon } from "@iconify/react";
-import { Button, IconButton, Tooltip } from "@mui/material";
+import { Button, IconButton } from "@mui/material";
 import React, { useState } from "react";
 
 import GroupsTab from "./GroupsTab";
 import UsersTab from "./UsersTab";
 
 import { TabContainer } from "@/components/tabbar";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { useViewMode } from "@/hooks/useViewMode";
 
 const AccountsPage: React.FC = () => {
@@ -34,7 +35,7 @@ const AccountsPage: React.FC = () => {
           ),
           rightContent: (
             <>
-              <Tooltip
+              <AppTooltip
                 title={
                   usersView === "table"
                     ? "Switch to card view"
@@ -53,7 +54,7 @@ const AccountsPage: React.FC = () => {
                     <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
                 </IconButton>
-              </Tooltip>
+              </AppTooltip>
               {createUserHandler && (
                 <Button
                   variant="contained"
@@ -80,7 +81,7 @@ const AccountsPage: React.FC = () => {
           ),
           rightContent: (
             <>
-              <Tooltip
+              <AppTooltip
                 title={
                   groupsView === "table"
                     ? "Switch to card view"
@@ -99,7 +100,7 @@ const AccountsPage: React.FC = () => {
                     <Icon icon="mdi:table-row" width={20} height={20} />
                   )}
                 </IconButton>
-              </Tooltip>
+              </AppTooltip>
               {createGroupHandler && (
                 <Button
                   variant="contained"

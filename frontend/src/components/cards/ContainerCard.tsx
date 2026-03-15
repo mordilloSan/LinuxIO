@@ -1,11 +1,4 @@
-import {
-  Collapse,
-  Divider,
-  Switch,
-  Tooltip,
-  Typography,
-  Fade,
-} from "@mui/material";
+import { Collapse, Divider, Switch, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
@@ -25,6 +18,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -268,13 +262,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
       }}
     >
       {/* Status dot */}
-      <Tooltip
-        title={getStatusTooltip(container)}
-        placement="top"
-        arrow
-        slots={{ transition: Fade }}
-        slotProps={{ transition: { timeout: 300 } }}
-      >
+      <AppTooltip title={getStatusTooltip(container)} placement="top" arrow>
         <div
           style={{
             position: "absolute",
@@ -290,7 +278,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             cursor: "default",
           }}
         />
-      </Tooltip>
+      </AppTooltip>
 
       {/* Top row: Icon + Name + Buttons */}
       <div
@@ -326,7 +314,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
           <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
             {container.Labels?.["com.docker.compose.project"] ===
             "linuxio-watchtower" ? (
-              <Tooltip title="View Logs" arrow>
+              <AppTooltip title="View Logs" arrow>
                 <Chip
                   label="Managed by LinuxIO"
                   size="small"
@@ -342,68 +330,68 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                     "&:hover": { opacity: 1 },
                   }}
                 />
-              </Tooltip>
+              </AppTooltip>
             ) : (
               <>
                 {container.State !== "running" && (
-                  <Tooltip title="Start Container" arrow>
+                  <AppTooltip title="Start Container" arrow>
                     <span onClick={(e) => e.stopPropagation()}>
                       <ActionButton
                         icon="mdi:play"
                         onClick={() => handleAction("start")}
                       />
                     </span>
-                  </Tooltip>
+                  </AppTooltip>
                 )}
                 {container.State === "running" && (
-                  <Tooltip title="Stop Container" arrow>
+                  <AppTooltip title="Stop Container" arrow>
                     <span onClick={(e) => e.stopPropagation()}>
                       <ActionButton
                         icon="mdi:stop"
                         onClick={() => handleAction("stop")}
                       />
                     </span>
-                  </Tooltip>
+                  </AppTooltip>
                 )}
-                <Tooltip title="Restart Container" arrow>
+                <AppTooltip title="Restart Container" arrow>
                   <span onClick={(e) => e.stopPropagation()}>
                     <ActionButton
                       icon="mdi:restart"
                       onClick={() => handleAction("restart")}
                     />
                   </span>
-                </Tooltip>
-                <Tooltip title="Remove Container" arrow>
+                </AppTooltip>
+                <AppTooltip title="Remove Container" arrow>
                   <span onClick={(e) => e.stopPropagation()}>
                     <ActionButton
                       icon="mdi:delete"
                       onClick={() => handleAction("remove")}
                     />
                   </span>
-                </Tooltip>
-                <Tooltip title="View Logs" arrow>
+                </AppTooltip>
+                <AppTooltip title="View Logs" arrow>
                   <span onClick={(e) => e.stopPropagation()}>
                     <ActionButton
                       icon="mdi:file-document-outline"
                       onClick={handleLogsClick}
                     />
                   </span>
-                </Tooltip>
+                </AppTooltip>
               </>
             )}
             {container.Labels?.["com.docker.compose.project"] !==
               "linuxio-watchtower" && (
-              <Tooltip title="Open Terminal" arrow>
+              <AppTooltip title="Open Terminal" arrow>
                 <span onClick={(e) => e.stopPropagation()}>
                   <ActionButton
                     icon="mdi:console"
                     onClick={handleTerminalClick}
                   />
                 </span>
-              </Tooltip>
+              </AppTooltip>
             )}
             {container.url && (
-              <Tooltip title="Open App" arrow>
+              <AppTooltip title="Open App" arrow>
                 <span onClick={(e) => e.stopPropagation()}>
                   <ActionButton
                     icon="mdi:open-in-new"
@@ -412,7 +400,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
                     }
                   />
                 </span>
-              </Tooltip>
+              </AppTooltip>
             )}
           </div>
         </div>
@@ -478,7 +466,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
         >
           Auto Update
         </Typography>
-        <Tooltip title={autoUpdateTooltip}>
+        <AppTooltip title={autoUpdateTooltip}>
           <span style={{ display: "inline-flex" }}>
             <Switch
               size="small"
@@ -501,7 +489,7 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
               }
             />
           </span>
-        </Tooltip>
+        </AppTooltip>
       </div>
 
       {/* Ports section */}

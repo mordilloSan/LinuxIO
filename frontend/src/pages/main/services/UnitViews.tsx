@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { Button, Grid, Tooltip, useMediaQuery, useTheme } from "@mui/material";
+import { Button, Grid, useMediaQuery, useTheme } from "@mui/material";
 import { motion } from "framer-motion";
 import React from "react";
 
@@ -9,6 +9,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
+import AppTooltip from "@/components/ui/AppTooltip";
 import { getServiceStatusColor } from "@/constants/statusColors";
 
 export interface UnitListItem {
@@ -327,7 +328,7 @@ export const UnitCardActions: React.FC<{
       onClick={(e) => e.stopPropagation()}
     >
       {isActive ? (
-        <Tooltip title="Stop">
+        <AppTooltip title="Stop">
           <Button
             size="small"
             variant="outlined"
@@ -338,9 +339,9 @@ export const UnitCardActions: React.FC<{
           >
             Stop
           </Button>
-        </Tooltip>
+        </AppTooltip>
       ) : (
-        <Tooltip title="Start">
+        <AppTooltip title="Start">
           <Button
             size="small"
             variant="outlined"
@@ -351,9 +352,9 @@ export const UnitCardActions: React.FC<{
           >
             Start
           </Button>
-        </Tooltip>
+        </AppTooltip>
       )}
-      <Tooltip title="Restart (stop then start)">
+      <AppTooltip title="Restart (stop then start)">
         <span>
           <Button
             size="small"
@@ -365,8 +366,8 @@ export const UnitCardActions: React.FC<{
             Restart
           </Button>
         </span>
-      </Tooltip>
-      <Tooltip title="Reload configuration without restarting (if supported)">
+      </AppTooltip>
+      <AppTooltip title="Reload configuration without restarting (if supported)">
         <span>
           <Button
             size="small"
@@ -378,9 +379,9 @@ export const UnitCardActions: React.FC<{
             Reload
           </Button>
         </span>
-      </Tooltip>
+      </AppTooltip>
       {isEnabled ? (
-        <Tooltip title="Disable autostart at boot">
+        <AppTooltip title="Disable autostart at boot">
           <span>
             <Button
               size="small"
@@ -394,9 +395,9 @@ export const UnitCardActions: React.FC<{
               Disable
             </Button>
           </span>
-        </Tooltip>
+        </AppTooltip>
       ) : (
-        <Tooltip title="Enable autostart at boot">
+        <AppTooltip title="Enable autostart at boot">
           <span>
             <Button
               size="small"
@@ -409,10 +410,10 @@ export const UnitCardActions: React.FC<{
               Enable
             </Button>
           </span>
-        </Tooltip>
+        </AppTooltip>
       )}
       {isMasked ? (
-        <Tooltip title="Unmask to allow the unit to be started">
+        <AppTooltip title="Unmask to allow the unit to be started">
           <Button
             size="small"
             variant="outlined"
@@ -423,9 +424,9 @@ export const UnitCardActions: React.FC<{
           >
             Unmask
           </Button>
-        </Tooltip>
+        </AppTooltip>
       ) : (
-        <Tooltip title="Mask to completely prevent the unit from starting">
+        <AppTooltip title="Mask to completely prevent the unit from starting">
           <Button
             size="small"
             variant="outlined"
@@ -435,7 +436,7 @@ export const UnitCardActions: React.FC<{
           >
             Mask
           </Button>
-        </Tooltip>
+        </AppTooltip>
       )}
     </div>
   );
