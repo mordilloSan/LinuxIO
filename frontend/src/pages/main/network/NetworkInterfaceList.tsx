@@ -1,8 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Grid } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-
-import AppTypography from "@/components/ui/AppTypography";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -14,6 +12,7 @@ import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 
 export type { NetworkInterface };
 
@@ -189,10 +188,7 @@ const NetworkInterfaceList = () => {
                     cursor: "pointer",
                   }}
                 >
-                  <AppTooltip
-                    title={getStatusTooltip(iface.state)}
-                    arrow
-                  >
+                  <AppTooltip title={getStatusTooltip(iface.state)} arrow>
                     <span
                       style={{
                         position: "absolute",
@@ -236,27 +232,47 @@ const NetworkInterfaceList = () => {
                       />
                     </div>
                     <div style={{ flexGrow: 1 }}>
-                      <AppTypography variant="subtitle1" fontWeight={600} noWrap>
+                      <AppTypography
+                        variant="subtitle1"
+                        fontWeight={600}
+                        noWrap
+                      >
                         {iface.name}
                       </AppTypography>
-                      <AppTypography variant="body2" color="text.secondary" noWrap>
+                      <AppTypography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                      >
                         IPv4:{" "}
                         {Array.isArray(iface.ipv4)
                           ? iface.ipv4.join(", ")
                           : "N/A"}
                       </AppTypography>
-                      <AppTypography variant="body2" color="text.secondary" noWrap>
+                      <AppTypography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                      >
                         MAC: {iface.mac}
                       </AppTypography>
 
-                      <AppTypography variant="body2" color="text.secondary" noWrap>
+                      <AppTypography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                      >
                         {iface.speed === "unknown" ||
                         iface.speed.startsWith("-1")
                           ? "No Carrier"
                           : `Link Speed: ${iface.speed}${iface.duplex !== "unknown" ? ` (${iface.duplex})` : ""}`}
                       </AppTypography>
 
-                      <AppTypography variant="body2" color="text.secondary" noWrap>
+                      <AppTypography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                      >
                         RX/s: {formatBps(iface.rx_speed)} | TX/s:{" "}
                         {formatBps(iface.tx_speed)}
                       </AppTypography>

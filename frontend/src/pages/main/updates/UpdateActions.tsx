@@ -3,9 +3,8 @@ import { Alert, IconButton, LinearProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
-import AppTypography from "@/components/ui/AppTypography";
-
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 
 interface UpdateActionsProps {
   isUpdating: boolean;

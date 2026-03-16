@@ -1,8 +1,8 @@
 import { useTheme } from "@mui/material/styles";
 import React from "react";
 
-import { alpha } from "@/utils/color";
 import AppTypography from "@/components/ui/AppTypography";
+import { alpha } from "@/utils/color";
 
 interface LogoDisplayDarkProps {
   showText?: boolean;

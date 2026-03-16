@@ -7,8 +7,10 @@ import {
   TableRow,
 } from "@mui/material";
 import React from "react";
+
 import type { SmartAttribute } from "../types";
 import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
+
 import AppTypography from "@/components/ui/AppTypography";
 interface SmartAttributesTabProps {
   isNvme: boolean;

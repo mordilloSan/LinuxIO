@@ -621,7 +621,10 @@ function NavbarNotificationsDropdown() {
                             gap: theme.spacing(1),
                           }}
                         >
-                          <AppTypography variant="caption" color="text.secondary">
+                          <AppTypography
+                            variant="caption"
+                            color="text.secondary"
+                          >
                             {formatTimeAgo(toastItem.createdAt)}
                           </AppTypography>
                           {toastItem.meta?.href && (

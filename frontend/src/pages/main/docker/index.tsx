@@ -3,20 +3,22 @@ import { Alert, AlertTitle, Button, IconButton, useTheme } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
+
 import ComposeStacksPage from "./ComposeStacksPage";
 import ContainerList from "./ContainerList";
 import DockerDashboard from "./DockerDashboard";
 import ImageList from "./ImageList";
 import DockerNetworksTable from "./NetworkList";
 import VolumeList from "./VolumeList";
+
 import { linuxio } from "@/api";
 import PruneDialog, { PruneOptions } from "@/components/docker/PruneDialog";
 import { TabContainer } from "@/components/tabbar";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getMutationErrorMessage } from "@/utils/mutations";
-import AppTypography from "@/components/ui/AppTypography";
 const DockerPage: React.FC = () => {
   const theme = useTheme();
   const { status: dockerStatus } = useCapability("dockerAvailable");

@@ -9,10 +9,11 @@ import {
   IconButton,
   Collapse,
 } from "@mui/material";
-import { alpha } from "@/utils/color";
-import AppTypography from "@/components/ui/AppTypography";
 import { motion } from "framer-motion";
 import React, { useState } from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
+import { alpha } from "@/utils/color";
 
 export interface UnifiedTableColumn {
   field: string;

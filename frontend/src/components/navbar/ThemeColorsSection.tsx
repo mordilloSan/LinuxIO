@@ -1,13 +1,12 @@
 import { Icon } from "@iconify/react";
 import { IconButton, useTheme } from "@mui/material";
-import { alpha } from "@/utils/color";
 import { useRef } from "react";
 
-import AppTypography from "@/components/ui/AppTypography";
-
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import { ThemeColors } from "@/types/config";
+import { alpha } from "@/utils/color";
 
 // Expand shorthand hex so native <input type="color"> always gets #rrggbb
 function toInputColor(color: string): string {

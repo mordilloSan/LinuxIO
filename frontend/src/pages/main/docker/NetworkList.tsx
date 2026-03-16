@@ -22,8 +22,6 @@ import {
   Switch,
   useTheme,
 } from "@mui/material";
-import { alpha } from "@/utils/color";
-import AppTypography from "@/components/ui/AppTypography";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -34,11 +32,13 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 import {
   responsiveTextStyles,
   longTextStyles,
   wrappableChipStyles,
 } from "@/theme/tableStyles";
+import { alpha } from "@/utils/color";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 interface NetworkListProps {

@@ -10,12 +10,13 @@ import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
+
 import { linuxio, type Peer } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import Chip from "@/components/ui/AppChip";
-import AppTypography from "@/components/ui/AppTypography";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { getMutationErrorMessage } from "@/utils/mutations";
 const wireguardToastMeta = {
   meta: {

@@ -1,11 +1,10 @@
 import { LinearProgress } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-
-import AppTypography from "@/components/ui/AppTypography";
-import { alpha } from "@/utils/color";
 import React from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
+import { alpha } from "@/utils/color";
 
 interface MetricBarProps {
   label: string;

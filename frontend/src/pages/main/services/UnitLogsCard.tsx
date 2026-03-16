@@ -1,6 +1,5 @@
 import { Icon } from "@iconify/react";
 import { FormControlLabel, Switch, useTheme } from "@mui/material";
-import { alpha } from "@/utils/color";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";
@@ -8,6 +7,7 @@ import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
+import { alpha } from "@/utils/color";
 
 interface UnitLogsCardProps {
   unitName: string;

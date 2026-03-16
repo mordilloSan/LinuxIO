@@ -19,8 +19,8 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
-import AppTypography from "@/components/ui/AppTypography";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 interface GroupsTabProps {

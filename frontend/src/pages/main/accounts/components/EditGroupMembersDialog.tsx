@@ -8,7 +8,7 @@ import {
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useState, useEffect, useEffectEvent } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -40,14 +40,6 @@ const EditGroupMembersDialog: React.FC<EditGroupMembersDialogProps> = ({
   const { data: users = [] } = linuxio.accounts.list_users.useQuery();
 
   const usersList = Array.isArray(users) ? users : [];
-
-  const syncMembers = useEffectEvent(() => {
-    setSelectedMembers(group.members);
-  });
-
-  useEffect(() => {
-    syncMembers();
-  }, [group]);
 
   const { mutate: modifyGroupMembers, isPending } =
     linuxio.accounts.modify_group_members.useMutation({

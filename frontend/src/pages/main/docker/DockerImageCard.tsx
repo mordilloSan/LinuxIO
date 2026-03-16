@@ -6,13 +6,12 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { alpha } from "@/utils/color";
 import { useMemo, useState } from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
-
 import { cardBorderRadius } from "@/constants";
 import { CollapsibleTableProps } from "@/types/collapsible";
+import { alpha } from "@/utils/color";
 
 interface Props<T extends Record<string, any>> {
   row: T;

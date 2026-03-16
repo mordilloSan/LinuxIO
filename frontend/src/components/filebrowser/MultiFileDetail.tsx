@@ -2,10 +2,9 @@ import { Icon } from "@iconify/react";
 import { Button, Divider, Paper, useTheme } from "@mui/material";
 import React from "react";
 
-import AppTypography from "@/components/ui/AppTypography";
-
 import { MultiStatsItem } from "../../types/filebrowser";
 
+import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
 // Glow animation for loading states

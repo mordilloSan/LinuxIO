@@ -1,7 +1,5 @@
 import { Button, Divider, TextField, Alert } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-
-import AppTypography from "@/components/ui/AppTypography";
 import React, {
   useCallback,
   useEffect,
@@ -14,6 +12,7 @@ import { toast } from "sonner";
 import { linuxio } from "@/api";
 import DockerIndexerDialog from "@/components/docker/DockerIndexerDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
 

@@ -9,9 +9,10 @@ import {
 } from "@mui/material";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
+
 import { useStreamMux, decodeString, openDockerComposeStream } from "@/api";
-import { useLiveStream } from "@/hooks/useLiveStream";
 import AppTypography from "@/components/ui/AppTypography";
+import { useLiveStream } from "@/hooks/useLiveStream";
 interface ComposeOperationDialogProps {
   open: boolean;
   onClose: () => void;

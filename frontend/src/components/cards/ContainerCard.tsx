@@ -1,7 +1,5 @@
 import { Collapse, Divider, Switch } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-
-import AppTypography from "@/components/ui/AppTypography";
 import { useQueryClient } from "@tanstack/react-query";
 import React, {
   Suspense,
@@ -21,6 +19,7 @@ import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { ContainerInfo } from "@/types/container";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -309,7 +308,12 @@ const ContainerCard: React.FC<ContainerCardProps> = ({ container }) => {
             variant="subtitle1"
             fontWeight={600}
             noWrap
-            style={{ marginLeft: 4, marginRight: 0.4, marginBottom: 2, fontSize: "1.05rem" }}
+            style={{
+              marginLeft: 4,
+              marginRight: 0.4,
+              marginBottom: 2,
+              fontSize: "1.05rem",
+            }}
           >
             {name}
           </AppTypography>

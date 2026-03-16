@@ -16,13 +16,12 @@ import {
 import { Grid } from "@mui/material";
 import React, { Suspense, useMemo } from "react";
 
-import AppTypography from "@/components/ui/AppTypography";
-
 import ContainerTable from "./ContainerTable";
 import ContainerCard from "../../../components/cards/ContainerCard";
 
 import { linuxio } from "@/api";
 import SortableCard from "@/components/cards/SortableCard";
+import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 
 interface ContainerListProps {

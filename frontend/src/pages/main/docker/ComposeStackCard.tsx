@@ -2,14 +2,13 @@ import { Icon } from "@iconify/react";
 import { Divider, IconButton } from "@mui/material";
 import React from "react";
 
-import AppTypography from "@/components/ui/AppTypography";
-
 import type { ComposeProject } from "./ComposeList";
 
 import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
 
 const getStatusColor = (status: string) => {

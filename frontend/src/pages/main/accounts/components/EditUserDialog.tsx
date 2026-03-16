@@ -8,7 +8,7 @@ import {
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useState, useEffect, useEffectEvent } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type AccountUser, type ModifyUserRequest } from "@/api";
@@ -41,17 +41,6 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({
 
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];
-
-  const syncUserState = useEffectEvent(() => {
-    setFullName(user.gecos);
-    setHomeDir(user.homeDir);
-    setShell(user.shell);
-    setSelectedGroups(user.groups || []);
-  });
-
-  useEffect(() => {
-    syncUserState();
-  }, [user]);
 
   const { mutate: modifyUser, isPending } =
     linuxio.accounts.modify_user.useMutation({

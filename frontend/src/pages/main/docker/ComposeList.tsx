@@ -12,14 +12,16 @@ import {
   useTheme,
 } from "@mui/material";
 import React, { useCallback, useState } from "react";
+
 import ComposeStackCard from "./ComposeStackCard";
+
 import DockerIcon from "@/components/docker/DockerIcon";
 import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable";
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { getComposeStatusColor } from "@/constants/statusColors";
 import AppTypography from "@/components/ui/AppTypography";
+import { getComposeStatusColor } from "@/constants/statusColors";
 interface ComposeService {
   name: string;
   image: string;

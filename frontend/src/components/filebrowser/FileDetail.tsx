@@ -7,11 +7,13 @@ import {
   useTheme,
 } from "@mui/material";
 import React from "react";
+
 import { FileResource, ResourceStatData } from "../../types/filebrowser";
+
 import { isEditableFile } from "@/components/filebrowser/utils";
+import AppTypography from "@/components/ui/AppTypography";
 import { useFileSubfolders } from "@/hooks/useFileSubfolders";
 import { formatDate, formatFileSize } from "@/utils/formaters";
-import AppTypography from "@/components/ui/AppTypography";
 interface FileDetailProps {
   resource?: FileResource;
   onDownload: (path: string) => void;

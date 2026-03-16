@@ -1,12 +1,6 @@
 import { Icon } from "@iconify/react";
-import {
-  Collapse,
-  Grid,
-  IconButton,
-  TableCell,
-} from "@mui/material";
+import { Collapse, Grid, IconButton, TableCell } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
 import React, { useCallback, useMemo } from "react";
 
 import { linuxio } from "@/api";
@@ -23,6 +17,7 @@ import "@/theme/section.css";
 import GpuInfo from "@/pages/main/dashboard/Gpu";
 import MemoryUsage from "@/pages/main/dashboard/Memory";
 import Processor from "@/pages/main/dashboard/Processor";
+import { alpha } from "@/utils/color";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 

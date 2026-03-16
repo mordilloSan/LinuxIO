@@ -5,7 +5,6 @@ import {
   Popover,
   useTheme as useMuiTheme,
 } from "@mui/material";
-import { alpha } from "@/utils/color";
 import { useMemo, useState } from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -13,6 +12,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { iconSize } from "@/constants";
 import { useConfigValue } from "@/hooks/useConfig";
 import { COLOR_TOKENS } from "@/theme/colors";
+import { alpha } from "@/utils/color";
 
 function NavbarColorCustomizer() {
   const [primaryColor, setPrimaryColor] = useConfigValue("primaryColor");

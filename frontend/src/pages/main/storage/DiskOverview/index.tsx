@@ -10,12 +10,12 @@ import {
   TextField,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+
 import {
   DriveInfoTab,
   OverviewTab,
@@ -35,6 +35,7 @@ import {
   getTemperatureColor,
   parseSizeToBytes,
 } from "./utils";
+
 import {
   linuxio,
   openSmartTestStream,
@@ -46,12 +47,13 @@ import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { FilesystemInfo } from "@/types/fs";
+import { alpha } from "@/utils/color";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
-import AppTypography from "@/components/ui/AppTypography";
 interface DriveDetailsProps {
   drive: DriveInfo;
   expanded: boolean;

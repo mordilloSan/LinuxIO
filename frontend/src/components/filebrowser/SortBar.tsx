@@ -3,7 +3,6 @@ import { useTheme } from "@mui/material";
 import React from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
-
 import { getSubtleDividerColor } from "@/theme/surfaces";
 
 export type SortField = "name" | "size" | "modTime";

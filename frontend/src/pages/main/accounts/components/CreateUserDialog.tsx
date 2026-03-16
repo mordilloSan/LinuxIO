@@ -9,7 +9,7 @@ import {
   Autocomplete,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 
 import { linuxio, type CreateUserRequest } from "@/api";
@@ -55,12 +55,6 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({
         toast.error(getMutationErrorMessage(error, "Failed to create user"));
       },
     });
-
-  useEffect(() => {
-    if (username && !homeDir) {
-      // Auto-suggest home directory
-    }
-  }, [username, homeDir]);
 
   const handleClose = () => {
     setUsername("");

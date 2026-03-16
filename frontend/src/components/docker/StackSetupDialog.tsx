@@ -8,11 +8,12 @@ import {
   useTheme,
   CircularProgress,
 } from "@mui/material";
-import { alpha } from "@/utils/color";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
+
 import { linuxio } from "@/api";
 import AppTypography from "@/components/ui/AppTypography";
+import { alpha } from "@/utils/color";
 interface StackSetupDialogProps {
   open: boolean;
   onClose: () => void;

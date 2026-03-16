@@ -11,6 +11,7 @@ import {
 import { useTheme } from "@mui/material/styles";
 import React, { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
+
 import "@/theme/section.css";
 import "./docker-dashboard.css";
 import { linuxio } from "@/api";
@@ -18,11 +19,11 @@ import FrostedCard from "@/components/cards/RootCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import { formatFileSize } from "@/utils/formaters";
 
 // ─── small helpers ────────────────────────────────────────────────────────────
-import AppTypography from "@/components/ui/AppTypography";
 const StateChip: React.FC<{
   state: string;
   status: string;

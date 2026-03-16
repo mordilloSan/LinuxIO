@@ -1,9 +1,9 @@
 import { Icon } from "@iconify/react";
 import { useTheme } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
 import React from "react";
 
 import { FILE_TYPE_COLORS } from "@/constants/fileTypeColors";
+import { alpha } from "@/utils/color";
 
 interface FileIconProps {
   isDirectory: boolean;

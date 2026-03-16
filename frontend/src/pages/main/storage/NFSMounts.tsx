@@ -24,6 +24,7 @@ import React, {
   useState,
 } from "react";
 import { toast } from "sonner";
+
 import { linuxio, CACHE_TTL_MS, type NFSMount } from "@/api";
 import FrostedCard from "@/components/cards/RootCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -31,9 +32,9 @@ import UnifiedCollapsibleTable, {
   UnifiedTableColumn,
 } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
-import AppTypography from "@/components/ui/AppTypography";
 interface NFSMountsProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";

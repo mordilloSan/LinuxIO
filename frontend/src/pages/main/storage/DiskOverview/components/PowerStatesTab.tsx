@@ -8,7 +8,9 @@ import {
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React from "react";
+
 import type { PowerData } from "../types";
+
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 interface PowerStatesTabProps {

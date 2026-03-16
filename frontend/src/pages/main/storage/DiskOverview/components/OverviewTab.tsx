@@ -1,11 +1,10 @@
 import React from "react";
 
-import AppTypography from "@/components/ui/AppTypography";
-
 import type { DriveInfo } from "../types";
 import { formatDataUnits, formatPowerOnTime } from "../utils";
 
 import Chip from "@/components/ui/AppChip";
+import AppTypography from "@/components/ui/AppTypography";
 
 interface OverviewTabProps {
   drive: DriveInfo;
@@ -82,7 +81,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
           <AppTypography
             variant="caption"
             color="text.secondary"
-            fontWeight={600} style={{ textTransform: "uppercase" }}
+            fontWeight={600}
+            style={{ textTransform: "uppercase" }}
           >
             Health & Statistics
           </AppTypography>
@@ -202,9 +202,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
                   variant="body2"
                   fontWeight={500}
                   color={
-                    pendingSectors.raw.value > 0
-                      ? "warning"
-                      : "text.primary"
+                    pendingSectors.raw.value > 0 ? "warning" : "text.primary"
                   }
                 >
                   {pendingSectors.raw.value}
@@ -220,7 +218,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ drive }) => {
           <AppTypography
             variant="caption"
             color="text.secondary"
-            fontWeight={600} style={{ textTransform: "uppercase" }}
+            fontWeight={600}
+            style={{ textTransform: "uppercase" }}
           >
             Power
           </AppTypography>

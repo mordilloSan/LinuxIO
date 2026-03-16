@@ -269,7 +269,9 @@ const WireGuardDashboard: React.FC = () => {
           )}
         </>
       ) : (
-        <AppTypography color="text.secondary">No interfaces found</AppTypography>
+        <AppTypography color="text.secondary">
+          No interfaces found
+        </AppTypography>
       )}
     </>
   );

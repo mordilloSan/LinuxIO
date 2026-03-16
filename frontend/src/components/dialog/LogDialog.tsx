@@ -8,12 +8,13 @@ import {
   FormControlLabel,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
 import React from "react";
+
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { alpha } from "@/utils/color";
 interface LogDialogProps {
   open: boolean;
   onClose: () => void;

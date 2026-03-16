@@ -9,8 +9,9 @@ import {
   Paper,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import AppTypography from "@/components/ui/AppTypography";
 import { useEffect, useRef } from "react";
+
+import AppTypography from "@/components/ui/AppTypography";
 interface UpdateDialogProps {
   open: boolean;
   status: string;

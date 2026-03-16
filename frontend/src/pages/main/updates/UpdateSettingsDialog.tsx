@@ -6,7 +6,9 @@ import {
   useTheme,
 } from "@mui/material";
 import React from "react";
+
 import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
+
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";

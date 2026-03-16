@@ -8,9 +8,11 @@ import {
   useTheme,
 } from "@mui/material";
 import React, { useState } from "react";
+
 import DockerFolderSettingsSection from "./DockerFolderSettingsSection";
 import NavbarCustomizer from "./NavbarCustomizer";
 import ThemeColorsSection from "./ThemeColorsSection";
+
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppTypography from "@/components/ui/AppTypography";
 type SettingsTab = "general" | "docker";

@@ -6,13 +6,15 @@ import {
   useTheme,
 } from "@mui/material";
 import React, { ReactNode, useCallback } from "react";
+
 import IndexerDialog from "./IndexerDialog";
 import SearchBar from "./SearchBar";
 import { ViewMode } from "../../types/filebrowser";
+
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useFileTransfers } from "@/hooks/useFileTransfers";
-import AppTypography from "@/components/ui/AppTypography";
 interface FileBrowserHeaderProps {
   viewMode: ViewMode;
   showHiddenFiles: boolean;

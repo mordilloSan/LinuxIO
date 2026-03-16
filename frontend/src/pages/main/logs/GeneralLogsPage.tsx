@@ -15,8 +15,6 @@ import {
   TextField,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
-import AppTypography from "@/components/ui/AppTypography";
 import React, {
   useCallback,
   useEffect,
@@ -31,8 +29,10 @@ import UnifiedCollapsibleTable from "@/components/tables/UnifiedCollapsibleTable
 import type { UnifiedTableColumn } from "@/components/tables/UnifiedCollapsibleTable";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
+import { alpha } from "@/utils/color";
 
 const DEFAULT_TAIL = "200";
 
@@ -668,7 +668,9 @@ const GeneralLogsPage: React.FC = () => {
             label="Live"
           />
         </AppTooltip>
-        <AppTypography fontWeight={700}>{filteredLogs.length} shown</AppTypography>
+        <AppTypography fontWeight={700}>
+          {filteredLogs.length} shown
+        </AppTypography>
       </div>
 
       {isLoading && <ComponentLoader />}

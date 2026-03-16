@@ -1,8 +1,9 @@
 import { Button } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { useState, useRef, useEffect, useEffectEvent } from "react";
+
+import { alpha } from "@/utils/color";
 
 interface DevToolsPanelProps {
   isOpen: boolean;

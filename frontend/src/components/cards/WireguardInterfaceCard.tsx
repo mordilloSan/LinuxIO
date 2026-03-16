@@ -1,13 +1,12 @@
 import { Icon } from "@iconify/react";
 import { CardContent, IconButton } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-
-import AppTypography from "@/components/ui/AppTypography";
 import { motion } from "framer-motion";
 import React, { RefObject, useState } from "react";
 
 import FrostedCard from "@/components/cards/RootCard";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import {
   getAccentCardHoverStyles,
   getAccentCardStyles,

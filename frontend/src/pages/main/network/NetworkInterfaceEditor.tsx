@@ -11,7 +11,9 @@ import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
 import type { NetworkInterface as BaseNI } from "./NetworkInterfaceList";
+
 import { linuxio } from "@/api";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";

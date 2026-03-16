@@ -1,7 +1,5 @@
 import { IconButton, Menu, MenuItem } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-
-import AppTypography from "@/components/ui/AppTypography";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import Minus from "lucide-react/dist/esm/icons/minus";
@@ -18,6 +16,7 @@ import {
   openTerminalStream,
   type Stream,
 } from "@/api";
+import AppTypography from "@/components/ui/AppTypography";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
@@ -431,7 +430,11 @@ const TerminalXTerm: React.FC = () => {
             }}
           >
             <span>Copy</span>
-            <AppTypography variant="body2" color="text.secondary" style={{ marginLeft: 8 }}>
+            <AppTypography
+              variant="body2"
+              color="text.secondary"
+              style={{ marginLeft: 8 }}
+            >
               Shift+C
             </AppTypography>
           </div>
@@ -446,7 +449,11 @@ const TerminalXTerm: React.FC = () => {
             }}
           >
             <span>Paste</span>
-            <AppTypography variant="body2" color="text.secondary" style={{ marginLeft: 8 }}>
+            <AppTypography
+              variant="body2"
+              color="text.secondary"
+              style={{ marginLeft: 8 }}
+            >
               Shift+V
             </AppTypography>
           </div>

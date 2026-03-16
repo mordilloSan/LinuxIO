@@ -23,7 +23,7 @@ export function alpha(color: string, opacity: number): string {
 
   // rgb(r, g, b) or rgba(r, g, b, a)
   const rgbMatch = color.match(
-    /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/
+    /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/,
   );
   if (rgbMatch) {
     return `rgba(${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}, ${clamped})`;
@@ -31,7 +31,7 @@ export function alpha(color: string, opacity: number): string {
 
   // hsl(h, s%, l%) or hsla(h, s%, l%, a)
   const hslMatch = color.match(
-    /hsla?\(\s*([\d.]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)/
+    /hsla?\(\s*([\d.]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)/,
   );
   if (hslMatch) {
     return `hsla(${hslMatch[1]}, ${hslMatch[2]}, ${hslMatch[3]}, ${clamped})`;

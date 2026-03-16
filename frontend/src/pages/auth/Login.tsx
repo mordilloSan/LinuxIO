@@ -1,11 +1,11 @@
 import { Paper } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
 import { keyframes } from "@mui/system";
 import React from "react";
 
 import LoginComponent from "@/components/auth/Login";
 import AppTypography from "@/components/ui/AppTypography";
+import { alpha } from "@/utils/color";
 
 import "./login-page.css";
 

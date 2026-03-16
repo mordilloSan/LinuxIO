@@ -1,11 +1,11 @@
 import { CssBaseline } from "@mui/material";
 import { useMediaQuery } from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
 import React from "react";
 import { Outlet } from "react-router-dom";
 
 import authTheme from "@/theme/authTheme";
+import { alpha } from "@/utils/color";
 
 const Auth: React.FC = () => {
   return (

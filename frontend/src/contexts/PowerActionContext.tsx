@@ -1,7 +1,5 @@
 import { Backdrop } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-
-import AppTypography from "@/components/ui/AppTypography";
 import React, {
   createContext,
   useState,
@@ -12,6 +10,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppTypography from "@/components/ui/AppTypography";
 
 type PowerActionState = "rebooting" | "poweringOff" | null;
 

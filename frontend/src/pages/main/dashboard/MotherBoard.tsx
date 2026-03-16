@@ -64,7 +64,9 @@ const MotherBoardInfo: React.FC = () => {
       ))}
     </div>
   ) : (
-    <AppTypography variant="body2">No system information available.</AppTypography>
+    <AppTypography variant="body2">
+      No system information available.
+    </AppTypography>
   );
 
   const sensors = motherboardInfo?.temperatures?.sensors ?? {};

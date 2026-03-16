@@ -1,7 +1,8 @@
 import { useTheme } from "@mui/material/styles";
-import { alpha } from "@/utils/color";
 import React, { useEffect, useRef } from "react";
 import { SmoothieChart, TimeSeries } from "smoothie";
+
+import { alpha } from "@/utils/color";
 
 interface NetworkGraphProps {
   rx: number;
