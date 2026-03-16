@@ -1,6 +1,7 @@
 import { CssBaseline } from "@mui/material";
 import { useMediaQuery } from "@mui/material";
-import { alpha, ThemeProvider } from "@mui/material/styles";
+import { ThemeProvider } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import React from "react";
 import { Outlet } from "react-router-dom";
 

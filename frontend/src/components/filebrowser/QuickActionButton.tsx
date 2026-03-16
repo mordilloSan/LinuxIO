@@ -1,5 +1,5 @@
 import { IconButton, useTheme } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import React, { ReactNode } from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";

@@ -1,5 +1,6 @@
 import { Dialog, DialogProps } from "@mui/material";
-import { alpha, SxProps, Theme, useTheme } from "@mui/material/styles";
+import { SxProps, Theme, useTheme } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import { SystemStyleObject } from "@mui/system";
 import React from "react";
 

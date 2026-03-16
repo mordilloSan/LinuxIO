@@ -1,5 +1,5 @@
 import { Button, Dialog, Typography, useTheme } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import React from "react";
 
 interface ComposePostSaveDialogProps {

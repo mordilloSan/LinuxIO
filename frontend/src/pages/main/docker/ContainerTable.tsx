@@ -13,7 +13,8 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import React, { Suspense, useMemo, useState } from "react";

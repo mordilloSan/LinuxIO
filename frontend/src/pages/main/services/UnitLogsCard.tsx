@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { FormControlLabel, Switch, useTheme } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import React from "react";
 
 import { openServiceLogsStream } from "@/api";

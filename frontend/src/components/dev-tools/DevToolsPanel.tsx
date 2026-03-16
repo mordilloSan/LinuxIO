@@ -1,5 +1,6 @@
 import { Button } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { useState, useRef, useEffect, useEffectEvent } from "react";
 

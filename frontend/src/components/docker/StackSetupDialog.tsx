@@ -9,7 +9,7 @@ import {
   useTheme,
   CircularProgress,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 

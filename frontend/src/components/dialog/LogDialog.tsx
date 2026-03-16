@@ -8,7 +8,8 @@ import {
   Switch,
   FormControlLabel,
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import React from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";

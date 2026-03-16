@@ -6,7 +6,7 @@ import {
   Typography,
   useTheme as useMuiTheme,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import { useMemo, useState } from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";

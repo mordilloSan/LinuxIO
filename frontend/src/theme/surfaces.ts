@@ -1,4 +1,5 @@
-import { alpha, type Theme } from "@mui/material/styles";
+import { type Theme } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 
 const mixWithTransparency = (color: string, opacity: number) => {
   const transparentShare = `${Math.round((1 - opacity) * 100)}%`;

@@ -15,7 +15,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import React, {
   useCallback,
   useEffect,

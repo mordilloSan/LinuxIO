@@ -1,5 +1,6 @@
 import { Paper, Typography } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import { keyframes } from "@mui/system";
 import React from "react";
 

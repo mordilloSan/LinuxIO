@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { IconButton, Typography, useTheme } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import { useRef } from "react";
 
 import AppTooltip from "@/components/ui/AppTooltip";

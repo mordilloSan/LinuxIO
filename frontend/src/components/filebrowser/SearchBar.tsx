@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { IconButton, InputAdornment, TextField, useTheme } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha } from "@/utils/color";
 import React, { useState, useCallback } from "react";
 
 interface SearchBarProps {
